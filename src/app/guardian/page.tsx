@@ -8,12 +8,17 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getGuardianSnapshot, getTodayGuardianSessionStart } from "@/lib/guardian";
+import { getGuardianSnapshot, getTodayGuardianSessionStart, deriveTodaySessionState } from "@/lib/guardian";
 import {
   buildBrokerIntegrationSnapshot,
   derivePlatformConnectionProgression,
 } from "@/lib/platform-integration";
 import { humanizePlannedCapabilities } from "@/lib/platform-integration-plans";
+import {
+  buildRuleEngineInputFromGuardianSnapshot,
+  buildViolationFeed,
+} from "@/lib/rule-engine";
+import { RuleNoticeList } from "@/components/ui/rule-notice-card";
 import { getTodaySessionEvents } from "@/lib/session-log";
 import {
   getSelectedEconomicCalendarSnapshot,
@@ -120,6 +125,32 @@ export default async function GuardianPage() {
     ? humanizePlannedCapabilities(brokerIntegration.integrationPlan.plannedCapabilities)
     : [];
 
+  const todaySessionState = deriveTodaySessionState(guardian, {
+    onboardingComplete,
+    sessionStart: todayGuardianSessionStart,
+    preNewsPolicyStatus: economicCalendarPolicy,
+  });
+  const violationFeed = buildViolationFeed(
+    buildRuleEngineInputFromGuardianSnapshot(guardian, {
+      sessionStarted: Boolean(todayGuardianSessionStart),
+      sessionEnded: Boolean(todayGuardianSessionStart?.endedAt),
+      todaySessionStateKind: todaySessionState.kind,
+      preNewsPolicy: economicCalendarPolicy.isActive
+        ? {
+            isActive: economicCalendarPolicy.isActive,
+            mode: economicCalendarPolicy.policy.mode,
+            message: economicCalendarPolicy.message,
+          }
+        : null,
+    }),
+  );
+  const guardianNotices = violationFeed.warningViolations.filter(
+    (v) =>
+      v.ruleId !== "guardian_disabled" &&
+      v.ruleId !== "no_trade_before_major_news" &&
+      v.ruleId !== "session_not_started",
+  );
+
   return (
     <AppShell
       eyebrow="Trading Guardian"
@@ -172,6 +203,8 @@ export default async function GuardianPage() {
             </p>
           </div>
         </section>
+
+        <RuleNoticeList notices={guardianNotices} />
 
         <SectionCard
           title="Current state"

@@ -26,7 +26,11 @@ import {
   buildViolationFeed,
 } from "@/lib/rule-engine";
 import { getTodaySessionEvents, getTodaySessionSummary } from "@/lib/session-log";
-import { buildTodayActivityTimeline } from "@/lib/today-activity";
+import {
+  buildTodayActivityTimeline,
+  buildViolationActivityItems,
+} from "@/lib/today-activity";
+import { RuleNoticeList } from "@/components/ui/rule-notice-card";
 import { deriveShortLivedCoachingFlags } from "@/lib/trader-state";
 import { isTrialActive } from "@/lib/trial";
 import {
@@ -183,10 +187,28 @@ export default async function DashboardPage() {
     guardian,
     sessionEvents: todaySessionEvents,
   });
+  const violationActivityItems = buildViolationActivityItems(violationFeed);
+  const mergedActivityTimeline = [
+    ...todayActivityTimeline,
+    ...violationActivityItems,
+  ].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+  // Notices: warnings that add context not already covered by other visible surfaces.
+  // - guardian_disabled is shown prominently in the session panel (GUARDIAN_DISABLED state)
+  // - session_not_started is covered by the PremarketReadinessPanel
+  // - no_trade_before_major_news before start is covered by PremarketReadinessPanel
+  const dashboardNotices = violationFeed.warningViolations.filter(
+    (v) =>
+      v.ruleId !== "guardian_disabled" &&
+      v.ruleId !== "session_not_started" &&
+      !(
+        v.ruleId === "no_trade_before_major_news" &&
+        !todaySessionState.sessionStarted
+      ),
+  );
   const postSessionReview = buildPostSessionReview({
     session: todayGuardianSessionStart,
     summary: todaySessionSummary,
-    activityItems: todayActivityTimeline,
+    activityItems: mergedActivityTimeline,
     guardian,
     violationFeed,
   });
@@ -227,6 +249,7 @@ export default async function DashboardPage() {
             telegramBotLink={telegramBotLink}
             displayTimeZone={displayTimeZone}
           />
+          <RuleNoticeList notices={dashboardNotices} />
         </div>
 
         <EconomicEventsPanel
@@ -244,7 +267,7 @@ export default async function DashboardPage() {
               timeZone={displayTimeZone}
             />
             <TodayActivityTimeline
-              items={todayActivityTimeline}
+              items={mergedActivityTimeline}
               title={activityTitle}
               description={activityDescription}
               timeZone={displayTimeZone}
