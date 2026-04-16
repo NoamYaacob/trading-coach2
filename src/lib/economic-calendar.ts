@@ -311,14 +311,14 @@ export function getEconomicCalendarProviderDisplay(
   switch (provider.key) {
     case "tradingeconomics_stub":
       return {
-        providerLabel: "TradingEconomics calendar stub",
-        sourceLabel: "External calendar stub. Live data is not connected yet.",
+        providerLabel: "TradingEconomics stub",
+        sourceLabel: "Calendar stub. Live provider sync is not connected yet.",
       };
     case "mock":
     default:
       return {
-        providerLabel: "Mock calendar feed",
-        sourceLabel: "Internal demo calendar for pre-news policy testing.",
+        providerLabel: "Demo calendar",
+        sourceLabel: "Demo data. Live calendar provider is not connected.",
       };
   }
 }

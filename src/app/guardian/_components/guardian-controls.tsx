@@ -142,7 +142,7 @@ export function GuardianControls({
         throw new Error(payload.error ?? "Unable to update today activity.");
       }
 
-      setFeedback("Guardian activity simulation updated.");
+      setFeedback("Today activity updated.");
       router.refresh();
     } catch (saveError) {
       setError(
@@ -194,8 +194,8 @@ export function GuardianControls({
             Protection Rules
           </h3>
           <p className="mt-2 text-sm leading-6 text-stone-600">
-            Configure the first Guardian limits that will enforce discipline once
-            real broker integration arrives.
+            Set the limits that define your trading discipline. These rules drive
+            Guardian enforcement every session.
           </p>
         </div>
 
@@ -234,7 +234,7 @@ export function GuardianControls({
               }
               className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             >
-              <option value="mock">Mock adapter</option>
+              <option value="mock">Demo mode</option>
               <option value="tradovate_stub">Tradovate stub</option>
             </select>
           </label>
@@ -269,7 +269,7 @@ export function GuardianControls({
               }
               className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             >
-              <option value="MOCK_CONNECTED">Mock connected</option>
+              <option value="MOCK_CONNECTED">Demo connected</option>
               <option value="NOT_CONNECTED">Not connected</option>
             </select>
           </label>
@@ -435,8 +435,8 @@ export function GuardianControls({
               Today Activity
             </h3>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Manual simulation inputs for v1 so Guardian evaluation can be tested
-              before live broker connectivity.
+              Set today's activity manually. Guardian evaluates these values until
+              live data is connected.
             </p>
           </div>
 

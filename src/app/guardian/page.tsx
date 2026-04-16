@@ -152,22 +152,22 @@ export default async function GuardianPage() {
             {guardian.evaluation.lockoutActive
               ? guardian.evaluation.primaryReasonLabel
               : onboardingComplete
-                ? "Complete onboarding before the day can open."
-                : "Guardian is live and the session is still inside limits."}
+                ? "Guardian is active and the session is inside limits."
+                : "Complete your profile to open trading for today."}
           </p>
           <div className="mt-4 grid gap-2 rounded-2xl border border-white/70 bg-white/55 px-4 py-3 text-sm text-stone-700">
             <p className="font-medium text-stone-950">
-              Economic calendar: {economicCalendarVisibility.providerLabel}
+              {economicCalendarVisibility.providerLabel}
             </p>
             <p>{economicCalendarVisibility.sourceLabel}</p>
             {economicCalendarVisibility.scenarioLabel ? (
               <p>
-                Scenario: {economicCalendarVisibility.scenarioLabel}.{" "}
+                {economicCalendarVisibility.scenarioLabel}.{" "}
                 {economicCalendarVisibility.scenarioDescription}
               </p>
             ) : null}
             <p>
-              Current state: {economicCalendarVisibility.stateLabel}.{" "}
+              {economicCalendarVisibility.stateLabel}.{" "}
               {economicCalendarVisibility.detail}
             </p>
           </div>
@@ -213,7 +213,7 @@ export default async function GuardianPage() {
                     : brokerIntegration.account.connectionLabel
                   : brokerIntegration.account.adapterDisplay.connectionMode === "EXTERNAL_STUB"
                     ? "No live broker connection yet."
-                    : "Internal mock feed is not connected."}
+                    : "No connection active."}
               </p>
               {plannedCapabilities.length ? (
                 <p className="mt-2 text-sm text-stone-600">

@@ -224,7 +224,7 @@ function getCurrentGuardianSessionDateKey(
 
 function humanizeConnectionStatus(status: GuardianConnectionStatus) {
   return status === GuardianConnectionStatus.MOCK_CONNECTED
-    ? "Mock connected"
+    ? "Demo mode active"
     : "Not connected";
 }
 
