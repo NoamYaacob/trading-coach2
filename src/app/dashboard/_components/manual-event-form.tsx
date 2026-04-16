@@ -4,24 +4,26 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const EVENT_TYPES = [
-  { value: "trade_opened", label: "Trade opened" },
-  { value: "trade_closed", label: "Trade closed" },
-  { value: "win", label: "Win" },
-  { value: "loss", label: "Loss" },
-  { value: "pnl_update", label: "P&L update" },
-  { value: "rule_breach", label: "Rule breach" },
-  { value: "manual_note", label: "Note" },
+  { value: "trade_opened", label: "Trade opened", hint: "Log when you enter a trade." },
+  { value: "trade_closed", label: "Trade closed", hint: "Log when you exit a trade." },
+  { value: "win",          label: "Win",          hint: "Mark a profitable trade." },
+  { value: "loss",         label: "Loss",         hint: "Mark a losing trade." },
+  { value: "pnl_update",  label: "P&L update",   hint: "Record a P&L change without a specific win or loss." },
+  { value: "rule_breach",  label: "Rule breach",  hint: "Flag if you broke a session rule." },
+  { value: "manual_note",  label: "Note",         hint: "Log anything else worth remembering." },
 ] as const;
 
 const PNL_RELEVANT = new Set(["win", "loss", "pnl_update"]);
 
 export function ManualEventForm() {
   const router = useRouter();
-  const [eventType, setEventType] = useState("trade_opened");
+  const [eventType, setEventType] = useState<string>("trade_opened");
   const [note, setNote] = useState("");
   const [pnlAmount, setPnlAmount] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [loggedLabel, setLoggedLabel] = useState("");
 
+  const selected = EVENT_TYPES.find((t) => t.value === eventType);
   const showPnl = PNL_RELEVANT.has(eventType);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -53,6 +55,7 @@ export function ManualEventForm() {
         return;
       }
 
+      setLoggedLabel(selected?.label ?? "Event");
       setStatus("success");
       setNote("");
       setPnlAmount("");
@@ -83,6 +86,9 @@ export function ManualEventForm() {
             </option>
           ))}
         </select>
+        {selected ? (
+          <p className="text-xs text-stone-400">{selected.hint}</p>
+        ) : null}
       </div>
 
       {showPnl ? (
@@ -94,7 +100,10 @@ export function ManualEventForm() {
             type="number"
             step="0.01"
             value={pnlAmount}
-            onChange={(e) => setPnlAmount(e.target.value)}
+            onChange={(e) => {
+              setPnlAmount(e.target.value);
+              setStatus("idle");
+            }}
             placeholder="e.g. 125.50 or -75.00"
             disabled={status === "submitting"}
             className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400 disabled:opacity-50"
@@ -109,7 +118,10 @@ export function ManualEventForm() {
         <input
           type="text"
           value={note}
-          onChange={(e) => setNote(e.target.value)}
+          onChange={(e) => {
+            setNote(e.target.value);
+            setStatus("idle");
+          }}
           maxLength={500}
           placeholder="Brief note about this event"
           disabled={status === "submitting"}
@@ -126,7 +138,7 @@ export function ManualEventForm() {
           {status === "submitting" ? "Logging..." : "Log event"}
         </button>
         {status === "success" ? (
-          <p className="text-sm text-emerald-700">Logged.</p>
+          <p className="text-sm text-emerald-700">{loggedLabel} added to Today Activity.</p>
         ) : status === "error" ? (
           <p className="text-sm text-red-700">Failed to log event.</p>
         ) : null}

@@ -40,7 +40,7 @@ export type RuleResult = {
   status: RuleStatus;
   /** Technical description of why this status was set */
   reason: string;
-  /** Short product-facing message (Hebrew) */
+  /** Short product-facing message */
   message: string;
   severity: RuleSeverity;
   timestamp: Date;
@@ -163,10 +163,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "guardian_disabled",
       status: "warning",
       reason: "Guardian is not enabled for this session.",
-      message: "הגארדיאן כבוי — חוקי הסיכון לא נאכפים.",
+      message: "Guardian is off — risk rules are not enforcing this session.",
       severity: "medium",
       timestamp: now,
-      recommendedAction: "הפעל את הגארדיאן לפני שמתחילים לסחור.",
+      recommendedAction: "Enable Guardian before trading.",
     });
   } else {
     results.push({
@@ -174,7 +174,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "guardian_disabled",
       status: "ok",
       reason: "Guardian is active.",
-      message: "הגארדיאן פעיל.",
+      message: "Guardian is active.",
       severity: "low",
       timestamp: now,
     });
@@ -188,10 +188,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "max_trades_per_day",
         status: "triggered",
         reason: `Trade count ${input.todayTradesCount} reached or exceeded limit of ${input.maxTradesPerDay}.`,
-        message: `הגעת למקסימום הסחרות היומי (${input.maxTradesPerDay}). אין יותר כניסות היום.`,
+        message: `Daily trade limit reached (${input.maxTradesPerDay}). No more entries today.`,
         severity: "high",
         timestamp: now,
-        recommendedAction: "עצור. אין להמשיך לסחור היום.",
+        recommendedAction: "Stop. Do not enter any more trades today.",
       });
     } else if (
       input.maxTradesPerDay > 1 &&
@@ -202,10 +202,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "max_trades_per_day",
         status: "warning",
         reason: `Trade count ${input.todayTradesCount} is one away from the limit of ${input.maxTradesPerDay}.`,
-        message: `נותרת סחרה אחת עד למכסה היומית (${input.maxTradesPerDay}).`,
+        message: `One trade left before the daily limit (${input.maxTradesPerDay}).`,
         severity: "medium",
         timestamp: now,
-        recommendedAction: "בחר בקפידה את הסחרה הבאה.",
+        recommendedAction: "Choose the next entry carefully.",
       });
     } else {
       results.push({
@@ -213,7 +213,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "max_trades_per_day",
         status: "ok",
         reason: `Trade count ${input.todayTradesCount} is within limit of ${input.maxTradesPerDay}.`,
-        message: `${input.todayTradesCount} מתוך ${input.maxTradesPerDay} סחרות היום.`,
+        message: `${input.todayTradesCount} of ${input.maxTradesPerDay} trades taken today.`,
         severity: "low",
         timestamp: now,
       });
@@ -235,10 +235,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "max_daily_loss",
         status: "triggered",
         reason: `Daily PnL ${effectivePnL} breached max daily loss limit of -${input.maxDailyLoss}.`,
-        message: `הגעת להפסד היומי המקסימלי (${input.maxDailyLoss}). המסחר נעצר.`,
+        message: `Daily loss limit hit (${input.maxDailyLoss}). Trading is stopped.`,
         severity: "critical",
         timestamp: now,
-        recommendedAction: "עצור לחלוטין. חכה לחלון האיפוס לפני שמתחילים מחדש.",
+        recommendedAction: "Stop completely. Wait for the reset window before resuming.",
       });
     } else {
       const warningThreshold = input.maxDailyLoss * 0.8;
@@ -253,12 +253,12 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
           ? `Daily PnL ${effectivePnL} is approaching max daily loss of -${input.maxDailyLoss}.`
           : `Daily PnL ${effectivePnL} is within max daily loss limit of -${input.maxDailyLoss}.`,
         message: approachingLimit
-          ? `מתקרב לגבול ההפסד היומי. PnL: ${effectivePnL}, גבול: -${input.maxDailyLoss}.`
-          : `PnL היומי: ${effectivePnL}. הגבול הוא -${input.maxDailyLoss}.`,
+          ? `Approaching the daily loss limit. P&L: ${effectivePnL}, limit: -${input.maxDailyLoss}.`
+          : `Today's P&L: ${effectivePnL}. Limit is -${input.maxDailyLoss}.`,
         severity: approachingLimit ? "high" : "low",
         timestamp: now,
         recommendedAction: approachingLimit
-          ? "שמור על מינוף נמוך ושקול לעצור."
+          ? "Reduce size and consider stopping early."
           : undefined,
       });
     }
@@ -282,10 +282,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "stop_after_consecutive_losses",
         status: "triggered",
         reason: `Consecutive losses ${effectiveConsecutiveLosses} reached limit of ${input.stopAfterConsecutiveLosses}.`,
-        message: `הגעת ל-${effectiveConsecutiveLosses} הפסדים רצופים (גבול: ${input.stopAfterConsecutiveLosses}). עצור עכשיו.`,
+        message: `${effectiveConsecutiveLosses} consecutive losses — limit is ${input.stopAfterConsecutiveLosses}. Stop now.`,
         severity: "high",
         timestamp: now,
-        recommendedAction: "עצור. קח הפסקה ואל תיכנס לעסקה נוספת.",
+        recommendedAction: "Stop. Take a break before entering another trade.",
       });
     } else if (effectiveConsecutiveLosses > 0) {
       results.push({
@@ -293,10 +293,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "stop_after_consecutive_losses",
         status: "warning",
         reason: `${effectiveConsecutiveLosses} consecutive losses, limit is ${input.stopAfterConsecutiveLosses}.`,
-        message: `${effectiveConsecutiveLosses} הפסדים רצופים. הגבול הוא ${input.stopAfterConsecutiveLosses}.`,
+        message: `${effectiveConsecutiveLosses} consecutive losses. Limit is ${input.stopAfterConsecutiveLosses}.`,
         severity: "medium",
         timestamp: now,
-        recommendedAction: "שמור על ריסון. הפסד נוסף יעצור אותך.",
+        recommendedAction: "Stay disciplined. One more loss will stop you.",
       });
     } else {
       results.push({
@@ -304,7 +304,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "stop_after_consecutive_losses",
         status: "ok",
         reason: "No consecutive losses.",
-        message: "אין הפסדים רצופים.",
+        message: "No consecutive losses.",
         severity: "low",
         timestamp: now,
       });
@@ -323,10 +323,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         reason: "Major economic event active. Trading blocked by pre-news policy.",
         message:
           input.preNewsPolicy.message ??
-          "אירוע כלכלי גדול פעיל — המסחר חסום עד סיום החלון.",
+          "Major economic event active — trading is blocked until the window closes.",
         severity: "high",
         timestamp: now,
-        recommendedAction: "המתן לסיום חלון האירוע לפני שמתחילים.",
+        recommendedAction: "Wait for the event window to close before trading.",
       });
     } else if (mode === "SOFT_CAUTION") {
       results.push({
@@ -336,10 +336,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         reason: "Major economic event approaching. Caution mode active.",
         message:
           input.preNewsPolicy.message ??
-          "אירוע כלכלי משמעותי מתקרב — המשך בזהירות.",
+          "Major economic event approaching — proceed with caution.",
         severity: "medium",
         timestamp: now,
-        recommendedAction: "שמור על גודל עסקה קטן ותוכנית ברורה.",
+        recommendedAction: "Keep position size small and have a clear plan.",
       });
     } else {
       // WARNING_ONLY
@@ -349,7 +349,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         status: "warning",
         reason: "Economic event nearby. Warning mode active.",
         message:
-          input.preNewsPolicy.message ?? "אירוע כלכלי בקרבת מקום — היה ערני.",
+          input.preNewsPolicy.message ?? "Economic event nearby — stay alert.",
         severity: "low",
         timestamp: now,
       });
@@ -360,7 +360,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "no_trade_before_major_news",
       status: "ok",
       reason: "No active economic event policy.",
-      message: "אין אירוע כלכלי פעיל.",
+      message: "No active economic event.",
       severity: "low",
       timestamp: now,
     });
@@ -373,10 +373,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "session_not_started",
       status: "warning",
       reason: "Trading session has not been started for today.",
-      message: "הסשן היומי טרם הופעל.",
+      message: "The daily session has not been started.",
       severity: "low",
       timestamp: now,
-      recommendedAction: "פתח את הסשן לפני שמתחילים לסחור.",
+      recommendedAction: "Start the session before trading.",
     });
   } else {
     results.push({
@@ -384,7 +384,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "session_not_started",
       status: "ok",
       reason: "Session has been started or the day is closed.",
-      message: "הסשן פתוח.",
+      message: "Session is open.",
       severity: "low",
       timestamp: now,
     });
@@ -397,10 +397,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "session_closed",
       status: "blocked",
       reason: "The trading session for today has been closed.",
-      message: "הסשן היומי נסגר.",
+      message: "The daily session has ended.",
       severity: "medium",
       timestamp: now,
-      recommendedAction: "המתן לסשן מחר.",
+      recommendedAction: "Wait for tomorrow's session.",
     });
   } else if (
     input.todaySessionStateKind === "LOCKED_BY_GUARDIAN" ||
@@ -411,10 +411,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "session_closed",
       status: "blocked",
       reason: "Guardian has locked the session.",
-      message: "הגארדיאן נעל את הסשן.",
+      message: "Guardian has locked the session.",
       severity: "high",
       timestamp: now,
-      recommendedAction: "המתן לחלון האיפוס.",
+      recommendedAction: "Wait for the reset window.",
     });
   } else {
     results.push({
@@ -422,7 +422,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "session_closed",
       status: "ok",
       reason: "Session is not closed.",
-      message: "הסשן לא נסגר.",
+      message: "Session is active.",
       severity: "low",
       timestamp: now,
     });
@@ -438,10 +438,10 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "manual_rule_breach",
         status: "triggered",
         reason: "A rule breach was manually logged during this session.",
-        message: "הפרת חוק נרשמה ידנית — בדוק את הסשן.",
+        message: "A rule breach was manually logged — review the session.",
         severity: "high",
         timestamp: now,
-        recommendedAction: "עצור לרגע ובדוק אם נפרצו גבולות הסיכון.",
+        recommendedAction: "Pause and check if any risk limits were exceeded.",
       });
     } else {
       results.push({
@@ -449,7 +449,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleType: "manual_rule_breach",
         status: "ok",
         reason: "No manual rule breach logged.",
-        message: "לא נרשמה הפרת חוק.",
+        message: "No rule breach logged.",
         severity: "low",
         timestamp: now,
       });
