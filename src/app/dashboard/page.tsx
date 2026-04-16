@@ -21,6 +21,10 @@ import {
 } from "@/lib/guardian";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
+import {
+  buildRuleEngineInputFromGuardianSnapshot,
+  buildViolationFeed,
+} from "@/lib/rule-engine";
 import { getTodaySessionEvents, getTodaySessionSummary } from "@/lib/session-log";
 import { buildTodayActivityTimeline } from "@/lib/today-activity";
 import { deriveShortLivedCoachingFlags } from "@/lib/trader-state";
@@ -160,6 +164,20 @@ export default async function DashboardPage() {
   const telegramBotLink = telegramBotUsername
     ? `https://t.me/${telegramBotUsername}`
     : null;
+  const violationFeed = buildViolationFeed(
+    buildRuleEngineInputFromGuardianSnapshot(guardian, {
+      sessionStarted: todaySessionState.sessionStarted,
+      sessionEnded: todaySessionState.sessionEnded,
+      todaySessionStateKind: todaySessionState.kind,
+      preNewsPolicy: economicCalendarPolicy.isActive
+        ? {
+            isActive: economicCalendarPolicy.isActive,
+            mode: economicCalendarPolicy.policy.mode,
+            message: economicCalendarPolicy.message,
+          }
+        : null,
+    }),
+  );
   const todayActivityTimeline = buildTodayActivityTimeline({
     sessionStart: todayGuardianSessionStart,
     guardian,
@@ -170,6 +188,7 @@ export default async function DashboardPage() {
     summary: todaySessionSummary,
     activityItems: todayActivityTimeline,
     guardian,
+    violationFeed,
   });
   const isSessionEnded = todaySessionState.sessionEnded;
   const isSessionActive =

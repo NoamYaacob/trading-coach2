@@ -1,6 +1,7 @@
 import type { DailyGuardianSession } from "@prisma/client";
 
 import type { GuardianSnapshot } from "@/lib/guardian";
+import type { ViolationFeed } from "@/lib/rule-engine";
 import type { TodaySessionSummary } from "@/lib/session-log";
 import type { TodayActivityItem } from "@/lib/today-activity";
 
@@ -23,6 +24,7 @@ export function buildPostSessionReview(input: {
   summary: TodaySessionSummary;
   activityItems: TodayActivityItem[];
   guardian: GuardianSnapshot;
+  violationFeed?: ViolationFeed | null;
 }): PostSessionReview | null {
   const session = input.session;
 
@@ -55,6 +57,46 @@ export function buildPostSessionReview(input: {
 
   if (input.summary.hasRecoveryToday) {
     bullets.push("You returned to control before the day ended.");
+  }
+
+  // Rule engine violation context — surfaces things not captured by Guardian lockout
+  if (input.violationFeed) {
+    const feed = input.violationFeed;
+
+    const preNewsFired = feed.activeViolations.find(
+      (v) => v.ruleId === "no_trade_before_major_news" && v.status === "blocked",
+    );
+    if (preNewsFired) {
+      bullets.push("A major news event blocked or restricted the session.");
+    }
+
+    const approachingLoss = feed.activeViolations.find(
+      (v) =>
+        v.ruleId === "max_daily_loss" &&
+        v.status === "warning" &&
+        !feed.triggeredViolations.some((t) => t.ruleId === "max_daily_loss"),
+    );
+    if (approachingLoss) {
+      bullets.push("The session approached the daily loss limit without breaching it.");
+    }
+
+    const approachingTrades = feed.activeViolations.find(
+      (v) =>
+        v.ruleId === "max_trades_per_day" &&
+        v.status === "warning" &&
+        !feed.triggeredViolations.some((t) => t.ruleId === "max_trades_per_day"),
+    );
+    if (approachingTrades) {
+      bullets.push("The session came close to the max daily trade count.");
+    }
+
+    if (
+      feed.activeViolations.some(
+        (v) => v.ruleId === "guardian_disabled" && v.status === "warning",
+      )
+    ) {
+      bullets.push("Guardian was off during this session.");
+    }
   }
 
   if (bullets.length === 0) {

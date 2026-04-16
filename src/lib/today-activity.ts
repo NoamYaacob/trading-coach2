@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 
 import type { GuardianSnapshot } from "@/lib/guardian";
+import type { ViolationFeed } from "@/lib/rule-engine";
 
 export type TodayActivityItemTone =
   | "neutral"
@@ -228,4 +229,73 @@ export function getRecentTodayActivityItems(
   return [...items]
     .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
     .slice(0, limit);
+}
+
+/**
+ * Convert active rule violations into activity items.
+ * Only surfaces violations that are not already covered by the main timeline
+ * (Guardian lockout is already handled via guardian.status.lockoutStartedAt).
+ * Call this separately and merge with buildTodayActivityTimeline output if desired.
+ */
+export function buildViolationActivityItems(
+  violations: ViolationFeed,
+  now?: Date,
+): TodayActivityItem[] {
+  const at = now ?? new Date();
+  const items: TodayActivityItem[] = [];
+
+  for (const violation of violations.activeViolations) {
+    // Guardian lockout + reset are already surfaced from guardian.status timestamps —
+    // skip triggered guard rules to avoid duplication.
+    if (
+      violation.ruleId === "max_trades_per_day" ||
+      violation.ruleId === "max_daily_loss" ||
+      violation.ruleId === "stop_after_consecutive_losses"
+    ) {
+      continue;
+    }
+
+    if (violation.ruleId === "guardian_disabled" && violation.status === "warning") {
+      items.push({
+        id: `violation-guardian-disabled`,
+        occurredAt: at,
+        title: "Guardian is off",
+        detail: "Risk rules are not enforcing this session.",
+        badge: "Warning",
+        tone: "warning",
+      });
+      continue;
+    }
+
+    if (violation.ruleId === "no_trade_before_major_news") {
+      const tone: TodayActivityItemTone =
+        violation.status === "blocked" ? "danger" : "warning";
+      items.push({
+        id: `violation-pre-news`,
+        occurredAt: at,
+        title:
+          violation.status === "blocked"
+            ? "Session blocked by news policy"
+            : "News caution active",
+        detail: violation.message,
+        badge: "News",
+        tone,
+      });
+      continue;
+    }
+
+    if (violation.ruleId === "session_not_started" && violation.status === "warning") {
+      items.push({
+        id: `violation-session-not-started`,
+        occurredAt: at,
+        title: "Session not started",
+        detail: "The trading session has not been opened yet today.",
+        badge: "Session",
+        tone: "neutral",
+      });
+      continue;
+    }
+  }
+
+  return items;
 }

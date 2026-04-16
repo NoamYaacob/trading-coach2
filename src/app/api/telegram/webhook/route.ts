@@ -9,6 +9,10 @@ import {
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
+import {
+  buildRuleEngineInputFromGuardianSnapshot,
+  buildViolationFeed,
+} from "@/lib/rule-engine";
 import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -323,6 +327,21 @@ export async function POST(request: Request) {
     },
   });
 
+  const violationFeed = buildViolationFeed(
+    buildRuleEngineInputFromGuardianSnapshot(guardian, {
+      sessionStarted: todaySessionState.sessionStarted,
+      sessionEnded: todaySessionState.sessionEnded,
+      todaySessionStateKind: todaySessionState.kind,
+      preNewsPolicy: economicCalendarPolicy.isActive
+        ? {
+            isActive: economicCalendarPolicy.isActive,
+            mode: economicCalendarPolicy.policy.mode,
+            message: economicCalendarPolicy.message,
+          }
+        : null,
+    }),
+  );
+
   const coachReply = generateCoachReply(rawText || "check in", coachContext);
   const cooldownActive = Boolean(
     activeTraderState?.needsCooldown &&
@@ -350,6 +369,21 @@ export async function POST(request: Request) {
       todaySessionState: todaySessionState.kind,
       sessionStarted: todaySessionState.sessionStarted,
       sessionEnded: todaySessionState.sessionEnded,
+      ruleViolations: {
+        hasBlockingViolation: violationFeed.hasBlockingViolation,
+        primaryViolation: violationFeed.primaryViolation
+          ? {
+              ruleId: violationFeed.primaryViolation.ruleId,
+              status: violationFeed.primaryViolation.status,
+              severity: violationFeed.primaryViolation.severity,
+              message: violationFeed.primaryViolation.message,
+            }
+          : null,
+        activeCount: violationFeed.activeViolations.length,
+        triggeredRules: violationFeed.triggeredViolations.map((v) => v.ruleId),
+        blockedRules: violationFeed.blockedViolations.map((v) => v.ruleId),
+        warningRules: violationFeed.warningViolations.map((v) => v.ruleId),
+      },
     },
   });
 
