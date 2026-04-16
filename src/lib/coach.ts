@@ -961,13 +961,17 @@ function buildManualActivityStatusLines(
   const lines: string[] = [];
 
   if (m.hasRuleBreach) {
-    lines.push("יש breach ידני שנרשם לסשן הזה.");
+    lines.push("הפרת חוק ידנית נרשמה בסשן הזה.");
   }
 
-  if (m.consecutiveLosses >= 2) {
-    lines.push(`נרשמו ${m.consecutiveLosses} הפסדים ידניים ברצף היום.`);
-  } else if (m.consecutiveLosses === 1 && options?.include1LossStreak) {
-    lines.push("הפסד ידני אחד ברצף כרגע.");
+  // Skip the streak line when shouldStopTrading is already active — the
+  // caller's reply already has a loss-streak stop line and repeating it is redundant.
+  if (!context.shouldStopTrading) {
+    if (m.consecutiveLosses >= 2) {
+      lines.push(`נרשמו ${m.consecutiveLosses} הפסדים ידניים ברצף היום.`);
+    } else if (m.consecutiveLosses === 1 && options?.include1LossStreak) {
+      lines.push("הפסד ידני אחד ברצף כרגע.");
+    }
   }
 
   if (m.netPnL !== null && m.netPnL < 0) {
@@ -982,11 +986,16 @@ function buildManualActivityStatusLines(
 
 /**
  * Produce a compact win/loss/PnL/breach summary for the day-summary reply.
- * Only emits lines when manual trade activity was actually logged.
+ * Emits lines when any meaningful manual data is present — wins, losses,
+ * trade count, a breach, or a PnL figure. Does not require trade_opened /
+ * trade_closed events; win/loss/pnl_update/rule_breach all qualify.
  */
 function buildManualActivityDaySummaryLines(context: CoachContext): string[] {
   const m = context.manualActivity;
-  if (!m || !m.tradeActivityLogged) return [];
+  if (
+    !m ||
+    (m.tradeCount === 0 && m.winCount === 0 && m.lossCount === 0 && !m.hasRuleBreach)
+  ) return [];
 
   const lines: string[] = [];
   const parts: string[] = [];

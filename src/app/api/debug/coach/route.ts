@@ -9,6 +9,7 @@ import {
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
+import { deriveManualEventSignals, getTodayManualEvents } from "@/lib/manual-trade-events";
 import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
 
 type DebugCoachRequest = {
@@ -90,16 +91,18 @@ export async function POST(request: Request) {
     ? (await setCurrentTraderState(user.id, stateUpdate.nextState, stateUpdate.extraData))
         .traderState
     : (await getCurrentTraderState(user.id)).traderState;
-  const [sessionContext, guardian, todayGuardianSession] = await Promise.all([
+  const [sessionContext, guardian, todayGuardianSession, todayManualEvents] = await Promise.all([
     getRecentSessionContext(user.id),
     getGuardianSnapshot(user.id),
     getTodayGuardianSessionStart(user.id),
+    getTodayManualEvents(user.id),
   ]);
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete: Boolean(user.traderProfile),
     sessionStart: todayGuardianSession,
   });
 
+  const manualEventSignals = deriveManualEventSignals(todayManualEvents);
   const coachContext = buildCoachContext({
     traderProfile: user.traderProfile,
     riskRules: user.riskRules,
@@ -135,6 +138,7 @@ export async function POST(request: Request) {
       sessionEndedAt: todaySessionState.sessionEndedAt,
       resetTimezone: todaySessionState.resetTimezone,
     },
+    manualActivity: manualEventSignals,
   });
 
   const result = generateCoachReply(message, coachContext);
