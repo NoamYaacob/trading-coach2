@@ -284,6 +284,7 @@ export async function POST(request: Request) {
     economicCalendarSnapshot,
   );
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
+  const manualEventSignals = deriveManualEventSignals(todayManualEvents);
   const coachContext = buildCoachContext({
     traderProfile: connection.user.traderProfile,
     riskRules: connection.user.riskRules,
@@ -327,9 +328,9 @@ export async function POST(request: Request) {
       sessionEndedAt: todaySessionState.sessionEndedAt,
       resetTimezone: todaySessionState.resetTimezone,
     },
+    manualActivity: manualEventSignals,
   });
 
-  const manualEventSignals = deriveManualEventSignals(todayManualEvents);
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
