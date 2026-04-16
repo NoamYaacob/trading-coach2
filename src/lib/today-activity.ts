@@ -45,10 +45,91 @@ function humanizeSource(source: string) {
     return "local debug";
   }
 
+  if (source === "manual") {
+    return "manual entry";
+  }
+
   return source;
 }
 
+function buildManualTradeEventItem(event: DailySessionEvent): TodayActivityItem | null {
+  const detail = event.message || "Manual entry.";
+
+  switch (event.detectedIntent) {
+    case "trade_opened":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Trade opened",
+        detail,
+        badge: "Trade",
+        tone: "info",
+      };
+    case "trade_closed":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Trade closed",
+        detail,
+        badge: "Trade",
+        tone: "info",
+      };
+    case "win":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Win logged",
+        detail,
+        badge: "Win",
+        tone: "success",
+      };
+    case "loss":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Loss logged",
+        detail,
+        badge: "Loss",
+        tone: "warning",
+      };
+    case "pnl_update":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "P&L updated",
+        detail,
+        badge: "P&L",
+        tone: "neutral",
+      };
+    case "rule_breach":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Rule breach logged",
+        detail,
+        badge: "Rule",
+        tone: "danger",
+      };
+    case "manual_note":
+      return {
+        id: `event-${event.id}`,
+        occurredAt: event.createdAt,
+        title: "Note logged",
+        detail,
+        badge: "Note",
+        tone: "neutral",
+      };
+    default:
+      return null;
+  }
+}
+
 function buildSessionEventItem(event: DailySessionEvent): TodayActivityItem | null {
+  // Manual trade events logged via the dashboard entry panel
+  if (event.source === "manual" && event.eventType === "TRADE_EVENT") {
+    return buildManualTradeEventItem(event);
+  }
+
   const sourceLabel = event.source === "telegram" ? "Reported in Telegram" : "Logged from local debug";
 
   switch (event.traderState) {

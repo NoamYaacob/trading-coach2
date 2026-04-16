@@ -7,6 +7,7 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { EconomicEventsPanel } from "@/app/dashboard/_components/economic-events-panel";
+import { ManualEventForm } from "@/app/dashboard/_components/manual-event-form";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
 import { TodayActivityTimeline } from "@/app/dashboard/_components/today-activity-timeline";
@@ -441,6 +442,13 @@ export default async function DashboardPage() {
                 Open Guardian
               </Link>
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Session event log"
+            description="Manual entry — no live broker connected. Log a trade or session event to capture it in Today Activity and the post-session review."
+          >
+            <ManualEventForm />
           </SectionCard>
 
           <SectionCard

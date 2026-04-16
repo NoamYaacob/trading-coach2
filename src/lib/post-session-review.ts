@@ -99,6 +99,22 @@ export function buildPostSessionReview(input: {
     }
   }
 
+  // Manual trade events logged during the session
+  const manualWins = input.activityItems.filter((i) => i.title === "Win logged").length;
+  const manualLosses = input.activityItems.filter((i) => i.title === "Loss logged").length;
+  const manualRuleBreach = input.activityItems.some((i) => i.title === "Rule breach logged");
+
+  if (manualWins > 0 || manualLosses > 0) {
+    const parts: string[] = [];
+    if (manualWins > 0) parts.push(`${manualWins} win${manualWins > 1 ? "s" : ""}`);
+    if (manualLosses > 0) parts.push(`${manualLosses} loss${manualLosses > 1 ? "es" : ""}`);
+    bullets.push(`Manual trade log: ${parts.join(", ")}.`);
+  }
+
+  if (manualRuleBreach) {
+    bullets.push("A rule breach was logged manually during the session.");
+  }
+
   if (bullets.length === 0) {
     bullets.push("The session stayed quiet and controlled.");
   }
