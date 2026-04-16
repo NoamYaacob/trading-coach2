@@ -1,0 +1,63 @@
+[
+  {
+    "action": "signedUp",
+    "email": "qa.demo.1776188829130@example.com",
+    "url": "http://localhost:3000/onboarding"
+  },
+  {
+    "path": "/",
+    "url": "http://localhost:3000/",
+    "title": "Trading Coach",
+    "heading": "A session-first trading guardian with live coaching and real daily control.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Sign up",
+      "Log in",
+      "View product flow",
+      "Sign up",
+      "Log in"
+    ],
+    "snippet": "TRADING DISCIPLINE SYSTEM\n\nA session-first trading guardian with live coaching and real daily control.\n\nTrading Coach combines dashboard operations, Guardian protection, and Telegram coaching into one daily discipline loop. It is built for traders who need clearer boundaries, better state control, and a cleaner close to the day.\n\nSign up\nLog in\nView product flow\nWhat this product is\n\nA trading discipline system for active traders who need the day managed as an operating process, not as a loose c",
+    "screenshot": ".-tmp-qa-auth-home.png"
+  },
+  {
+    "path": "/dashboard",
+    "url": "http://localhost:3000/dashboard",
+    "title": "Dashboard | Trading Coach",
+    "heading": "Your trading coach account.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Connect Telegram",
+      "Logout",
+      "Complete onboarding",
+      "Complete onboarding",
+      "Open Guardian"
+    ],
+    "snippet": "DASHBOARD\n\nYour trading coach account.\n\nMove through the day in one place: get ready, manage the live session, and close it cleanly.\n\nConnect Telegram\nLogout\nSETUP REQUIRED\n\nComplete onboarding before the day can begin.\n\nYour profile, trading rules, and coaching setup need to be in place first.\n\nComplete onboarding\nONBOARDING REQUIRED\nComplete onboarding before starting the day.\n\nYour trading profile and rules need to be set before the session can open.\n\nWHAT TO DO NEXT\n\nFinish onboarding first,",
+    "screenshot": ".-tmp-qa-auth-dashboard.png"
+  },
+  {
+    "path": "/guardian",
+    "url": "http://localhost:3000/guardian",
+    "title": "Trading Guardian | Trading Coach",
+    "heading": "Know if today is open, why it closed, and what happens next.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Guardian Active",
+      "Off",
+      "Save Guardian Rules",
+      "Update Today Activity"
+    ],
+    "snippet": "TRADING GUARDIAN\n\nKnow if today is open, why it closed, and what happens next.\n\nGuardian keeps the day clear: open, closed, or waiting for the next reset window.\n\nCURRENT STATE\n\nTrading is not enabled until onboarding is complete.\n\nGuardian is live and the session is still inside limits.\n\nCurrent state\n\nThe live session view: Guardian, connection, today’s activity, and when you can check the day again.\n\nGUARDIAN STATUS\n\nActive\n\nTrading is clear.\n\nCONNECTION\n\nMock feed active\n\nMock internal feed ",
+    "screenshot": ".-tmp-qa-auth-guardian.png"
+  }
+]

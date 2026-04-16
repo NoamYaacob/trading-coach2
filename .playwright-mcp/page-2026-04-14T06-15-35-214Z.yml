@@ -1,0 +1,89 @@
+- generic [ref=e1]:
+  - generic [active]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - navigation [ref=e7]:
+            - button "previous" [disabled] [ref=e8]:
+              - img "previous" [ref=e9]
+            - generic [ref=e11]:
+              - generic [ref=e12]: 1/
+              - text: "1"
+            - button "next" [disabled] [ref=e13]:
+              - img "next" [ref=e14]
+          - img
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - img [ref=e18]
+            - generic "Latest available version is detected (16.2.3)." [ref=e20]: Next.js 16.2.3
+            - generic [ref=e21]: Turbopack
+          - img
+      - dialog "Runtime TypeError" [ref=e23]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e28]:
+              - generic [ref=e29]:
+                - generic [ref=e30]: Runtime TypeError
+                - generic [ref=e31]: Server
+              - generic [ref=e32]:
+                - button "Copy Error Info" [ref=e33] [cursor=pointer]:
+                  - img [ref=e34]
+                - button "No related documentation found" [disabled] [ref=e36]:
+                  - img [ref=e37]
+                - button "Attach Node.js inspector" [ref=e39] [cursor=pointer]:
+                  - img [ref=e40]
+            - generic [ref=e49]: Cannot read properties of undefined (reading 'findUnique')
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - paragraph [ref=e53]:
+                - img [ref=e55]
+                - generic [ref=e59]: src/lib/guardian.ts (699:38) @ getTodayGuardianSessionStart
+                - button "Open in editor" [ref=e60] [cursor=pointer]:
+                  - img [ref=e62]
+              - generic [ref=e65]:
+                - generic [ref=e66]: 697 | ...t sessionDateKey = getCurrentGuardianSessionDateKey(profile, n...
+                - generic [ref=e67]: 698 | ...
+                - generic [ref=e68]: "> 699 | ...rn prisma.dailyGuardianSession.findUnique({"
+                - generic [ref=e69]: "| ^"
+                - generic [ref=e70]: "700 | ...ere: {"
+                - generic [ref=e71]: "701 | ...userId_sessionDateKey: {"
+                - generic [ref=e72]: 702 | ... userId,
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - paragraph [ref=e75]:
+                  - text: Call Stack
+                  - generic [ref=e76]: "7"
+                - button "Show 5 ignore-listed frame(s)" [ref=e77] [cursor=pointer]:
+                  - text: Show 5 ignore-listed frame(s)
+                  - img [ref=e78]
+              - generic [ref=e80]:
+                - generic [ref=e81]:
+                  - text: getTodayGuardianSessionStart
+                  - button "Open getTodayGuardianSessionStart in editor" [ref=e82] [cursor=pointer]:
+                    - img [ref=e83]
+                - text: src/lib/guardian.ts (699:38)
+              - generic [ref=e85]:
+                - generic [ref=e86]:
+                  - text: DashboardPage
+                  - button "Open DashboardPage in editor" [ref=e87] [cursor=pointer]:
+                    - img [ref=e88]
+                - text: src/app/dashboard/page.tsx (99:49)
+        - generic [ref=e90]: "1"
+        - generic [ref=e91]: "2"
+    - generic [ref=e96] [cursor=pointer]:
+      - button "Open Next.js Dev Tools" [ref=e97]:
+        - img [ref=e98]
+      - generic [ref=e101]:
+        - button "Open issues overlay" [ref=e102]:
+          - generic [ref=e103]:
+            - generic [ref=e104]: "0"
+            - generic [ref=e105]: "1"
+          - generic [ref=e106]: Issue
+        - button "Collapse issues badge" [ref=e107]:
+          - img [ref=e108]
+  - generic [ref=e111]:
+    - img [ref=e112]
+    - heading "This page couldn’t load" [level=1] [ref=e114]
+    - paragraph [ref=e115]: A server error occurred. Reload to try again.
+    - button "Reload" [ref=e118] [cursor=pointer]
+  - paragraph [ref=e119]: ERROR 3320301956

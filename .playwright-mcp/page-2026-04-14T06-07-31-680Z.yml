@@ -1,0 +1,137 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Trading Coach" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: Dashboard
+          - heading "Your trading coach account." [level=1] [ref=e14]
+          - paragraph [ref=e15]: Review account access, onboarding progress, and Telegram connection status from one authenticated dashboard.
+        - generic [ref=e17]:
+          - button "Connect Telegram" [ref=e18]
+          - button "Logout" [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: Today is open
+            - heading "Trading is open." [level=2] [ref=e25]
+            - paragraph [ref=e26]: Next reset window is Apr 14, 2026, 9:00 AM UTC.
+            - generic [ref=e27]:
+              - paragraph [ref=e28]: What to do next
+              - paragraph [ref=e29]: Review your rules and start clean.
+              - link "Start session" [ref=e30] [cursor=pointer]:
+                - /url: /guardian
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]:
+                - paragraph [ref=e34]: Today status
+                - paragraph [ref=e35]: Trading open
+              - generic [ref=e36]:
+                - paragraph [ref=e37]: Next reset
+                - paragraph [ref=e38]: Apr 14, 2026, 9:00 AM UTC
+                - paragraph [ref=e39]: "Reset mode: Daily"
+            - generic [ref=e40]:
+              - generic [ref=e41]:
+                - paragraph [ref=e42]: Trades
+                - paragraph [ref=e43]: "0"
+              - generic [ref=e44]:
+                - paragraph [ref=e45]: P&L
+                - paragraph [ref=e46]: "0"
+              - generic [ref=e47]:
+                - paragraph [ref=e48]: Loss streak
+                - paragraph [ref=e49]: "0"
+            - generic [ref=e50]:
+              - paragraph [ref=e51]: Active limits
+              - generic [ref=e52]:
+                - generic [ref=e53]: "Max trades per day: 4"
+                - generic [ref=e54]: "Max daily loss: 500"
+                - generic [ref=e55]: "Stop after consecutive losses: 2"
+                - generic [ref=e56]: "Reset mode: Daily reset"
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - heading "Account" [level=2] [ref=e60]
+              - paragraph [ref=e61]: Authenticated website account details.
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - term [ref=e64]: Email
+                - definition [ref=e65]: test+ready-to-trade+1776146839844@example.com
+              - generic [ref=e66]:
+                - term [ref=e67]: Role
+                - definition [ref=e68]: USER
+          - generic [ref=e69]:
+            - generic [ref=e70]:
+              - heading "Access status" [level=2] [ref=e71]
+              - paragraph [ref=e72]: Trial and subscription state control website and bot availability.
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - term [ref=e75]: Subscription status
+                - definition [ref=e76]: TRIALING
+              - generic [ref=e77]:
+                - term [ref=e78]: Trial started
+                - definition [ref=e79]: Apr 14, 2026, 9:07 AM
+              - generic [ref=e80]:
+                - term [ref=e81]: Trial ends
+                - definition [ref=e82]: Apr 21, 2026, 9:07 AM
+              - generic [ref=e83]:
+                - term [ref=e84]: Trial active
+                - definition [ref=e85]: Yes, trial access is active.
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - heading "Onboarding status" [level=2] [ref=e88]
+              - paragraph [ref=e89]: Core profile status for the coaching account.
+            - paragraph [ref=e91]: Onboarding profile is in place.
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - heading "Telegram status" [level=2] [ref=e94]
+              - paragraph [ref=e95]: Connection status for the mental coach bot.
+            - generic [ref=e96]:
+              - paragraph [ref=e97]: Telegram is not connected yet.
+              - paragraph [ref=e98]: Use the Telegram connect flow to link the authenticated account to the bot.
+          - generic [ref=e99]:
+            - generic [ref=e100]:
+              - heading "Trading Guardian" [level=2] [ref=e101]
+              - paragraph [ref=e102]: Quick access to Guardian status and controls.
+            - generic [ref=e103]:
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - paragraph [ref=e106]: Guardian
+                  - paragraph [ref=e107]: Active
+                  - paragraph [ref=e108]: "Connection: Mock connected"
+                - generic [ref=e109]:
+                  - paragraph [ref=e110]: Summary
+                  - paragraph [ref=e111]: Guardian is live and limits are enforcing the session.
+              - link "Open Guardian" [ref=e112] [cursor=pointer]:
+                - /url: /guardian
+          - generic [ref=e113]:
+            - generic [ref=e114]:
+              - heading "Live trader state" [level=2] [ref=e115]
+              - paragraph [ref=e116]: Secondary context for coach replies. Guardian still decides whether trading is allowed.
+            - generic [ref=e117]:
+              - paragraph [ref=e118]: "Current state: none"
+              - paragraph [ref=e119]: No live state is active right now.
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - paragraph [ref=e122]: Cooldown
+                  - paragraph [ref=e123]: Not active
+                  - paragraph [ref=e124]: Until Not set
+                - generic [ref=e125]:
+                  - paragraph [ref=e126]: Recent loss streak
+                  - paragraph [ref=e127]: "0"
+                  - paragraph [ref=e128]: Updated Not set
+                - generic [ref=e129]:
+                  - paragraph [ref=e130]: Events today
+                  - paragraph [ref=e131]: "0"
+                  - paragraph [ref=e132]: "Distress moments: 0"
+  - button "Open Next.js Dev Tools" [ref=e138] [cursor=pointer]:
+    - img [ref=e139]
+  - alert [ref=e142]

@@ -1,0 +1,89 @@
+import type { DailyGuardianSession } from "@prisma/client";
+
+import type { GuardianSnapshot } from "@/lib/guardian";
+import type { TodaySessionSummary } from "@/lib/session-log";
+import type { TodayActivityItem } from "@/lib/today-activity";
+
+export type PostSessionReview = {
+  startedAt: Date;
+  endedAt: Date;
+  meaningfulEventCount: number;
+  guardianIntervened: boolean;
+  showGuardianLinkout: boolean;
+  bullets: string[];
+  takeaway: string;
+};
+
+function hasActivity(items: TodayActivityItem[], title: string) {
+  return items.some((item) => item.title === title);
+}
+
+export function buildPostSessionReview(input: {
+  session: DailyGuardianSession | null;
+  summary: TodaySessionSummary;
+  activityItems: TodayActivityItem[];
+  guardian: GuardianSnapshot;
+}): PostSessionReview | null {
+  const session = input.session;
+
+  if (!session?.endedAt) {
+    return null;
+  }
+
+  const guardianIntervened = hasActivity(
+    input.activityItems,
+    "Guardian lockout triggered",
+  );
+  const meaningfulEventCount = input.activityItems.length;
+  const bullets: string[] = [];
+
+  if (input.summary.fomoCount > 0) {
+    bullets.push("FOMO showed up.");
+  }
+
+  if (input.summary.revengeCount > 0) {
+    bullets.push("Recovery impulse showed up.");
+  }
+
+  if (input.summary.tiltCount > 0 || input.summary.twoLossCount > 0) {
+    bullets.push("Emotional pressure escalated during the session.");
+  }
+
+  if (guardianIntervened) {
+    bullets.push("Guardian closed the day.");
+  }
+
+  if (input.summary.hasRecoveryToday) {
+    bullets.push("You returned to control before the day ended.");
+  }
+
+  if (bullets.length === 0) {
+    bullets.push("The session stayed quiet and controlled.");
+  }
+
+  let takeaway = "The session stayed clean and controlled.";
+
+  if (guardianIntervened) {
+    takeaway = "Guardian had to close the day after limits were hit.";
+  } else if (input.summary.revengeCount > 0) {
+    takeaway = "The main risk today was trying to make back pressure quickly.";
+  } else if (input.summary.fomoCount > 0 && input.summary.hasRecoveryToday) {
+    takeaway = "Pressure showed up, but you regained control before the close.";
+  } else if (input.summary.fomoCount > 0 || input.summary.tiltCount > 0) {
+    takeaway = "The main risk today was chasing after pressure.";
+  } else if (input.summary.hasRecoveryToday) {
+    takeaway = "You recovered after pressure, which matters.";
+  } else if (meaningfulEventCount <= 2 && input.summary.eventCount === 0) {
+    takeaway = "The session stayed quiet and controlled.";
+  }
+
+  return {
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    meaningfulEventCount,
+    guardianIntervened,
+    showGuardianLinkout: guardianIntervened,
+    bullets,
+    takeaway,
+  };
+}

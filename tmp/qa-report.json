@@ -1,0 +1,56 @@
+[
+  {
+    "path": "/",
+    "url": "http://localhost:3000/",
+    "title": "Trading Coach",
+    "heading": "A session-first trading guardian with live coaching and real daily control.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Sign up",
+      "Log in",
+      "View product flow",
+      "Sign up",
+      "Log in",
+      ""
+    ],
+    "snippet": "TRADING DISCIPLINE SYSTEM\n\nA session-first trading guardian with live coaching and real daily control.\n\nTrading Coach combines dashboard operations, Guardian protection, and Telegram coaching into one daily discipline loop. It is built for traders who need clearer boundaries, better state control, and a cleaner close to the day.\n\nSign up\nLog in\nView product flow\nWhat this product is\n\nA trading discipline system for active traders who need the day managed as an operating process, not as a loose c",
+    "screenshot": ".-tmp-qa-home.png"
+  },
+  {
+    "path": "/dashboard",
+    "url": "http://localhost:3000/dashboard",
+    "title": "Login | Trading Coach",
+    "heading": "Log back into your coaching account.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Log in",
+      "Sign up",
+      ""
+    ],
+    "snippet": "AUTH\n\nLog back into your coaching account.\n\nResume onboarding, review your setup, and reconnect with the Telegram coach from the same account.\n\nLog in\n\nEnter your email and password to continue.\n\nEmail\nPassword\nLog in\n\nNeed an account? Sign up",
+    "screenshot": ".-tmp-qa-dashboard.png"
+  },
+  {
+    "path": "/guardian",
+    "url": "http://localhost:3000/guardian",
+    "title": "Login | Trading Coach",
+    "heading": "Log back into your coaching account.",
+    "buttons": [
+      "TRADING COACH",
+      "Onboarding",
+      "Guardian",
+      "Dashboard",
+      "Log in",
+      "Sign up",
+      ""
+    ],
+    "snippet": "AUTH\n\nLog back into your coaching account.\n\nResume onboarding, review your setup, and reconnect with the Telegram coach from the same account.\n\nLog in\n\nEnter your email and password to continue.\n\nEmail\nPassword\nLog in\n\nNeed an account? Sign up",
+    "screenshot": ".-tmp-qa-guardian.png"
+  }
+]

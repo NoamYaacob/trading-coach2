@@ -1,0 +1,210 @@
+import { SubscriptionStatus } from "@prisma/client";
+import { NextResponse } from "next/server";
+
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+
+type OnboardingRequest = {
+  traderProfile?: {
+    primaryMarket?: string;
+    tradingStyle?: string;
+    experienceYears?: number;
+    tradingDays?: string;
+    tradingSession?: string;
+    timezone?: string;
+  };
+  riskRules?: {
+    accountSize?: number;
+    maxDailyLoss?: number;
+    riskPerTrade?: number;
+    maxTradesPerDay?: number;
+    stopAfterLosses?: number;
+  };
+  mentalProfile?: {
+    primaryChallenge?: string;
+    tiltTrigger?: string;
+    tiltThought?: string;
+    coachingTone?: string;
+    interruptionStyle?: string;
+    responseStyle?: string;
+  };
+  coachingPreferences?: {
+    premarketCheckinEnabled?: boolean;
+    postmarketReviewEnabled?: boolean;
+    checkinFormat?: string;
+    reviewFocus?: string;
+    newsAlertsEnabled?: boolean;
+    preNewsMinutes?: number;
+    highImpactOnly?: boolean;
+    economicCalendarProviderKey?: string;
+    economicCalendarStubScenario?: string;
+  };
+};
+
+function toDecimalInput(value: number | undefined) {
+  return value === undefined ? undefined : value.toString();
+}
+
+function normalizeTraderProfile(
+  traderProfile: OnboardingRequest["traderProfile"],
+) {
+  if (!traderProfile) {
+    return undefined;
+  }
+
+  return {
+    primaryMarket: traderProfile.primaryMarket,
+    tradingStyle: traderProfile.tradingStyle,
+    experienceYears: traderProfile.experienceYears,
+    tradingDays: traderProfile.tradingDays,
+    tradingSession: traderProfile.tradingSession,
+    preferredSession: traderProfile.tradingSession,
+    timezone: traderProfile.timezone,
+    tradingExperience:
+      traderProfile.experienceYears === undefined
+        ? undefined
+        : `${traderProfile.experienceYears} years`,
+  };
+}
+
+function normalizeRiskRules(riskRules: OnboardingRequest["riskRules"]) {
+  if (!riskRules) {
+    return undefined;
+  }
+
+  return {
+    accountSize: toDecimalInput(riskRules.accountSize),
+    maxDailyLoss: toDecimalInput(riskRules.maxDailyLoss),
+    riskPerTrade: toDecimalInput(riskRules.riskPerTrade),
+    maxRiskPerTrade: toDecimalInput(riskRules.riskPerTrade),
+    maxTradesPerDay: riskRules.maxTradesPerDay,
+    stopAfterLosses: riskRules.stopAfterLosses,
+  };
+}
+
+function normalizeMentalProfile(
+  mentalProfile: OnboardingRequest["mentalProfile"],
+) {
+  if (!mentalProfile) {
+    return undefined;
+  }
+
+  return {
+    primaryChallenge: mentalProfile.primaryChallenge,
+    tiltTrigger: mentalProfile.tiltTrigger,
+    tiltThought: mentalProfile.tiltThought,
+    coachingTone: mentalProfile.coachingTone,
+    interruptionStyle: mentalProfile.interruptionStyle,
+    responseStyle: mentalProfile.responseStyle,
+    tiltTriggers: mentalProfile.tiltTrigger ? [mentalProfile.tiltTrigger] : [],
+    confidenceNotes: mentalProfile.tiltThought,
+  };
+}
+
+function normalizeCoachingPreferences(
+  coachingPreferences: OnboardingRequest["coachingPreferences"],
+) {
+  if (!coachingPreferences) {
+    return undefined;
+  }
+
+  return {
+    premarketCheckinEnabled: coachingPreferences.premarketCheckinEnabled ?? false,
+    postmarketReviewEnabled: coachingPreferences.postmarketReviewEnabled ?? false,
+    checkinFormat: coachingPreferences.checkinFormat,
+    reviewFocus: coachingPreferences.reviewFocus,
+    newsAlertsEnabled: coachingPreferences.newsAlertsEnabled ?? false,
+    preNewsMinutes: coachingPreferences.preNewsMinutes,
+    highImpactOnly: coachingPreferences.highImpactOnly ?? false,
+    economicCalendarProviderKey: coachingPreferences.economicCalendarProviderKey,
+    economicCalendarStubScenario: coachingPreferences.economicCalendarStubScenario,
+    checkInFrequency:
+      coachingPreferences.premarketCheckinEnabled ||
+      coachingPreferences.postmarketReviewEnabled
+        ? "enabled"
+        : "disabled",
+    remindersEnabled:
+      (coachingPreferences.premarketCheckinEnabled ?? false) ||
+      (coachingPreferences.newsAlertsEnabled ?? false),
+    reflectionStyle: coachingPreferences.reviewFocus,
+  };
+}
+
+export async function POST(request: Request) {
+  const currentUser = await getCurrentUser();
+
+  if (!currentUser) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json()) as OnboardingRequest;
+  const traderProfile = normalizeTraderProfile(body.traderProfile);
+  const riskRules = normalizeRiskRules(body.riskRules);
+  const mentalProfile = normalizeMentalProfile(body.mentalProfile);
+  const coachingPreferences = normalizeCoachingPreferences(
+    body.coachingPreferences,
+  );
+  const coachingPreferencesData = coachingPreferences as Record<string, unknown>;
+
+  const user = await prisma.user.upsert({
+    where: { id: currentUser.id },
+    create: {
+      email: currentUser.email.toLowerCase(),
+      subscriptionStatus: SubscriptionStatus.TRIALING,
+      trialStartedAt: currentUser.trialStartedAt,
+      trialEndsAt: currentUser.trialEndsAt,
+      traderProfile: traderProfile ? { create: traderProfile } : undefined,
+      riskRules: riskRules ? { create: riskRules } : undefined,
+      mentalProfile: mentalProfile ? { create: mentalProfile } : undefined,
+      coachingPreferences: coachingPreferences
+        ? { create: coachingPreferencesData }
+        : undefined,
+    },
+    update: {
+      traderProfile: traderProfile
+        ? {
+            upsert: {
+              create: traderProfile,
+              update: traderProfile,
+            },
+          }
+        : undefined,
+      riskRules: riskRules
+        ? {
+            upsert: {
+              create: riskRules,
+              update: riskRules,
+            },
+          }
+        : undefined,
+      mentalProfile: mentalProfile
+        ? {
+            upsert: {
+              create: mentalProfile,
+              update: mentalProfile,
+            },
+          }
+        : undefined,
+      coachingPreferences: coachingPreferences
+        ? {
+            upsert: {
+              create: coachingPreferencesData,
+              update: coachingPreferencesData,
+            },
+          }
+        : undefined,
+    },
+    select: {
+      id: true,
+      email: true,
+      subscriptionStatus: true,
+      trialStartedAt: true,
+      trialEndsAt: true,
+    },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    user,
+  });
+}

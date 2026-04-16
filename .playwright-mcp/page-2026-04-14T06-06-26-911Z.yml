@@ -1,0 +1,140 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Trading Coach" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: Dashboard
+          - heading "Your trading coach account." [level=1] [ref=e14]
+          - paragraph [ref=e15]: Review account access, onboarding progress, and Telegram connection status from one authenticated dashboard.
+        - generic [ref=e17]:
+          - button "Connect Telegram" [ref=e18]
+          - button "Logout" [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: Onboarding required
+            - heading "Complete onboarding before starting the day." [level=2] [ref=e25]
+            - paragraph [ref=e26]: Your trading profile and rules need to be set before the session can open.
+            - generic [ref=e27]:
+              - paragraph [ref=e28]: What to do next
+              - paragraph [ref=e29]: Finish onboarding first, then come back here to start clean.
+              - link "Complete onboarding" [ref=e30] [cursor=pointer]:
+                - /url: /onboarding
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]:
+                - paragraph [ref=e34]: Today status
+                - paragraph [ref=e35]: Setup required
+              - generic [ref=e36]:
+                - paragraph [ref=e37]: Next step
+                - paragraph [ref=e38]: Finish onboarding
+                - paragraph [ref=e39]: Add your trading profile, rules, and coaching preferences first.
+            - generic [ref=e40]:
+              - generic [ref=e41]:
+                - paragraph [ref=e42]: Trades
+                - paragraph [ref=e43]: "0"
+              - generic [ref=e44]:
+                - paragraph [ref=e45]: P&L
+                - paragraph [ref=e46]: "0"
+              - generic [ref=e47]:
+                - paragraph [ref=e48]: Loss streak
+                - paragraph [ref=e49]: "0"
+            - generic [ref=e50]:
+              - paragraph [ref=e51]: Active limits
+              - generic [ref=e52]:
+                - generic [ref=e53]: "Max trades per day: 4"
+                - generic [ref=e54]: "Max daily loss: 500"
+                - generic [ref=e55]: "Stop after consecutive losses: 2"
+                - generic [ref=e56]: "Reset mode: Daily reset"
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - heading "Account" [level=2] [ref=e60]
+              - paragraph [ref=e61]: Authenticated website account details.
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - term [ref=e64]: Email
+                - definition [ref=e65]: test+onboarding-required+1776146775435@example.com
+              - generic [ref=e66]:
+                - term [ref=e67]: Role
+                - definition [ref=e68]: USER
+          - generic [ref=e69]:
+            - generic [ref=e70]:
+              - heading "Access status" [level=2] [ref=e71]
+              - paragraph [ref=e72]: Trial and subscription state control website and bot availability.
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - term [ref=e75]: Subscription status
+                - definition [ref=e76]: TRIALING
+              - generic [ref=e77]:
+                - term [ref=e78]: Trial started
+                - definition [ref=e79]: Apr 14, 2026, 9:06 AM
+              - generic [ref=e80]:
+                - term [ref=e81]: Trial ends
+                - definition [ref=e82]: Apr 21, 2026, 9:06 AM
+              - generic [ref=e83]:
+                - term [ref=e84]: Trial active
+                - definition [ref=e85]: Yes, trial access is active.
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - heading "Onboarding status" [level=2] [ref=e88]
+              - paragraph [ref=e89]: Core profile status for the coaching account.
+            - generic [ref=e90]:
+              - paragraph [ref=e91]: Onboarding is not complete yet.
+              - link "Complete onboarding" [ref=e92] [cursor=pointer]:
+                - /url: /onboarding
+          - generic [ref=e93]:
+            - generic [ref=e94]:
+              - heading "Telegram status" [level=2] [ref=e95]
+              - paragraph [ref=e96]: Connection status for the mental coach bot.
+            - generic [ref=e97]:
+              - paragraph [ref=e98]: Telegram is not connected yet.
+              - paragraph [ref=e99]: Use the Telegram connect flow to link the authenticated account to the bot.
+          - generic [ref=e100]:
+            - generic [ref=e101]:
+              - heading "Trading Guardian" [level=2] [ref=e102]
+              - paragraph [ref=e103]: Quick access to Guardian status and controls.
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - generic [ref=e106]:
+                  - paragraph [ref=e107]: Guardian
+                  - paragraph [ref=e108]: Active
+                  - paragraph [ref=e109]: "Connection: Mock connected"
+                - generic [ref=e110]:
+                  - paragraph [ref=e111]: Summary
+                  - paragraph [ref=e112]: Finish onboarding before the session can open.
+              - link "Open Guardian" [ref=e113] [cursor=pointer]:
+                - /url: /guardian
+          - generic [ref=e114]:
+            - generic [ref=e115]:
+              - heading "Live trader state" [level=2] [ref=e116]
+              - paragraph [ref=e117]: Secondary context for coach replies. Guardian still decides whether trading is allowed.
+            - generic [ref=e118]:
+              - paragraph [ref=e119]: "Current state: none"
+              - paragraph [ref=e120]: No live state is active right now.
+              - generic [ref=e121]:
+                - generic [ref=e122]:
+                  - paragraph [ref=e123]: Cooldown
+                  - paragraph [ref=e124]: Not active
+                  - paragraph [ref=e125]: Until Not set
+                - generic [ref=e126]:
+                  - paragraph [ref=e127]: Recent loss streak
+                  - paragraph [ref=e128]: "0"
+                  - paragraph [ref=e129]: Updated Not set
+                - generic [ref=e130]:
+                  - paragraph [ref=e131]: Events today
+                  - paragraph [ref=e132]: "0"
+                  - paragraph [ref=e133]: "Distress moments: 0"
+  - button "Open Next.js Dev Tools" [ref=e139] [cursor=pointer]:
+    - img [ref=e140]
+  - alert [ref=e143]

@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  INACTIVE
+  CANCELED
+}
+
+enum TraderCurrentState {
+  NONE
+  FOMO
+  REVENGE
+  TILTED
+  CONFUSED
+  PREMARKET_READY
+  JUST_TOOK_LOSS
+  JUST_TOOK_TWO_LOSSES
+  RESETTING
+  CALM
+}
+
+enum GuardianConnectionStatus {
+  NOT_CONNECTED
+  MOCK_CONNECTED
+}
+
+enum GuardianLockoutReason {
+  NONE
+  MAX_TRADES_PER_DAY
+  MAX_DAILY_LOSS
+  CONSECUTIVE_LOSSES
+  DAILY_PROFIT_TARGET
+}
+
+enum GuardianResetMode {
+  DAILY
+  MANUAL
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  passwordHash       String?
+  role               UserRole             @default(USER)
+  subscriptionStatus SubscriptionStatus   @default(TRIALING)
+  trialStartedAt     DateTime?
+  trialEndsAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  sessions           Session[]
+  telegramConnection TelegramConnection?
+  telegramLinkTokens TelegramLinkToken[]
+  traderProfile      TraderProfile?
+  riskRules          RiskRules?
+  mentalProfile      MentalProfile?
+  coachingPreferences CoachingPreferences?
+  traderState        TraderState?
+  dailySessionEvents DailySessionEvent[]
+  dailyGuardianSessions DailyGuardianSession[]
+  guardianProfile    GuardianProfile?
+  guardianStatus     GuardianStatus?
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TelegramConnection {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  telegramUserId     String   @unique
+  telegramUsername   String?
+  telegramChatId     String?
+  connectedAt        DateTime @default(now())
+  lastWebhookAt      DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([telegramChatId])
+}
+
+model TelegramLinkToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TraderProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  tradingExperience     String?
+  primaryMarket         String?
+  tradingStyle          String?
+  experienceYears       Int?
+  tradingDays           String?
+  tradingSession        String?
+  preferredSession      String?
+  timezone              String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RiskRules {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  accountSize           Decimal? @db.Decimal(12, 2)
+  maxDailyLoss          Decimal? @db.Decimal(10, 2)
+  riskPerTrade          Decimal? @db.Decimal(10, 2)
+  maxRiskPerTrade       Decimal? @db.Decimal(10, 2)
+  maxTradesPerDay       Int?
+  stopAfterLosses       Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MentalProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  primaryChallenge      String?
+  tiltTrigger           String?
+  tiltThought           String?
+  coachingTone          String?
+  interruptionStyle     String?
+  responseStyle         String?
+  tiltTriggers          String[]
+  confidenceNotes       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CoachingPreferences {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  coachingTone          String?
+  checkInFrequency      String?
+  remindersEnabled      Boolean  @default(true)
+  reflectionStyle       String?
+  premarketCheckinEnabled Boolean @default(false)
+  postmarketReviewEnabled Boolean @default(false)
+  checkinFormat         String?
+  reviewFocus           String?
+  newsAlertsEnabled     Boolean  @default(false)
+  preNewsMinutes        Int?
+  highImpactOnly        Boolean  @default(false)
+  economicCalendarProviderKey String? @default("mock")
+  economicCalendarStubScenario String? @default("mixed_day")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TraderState {
+  id               String             @id @default(cuid())
+  userId           String             @unique
+  currentState     TraderCurrentState @default(NONE)
+  stateNotes       String?
+  recentLossStreak Int?               @default(0)
+  needsCooldown    Boolean            @default(false)
+  cooldownUntil    DateTime?
+  lastStateAt      DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([currentState, lastStateAt])
+  @@index([needsCooldown, cooldownUntil])
+}
+
+model DailySessionEvent {
+  id             String             @id @default(cuid())
+  userId         String
+  eventType      String
+  source         String
+  message        String
+  detectedIntent String?
+  coachMode      String?
+  traderState    TraderCurrentState @default(NONE)
+  cooldownActive Boolean            @default(false)
+  metadataJson   Json?
+  createdAt      DateTime           @default(now())
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, traderState, createdAt])
+}
+
+model DailyGuardianSession {
+  id             String   @id @default(cuid())
+  userId         String
+  sessionDateKey String
+  source         String
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  endedSource    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionDateKey])
+  @@index([userId, startedAt])
+}
+
+model GuardianProfile {
+  id                           String                   @id @default(cuid())
+  userId                       String                   @unique
+  guardianEnabled              Boolean                  @default(true)
+  adapterKey                   String                   @default("mock")
+  platformName                 String?                  @default("Mock Platform")
+  connectionStatus             GuardianConnectionStatus @default(MOCK_CONNECTED)
+  maxTradesPerDay              Int?
+  maxDailyLoss                 Decimal?                 @db.Decimal(10, 2)
+  stopAfterConsecutiveLosses   Int?
+  dailyProfitTarget            Decimal?                 @db.Decimal(10, 2)
+  copyTradeMode                Boolean                  @default(false)
+  resetMode                    GuardianResetMode        @default(DAILY)
+  dailyResetHour               Int                      @default(9)
+  dailyResetTimezone           String                   @default("UTC")
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+  user                         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GuardianStatus {
+  id                   String               @id @default(cuid())
+  userId               String               @unique
+  todayTradesCount     Int                  @default(0)
+  todayPnL             Decimal              @default(0) @db.Decimal(10, 2)
+  consecutiveLosses    Int                  @default(0)
+  currentLockoutActive Boolean              @default(false)
+  lockoutReason        GuardianLockoutReason @default(NONE)
+  lockoutStartedAt     DateTime?
+  lockoutEndsAt        DateTime?
+  nextAllowedResetAt   DateTime?
+  lastResetAt          DateTime?
+  lockoutClearedAt     DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([currentLockoutActive, lockoutReason])
+}

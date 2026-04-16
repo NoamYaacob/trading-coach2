@@ -1,0 +1,38 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Trading Coach" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: Auth
+        - heading "Log back into your coaching account." [level=1] [ref=e14]
+        - paragraph [ref=e15]: Resume onboarding, review your setup, and reconnect with the Telegram coach from the same account.
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - heading "Log in" [level=1] [ref=e18]
+          - paragraph [ref=e19]: Enter your email and password to continue.
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - generic [ref=e22]: Email
+            - textbox "Email" [ref=e23]:
+              - /placeholder: trader@example.com
+          - generic [ref=e24]:
+            - generic [ref=e25]: Password
+            - textbox "Password" [ref=e26]:
+              - /placeholder: Your password
+          - button "Log in" [ref=e27]
+          - paragraph [ref=e28]:
+            - text: Need an account?
+            - link "Sign up" [ref=e29] [cursor=pointer]:
+              - /url: /signup
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]:
+    - img [ref=e36]
+  - alert [ref=e39]
