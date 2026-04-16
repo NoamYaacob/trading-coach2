@@ -14,6 +14,7 @@ import {
   derivePlatformConnectionProgression,
 } from "@/lib/platform-integration";
 import { humanizePlannedCapabilities } from "@/lib/platform-integration-plans";
+import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
@@ -130,6 +131,7 @@ export default async function GuardianPage() {
     sessionStart: todayGuardianSessionStart,
     preNewsPolicyStatus: economicCalendarPolicy,
   });
+  const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: Boolean(todayGuardianSessionStart),
@@ -142,14 +144,20 @@ export default async function GuardianPage() {
             message: economicCalendarPolicy.message,
           }
         : null,
+      manualSignals: manualEventSignals,
     }),
   );
-  const guardianNotices = violationFeed.warningViolations.filter(
-    (v) =>
-      v.ruleId !== "guardian_disabled" &&
-      v.ruleId !== "no_trade_before_major_news" &&
-      v.ruleId !== "session_not_started",
-  );
+  const guardianNotices = [
+    ...violationFeed.warningViolations.filter(
+      (v) =>
+        v.ruleId !== "guardian_disabled" &&
+        v.ruleId !== "no_trade_before_major_news" &&
+        v.ruleId !== "session_not_started",
+    ),
+    ...violationFeed.triggeredViolations.filter(
+      (v) => v.ruleId === "manual_rule_breach",
+    ),
+  ];
 
   return (
     <AppShell

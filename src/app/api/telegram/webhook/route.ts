@@ -9,6 +9,7 @@ import {
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
+import { deriveManualEventSignals, getTodayManualEvents } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
@@ -267,11 +268,12 @@ export async function POST(request: Request) {
         )
       ).traderState
     : (await getCurrentTraderState(connection.user.id)).traderState;
-  const [sessionContext, guardian, todayGuardianSession, economicCalendarSnapshot] = await Promise.all([
+  const [sessionContext, guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents] = await Promise.all([
     getRecentSessionContext(connection.user.id),
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
+    getTodayManualEvents(connection.user.id),
   ]);
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete: Boolean(connection.user.traderProfile),
@@ -327,6 +329,7 @@ export async function POST(request: Request) {
     },
   });
 
+  const manualEventSignals = deriveManualEventSignals(todayManualEvents);
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
@@ -339,6 +342,7 @@ export async function POST(request: Request) {
             message: economicCalendarPolicy.message,
           }
         : null,
+      manualSignals: manualEventSignals,
     }),
   );
 

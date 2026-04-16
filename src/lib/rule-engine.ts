@@ -24,7 +24,8 @@ export type RuleType =
   | "no_trade_before_major_news"
   | "session_not_started"
   | "session_closed"
-  | "guardian_disabled";
+  | "guardian_disabled"
+  | "manual_rule_breach";
 
 export type RuleStatus = "ok" | "warning" | "blocked" | "triggered";
 export type RuleSeverity = "low" | "medium" | "high" | "critical";
@@ -47,6 +48,28 @@ export type RuleResult = {
   recommendedAction?: string;
 };
 
+// ─── Manual event signals ──────────────────────────────────────────────────────
+
+/**
+ * Derived signals from manually logged trade/session events.
+ * Produced by deriveManualEventSignals() in manual-trade-events.ts.
+ * Optional augmentation — rules degrade gracefully when absent.
+ */
+export type ManualEventSignals = {
+  /** Number of trade_opened + trade_closed events logged */
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  /** Current consecutive loss streak from the manual event sequence */
+  consecutiveLosses: number;
+  /** Net PnL from manual win/loss/pnl_update events; null when no PnL values were provided */
+  netPnL: number | null;
+  /** True if a rule_breach event was logged */
+  hasRuleBreach: boolean;
+  /** True if any trade_opened or trade_closed event was logged */
+  tradeActivityLogged: boolean;
+};
+
 // ─── Input ─────────────────────────────────────────────────────────────────────
 
 export type RuleEngineInput = {
@@ -67,6 +90,12 @@ export type RuleEngineInput = {
     mode: string;
     message?: string | null;
   } | null;
+  /**
+   * Optional signals derived from manually logged trade events.
+   * When provided, the engine can use them to augment Guardian-sourced values.
+   * Rules that consume manual signals degrade gracefully when this is null.
+   */
+  manualSignals?: ManualEventSignals | null;
   now?: Date;
 };
 
@@ -193,12 +222,19 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
 
   // ── max_daily_loss ──────────────────────────────────────────────────────────
   if (input.maxDailyLoss !== null && input.maxDailyLoss !== undefined) {
-    if (input.todayPnL <= -input.maxDailyLoss) {
+    // If manual PnL data is available, take the more negative of the two values.
+    // Guardian PnL is the authoritative enforcement source; manual signals augment it.
+    const effectivePnL =
+      input.manualSignals?.netPnL !== null && input.manualSignals?.netPnL !== undefined
+        ? Math.min(input.todayPnL, input.manualSignals.netPnL)
+        : input.todayPnL;
+
+    if (effectivePnL <= -input.maxDailyLoss) {
       results.push({
         ruleId: "max_daily_loss",
         ruleType: "max_daily_loss",
         status: "triggered",
-        reason: `Daily PnL ${input.todayPnL} breached max daily loss limit of -${input.maxDailyLoss}.`,
+        reason: `Daily PnL ${effectivePnL} breached max daily loss limit of -${input.maxDailyLoss}.`,
         message: `הגעת להפסד היומי המקסימלי (${input.maxDailyLoss}). המסחר נעצר.`,
         severity: "critical",
         timestamp: now,
@@ -207,18 +243,18 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
     } else {
       const warningThreshold = input.maxDailyLoss * 0.8;
       const approachingLimit =
-        input.todayPnL < 0 && Math.abs(input.todayPnL) >= warningThreshold;
+        effectivePnL < 0 && Math.abs(effectivePnL) >= warningThreshold;
 
       results.push({
         ruleId: "max_daily_loss",
         ruleType: "max_daily_loss",
         status: approachingLimit ? "warning" : "ok",
         reason: approachingLimit
-          ? `Daily PnL ${input.todayPnL} is approaching max daily loss of -${input.maxDailyLoss}.`
-          : `Daily PnL ${input.todayPnL} is within max daily loss limit of -${input.maxDailyLoss}.`,
+          ? `Daily PnL ${effectivePnL} is approaching max daily loss of -${input.maxDailyLoss}.`
+          : `Daily PnL ${effectivePnL} is within max daily loss limit of -${input.maxDailyLoss}.`,
         message: approachingLimit
-          ? `מתקרב לגבול ההפסד היומי. PnL: ${input.todayPnL}, גבול: -${input.maxDailyLoss}.`
-          : `PnL היומי: ${input.todayPnL}. הגבול הוא -${input.maxDailyLoss}.`,
+          ? `מתקרב לגבול ההפסד היומי. PnL: ${effectivePnL}, גבול: -${input.maxDailyLoss}.`
+          : `PnL היומי: ${effectivePnL}. הגבול הוא -${input.maxDailyLoss}.`,
         severity: approachingLimit ? "high" : "low",
         timestamp: now,
         recommendedAction: approachingLimit
@@ -233,24 +269,31 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
     input.stopAfterConsecutiveLosses !== null &&
     input.stopAfterConsecutiveLosses !== undefined
   ) {
-    if (input.consecutiveLosses >= input.stopAfterConsecutiveLosses) {
+    // Use the higher streak between Guardian status and manual event signals.
+    // Manual events may reflect a current streak not yet updated in Guardian status.
+    const effectiveConsecutiveLosses = Math.max(
+      input.consecutiveLosses,
+      input.manualSignals?.consecutiveLosses ?? 0,
+    );
+
+    if (effectiveConsecutiveLosses >= input.stopAfterConsecutiveLosses) {
       results.push({
         ruleId: "stop_after_consecutive_losses",
         ruleType: "stop_after_consecutive_losses",
         status: "triggered",
-        reason: `Consecutive losses ${input.consecutiveLosses} reached limit of ${input.stopAfterConsecutiveLosses}.`,
-        message: `הגעת ל-${input.consecutiveLosses} הפסדים רצופים (גבול: ${input.stopAfterConsecutiveLosses}). עצור עכשיו.`,
+        reason: `Consecutive losses ${effectiveConsecutiveLosses} reached limit of ${input.stopAfterConsecutiveLosses}.`,
+        message: `הגעת ל-${effectiveConsecutiveLosses} הפסדים רצופים (גבול: ${input.stopAfterConsecutiveLosses}). עצור עכשיו.`,
         severity: "high",
         timestamp: now,
         recommendedAction: "עצור. קח הפסקה ואל תיכנס לעסקה נוספת.",
       });
-    } else if (input.consecutiveLosses > 0) {
+    } else if (effectiveConsecutiveLosses > 0) {
       results.push({
         ruleId: "stop_after_consecutive_losses",
         ruleType: "stop_after_consecutive_losses",
         status: "warning",
-        reason: `${input.consecutiveLosses} consecutive losses, limit is ${input.stopAfterConsecutiveLosses}.`,
-        message: `${input.consecutiveLosses} הפסדים רצופים. הגבול הוא ${input.stopAfterConsecutiveLosses}.`,
+        reason: `${effectiveConsecutiveLosses} consecutive losses, limit is ${input.stopAfterConsecutiveLosses}.`,
+        message: `${effectiveConsecutiveLosses} הפסדים רצופים. הגבול הוא ${input.stopAfterConsecutiveLosses}.`,
         severity: "medium",
         timestamp: now,
         recommendedAction: "שמור על ריסון. הפסד נוסף יעצור אותך.",
@@ -385,6 +428,34 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
     });
   }
 
+  // ── manual_rule_breach ──────────────────────────────────────────────────────
+  // Only evaluated when manual signals are present. Skipped entirely when
+  // no manual event data is available so callers without signals see no noise.
+  if (input.manualSignals !== null && input.manualSignals !== undefined) {
+    if (input.manualSignals.hasRuleBreach) {
+      results.push({
+        ruleId: "manual_rule_breach",
+        ruleType: "manual_rule_breach",
+        status: "triggered",
+        reason: "A rule breach was manually logged during this session.",
+        message: "הפרת חוק נרשמה ידנית — בדוק את הסשן.",
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "עצור לרגע ובדוק אם נפרצו גבולות הסיכון.",
+      });
+    } else {
+      results.push({
+        ruleId: "manual_rule_breach",
+        ruleType: "manual_rule_breach",
+        status: "ok",
+        reason: "No manual rule breach logged.",
+        message: "לא נרשמה הפרת חוק.",
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
   return results;
 }
 
@@ -436,6 +507,7 @@ export function buildRuleEngineInputFromGuardianSnapshot(
       mode: string;
       message?: string | null;
     } | null;
+    manualSignals?: ManualEventSignals | null;
     now?: Date;
   },
 ): RuleEngineInput {
@@ -457,6 +529,7 @@ export function buildRuleEngineInputFromGuardianSnapshot(
     sessionEnded: options?.sessionEnded ?? false,
     todaySessionStateKind: options?.todaySessionStateKind ?? "READY_TO_TRADE",
     preNewsPolicy: options?.preNewsPolicy ?? null,
+    manualSignals: options?.manualSignals ?? null,
     now: options?.now ?? new Date(),
   };
 }

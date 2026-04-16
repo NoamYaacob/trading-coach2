@@ -26,6 +26,7 @@ import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
+import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import { getTodaySessionEvents, getTodaySessionSummary } from "@/lib/session-log";
 import {
   buildTodayActivityTimeline,
@@ -169,6 +170,7 @@ export default async function DashboardPage() {
   const telegramBotLink = telegramBotUsername
     ? `https://t.me/${telegramBotUsername}`
     : null;
+  const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
@@ -181,6 +183,7 @@ export default async function DashboardPage() {
             message: economicCalendarPolicy.message,
           }
         : null,
+      manualSignals: manualEventSignals,
     }),
   );
   const todayActivityTimeline = buildTodayActivityTimeline({
@@ -197,15 +200,21 @@ export default async function DashboardPage() {
   // - guardian_disabled is shown prominently in the session panel (GUARDIAN_DISABLED state)
   // - session_not_started is covered by the PremarketReadinessPanel
   // - no_trade_before_major_news before start is covered by PremarketReadinessPanel
-  const dashboardNotices = violationFeed.warningViolations.filter(
-    (v) =>
-      v.ruleId !== "guardian_disabled" &&
-      v.ruleId !== "session_not_started" &&
-      !(
-        v.ruleId === "no_trade_before_major_news" &&
-        !todaySessionState.sessionStarted
-      ),
-  );
+  // - manual_rule_breach (triggered) is included explicitly — not covered anywhere else
+  const dashboardNotices = [
+    ...violationFeed.warningViolations.filter(
+      (v) =>
+        v.ruleId !== "guardian_disabled" &&
+        v.ruleId !== "session_not_started" &&
+        !(
+          v.ruleId === "no_trade_before_major_news" &&
+          !todaySessionState.sessionStarted
+        ),
+    ),
+    ...violationFeed.triggeredViolations.filter(
+      (v) => v.ruleId === "manual_rule_breach",
+    ),
+  ];
   const postSessionReview = buildPostSessionReview({
     session: todayGuardianSessionStart,
     summary: todaySessionSummary,
