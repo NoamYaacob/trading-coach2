@@ -52,76 +52,46 @@ function humanizeSource(source: string) {
   return source;
 }
 
-function buildManualTradeEventItem(event: DailySessionEvent): TodayActivityItem | null {
-  const detail = event.message || "Manual entry.";
+type ManualEventDisplay = {
+  title: string;
+  badge: string;
+  tone: TodayActivityItemTone;
+  /** Detail shown when the event carries no user note (message equals the default label) */
+  defaultDetail: string;
+};
 
-  switch (event.detectedIntent) {
-    case "trade_opened":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Trade opened",
-        detail,
-        badge: "Trade",
-        tone: "info",
-      };
-    case "trade_closed":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Trade closed",
-        detail,
-        badge: "Trade",
-        tone: "info",
-      };
-    case "win":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Win logged",
-        detail,
-        badge: "Win",
-        tone: "success",
-      };
-    case "loss":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Loss logged",
-        detail,
-        badge: "Loss",
-        tone: "warning",
-      };
-    case "pnl_update":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "P&L updated",
-        detail,
-        badge: "P&L",
-        tone: "neutral",
-      };
-    case "rule_breach":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Rule breach logged",
-        detail,
-        badge: "Rule",
-        tone: "danger",
-      };
-    case "manual_note":
-      return {
-        id: `event-${event.id}`,
-        occurredAt: event.createdAt,
-        title: "Note logged",
-        detail,
-        badge: "Note",
-        tone: "neutral",
-      };
-    default:
-      return null;
-  }
+const MANUAL_EVENT_DISPLAY: Record<string, ManualEventDisplay> = {
+  trade_opened: { title: "Trade opened", badge: "Trade", tone: "info", defaultDetail: "Entry recorded manually." },
+  trade_closed: { title: "Trade closed", badge: "Trade", tone: "info", defaultDetail: "Exit recorded manually." },
+  win:          { title: "Win logged",   badge: "Win",   tone: "success", defaultDetail: "Profitable trade." },
+  loss:         { title: "Loss logged",  badge: "Loss",  tone: "warning", defaultDetail: "Losing trade." },
+  pnl_update:   { title: "P&L updated",  badge: "P&L",   tone: "neutral", defaultDetail: "P&L updated manually." },
+  rule_breach:  { title: "Rule breach logged", badge: "Rule", tone: "danger", defaultDetail: "Review if session limits were exceeded." },
+  manual_note:  { title: "Note logged",  badge: "Note",  tone: "neutral", defaultDetail: "Session note." },
+};
+
+// Short default messages set by logManualTradeEvent when no note is provided.
+// When event.message matches one of these, the richer defaultDetail is used instead.
+const MANUAL_EVENT_DEFAULT_MESSAGES = new Set([
+  "Trade opened", "Trade closed", "Win", "Loss", "P&L update", "Rule breach", "Note",
+]);
+
+function buildManualTradeEventItem(event: DailySessionEvent): TodayActivityItem | null {
+  const display = event.detectedIntent ? MANUAL_EVENT_DISPLAY[event.detectedIntent] : undefined;
+  if (!display) return null;
+
+  const detail = MANUAL_EVENT_DEFAULT_MESSAGES.has(event.message)
+    ? display.defaultDetail
+    : event.message;
+
+  return {
+    id: `event-${event.id}`,
+    occurredAt: event.createdAt,
+    title: display.title,
+    detail,
+    badge: display.badge,
+    tone: display.tone,
+  };
 }
 
 function buildSessionEventItem(event: DailySessionEvent): TodayActivityItem | null {

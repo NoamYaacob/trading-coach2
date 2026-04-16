@@ -2,6 +2,7 @@ import { TraderCurrentState, type DailySessionEvent } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import type { ManualEventSignals } from "@/lib/rule-engine";
+import { getTodayRange } from "@/lib/session-log";
 
 export type ManualTradeEventType =
   | "trade_opened"
@@ -56,7 +57,8 @@ export async function logManualTradeEvent(
   eventType: ManualTradeEventType,
   options?: { note?: string; pnlAmount?: number },
 ) {
-  const note = options?.note?.trim() ?? "";
+  // note is already trimmed and bounded by the API route; no re-sanitization needed here
+  const note = options?.note ?? "";
   const pnlAmount = options?.pnlAmount ?? null;
 
   return prisma.dailySessionEvent.create({
@@ -74,15 +76,10 @@ export async function logManualTradeEvent(
 }
 
 /**
- * Fetch today's manual trade events for a user.
- * Returns events sorted ascending by createdAt.
+ * Fetch today's manual trade events for a user, sorted ascending by createdAt.
  */
 export async function getTodayManualEvents(userId: string): Promise<DailySessionEvent[]> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { start, end } = getTodayRange();
 
   return prisma.dailySessionEvent.findMany({
     where: {
@@ -116,11 +113,12 @@ function extractPnlAmount(metadataJson: DailySessionEvent["metadataJson"]): numb
  * can pass the full today-events array without pre-filtering.
  *
  * Events are processed in chronological order.
- * - Consecutive losses tracks the current streak (reset on win).
+ * - consecutiveLosses tracks the current streak and resets on win.
  * - netPnL is null when no PnL amounts were provided in any event.
  */
 export function deriveManualEventSignals(events: DailySessionEvent[]): ManualEventSignals {
-  const relevant = [...events]
+  // filter() returns a new array; sort() mutates it in place — no extra copy needed
+  const relevant = events
     .filter((e) => e.source === "manual" && e.eventType === "TRADE_EVENT")
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -169,7 +167,7 @@ export function deriveManualEventSignals(events: DailySessionEvent[]): ManualEve
       case "rule_breach":
         hasRuleBreach = true;
         break;
-      // "manual_note" — no signals
+      // "manual_note" carries no numeric signals — purely informational
     }
   }
 

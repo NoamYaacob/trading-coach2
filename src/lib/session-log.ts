@@ -30,7 +30,7 @@ export type TodaySessionSummary = {
   stayedUnstable: boolean;
 };
 
-function getTodayRange() {
+export function getTodayRange() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
 
