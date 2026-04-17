@@ -199,9 +199,9 @@ export function GuardianControls({
           </p>
         </div>
 
-        <div className="grid gap-4 min-w-0 md:grid-cols-2">
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+        <div className="grid gap-x-5 gap-y-4 min-w-0 md:grid-cols-2">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Guardian enabled
             </span>
             <button
@@ -222,8 +222,8 @@ export function GuardianControls({
             </button>
           </label>
 
-          <label className="grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">Adapter</span>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Adapter</span>
             <select
               value={profile.adapterKey}
               onChange={(event) =>
@@ -232,15 +232,15 @@ export function GuardianControls({
                   adapterKey: event.target.value as "mock" | "tradovate_stub",
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             >
               <option value="mock">Demo mode</option>
               <option value="tradovate_stub">Tradovate stub</option>
             </select>
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">Platform</span>
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Platform</span>
             <input
               value={profile.platformName}
               onChange={(event) =>
@@ -249,12 +249,12 @@ export function GuardianControls({
                   platformName: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Connection status
             </span>
             <select
@@ -267,15 +267,15 @@ export function GuardianControls({
                     | "MOCK_CONNECTED",
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             >
               <option value="MOCK_CONNECTED">Demo connected</option>
               <option value="NOT_CONNECTED">Not connected</option>
             </select>
           </label>
 
-          <label className="grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Copy trade mode
             </span>
             <button
@@ -296,8 +296,8 @@ export function GuardianControls({
             </button>
           </label>
 
-          <label className="grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">Reset mode</span>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Reset mode</span>
             <select
               value={profile.resetMode}
               onChange={(event) =>
@@ -306,16 +306,16 @@ export function GuardianControls({
                   resetMode: event.target.value as "DAILY" | "MANUAL",
                 }))
               }
-              className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             >
               <option value="DAILY">Daily</option>
               <option value="MANUAL">Manual</option>
             </select>
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
-              Daily reset hour (0-23)
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+              Daily reset hour (0–23)
             </span>
             <input
               inputMode="numeric"
@@ -327,12 +327,12 @@ export function GuardianControls({
                 }))
               }
               disabled={profile.resetMode !== "DAILY"}
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 md:col-span-2">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Reset timezone
             </span>
             <input
@@ -343,12 +343,12 @@ export function GuardianControls({
                   dailyResetTimezone: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Max trades per day
             </span>
             <input
@@ -360,12 +360,12 @@ export function GuardianControls({
                   maxTradesPerDay: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Max daily loss
             </span>
             <input
@@ -377,12 +377,12 @@ export function GuardianControls({
                   maxDailyLoss: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Stop after consecutive losses
             </span>
             <input
@@ -394,12 +394,12 @@ export function GuardianControls({
                   stopAfterConsecutiveLosses: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
 
-          <label className="min-w-0 grid gap-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <span className="text-sm font-medium text-stone-800">
+          <label className="min-w-0 grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               Daily profit target
             </span>
             <input
@@ -411,7 +411,7 @@ export function GuardianControls({
                   dailyProfitTarget: event.target.value,
                 }))
               }
-              className="h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
             />
           </label>
         </div>

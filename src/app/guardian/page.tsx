@@ -412,20 +412,18 @@ export default async function GuardianPage() {
             />
 
             <div className="grid gap-4">
-              <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-5">
+              <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                   Active limits
                 </p>
-                <div className="mt-4 grid gap-3">
+                <ul className="mt-3 grid gap-2 text-sm text-stone-700">
                   {guardian.evaluation.activeRules.map((rule) => (
-                    <div
-                      key={rule}
-                      className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800"
-                    >
+                    <li key={rule} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" />
                       {rule}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
 
               <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-5 text-sm text-stone-700">

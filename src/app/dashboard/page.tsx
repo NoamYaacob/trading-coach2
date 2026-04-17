@@ -319,38 +319,22 @@ export default async function DashboardPage() {
               title="Account & access"
               description="Your login details and current subscription access."
             >
-              <dl className="grid gap-4 text-sm text-stone-700">
-                <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Email
-                  </dt>
-                  <dd className="mt-1 text-base font-medium text-stone-950">{user.email}</dd>
+              <dl className="divide-y divide-stone-100 text-sm">
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Email</dt>
+                  <dd className="font-medium text-stone-950 text-right truncate ml-4">{user.email}</dd>
                 </div>
-                <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Role
-                  </dt>
-                  <dd className="mt-1 text-base font-medium text-stone-950">{user.role}</dd>
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Role</dt>
+                  <dd className="font-medium text-stone-950">{user.role}</dd>
                 </div>
-                <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Subscription
-                  </dt>
-                  <dd className="mt-1 text-base font-medium text-stone-950">
-                    {user.subscriptionStatus}
-                  </dd>
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Subscription</dt>
+                  <dd className="font-medium text-stone-950">{user.subscriptionStatus}</dd>
                 </div>
-                <div
-                  className={`rounded-2xl px-4 py-3 ${
-                    trialActive
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-amber-50 text-amber-900"
-                  }`}
-                >
-                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                    Trial
-                  </dt>
-                  <dd className="mt-1 text-base font-medium">
+                <div className={`flex items-start justify-between py-2.5 ${trialActive ? "text-emerald-800" : "text-amber-900"}`}>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">Trial</dt>
+                  <dd className="font-medium text-right ml-4">
                     {trialActive
                       ? `Active — ends ${formatDate(user.trialEndsAt, displayTimeZone)}`
                       : `Ended ${formatDate(user.trialEndsAt, displayTimeZone)}`}
@@ -364,27 +348,19 @@ export default async function DashboardPage() {
               title="Setup status"
               description="Onboarding profile and Telegram coach connection."
             >
-              <div className="grid gap-4">
-                <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Onboarding
-                  </p>
-                  <p className="mt-2 font-medium text-stone-950">
-                    {onboardingComplete
-                      ? "Profile complete."
-                      : "Not complete yet."}
-                  </p>
+              <dl className="divide-y divide-stone-100 text-sm">
+                <div className="py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Onboarding</dt>
+                  <dd className="mt-1.5 font-medium text-stone-950">
+                    {onboardingComplete ? "Profile complete." : "Not complete yet."}
+                  </dd>
                   {!onboardingComplete ? (
-                    <p className="mt-1 text-stone-600">
-                      Finish onboarding to unlock the day’s session flow.
-                    </p>
+                    <p className="mt-1 text-stone-500">Finish onboarding to unlock the day’s session flow.</p>
                   ) : null}
                 </div>
-                <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Telegram coach
-                  </p>
-                  <p className="mt-2 font-medium text-stone-950">
+                <div className="py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Telegram coach</dt>
+                  <dd className="mt-1.5 font-medium text-stone-950">
                     {telegramAccess.dashboardState === "not_connected"
                       ? "Not connected."
                       : telegramAccess.dashboardState === "connected"
@@ -392,8 +368,8 @@ export default async function DashboardPage() {
                         : telegramAccess.dashboardState === "connected_onboarding_incomplete"
                           ? "Connected, but onboarding still needed."
                           : "Connected, but account access is inactive."}
-                  </p>
-                  <p className="mt-1 text-stone-600">
+                  </dd>
+                  <p className="mt-1 text-stone-500">
                     {telegramAccess.dashboardState === "connected"
                       ? user.telegramConnection?.telegramUsername
                         ? `@${user.telegramConnection.telegramUsername}`
@@ -403,7 +379,7 @@ export default async function DashboardPage() {
                         : "Connect Telegram to continue the session flow in the coach bot."}
                   </p>
                 </div>
-              </div>
+              </dl>
             </SectionCard>
 
             <SectionCard
@@ -464,54 +440,49 @@ export default async function DashboardPage() {
               title="Trader context"
               description="Short-term session signals supporting the Guardian flow."
             >
-              <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
+              <div className="text-sm text-stone-700">
                 {guardian.evaluation.lockoutActive ? (
-                  <div className="mb-4 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-700">
-                    <p className="font-medium text-stone-950">
-                      Trading permission is set by Today Session.
-                    </p>
-                    <p className="mt-1 text-sm text-stone-600">
-                      These metrics are supporting context, not the primary flow.
-                    </p>
-                  </div>
+                  <p className="mb-3 text-xs text-stone-500">
+                    Trading permission is governed by Today Session — these are supporting signals only.
+                  </p>
                 ) : null}
                 <p className="font-medium text-stone-950">
                   {humanizeTraderState(user.traderState?.currentState ?? "NONE")}
                 </p>
-                <p className="mt-2 text-stone-600">
+                <p className="mt-1 text-stone-500">
                   {user.traderState?.stateNotes ?? "No live state active right now."}
                 </p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                       Cooldown
                     </p>
                     <p className="mt-1 font-medium text-stone-950">
                       {liveStateFlags.cooldownActive ? "Active" : "Not active"}
                     </p>
-                    <p className="mt-1 text-stone-600">
+                    <p className="mt-0.5 text-xs text-stone-500">
                       Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                       Loss streak
                     </p>
                     <p className="mt-1 font-medium text-stone-950">
                       {user.traderState?.recentLossStreak ?? 0}
                     </p>
-                    <p className="mt-1 text-stone-600">
+                    <p className="mt-0.5 text-xs text-stone-500">
                       Updated {formatDate(user.traderState?.lastStateAt ?? null, displayTimeZone)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                       Events today
                     </p>
                     <p className="mt-1 font-medium text-stone-950">
                       {todaySessionSummary.eventCount}
                     </p>
-                    <p className="mt-1 text-stone-600">
+                    <p className="mt-0.5 text-xs text-stone-500">
                       Distress: {todaySessionSummary.distressCount}
                     </p>
                   </div>
