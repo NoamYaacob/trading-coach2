@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { startTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const EVENT_TYPES = [
@@ -59,7 +59,9 @@ export function ManualEventForm() {
       setStatus("success");
       setNote("");
       setPnlAmount("");
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
     } catch {
       setStatus("error");
     }

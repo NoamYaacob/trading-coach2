@@ -172,12 +172,19 @@ export default async function DashboardPage() {
     ? `https://t.me/${telegramBotUsername}`
     : null;
   const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
+  const manualTradeCount =
+    manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount;
   const todaySessionStateForPanel: TodaySessionState = {
     ...todaySessionState,
-    todayTradesCount:
-      manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount,
-    todayPnL: manualEventSignals.netPnL ?? 0,
-    consecutiveLosses: manualEventSignals.consecutiveLosses,
+    todayTradesCount: Math.max(todaySessionState.todayTradesCount, manualTradeCount),
+    todayPnL:
+      manualEventSignals.netPnL !== null
+        ? Math.min(todaySessionState.todayPnL, manualEventSignals.netPnL)
+        : todaySessionState.todayPnL,
+    consecutiveLosses: Math.max(
+      todaySessionState.consecutiveLosses,
+      manualEventSignals.consecutiveLosses,
+    ),
   };
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
