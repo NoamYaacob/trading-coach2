@@ -22,9 +22,8 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full runbook, environment variable 
 
 ```bash
 npm install
-npm run prisma:generate
-npm run prisma:push
-npm run build
+npm run prisma:push   # sync schema to database
+npm run build         # prisma generate runs automatically
 npm start
 curl http://localhost:3000/api/health
 ```
@@ -34,9 +33,10 @@ curl http://localhost:3000/api/health
 | Script | Purpose |
 |---|---|
 | `npm run dev` | Development server (Turbopack) |
-| `npm run build` | Production build |
-| `npm start` | Start production server |
-| `npm run prisma:generate` | Regenerate Prisma client after schema changes |
+| `npm run build` | Production build — includes `prisma generate` |
+| `npm start` | Start production server (port 3000) |
+| `npm run start:railway` | Railway start — runs `prisma db push` then `next start` |
+| `npm run prisma:generate` | Regenerate Prisma client after schema changes (standalone) |
 | `npm run prisma:push` | Sync schema to database (development / first deploy) |
 | `npm run prisma:migrate` | Apply pending migrations (production, requires migration history) |
 | `npm run lint` | Run ESLint |

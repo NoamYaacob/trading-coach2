@@ -263,3 +263,64 @@ Run through this before and after every deploy.
 - [ ] Dashboard loads for a logged-in user
 - [ ] Guardian page loads
 - [ ] Telegram bot responds to a message (if bot token is set)
+
+---
+
+## Railway Staging Launch Checklist
+
+Sequential steps for the first Railway deployment. Work through top to bottom — each step depends on the previous.
+
+### 1. Infrastructure
+
+- [ ] Railway project created (dashboard **New Project**, or `railway init` via CLI)
+- [ ] PostgreSQL service added: **New → Database → PostgreSQL**
+- [ ] App service connected to this repository (or `railway up` from local)
+
+### 2. Environment variables
+
+Open app service → **Variables** in the Railway dashboard.
+
+- [ ] `TELEGRAM_BOT_TOKEN` — bot token from @BotFather
+- [ ] `TELEGRAM_BOT_USERNAME` — bot username without `@`
+- [ ] `NODE_ENV` — set to `production`
+- [ ] `DATABASE_URL` — confirm it appears in Variables (Railway injects this from the PostgreSQL service; if missing, the two services are not linked)
+
+### 3. Deploy
+
+- [ ] Trigger deploy: `railway up`, or push to the connected branch
+- [ ] Build log shows `prisma generate` completed
+- [ ] Build log shows `next build` completed without errors
+- [ ] Start log shows `prisma db push` applied without errors
+- [ ] Start log shows the app started on the assigned PORT
+
+### 4. Health check
+
+- [ ] Railway dashboard shows the deploy as **Active** (not Failed or Crashed)
+- [ ] `GET https://<your-domain>/api/health` returns `{"ok":true,"env":"ok","db":"ok"}`
+
+If the response has a `warnings` array, address each one before continuing. A `NODE_ENV` warning means session cookies are not secure. A `TELEGRAM_BOT_USERNAME` warning means invite links will not work.
+
+### 5. Telegram webhook
+
+- [ ] Railway domain found: app service → **Settings → Domains**
+- [ ] Webhook registered:
+  ```bash
+  curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://<your-domain>/api/telegram/webhook"
+  ```
+  Expected: `{"ok":true,"result":true,"description":"Webhook was set"}`
+- [ ] Verified:
+  ```bash
+  curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+  ```
+  The `url` field should match your Railway domain. `pending_update_count` should be `0`.
+
+### 6. Smoke test
+
+- [ ] `/` — landing page loads
+- [ ] `/login` — login page loads; sign in succeeds and a session cookie is set
+- [ ] `/dashboard` — dashboard loads for the authenticated user
+- [ ] `/guardian` — Guardian page loads
+- [ ] Telegram — send a message to the bot; it replies
+- [ ] Telegram — send `/start <token>` to link an account (test the full connect flow at least once)
+
+If all six groups pass, the staging deployment is live.
