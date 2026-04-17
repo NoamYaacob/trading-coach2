@@ -14,7 +14,7 @@ export async function GET() {
     // db not reachable — status stays "unreachable"
   }
 
-  const ok = envReport.ok && dbStatus === "ok";
+  const ok = dbStatus === "ok";
 
   return NextResponse.json(
     {
