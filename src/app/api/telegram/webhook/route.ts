@@ -196,7 +196,8 @@ async function connectTelegramAccount(params: {
 export async function POST(request: Request) {
   const payload = (await request.json()) as TelegramWebhookPayload;
   const rawText = payload.message?.text?.trim() ?? "";
-  const token = payload.startToken ?? rawText.replace("/start ", "").trim();
+  const startMatch = rawText.match(/^\/start\s+(\S+)/);
+  const token = payload.startToken ?? startMatch?.[1] ?? "";
   const telegramUserId = payload.message?.from?.id;
   const telegramChatId = payload.message?.chat?.id;
 

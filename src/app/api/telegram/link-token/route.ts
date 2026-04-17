@@ -50,11 +50,13 @@ export async function POST() {
     },
   });
 
+  const cleanUsername = botUsername?.replace(/^@/, "");
+
   return NextResponse.json({
     ok: true,
     linkToken,
-    telegramLink: botUsername
-      ? `https://t.me/${botUsername}?start=${linkToken.token}`
+    telegramLink: cleanUsername
+      ? `https://t.me/${cleanUsername}?start=${linkToken.token}`
       : null,
   });
 }
