@@ -1,4 +1,3 @@
-import { SubscriptionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -144,54 +143,48 @@ export async function POST(request: Request) {
   const coachingPreferences = normalizeCoachingPreferences(
     body.coachingPreferences,
   );
-  const user = await prisma.user.upsert({
+
+  try {
+    await Promise.all([
+      traderProfile
+        ? prisma.traderProfile.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...traderProfile },
+            update: traderProfile,
+          })
+        : null,
+      riskRules
+        ? prisma.riskRules.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...riskRules },
+            update: riskRules,
+          })
+        : null,
+      mentalProfile
+        ? prisma.mentalProfile.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...mentalProfile },
+            update: mentalProfile,
+          })
+        : null,
+      coachingPreferences
+        ? prisma.coachingPreferences.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...coachingPreferences },
+            update: coachingPreferences,
+          })
+        : null,
+    ]);
+  } catch (err) {
+    console.error("[onboarding] save error:", err);
+    return NextResponse.json(
+      { error: "Failed to save onboarding data." },
+      { status: 500 },
+    );
+  }
+
+  const user = await prisma.user.findUnique({
     where: { id: currentUser.id },
-    create: {
-      email: currentUser.email.toLowerCase(),
-      subscriptionStatus: SubscriptionStatus.TRIALING,
-      trialStartedAt: currentUser.trialStartedAt,
-      trialEndsAt: currentUser.trialEndsAt,
-      traderProfile: traderProfile ? { create: traderProfile } : undefined,
-      riskRules: riskRules ? { create: riskRules } : undefined,
-      mentalProfile: mentalProfile ? { create: mentalProfile } : undefined,
-      coachingPreferences: coachingPreferences
-        ? { create: coachingPreferences }
-        : undefined,
-    },
-    update: {
-      traderProfile: traderProfile
-        ? {
-            upsert: {
-              create: traderProfile,
-              update: traderProfile,
-            },
-          }
-        : undefined,
-      riskRules: riskRules
-        ? {
-            upsert: {
-              create: riskRules,
-              update: riskRules,
-            },
-          }
-        : undefined,
-      mentalProfile: mentalProfile
-        ? {
-            upsert: {
-              create: mentalProfile,
-              update: mentalProfile,
-            },
-          }
-        : undefined,
-      coachingPreferences: coachingPreferences
-        ? {
-            upsert: {
-              create: coachingPreferences,
-              update: coachingPreferences,
-            },
-          }
-        : undefined,
-    },
     select: {
       id: true,
       email: true,

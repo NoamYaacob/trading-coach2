@@ -47,11 +47,16 @@ export async function POST(request: Request) {
 
   const todayEvents = await getTodayManualEvents(currentUser.id);
   const signals = deriveManualEventSignals(todayEvents);
-  await updateGuardianStatus(currentUser.id, {
-    todayTradesCount: signals.winCount + signals.lossCount,
-    todayPnL: signals.netPnL ?? 0,
-    consecutiveLosses: signals.consecutiveLosses,
-  });
+
+  try {
+    await updateGuardianStatus(currentUser.id, {
+      todayTradesCount: signals.winCount + signals.lossCount + signals.tradeCount,
+      todayPnL: signals.netPnL ?? 0,
+      consecutiveLosses: signals.consecutiveLosses,
+    });
+  } catch (err) {
+    console.error("[manual-event] guardian status update failed:", err);
+  }
 
   return NextResponse.json({
     id: event.id,
