@@ -38,16 +38,13 @@ Run these steps in order on a fresh environment.
 # 1. Install dependencies
 npm install
 
-# 2. Generate Prisma client (must happen before build)
-npm run prisma:generate
-
-# 3. Apply schema to database (creates all tables)
+# 2. Apply schema to database (creates all tables)
 npm run prisma:push
 
-# 4. Build
+# 3. Build — prisma generate runs automatically
 npm run build
 
-# 5. Start
+# 4. Start
 npm start
 ```
 
@@ -63,9 +60,8 @@ npm start -- -p 8080
 
 ```bash
 npm install
-npm run prisma:generate
 npm run prisma:push        # only if schema changed
-npm run build
+npm run build              # prisma generate runs automatically
 npm start                  # restart the process
 ```
 
@@ -150,6 +146,96 @@ Re-register the webhook any time the domain changes.
 
 ---
 
+## Deploying to Railway
+
+Railway is the primary deployment target. The project ships a `railway.json` that configures build, start, health check, and restart policy automatically.
+
+### One-time setup
+
+**1. Create the project**
+
+```bash
+# Install Railway CLI if needed
+npm install -g @railway/cli
+railway login
+railway init
+```
+
+Or create the project from the Railway dashboard.
+
+**2. Add a PostgreSQL service**
+
+In the Railway dashboard: **New** → **Database** → **PostgreSQL**.
+
+Railway injects `DATABASE_URL` automatically into your app service. No manual copy-paste needed.
+
+**3. Set environment variables**
+
+In the Railway dashboard, open your app service → **Variables** and add:
+
+| Variable | Value |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Your bot token from @BotFather |
+| `TELEGRAM_BOT_USERNAME` | Your bot username without `@` |
+| `NODE_ENV` | `production` |
+
+`DATABASE_URL` is provided automatically by the PostgreSQL plugin. Railway sets `PORT` automatically — Next.js reads it.
+
+**4. Deploy**
+
+```bash
+railway up
+```
+
+Or push to the connected GitHub branch if auto-deploy is enabled.
+
+### What happens on every deploy
+
+`railway.json` drives the full flow:
+
+| Step | Command |
+|---|---|
+| Build | `prisma generate && next build` |
+| Start | `prisma db push && next start` |
+| Health check | `GET /api/health` — must return 200 before traffic is routed |
+
+`prisma db push` runs before `next start` on each deploy. It is idempotent — safe to run on restarts — and ensures the schema is always in sync with the connected database.
+
+### After the first deploy — register the Telegram webhook
+
+Railway assigns a public domain once the service is live. Find it in **Settings** → **Domains**.
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://your-railway-domain.up.railway.app/api/telegram/webhook"
+```
+
+Verify:
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Re-register any time the domain changes (e.g. when switching from the default `.up.railway.app` domain to a custom domain).
+
+### Switching to formal migrations
+
+When you are ready to adopt `prisma migrate` (migration history files checked into the repo), update the start command in both `package.json` and `railway.json`:
+
+```
+# package.json
+"start:railway": "prisma migrate deploy && next start"
+
+# railway.json deploy.startCommand
+"startCommand": "npm run start:railway"
+```
+
+Create the migration baseline first on a dev database:
+```bash
+npx prisma migrate dev --name init
+```
+Commit `prisma/migrations/` before deploying.
+
+---
+
 ## Production Checklist
 
 Run through this before and after every deploy.
@@ -161,12 +247,11 @@ Run through this before and after every deploy.
 - [ ] `NODE_ENV=production` is set
 
 **Build**
-- [ ] `npm run prisma:generate` completed without errors
-- [ ] `npm run prisma:push` applied (or migration deployed if using formal migrations)
-- [ ] `npm run build` completed without errors
+- [ ] `npm run build` completed without errors (`prisma generate` runs automatically as part of build)
+- [ ] Schema synced — `prisma db push` applied, or `prisma migrate deploy` if using formal migrations
 
 **Runtime**
-- [ ] App started (`npm start`) without errors in the process log
+- [ ] App started without errors in the process log
 - [ ] `GET /api/health` returns `{"ok":true,"env":"ok","db":"ok"}`
 
 **Telegram**
