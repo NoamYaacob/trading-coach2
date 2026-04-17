@@ -144,8 +144,6 @@ export async function POST(request: Request) {
   const coachingPreferences = normalizeCoachingPreferences(
     body.coachingPreferences,
   );
-  const coachingPreferencesData = coachingPreferences as Record<string, unknown>;
-
   const user = await prisma.user.upsert({
     where: { id: currentUser.id },
     create: {
@@ -157,7 +155,7 @@ export async function POST(request: Request) {
       riskRules: riskRules ? { create: riskRules } : undefined,
       mentalProfile: mentalProfile ? { create: mentalProfile } : undefined,
       coachingPreferences: coachingPreferences
-        ? { create: coachingPreferencesData }
+        ? { create: coachingPreferences }
         : undefined,
     },
     update: {
@@ -188,8 +186,8 @@ export async function POST(request: Request) {
       coachingPreferences: coachingPreferences
         ? {
             upsert: {
-              create: coachingPreferencesData,
-              update: coachingPreferencesData,
+              create: coachingPreferences,
+              update: coachingPreferences,
             },
           }
         : undefined,

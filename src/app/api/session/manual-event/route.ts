@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { isManualTradeEventType, logManualTradeEvent } from "@/lib/manual-trade-events";
+import { updateGuardianStatus } from "@/lib/guardian";
+import { deriveManualEventSignals, getTodayManualEvents, isManualTradeEventType, logManualTradeEvent } from "@/lib/manual-trade-events";
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUser();
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
   const event = await logManualTradeEvent(currentUser.id, eventType, {
     note: noteValue,
     pnlAmount: pnlValue,
+  });
+
+  const todayEvents = await getTodayManualEvents(currentUser.id);
+  const signals = deriveManualEventSignals(todayEvents);
+  await updateGuardianStatus(currentUser.id, {
+    todayTradesCount: signals.winCount + signals.lossCount,
+    todayPnL: signals.netPnL ?? 0,
+    consecutiveLosses: signals.consecutiveLosses,
   });
 
   return NextResponse.json({
