@@ -62,5 +62,10 @@ export async function POST(request: Request) {
     id: event.id,
     eventType,
     createdAt: event.createdAt,
+    summary: {
+      todayTradesCount: signals.winCount + signals.lossCount + signals.tradeCount,
+      todayPnL: signals.netPnL ?? 0,
+      consecutiveLosses: signals.consecutiveLosses,
+    },
   });
 }

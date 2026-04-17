@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type LiveSummary = { todayTradesCount: number; todayPnL: number; consecutiveLosses: number };
 
 import type { TodaySessionState } from "@/lib/guardian";
 import type { TelegramDashboardState } from "@/lib/telegram-access";
@@ -73,6 +75,20 @@ export function TodaySessionPanel({
   displayTimeZone,
 }: TodaySessionPanelProps) {
   const router = useRouter();
+  const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null);
+
+  useEffect(() => {
+    function handleUpdate(e: Event) {
+      setLiveSummary((e as CustomEvent<LiveSummary>).detail);
+    }
+    window.addEventListener("session-summary-update", handleUpdate);
+    return () => window.removeEventListener("session-summary-update", handleUpdate);
+  }, []);
+
+  const todayTradesCount = liveSummary?.todayTradesCount ?? sessionState.todayTradesCount;
+  const todayPnL = liveSummary?.todayPnL ?? sessionState.todayPnL;
+  const consecutiveLosses = liveSummary?.consecutiveLosses ?? sessionState.consecutiveLosses;
+
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -370,7 +386,7 @@ export function TodaySessionPanel({
                 Trades
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.todayTradesCount}
+                {todayTradesCount}
               </p>
             </div>
 
@@ -379,7 +395,7 @@ export function TodaySessionPanel({
                 P&amp;L
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.todayPnL}
+                {todayPnL}
               </p>
             </div>
 
@@ -388,7 +404,7 @@ export function TodaySessionPanel({
                 Loss streak
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.consecutiveLosses}
+                {consecutiveLosses}
               </p>
             </div>
           </div>

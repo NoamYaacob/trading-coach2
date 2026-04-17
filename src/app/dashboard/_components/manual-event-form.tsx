@@ -1,7 +1,13 @@
 "use client";
 
-import { startTransition, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+
+type ManualEventSummary = {
+  todayTradesCount: number;
+  todayPnL: number;
+  consecutiveLosses: number;
+};
 
 const EVENT_TYPES = [
   { value: "trade_opened", label: "Trade opened", hint: "Log when you enter a trade." },
@@ -55,13 +61,16 @@ export function ManualEventForm() {
         return;
       }
 
+      const data = (await res.json()) as { summary: ManualEventSummary };
+      window.dispatchEvent(
+        new CustomEvent("session-summary-update", { detail: data.summary }),
+      );
+
       setLoggedLabel(selected?.label ?? "Event");
       setStatus("success");
       setNote("");
       setPnlAmount("");
-      startTransition(() => {
-        router.refresh();
-      });
+      router.refresh();
     } catch {
       setStatus("error");
     }
