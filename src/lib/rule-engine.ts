@@ -182,12 +182,17 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
 
   // ── max_trades_per_day ──────────────────────────────────────────────────────
   if (input.maxTradesPerDay !== null && input.maxTradesPerDay !== undefined) {
-    if (input.todayTradesCount >= input.maxTradesPerDay) {
+    const manualTradeCount =
+      input.manualSignals !== null && input.manualSignals !== undefined
+        ? input.manualSignals.winCount + input.manualSignals.lossCount + input.manualSignals.tradeCount
+        : 0;
+    const effectiveTodayTradesCount = Math.max(input.todayTradesCount, manualTradeCount);
+    if (effectiveTodayTradesCount >= input.maxTradesPerDay) {
       results.push({
         ruleId: "max_trades_per_day",
         ruleType: "max_trades_per_day",
         status: "triggered",
-        reason: `Trade count ${input.todayTradesCount} reached or exceeded limit of ${input.maxTradesPerDay}.`,
+        reason: `Trade count ${effectiveTodayTradesCount} reached or exceeded limit of ${input.maxTradesPerDay}.`,
         message: `Daily trade limit reached (${input.maxTradesPerDay}). No more entries today.`,
         severity: "high",
         timestamp: now,
@@ -195,13 +200,13 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       });
     } else if (
       input.maxTradesPerDay > 1 &&
-      input.todayTradesCount >= input.maxTradesPerDay - 1
+      effectiveTodayTradesCount >= input.maxTradesPerDay - 1
     ) {
       results.push({
         ruleId: "max_trades_per_day",
         ruleType: "max_trades_per_day",
         status: "warning",
-        reason: `Trade count ${input.todayTradesCount} is one away from the limit of ${input.maxTradesPerDay}.`,
+        reason: `Trade count ${effectiveTodayTradesCount} is one away from the limit of ${input.maxTradesPerDay}.`,
         message: `One trade left before the daily limit (${input.maxTradesPerDay}).`,
         severity: "medium",
         timestamp: now,
@@ -212,8 +217,8 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         ruleId: "max_trades_per_day",
         ruleType: "max_trades_per_day",
         status: "ok",
-        reason: `Trade count ${input.todayTradesCount} is within limit of ${input.maxTradesPerDay}.`,
-        message: `${input.todayTradesCount} of ${input.maxTradesPerDay} trades taken today.`,
+        reason: `Trade count ${effectiveTodayTradesCount} is within limit of ${input.maxTradesPerDay}.`,
+        message: `${effectiveTodayTradesCount} of ${input.maxTradesPerDay} trades taken today.`,
         severity: "low",
         timestamp: now,
       });

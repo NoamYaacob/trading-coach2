@@ -19,6 +19,7 @@ import {
   deriveTodaySessionState,
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
+  type TodaySessionState,
 } from "@/lib/guardian";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
@@ -171,6 +172,13 @@ export default async function DashboardPage() {
     ? `https://t.me/${telegramBotUsername}`
     : null;
   const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
+  const todaySessionStateForPanel: TodaySessionState = {
+    ...todaySessionState,
+    todayTradesCount:
+      manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount,
+    todayPnL: manualEventSignals.netPnL ?? 0,
+    consecutiveLosses: manualEventSignals.consecutiveLosses,
+  };
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
@@ -257,7 +265,7 @@ export default async function DashboardPage() {
             <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
           ) : null}
           <TodaySessionPanel
-            sessionState={todaySessionState}
+            sessionState={todaySessionStateForPanel}
             additionalTriggeredRulesCount={guardianAdditionalRulesCount}
             telegramAccess={telegramAccess}
             telegramBotLink={telegramBotLink}
