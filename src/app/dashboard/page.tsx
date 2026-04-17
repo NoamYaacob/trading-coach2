@@ -48,7 +48,7 @@ import {
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Dashboard — Guardrail",
 };
 
 function formatDate(value: Date | null, timeZone: string) {
@@ -237,9 +237,9 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      eyebrow="Dashboard"
-      title="Your trading coach account."
-      description="Move through the day in one place: get ready, manage the live session, and close it cleanly."
+      eyebrow="Control Center"
+      title="Today’s trading session."
+      description="Monitor your session in real time, log activity, and let Guardrail enforce your rules automatically."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -247,8 +247,12 @@ export default async function DashboardPage() {
         />
       }
     >
-      <div className="grid gap-6">
+      <div className="grid gap-10">
+        {/* Session status */}
         <div className="grid gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+            Session status
+          </p>
           {showPremarketReadiness ? (
             <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
           ) : null}
@@ -262,264 +266,259 @@ export default async function DashboardPage() {
           <RuleNoticeList notices={dashboardNotices} />
         </div>
 
-        <EconomicEventsPanel
-          events={economicCalendarSnapshot.events}
-          providerLabel={economicCalendarVisibility.providerLabel}
-          sourceLabel={economicCalendarVisibility.sourceLabel}
-          scenarioLabel={economicCalendarVisibility.scenarioLabel}
-          timeZone={displayTimeZone}
-        />
+        {/* Risk environment */}
+        <div className="grid gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+            Risk environment
+          </p>
+          <EconomicEventsPanel
+            events={economicCalendarSnapshot.events}
+            providerLabel={economicCalendarVisibility.providerLabel}
+            sourceLabel={economicCalendarVisibility.sourceLabel}
+            scenarioLabel={economicCalendarVisibility.scenarioLabel}
+            timeZone={displayTimeZone}
+          />
+        </div>
 
-        {postSessionReview ? (
-          <div className="grid gap-4">
-            <PostSessionReviewPanel
-              review={postSessionReview}
-              timeZone={displayTimeZone}
-            />
+        {/* Session record */}
+        <div className="grid gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+            Session record
+          </p>
+          {postSessionReview ? (
+            <div className="grid gap-4">
+              <PostSessionReviewPanel
+                review={postSessionReview}
+                timeZone={displayTimeZone}
+              />
+              <TodayActivityTimeline
+                items={mergedActivityTimeline}
+                title={activityTitle}
+                description={activityDescription}
+                timeZone={displayTimeZone}
+              />
+            </div>
+          ) : (
             <TodayActivityTimeline
-              items={mergedActivityTimeline}
+              items={todayActivityTimeline}
               title={activityTitle}
               description={activityDescription}
               timeZone={displayTimeZone}
             />
-          </div>
-        ) : (
-          <TodayActivityTimeline
-            items={todayActivityTimeline}
-            title={activityTitle}
-            description={activityDescription}
-            timeZone={displayTimeZone}
-          />
-        )}
+          )}
+        </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <SectionCard title="Account" description="Authenticated website account details.">
-            <dl className="grid gap-4 text-sm text-stone-700">
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Email
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">{user.email}</dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Role
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">{user.role}</dd>
-              </div>
-            </dl>
-          </SectionCard>
-
-          <SectionCard
-            title="Access status"
-            description="Your trial and subscription state determines dashboard and bot availability."
-          >
-            <dl className="grid gap-4 text-sm text-stone-700">
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Subscription status
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {user.subscriptionStatus}
-                </dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Trial started
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {formatDate(user.trialStartedAt, displayTimeZone)}
-                </dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Trial ends
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {formatDate(user.trialEndsAt, displayTimeZone)}
-                </dd>
-              </div>
-              <div
-                className={`rounded-2xl px-4 py-3 ${
-                  trialActive
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "bg-amber-50 text-amber-900"
-                }`}
-              >
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                  Trial active
-                </dt>
-                <dd className="mt-1 text-base font-medium">
-                  {trialActive ? "Yes, trial access is active." : "No, trial access has ended."}
-                </dd>
-              </div>
-            </dl>
-          </SectionCard>
-
-          <SectionCard
-            title="Onboarding status"
-            description="Core profile status for the coaching account."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              <p className="font-medium text-stone-950">
-                {onboardingComplete
-                  ? "Onboarding profile is in place."
-                  : "Onboarding is not complete yet."}
-              </p>
-              {!onboardingComplete ? (
-                <p className="mt-3 text-sm text-stone-600">
-                  Finish onboarding here to unlock the day’s session flow.
-                </p>
-              ) : null}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Telegram status"
-            description="Connection status for the mental coach bot."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              <p className="font-medium text-stone-950">
-                {telegramAccess.dashboardState === "not_connected"
-                  ? "Telegram is not connected yet."
-                  : telegramAccess.dashboardState === "connected"
-                    ? "Telegram is connected and bot access is active."
-                    : telegramAccess.dashboardState === "connected_onboarding_incomplete"
-                      ? "Telegram is connected, but onboarding is still needed."
-                      : "Telegram is connected, but account access is inactive."}
-              </p>
-              {telegramAccess.dashboardState === "connected" ? (
-                <p className="mt-2 text-stone-600">
-                  {user.telegramConnection?.telegramUsername
-                    ? `Connected as @${user.telegramConnection.telegramUsername}`
-                    : `Connected on ${formatDate(user.telegramConnection?.connectedAt ?? null, displayTimeZone)}`}
-                </p>
-              ) : telegramAccess.dashboardState === "connected_onboarding_incomplete" ? (
-                <p className="mt-2 text-stone-600">
-                  Finish onboarding for the bot to start coaching you.
-                </p>
-              ) : (
-                <p className="mt-2 text-stone-600">
-                  Connect Telegram to continue the session flow in the coach bot.
-                </p>
-              )}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Trading Guardian"
-            description="Supporting Guardian context for the session flow."
-          >
-            <div className="grid gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Guardian
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {guardian.evaluation.guardianActive ? "Active" : "Inactive"}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    Connection: {guardian.evaluation.connectionLabel}
-                  </p>
+        {/* Account & tools */}
+        <div className="grid gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+            Account &amp; tools
+          </p>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Account + Access merged */}
+            <SectionCard
+              title="Account & access"
+              description="Your login details and current subscription access."
+            >
+              <dl className="grid gap-4 text-sm text-stone-700">
+                <div className="rounded-2xl bg-stone-50 px-4 py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    Email
+                  </dt>
+                  <dd className="mt-1 text-base font-medium text-stone-950">{user.email}</dd>
                 </div>
+                <div className="rounded-2xl bg-stone-50 px-4 py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    Role
+                  </dt>
+                  <dd className="mt-1 text-base font-medium text-stone-950">{user.role}</dd>
+                </div>
+                <div className="rounded-2xl bg-stone-50 px-4 py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    Subscription
+                  </dt>
+                  <dd className="mt-1 text-base font-medium text-stone-950">
+                    {user.subscriptionStatus}
+                  </dd>
+                </div>
+                <div
+                  className={`rounded-2xl px-4 py-3 ${
+                    trialActive
+                      ? "bg-emerald-50 text-emerald-800"
+                      : "bg-amber-50 text-amber-900"
+                  }`}
+                >
+                  <dt className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
+                    Trial
+                  </dt>
+                  <dd className="mt-1 text-base font-medium">
+                    {trialActive
+                      ? `Active — ends ${formatDate(user.trialEndsAt, displayTimeZone)}`
+                      : `Ended ${formatDate(user.trialEndsAt, displayTimeZone)}`}
+                  </dd>
+                </div>
+              </dl>
+            </SectionCard>
 
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-4 text-sm text-stone-700">
+            {/* Onboarding + Telegram merged */}
+            <SectionCard
+              title="Setup status"
+              description="Onboarding profile and Telegram coach connection."
+            >
+              <div className="grid gap-4">
+                <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Guardian read
+                    Onboarding
                   </p>
                   <p className="mt-2 font-medium text-stone-950">
-                    {todaySessionState.kind === "ONBOARDING_REQUIRED"
-                      ? "Guardian is set up and waiting for onboarding to complete."
-                      : todaySessionState.sessionEnded
-                        ? "This Guardian day has been ended from the dashboard."
-                        : todaySessionState.sessionStarted
-                          ? "The session is active and Guardian is tracking it."
-                          : todaySessionState.kind === "READY_TO_TRADE"
-                            ? "Guardian is ready and limits are enforcing the session."
-                            : todaySessionState.kind === "GUARDIAN_DISABLED"
-                            ? "Guardian is off, so session limits are not enforcing the day."
-                            : "Guardian has closed the session for today."}
+                    {onboardingComplete
+                      ? "Profile complete."
+                      : "Not complete yet."}
+                  </p>
+                  {!onboardingComplete ? (
+                    <p className="mt-1 text-stone-600">
+                      Finish onboarding to unlock the day’s session flow.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    Telegram coach
+                  </p>
+                  <p className="mt-2 font-medium text-stone-950">
+                    {telegramAccess.dashboardState === "not_connected"
+                      ? "Not connected."
+                      : telegramAccess.dashboardState === "connected"
+                        ? "Connected — bot access active."
+                        : telegramAccess.dashboardState === "connected_onboarding_incomplete"
+                          ? "Connected, but onboarding still needed."
+                          : "Connected, but account access is inactive."}
+                  </p>
+                  <p className="mt-1 text-stone-600">
+                    {telegramAccess.dashboardState === "connected"
+                      ? user.telegramConnection?.telegramUsername
+                        ? `@${user.telegramConnection.telegramUsername}`
+                        : `Connected ${formatDate(user.telegramConnection?.connectedAt ?? null, displayTimeZone)}`
+                      : telegramAccess.dashboardState === "connected_onboarding_incomplete"
+                        ? "Finish onboarding for the bot to start coaching you."
+                        : "Connect Telegram to continue the session flow in the coach bot."}
                   </p>
                 </div>
               </div>
+            </SectionCard>
 
-              <Link
-                href="/guardian"
-                className="inline-flex w-fit rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-900"
-              >
-                Open Guardian
-              </Link>
-            </div>
-          </SectionCard>
+            <SectionCard
+              title="Guardian"
+              description="Rule engine status and session enforcement."
+            >
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-stone-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Status
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-stone-950">
+                      {guardian.evaluation.guardianActive ? "Active" : "Inactive"}
+                    </p>
+                    <p className="mt-2 text-sm text-stone-600">
+                      {guardian.evaluation.connectionLabel}
+                    </p>
+                  </div>
 
-          <SectionCard
-            title="Session event log"
-            description="Manual entry — no live broker connected. Log a trade or session event to capture it in Today Activity and the post-session review."
-          >
-            <ManualEventForm />
-          </SectionCard>
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-4 text-sm text-stone-700">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Today
+                    </p>
+                    <p className="mt-2 font-medium text-stone-950">
+                      {todaySessionState.kind === "ONBOARDING_REQUIRED"
+                        ? "Waiting for onboarding."
+                        : todaySessionState.sessionEnded
+                          ? "Day ended from dashboard."
+                          : todaySessionState.sessionStarted
+                            ? "Session active — tracking live."
+                            : todaySessionState.kind === "READY_TO_TRADE"
+                              ? "Ready — limits enforcing."
+                              : todaySessionState.kind === "GUARDIAN_DISABLED"
+                              ? "Guardian is off."
+                              : "Session closed for today."}
+                    </p>
+                  </div>
+                </div>
 
-          <SectionCard
-            title="Trader context"
-            description="Short-term session signals that support the main Guardian flow."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              {guardian.evaluation.lockoutActive ? (
-                <div className="mb-4 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-700">
-                  <p className="font-medium text-stone-950">
-                    Trading permission is already set by Today Session.
-                  </p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    These metrics are supporting session context, not the primary flow.
-                  </p>
-                </div>
-              ) : null}
-              <p className="font-medium text-stone-950">
-                Current state: {humanizeTraderState(user.traderState?.currentState ?? "NONE")}
-              </p>
-              <p className="mt-2 text-stone-600">
-                {user.traderState?.stateNotes
-                  ? user.traderState.stateNotes
-                  : "No live state is active right now."}
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Cooldown
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {liveStateFlags.cooldownActive ? "Active" : "Not active"}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Recent loss streak
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {user.traderState?.recentLossStreak ?? 0}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Updated {formatDate(user.traderState?.lastStateAt ?? null, displayTimeZone)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Events today
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {todaySessionSummary.eventCount}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Distress moments: {todaySessionSummary.distressCount}
-                  </p>
+                <Link
+                  href="/guardian"
+                  className="inline-flex w-fit rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-900"
+                >
+                  Open Guardian
+                </Link>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Session event log"
+              description="Log a trade or session event manually — captured in Today Activity and the post-session review."
+            >
+              <ManualEventForm />
+            </SectionCard>
+
+            <SectionCard
+              title="Trader context"
+              description="Short-term session signals supporting the Guardian flow."
+            >
+              <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
+                {guardian.evaluation.lockoutActive ? (
+                  <div className="mb-4 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-700">
+                    <p className="font-medium text-stone-950">
+                      Trading permission is set by Today Session.
+                    </p>
+                    <p className="mt-1 text-sm text-stone-600">
+                      These metrics are supporting context, not the primary flow.
+                    </p>
+                  </div>
+                ) : null}
+                <p className="font-medium text-stone-950">
+                  {humanizeTraderState(user.traderState?.currentState ?? "NONE")}
+                </p>
+                <p className="mt-2 text-stone-600">
+                  {user.traderState?.stateNotes ?? "No live state active right now."}
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Cooldown
+                    </p>
+                    <p className="mt-1 font-medium text-stone-950">
+                      {liveStateFlags.cooldownActive ? "Active" : "Not active"}
+                    </p>
+                    <p className="mt-1 text-stone-600">
+                      Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Loss streak
+                    </p>
+                    <p className="mt-1 font-medium text-stone-950">
+                      {user.traderState?.recentLossStreak ?? 0}
+                    </p>
+                    <p className="mt-1 text-stone-600">
+                      Updated {formatDate(user.traderState?.lastStateAt ?? null, displayTimeZone)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Events today
+                    </p>
+                    <p className="mt-1 font-medium text-stone-950">
+                      {todaySessionSummary.eventCount}
+                    </p>
+                    <p className="mt-1 text-stone-600">
+                      Distress: {todaySessionSummary.distressCount}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </SectionCard>
+            </SectionCard>
+          </div>
         </div>
       </div>
     </AppShell>
