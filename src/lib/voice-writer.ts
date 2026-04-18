@@ -339,16 +339,25 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
   const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
   const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
 
-  const replyLengthLine = isDirect
-    ? "- 1 sentence ideal. 2 is fine. 3 is the hard maximum."
-    : isSupportive
-      ? "- 2-3 sentences natural. 4 is the hard maximum. No padding."
-      : "- 1-2 sentences. If it fits in one, use one.";
+  const STOP_INTENTS = new Set<CoachingIntent>([
+    "account_locked", "stop_fomo", "stop_revenge", "ground_tilt", "rule_limit_hit", "cooldown_active",
+  ]);
+  const isStopMode = STOP_INTENTS.has(input.intent);
+
+  const replyLengthLine = isStopMode
+    ? "- 1 sentence. 2 if you must. No more."
+    : isDirect
+      ? "- 1 sentence ideal. 2 is fine. 3 is the hard maximum."
+      : isSupportive
+        ? "- 2-3 sentences natural. 4 is the hard maximum. No padding."
+        : "- 1-2 sentences. If it fits in one, use one.";
 
   const lines: string[] = [
     `You are a human coach. Write ONLY in ${langName}.`,
     "",
-    "YOUR ONLY JOB: Translate the intent below into a natural, human message.",
+    isStopMode
+      ? "YOUR ONLY JOB: Stop this trader. One sentence — sharp, clear, done. Not warm. Not polished. A brake."
+      : "YOUR ONLY JOB: Translate the intent below into a natural, human message.",
     "Do NOT re-decide the rules. Do NOT invent facts. Do NOT override the constraint below.",
     "",
     "SITUATION:",
@@ -358,6 +367,12 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     desc.goal,
     "",
   ];
+
+  if (isStopMode) {
+    lines.push("STOP MODE: Do not build up. Do not comfort. Do not close with encouragement.");
+    lines.push("Say the thing that creates a pause. Rough is fine. Polish kills the stop.");
+    lines.push("");
+  }
 
   if (input.constraintMessage) {
     lines.push("CONSTRAINT (already decided — weave in naturally, do not list or announce):");
@@ -396,17 +411,25 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
 
   lines.push("REPLY STYLE:");
   lines.push(replyLengthLine);
-  lines.push("- Start with the point. Do not build up to it.");
-  lines.push("- One clear truth OR one clear action. Not both.");
+  lines.push("- Start with the point. No warm-up.");
+  lines.push("- One truth or one action. Not both.");
+  if (isStopMode) {
+    lines.push("- No comfort after the stop. Say it and stop.");
+  }
   lines.push("");
 
   lines.push("NEVER:");
   lines.push("- Explain your reasoning — just say the thing.");
-  lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
   lines.push('- Open with "As your coach", "I understand that", "It sounds like".');
-  lines.push('- Close with generic encouragement: "You\'ve got this", "Keep going".');
+  lines.push('- Close with "You\'ve got this", "Keep going", or any generic encouragement.');
   lines.push("- Bullet points, lists, or headers.");
   lines.push("- Ask more than one question.");
+  if (isStopMode) {
+    lines.push("- Add warmth to a hard stop — it softens the brake.");
+    lines.push("- Polish the sentence — rough lands harder.");
+  } else {
+    lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
+  }
   lines.push("- Repeat an idea already made in recent messages.");
   lines.push("");
 
