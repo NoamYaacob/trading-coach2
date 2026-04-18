@@ -21,7 +21,7 @@ import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
-import { logCoachEvent } from "@/lib/session-log";
+import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
@@ -288,11 +288,12 @@ export async function POST(request: Request) {
 
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
-  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents] = await Promise.all([
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
     getTodayManualEvents(connection.user.id),
+    getRecentSessionContext(connection.user.id),
   ]);
 
   const todaySessionState = deriveTodaySessionState(guardian, {
@@ -319,9 +320,20 @@ export async function POST(request: Request) {
     }),
   );
 
+  const recentMessages = sessionContext.recentEvents
+    .slice()
+    .reverse()
+    .slice(0, 4)
+    .map((e) => ({
+      message: e.message ?? "",
+      traderState: String(e.traderState ?? "NONE"),
+    }));
+
   const aiInput = {
-    message: canonicalText || locale.keyboard.checkIn,
+    message: rawText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
+    source: "telegram" as const,
+    alertContext: null,
     actionId: matchedAction?.id ?? null,
     primaryMarket: connection.user.traderProfile?.primaryMarket ?? null,
     tradingStyle: connection.user.traderProfile?.tradingStyle ?? null,
@@ -348,12 +360,31 @@ export async function POST(request: Request) {
     isPreNewsWindow: isInsidePreNewsWarningWindow(economicCalendarSnapshot),
     preNewsMessage: economicCalendarPolicy.isActive ? (economicCalendarPolicy.message ?? null) : null,
     manualSignals: manualEventSignals,
+    recentMessages,
   };
 
   const aiReply = await generateAICoachReply(aiInput);
+
+  // Fallback priority: quick-action locale reply → state-derived reply → session-state reply → generic
+  const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
+    [TraderCurrentState.FOMO]: "fomo",
+    [TraderCurrentState.REVENGE]: "revenge",
+    [TraderCurrentState.JUST_TOOK_LOSS]: "just-lost",
+    [TraderCurrentState.JUST_TOOK_TWO_LOSSES]: "lost-twice",
+    [TraderCurrentState.TILTED]: "out-of-control",
+    [TraderCurrentState.RESETTING]: "calming-down",
+    [TraderCurrentState.CALM]: "back-in-control",
+  };
+  const stateActionId = stateUpdate?.nextState
+    ? (stateToActionId[stateUpdate.nextState] ?? null)
+    : null;
+
   const fallbackText =
     (matchedAction && getLocaleReplyForQuickAction(matchedAction.id, locale)) ??
-    locale.prompts.checkIn;
+    (stateActionId && getLocaleReplyForQuickAction(stateActionId, locale)) ??
+    (todaySessionState.sessionEnded ? locale.prompts.review : null) ??
+    (todaySessionState.sessionStarted ? locale.prompts.checkIn : locale.prompts.sessionNotStarted);
+
   const replyText = aiReply ?? fallbackText;
 
   const loggedTraderState = stateUpdate
