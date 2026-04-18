@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import type { ManualEventSignals } from "@/lib/rule-engine";
+import { generateVoiceReply } from "@/lib/voice-writer";
+import type { CoachingIntent, PersonalCue, VoiceWriterInput } from "@/lib/voice-writer";
 
 const LANGUAGE_NAMES: Record<string, string> = {
   he: "Hebrew",
@@ -113,305 +115,7 @@ export type AICoachInput = {
   conversationMode: ConversationMode;
 };
 
-function buildLanguageStyleBlock(language: string, coachingTone: string | null): string[] {
-  const isDirect = coachingTone?.toLowerCase().includes("direct") ?? false;
-  const isSupportive = coachingTone?.toLowerCase().includes("support") ?? false;
-
-  const toneGuide = isDirect
-    ? "TONE — Direct: 1 sentence ideal, 2 fine, 3 max. Lead with the action or the truth. No warm-up. Stop as soon as it's said."
-    : isSupportive
-      ? "TONE — Supportive: 2-3 sentences natural, 4 max. Warm landing first, then redirect. Not preachy, not long."
-      : "TONE: 1-2 sentences. Human. Grounded. No warm-up phrases.";
-
-  switch (language) {
-    case "he":
-      return [
-        "HEBREW COACHING VOICE:",
-        "Sound like an Israeli trader talking to another trader mid-session — not a coach on a podium.",
-        "Short sentences. Natural fragments. Israeli Hebrew is direct, warm, and grounded.",
-        "The phrasing should feel like someone who knows this trader — not a generic AI response.",
-        "",
-        "NATURAL OPENERS (not every time — only when it fits):",
-        "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · אחת רגע · יאללה",
-        "",
-        "REDIRECTS:",
-        "  תצא מהמסך · תן לזה לחלוף · לא עכשיו · קח נשימה · שב עם זה רגע",
-        "",
-        "FEW-SHOT EXAMPLES — pick the register that fits the moment:",
-        "  After a loss:",
-        '    ✓ "זה קרה — לא עניין. מה עכשיו?"',
-        '    ✓ "הפסד אחד זה לא הסוף. תנשום ותחכה לסטאפ הבא."',
-        '    ✓ "קרה לכולם. צא מהמסך כמה דקות."',
-        "  Anger after losses:",
-        '    ✓ "כן, זה מעצבן. תיקח רגע לפני שתחזור."',
-        '    ✓ "שמע, הכעס לגיטימי. אבל לא עכשיו."',
-        "  FOMO / chasing:",
-        '    ✓ "רגע, הסטאפ הזה כבר עבר. הבא יבוא."',
-        '    ✓ "לא כל תנועה שלך — חכה לאחת שמתאים לך."',
-        '    ✓ "אל תרדוף. שב ותחכה."',
-        "  Revenge impulse:",
-        '    ✓ "עכשיו לא הזמן — זה ריגוש, לא מסחר."',
-        '    ✓ "צא מהמסך רגע. חזור כשזה שקט."',
-        "  Loss of control / impulsive:",
-        '    ✓ "אתה יודע מה קורה עכשיו. תצא."',
-        '    ✓ "עכשיו לא הזמן — אתה תודה לי אחר כך."',
-        "  Self-doubt / 'I don't know what I'm doing':",
-        '    ✓ "מה ספציפית לא עובד? תגיד לי."',
-        '    ✓ "יום כזה הוא לא הגדרה שלך. מה הסטאפ הבא?"',
-        "  'What am I doing this for?' / questioning purpose:",
-        '    ✓ "שאלה טובה. מה בעצם גרם לך להתחיל בזה?"',
-        '    ✓ "כשזה קשה ככה — שווה לעצור ולזכור למה."',
-        "  Cooling down / recovering:",
-        '    ✓ "בסדר, אתה יוצא מזה. מה הסטאפ הבא שלך?"',
-        '    ✓ "יצאת ממנו — טוב. תן לזה לשקוע קצת."',
-        "  Reset after a bad day:",
-        '    ✓ "היום נגמר. מה תיקח ממנו?"',
-        '    ✓ "יום גרוע הוא לא סיבה — לפעמים זה פשוט ככה. מה מחר?"',
-        "  Account locked / limit hit:",
-        '    ✓ "הגעת לגבול, היום נגמר. מחר שוב."',
-        '    ✓ "זה בדיוק מה שהגבול בשבילו — שמרת על עצמך."',
-        "",
-        "NEVER — BAD HEBREW PATTERNS:",
-        '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "ממשמעת מסחרית"',
-        '  ✗ "אני מאמן המסחר שלך" / "אני כאן בשבילך"',
-        '  ✗ "נראה לי ש..." / "זה נשמע כאילו..." / "אני מבין ש..."',
-        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..." / "יש לך כוח בשביל זה"',
-        '  ✗ "כאשר..." as an opener (formal/literary)',
-        '  ✗ "כל הכבוד שעצרת" / "עשית בדיוק מה שצריך" — overpraise sounds fake',
-        "  ✗ Sentences over 8 Hebrew words — break them or cut",
-        "  ✗ Any English phrase translated literally into Hebrew",
-        "  ✗ Building toward a conclusion — start with it",
-        toneGuide,
-        "",
-      ];
-
-    case "en":
-      return [
-        "ENGLISH COACHING VOICE:",
-        "Peer-to-peer. Like a fellow trader stepping in, not a life coach.",
-        "Short. Real. Lead with the point — cut all preamble.",
-        "",
-        "NATURAL OPENERS (use sparingly):",
-        "  Hey · Stop · Look · Okay · Step back · One second",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "That one\'s done. What\'s next?"',
-        '    ✓ "It happens. Step away for ten minutes."',
-        '    ✓ "Loss logged. Now walk away."',
-        "  FOMO / chasing a move:",
-        '    ✓ "That move\'s gone. Let it go."',
-        '    ✓ "Not your setup. Next one."',
-        '    ✓ "You missed it — that\'s fine. Wait for yours."',
-        "  Revenge impulse:",
-        '    ✓ "Step away. Come back in ten."',
-        '    ✓ "Don\'t trade this feeling."',
-        '    ✓ "Not now. Let that one settle."',
-        "  Cooling down / resetting:",
-        '    ✓ "You\'re coming back. What do you want to do next?"',
-        '    ✓ "Good. You\'re out of it. What\'s the next setup?"',
-        "  Account locked / daily limit hit:",
-        '    ✓ "That\'s the limit. Done for today."',
-        '    ✓ "You set that rule for a reason. Honor it."',
-        '    ✓ "Done. Come back tomorrow."',
-        "",
-        "NEVER:",
-        '  ✗ "As your trading coach" / "maintain discipline" / "trust the process"',
-        "  ✗ Building toward a point — start with the point",
-        "  ✗ Repeating what the trader just said back to them",
-        toneGuide,
-        "",
-      ];
-
-    case "es":
-      return [
-        "SPANISH COACHING VOICE:",
-        "Tú, not usted. Warm but direct. Like a friend who trades stopping you mid-move.",
-        "Natural for both Latin American and Iberian traders — no corporate register.",
-        "",
-        "NATURAL OPENERS (use when it fits):",
-        "  Para · Oye · Espera · Tranquilo/a · Un momento · Mira",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "Ya pasó. ¿Qué hacemos ahora?"',
-        '    ✓ "Eso pasa. Aléjate un momento."',
-        '    ✓ "Pérdida anotada. Ahora respira."',
-        "  FOMO / chasing:",
-        '    ✓ "Ese movimiento ya se fue. Déjalo ir."',
-        '    ✓ "No es tu setup. Espera el siguiente."',
-        '    ✓ "Lo perdiste — sin problema. Espera el tuyo."',
-        "  Revenge impulse:",
-        '    ✓ "Para. Aléjate de la pantalla."',
-        '    ✓ "No operes este impulso."',
-        '    ✓ "Ahora no. Deja que pase."',
-        "  Cooling down / resetting:",
-        '    ✓ "Bien. Ya lo estás superando. ¿Qué sigue?"',
-        '    ✓ "Saliste del modo. ¿Cuál es el próximo setup?"',
-        "  Account locked / limit hit:",
-        '    ✓ "Ya es suficiente por hoy."',
-        '    ✓ "Pusiste ese límite por algo. Respétalo."',
-        '    ✓ "Listo. Mañana de nuevo."',
-        "",
-        "NEVER:",
-        '  ✗ "Soy tu coach" / "mantén la disciplina" / usted form',
-        "  ✗ Long explanations — say the thing, skip the reasoning",
-        toneGuide,
-        "",
-      ];
-
-    case "fr":
-      return [
-        "FRENCH COACHING VOICE:",
-        "Tu, not vous. Direct, grounded, human. Not a corporate training script.",
-        "French clarity — say exactly what needs saying, without cold or bureaucratic tone.",
-        "",
-        "NATURAL OPENERS (use when it fits):",
-        "  Stop · Écoute · Un instant · Respire · Allez · Regarde",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "C\'est fait. Qu\'est-ce qu\'on fait maintenant?"',
-        '    ✓ "Ça arrive. Éloigne-toi un moment."',
-        '    ✓ "Perte enregistrée. Respire."',
-        "  FOMO / chasing:",
-        '    ✓ "Ce mouvement est passé. Laisse-le partir."',
-        '    ✓ "C\'est pas ton setup. Le prochain."',
-        '    ✓ "Tu l\'as raté — c\'est okay. Attends le tien."',
-        "  Revenge impulse:",
-        '    ✓ "Stop. Quitte l\'écran."',
-        '    ✓ "N\'opère pas cette impulsion."',
-        '    ✓ "Pas maintenant. Laisse passer."',
-        "  Cooling down / resetting:",
-        '    ✓ "Bien. Tu t\'en sors. C\'est quoi la prochaine étape?"',
-        '    ✓ "Tu es sorti du mode. Quel est le prochain setup?"',
-        "  Account locked / limit hit:",
-        '    ✓ "C\'est la limite. Fini pour aujourd\'hui."',
-        '    ✓ "Tu l\'as fixée pour une raison. Respecte-la."',
-        '    ✓ "Terminé. On reprend demain."',
-        "",
-        "NEVER:",
-        '  ✗ "Je suis ton coach" / "maintiens la discipline" / vous form',
-        "  ✗ Long sentences that build toward a conclusion",
-        toneGuide,
-        "",
-      ];
-
-    case "de":
-      return [
-        "GERMAN COACHING VOICE:",
-        "Du, not Sie. Efficient, clear, human. German directness — without coldness.",
-        "Say exactly what needs to be said. German respects precision and brevity.",
-        "",
-        "NATURAL OPENERS (use when it fits):",
-        "  Stop · Hey · Kurz · Okay · Warte · Atme · Schau",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "Passiert. Was jetzt?"',
-        '    ✓ "Das war\'s damit. Kurz wegtreten."',
-        '    ✓ "Verlust gebucht. Jetzt durchatmen."',
-        "  FOMO / chasing:",
-        '    ✓ "Der Move ist durch. Lass ihn ziehen."',
-        '    ✓ "Nicht dein Setup. Nächste Chance."',
-        '    ✓ "Verpasst — okay. Warte auf deins."',
-        "  Revenge impulse:",
-        '    ✓ "Stop. Weg vom Bildschirm."',
-        '    ✓ "Nicht aus diesem Gefühl heraus handeln."',
-        '    ✓ "Nicht jetzt. Lass das sacken."',
-        "  Cooling down / resetting:",
-        '    ✓ "Gut. Du kommst raus. Was ist der nächste Schritt?"',
-        '    ✓ "Du bist raus aus dem Modus. Welches Setup kommt als nächstes?"',
-        "  Account locked / limit hit:",
-        '    ✓ "Das ist die Grenze. Heute ist Schluss."',
-        '    ✓ "Du hast das Limit gesetzt. Halte es ein."',
-        '    ✓ "Fertig für heute. Morgen weiter."',
-        "",
-        "NEVER:",
-        '  ✗ "Ich bin dein Coach" / "halte die Disziplin aufrecht" / Sie form',
-        "  ✗ Long explanations — Klarheit über Länge",
-        toneGuide,
-        "",
-      ];
-
-    case "ru":
-      return [
-        "RUSSIAN COACHING VOICE:",
-        "Ты, informal. Direct, warm, no-nonsense. Like a fellow trader stepping in — not a trainer.",
-        "Russian directness is valued. Say it plainly. No fluff.",
-        "",
-        "NATURAL OPENERS (use when it fits):",
-        "  Стоп · Слушай · Подожди · Дыши · Окей · Эй",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "Случается. Что дальше?"',
-        '    ✓ "Всё, убыток зафиксирован. Отойди на минуту."',
-        '    ✓ "Это бывает. Сделай шаг назад."',
-        "  FOMO / chasing:",
-        '    ✓ "Движение ушло. Отпусти."',
-        '    ✓ "Это не твой сетап. Жди следующего."',
-        '    ✓ "Пропустил — ничего. Жди своего."',
-        "  Revenge impulse:",
-        '    ✓ "Стоп. Отойди от экрана."',
-        '    ✓ "Не торгуй этот импульс."',
-        '    ✓ "Не сейчас. Дай этому пройти."',
-        "  Cooling down / resetting:",
-        '    ✓ "Хорошо. Выходишь из этого. Что следующее?"',
-        '    ✓ "Ты вышел из режима. Какой следующий сетап?"',
-        "  Account locked / limit hit:",
-        '    ✓ "Лимит достигнут. На сегодня всё."',
-        '    ✓ "Ты сам поставил этот лимит. Держи его."',
-        '    ✓ "Готово на сегодня. Завтра снова."',
-        "",
-        "NEVER:",
-        '  ✗ "Я твой тренер" / "соблюдай дисциплину" / вы form',
-        "  ✗ Long explanations — говори прямо",
-        toneGuide,
-        "",
-      ];
-
-    case "ar":
-      return [
-        "ARABIC COACHING VOICE:",
-        "Modern Standard Arabic — clear, accessible, direct. Warm but not overly formal.",
-        "Write right-to-left naturally. Short sentences. No lecture tone.",
-        "",
-        "NATURAL OPENERS (use when it fits):",
-        "  توقف · اسمع · لحظة · تنفس · تمام · انتبه",
-        "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
-        "  After a loss:",
-        '    ✓ "حصل. ماذا الآن؟"',
-        '    ✓ "هذا يحدث. ابتعد للحظة."',
-        '    ✓ "الخسارة سُجِّلت. خذ نفساً."',
-        "  FOMO / chasing:",
-        '    ✓ "الحركة انتهت. دعها تمر."',
-        '    ✓ "هذا ليس إعدادك. انتظر التالي."',
-        '    ✓ "فاتك — لا بأس. انتظر إعدادك."',
-        "  Revenge impulse:",
-        '    ✓ "توقف. ابتعد عن الشاشة."',
-        '    ✓ "لا تتداول هذا الشعور."',
-        '    ✓ "ليس الآن. دع هذا يمر."',
-        "  Cooling down / resetting:",
-        '    ✓ "جيد. أنت تخرج من هذا. ما هي الخطوة التالية؟"',
-        '    ✓ "خرجت من الوضع. ما الإعداد التالي؟"',
-        "  Account locked / limit hit:",
-        '    ✓ "وصلت للحد. انتهى اليوم."',
-        '    ✓ "أنت وضعت هذا الحد لسبب. التزم به."',
-        '    ✓ "انتهى لهذا اليوم. غداً من جديد."',
-        "",
-        "NEVER:",
-        '  ✗ "أنا مدربك" / "حافظ على الانضباط" / overly formal MSA register',
-        "  ✗ Long explanatory sentences",
-        toneGuide,
-        "",
-      ];
-
-    default:
-      return [];
-  }
-}
+// Coaching voice is in voice-writer.ts. Dead code below removed.
 
 // Voice guidance for non-coaching modes (casual / meta / clarification).
 // Each language gets its own natural-chat style note — more specific than one generic line.
@@ -583,11 +287,8 @@ function buildSystemPrompt(input: AICoachInput): string {
     lines.push("");
   }
 
-  // Language voice: full coaching block for coaching mode; per-language casual note for others
-  if (isCoaching) {
-    const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
-    if (langBlock.length > 0) lines.push(...langBlock);
-  } else {
+  // Language voice: casual note for non-coaching (coaching voice is in voice-writer.ts)
+  if (!isCoaching) {
     lines.push(...buildLanguageCasualNote(input.language));
   }
 
@@ -811,6 +512,112 @@ function buildSystemPrompt(input: AICoachInput): string {
   return lines.join("\n");
 }
 
+// ─── Brain helpers — decide intent/cues before writing ──────────────────────
+
+function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
+  if (input.guardianLocked) return "account_locked";
+  if (input.cooldownActive) return "cooldown_active";
+  if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) return "rule_limit_hit";
+  if (input.hasBlockingViolation) return "rule_limit_hit";
+  if (input.isPreNewsWindow) return "news_warning";
+
+  const state = input.currentState?.toLowerCase() ?? "";
+  if (state.includes("fomo")) return "stop_fomo";
+  if (state.includes("revenge")) return "stop_revenge";
+  if (state.includes("tilt") || state.includes("out_of_control")) return "ground_tilt";
+  if (state.includes("just_took_two_loss")) return "acknowledge_multiple_losses";
+  if (state.includes("just_took_loss")) return "acknowledge_loss";
+  if (state.includes("confused")) return "surface_purpose";
+  if (state.includes("reset") || state.includes("calm")) return "forward_anchor";
+  if (state.includes("premarket")) return "morning_anchor";
+  if (input.sessionEnded) return "end_of_day";
+  return "general_coaching";
+}
+
+function derivePersonalCue(intent: CoachingIntent, input: AICoachInput): PersonalCue | null {
+  switch (intent) {
+    case "surface_purpose":
+      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      return null;
+    case "acknowledge_loss":
+    case "acknowledge_multiple_losses":
+      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      return null;
+    case "ground_tilt":
+    case "stop_revenge":
+      if (input.groundingReminder) return { type: "grounding", text: input.groundingReminder };
+      return null;
+    case "morning_anchor":
+      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      if (input.groundingReminder) return { type: "grounding", text: input.groundingReminder };
+      return null;
+    case "forward_anchor":
+    case "end_of_day":
+      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      return null;
+    default:
+      return null;
+  }
+}
+
+function deriveKnownPattern(input: AICoachInput): string | null {
+  const state = input.currentState?.toLowerCase() ?? "";
+  const hasTiltOrRevenge =
+    state.includes("tilt") || state.includes("out_of_control") || state.includes("revenge");
+  const hasLoss = state.includes("just_took_loss") || state.includes("fomo");
+  if (!hasTiltOrRevenge && !hasLoss) return null;
+
+  const parts: string[] = [];
+  if (input.primaryChallenge) parts.push(input.primaryChallenge);
+  if (input.tiltTrigger && hasTiltOrRevenge) parts.push(`Trigger: ${input.tiltTrigger}`);
+  if (input.tiltThought && hasTiltOrRevenge) parts.push(`They think: "${input.tiltThought}"`);
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
+function buildConstraintMessage(input: AICoachInput): string | null {
+  if (input.guardianLocked) {
+    const reason = input.lockoutReason ?? "daily limit reached";
+    return `Account locked for today (${reason}).`;
+  }
+  if (input.cooldownActive) return "Trader is in a cooldown period.";
+  if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) {
+    return `Consecutive-loss limit reached (${input.recentLossStreak} of ${input.stopAfterLosses}).`;
+  }
+  if (input.hasBlockingViolation && input.violationMessage) return input.violationMessage;
+  if (input.isPreNewsWindow && input.preNewsMessage) return input.preNewsMessage;
+  if (input.alertContext) return input.alertContext;
+  return null;
+}
+
+function shouldAskQuestion(intent: CoachingIntent, responseStyle: string | null): boolean {
+  if (responseStyle === "Reflective questions") return true;
+  if (responseStyle === "One-line prompts") return false;
+  const askIntents = new Set<CoachingIntent>([
+    "surface_purpose", "acknowledge_loss", "morning_anchor", "general_coaching", "forward_anchor",
+  ]);
+  return askIntents.has(intent);
+}
+
+function buildVoiceWriterInputFromCoachInput(input: AICoachInput): VoiceWriterInput {
+  const intent = deriveCoachingIntent(input);
+  return {
+    intent,
+    traderMessage: input.message,
+    constraintMessage: buildConstraintMessage(input),
+    personalCue: derivePersonalCue(intent, input),
+    knownPattern: deriveKnownPattern(input),
+    askQuestion: shouldAskQuestion(intent, input.responseStyle),
+    language: input.language,
+    coachingTone: input.coachingTone,
+    interruptionStyle: input.interruptionStyle,
+    responseStyle: input.responseStyle,
+    preferredAddress: input.preferredAddress,
+    recentMessages: input.recentMessages,
+  };
+}
+
 export function isAICoachEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
@@ -849,6 +656,11 @@ export async function generateAICoachReply(
   input: AICoachInput,
 ): Promise<string | null> {
   if (!isAICoachEnabled()) return null;
+
+  // Coaching mode → dedicated voice writer (brain/voice split)
+  if (input.conversationMode === "coaching") {
+    return generateVoiceReply(buildVoiceWriterInputFromCoachInput(input));
+  }
 
   const client = new Anthropic();
 
