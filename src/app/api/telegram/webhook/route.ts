@@ -9,7 +9,7 @@ import {
 } from "@/lib/coach-actions";
 import { prisma } from "@/lib/db";
 import { getLocale } from "@/lib/i18n";
-import type { BotLocale } from "@/lib/i18n/types";
+import type { BotLocale } from "@/lib/i18n";
 import {
   deriveTodaySessionState,
   getGuardianSnapshot,
@@ -144,19 +144,7 @@ async function connectTelegramAccount(params: {
 
   if (!linkToken || linkToken.expiresAt < new Date()) {
     const defaultLocale = getLocale();
-    await sendTelegramMessage(
-      params.telegramChatId,
-      defaultLocale.system.invalidLink,
-      {
-        replyMarkup: {
-          keyboard: getTelegramQuickActionKeyboard(defaultLocale),
-          resize_keyboard: true,
-          input_field_placeholder: defaultLocale.system.inputPlaceholder,
-        },
-      },
-    );
-
-    return NextResponse.json({ ok: true });
+    return replyToTelegram(params.telegramChatId, defaultLocale.system.invalidLink, defaultLocale);
   }
 
   await prisma.$transaction([
@@ -364,7 +352,7 @@ export async function POST(request: Request) {
     }),
   );
 
-  const coachReply = generateCoachReply(canonicalText || "check in", coachContext);
+  const coachReply = generateCoachReply(canonicalText || locale.keyboard.checkIn, coachContext);
   const replyText =
     (matchedAction && getLocaleReplyForQuickAction(matchedAction.id, locale)) ??
     coachReply.reply;
@@ -380,7 +368,7 @@ export async function POST(request: Request) {
   await logCoachEvent({
     userId: connection.user.id,
     source: "telegram",
-    message: rawText || "check in",
+    message: rawText || locale.keyboard.checkIn,
     detectedIntent: coachReply.intent,
     coachMode: coachReply.mode,
     traderState: loggedTraderState,
@@ -412,13 +400,5 @@ export async function POST(request: Request) {
     },
   });
 
-  await sendTelegramMessage(chatId, replyText, {
-    replyMarkup: {
-      keyboard: getTelegramQuickActionKeyboard(locale),
-      resize_keyboard: true,
-      input_field_placeholder: locale.system.inputPlaceholder,
-    },
-  });
-
-  return NextResponse.json({ ok: true });
+  return replyToTelegram(chatId, replyText, locale);
 }

@@ -163,8 +163,8 @@ const KEYBOARD_KEY_TO_ACTION_ID: Record<keyof BotLocale["keyboard"], string> = {
 };
 
 /**
- * Maps a locale keyboard label back to its action, so canonical Hebrew message
- * can be forwarded to state-detection logic unchanged.
+ * Maps a localised keyboard button label to its corresponding quick action,
+ * enabling the webhook to resolve canonical action data from any locale's text.
  */
 export function findActionByLocaleText(
   text: string,
