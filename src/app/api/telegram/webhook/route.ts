@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { TraderCurrentState } from "@prisma/client";
 
 import { generateAICoachReply } from "@/lib/ai-coach";
+import type { CoachIntent } from "@/lib/coach";
 import {
   findActionByLocaleText,
   getLocaleReplyForQuickAction,
@@ -137,6 +138,8 @@ async function connectTelegramAccount(params: {
   });
 
   if (linkToken?.usedAt) {
+    // Token already consumed — connection was created on a previous delivery.
+    // Return 200 silently so Telegram stops retrying this update.
     return NextResponse.json({ ok: true });
   }
 
@@ -200,7 +203,7 @@ async function connectTelegramAccount(params: {
   );
 }
 
-function deriveLogIntent(actionId: string | null, rawText: string): string {
+function deriveLogIntent(actionId: string | null, rawText: string): CoachIntent {
   if (actionId) {
     if (actionId === "check-in") return "check_in";
     if (actionId === "day-summary") return "day_summary";
@@ -220,6 +223,7 @@ export async function POST(request: Request) {
   const telegramChatId = payload.message?.chat?.id;
 
   if (!telegramUserId || !telegramChatId) {
+    // Non-message update type (channel post, poll, etc.) — acknowledge and ignore.
     return NextResponse.json({ ok: true });
   }
 

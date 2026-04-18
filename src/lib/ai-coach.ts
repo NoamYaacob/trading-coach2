@@ -128,18 +128,21 @@ export async function generateAICoachReply(
   input: AICoachInput,
 ): Promise<string | null> {
   try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      system: [
-        {
-          type: "text",
-          text: buildSystemPrompt(input),
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [{ role: "user", content: input.message }],
-    });
+    const response = await client.messages.create(
+      {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        system: [
+          {
+            type: "text",
+            text: buildSystemPrompt(input),
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [{ role: "user", content: input.message }],
+      },
+      { timeout: 10_000 },
+    );
 
     const block = response.content[0];
     return block?.type === "text" ? block.text.trim() : null;
