@@ -845,6 +845,7 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
   const [didSave, setDidSave] = useState(false);
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
   const [personalCoachingOpen, setPersonalCoachingOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const visibleSessionOptions = getVisibleSessionOptions(
     form.primaryMarket,
     form.timezone,
@@ -1054,21 +1055,27 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
       className="rounded-[2rem] border border-stone-200 bg-white/95 p-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.45)] sm:p-8"
     >
       <div className="space-y-8">
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-stone-950">Account / identity</h2>
-            <p className="mt-1 text-sm text-stone-600">
-              Your authenticated account is the only identity used for onboarding.
-            </p>
-          </div>
+
+        {/* Account */}
+        <section className="space-y-3">
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
             Signed in as <span className="font-medium text-stone-950">{userEmail}</span>
           </div>
         </section>
 
+        {/* Section 1: Trader identity */}
         <section className="space-y-4 border-t border-stone-200 pt-8">
-          <h2 className="text-lg font-semibold text-stone-950">Trader profile</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-stone-950">Trader identity</h2>
+            <p className="mt-1 text-sm text-stone-500">How you trade and how you want to be coached.</p>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Preferred language"
+              value={form.preferredLanguage}
+              options={languageOptions}
+              onChange={(value) => updateTextField("preferredLanguage", value)}
+            />
             <SelectField
               label="Primary market"
               value={form.primaryMarket}
@@ -1081,79 +1088,35 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
               options={tradingStyleOptions}
               onChange={(value) => updateTextField("tradingStyle", value)}
             />
-            <SelectField
-              label="Experience years"
-              value={form.experienceYears}
-              options={experienceOptions}
-              onChange={(value) => updateTextField("experienceYears", value)}
-            />
-            <SelectField
-              label="Timezone"
-              value={form.timezone}
-              options={timezoneOptions}
-              onChange={(value) => updateTextField("timezone", value)}
-            />
           </div>
-          <ChipGroup
-            label="Trading days"
-            options={tradingDayOptions}
-            selected={ensureArray(form.tradingDays)}
-            onToggle={(value) => toggleMultiValue("tradingDays", value)}
-          />
-          <ChipGroup
-            label="Trading session"
-            options={visibleSessionOptions}
-            selected={ensureArray(form.tradingSession)}
-            onToggle={(value) => toggleMultiValue("tradingSession", value)}
-          />
-        </section>
-
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <h2 className="text-lg font-semibold text-stone-950">Risk rules</h2>
           <div className="grid gap-4">
-            <NumericPresetFieldControl
-              label="Account size"
-              field={form.accountSize}
-              options={accountSizeOptions}
-              onModeChange={(value) => updateNumericField("accountSize", { mode: value })}
-              onCustomChange={(value) => updateNumericField("accountSize", { custom: value })}
-              placeholder="Enter account size"
+            <SegmentedControl
+              label="Coaching tone"
+              value={form.coachingTone}
+              options={coachingToneOptions}
+              onChange={(value) => updateTextField("coachingTone", value)}
             />
-            <NumericPresetFieldControl
-              label="Max daily loss"
-              field={form.maxDailyLoss}
-              options={dailyLossOptions}
-              onModeChange={(value) => updateNumericField("maxDailyLoss", { mode: value })}
-              onCustomChange={(value) => updateNumericField("maxDailyLoss", { custom: value })}
-              placeholder="Enter max daily loss"
+            <SegmentedControl
+              label="Interruption style"
+              value={form.interruptionStyle}
+              options={interruptionStyleOptions}
+              onChange={(value) => updateTextField("interruptionStyle", value)}
             />
-            <NumericPresetFieldControl
-              label="Risk per trade"
-              field={form.riskPerTrade}
-              options={riskPerTradeOptions}
-              onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
-              onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
-              placeholder="Enter risk per trade"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Max trades per day"
-              value={form.maxTradesPerDay}
-              options={maxTradesOptions}
-              onChange={(value) => updateTextField("maxTradesPerDay", value)}
-            />
-            <SelectField
-              label="Stop after losses"
-              value={form.stopAfterLosses}
-              options={stopAfterLossesOptions}
-              onChange={(value) => updateTextField("stopAfterLosses", value)}
+            <SegmentedControl
+              label="Response style"
+              value={form.responseStyle}
+              options={responseStyleOptions}
+              onChange={(value) => updateTextField("responseStyle", value)}
             />
           </div>
         </section>
 
+        {/* Section 2: What breaks your discipline */}
         <section className="space-y-4 border-t border-stone-200 pt-8">
-          <h2 className="text-lg font-semibold text-stone-950">Mental profile</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-stone-950">What breaks your discipline</h2>
+            <p className="mt-1 text-sm text-stone-500">Knowing your patterns helps the coach catch you before you spiral.</p>
+          </div>
           <ChipGroup
             label="Primary challenge"
             options={primaryChallengeOptions}
@@ -1201,163 +1164,214 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
               />
             ) : null}
           </div>
+        </section>
+
+        {/* Section 3: What really matters to you */}
+        <section className="space-y-4 border-t border-stone-200 pt-8">
+          <div>
+            <h2 className="text-lg font-semibold text-stone-950">What really matters to you</h2>
+            <p className="mt-1 text-sm text-stone-500">The coach uses this to ground you when you&apos;re off track — sparingly, not on repeat.</p>
+          </div>
+          <TextareaField
+            label="Why do you trade?"
+            name="tradingWhy"
+            value={form.tradingWhy}
+            onChange={updateTextField}
+            placeholder="e.g. financial freedom, replace my salary, passion for markets…"
+          />
+          <TextareaField
+            label="What are you building toward?"
+            name="tradingGoal"
+            value={form.tradingGoal}
+            onChange={updateTextField}
+            placeholder="e.g. leave my job in 2 years, support my family, grow a prop account…"
+          />
+          <TextareaField
+            label="What helps you refocus under pressure?"
+            name="groundingReminder"
+            value={form.groundingReminder}
+            onChange={updateTextField}
+            placeholder="e.g. remember my rules, step away for 5 minutes, think about why I started…"
+          />
+        </section>
+
+        {/* Section 4: Protection rules */}
+        <section className="space-y-4 border-t border-stone-200 pt-8">
+          <div>
+            <h2 className="text-lg font-semibold text-stone-950">Your protection rules</h2>
+            <p className="mt-1 text-sm text-stone-500">Hard limits that protect your account and your psychology.</p>
+          </div>
           <div className="grid gap-4">
-            <SegmentedControl
-              label="Coaching tone"
-              value={form.coachingTone}
-              options={coachingToneOptions}
-              onChange={(value) => updateTextField("coachingTone", value)}
+            <NumericPresetFieldControl
+              label="Account size"
+              field={form.accountSize}
+              options={accountSizeOptions}
+              onModeChange={(value) => updateNumericField("accountSize", { mode: value })}
+              onCustomChange={(value) => updateNumericField("accountSize", { custom: value })}
+              placeholder="Enter account size"
             />
-            <SegmentedControl
-              label="Interruption style"
-              value={form.interruptionStyle}
-              options={interruptionStyleOptions}
-              onChange={(value) => updateTextField("interruptionStyle", value)}
+            <NumericPresetFieldControl
+              label="Max daily loss"
+              field={form.maxDailyLoss}
+              options={dailyLossOptions}
+              onModeChange={(value) => updateNumericField("maxDailyLoss", { mode: value })}
+              onCustomChange={(value) => updateNumericField("maxDailyLoss", { custom: value })}
+              placeholder="Enter max daily loss"
             />
-            <SegmentedControl
-              label="Response style"
-              value={form.responseStyle}
-              options={responseStyleOptions}
-              onChange={(value) => updateTextField("responseStyle", value)}
+            <NumericPresetFieldControl
+              label="Risk per trade"
+              field={form.riskPerTrade}
+              options={riskPerTradeOptions}
+              onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
+              onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
+              placeholder="Enter risk per trade"
             />
           </div>
-
-          <div className="rounded-2xl border border-stone-200 bg-stone-50">
-            <button
-              type="button"
-              onClick={() => setPersonalCoachingOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
-            >
-              <div>
-                <span className="text-sm font-medium text-stone-800">
-                  Optional: help your coach know you better
-                </span>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  These answers are never shared — they help the AI coach speak to you personally.
-                </p>
-              </div>
-              <span className="ml-4 shrink-0 text-stone-400 text-sm">
-                {personalCoachingOpen ? "▲" : "▼"}
-              </span>
-            </button>
-
-            {personalCoachingOpen ? (
-              <div className="space-y-4 border-t border-stone-200 px-4 pb-4 pt-4">
-                <TextareaField
-                  label="Why do you trade?"
-                  name="tradingWhy"
-                  value={form.tradingWhy}
-                  onChange={updateTextField}
-                  placeholder="e.g. financial freedom, replace my salary, passion for markets…"
-                />
-                <TextareaField
-                  label="What are you building toward?"
-                  name="tradingGoal"
-                  value={form.tradingGoal}
-                  onChange={updateTextField}
-                  placeholder="e.g. leave my job in 2 years, support my family, grow a prop account…"
-                />
-                <TextareaField
-                  label="What helps you refocus under pressure?"
-                  name="groundingReminder"
-                  value={form.groundingReminder}
-                  onChange={updateTextField}
-                  placeholder="e.g. remember my rules, step away for 5 minutes, think about why I started…"
-                />
-              </div>
-            ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Max trades per day"
+              value={form.maxTradesPerDay}
+              options={maxTradesOptions}
+              onChange={(value) => updateTextField("maxTradesPerDay", value)}
+            />
+            <SelectField
+              label="Stop after losses"
+              value={form.stopAfterLosses}
+              options={stopAfterLossesOptions}
+              onChange={(value) => updateTextField("stopAfterLosses", value)}
+            />
           </div>
         </section>
 
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <h2 className="text-lg font-semibold text-stone-950">Coaching preferences</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Preferred language"
-              value={form.preferredLanguage}
-              options={languageOptions}
-              onChange={(value) => updateTextField("preferredLanguage", value)}
-            />
+        {/* Section 5: Advanced settings [collapsed] */}
+        <section className="border-t border-stone-200 pt-8">
+          <div className="rounded-2xl border border-stone-200 bg-stone-50">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((o) => !o)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <span className="text-sm font-medium text-stone-800">Advanced settings</span>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Trading schedule, check-ins, news alerts, and calendar settings.
+                </p>
+              </div>
+              <span className="ml-4 shrink-0 text-stone-400 text-sm">
+                {advancedOpen ? "▲" : "▼"}
+              </span>
+            </button>
+
+            {advancedOpen ? (
+              <div className="space-y-4 border-t border-stone-200 px-4 pb-4 pt-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SelectField
+                    label="Experience years"
+                    value={form.experienceYears}
+                    options={experienceOptions}
+                    onChange={(value) => updateTextField("experienceYears", value)}
+                  />
+                  <SelectField
+                    label="Timezone"
+                    value={form.timezone}
+                    options={timezoneOptions}
+                    onChange={(value) => updateTextField("timezone", value)}
+                  />
+                </div>
+                <ChipGroup
+                  label="Trading days"
+                  options={tradingDayOptions}
+                  selected={ensureArray(form.tradingDays)}
+                  onToggle={(value) => toggleMultiValue("tradingDays", value)}
+                />
+                <ChipGroup
+                  label="Trading session"
+                  options={visibleSessionOptions}
+                  selected={ensureArray(form.tradingSession)}
+                  onToggle={(value) => toggleMultiValue("tradingSession", value)}
+                />
+                <div className="grid gap-4">
+                  <ToggleField
+                    label="Enable premarket check-in"
+                    checked={form.premarketCheckinEnabled}
+                    onChange={(checked) => updateBooleanField("premarketCheckinEnabled", checked)}
+                  />
+                  <ToggleField
+                    label="Enable postmarket review"
+                    checked={form.postmarketReviewEnabled}
+                    onChange={(checked) => updateBooleanField("postmarketReviewEnabled", checked)}
+                  />
+                  <ToggleField
+                    label="Enable news alerts"
+                    checked={form.newsAlertsEnabled}
+                    onChange={(checked) => updateBooleanField("newsAlertsEnabled", checked)}
+                  />
+                  <ToggleField
+                    label="Only high-impact news"
+                    checked={form.highImpactOnly}
+                    onChange={(checked) => updateBooleanField("highImpactOnly", checked)}
+                    disabled={!form.newsAlertsEnabled}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SegmentedControl
+                    label="Check-in format"
+                    value={form.checkinFormat}
+                    options={checkinFormatOptions}
+                    onChange={(value) => updateTextField("checkinFormat", value)}
+                    disabled={!form.premarketCheckinEnabled}
+                  />
+                  <SelectField
+                    label="Pre-news minutes"
+                    value={form.preNewsMinutes}
+                    options={preNewsMinutesOptions}
+                    onChange={(value) => updateTextField("preNewsMinutes", value)}
+                    disabled={!form.newsAlertsEnabled}
+                  />
+                  <SelectField
+                    label="Economic calendar source"
+                    value={form.economicCalendarProviderKey}
+                    options={economicCalendarProviderOptions}
+                    onChange={(value) => updateTextField("economicCalendarProviderKey", value)}
+                    helperText={
+                      form.economicCalendarProviderKey === "tradingeconomics_stub"
+                        ? "Uses realistic TradingEconomics-style test data. Live sync is not connected yet."
+                        : "Uses the internal demo feed for standard news-awareness behavior."
+                    }
+                  />
+                  <SelectField
+                    label="News scenario for demo testing"
+                    value={form.economicCalendarStubScenario}
+                    options={economicCalendarStubScenarioOptions}
+                    onChange={(value) => updateTextField("economicCalendarStubScenario", value)}
+                    disabled={form.economicCalendarProviderKey !== "tradingeconomics_stub"}
+                    helperText={
+                      form.economicCalendarProviderKey === "tradingeconomics_stub"
+                        ? "Choose the market-news condition you want the product to simulate."
+                        : "Scenario selection becomes available when the TradingEconomics-ready feed is selected."
+                    }
+                  />
+                </div>
+                <ChipGroup
+                  label="Review focus"
+                  options={reviewFocusOptions}
+                  selected={ensureArray(form.reviewFocus)}
+                  onToggle={(value) => toggleMultiValue("reviewFocus", value)}
+                  disabled={!form.postmarketReviewEnabled}
+                />
+                {ensureArray(form.reviewFocus).includes("Other") ? (
+                  <TextField
+                    label="Other review focus"
+                    name="reviewFocusOther"
+                    value={form.reviewFocusOther}
+                    onChange={updateTextField}
+                    placeholder="Optional"
+                    disabled={!form.postmarketReviewEnabled}
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="grid gap-4">
-            <ToggleField
-              label="Enable premarket check-in"
-              checked={form.premarketCheckinEnabled}
-              onChange={(checked) => updateBooleanField("premarketCheckinEnabled", checked)}
-            />
-            <ToggleField
-              label="Enable postmarket review"
-              checked={form.postmarketReviewEnabled}
-              onChange={(checked) => updateBooleanField("postmarketReviewEnabled", checked)}
-            />
-            <ToggleField
-              label="Enable news alerts"
-              checked={form.newsAlertsEnabled}
-              onChange={(checked) => updateBooleanField("newsAlertsEnabled", checked)}
-            />
-            <ToggleField
-              label="Only high-impact news"
-              checked={form.highImpactOnly}
-              onChange={(checked) => updateBooleanField("highImpactOnly", checked)}
-              disabled={!form.newsAlertsEnabled}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SegmentedControl
-              label="Check-in format"
-              value={form.checkinFormat}
-              options={checkinFormatOptions}
-              onChange={(value) => updateTextField("checkinFormat", value)}
-              disabled={!form.premarketCheckinEnabled}
-            />
-            <SelectField
-              label="Pre-news minutes"
-              value={form.preNewsMinutes}
-              options={preNewsMinutesOptions}
-              onChange={(value) => updateTextField("preNewsMinutes", value)}
-              disabled={!form.newsAlertsEnabled}
-            />
-            <SelectField
-              label="Economic calendar source"
-              value={form.economicCalendarProviderKey}
-              options={economicCalendarProviderOptions}
-              onChange={(value) => updateTextField("economicCalendarProviderKey", value)}
-              helperText={
-                form.economicCalendarProviderKey === "tradingeconomics_stub"
-                  ? "Uses realistic TradingEconomics-style test data. Live sync is not connected yet."
-                  : "Uses the internal demo feed for standard news-awareness behavior."
-              }
-            />
-            <SelectField
-              label="News scenario for demo testing"
-              value={form.economicCalendarStubScenario}
-              options={economicCalendarStubScenarioOptions}
-              onChange={(value) => updateTextField("economicCalendarStubScenario", value)}
-              disabled={form.economicCalendarProviderKey !== "tradingeconomics_stub"}
-              helperText={
-                form.economicCalendarProviderKey === "tradingeconomics_stub"
-                  ? "Choose the market-news condition you want the product to simulate."
-                  : "Scenario selection becomes available when the TradingEconomics-ready feed is selected."
-              }
-            />
-          </div>
-          <ChipGroup
-            label="Review focus"
-            options={reviewFocusOptions}
-            selected={ensureArray(form.reviewFocus)}
-            onToggle={(value) => toggleMultiValue("reviewFocus", value)}
-            disabled={!form.postmarketReviewEnabled}
-          />
-          {ensureArray(form.reviewFocus).includes("Other") ? (
-            <TextField
-              label="Other review focus"
-              name="reviewFocusOther"
-              value={form.reviewFocusOther}
-              onChange={updateTextField}
-              placeholder="Optional"
-              disabled={!form.postmarketReviewEnabled}
-            />
-          ) : null}
         </section>
 
         {notice ? (
