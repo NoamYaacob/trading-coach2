@@ -46,7 +46,10 @@ type TextFieldName =
   | "preNewsMinutes"
   | "economicCalendarProviderKey"
   | "economicCalendarStubScenario"
-  | "preferredLanguage";
+  | "preferredLanguage"
+  | "tradingWhy"
+  | "tradingGoal"
+  | "groundingReminder";
 
 type OnboardingFormState = {
   primaryMarket: string;
@@ -80,6 +83,9 @@ type OnboardingFormState = {
   economicCalendarProviderKey: string;
   economicCalendarStubScenario: string;
   preferredLanguage: string;
+  tradingWhy: string;
+  tradingGoal: string;
+  groundingReminder: string;
 };
 
 type Notice = {
@@ -427,6 +433,9 @@ const initialState: OnboardingFormState = {
   economicCalendarStubScenario:
     economicCalendarStubScenarioOptions[0]?.value ?? "mixed_day",
   preferredLanguage: "he",
+  tradingWhy: "",
+  tradingGoal: "",
+  groundingReminder: "",
 };
 
 function ensureArray(values: unknown): string[] {
@@ -570,6 +579,34 @@ function TextField({
         placeholder={placeholder}
         onChange={(event) => onChange(name, event.target.value)}
         className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed"
+      />
+    </label>
+  );
+}
+
+function TextareaField({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  name: TextFieldName;
+  value: string;
+  onChange: (name: TextFieldName, value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-stone-800">{label}</span>
+      <textarea
+        name={name}
+        value={value}
+        rows={2}
+        placeholder={placeholder}
+        onChange={(e) => onChange(name, e.target.value)}
+        className="rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200 resize-none"
       />
     </label>
   );
@@ -807,6 +844,7 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
   const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
   const [didSave, setDidSave] = useState(false);
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
+  const [personalCoachingOpen, setPersonalCoachingOpen] = useState(false);
   const visibleSessionOptions = getVisibleSessionOptions(
     form.primaryMarket,
     form.timezone,
@@ -919,6 +957,9 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
         coachingTone: form.coachingTone,
         interruptionStyle: form.interruptionStyle,
         responseStyle: form.responseStyle,
+        tradingWhy: form.tradingWhy.trim() || undefined,
+        tradingGoal: form.tradingGoal.trim() || undefined,
+        groundingReminder: form.groundingReminder.trim() || undefined,
       },
       coachingPreferences: {
         premarketCheckinEnabled: form.premarketCheckinEnabled,
@@ -1179,6 +1220,52 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
               options={responseStyleOptions}
               onChange={(value) => updateTextField("responseStyle", value)}
             />
+          </div>
+
+          <div className="rounded-2xl border border-stone-200 bg-stone-50">
+            <button
+              type="button"
+              onClick={() => setPersonalCoachingOpen((o) => !o)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <span className="text-sm font-medium text-stone-800">
+                  Optional: help your coach know you better
+                </span>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  These answers are never shared — they help the AI coach speak to you personally.
+                </p>
+              </div>
+              <span className="ml-4 shrink-0 text-stone-400 text-sm">
+                {personalCoachingOpen ? "▲" : "▼"}
+              </span>
+            </button>
+
+            {personalCoachingOpen ? (
+              <div className="space-y-4 border-t border-stone-200 px-4 pb-4 pt-4">
+                <TextareaField
+                  label="Why do you trade?"
+                  name="tradingWhy"
+                  value={form.tradingWhy}
+                  onChange={updateTextField}
+                  placeholder="e.g. financial freedom, replace my salary, passion for markets…"
+                />
+                <TextareaField
+                  label="What are you building toward?"
+                  name="tradingGoal"
+                  value={form.tradingGoal}
+                  onChange={updateTextField}
+                  placeholder="e.g. leave my job in 2 years, support my family, grow a prop account…"
+                />
+                <TextareaField
+                  label="What helps you refocus under pressure?"
+                  name="groundingReminder"
+                  value={form.groundingReminder}
+                  onChange={updateTextField}
+                  placeholder="e.g. remember my rules, step away for 5 minutes, think about why I started…"
+                />
+              </div>
+            ) : null}
           </div>
         </section>
 
