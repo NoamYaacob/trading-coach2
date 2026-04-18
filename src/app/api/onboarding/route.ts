@@ -29,6 +29,7 @@ type OnboardingRequest = {
     coachingTone?: string;
     interruptionStyle?: string;
     responseStyle?: string;
+    preferredAddress?: string;
     tradingWhy?: string;
     tradingGoal?: string;
     groundingReminder?: string;
@@ -102,6 +103,7 @@ function normalizeMentalProfile(
     coachingTone: mentalProfile.coachingTone,
     interruptionStyle: mentalProfile.interruptionStyle,
     responseStyle: mentalProfile.responseStyle,
+    preferredAddress: mentalProfile.preferredAddress,
     tiltTriggers: mentalProfile.tiltTrigger ? [mentalProfile.tiltTrigger] : [],
     confidenceNotes: mentalProfile.tiltThought,
     tradingWhy: mentalProfile.tradingWhy,

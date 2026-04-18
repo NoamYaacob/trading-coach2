@@ -57,6 +57,7 @@ export default async function OnboardingPage() {
           tradingWhy: mentalProfile.tradingWhy,
           tradingGoal: mentalProfile.tradingGoal,
           groundingReminder: mentalProfile.groundingReminder,
+          preferredAddress: mentalProfile.preferredAddress,
         }
       : null,
     coachingPreferences: coachingPreferences

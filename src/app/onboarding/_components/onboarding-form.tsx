@@ -41,6 +41,7 @@ type TextFieldName =
   | "coachingTone"
   | "interruptionStyle"
   | "responseStyle"
+  | "preferredAddress"
   | "checkinFormat"
   | "reviewFocusOther"
   | "preNewsMinutes"
@@ -72,6 +73,7 @@ type OnboardingFormState = {
   coachingTone: string;
   interruptionStyle: string;
   responseStyle: string;
+  preferredAddress: string;
   premarketCheckinEnabled: boolean;
   postmarketReviewEnabled: boolean;
   checkinFormat: string;
@@ -400,6 +402,13 @@ const languageOptions: Option[] = [
   { label: "العربية (Arabic)", value: "ar" },
 ];
 
+const preferredAddressOptions: Option[] = [
+  { label: "Masculine", value: "MASCULINE" },
+  { label: "Feminine", value: "FEMININE" },
+  { label: "Neutral", value: "NEUTRAL" },
+  { label: "No preference", value: "NO_PREFERENCE" },
+];
+
 const newUserDefaults: OnboardingFormState = {
   primaryMarket: "FUTURES",
   tradingStyle: "",
@@ -421,6 +430,7 @@ const newUserDefaults: OnboardingFormState = {
   coachingTone: "Direct",
   interruptionStyle: "",
   responseStyle: "",
+  preferredAddress: "",
   premarketCheckinEnabled: false,
   postmarketReviewEnabled: false,
   checkinFormat: "",
@@ -463,6 +473,7 @@ export type SavedOnboardingData = {
     tradingWhy: string | null;
     tradingGoal: string | null;
     groundingReminder: string | null;
+    preferredAddress: string | null;
   } | null;
   coachingPreferences: {
     premarketCheckinEnabled: boolean;
@@ -555,6 +566,7 @@ function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
     coachingTone: mp?.coachingTone ?? "",
     interruptionStyle: mp?.interruptionStyle ?? "",
     responseStyle: mp?.responseStyle ?? "",
+    preferredAddress: mp?.preferredAddress ?? "",
     premarketCheckinEnabled: cp?.premarketCheckinEnabled ?? false,
     postmarketReviewEnabled: cp?.postmarketReviewEnabled ?? false,
     checkinFormat: cp?.checkinFormat ?? "",
@@ -1093,6 +1105,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
         coachingTone: form.coachingTone,
         interruptionStyle: form.interruptionStyle,
         responseStyle: form.responseStyle,
+        preferredAddress: form.preferredAddress || undefined,
         tradingWhy: form.tradingWhy.trim() || undefined,
         tradingGoal: form.tradingGoal.trim() || undefined,
         groundingReminder: form.groundingReminder.trim() || undefined,
@@ -1242,6 +1255,12 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
               value={form.responseStyle}
               options={responseStyleOptions}
               onChange={(value) => updateTextField("responseStyle", value)}
+            />
+            <SegmentedControl
+              label="Preferred form of address"
+              value={form.preferredAddress}
+              options={preferredAddressOptions}
+              onChange={(value) => updateTextField("preferredAddress", value)}
             />
           </div>
         </section>

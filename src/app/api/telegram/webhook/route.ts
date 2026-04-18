@@ -103,6 +103,7 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
               tradingWhy: true,
               tradingGoal: true,
               groundingReminder: true,
+              preferredAddress: true,
             },
           },
           coachingPreferences: true,
@@ -394,6 +395,7 @@ export async function POST(request: Request) {
     tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
     tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
     groundingReminder: connection.user.mentalProfile?.groundingReminder ?? null,
+    preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
     conversationMode,
   };
 

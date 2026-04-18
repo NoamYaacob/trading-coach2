@@ -104,6 +104,7 @@ export type AICoachInput = {
   tradingWhy: string | null;
   tradingGoal: string | null;
   groundingReminder: string | null;
+  preferredAddress: string | null;
   conversationMode: ConversationMode;
 };
 
@@ -456,6 +457,35 @@ function buildLanguageCasualNote(language: string): string[] {
   }
 }
 
+function buildAddressGuidance(preferredAddress: string | null, language: string): string | null {
+  if (!preferredAddress || preferredAddress === "NO_PREFERENCE" || preferredAddress === "") return null;
+
+  switch (language) {
+    case "he":
+      if (preferredAddress === "MASCULINE") return "GRAMMATICAL GENDER: Use masculine Hebrew forms throughout (אתה, מוכן, עשית, יכול, הגעת).";
+      if (preferredAddress === "FEMININE") return "GRAMMATICAL GENDER: Use feminine Hebrew forms throughout (את, מוכנה, עשית, יכולה, הגעת).";
+      return "GRAMMATICAL GENDER: Prefer gender-neutral phrasing where possible in Hebrew.";
+    case "ar":
+      if (preferredAddress === "MASCULINE") return "GRAMMATICAL GENDER: Use masculine Arabic agreement forms throughout.";
+      if (preferredAddress === "FEMININE") return "GRAMMATICAL GENDER: Use feminine Arabic agreement forms throughout.";
+      return null;
+    case "es":
+      if (preferredAddress === "MASCULINE") return "GRAMMATICAL GENDER: Use masculine Spanish agreement forms (listo, preparado, cansado).";
+      if (preferredAddress === "FEMININE") return "GRAMMATICAL GENDER: Use feminine Spanish agreement forms (lista, preparada, cansada).";
+      return null;
+    case "fr":
+      if (preferredAddress === "MASCULINE") return "GRAMMATICAL GENDER: Use masculine French agreement forms throughout.";
+      if (preferredAddress === "FEMININE") return "GRAMMATICAL GENDER: Use feminine French agreement forms throughout.";
+      return null;
+    case "de":
+      if (preferredAddress === "MASCULINE") return "GRAMMATICAL GENDER: Use masculine German agreement forms where applicable.";
+      if (preferredAddress === "FEMININE") return "GRAMMATICAL GENDER: Use feminine German agreement forms where applicable.";
+      return null;
+    default:
+      return null;
+  }
+}
+
 function buildSystemPrompt(input: AICoachInput): string {
   const langName = LANGUAGE_NAMES[input.language] ?? "English";
   const mode = input.conversationMode;
@@ -514,12 +544,30 @@ function buildSystemPrompt(input: AICoachInput): string {
     "",
   ];
 
+  if (isCoaching) {
+    lines.push("COACHING RESPONSE FRAMEWORK:");
+    lines.push("Follow this sequence naturally — not rigidly, and not all four every time:");
+    lines.push("1. EMPATHY: Acknowledge what happened. One line. Not 'I understand.' Just name the weight.");
+    lines.push("2. REFLECTION: The single most relevant truth. A mirror, not a lesson.");
+    lines.push("3. NEXT STEP: One concrete action or question. Never a list.");
+    lines.push("4. VALUE REMINDER (rare — only when genuinely grounding): Surface why they trade or what grounds them.");
+    lines.push("Match the moment — sometimes one step is enough.");
+    lines.push("");
+  }
+
   // Language voice: full coaching block for coaching mode; per-language casual note for others
   if (isCoaching) {
     const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
     if (langBlock.length > 0) lines.push(...langBlock);
   } else {
     lines.push(...buildLanguageCasualNote(input.language));
+  }
+
+  // Form-of-address guidance (all modes where language agreement matters)
+  const addressGuidance = buildAddressGuidance(input.preferredAddress, input.language);
+  if (addressGuidance) {
+    lines.push(addressGuidance);
+    lines.push("");
   }
 
   // Personal coaching memory — coaching + meta only
@@ -529,13 +577,14 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
 
   if (personalParts.length > 0 && (isCoaching || isMeta)) {
-    const label = isCoaching
-      ? "PERSONAL COACHING MEMORY (do not quote verbatim):"
-      : "KNOWN ABOUT THIS PERSON:";
-    lines.push(label);
+    lines.push(isCoaching ? "PERSONAL COACHING MEMORY:" : "KNOWN ABOUT THIS PERSON:");
     lines.push(...personalParts.map((p) => `- ${p}`));
     if (isCoaching) {
-      lines.push("Surface their deeper reason only when it feels genuinely grounding — not every reply. One line.");
+      lines.push("Surface sparingly — only when it would feel genuinely grounding, not every reply:");
+      lines.push("  • Why they trade → when they question purpose or feel lost");
+      lines.push("  • Their goal → as a forward anchor after a loss or when they reset");
+      lines.push("  • Grounding reminder → when tilted, revenge state, or overwhelmed");
+      lines.push("Do not quote verbatim. One line max. Never preachy.");
     }
     lines.push("");
   }
@@ -588,20 +637,52 @@ function buildSystemPrompt(input: AICoachInput): string {
       lines.push("");
     }
 
-    // Per-state coaching intent
+    // Scenario-specific response patterns
     const state = input.currentState?.toLowerCase() ?? "";
     if (state.includes("fomo")) {
-      lines.push("Coaching intent: FOMO — name the pull briefly, redirect to what they can control.");
+      lines.push("SCENARIO — FOMO:");
+      lines.push("  1. Validate the pull without judging it. ('That move was real.')");
+      lines.push("  2. Name what's missing or not aligned. ('Your setup isn't there.')");
+      lines.push("  3. Redirect to waiting. One line. Not a lecture.");
+      lines.push("  Avoid: debating whether they should have taken it.");
     } else if (state.includes("revenge")) {
-      lines.push("Coaching intent: Revenge impulse — one acknowledgment, one redirect to stepping away. No debate.");
+      lines.push("SCENARIO — REVENGE IMPULSE:");
+      lines.push("  1. Name the state directly. One sentence — no hedging.");
+      lines.push("  2. One redirect: step away. Not a negotiation.");
+      lines.push("  Avoid: explaining why revenge trading is bad. They know.");
     } else if (state.includes("tilt") || state.includes("out_of_control")) {
-      lines.push("Coaching intent: Tilted — ground them with one concrete thing. No trades.");
+      lines.push("SCENARIO — TILTED:");
+      lines.push("  1. Acknowledge the overwhelm. Short.");
+      lines.push("  2. One concrete, physical thing. ('Breathe. Walk away.')");
+      lines.push("  3. No trading advice. They need to step away, period.");
     } else if (state.includes("just_took_two_loss")) {
-      lines.push("Coaching intent: Multiple losses self-reported — acknowledge the weight without counting. Help them pause.");
+      lines.push("SCENARIO — MULTIPLE LOSSES:");
+      lines.push("  1. Acknowledge the weight. Do not minimize.");
+      lines.push("  2. Give them permission to stop without making them feel weak.");
+      lines.push("  3. One grounding question if it fits. ('What do you need right now?')");
+      lines.push("  Avoid: counting losses, planning the next trade, or silver-lining.");
     } else if (state.includes("just_took_loss")) {
-      lines.push("Coaching intent: Fresh loss — one acknowledgment. Let them decide what's next.");
-    } else if (state.includes("reset") || state.includes("calm") || state.includes("premarket")) {
-      lines.push("Coaching intent: Recovering — brief acknowledgment, grounded. No overpraise.");
+      lines.push("SCENARIO — FRESH LOSS:");
+      lines.push("  1. Acknowledge it simply. Not dramatically.");
+      lines.push("  2. Give them space. Let them decide what's next.");
+      lines.push("  3. Optional: one question if it moves them forward.");
+      lines.push("  Avoid: immediately redirecting to the next trade.");
+    } else if (state.includes("confused")) {
+      lines.push("SCENARIO — QUESTIONING PURPOSE:");
+      lines.push("  1. Hold the question with them — don't answer it for them.");
+      lines.push("  2. Surface their why if available (see personal memory above).");
+      lines.push("  3. One forward question to reconnect them to what matters.");
+    } else if (state.includes("reset") || state.includes("calm")) {
+      lines.push("SCENARIO — RECOVERING / CALM:");
+      lines.push("  1. Acknowledge the recovery briefly. One line.");
+      lines.push("  2. One forward anchor — what's next, not what was.");
+      lines.push("  Avoid: overpraise ('well done for stepping away!')");
+    } else if (state.includes("premarket")) {
+      lines.push("SCENARIO — PREMARKET / MORNING:");
+      lines.push("  1. Warm and grounded. No pressure.");
+      lines.push("  2. One anchor to intention or their why.");
+      lines.push("  3. Optional: one question to set intention for the day.");
+      lines.push("  Avoid: reviewing rules, hyping them up, or using 'ready to trade?'");
     }
   }
 
@@ -718,6 +799,134 @@ export async function generateAICoachReply(
     return block?.type === "text" ? block.text.trim() : null;
   } catch (err) {
     console.error("[ai-coach] generateAICoachReply failed:", err);
+    return null;
+  }
+}
+
+// ─── Morning check-in system ────────────────────────────────────────────────
+
+export type MorningCheckInInput = {
+  language: string;
+  coachingTone: string | null;
+  preferredAddress: string | null;
+  tradingWhy: string | null;
+  tradingGoal: string | null;
+  groundingReminder: string | null;
+  primaryChallenge: string | null;
+  primaryMarket: string | null;
+  tradingStyle: string | null;
+  yesterdayHadSession: boolean;
+  yesterdayFinalState: string | null;
+  checkinFormat: string | null;
+};
+
+function buildYesterdayStateContext(state: string | null): string | null {
+  if (!state || state === "NONE") return null;
+  const s = state.toLowerCase();
+  if (s.includes("revenge") || s.includes("tilt")) return "Trader finished yesterday in a difficult emotional state.";
+  if (s.includes("just_took_two_loss")) return "Trader ended yesterday after multiple losses.";
+  if (s.includes("just_took_loss")) return "Trader ended yesterday after a loss.";
+  if (s.includes("fomo")) return "Trader was feeling FOMO at end of yesterday's session.";
+  if (s.includes("calm") || s.includes("reset")) return "Trader ended yesterday in a calm, recovered state.";
+  return null;
+}
+
+function buildMorningCheckInPrompt(input: MorningCheckInInput): string {
+  const langName = LANGUAGE_NAMES[input.language] ?? "English";
+  const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
+  const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
+
+  const lines: string[] = [
+    `You are a human coach who works with traders. Write ONLY in ${langName}.`,
+    "",
+    "TASK: Write a short proactive morning message to a trader starting their day.",
+    "",
+    "FORMAT:",
+    isDirect
+      ? "- 1-2 sentences. Direct. Lead with energy or a sharp grounding anchor."
+      : isSupportive
+        ? "- 2-3 sentences. Warm but grounded. Not sentimental."
+        : "- 1-2 sentences. Human. Like a friend checking in before the session.",
+    "- Optional: one brief open question to anchor their intention for today.",
+    "- Do NOT use exclamation marks unless the language naturally requires them.",
+    "- Do NOT open with 'Good morning' or any formulaic greeting.",
+    "- Do NOT coach or give advice. This is a check-in, not a lecture.",
+    "- Never mention rules, limits, risk, or discipline.",
+    "- Sound like a human, not a bot.",
+    "",
+  ];
+
+  const addressGuidance = buildAddressGuidance(input.preferredAddress, input.language);
+  if (addressGuidance) {
+    lines.push(addressGuidance);
+    lines.push("");
+  }
+
+  if (input.yesterdayHadSession) {
+    const stateContext = buildYesterdayStateContext(input.yesterdayFinalState);
+    if (stateContext) {
+      lines.push(`YESTERDAY'S CONTEXT: ${stateContext}`);
+      lines.push("Reference this briefly only if it would feel natural and grounding — never force it.");
+      lines.push("");
+    }
+  }
+
+  const personalParts: string[] = [];
+  if (input.tradingWhy) personalParts.push(`Why they trade: ${input.tradingWhy}`);
+  if (input.tradingGoal) personalParts.push(`Building toward: ${input.tradingGoal}`);
+  if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
+
+  if (personalParts.length > 0) {
+    lines.push("PERSONAL COACHING MEMORY (weave in naturally only if it would feel genuine):");
+    lines.push(...personalParts.map((p) => `- ${p}`));
+    lines.push("Do not quote verbatim. One line max.");
+    lines.push("");
+  }
+
+  lines.push(...buildLanguageCasualNote(input.language));
+
+  lines.push("NEVER:");
+  lines.push('- "Good morning, [name]" or any formulaic greeting');
+  lines.push('- "Are you ready to trade today?" — too generic');
+  lines.push("- Mention of rules, limits, risk, or discipline");
+  lines.push("- Bullet points, lists, or headers");
+  lines.push('- "As your coach..."');
+  lines.push("");
+
+  lines.push("SCENARIO PATTERN — MORNING CHECK-IN:");
+  lines.push("  1. Brief warm opener (optional, not always needed)");
+  lines.push("  2. One anchor to their intention, their why, or yesterday's context");
+  lines.push("  3. One open question to set intention (optional)");
+
+  return lines.join("\n");
+}
+
+export async function generateMorningCheckIn(input: MorningCheckInInput): Promise<string | null> {
+  if (!isAICoachEnabled()) return null;
+
+  const client = new Anthropic();
+
+  try {
+    const response = await client.messages.create(
+      {
+        model: "claude-haiku-4-5",
+        max_tokens: 100,
+        system: [
+          {
+            type: "text",
+            text: buildMorningCheckInPrompt(input),
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [{ role: "user", content: "Send the morning message." }],
+      },
+      { timeout: 12_000 },
+    );
+
+    const block = response.content[0];
+    return block?.type === "text" ? block.text.trim() : null;
+  } catch (err) {
+    console.error("[ai-coach] generateMorningCheckIn failed:", err);
     return null;
   }
 }
