@@ -52,81 +52,51 @@ function buildSystemPrompt(input: AICoachInput): string {
 
   const lines: string[] = [
     `You are a trading coach. Respond ONLY in ${langName}.`,
-    "Keep replies to 2–4 sentences. Be direct, human, and emotionally aware.",
-    "Sound like a sharp friend who trades — not a therapist or a bot.",
-    "Do NOT use bullet points, headers, or lists. No 'As your coach...' openings.",
-    "Ask at most one follow-up question, only when genuinely useful.",
+    "",
+    "REPLY STYLE:",
+    "- 2 to 3 sentences maximum. Short is better than thorough.",
+    "- First sentence: acknowledge what they're feeling, plainly and without judgment.",
+    "- Second sentence: one specific, grounded next step or reflection.",
+    "- Third sentence: one follow-up question — only if it genuinely moves something forward. Skip it otherwise.",
+    "",
+    "NEVER:",
+    '- Lecture or moralize. No "you know better", "you already know this."',
+    '- Use clichés: "discipline is key", "stick to the plan", "trust the process", "your rules exist for a reason."',
+    '- Catastrophize: "this is how accounts blow up", "revenge trading destroys accounts."',
+    '- Open with "As your coach", "I understand that", "It sounds like", or "I can see that."',
+    "- Repeat the situation back to them — they lived it.",
+    "- Use bullet points, lists, or headers in the reply.",
     "",
   ];
 
-  // Hard safety constraints — always enforce
-  const constraints: string[] = [];
+  // Situation facts — context for the AI, not instructions to announce
+  const situationParts: string[] = [];
 
-  if (input.guardianLocked) {
-    const reason = input.lockoutReason ?? "trading limit reached";
-    constraints.push(
-      `HARD STOP: Guardian locked trading today (${reason}). Tell the trader firmly: no more trades today. Be direct but not harsh.`,
-    );
-  }
-
-  if (input.cooldownActive) {
-    constraints.push(
-      "Trader is in active cooldown. Reinforce clearly: do not trade right now. Step away.",
-    );
-  }
-
-  if (
-    input.stopAfterLosses &&
-    input.recentLossStreak >= input.stopAfterLosses
-  ) {
-    constraints.push(
-      `Trader hit consecutive-loss limit (${input.recentLossStreak} losses, limit ${input.stopAfterLosses}). Enforce the stop firmly. No more trades.`,
-    );
-  }
-
-  if (input.hasBlockingViolation && input.violationMessage) {
-    constraints.push(`Rule violation active: ${input.violationMessage}. Reinforce this limit.`);
-  }
-
-  if (input.isPreNewsWindow && input.preNewsMessage) {
-    constraints.push(`Economic news window: ${input.preNewsMessage}. Advise caution.`);
-  }
-
-  if (input.alertContext) {
-    constraints.push(`Broker alert: ${input.alertContext}`);
-  }
-
-  if (constraints.length > 0) {
-    lines.push("ENFORCE THESE CONSTRAINTS (non-negotiable):");
-    lines.push(...constraints.map((c) => `- ${c}`));
-    lines.push("");
-  }
-
-  // Trader profile
-  const profileParts: string[] = [];
-  if (input.primaryMarket) profileParts.push(`market: ${input.primaryMarket}`);
-  if (input.tradingStyle) profileParts.push(`style: ${input.tradingStyle}`);
-  if (input.coachingTone) profileParts.push(`tone preference: ${input.coachingTone}`);
-  if (profileParts.length > 0) lines.push(`Trader: ${profileParts.join(", ")}`);
-
-  // Risk rules
-  const ruleParts: string[] = [];
-  if (input.maxDailyLoss) ruleParts.push(`max daily loss: ${input.maxDailyLoss}`);
-  if (input.maxTradesPerDay) ruleParts.push(`max trades/day: ${input.maxTradesPerDay}`);
-  if (input.stopAfterLosses) ruleParts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
-  if (ruleParts.length > 0) lines.push(`Rules: ${ruleParts.join(", ")}`);
-
-  // Current session & emotional state
   const sessionState = input.sessionEnded
     ? "ended"
     : input.sessionStarted
       ? "active"
       : "not started";
-  lines.push(`Session: ${sessionState} | State: ${input.currentState} | Loss streak: ${input.recentLossStreak}`);
+  situationParts.push(`Session: ${sessionState}`);
 
-  if (input.warningMessages.length > 0) {
-    lines.push(`Warnings: ${input.warningMessages.slice(0, 2).join("; ")}`);
+  if (input.currentState && input.currentState !== "NONE") {
+    situationParts.push(`Trader state: ${input.currentState}`);
   }
+  if (input.recentLossStreak > 0) {
+    situationParts.push(`Loss streak: ${input.recentLossStreak}`);
+  }
+
+  const profileParts: string[] = [];
+  if (input.primaryMarket) profileParts.push(`market: ${input.primaryMarket}`);
+  if (input.tradingStyle) profileParts.push(`style: ${input.tradingStyle}`);
+  if (input.coachingTone) profileParts.push(`preferred tone: ${input.coachingTone}`);
+  if (profileParts.length > 0) situationParts.push(`Trader: ${profileParts.join(", ")}`);
+
+  const ruleParts: string[] = [];
+  if (input.maxDailyLoss) ruleParts.push(`max daily loss: ${input.maxDailyLoss}`);
+  if (input.maxTradesPerDay) ruleParts.push(`max trades/day: ${input.maxTradesPerDay}`);
+  if (input.stopAfterLosses) ruleParts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
+  if (ruleParts.length > 0) situationParts.push(`Rules: ${ruleParts.join(", ")}`);
 
   const m = input.manualSignals;
   if (m && (m.tradeCount > 0 || m.hasRuleBreach)) {
@@ -134,29 +104,77 @@ function buildSystemPrompt(input: AICoachInput): string {
     if (m.tradeCount > 0) parts.push(`${m.tradeCount} trades today`);
     if (m.consecutiveLosses > 0) parts.push(`${m.consecutiveLosses} consecutive losses`);
     if (m.hasRuleBreach) parts.push("rule breach logged");
-    lines.push(`Activity: ${parts.join(", ")}`);
+    situationParts.push(`Activity: ${parts.join(", ")}`);
   }
 
-  // Per-state emotional coaching guidance
+  if (situationParts.length > 0) {
+    lines.push("SITUATION:");
+    lines.push(...situationParts.map((p) => `- ${p}`));
+    lines.push("");
+  }
+
+  if (input.warningMessages.length > 0) {
+    lines.push(`Proximity warnings: ${input.warningMessages.slice(0, 2).join("; ")}`);
+    lines.push("");
+  }
+
+  // Per-state coaching intent — gives the AI latitude to be natural
   const state = input.currentState?.toLowerCase() ?? "";
   if (state.includes("fomo")) {
-    lines.push("Emotional context: FOMO — validate the feeling briefly, then redirect to the plan. Don't shame.");
-  } else if (state.includes("revenge") || state.includes("tilt")) {
-    lines.push("Emotional context: Revenge/tilt — acknowledge the frustration, enforce the stop, do NOT debate whether the next trade will be different.");
-  } else if (state.includes("loss") || state.includes("lost")) {
-    lines.push("Emotional context: Post-loss — be supportive but clear. Losses happen. Check if rules were followed.");
-  } else if (state.includes("anger") || state.includes("angry")) {
-    lines.push("Emotional context: Anger — be calm and firm. Do not escalate. Walking away is the right trade.");
-  } else if (state.includes("out_of_control") || state.includes("outofcontrol")) {
-    lines.push("Emotional context: Out of control — ground the trader. One breath, one step. No trades now.");
-  } else if (state.includes("calm") || state.includes("recovery")) {
-    lines.push("Emotional context: Recovering — acknowledge progress, gently reinforce discipline going forward.");
+    lines.push("Coaching intent: The trader is feeling FOMO. Acknowledge the pull without judging it. One grounding thought — what they can actually control right now.");
+  } else if (state.includes("revenge")) {
+    lines.push("Coaching intent: The trader wants to revenge trade. Acknowledge the frustration. Redirect to stepping away — no debate about whether the next trade will be different.");
+  } else if (state.includes("tilt") || state.includes("out_of_control")) {
+    lines.push("Coaching intent: The trader is tilted. Ground them first. One small concrete thing they can do. No trades right now.");
+  } else if (state.includes("just_took_two_loss")) {
+    lines.push("Coaching intent: Two losses back to back. Acknowledge it briefly. Help them pause and decide if they're still clear-headed.");
+  } else if (state.includes("just_took_loss")) {
+    lines.push("Coaching intent: Fresh loss. Acknowledge it — one sentence. Ask if they want to keep going or step back.");
+  } else if (state.includes("reset") || state.includes("calm") || state.includes("premarket")) {
+    lines.push("Coaching intent: The trader is in a good or recovering state. Keep it grounded — brief acknowledgment, no overpraise.");
   }
 
-  // Recent conversation history for continuity
+  // Hard safety constraints — framed as situational facts, not enforcement language
+  const constraints: string[] = [];
+
+  if (input.guardianLocked) {
+    const reason = input.lockoutReason ?? "daily limit reached";
+    constraints.push(`The account is locked for today (${reason}). One sentence — matter-of-fact. No drama.`);
+  }
+
+  if (input.cooldownActive) {
+    constraints.push("The trader is in a cooldown period. Stepping away is the right move right now — say this plainly.");
+  }
+
+  if (
+    input.stopAfterLosses &&
+    input.recentLossStreak >= input.stopAfterLosses
+  ) {
+    constraints.push(`The trader hit their consecutive-loss limit (${input.recentLossStreak} of ${input.stopAfterLosses}). Trading stops here — say this clearly, without drama or moralizing.`);
+  }
+
+  if (input.hasBlockingViolation && input.violationMessage) {
+    constraints.push(`Active rule limit: ${input.violationMessage}. Mention it plainly, once.`);
+  }
+
+  if (input.isPreNewsWindow && input.preNewsMessage) {
+    constraints.push(`News window: ${input.preNewsMessage}. Flag the timing briefly.`);
+  }
+
+  if (input.alertContext) {
+    constraints.push(`Broker context: ${input.alertContext}`);
+  }
+
+  if (constraints.length > 0) {
+    lines.push("");
+    lines.push("CONSTRAINTS (weave these in naturally — do not list or announce them):");
+    lines.push(...constraints.map((c) => `- ${c}`));
+  }
+
+  // Recent session history for conversational continuity
   if (input.recentMessages.length > 0) {
     lines.push("");
-    lines.push("Recent session history (oldest first):");
+    lines.push("Recent session (oldest first):");
     for (const msg of input.recentMessages) {
       const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";
       lines.push(`- ${msg.message}${stateLabel}`);
@@ -211,7 +229,7 @@ export async function generateAICoachReply(
     const response = await client.messages.create(
       {
         model: "claude-haiku-4-5",
-        max_tokens: 200,
+        max_tokens: 120,
         system: [
           {
             type: "text",
