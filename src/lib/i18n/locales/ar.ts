@@ -28,6 +28,7 @@ export const ar: BotLocale = {
       "حسابك مرتبط لكن الإعداد غير مكتمل. أكمله على الموقع.",
     accessInactive: "وصولك غير نشط. فعّل خطة على الموقع للمتابعة.",
     inputPlaceholder: "إجراء سريع أو رسالة...",
+    languageUpdated: "تم تحديث اللغة إلى العربية.",
   },
   prompts: {
     sessionNotStarted: "لم تبدأ الجلسة بعد. جاهز متى كنت مستعداً.",

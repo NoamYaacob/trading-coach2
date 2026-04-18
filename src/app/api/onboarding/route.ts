@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getLocale } from "@/lib/i18n";
+import { getTelegramQuickActionKeyboard } from "@/lib/coach-actions";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 type OnboardingRequest = {
   traderProfile?: {
@@ -131,6 +134,22 @@ function normalizeCoachingPreferences(
   };
 }
 
+async function refreshTelegramKeyboard(userId: string, language: string) {
+  const connection = await prisma.telegramConnection.findUnique({
+    where: { userId },
+    select: { telegramChatId: true },
+  });
+  if (!connection?.telegramChatId) return;
+  const locale = getLocale(language);
+  await sendTelegramMessage(connection.telegramChatId, locale.system.languageUpdated, {
+    replyMarkup: {
+      keyboard: getTelegramQuickActionKeyboard(locale),
+      resize_keyboard: true,
+      input_field_placeholder: locale.system.inputPlaceholder,
+    },
+  });
+}
+
 export async function POST(request: Request) {
   const currentUser = await getCurrentUser();
 
@@ -144,6 +163,17 @@ export async function POST(request: Request) {
   const mentalProfile = normalizeMentalProfile(body.mentalProfile);
   const coachingPreferences = normalizeCoachingPreferences(
     body.coachingPreferences,
+  );
+
+  const newLanguage = body.coachingPreferences?.preferredLanguage;
+  const existingPrefs = newLanguage
+    ? await prisma.coachingPreferences.findUnique({
+        where: { userId: currentUser.id },
+        select: { preferredLanguage: true },
+      })
+    : null;
+  const languageChanged = Boolean(
+    newLanguage && newLanguage !== existingPrefs?.preferredLanguage,
   );
 
   try {
@@ -183,6 +213,10 @@ export async function POST(request: Request) {
       { error: "Failed to save onboarding data." },
       { status: 500 },
     );
+  }
+
+  if (languageChanged && newLanguage) {
+    refreshTelegramKeyboard(currentUser.id, newLanguage).catch(() => {});
   }
 
   const user = await prisma.user.findUnique({

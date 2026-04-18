@@ -29,6 +29,7 @@ export const ru: BotLocale = {
     accessInactive:
       "Доступ неактивен. Активируйте тариф на сайте, чтобы продолжить.",
     inputPlaceholder: "Быстрое действие или сообщение...",
+    languageUpdated: "Язык обновлён на русский.",
   },
   prompts: {
     sessionNotStarted: "Сессия ещё не началась. Готов, когда вы готовы.",

@@ -29,6 +29,7 @@ export const de: BotLocale = {
     accessInactive:
       "Ihr Zugang ist inaktiv. Aktivieren Sie einen Plan auf der Website, um fortzufahren.",
     inputPlaceholder: "Schnellaktion oder Nachricht...",
+    languageUpdated: "Sprache auf Deutsch aktualisiert.",
   },
   prompts: {
     sessionNotStarted: "Die Sitzung hat noch nicht begonnen. Bereit, wenn Sie es sind.",

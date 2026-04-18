@@ -24,6 +24,7 @@ export type BotLocale = {
     onboardingIncomplete: string;
     accessInactive: string;
     inputPlaceholder: string;
+    languageUpdated: string;
   };
   prompts: {
     sessionNotStarted: string;

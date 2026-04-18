@@ -29,6 +29,7 @@ export const he: BotLocale = {
     accessInactive:
       "הגישה לקואצ'ינג אינה פעילה. הפעל תוכנית באתר כדי להמשיך.",
     inputPlaceholder: "בחר פעולה מהירה או כתוב הודעה...",
+    languageUpdated: "שפת הממשק עודכנה לעברית.",
   },
   prompts: {
     sessionNotStarted: "הסשן עדיין לא התחיל. מוכן כשאתה מוכן.",

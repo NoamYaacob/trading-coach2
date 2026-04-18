@@ -29,6 +29,7 @@ export const es: BotLocale = {
     accessInactive:
       "Tu acceso está inactivo. Activa un plan en el sitio web para continuar.",
     inputPlaceholder: "Acción rápida o mensaje...",
+    languageUpdated: "Idioma actualizado al español.",
   },
   prompts: {
     sessionNotStarted: "La sesión aún no ha comenzado. Listo cuando tú lo estés.",

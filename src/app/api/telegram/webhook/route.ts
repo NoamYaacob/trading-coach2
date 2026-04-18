@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { TraderCurrentState } from "@prisma/client";
 
-import { buildCoachContext, generateCoachReply } from "@/lib/coach";
+import { generateAICoachReply } from "@/lib/ai-coach";
 import {
   findActionByLocaleText,
   getLocaleReplyForQuickAction,
@@ -20,16 +20,16 @@ import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
-import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
+import { logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
   getSelectedEconomicCalendarSnapshot,
   getCurrentPreNewsPolicy,
-  getNextHighImpactEconomicEvent,
   isInsidePreNewsWarningWindow,
 } from "@/lib/economic-calendar";
 import {
+  deriveShortLivedCoachingFlags,
   deriveTraderStateUpdate,
   getCurrentTraderState,
   setCurrentTraderState,
@@ -137,8 +137,6 @@ async function connectTelegramAccount(params: {
   });
 
   if (linkToken?.usedAt) {
-    // Token already consumed — connection was created on a previous delivery.
-    // Return 200 silently so Telegram stops retrying this update.
     return NextResponse.json({ ok: true });
   }
 
@@ -202,6 +200,17 @@ async function connectTelegramAccount(params: {
   );
 }
 
+function deriveLogIntent(actionId: string | null, rawText: string): string {
+  if (actionId) {
+    if (actionId === "check-in") return "check_in";
+    if (actionId === "day-summary") return "day_summary";
+    if (actionId === "rule-limits") return "rule_question";
+    return "emotional_distress";
+  }
+  if (!rawText) return "check_in";
+  return "generic_coaching";
+}
+
 export async function POST(request: Request) {
   const payload = (await request.json()) as TelegramWebhookPayload;
   const rawText = payload.message?.text?.trim() ?? "";
@@ -211,7 +220,6 @@ export async function POST(request: Request) {
   const telegramChatId = payload.message?.chat?.id;
 
   if (!telegramUserId || !telegramChatId) {
-    // Non-message update type (channel post, poll, etc.) — acknowledge and ignore.
     return NextResponse.json({ ok: true });
   }
 
@@ -273,68 +281,23 @@ export async function POST(request: Request) {
         )
       ).traderState
     : (await getCurrentTraderState(connection.user.id)).traderState;
-  const [sessionContext, guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents] = await Promise.all([
-    getRecentSessionContext(connection.user.id),
+
+  const flags = deriveShortLivedCoachingFlags(activeTraderState);
+
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
     getTodayManualEvents(connection.user.id),
   ]);
+
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete: Boolean(connection.user.traderProfile),
     sessionStart: todayGuardianSession,
   });
 
-  const nextHighImpactEconomicEvent = getNextHighImpactEconomicEvent(
-    economicCalendarSnapshot,
-  );
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
   const manualEventSignals = deriveManualEventSignals(todayManualEvents);
-  const coachContext = buildCoachContext({
-    traderProfile: connection.user.traderProfile,
-    riskRules: connection.user.riskRules,
-    mentalProfile: connection.user.mentalProfile,
-    coachingPreferences: connection.user.coachingPreferences,
-    traderState: activeTraderState,
-    todaySessionSummary: sessionContext.summary,
-    recentSessionEvents: sessionContext.recentEvents.map((event) => ({
-      message: event.message,
-      detectedIntent: event.detectedIntent,
-      traderState: event.traderState,
-      createdAt: event.createdAt,
-    })),
-    guardian: {
-      guardianEnabled: guardian.evaluation.guardianActive,
-      currentLockoutActive: guardian.evaluation.lockoutActive,
-      primaryReason: guardian.evaluation.primaryReason,
-      primaryReasonLabel: guardian.evaluation.primaryReasonLabel,
-      triggeredRules: guardian.evaluation.triggeredRules,
-      triggeredRuleLabels: guardian.evaluation.triggeredRuleLabels,
-      actionGuidance: guardian.evaluation.actionGuidance,
-      resetMode: guardian.evaluation.resetMode,
-      resetTimezone: guardian.evaluation.resetTimezone,
-      nextAllowedResetAt: guardian.evaluation.nextAllowedResetAt,
-      lastResetAt: guardian.evaluation.lastResetAt,
-      resetAllowedNow: guardian.evaluation.resetAllowedNow,
-    },
-    economicCalendar: {
-      nextHighImpactEvent: nextHighImpactEconomicEvent,
-      hasUpcomingHighImpactEvent: Boolean(nextHighImpactEconomicEvent),
-      isInsidePreNewsWarningWindow: isInsidePreNewsWarningWindow(
-        economicCalendarSnapshot,
-      ),
-      preNewsPolicy: economicCalendarPolicy,
-    },
-    sessionLifecycle: {
-      todaySessionStateKind: todaySessionState.kind,
-      sessionStarted: todaySessionState.sessionStarted,
-      sessionStartedAt: todaySessionState.sessionStartedAt,
-      sessionEnded: todaySessionState.sessionEnded,
-      sessionEndedAt: todaySessionState.sessionEndedAt,
-      resetTimezone: todaySessionState.resetTimezone,
-    },
-    manualActivity: manualEventSignals,
-  });
 
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
@@ -352,30 +315,58 @@ export async function POST(request: Request) {
     }),
   );
 
-  const coachReply = generateCoachReply(canonicalText || locale.keyboard.checkIn, coachContext);
-  const replyText =
+  const aiInput = {
+    message: canonicalText || locale.keyboard.checkIn,
+    language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
+    actionId: matchedAction?.id ?? null,
+    primaryMarket: connection.user.traderProfile?.primaryMarket ?? null,
+    tradingStyle: connection.user.traderProfile?.tradingStyle ?? null,
+    coachingTone: connection.user.mentalProfile?.coachingTone ?? null,
+    maxDailyLoss: connection.user.riskRules?.maxDailyLoss
+      ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
+      : null,
+    maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
+    stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
+    riskPerTrade: connection.user.riskRules?.riskPerTrade
+      ? parseFloat(String(connection.user.riskRules.riskPerTrade))
+      : null,
+    currentState: flags.currentState,
+    cooldownActive: flags.cooldownActive,
+    recentLossStreak: flags.recentLossStreak,
+    guardianLocked: guardian.evaluation.lockoutActive,
+    lockoutReason: guardian.evaluation.primaryReason,
+    sessionStarted: todaySessionState.sessionStarted,
+    sessionEnded: todaySessionState.sessionEnded,
+    todaySessionStateKind: todaySessionState.kind,
+    hasBlockingViolation: violationFeed.hasBlockingViolation,
+    violationMessage: violationFeed.primaryViolation?.message ?? null,
+    warningMessages: violationFeed.warningViolations.map((v) => v.message),
+    isPreNewsWindow: isInsidePreNewsWarningWindow(economicCalendarSnapshot),
+    preNewsMessage: economicCalendarPolicy.isActive ? (economicCalendarPolicy.message ?? null) : null,
+    manualSignals: manualEventSignals,
+  };
+
+  const aiReply = await generateAICoachReply(aiInput);
+  const fallbackText =
     (matchedAction && getLocaleReplyForQuickAction(matchedAction.id, locale)) ??
-    coachReply.reply;
-  const cooldownActive = Boolean(
-    activeTraderState?.needsCooldown &&
-      activeTraderState.cooldownUntil &&
-      activeTraderState.cooldownUntil > new Date(),
-  );
+    locale.prompts.checkIn;
+  const replyText = aiReply ?? fallbackText;
+
   const loggedTraderState = stateUpdate
-    ? activeTraderState?.currentState ?? coachContext.currentState
+    ? (activeTraderState?.currentState ?? TraderCurrentState.NONE)
     : TraderCurrentState.NONE;
 
   await logCoachEvent({
     userId: connection.user.id,
     source: "telegram",
     message: rawText || locale.keyboard.checkIn,
-    detectedIntent: coachReply.intent,
-    coachMode: coachReply.mode,
+    detectedIntent: deriveLogIntent(matchedAction?.id ?? null, rawText),
+    coachMode: "AI_COACH",
     traderState: loggedTraderState,
-    cooldownActive,
+    cooldownActive: flags.cooldownActive,
     metadataJson: {
-      replyBehavior: coachReply.behavior,
-      stateSnapshot: activeTraderState?.currentState ?? coachContext.currentState,
+      aiReplyGenerated: aiReply !== null,
+      stateSnapshot: flags.currentState,
       guardianLockoutActive: guardian.evaluation.lockoutActive,
       guardianPrimaryReason: guardian.evaluation.primaryReason,
       guardianTriggeredRules: guardian.evaluation.triggeredRules,

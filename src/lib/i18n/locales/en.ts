@@ -29,6 +29,7 @@ export const en: BotLocale = {
     accessInactive:
       "Your coaching access is inactive. Please start an active trial or plan on the website to continue.",
     inputPlaceholder: "Quick action or message...",
+    languageUpdated: "Language updated to English.",
   },
   prompts: {
     sessionNotStarted: "Session hasn't started yet. Ready when you are.",
