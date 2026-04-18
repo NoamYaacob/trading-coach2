@@ -125,17 +125,18 @@ function buildLanguageCasualNote(language: string): string[] {
       return [
         "HEBREW VOICE:",
         "Write like someone texting in Hebrew. Israeli, direct, short.",
+        "Fragments are fine. No subject needed. Say the thing and stop.",
         "",
-        "EXAMPLES (match the register, don't copy):",
-        '  "לא רע, יום עמוס. אתה?"',
+        "EXAMPLES:",
+        '  "לא רע. אתה?"',
         '  "הממ, לא ממש הדבר שלי — אבל ספר."',
         '  "כן, בטח."',
-        '  "מה פתאום, זה לא ככה עובד."',
-        '  "שמע, אין לי מושג — אבל מה דעתך?"',
+        '  "מה פתאום."',
+        '  "אין לי מושג — מה דעתך?"',
         "",
-        '✗ "אני שמח לסייע" / "אכן" / "בהחלט" / "בוודאי" — formal, never',
-        '✗ "זה נשמע כמו" / "אני מבין" / "מעניין מאוד" — AI-isms, never',
-        '✗ "אני חושב ש..." — drop the opener, say the thing',
+        '✗ "אני שמח לסייע" / "אכן" / "בהחלט" / "בוודאי"',
+        '✗ "זה נשמע כמו" / "אני מבין" / "מעניין מאוד"',
+        '✗ "אני חושב ש..." — say the thing directly',
         "",
       ];
     case "en":
@@ -241,9 +242,9 @@ function buildSystemPrompt(input: AICoachInput): string {
     "NEVER:",
     '- Open with "As your coach", "I understand that", "It sounds like".',
     "- Use bullet points, lists, or headers.",
-    "- Introduce trading or coaching in a casual reply.",
     "- Invent facts not explicitly in this prompt.",
     '- Sound like a chatbot or assistant.',
+    "- Set up the answer — just give it.",
     "",
   ];
 
@@ -313,7 +314,7 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
 
   if (personalParts.length > 0 && (isCoaching || isMeta)) {
-    lines.push(isCoaching ? "PERSONAL COACHING MEMORY:" : "KNOWN ABOUT THIS PERSON:");
+    lines.push(isCoaching ? "PERSONAL COACHING MEMORY:" : "WHAT YOU KNOW:");
     lines.push(...personalParts.map((p) => `- ${p}`));
     if (isCoaching) {
       lines.push("Surface sparingly — only when it would feel genuinely grounding, not every reply:");
@@ -337,10 +338,21 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (input.stopAfterLosses) ruleParts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
 
   if ((isCoaching || isMeta) && (profileParts.length > 0 || ruleParts.length > 0)) {
-    lines.push(isMeta ? "PROFILE:" : "TRADER PROFILE:");
-    if (profileParts.length > 0) lines.push(`- ${profileParts.join(", ")}`);
-    if (ruleParts.length > 0) lines.push(`- Rules: ${ruleParts.join(", ")}`);
-    lines.push("");
+    if (isMeta) {
+      // No section header for meta — list facts flat so AI answers directly
+      const allFacts = [
+        ...(profileParts.length > 0 ? [profileParts.join(", ")] : []),
+        ...(ruleParts.length > 0 ? [ruleParts.join(", ")] : []),
+      ];
+      lines.push("FACTS (answer only from these):");
+      allFacts.forEach((f) => lines.push(`- ${f}`));
+      lines.push("");
+    } else {
+      lines.push("TRADER PROFILE:");
+      if (profileParts.length > 0) lines.push(`- ${profileParts.join(", ")}`);
+      if (ruleParts.length > 0) lines.push(`- Rules: ${ruleParts.join(", ")}`);
+      lines.push("");
+    }
   }
 
   // Known trader patterns — coaching only

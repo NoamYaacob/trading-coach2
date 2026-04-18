@@ -110,60 +110,34 @@ function buildLanguageVoiceBlock(language: string): string[] {
     case "he":
       return [
         "HEBREW COACHING VOICE:",
-        "Sound like an Israeli trader talking to another trader mid-session — not a coach on a podium.",
-        "Short sentences. Natural fragments. Israeli Hebrew is direct, warm, and grounded.",
-        "The phrasing should feel like someone who knows this trader — not a generic AI response.",
+        "Israeli direct. Short. Like a trader talking to a trader, not a coach on a stage.",
+        "Fragments are fine. Subject can be dropped. No need for full sentences.",
         "",
-        "NATURAL OPENERS (not every time — only when it fits):",
-        "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · אחת רגע · יאללה",
+        "OPENERS when they fit (not every time):",
+        "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · יאללה",
         "",
-        "REDIRECTS:",
-        "  תצא מהמסך · תן לזה לחלוף · לא עכשיו · קח נשימה · שב עם זה רגע",
+        "EXAMPLES — match the feel, don't copy:",
+        '  "זה קרה. מה עכשיו?"',
+        '  "קרה לכולם. צא כמה דקות."',
+        '  "כן, מעצבן. אבל לא עכשיו."',
+        '  "הסטאפ עבר. הבא יבוא."',
+        '  "לא עכשיו — חזור כשזה שקט."',
+        '  "אתה יודע מה קורה. תצא."',
+        '  "מה ספציפית לא עובד?"',
+        '  "יום כזה קורה. מה הסטאפ הבא?"',
+        '  "כשזה קשה — תזכור למה התחלת."',
+        '  "יצאת ממנו. מה הלאה?"',
+        '  "היה קשה. מה מחר?"',
+        '  "הגעת לגבול. היום נגמר."',
         "",
-        "FEW-SHOT EXAMPLES — pick the register that fits the moment:",
-        "  After a loss:",
-        '    ✓ "זה קרה — לא עניין. מה עכשיו?"',
-        '    ✓ "הפסד אחד זה לא הסוף. תנשום ותחכה לסטאפ הבא."',
-        '    ✓ "קרה לכולם. צא מהמסך כמה דקות."',
-        "  Anger after losses:",
-        '    ✓ "כן, זה מעצבן. תיקח רגע לפני שתחזור."',
-        '    ✓ "שמע, הכעס לגיטימי. אבל לא עכשיו."',
-        "  FOMO / chasing:",
-        '    ✓ "רגע, הסטאפ הזה כבר עבר. הבא יבוא."',
-        '    ✓ "לא כל תנועה שלך — חכה לאחת שמתאים לך."',
-        '    ✓ "אל תרדוף. שב ותחכה."',
-        "  Revenge impulse:",
-        '    ✓ "עכשיו לא הזמן — זה ריגוש, לא מסחר."',
-        '    ✓ "צא מהמסך רגע. חזור כשזה שקט."',
-        "  Loss of control / impulsive:",
-        '    ✓ "אתה יודע מה קורה עכשיו. תצא."',
-        '    ✓ "עכשיו לא הזמן — אתה תודה לי אחר כך."',
-        "  Self-doubt:",
-        '    ✓ "מה ספציפית לא עובד? תגיד לי."',
-        '    ✓ "יום כזה הוא לא הגדרה שלך. מה הסטאפ הבא?"',
-        "  Questioning purpose:",
-        '    ✓ "שאלה טובה. מה בעצם גרם לך להתחיל בזה?"',
-        '    ✓ "כשזה קשה ככה — שווה לעצור ולזכור למה."',
-        "  Cooling down / recovering:",
-        '    ✓ "בסדר, אתה יוצא מזה. מה הסטאפ הבא שלך?"',
-        '    ✓ "יצאת ממנו — טוב. תן לזה לשקוע קצת."',
-        "  Reset after a bad day:",
-        '    ✓ "היום נגמר. מה תיקח ממנו?"',
-        '    ✓ "יום גרוע הוא לא סיבה — לפעמים זה פשוט ככה. מה מחר?"',
-        "  Account locked / limit hit:",
-        '    ✓ "הגעת לגבול, היום נגמר. מחר שוב."',
-        '    ✓ "זה בדיוק מה שהגבול בשבילו — שמרת על עצמך."',
-        "",
-        "NEVER — BAD HEBREW PATTERNS:",
-        '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "ממשמעת מסחרית"',
+        "NEVER:",
+        '  ✗ "לפי הכללים שלך" / "שמור על משמעת"',
         '  ✗ "אני מאמן המסחר שלך" / "אני כאן בשבילך"',
         '  ✗ "נראה לי ש..." / "זה נשמע כאילו..." / "אני מבין ש..."',
-        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..." / "יש לך כוח בשביל זה"',
-        '  ✗ "כאשר..." as an opener (formal/literary)',
-        '  ✗ "כל הכבוד שעצרת" / "עשית בדיוק מה שצריך" — overpraise sounds fake',
-        "  ✗ Sentences over 8 Hebrew words — break them or cut",
-        "  ✗ Any English phrase translated literally into Hebrew",
-        "  ✗ Building toward a conclusion — start with it",
+        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..."',
+        '  ✗ "כל הכבוד שעצרת" — overpraise sounds fake',
+        '  ✗ "כאשר..." as opener — literary, wrong register',
+        "  ✗ Sentence over 8 words — break it or cut",
         "",
       ];
 
@@ -355,83 +329,89 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
   const lines: string[] = [
     `You are a human coach. Write ONLY in ${langName}.`,
     "",
-    isStopMode
-      ? "YOUR ONLY JOB: Stop this trader. One sentence — sharp, clear, done. Not warm. Not polished. A brake."
-      : "YOUR ONLY JOB: Translate the intent below into a natural, human message.",
-    "Do NOT re-decide the rules. Do NOT invent facts. Do NOT override the constraint below.",
-    "",
-    "SITUATION:",
-    desc.situation,
-    "",
-    "GOAL FOR THIS REPLY:",
-    desc.goal,
-    "",
   ];
 
   if (isStopMode) {
-    lines.push("STOP MODE: Do not build up. Do not comfort. Do not close with encouragement.");
-    lines.push("Say the thing that creates a pause. Rough is fine. Polish kills the stop.");
+    // Minimal framing: just the stop and the fact. Nothing else.
+    lines.push(`TASK: ${desc.goal.split(".")[0]}.`);
+    lines.push("One line. No explanation. No lead-up. No comfort after.");
     lines.push("");
-  }
-
-  if (input.constraintMessage) {
-    lines.push("CONSTRAINT (already decided — weave in naturally, do not list or announce):");
-    lines.push(`- ${input.constraintMessage}`);
-    lines.push("");
-  }
-
-  if (input.personalCue) {
-    const cueLabel =
-      input.personalCue.type === "why"
-        ? "Why they trade"
-        : input.personalCue.type === "goal"
-          ? "Building toward"
-          : input.personalCue.type === "grounding"
-            ? "What grounds them"
-            : "Known pattern";
-    lines.push("PERSONAL CUE (use at most once, only if it feels genuinely grounding — not every reply):");
-    lines.push(`- ${cueLabel}: ${input.personalCue.text}`);
-    lines.push("Do not quote verbatim. One line max. Never preachy.");
-    lines.push("");
-  }
-
-  if (input.knownPattern) {
-    lines.push("KNOWN TRADER PATTERN (they told you this — reflect it, don't explain it):");
-    lines.push(`- ${input.knownPattern}`);
-    lines.push("Name it accurately. Not as a judgment.");
-    lines.push("");
-  }
-
-  if (input.askQuestion) {
-    lines.push("END WITH A QUESTION: Yes — one short question. Make it move something forward.");
+    if (input.constraintMessage) {
+      lines.push(`FACT: ${input.constraintMessage}`);
+      lines.push("");
+    }
   } else {
-    lines.push("END WITH A QUESTION: No — land on the point and stop.");
+    lines.push("YOUR ONLY JOB: Translate the intent below into a natural, human message.");
+    lines.push("Do NOT re-decide the rules. Do NOT invent facts. Do NOT override the constraint below.");
+    lines.push("");
+    lines.push("SITUATION:");
+    lines.push(desc.situation);
+    lines.push("");
+    lines.push("GOAL FOR THIS REPLY:");
+    lines.push(desc.goal);
+    lines.push("");
+
+    if (input.constraintMessage) {
+      lines.push("CONSTRAINT (already decided — weave in naturally, do not list or announce):");
+      lines.push(`- ${input.constraintMessage}`);
+      lines.push("");
+    }
+
+    if (input.personalCue) {
+      const cueLabel =
+        input.personalCue.type === "why"
+          ? "Why they trade"
+          : input.personalCue.type === "goal"
+            ? "Building toward"
+            : input.personalCue.type === "grounding"
+              ? "What grounds them"
+              : "Known pattern";
+      lines.push("PERSONAL CUE (use at most once, only if it feels genuinely grounding — not every reply):");
+      lines.push(`- ${cueLabel}: ${input.personalCue.text}`);
+      lines.push("Do not quote verbatim. One line max. Never preachy.");
+      lines.push("");
+    }
+
+    if (input.knownPattern) {
+      lines.push("KNOWN TRADER PATTERN (they told you this — reflect it, don't explain it):");
+      lines.push(`- ${input.knownPattern}`);
+      lines.push("Name it accurately. Not as a judgment.");
+      lines.push("");
+    }
+
+    if (input.askQuestion) {
+      lines.push("END WITH A QUESTION: Yes — one short question. Make it move something forward.");
+    } else {
+      lines.push("END WITH A QUESTION: No — land on the point and stop.");
+    }
+    lines.push("");
   }
-  lines.push("");
 
   lines.push("REPLY STYLE:");
   lines.push(replyLengthLine);
-  lines.push("- Start with the point. No warm-up.");
-  lines.push("- One truth or one action. Not both.");
-  if (isStopMode) {
-    lines.push("- No comfort after the stop. Say it and stop.");
-  }
+  lines.push("- Lead with the action or the fact. Nothing before it.");
   lines.push("");
 
-  lines.push("NEVER:");
-  lines.push("- Explain your reasoning — just say the thing.");
-  lines.push('- Open with "As your coach", "I understand that", "It sounds like".');
-  lines.push('- Close with "You\'ve got this", "Keep going", or any generic encouragement.');
-  lines.push("- Bullet points, lists, or headers.");
-  lines.push("- Ask more than one question.");
   if (isStopMode) {
-    lines.push("- Add warmth to a hard stop — it softens the brake.");
-    lines.push("- Polish the sentence — rough lands harder.");
+    lines.push("NEVER:");
+    lines.push("- Explain why they should stop.");
+    lines.push("- Name the state conceptually — just stop it.");
+    lines.push("- Add warmth or softening after the stop.");
+    lines.push("- Polish the sentence — rough is fine.");
+    lines.push('- Open with "I understand", "It sounds like", "As your coach".');
+    lines.push('- Close with any encouragement.');
+    lines.push("");
   } else {
+    lines.push("NEVER:");
+    lines.push("- Explain your reasoning — just say the thing.");
+    lines.push('- Open with "As your coach", "I understand that", "It sounds like".');
+    lines.push('- Close with "You\'ve got this", "Keep going", or any generic encouragement.');
+    lines.push("- Bullet points, lists, or headers.");
+    lines.push("- Ask more than one question.");
     lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
+    lines.push("- Repeat an idea already made in recent messages.");
+    lines.push("");
   }
-  lines.push("- Repeat an idea already made in recent messages.");
-  lines.push("");
 
   if (input.interruptionStyle) {
     const interruptionGuides: Record<string, string> = {
