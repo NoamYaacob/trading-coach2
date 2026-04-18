@@ -37,6 +37,7 @@ type OnboardingRequest = {
     highImpactOnly?: boolean;
     economicCalendarProviderKey?: string;
     economicCalendarStubScenario?: string;
+    preferredLanguage?: string;
   };
 };
 
@@ -117,6 +118,7 @@ function normalizeCoachingPreferences(
     highImpactOnly: coachingPreferences.highImpactOnly ?? false,
     economicCalendarProviderKey: coachingPreferences.economicCalendarProviderKey,
     economicCalendarStubScenario: coachingPreferences.economicCalendarStubScenario,
+    preferredLanguage: coachingPreferences.preferredLanguage,
     checkInFrequency:
       coachingPreferences.premarketCheckinEnabled ||
       coachingPreferences.postmarketReviewEnabled

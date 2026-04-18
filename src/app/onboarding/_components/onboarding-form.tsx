@@ -45,7 +45,8 @@ type TextFieldName =
   | "reviewFocusOther"
   | "preNewsMinutes"
   | "economicCalendarProviderKey"
-  | "economicCalendarStubScenario";
+  | "economicCalendarStubScenario"
+  | "preferredLanguage";
 
 type OnboardingFormState = {
   primaryMarket: string;
@@ -78,6 +79,7 @@ type OnboardingFormState = {
   highImpactOnly: boolean;
   economicCalendarProviderKey: string;
   economicCalendarStubScenario: string;
+  preferredLanguage: string;
 };
 
 type Notice = {
@@ -382,6 +384,16 @@ const economicCalendarStubScenarioOptions: Option[] = [
   { label: "Post-event discipline window", value: "passed_event" },
 ];
 
+const languageOptions: Option[] = [
+  { label: "עברית (Hebrew)", value: "he" },
+  { label: "English", value: "en" },
+  { label: "Español", value: "es" },
+  { label: "Français", value: "fr" },
+  { label: "Deutsch", value: "de" },
+  { label: "Русский", value: "ru" },
+  { label: "العربية (Arabic)", value: "ar" },
+];
+
 const initialState: OnboardingFormState = {
   primaryMarket: marketOptions[0]?.value ?? "",
   tradingStyle: tradingStyleOptions[1]?.value ?? "",
@@ -414,6 +426,7 @@ const initialState: OnboardingFormState = {
   economicCalendarProviderKey: economicCalendarProviderOptions[0]?.value ?? "mock",
   economicCalendarStubScenario:
     economicCalendarStubScenarioOptions[0]?.value ?? "mixed_day",
+  preferredLanguage: "he",
 };
 
 function ensureArray(values: unknown): string[] {
@@ -917,6 +930,7 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
         highImpactOnly: form.highImpactOnly,
         economicCalendarProviderKey: form.economicCalendarProviderKey,
         economicCalendarStubScenario: form.economicCalendarStubScenario,
+        preferredLanguage: form.preferredLanguage,
       },
     };
 
@@ -1170,6 +1184,14 @@ export function OnboardingForm({ userEmail }: OnboardingFormProps) {
 
         <section className="space-y-4 border-t border-stone-200 pt-8">
           <h2 className="text-lg font-semibold text-stone-950">Coaching preferences</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Preferred language"
+              value={form.preferredLanguage}
+              options={languageOptions}
+              onChange={(value) => updateTextField("preferredLanguage", value)}
+            />
+          </div>
           <div className="grid gap-4">
             <ToggleField
               label="Enable premarket check-in"
