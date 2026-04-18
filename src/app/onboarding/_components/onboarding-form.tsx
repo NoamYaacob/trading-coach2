@@ -400,25 +400,25 @@ const languageOptions: Option[] = [
   { label: "العربية (Arabic)", value: "ar" },
 ];
 
-const emptyState: OnboardingFormState = {
-  primaryMarket: "",
+const newUserDefaults: OnboardingFormState = {
+  primaryMarket: "FUTURES",
   tradingStyle: "",
   experienceYears: "",
   tradingDays: [],
   tradingSession: [],
   timezone: "UTC",
-  accountSize: { mode: "", custom: "" },
-  maxDailyLoss: { mode: "", custom: "" },
-  riskPerTrade: { mode: "", custom: "" },
-  maxTradesPerDay: "",
-  stopAfterLosses: "",
+  accountSize: { mode: "50000", custom: "" },
+  maxDailyLoss: { mode: "500", custom: "" },
+  riskPerTrade: { mode: "100", custom: "" },
+  maxTradesPerDay: "3",
+  stopAfterLosses: "2",
   primaryChallenge: [],
   primaryChallengeOther: "",
   tiltTrigger: [],
   tiltTriggerOther: "",
   tiltThought: "",
   tiltThoughtOther: "",
-  coachingTone: "",
+  coachingTone: "Direct",
   interruptionStyle: "",
   responseStyle: "",
   premarketCheckinEnabled: false,
@@ -522,7 +522,7 @@ function resolveSelectWithOther(
 }
 
 function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
-  if (!saved) return emptyState;
+  if (!saved) return newUserDefaults;
 
   const tp = saved.traderProfile;
   const rr = saved.riskRules;
