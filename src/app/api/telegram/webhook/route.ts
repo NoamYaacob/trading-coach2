@@ -99,6 +99,9 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
               coachingTone: true,
               interruptionStyle: true,
               responseStyle: true,
+              tradingWhy: true,
+              tradingGoal: true,
+              groundingReminder: true,
             },
           },
           coachingPreferences: true,
@@ -375,6 +378,9 @@ export async function POST(request: Request) {
     preNewsMessage: economicCalendarPolicy.isActive ? (economicCalendarPolicy.message ?? null) : null,
     manualSignals: manualEventSignals,
     recentMessages,
+    tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
+    tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
+    groundingReminder: connection.user.mentalProfile?.groundingReminder ?? null,
   };
 
   const useAI = shouldUseAICoach({

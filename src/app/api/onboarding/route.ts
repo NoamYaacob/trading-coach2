@@ -29,6 +29,9 @@ type OnboardingRequest = {
     coachingTone?: string;
     interruptionStyle?: string;
     responseStyle?: string;
+    tradingWhy?: string;
+    tradingGoal?: string;
+    groundingReminder?: string;
   };
   coachingPreferences?: {
     premarketCheckinEnabled?: boolean;
@@ -101,6 +104,9 @@ function normalizeMentalProfile(
     responseStyle: mentalProfile.responseStyle,
     tiltTriggers: mentalProfile.tiltTrigger ? [mentalProfile.tiltTrigger] : [],
     confidenceNotes: mentalProfile.tiltThought,
+    tradingWhy: mentalProfile.tradingWhy,
+    tradingGoal: mentalProfile.tradingGoal,
+    groundingReminder: mentalProfile.groundingReminder,
   };
 }
 

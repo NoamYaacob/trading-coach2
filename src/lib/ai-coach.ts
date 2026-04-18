@@ -45,36 +45,118 @@ export type AICoachInput = {
   preNewsMessage: string | null;
   manualSignals: ManualEventSignals | null;
   recentMessages: RecentMessage[];
+  tradingWhy: string | null;
+  tradingGoal: string | null;
+  groundingReminder: string | null;
 };
 
-function buildHebrewStyleBlock(coachingTone: string | null): string[] {
-  const isDirectTone = coachingTone?.toLowerCase().includes("direct") ?? false;
+function buildLanguageStyleBlock(language: string, coachingTone: string | null): string[] {
+  const isDirect = coachingTone?.toLowerCase().includes("direct") ?? false;
+  const isSupportive = coachingTone?.toLowerCase().includes("support") ?? false;
+  const toneNote = isDirect
+    ? "Tone: 1-2 sentences only. Sharp, clear, no softening."
+    : isSupportive
+      ? "Tone: 2-3 sentences. Warm, steady, grounding."
+      : "Tone: 2-3 sentences. Direct but human.";
 
-  const block: string[] = [
-    "HEBREW COACHING STYLE (you are responding in Hebrew — apply these):",
-    "Write like a native Israeli speaking to a fellow trader, not like a translated document.",
-    "- Short sentences. Colloquial, grounded, human.",
-    "- Natural openers: \"רגע\", \"שמע\", \"בסדר\", \"תעצור שנייה\", \"מה קורה כאן?\"",
-    "- Natural redirects: \"תצא מהמסך\", \"תן לזה לחלוף\", \"לא עכשיו\", \"קח נשימה\"",
-    "- Natural acknowledgment: \"זה קרה\", \"מובן\", \"זה לא נעים\", \"ברור שאתה מתוסכל\"",
-    "- AVOID these unnatural translated phrases:",
-    "  × \"אני מאמן המסחר שלך\"",
-    "  × \"שמור על משמעת\" / \"ממשמעת מסחרית\"",
-    "  × \"לפי הכללים שלך\"",
-    "  × \"אתה בתוך שתי הפסדים\"",
-    "  × \"זה איך שחשבונות מתרסקים\"",
-    "  × \"לשמור על ממשמעת וממש עכשיו\"",
-    "- Do not literally translate English coaching phrases into Hebrew.",
-  ];
+  switch (language) {
+    case "he":
+      return [
+        "HEBREW COACHING STYLE (you are responding in Hebrew):",
+        "Write like a native Israeli speaking to a fellow trader — not a translated document.",
+        "- Short sentences. Colloquial, grounded, warm when needed.",
+        "- Natural openers: \"רגע\", \"שמע\", \"בסדר\", \"תעצור שנייה\", \"מה קורה כאן?\"",
+        "- Natural redirects: \"תצא מהמסך\", \"תן לזה לחלוף\", \"לא עכשיו\", \"קח נשימה\"",
+        "- Natural acknowledgment: \"זה קרה\", \"מובן\", \"ברור שאתה מתוסכל\", \"זה לא נעים\"",
+        "- AVOID: \"אני מאמן המסחר שלך\", \"שמור על משמעת\", \"לפי הכללים שלך\",",
+        "  \"אתה בתוך שתי הפסדים\", \"לשמור על ממשמעת וממש עכשיו\", \"ממשמעת מסחרית\"",
+        "- Do not translate English coaching phrases into Hebrew literally.",
+        toneNote,
+        "",
+      ];
 
-  if (isDirectTone) {
-    block.push(
-      "Direct tone in Hebrew: 1-2 sentences only. Sharp, warm, no softening. One thing to notice, one thing to do.",
-    );
+    case "en":
+      return [
+        "ENGLISH COACHING STYLE:",
+        "Sound like a sharp, experienced trader talking to a peer — not a life coach or chatbot.",
+        "- Short, plain sentences. Skip the corporate-speak.",
+        "- Natural openers: \"Okay\", \"Stop for a second\", \"That makes sense\", \"Take five\"",
+        "- Natural redirects: \"Step away from the screen\", \"Let that pass\", \"Not right now\"",
+        "- AVOID: \"As your trading coach\", \"maintain discipline\", \"trust the process\",",
+        "  \"your rules exist for a reason\", \"this is how accounts blow up\"",
+        toneNote,
+        "",
+      ];
+
+    case "es":
+      return [
+        "SPANISH COACHING STYLE (you are responding in Spanish):",
+        "Write like a real person talking to a fellow trader — casual, direct, warm. Use 'tú', not 'usted'.",
+        "- Short sentences. Colloquial, not formal.",
+        "- Natural openers: \"Para\", \"Tranquilo\", \"Un momento\", \"Oye\", \"¿Qué está pasando?\"",
+        "- Natural redirects: \"Aléjate de la pantalla\", \"Deja que pase\", \"Ahora no\"",
+        "- AVOID: \"Soy tu coach de trading\", \"mantén la disciplina\", \"confía en el proceso\"",
+        "- Do not literally translate English phrases into Spanish.",
+        toneNote,
+        "",
+      ];
+
+    case "fr":
+      return [
+        "FRENCH COACHING STYLE (you are responding in French):",
+        "Write like a grounded French-speaking mentor, not a corporate training manual.",
+        "- Short, direct sentences. Use 'tu', not 'vous'.",
+        "- Natural openers: \"Stop\", \"Ok\", \"Calme-toi\", \"Prends du recul\", \"C'est normal\"",
+        "- Natural redirects: \"Éloigne-toi de l'écran\", \"Laisse passer ça\", \"Pas maintenant\"",
+        "- AVOID: \"Je suis ton coach de trading\", \"maintiens la discipline\", \"fais confiance au processus\"",
+        "- Do not translate English coaching phrases literally into French.",
+        toneNote,
+        "",
+      ];
+
+    case "de":
+      return [
+        "GERMAN COACHING STYLE (you are responding in German):",
+        "Write like a direct, no-nonsense German-speaking mentor — efficient, clear, human.",
+        "- Short sentences. Use 'du', not 'Sie'.",
+        "- Natural openers: \"Stop\", \"Okay\", \"Kurz innehalten\", \"Was passiert gerade?\"",
+        "- Natural redirects: \"Geh kurz weg vom Bildschirm\", \"Lass das sacken\", \"Nicht jetzt\"",
+        "- AVOID: \"Ich bin dein Trading-Coach\", \"halte die Disziplin aufrecht\", \"vertrau dem Prozess\"",
+        "- Do not literally translate English coaching phrases into German.",
+        toneNote,
+        "",
+      ];
+
+    case "ru":
+      return [
+        "RUSSIAN COACHING STYLE (you are responding in Russian):",
+        "Write like a direct, warm Russian-speaking mentor — no-nonsense but not cold.",
+        "- Short sentences. Use informal 'ты'.",
+        "- Natural openers: \"Стоп\", \"Окей\", \"Подожди секунду\", \"Что происходит?\"",
+        "- Natural redirects: \"Отойди от экрана\", \"Дай этому пройти\", \"Не сейчас\"",
+        "- Natural acknowledgment: \"Это случается\", \"Понятно\", \"Всё нормально\"",
+        "- AVOID: \"Я твой тренер по трейдингу\", \"соблюдай дисциплину\", \"доверяй процессу\"",
+        "- Do not literally translate English coaching phrases into Russian.",
+        toneNote,
+        "",
+      ];
+
+    case "ar":
+      return [
+        "ARABIC COACHING STYLE (you are responding in Arabic):",
+        "Write in clear, accessible Modern Standard Arabic — grounded and direct, not overly formal or classical.",
+        "- Short sentences. Human and warm.",
+        "- Natural openers: \"توقف\", \"خذ نفساً\", \"ماذا يحدث الآن؟\", \"هذا طبيعي\"",
+        "- Natural redirects: \"ابتعد عن الشاشة\", \"دع هذا يمر\", \"ليس الآن\"",
+        "- AVOID: \"أنا مدربك في التداول\", \"حافظ على الانضباط\", \"ثق في العملية\"",
+        "- Do not literally translate English coaching phrases into Arabic.",
+        toneNote,
+        "",
+      ];
+
+    default:
+      return [];
   }
-
-  block.push("");
-  return block;
 }
 
 function buildSystemPrompt(input: AICoachInput): string {
@@ -101,8 +183,24 @@ function buildSystemPrompt(input: AICoachInput): string {
     "",
   ];
 
-  if (input.language === "he") {
-    lines.push(...buildHebrewStyleBlock(input.coachingTone));
+  const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
+  if (langBlock.length > 0) {
+    lines.push(...langBlock);
+  }
+
+  // Personal coaching memory — use to inform tone, not to quote verbatim
+  const personalParts: string[] = [];
+  if (input.tradingWhy) personalParts.push(`Why they trade: ${input.tradingWhy}`);
+  if (input.tradingGoal) personalParts.push(`Building toward: ${input.tradingGoal}`);
+  if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
+
+  if (personalParts.length > 0) {
+    lines.push("PERSONAL COACHING MEMORY (use to inform tone and direction — do not quote verbatim):");
+    lines.push(...personalParts.map((p) => `- ${p}`));
+    lines.push(
+      "When the trader is spiraling, you may briefly surface their deeper reason for trading — only when it feels natural and grounding, not every reply. One line, not a speech.",
+    );
+    lines.push("");
   }
 
   // Situation facts — context for the AI, not instructions to announce

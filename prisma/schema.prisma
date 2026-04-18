@@ -152,6 +152,9 @@ model MentalProfile {
   responseStyle         String?
   tiltTriggers          String[]
   confidenceNotes       String?
+  tradingWhy            String? // why the trader trades (personal motivation)
+  tradingGoal           String? // what they're building through trading
+  groundingReminder     String? // what helps them refocus under pressure
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
