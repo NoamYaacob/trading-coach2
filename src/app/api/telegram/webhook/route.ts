@@ -127,7 +127,13 @@ async function connectTelegramAccount(params: {
     },
   });
 
-  if (!linkToken || linkToken.usedAt || linkToken.expiresAt < new Date()) {
+  if (linkToken?.usedAt) {
+    // Token already consumed — connection was created on a previous delivery.
+    // Return 200 silently so Telegram stops retrying this update.
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!linkToken || linkToken.expiresAt < new Date()) {
     await sendTelegramMessage(
       params.telegramChatId,
       "This link is invalid or expired. Please create a fresh Telegram connection link from your website dashboard.",
@@ -140,7 +146,7 @@ async function connectTelegramAccount(params: {
       },
     );
 
-    return NextResponse.json({ ok: false }, { status: 400 });
+    return NextResponse.json({ ok: true });
   }
 
   await prisma.$transaction([
@@ -202,10 +208,8 @@ export async function POST(request: Request) {
   const telegramChatId = payload.message?.chat?.id;
 
   if (!telegramUserId || !telegramChatId) {
-    return NextResponse.json(
-      { ok: false, error: "telegram identifiers are required" },
-      { status: 400 },
-    );
+    // Non-message update type (channel post, poll, etc.) — acknowledge and ignore.
+    return NextResponse.json({ ok: true });
   }
 
   const chatId = String(telegramChatId);
