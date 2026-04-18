@@ -12,6 +12,51 @@ const LANGUAGE_NAMES: Record<string, string> = {
   ar: "Arabic",
 };
 
+export type ConversationMode = "coaching" | "casual" | "clarification" | "meta";
+
+export function detectConversationMode(params: {
+  message: string;
+  hasEmotionalAction: boolean;
+  hasConstraints: boolean;
+}): ConversationMode {
+  // Safety constraints always force coaching — guardrails must surface regardless of topic
+  if (params.hasConstraints) return "coaching";
+
+  // Emotional quick action = unambiguously coaching
+  if (params.hasEmotionalAction) return "coaching";
+
+  const msg = params.message.trim();
+  if (!msg) return "casual";
+
+  // Meta: user asking about bot's knowledge, memory, or their stored profile
+  if (
+    /what (do you|don'?t you) know|what you (know|remember|have)|your (context|memory|profile)|what('?s| is| are) (my|your) (rules?|profile|settings?|context|memory|limits?)/i.test(msg)
+  ) {
+    return "meta";
+  }
+
+  // Clarification: user questioning a previous reply
+  if (
+    /(why|how) (did|do) you (say|tell|think|know)|what did you mean|what do you mean by|you (just |already )?said|based on what|explain (why|what that|what you)/i.test(msg)
+  ) {
+    return "clarification";
+  }
+
+  // Coaching: English trading / emotional keywords
+  if (
+    /\b(trade|trading|market|loss|lost|profit|position|setup|entry|exit|fomo|revenge|tilt|hesitat|impulse|drawdown|pnl|stop.?loss|risk|short|long)\b/i.test(msg)
+  ) {
+    return "coaching";
+  }
+
+  // Coaching: non-Latin trading terms (Hebrew, Arabic, Russian)
+  if (/הפסד|מסחר|עסקה|שוק|רווח|потер|торг|рынок|убыт|خسار|تداول|سوق/.test(msg)) {
+    return "coaching";
+  }
+
+  return "casual";
+}
+
 export type RecentMessage = {
   message: string;
   traderState: string;
@@ -48,6 +93,7 @@ export type AICoachInput = {
   tradingWhy: string | null;
   tradingGoal: string | null;
   groundingReminder: string | null;
+  conversationMode: ConversationMode;
 };
 
 function buildLanguageStyleBlock(language: string, coachingTone: string | null): string[] {
@@ -336,6 +382,9 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
 
 function buildSystemPrompt(input: AICoachInput): string {
   const langName = LANGUAGE_NAMES[input.language] ?? "English";
+  const mode = input.conversationMode;
+  const isCoaching = mode === "coaching";
+  const isMeta = mode === "meta";
   const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
   const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
 
@@ -345,24 +394,20 @@ function buildSystemPrompt(input: AICoachInput): string {
       ? "- 2-3 sentences is natural. 4 is the hard maximum. No padding."
       : "- 1-2 sentences. If it fits in one, use one.";
 
+  const modeInstruction: Record<ConversationMode, string> = {
+    coaching: "Use the trader context below. Be short, grounded, human.",
+    casual: "Answer naturally like a real person. Do not introduce trading or coaching. Do not redirect.",
+    clarification: "Answer exactly what was asked. Be specific and honest. Do not re-coach or continue the previous thread.",
+    meta: "Answer what the user asked about your knowledge or their profile. Use only what is explicitly in this prompt. Do not invent.",
+  };
+
   const lines: string[] = [
     `You are a human coach who works with traders. Respond ONLY in ${langName}.`,
-    "You know when to coach, when to answer simply, when to clarify, and when to stop.",
     "",
-    "STEP 1 — READ THE MESSAGE FIRST:",
-    "Decide what kind of message this is before responding:",
-    "- COACHING: trader describes a trading or emotional situation (loss, FOMO, revenge, tilt, urge to trade, risk state)",
-    "- CASUAL: not about trading — general question, small talk, unrelated topic",
-    "- CLARIFICATION: user asks what you said, what you meant, why, or what you based it on",
-    "- META: user asks about your memory, what you know about them, your context, or your reasoning",
+    `CONVERSATION MODE: ${mode.toUpperCase()}`,
+    modeInstruction[mode],
     "",
-    "STEP 2 — RESPOND BY TYPE:",
-    "- COACHING → use the situation context below, be short, grounded, human",
-    "- CASUAL → answer naturally like a real person. Do not redirect to trading. Do not add coaching.",
-    "- CLARIFICATION → answer exactly what was asked. Be specific and honest. Do not re-coach.",
-    "- META → be honest about what you know and don't know. Do not invent context. Do not assume.",
-    "",
-    "REPLY STYLE (all modes):",
+    "REPLY STYLE:",
     replyLengthLine,
     "- Start with the point. Do not build up to it.",
     "- One clear truth OR one clear next action. Not both.",
@@ -371,8 +416,8 @@ function buildSystemPrompt(input: AICoachInput): string {
     "GROUNDING:",
     "- The current message takes priority over older context. If the message changes direction, follow it.",
     "- Do not continue a coaching assumption if the current message doesn't support it.",
-    "- Do not assert facts unless they are explicitly present in this prompt.",
-    "- Never invent or extrapolate. If uncertain, say less.",
+    "- Do not assert facts unless they are explicitly in this prompt.",
+    "- If uncertain, say less.",
     "",
     "REPETITION:",
     "- Do not repeat an idea already made in this conversation, even in different words.",
@@ -391,129 +436,134 @@ function buildSystemPrompt(input: AICoachInput): string {
     "",
   ];
 
-  const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
-  if (langBlock.length > 0) {
-    lines.push(...langBlock);
+  // Language voice block: full coaching examples only in coaching mode;
+  // for other modes a short native-voice note is enough
+  if (isCoaching) {
+    const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
+    if (langBlock.length > 0) {
+      lines.push(...langBlock);
+    }
+  } else {
+    lines.push(`LANGUAGE: Write naturally in ${langName} — like a native speaker, not a translated bot.`);
+    lines.push("");
   }
 
-  // Personal coaching memory — coaching mode only, never quote verbatim
+  // Personal coaching memory — coaching + meta only
   const personalParts: string[] = [];
   if (input.tradingWhy) personalParts.push(`Why they trade: ${input.tradingWhy}`);
   if (input.tradingGoal) personalParts.push(`Building toward: ${input.tradingGoal}`);
   if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
 
-  if (personalParts.length > 0) {
-    lines.push("PERSONAL COACHING MEMORY (COACHING mode only — do not quote verbatim, do not surface in CASUAL or META):");
+  if (personalParts.length > 0 && (isCoaching || isMeta)) {
+    const label = isCoaching
+      ? "PERSONAL COACHING MEMORY (do not quote verbatim):"
+      : "KNOWN ABOUT THIS PERSON:";
+    lines.push(label);
     lines.push(...personalParts.map((p) => `- ${p}`));
-    lines.push(
-      "Surface their deeper reason only when it feels genuinely grounding — not every reply. One line, not a speech.",
-    );
+    if (isCoaching) {
+      lines.push("Surface their deeper reason only when it feels genuinely grounding — not every reply. One line.");
+    }
     lines.push("");
   }
 
-  // Situation facts — coaching mode only
-  const situationParts: string[] = [];
-
-  const sessionState = input.sessionEnded
-    ? "ended"
-    : input.sessionStarted
-      ? "active"
-      : "not started";
-  situationParts.push(`Session: ${sessionState}`);
-
-  if (input.currentState && input.currentState !== "NONE") {
-    situationParts.push(`Trader state: ${input.currentState}`);
-  }
-  if (input.recentLossStreak > 0) {
-    situationParts.push(`Self-reported loss streak: ${input.recentLossStreak} (not broker-verified)`);
-  }
-
+  // Profile facts — coaching + meta
   const profileParts: string[] = [];
   if (input.primaryMarket) profileParts.push(`market: ${input.primaryMarket}`);
   if (input.tradingStyle) profileParts.push(`style: ${input.tradingStyle}`);
   if (input.coachingTone) profileParts.push(`preferred tone: ${input.coachingTone}`);
-  if (profileParts.length > 0) situationParts.push(`Trader: ${profileParts.join(", ")}`);
 
   const ruleParts: string[] = [];
   if (input.maxDailyLoss) ruleParts.push(`max daily loss: ${input.maxDailyLoss}`);
   if (input.maxTradesPerDay) ruleParts.push(`max trades/day: ${input.maxTradesPerDay}`);
   if (input.stopAfterLosses) ruleParts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
-  if (ruleParts.length > 0) situationParts.push(`Rules: ${ruleParts.join(", ")}`);
 
-  const m = input.manualSignals;
-  if (m && (m.tradeCount > 0 || m.hasRuleBreach)) {
-    const parts: string[] = [];
-    if (m.tradeCount > 0) parts.push(`${m.tradeCount} trades (self-reported)`);
-    if (m.consecutiveLosses > 0) parts.push(`${m.consecutiveLosses} consecutive losses (self-reported)`);
-    if (m.hasRuleBreach) parts.push("rule breach logged");
-    situationParts.push(`Manual log: ${parts.join(", ")}`);
-  }
-
-  if (situationParts.length > 0) {
-    lines.push("SITUATION (COACHING mode only — ignore for CASUAL, CLARIFICATION, META):");
-    lines.push(...situationParts.map((p) => `- ${p}`));
+  if ((isCoaching || isMeta) && (profileParts.length > 0 || ruleParts.length > 0)) {
+    lines.push(isMeta ? "PROFILE:" : "TRADER PROFILE:");
+    if (profileParts.length > 0) lines.push(`- ${profileParts.join(", ")}`);
+    if (ruleParts.length > 0) lines.push(`- Rules: ${ruleParts.join(", ")}`);
     lines.push("");
   }
 
-  if (input.warningMessages.length > 0) {
-    lines.push(`Proximity warnings (COACHING only): ${input.warningMessages.slice(0, 2).join("; ")}`);
+  // Session and live state — coaching only
+  if (isCoaching) {
+    const sessionState = input.sessionEnded ? "ended" : input.sessionStarted ? "active" : "not started";
+    const sessionParts: string[] = [`Session: ${sessionState}`];
+
+    if (input.currentState && input.currentState !== "NONE") {
+      sessionParts.push(`Trader state: ${input.currentState}`);
+    }
+    if (input.recentLossStreak > 0) {
+      sessionParts.push(`Self-reported loss streak: ${input.recentLossStreak} (not broker-verified)`);
+    }
+
+    const m = input.manualSignals;
+    if (m && (m.tradeCount > 0 || m.hasRuleBreach)) {
+      const parts: string[] = [];
+      if (m.tradeCount > 0) parts.push(`${m.tradeCount} trades (self-reported)`);
+      if (m.consecutiveLosses > 0) parts.push(`${m.consecutiveLosses} consecutive losses (self-reported)`);
+      if (m.hasRuleBreach) parts.push("rule breach logged");
+      sessionParts.push(`Manual log: ${parts.join(", ")}`);
+    }
+
+    lines.push("SESSION:");
+    lines.push(...sessionParts.map((p) => `- ${p}`));
     lines.push("");
+
+    if (input.warningMessages.length > 0) {
+      lines.push(`Proximity warnings: ${input.warningMessages.slice(0, 2).join("; ")}`);
+      lines.push("");
+    }
+
+    // Per-state coaching intent
+    const state = input.currentState?.toLowerCase() ?? "";
+    if (state.includes("fomo")) {
+      lines.push("Coaching intent: FOMO — name the pull briefly, redirect to what they can control.");
+    } else if (state.includes("revenge")) {
+      lines.push("Coaching intent: Revenge impulse — one acknowledgment, one redirect to stepping away. No debate.");
+    } else if (state.includes("tilt") || state.includes("out_of_control")) {
+      lines.push("Coaching intent: Tilted — ground them with one concrete thing. No trades.");
+    } else if (state.includes("just_took_two_loss")) {
+      lines.push("Coaching intent: Multiple losses self-reported — acknowledge the weight without counting. Help them pause.");
+    } else if (state.includes("just_took_loss")) {
+      lines.push("Coaching intent: Fresh loss — one acknowledgment. Let them decide what's next.");
+    } else if (state.includes("reset") || state.includes("calm") || state.includes("premarket")) {
+      lines.push("Coaching intent: Recovering — brief acknowledgment, grounded. No overpraise.");
+    }
   }
 
-  // Per-state coaching intent
-  const state = input.currentState?.toLowerCase() ?? "";
-  if (state.includes("fomo")) {
-    lines.push("Coaching intent: FOMO — name the pull briefly, redirect to what they can control.");
-  } else if (state.includes("revenge")) {
-    lines.push("Coaching intent: Revenge impulse — one acknowledgment, one redirect to stepping away. No debate.");
-  } else if (state.includes("tilt") || state.includes("out_of_control")) {
-    lines.push("Coaching intent: Tilted — ground them with one concrete thing. No trades.");
-  } else if (state.includes("just_took_two_loss")) {
-    lines.push("Coaching intent: Multiple losses self-reported — acknowledge the weight without counting. Help them pause.");
-  } else if (state.includes("just_took_loss")) {
-    lines.push("Coaching intent: Fresh loss — one acknowledgment. Let them decide what's next.");
-  } else if (state.includes("reset") || state.includes("calm") || state.includes("premarket")) {
-    lines.push("Coaching intent: Recovering — brief acknowledgment, grounded. No overpraise.");
-  }
-
-  // Safety constraints — always apply regardless of message type
+  // Safety constraints — always apply regardless of mode
   const constraints: string[] = [];
 
   if (input.guardianLocked) {
     const reason = input.lockoutReason ?? "daily limit reached";
-    constraints.push(`The account is locked for today (${reason}). One sentence — matter-of-fact. No drama.`);
+    constraints.push(`Account locked for today (${reason}). One sentence — matter-of-fact.`);
   }
-
   if (input.cooldownActive) {
-    constraints.push("The trader is in a cooldown period. Stepping away is the right move — say this plainly.");
+    constraints.push("Trader is in a cooldown period. Stepping away is the right move — say this plainly.");
   }
-
   if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) {
-    constraints.push(`The trader hit their consecutive-loss limit (${input.recentLossStreak} of ${input.stopAfterLosses}). Trading stops here — say this clearly, without drama or moralizing.`);
+    constraints.push(`Consecutive-loss limit hit (${input.recentLossStreak} of ${input.stopAfterLosses}). Trading stops here — say this clearly, without drama.`);
   }
-
   if (input.hasBlockingViolation && input.violationMessage) {
     constraints.push(`Active rule limit: ${input.violationMessage}. Mention it plainly, once.`);
   }
-
   if (input.isPreNewsWindow && input.preNewsMessage) {
     constraints.push(`News window: ${input.preNewsMessage}. Flag the timing briefly.`);
   }
-
   if (input.alertContext) {
     constraints.push(`Broker context: ${input.alertContext}`);
   }
 
   if (constraints.length > 0) {
     lines.push("");
-    lines.push("ACTIVE CONSTRAINTS (always apply, all modes — weave in naturally, do not list or announce):");
+    lines.push("ACTIVE CONSTRAINTS (always — weave in naturally, do not list or announce):");
     lines.push(...constraints.map((c) => `- ${c}`));
   }
 
-  // Recent session — show for continuity but flag anti-repetition
+  // Recent session for continuity + anti-repetition
   if (input.recentMessages.length > 0) {
     lines.push("");
-    lines.push("Recent session messages (oldest first) — use for context, do not repeat what was already addressed:");
+    lines.push("Recent session (oldest first) — do not repeat what was already addressed:");
     for (const msg of input.recentMessages) {
       const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";
       lines.push(`- ${msg.message}${stateLabel}`);

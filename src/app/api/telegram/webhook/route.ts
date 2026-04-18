@@ -6,6 +6,7 @@ import {
   isAICoachEnabled,
   EMOTIONAL_ACTION_IDS,
   shouldUseAICoach,
+  detectConversationMode,
 } from "@/lib/ai-coach";
 import type { CoachIntent } from "@/lib/coach";
 import {
@@ -346,6 +347,17 @@ export async function POST(request: Request) {
         }))
     : [];
 
+  const conversationMode = detectConversationMode({
+    message: rawText,
+    hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
+    hasConstraints:
+      guardian.evaluation.lockoutActive ||
+      violationFeed.hasBlockingViolation ||
+      flags.cooldownActive,
+  });
+
+  const isCoachingMode = conversationMode === "coaching";
+
   const aiInput = {
     message: rawText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
@@ -363,9 +375,17 @@ export async function POST(request: Request) {
     riskPerTrade: connection.user.riskRules?.riskPerTrade
       ? parseFloat(String(connection.user.riskRules.riskPerTrade))
       : null,
-    currentState: flags.currentState,
+    // Live session + emotional state: coaching only
+    currentState: isCoachingMode ? flags.currentState : "NONE",
+    recentLossStreak: isCoachingMode ? flags.recentLossStreak : 0,
+    manualSignals: isCoachingMode ? manualEventSignals : null,
+    warningMessages: isCoachingMode ? violationFeed.warningViolations.map((v) => v.message) : [],
+    isPreNewsWindow: isCoachingMode ? isInsidePreNewsWarningWindow(economicCalendarSnapshot) : false,
+    preNewsMessage: isCoachingMode && economicCalendarPolicy.isActive
+      ? (economicCalendarPolicy.message ?? null)
+      : null,
+    // Safety constraints: always pass through regardless of mode
     cooldownActive: flags.cooldownActive,
-    recentLossStreak: flags.recentLossStreak,
     guardianLocked: guardian.evaluation.lockoutActive,
     lockoutReason: guardian.evaluation.primaryReason,
     sessionStarted: todaySessionState.sessionStarted,
@@ -373,14 +393,11 @@ export async function POST(request: Request) {
     todaySessionStateKind: todaySessionState.kind,
     hasBlockingViolation: violationFeed.hasBlockingViolation,
     violationMessage: violationFeed.primaryViolation?.message ?? null,
-    warningMessages: violationFeed.warningViolations.map((v) => v.message),
-    isPreNewsWindow: isInsidePreNewsWarningWindow(economicCalendarSnapshot),
-    preNewsMessage: economicCalendarPolicy.isActive ? (economicCalendarPolicy.message ?? null) : null,
-    manualSignals: manualEventSignals,
     recentMessages,
     tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
     tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
     groundingReminder: connection.user.mentalProfile?.groundingReminder ?? null,
+    conversationMode,
   };
 
   const useAI = shouldUseAICoach({
