@@ -135,22 +135,22 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
         "",
         "FEW-SHOT EXAMPLES:",
         "  After a loss:",
-        '    ✓ "זה קרה. מה עכשיו?"',
-        '    ✓ "הפסד קרה — לא עניין. מה הצעד הבא?"',
-        '    ✓ "קרה. תנשום."',
+        '    ✓ "זה קרה — לא עניין. מה עכשיו?"',
+        '    ✓ "הפסד אחד זה לא הסוף. תנשום ותחכה לסטאפ הבא."',
+        '    ✓ "קרה לכולם. צא מהמסך כמה דקות."',
         "  FOMO / chasing:",
-        '    ✓ "רגע. הסטאפ כבר עבר."',
-        '    ✓ "לא שלך. הבא יבוא."',
-        '    ✓ "אל תרדוף. תחכה."',
+        '    ✓ "רגע, הסטאפ הזה כבר עבר. הבא יבוא."',
+        '    ✓ "לא כל תנועה שלך — חכה לאחת שמתאים לך."',
+        '    ✓ "אל תרדוף. שב ותחכה."',
         "  Revenge impulse:",
-        '    ✓ "תצא מהמסך. עכשיו."',
-        '    ✓ "לא עכשיו. זה ריגוש."',
+        '    ✓ "עכשיו לא הזמן — זה ריגוש, לא מסחר."',
+        '    ✓ "צא מהמסך רגע. חזור כשזה שקט."',
         "  Cooling down:",
-        '    ✓ "בסדר. אתה יוצא מזה."',
-        '    ✓ "יצאת. מה הסטאפ הבא?"',
+        '    ✓ "בסדר, אתה יוצא מזה. מה הסטאפ הבא שלך?"',
+        '    ✓ "יצאת ממנו — טוב. תן לזה לשקוע קצת."',
         "  Account locked / limit hit:",
-        '    ✓ "יום נגמר. מחר שוב."',
-        '    ✓ "הגעת לגבול — זה בדיוק מה שהגבול בשבילו."',
+        '    ✓ "הגעת לגבול, היום נגמר. מחר שוב."',
+        '    ✓ "זה בדיוק מה שהגבול בשבילו — שמרת על עצמך."',
         "",
         "NEVER — BAD HEBREW PATTERNS:",
         '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "ממשמעת מסחרית"',
@@ -400,17 +400,22 @@ function buildLanguageCasualNote(language: string): string[] {
     case "he":
       return [
         "HEBREW VOICE (casual / direct reply):",
-        "Israeli chat style. Very short. No formality. No coaching register.",
-        "Sound like a real person replying in WhatsApp — not a formal assistant.",
+        "Israeli WhatsApp style. Natural, warm, short. No coaching register, no formality.",
         "",
-        "✓ Natural responses: \"כן\", \"בטח\", \"הממ, לא יודע\", \"מה פתאום\", \"סגור\", \"מגניב\"",
-        "✓ Natural starters: \"אה\", \"הה\", \"נו\", \"שמע\", \"בגדול\"",
-        "✓ Use casual contractions and particles: \"בגלל ש\" not \"מאחר ו\", \"אין לי מושג\" not \"אינני יודע\"",
+        "✓ GOOD EXAMPLES:",
+        "  \"לא רע, יום עמוס. אתה?\"",
+        "  \"הממ, לא ממש הדבר שלי — אבל ספר.\"",
+        "  \"כן, בטח. אוהב את זה.\"",
+        "  \"מה פתאום, זה לא ככה עובד.\"",
+        "  \"שמע, לא יודע אם אני הכי מתאים לזה — אבל מה דעתך?\"",
+        "",
+        "✓ Natural starters: \"אה\", \"הה\", \"נו\", \"שמע\", \"בגדול\", \"ממש\", \"בטח\"",
+        "✓ Casual particles: \"בגלל ש\" not \"מאחר ו\", \"אין לי מושג\" not \"אינני יודע\"",
         "",
         "✗ NEVER formal register: \"אני שמח לסייע\", \"אכן\", \"בהחלט\", \"בוודאי\"",
         "✗ NEVER translated AI-isms: \"זה נשמע מצחיק\", \"אני מבין\", \"מעניין מאוד\"",
-        "✗ NEVER start with subject: \"אני חושב ש...\" → say the thing directly",
-        "✗ NEVER more than 2 sentences",
+        "✗ NEVER start with subject + verb block: \"אני חושב ש...\" — say it directly",
+        "✗ NEVER introduce trading, rules, or coaching — just reply to what was asked",
         "",
       ];
     case "en":
@@ -459,11 +464,13 @@ function buildSystemPrompt(input: AICoachInput): string {
   const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
   const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
 
-  const replyLengthLine = isDirect
-    ? "- 1 sentence is ideal. 2 is fine. 3 is the hard maximum. Stop as soon as it is said."
-    : isSupportive
-      ? "- 2-3 sentences is natural. 4 is the hard maximum. No padding."
-      : "- 1-2 sentences. If it fits in one, use one.";
+  const replyLengthLine = !isCoaching
+    ? "- 1-2 natural sentences. Like a real person replying in chat."
+    : isDirect
+      ? "- 1 sentence is ideal. 2 is fine. 3 is the hard maximum. Stop as soon as it is said."
+      : isSupportive
+        ? "- 2-3 sentences is natural. 4 is the hard maximum. No padding."
+        : "- 1-2 sentences. If it fits in one, use one.";
 
   const modeInstruction: Record<ConversationMode, string> = {
     coaching: "Use the trader context below. Be short, grounded, human.",
@@ -598,27 +605,31 @@ function buildSystemPrompt(input: AICoachInput): string {
     }
   }
 
-  // Safety constraints — always apply regardless of mode
+  // Hard lockout always surfaces — even in casual/meta/clarification modes.
+  // Soft constraints (cooldown, rule violations, news window) only surface in coaching mode.
   const constraints: string[] = [];
 
   if (input.guardianLocked) {
     const reason = input.lockoutReason ?? "daily limit reached";
     constraints.push(`Account locked for today (${reason}). One sentence — matter-of-fact.`);
   }
-  if (input.cooldownActive) {
-    constraints.push("Trader is in a cooldown period. Stepping away is the right move — say this plainly.");
-  }
-  if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) {
-    constraints.push(`Consecutive-loss limit hit (${input.recentLossStreak} of ${input.stopAfterLosses}). Trading stops here — say this clearly, without drama.`);
-  }
-  if (input.hasBlockingViolation && input.violationMessage) {
-    constraints.push(`Active rule limit: ${input.violationMessage}. Mention it plainly, once.`);
-  }
-  if (input.isPreNewsWindow && input.preNewsMessage) {
-    constraints.push(`News window: ${input.preNewsMessage}. Flag the timing briefly.`);
-  }
-  if (input.alertContext) {
-    constraints.push(`Broker context: ${input.alertContext}`);
+
+  if (isCoaching) {
+    if (input.cooldownActive) {
+      constraints.push("Trader is in a cooldown period. Stepping away is the right move — say this plainly.");
+    }
+    if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) {
+      constraints.push(`Consecutive-loss limit hit (${input.recentLossStreak} of ${input.stopAfterLosses}). Trading stops here — say this clearly, without drama.`);
+    }
+    if (input.hasBlockingViolation && input.violationMessage) {
+      constraints.push(`Active rule limit: ${input.violationMessage}. Mention it plainly, once.`);
+    }
+    if (input.isPreNewsWindow && input.preNewsMessage) {
+      constraints.push(`News window: ${input.preNewsMessage}. Flag the timing briefly.`);
+    }
+    if (input.alertContext) {
+      constraints.push(`Broker context: ${input.alertContext}`);
+    }
   }
 
   if (constraints.length > 0) {
@@ -627,12 +638,17 @@ function buildSystemPrompt(input: AICoachInput): string {
     lines.push(...constraints.map((c) => `- ${c}`));
   }
 
-  // Recent session for continuity + anti-repetition
-  if (input.recentMessages.length > 0) {
+  // Recent session for continuity + anti-repetition.
+  // Casual: omit entirely — no stale trading context should bleed through.
+  // Clarification/meta: include text only, no state labels.
+  // Coaching: include with state labels for full context.
+  if (mode !== "casual" && input.recentMessages.length > 0) {
     lines.push("");
     lines.push("Recent session (oldest first) — do not repeat what was already addressed:");
     for (const msg of input.recentMessages) {
-      const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";
+      const stateLabel = isCoaching && msg.traderState && msg.traderState !== "NONE"
+        ? ` [${msg.traderState}]`
+        : "";
       lines.push(`- ${msg.message}${stateLabel}`);
     }
   }
