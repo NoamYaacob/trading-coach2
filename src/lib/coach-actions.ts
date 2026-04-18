@@ -1,3 +1,5 @@
+import type { BotLocale } from "@/lib/i18n/types";
+
 export type CoachActionGroupKey =
   | "premarket"
   | "distress"
@@ -135,19 +137,65 @@ export function getCoachQuickActionsByGroup(group: CoachActionGroupKey) {
   return coachQuickActions.filter((action) => action.group === group);
 }
 
-export function getTelegramQuickActionKeyboard() {
+export function getTelegramQuickActionKeyboard(locale: BotLocale) {
+  const k = locale.keyboard;
   return [
-    getCoachQuickActionsByGroup("premarket").map((action) => ({ text: action.message })),
-    getCoachQuickActionsByGroup("distress")
-      .slice(0, 3)
-      .map((action) => ({ text: action.message })),
-    getCoachQuickActionsByGroup("distress")
-      .slice(3)
-      .map((action) => ({ text: action.message })),
-    getCoachQuickActionsByGroup("reset").map((action) => ({ text: action.message })),
-    [
-      ...getCoachQuickActionsByGroup("review").map((action) => ({ text: action.message })),
-      ...getCoachQuickActionsByGroup("rules").map((action) => ({ text: action.message })),
-    ],
+    [{ text: k.checkIn }],
+    [{ text: k.fomo }, { text: k.revenge }, { text: k.justLost }],
+    [{ text: k.lostTwice }, { text: k.angry }, { text: k.outOfControl }],
+    [{ text: k.calmingDown }, { text: k.backInControl }],
+    [{ text: k.daySummary }, { text: k.ruleLimits }],
   ];
+}
+
+const KEYBOARD_KEY_TO_ACTION_ID: Record<keyof BotLocale["keyboard"], string> = {
+  checkIn: "check-in",
+  fomo: "fomo",
+  revenge: "revenge",
+  justLost: "just-lost",
+  lostTwice: "lost-twice",
+  angry: "angry",
+  outOfControl: "out-of-control",
+  calmingDown: "calming-down",
+  backInControl: "back-in-control",
+  daySummary: "day-summary",
+  ruleLimits: "rule-limits",
+};
+
+/**
+ * Maps a locale keyboard label back to its action, so canonical Hebrew message
+ * can be forwarded to state-detection logic unchanged.
+ */
+export function findActionByLocaleText(
+  text: string,
+  locale: BotLocale,
+): CoachQuickAction | null {
+  const trimmed = text.trim();
+  for (const [key, actionId] of Object.entries(KEYBOARD_KEY_TO_ACTION_ID)) {
+    if (locale.keyboard[key as keyof BotLocale["keyboard"]] === trimmed) {
+      return coachQuickActions.find((a) => a.id === actionId) ?? null;
+    }
+  }
+  return null;
+}
+
+const ACTION_LOCALE_REPLY: Record<string, (l: BotLocale) => string> = {
+  "check-in": (l) => l.prompts.checkIn,
+  "fomo": (l) => l.coaching.fomo,
+  "revenge": (l) => l.coaching.revenge,
+  "just-lost": (l) => l.coaching.loss,
+  "lost-twice": (l) => l.coaching.loss,
+  "angry": (l) => l.coaching.anger,
+  "out-of-control": (l) => l.coaching.anger,
+  "calming-down": (l) => l.coaching.discipline,
+  "back-in-control": (l) => l.coaching.discipline,
+  "day-summary": (l) => l.prompts.review,
+  "rule-limits": (l) => l.coaching.warning,
+};
+
+export function getLocaleReplyForQuickAction(
+  actionId: string,
+  locale: BotLocale,
+): string | null {
+  return ACTION_LOCALE_REPLY[actionId]?.(locale) ?? null;
 }

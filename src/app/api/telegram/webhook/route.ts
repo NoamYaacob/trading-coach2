@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { TraderCurrentState } from "@prisma/client";
 
 import { buildCoachContext, generateCoachReply } from "@/lib/coach";
-import { getTelegramQuickActionKeyboard } from "@/lib/coach-actions";
+import {
+  findActionByLocaleText,
+  getLocaleReplyForQuickAction,
+  getTelegramQuickActionKeyboard,
+} from "@/lib/coach-actions";
 import { prisma } from "@/lib/db";
+import { getLocale } from "@/lib/i18n";
+import type { BotLocale } from "@/lib/i18n/types";
 import {
   deriveTodaySessionState,
   getGuardianSnapshot,
@@ -43,12 +49,12 @@ type TelegramWebhookPayload = {
   startToken?: string;
 };
 
-async function replyToTelegram(chatId: string, text: string) {
+async function replyToTelegram(chatId: string, text: string, locale: BotLocale) {
   await sendTelegramMessage(chatId, text, {
     replyMarkup: {
-      keyboard: getTelegramQuickActionKeyboard(),
+      keyboard: getTelegramQuickActionKeyboard(locale),
       resize_keyboard: true,
-      input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
+      input_field_placeholder: locale.system.inputPlaceholder,
     },
   });
   return NextResponse.json({ ok: true });
@@ -122,6 +128,9 @@ async function connectTelegramAccount(params: {
           traderProfile: {
             select: { id: true },
           },
+          coachingPreferences: {
+            select: { preferredLanguage: true },
+          },
         },
       },
     },
@@ -134,14 +143,15 @@ async function connectTelegramAccount(params: {
   }
 
   if (!linkToken || linkToken.expiresAt < new Date()) {
+    const defaultLocale = getLocale();
     await sendTelegramMessage(
       params.telegramChatId,
-      "This link is invalid or expired. Please create a fresh Telegram connection link from your website dashboard.",
+      defaultLocale.system.invalidLink,
       {
         replyMarkup: {
-          keyboard: getTelegramQuickActionKeyboard(),
+          keyboard: getTelegramQuickActionKeyboard(defaultLocale),
           resize_keyboard: true,
-          input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
+          input_field_placeholder: defaultLocale.system.inputPlaceholder,
         },
       },
     );
@@ -179,23 +189,28 @@ async function connectTelegramAccount(params: {
     telegramConnected: true,
   });
 
+  const connectLocale = getLocale(linkToken.user.coachingPreferences?.preferredLanguage);
+
   if (!linkToken.user.traderProfile) {
     return replyToTelegram(
       params.telegramChatId,
-      "Telegram connected successfully. Complete onboarding on the website before using the coach.",
+      connectLocale.system.connectSuccessIncomplete,
+      connectLocale,
     );
   }
 
   if (!access.accessActive) {
     return replyToTelegram(
       params.telegramChatId,
-      "Telegram connected successfully, but access is inactive. You need an active trial or plan to use the coach.",
+      connectLocale.system.connectSuccessNoAccess,
+      connectLocale,
     );
   }
 
   return replyToTelegram(
     params.telegramChatId,
-    "Telegram connected successfully. Bot coaching access is active.",
+    connectLocale.system.connectSuccess,
+    connectLocale,
   );
 }
 
@@ -226,11 +241,11 @@ export async function POST(request: Request) {
   const connection = await loadLinkedUserByTelegramUserId(String(telegramUserId));
 
   if (!connection) {
-    return replyToTelegram(
-      chatId,
-      "This Telegram account is not linked yet. Please connect Telegram from your website dashboard first.",
-    );
+    const defaultLocale = getLocale();
+    return replyToTelegram(chatId, defaultLocale.system.notLinked, defaultLocale);
   }
+
+  const locale = getLocale(connection.user.coachingPreferences?.preferredLanguage);
 
   const access = evaluateTelegramAccess({
     subscriptionStatus: connection.user.subscriptionStatus,
@@ -240,17 +255,11 @@ export async function POST(request: Request) {
   });
 
   if (!connection.user.traderProfile) {
-    return replyToTelegram(
-      chatId,
-      "Your Telegram account is connected, but onboarding is incomplete. Please complete onboarding on the website first.",
-    );
+    return replyToTelegram(chatId, locale.system.onboardingIncomplete, locale);
   }
 
   if (!access.accessActive) {
-    return replyToTelegram(
-      chatId,
-      "Your coaching access is inactive. Please start an active trial or plan on the website to continue.",
-    );
+    return replyToTelegram(chatId, locale.system.accessInactive, locale);
   }
 
   await prisma.telegramConnection.update({
@@ -262,7 +271,10 @@ export async function POST(request: Request) {
     },
   });
 
-  const stateUpdate = rawText ? deriveTraderStateUpdate(rawText) : null;
+  const matchedAction = rawText ? findActionByLocaleText(rawText, locale) : null;
+  const canonicalText = matchedAction?.message ?? rawText;
+
+  const stateUpdate = canonicalText ? deriveTraderStateUpdate(canonicalText) : null;
 
   const activeTraderState = stateUpdate
     ? (
@@ -352,7 +364,10 @@ export async function POST(request: Request) {
     }),
   );
 
-  const coachReply = generateCoachReply(rawText || "check in", coachContext);
+  const coachReply = generateCoachReply(canonicalText || "check in", coachContext);
+  const replyText =
+    (matchedAction && getLocaleReplyForQuickAction(matchedAction.id, locale)) ??
+    coachReply.reply;
   const cooldownActive = Boolean(
     activeTraderState?.needsCooldown &&
       activeTraderState.cooldownUntil &&
@@ -397,11 +412,11 @@ export async function POST(request: Request) {
     },
   });
 
-  await sendTelegramMessage(chatId, coachReply.reply, {
+  await sendTelegramMessage(chatId, replyText, {
     replyMarkup: {
-      keyboard: getTelegramQuickActionKeyboard(),
+      keyboard: getTelegramQuickActionKeyboard(locale),
       resize_keyboard: true,
-      input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
+      input_field_placeholder: locale.system.inputPlaceholder,
     },
   });
 
