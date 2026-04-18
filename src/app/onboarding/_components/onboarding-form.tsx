@@ -400,43 +400,177 @@ const languageOptions: Option[] = [
   { label: "العربية (Arabic)", value: "ar" },
 ];
 
-const initialState: OnboardingFormState = {
-  primaryMarket: marketOptions[0]?.value ?? "",
-  tradingStyle: tradingStyleOptions[1]?.value ?? "",
-  experienceYears: experienceOptions[1]?.value ?? "",
-  tradingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-  tradingSession: ["NY_OPEN"],
-  timezone: timezoneOptions[0]?.value ?? "UTC",
-  accountSize: { mode: accountSizeOptions[2]?.value ?? "", custom: "" },
-  maxDailyLoss: { mode: dailyLossOptions[2]?.value ?? "", custom: "" },
-  riskPerTrade: { mode: riskPerTradeOptions[2]?.value ?? "", custom: "" },
-  maxTradesPerDay: maxTradesOptions[3]?.value ?? "",
-  stopAfterLosses: stopAfterLossesOptions[1]?.value ?? "",
-  primaryChallenge: ["Overtrading"],
+const emptyState: OnboardingFormState = {
+  primaryMarket: "",
+  tradingStyle: "",
+  experienceYears: "",
+  tradingDays: [],
+  tradingSession: [],
+  timezone: "UTC",
+  accountSize: { mode: "", custom: "" },
+  maxDailyLoss: { mode: "", custom: "" },
+  riskPerTrade: { mode: "", custom: "" },
+  maxTradesPerDay: "",
+  stopAfterLosses: "",
+  primaryChallenge: [],
   primaryChallengeOther: "",
-  tiltTrigger: ["Two losses in a row"],
+  tiltTrigger: [],
   tiltTriggerOther: "",
-  tiltThought: tiltThoughtOptions[0]?.value ?? "",
+  tiltThought: "",
   tiltThoughtOther: "",
-  coachingTone: coachingToneOptions[1]?.value ?? "",
-  interruptionStyle: interruptionStyleOptions[1]?.value ?? "",
-  responseStyle: responseStyleOptions[2]?.value ?? "",
-  premarketCheckinEnabled: true,
-  postmarketReviewEnabled: true,
-  checkinFormat: checkinFormatOptions[0]?.value ?? "",
-  reviewFocus: ["Execution quality", "Emotional control"],
+  coachingTone: "",
+  interruptionStyle: "",
+  responseStyle: "",
+  premarketCheckinEnabled: false,
+  postmarketReviewEnabled: false,
+  checkinFormat: "",
+  reviewFocus: [],
   reviewFocusOther: "",
   newsAlertsEnabled: false,
-  preNewsMinutes: preNewsMinutesOptions[2]?.value ?? "",
-  highImpactOnly: true,
-  economicCalendarProviderKey: economicCalendarProviderOptions[0]?.value ?? "mock",
-  economicCalendarStubScenario:
-    economicCalendarStubScenarioOptions[0]?.value ?? "mixed_day",
+  preNewsMinutes: "",
+  highImpactOnly: false,
+  economicCalendarProviderKey: "mock",
+  economicCalendarStubScenario: "mixed_day",
   preferredLanguage: "he",
   tradingWhy: "",
   tradingGoal: "",
   groundingReminder: "",
 };
+
+export type SavedOnboardingData = {
+  traderProfile: {
+    primaryMarket: string | null;
+    tradingStyle: string | null;
+    experienceYears: number | null;
+    tradingDays: string | null;
+    tradingSession: string | null;
+    timezone: string | null;
+  } | null;
+  riskRules: {
+    accountSize: string | null;
+    maxDailyLoss: string | null;
+    riskPerTrade: string | null;
+    maxTradesPerDay: number | null;
+    stopAfterLosses: number | null;
+  } | null;
+  mentalProfile: {
+    primaryChallenge: string | null;
+    tiltTrigger: string | null;
+    tiltThought: string | null;
+    coachingTone: string | null;
+    interruptionStyle: string | null;
+    responseStyle: string | null;
+    tradingWhy: string | null;
+    tradingGoal: string | null;
+    groundingReminder: string | null;
+  } | null;
+  coachingPreferences: {
+    premarketCheckinEnabled: boolean;
+    postmarketReviewEnabled: boolean;
+    checkinFormat: string | null;
+    reviewFocus: string | null;
+    newsAlertsEnabled: boolean;
+    preNewsMinutes: number | null;
+    highImpactOnly: boolean;
+    economicCalendarProviderKey: string | null;
+    economicCalendarStubScenario: string | null;
+    preferredLanguage: string | null;
+  } | null;
+};
+
+function splitPipeDelimited(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split(" | ").map((s) => s.trim()).filter(Boolean);
+}
+
+function toNumericPreset(value: string | null | undefined, options: Option[]): NumericPresetField {
+  if (!value) return { mode: "", custom: "" };
+  const presetValues = options.filter((o) => o.value !== "custom").map((o) => o.value);
+  if (presetValues.includes(value)) return { mode: value, custom: "" };
+  return { mode: "custom", custom: value };
+}
+
+function splitChipsAndOther(
+  value: string | null | undefined,
+  options: Option[],
+): { chips: string[]; other: string } {
+  const parts = splitPipeDelimited(value);
+  const knownValues = new Set(options.filter((o) => o.value !== "Other").map((o) => o.value));
+  const chips: string[] = [];
+  const otherParts: string[] = [];
+
+  for (const part of parts) {
+    if (knownValues.has(part)) {
+      chips.push(part);
+    } else {
+      otherParts.push(part);
+    }
+  }
+
+  if (otherParts.length > 0) chips.push("Other");
+  return { chips, other: otherParts.join(", ") };
+}
+
+function resolveSelectWithOther(
+  value: string | null | undefined,
+  options: Option[],
+): { selected: string; other: string } {
+  if (!value) return { selected: "", other: "" };
+  const knownValues = new Set(options.filter((o) => o.value !== "Other").map((o) => o.value));
+  if (knownValues.has(value)) return { selected: value, other: "" };
+  return { selected: "Other", other: value };
+}
+
+function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
+  if (!saved) return emptyState;
+
+  const tp = saved.traderProfile;
+  const rr = saved.riskRules;
+  const mp = saved.mentalProfile;
+  const cp = saved.coachingPreferences;
+
+  const primaryChallenge = splitChipsAndOther(mp?.primaryChallenge, primaryChallengeOptions);
+  const tiltTrigger = splitChipsAndOther(mp?.tiltTrigger, tiltTriggerOptions);
+  const tiltThought = resolveSelectWithOther(mp?.tiltThought, tiltThoughtOptions);
+  const reviewFocus = splitChipsAndOther(cp?.reviewFocus, reviewFocusOptions);
+
+  return {
+    primaryMarket: tp?.primaryMarket ?? "",
+    tradingStyle: tp?.tradingStyle ?? "",
+    experienceYears: tp?.experienceYears != null ? String(tp.experienceYears) : "",
+    tradingDays: splitPipeDelimited(tp?.tradingDays),
+    tradingSession: splitPipeDelimited(tp?.tradingSession),
+    timezone: tp?.timezone ?? "UTC",
+    accountSize: toNumericPreset(rr?.accountSize, accountSizeOptions),
+    maxDailyLoss: toNumericPreset(rr?.maxDailyLoss, dailyLossOptions),
+    riskPerTrade: toNumericPreset(rr?.riskPerTrade, riskPerTradeOptions),
+    maxTradesPerDay: rr?.maxTradesPerDay != null ? String(rr.maxTradesPerDay) : "",
+    stopAfterLosses: rr?.stopAfterLosses != null ? String(rr.stopAfterLosses) : "",
+    primaryChallenge: primaryChallenge.chips,
+    primaryChallengeOther: primaryChallenge.other,
+    tiltTrigger: tiltTrigger.chips,
+    tiltTriggerOther: tiltTrigger.other,
+    tiltThought: tiltThought.selected,
+    tiltThoughtOther: tiltThought.other,
+    coachingTone: mp?.coachingTone ?? "",
+    interruptionStyle: mp?.interruptionStyle ?? "",
+    responseStyle: mp?.responseStyle ?? "",
+    premarketCheckinEnabled: cp?.premarketCheckinEnabled ?? false,
+    postmarketReviewEnabled: cp?.postmarketReviewEnabled ?? false,
+    checkinFormat: cp?.checkinFormat ?? "",
+    reviewFocus: reviewFocus.chips,
+    reviewFocusOther: reviewFocus.other,
+    newsAlertsEnabled: cp?.newsAlertsEnabled ?? false,
+    preNewsMinutes: cp?.preNewsMinutes != null ? String(cp.preNewsMinutes) : "",
+    highImpactOnly: cp?.highImpactOnly ?? false,
+    economicCalendarProviderKey: cp?.economicCalendarProviderKey ?? "mock",
+    economicCalendarStubScenario: cp?.economicCalendarStubScenario ?? "mixed_day",
+    preferredLanguage: cp?.preferredLanguage ?? "he",
+    tradingWhy: mp?.tradingWhy ?? "",
+    tradingGoal: mp?.tradingGoal ?? "",
+    groundingReminder: mp?.groundingReminder ?? "",
+  };
+}
 
 function ensureArray(values: unknown): string[] {
   return Array.isArray(values)
@@ -835,10 +969,11 @@ function NumericPresetFieldControl({
 
 type OnboardingFormProps = {
   userEmail: string;
+  savedData?: SavedOnboardingData;
 };
 
-export function OnboardingForm({ userEmail }: OnboardingFormProps) {
-  const [form, setForm] = useState<OnboardingFormState>(initialState);
+export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
+  const [form, setForm] = useState<OnboardingFormState>(() => buildInitialState(savedData));
   const [notice, setNotice] = useState<Notice | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
