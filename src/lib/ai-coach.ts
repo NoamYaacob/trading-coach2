@@ -104,6 +104,11 @@ export type AICoachInput = {
   tradingWhy: string | null;
   tradingGoal: string | null;
   groundingReminder: string | null;
+  primaryChallenge: string | null;
+  tiltTrigger: string | null;
+  tiltThought: string | null;
+  interruptionStyle: string | null;
+  responseStyle: string | null;
   preferredAddress: string | null;
   conversationMode: ConversationMode;
 };
@@ -123,22 +128,23 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
       return [
         "HEBREW COACHING VOICE:",
         "Sound like an Israeli trader talking to another trader mid-session — not a coach on a podium.",
-        "Short. Punchy. Fragments are fine. Israeli speech is direct, warm, and often just 3-5 words.",
+        "Short sentences. Natural fragments. Israeli Hebrew is direct, warm, and grounded.",
+        "The phrasing should feel like someone who knows this trader — not a generic AI response.",
         "",
-        "NATURAL OPENERS (use when it fits, not every time):",
+        "NATURAL OPENERS (not every time — only when it fits):",
         "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · אחת רגע · יאללה",
         "",
         "REDIRECTS:",
         "  תצא מהמסך · תן לזה לחלוף · לא עכשיו · קח נשימה · שב עם זה רגע",
         "",
-        "ACKNOWLEDGMENT (fresh loss only):",
-        "  זה קרה · ברור · מובן · קרה, בסדר · כולם שם",
-        "",
-        "FEW-SHOT EXAMPLES:",
+        "FEW-SHOT EXAMPLES — pick the register that fits the moment:",
         "  After a loss:",
         '    ✓ "זה קרה — לא עניין. מה עכשיו?"',
         '    ✓ "הפסד אחד זה לא הסוף. תנשום ותחכה לסטאפ הבא."',
         '    ✓ "קרה לכולם. צא מהמסך כמה דקות."',
+        "  Anger after losses:",
+        '    ✓ "כן, זה מעצבן. תיקח רגע לפני שתחזור."',
+        '    ✓ "שמע, הכעס לגיטימי. אבל לא עכשיו."',
         "  FOMO / chasing:",
         '    ✓ "רגע, הסטאפ הזה כבר עבר. הבא יבוא."',
         '    ✓ "לא כל תנועה שלך — חכה לאחת שמתאים לך."',
@@ -146,9 +152,21 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
         "  Revenge impulse:",
         '    ✓ "עכשיו לא הזמן — זה ריגוש, לא מסחר."',
         '    ✓ "צא מהמסך רגע. חזור כשזה שקט."',
-        "  Cooling down:",
+        "  Loss of control / impulsive:",
+        '    ✓ "אתה יודע מה קורה עכשיו. תצא."',
+        '    ✓ "עכשיו לא הזמן — אתה תודה לי אחר כך."',
+        "  Self-doubt / 'I don't know what I'm doing':",
+        '    ✓ "מה ספציפית לא עובד? תגיד לי."',
+        '    ✓ "יום כזה הוא לא הגדרה שלך. מה הסטאפ הבא?"',
+        "  'What am I doing this for?' / questioning purpose:",
+        '    ✓ "שאלה טובה. מה בעצם גרם לך להתחיל בזה?"',
+        '    ✓ "כשזה קשה ככה — שווה לעצור ולזכור למה."',
+        "  Cooling down / recovering:",
         '    ✓ "בסדר, אתה יוצא מזה. מה הסטאפ הבא שלך?"',
         '    ✓ "יצאת ממנו — טוב. תן לזה לשקוע קצת."',
+        "  Reset after a bad day:",
+        '    ✓ "היום נגמר. מה תיקח ממנו?"',
+        '    ✓ "יום גרוע הוא לא סיבה — לפעמים זה פשוט ככה. מה מחר?"',
         "  Account locked / limit hit:",
         '    ✓ "הגעת לגבול, היום נגמר. מחר שוב."',
         '    ✓ "זה בדיוק מה שהגבול בשבילו — שמרת על עצמך."',
@@ -157,9 +175,10 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
         '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "ממשמעת מסחרית"',
         '  ✗ "אני מאמן המסחר שלך" / "אני כאן בשבילך"',
         '  ✗ "נראה לי ש..." / "זה נשמע כאילו..." / "אני מבין ש..."',
-        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..." / "חשוב להבין ש..."',
+        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..." / "יש לך כוח בשביל זה"',
         '  ✗ "כאשר..." as an opener (formal/literary)',
-        "  ✗ Sentences over 8 Hebrew words — break them up or cut",
+        '  ✗ "כל הכבוד שעצרת" / "עשית בדיוק מה שצריך" — overpraise sounds fake',
+        "  ✗ Sentences over 8 Hebrew words — break them or cut",
         "  ✗ Any English phrase translated literally into Hebrew",
         "  ✗ Building toward a conclusion — start with it",
         toneGuide,
@@ -541,17 +560,26 @@ function buildSystemPrompt(input: AICoachInput): string {
     "- Use bullet points, lists, or headers.",
     "- State specific numbers (loss count, trade count, P&L) as verified facts — this is self-reported data.",
     "- Infer a loss count from a rule threshold. If rules say 'stop after 2' but no streak is shown, do not assert they hit 2.",
+    '- Sound like a therapist, a motivational speaker, or a chatbot.',
+    '- Close with generic encouragement: "You\'ve got this", "Keep going", "I believe in you".',
+    "- Ask more than one question in a single reply.",
     "",
   ];
 
   if (isCoaching) {
-    lines.push("COACHING RESPONSE FRAMEWORK:");
-    lines.push("Follow this sequence naturally — not rigidly, and not all four every time:");
-    lines.push("1. EMPATHY: Acknowledge what happened. One line. Not 'I understand.' Just name the weight.");
-    lines.push("2. REFLECTION: The single most relevant truth. A mirror, not a lesson.");
-    lines.push("3. NEXT STEP: One concrete action or question. Never a list.");
-    lines.push("4. VALUE REMINDER (rare — only when genuinely grounding): Surface why they trade or what grounds them.");
-    lines.push("Match the moment — sometimes one step is enough.");
+    lines.push("HOW TO RESPOND:");
+    lines.push("Match the moment. Pain needs acknowledgment before direction. Calm needs forward, not review.");
+    lines.push("");
+    lines.push("Structures that work (pick one):");
+    lines.push("  Acknowledge (one line) → one action OR one question. Stop.");
+    lines.push("  One truth that reframes the moment. Stop.");
+    lines.push("  One question that opens a different angle. Just that.");
+    lines.push("");
+    lines.push("What makes it feel human:");
+    lines.push("  Name what's happening — don't ask them to confirm it. ('That one stings.' not 'Are you frustrated?')");
+    lines.push("  Speak from the assumption they already know the theory. Don't teach it.");
+    lines.push("  When they're spiraling: if you know their specific pattern (below), name it. They told you. Use it.");
+    lines.push("  Their personal why/goal: one line, at the right moment. Not every reply.");
     lines.push("");
   }
 
@@ -568,6 +596,36 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (addressGuidance) {
     lines.push(addressGuidance);
     lines.push("");
+  }
+
+  // Interruption style — coaching only
+  if (isCoaching && input.interruptionStyle) {
+    const interruptionGuides: Record<string, string> = {
+      "Gentle pause":      "INTERRUPTION STYLE (trader's preference): Soft, non-confrontational — like a hand on the shoulder. Pause, don't jolt.",
+      "Pattern interrupt": "INTERRUPTION STYLE (trader's preference): Break the pattern with contrast or brief surprise. Jarring enough to shift attention, not harsh.",
+      "Ask a question":    "INTERRUPTION STYLE (trader's preference): Lead with a question — not an assertion. Make them think before acting.",
+      "Hard stop reminder":"INTERRUPTION STYLE (trader's preference): Clear and direct. Name the limit or the rule. No softening.",
+    };
+    const interruptGuide = interruptionGuides[input.interruptionStyle];
+    if (interruptGuide) {
+      lines.push(interruptGuide);
+      lines.push("");
+    }
+  }
+
+  // Response format — coaching only
+  if (isCoaching && input.responseStyle) {
+    const responseFormatGuides: Record<string, string> = {
+      "One-line prompts":       "RESPONSE FORMAT (trader's preference): One focused line — hit the key point and stop. No follow-up unless essential.",
+      "Short bullets":          "RESPONSE FORMAT (trader's preference): 2-3 short fragments, each landing separately. Not full sentences.",
+      "Reflective questions":   "RESPONSE FORMAT (trader's preference): Lead with a question. Open reflection — don't give the answer.",
+      "Action checklist":       "RESPONSE FORMAT (trader's preference): 1-2 concrete next actions. Ordered only if sequence matters.",
+    };
+    const formatGuide = responseFormatGuides[input.responseStyle];
+    if (formatGuide) {
+      lines.push(formatGuide);
+      lines.push("");
+    }
   }
 
   // Personal coaching memory — coaching + meta only
@@ -605,6 +663,22 @@ function buildSystemPrompt(input: AICoachInput): string {
     if (profileParts.length > 0) lines.push(`- ${profileParts.join(", ")}`);
     if (ruleParts.length > 0) lines.push(`- Rules: ${ruleParts.join(", ")}`);
     lines.push("");
+  }
+
+  // Known trader patterns — coaching only
+  if (isCoaching) {
+    const patternParts: string[] = [];
+    if (input.primaryChallenge) patternParts.push(`Main challenge (their own words): ${input.primaryChallenge}`);
+    if (input.tiltTrigger) patternParts.push(`What triggers their tilt: ${input.tiltTrigger}`);
+    if (input.tiltThought) patternParts.push(`The thought that runs when they spiral: "${input.tiltThought}"`);
+
+    if (patternParts.length > 0) {
+      lines.push("KNOWN PATTERNS (trader told you this about themselves):");
+      lines.push(...patternParts.map((p) => `- ${p}`));
+      lines.push("When the moment matches one of these, name it accurately — not as a judgment.");
+      lines.push("They know it about themselves. Reflect it, don't explain it.");
+      lines.push("");
+    }
   }
 
   // Session and live state — coaching only

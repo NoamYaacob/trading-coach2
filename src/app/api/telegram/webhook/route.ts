@@ -94,12 +94,12 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
           },
           mentalProfile: {
             select: {
-              primaryChallenge: true,
-              tiltTrigger: true,
-              tiltThought: true,
               coachingTone: true,
               interruptionStyle: true,
               responseStyle: true,
+              primaryChallenge: true,
+              tiltTrigger: true,
+              tiltThought: true,
               tradingWhy: true,
               tradingGoal: true,
               groundingReminder: true,
@@ -395,6 +395,11 @@ export async function POST(request: Request) {
     tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
     tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
     groundingReminder: connection.user.mentalProfile?.groundingReminder ?? null,
+    primaryChallenge: connection.user.mentalProfile?.primaryChallenge ?? null,
+    tiltTrigger: connection.user.mentalProfile?.tiltTrigger ?? null,
+    tiltThought: connection.user.mentalProfile?.tiltThought ?? null,
+    interruptionStyle: connection.user.mentalProfile?.interruptionStyle ?? null,
+    responseStyle: connection.user.mentalProfile?.responseStyle ?? null,
     preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
     conversationMode,
   };
