@@ -66,6 +66,8 @@ function buildSystemPrompt(input: AICoachInput): string {
     '- Open with "As your coach", "I understand that", "It sounds like", or "I can see that."',
     "- Repeat the situation back to them — they lived it.",
     "- Use bullet points, lists, or headers in the reply.",
+    "- State specific numbers (loss count, trade count, P&L) as verified facts. This data is self-reported by the trader, not broker-verified. Acknowledge the emotional state — do not echo the number back as a fact.",
+    "- Infer a loss count from a rule threshold alone. If the rules say 'stop after 2 losses' but no actual streak is shown, do not say they hit 2 losses.",
     "",
   ];
 
@@ -83,7 +85,7 @@ function buildSystemPrompt(input: AICoachInput): string {
     situationParts.push(`Trader state: ${input.currentState}`);
   }
   if (input.recentLossStreak > 0) {
-    situationParts.push(`Loss streak: ${input.recentLossStreak}`);
+    situationParts.push(`Self-reported loss streak: ${input.recentLossStreak} (not broker-verified)`);
   }
 
   const profileParts: string[] = [];
@@ -101,10 +103,10 @@ function buildSystemPrompt(input: AICoachInput): string {
   const m = input.manualSignals;
   if (m && (m.tradeCount > 0 || m.hasRuleBreach)) {
     const parts: string[] = [];
-    if (m.tradeCount > 0) parts.push(`${m.tradeCount} trades today`);
-    if (m.consecutiveLosses > 0) parts.push(`${m.consecutiveLosses} consecutive losses`);
+    if (m.tradeCount > 0) parts.push(`${m.tradeCount} trades (self-reported)`);
+    if (m.consecutiveLosses > 0) parts.push(`${m.consecutiveLosses} consecutive losses (self-reported)`);
     if (m.hasRuleBreach) parts.push("rule breach logged");
-    situationParts.push(`Activity: ${parts.join(", ")}`);
+    situationParts.push(`Manual log: ${parts.join(", ")}`);
   }
 
   if (situationParts.length > 0) {
@@ -127,9 +129,9 @@ function buildSystemPrompt(input: AICoachInput): string {
   } else if (state.includes("tilt") || state.includes("out_of_control")) {
     lines.push("Coaching intent: The trader is tilted. Ground them first. One small concrete thing they can do. No trades right now.");
   } else if (state.includes("just_took_two_loss")) {
-    lines.push("Coaching intent: Two losses back to back. Acknowledge it briefly. Help them pause and decide if they're still clear-headed.");
+    lines.push("Coaching intent: The trader self-reported multiple consecutive losses. Acknowledge the emotional weight without repeating the count. Help them pause and check if they're still clear-headed.");
   } else if (state.includes("just_took_loss")) {
-    lines.push("Coaching intent: Fresh loss. Acknowledge it — one sentence. Ask if they want to keep going or step back.");
+    lines.push("Coaching intent: The trader self-reported a fresh loss. Acknowledge it — one sentence. Ask if they want to keep going or step back.");
   } else if (state.includes("reset") || state.includes("calm") || state.includes("premarket")) {
     lines.push("Coaching intent: The trader is in a good or recovering state. Keep it grounded — brief acknowledgment, no overpraise.");
   }
