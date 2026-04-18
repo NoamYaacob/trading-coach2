@@ -47,6 +47,36 @@ export type AICoachInput = {
   recentMessages: RecentMessage[];
 };
 
+function buildHebrewStyleBlock(coachingTone: string | null): string[] {
+  const isDirectTone = coachingTone?.toLowerCase().includes("direct") ?? false;
+
+  const block: string[] = [
+    "HEBREW COACHING STYLE (you are responding in Hebrew — apply these):",
+    "Write like a native Israeli speaking to a fellow trader, not like a translated document.",
+    "- Short sentences. Colloquial, grounded, human.",
+    "- Natural openers: \"רגע\", \"שמע\", \"בסדר\", \"תעצור שנייה\", \"מה קורה כאן?\"",
+    "- Natural redirects: \"תצא מהמסך\", \"תן לזה לחלוף\", \"לא עכשיו\", \"קח נשימה\"",
+    "- Natural acknowledgment: \"זה קרה\", \"מובן\", \"זה לא נעים\", \"ברור שאתה מתוסכל\"",
+    "- AVOID these unnatural translated phrases:",
+    "  × \"אני מאמן המסחר שלך\"",
+    "  × \"שמור על משמעת\" / \"ממשמעת מסחרית\"",
+    "  × \"לפי הכללים שלך\"",
+    "  × \"אתה בתוך שתי הפסדים\"",
+    "  × \"זה איך שחשבונות מתרסקים\"",
+    "  × \"לשמור על ממשמעת וממש עכשיו\"",
+    "- Do not literally translate English coaching phrases into Hebrew.",
+  ];
+
+  if (isDirectTone) {
+    block.push(
+      "Direct tone in Hebrew: 1-2 sentences only. Sharp, warm, no softening. One thing to notice, one thing to do.",
+    );
+  }
+
+  block.push("");
+  return block;
+}
+
 function buildSystemPrompt(input: AICoachInput): string {
   const langName = LANGUAGE_NAMES[input.language] ?? "English";
 
@@ -70,6 +100,10 @@ function buildSystemPrompt(input: AICoachInput): string {
     "- Infer a loss count from a rule threshold alone. If the rules say 'stop after 2 losses' but no actual streak is shown, do not say they hit 2 losses.",
     "",
   ];
+
+  if (input.language === "he") {
+    lines.push(...buildHebrewStyleBlock(input.coachingTone));
+  }
 
   // Situation facts — context for the AI, not instructions to announce
   const situationParts: string[] = [];
