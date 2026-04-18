@@ -1,0 +1,159 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Trading Coach" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: Trading Guardian
+        - heading "Know if today is open, why it closed, and what happens next." [level=1] [ref=e14]
+        - paragraph [ref=e15]: "Guardian keeps the day clear: open, closed, or waiting for the next reset window."
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - paragraph [ref=e18]: Current state
+          - paragraph [ref=e19]: Trading is open right now.
+          - paragraph [ref=e20]: Complete onboarding before the day can open.
+          - generic [ref=e21]:
+            - paragraph [ref=e22]: "Economic calendar: Mock calendar feed"
+            - paragraph [ref=e23]: Internal demo calendar for pre-news policy testing.
+            - paragraph [ref=e24]: "Current state: Upcoming high-impact event. US jobs report at Apr 16, 2026, 12:00 PM UTC."
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - heading "Current state" [level=2] [ref=e27]
+            - paragraph [ref=e28]: "The live session view: Guardian, connection, today’s activity, and when you can check the day again."
+          - generic [ref=e29]:
+            - generic [ref=e30]:
+              - paragraph [ref=e31]: Guardian status
+              - paragraph [ref=e32]: Active
+              - paragraph [ref=e33]: Trading is clear.
+            - generic [ref=e34]:
+              - paragraph [ref=e35]: Connection
+              - paragraph [ref=e36]: Mock feed active
+              - paragraph [ref=e37]: Mock internal feed · Mock Platform
+              - paragraph [ref=e38]: Internal mock data is driving the current integration layer.
+              - paragraph [ref=e39]: Use this mode for Guardian testing until a live adapter is added.
+              - paragraph [ref=e40]: Mock connected · mock-primary
+            - generic [ref=e41]:
+              - paragraph [ref=e42]: Today activity
+              - paragraph [ref=e43]: 0 trades
+              - paragraph [ref=e44]: P&L 0 · Consecutive losses 0
+            - generic [ref=e45]:
+              - paragraph [ref=e46]: Check again
+              - paragraph [ref=e47]: Apr 17, 2026, 9:00 AM UTC
+              - paragraph [ref=e48]: Daily reset
+              - paragraph [ref=e49]: "Last reset: Not scheduled"
+        - generic [ref=e50]:
+          - generic [ref=e51]:
+            - heading "Why the day is still open" [level=2] [ref=e52]
+            - paragraph [ref=e53]: The key boundary that is keeping the session open right now.
+          - generic [ref=e54]:
+            - paragraph [ref=e55]: Current read
+            - paragraph [ref=e56]: No active lockout
+            - generic [ref=e57]:
+              - paragraph [ref=e58]: What to do now
+              - list [ref=e59]:
+                - listitem [ref=e60]: • No immediate lockout action is required.
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - heading "Rules and settings" [level=2] [ref=e63]
+            - paragraph [ref=e64]: The limits behind the day, plus the reset schedule.
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - generic [ref=e67]:
+                - generic [ref=e68]:
+                  - heading "Protection Rules" [level=3] [ref=e69]
+                  - paragraph [ref=e70]: Configure the first Guardian limits that will enforce discipline once real broker integration arrives.
+                - generic [ref=e71]:
+                  - generic [ref=e72]:
+                    - generic [ref=e73]: Guardian enabled
+                    - button "Guardian enabled" [ref=e74]: Guardian Active
+                  - generic [ref=e75]:
+                    - generic [ref=e76]: Adapter
+                    - combobox "Adapter" [ref=e77]:
+                      - option "Mock adapter" [selected]
+                      - option "Tradovate stub"
+                  - generic [ref=e78]:
+                    - generic [ref=e79]: Platform
+                    - textbox "Platform" [ref=e80]: Mock Platform
+                  - generic [ref=e81]:
+                    - generic [ref=e82]: Connection status
+                    - combobox "Connection status" [ref=e83]:
+                      - option "Mock connected" [selected]
+                      - option "Not connected"
+                  - generic [ref=e84]:
+                    - generic [ref=e85]: Copy trade mode
+                    - button "Copy trade mode" [ref=e86]: "Off"
+                  - generic [ref=e87]:
+                    - generic [ref=e88]: Reset mode
+                    - combobox "Reset mode" [ref=e89]:
+                      - option "Daily" [selected]
+                      - option "Manual"
+                  - generic [ref=e90]:
+                    - generic [ref=e91]: Daily reset hour (0-23)
+                    - textbox "Daily reset hour (0-23)" [ref=e92]: "9"
+                  - generic [ref=e93]:
+                    - generic [ref=e94]: Reset timezone
+                    - textbox "Reset timezone" [ref=e95]: UTC
+                  - generic [ref=e96]:
+                    - generic [ref=e97]: Max trades per day
+                    - textbox "Max trades per day" [ref=e98]: "4"
+                  - generic [ref=e99]:
+                    - generic [ref=e100]: Max daily loss
+                    - textbox "Max daily loss" [ref=e101]: "500"
+                  - generic [ref=e102]:
+                    - generic [ref=e103]: Stop after consecutive losses
+                    - textbox "Stop after consecutive losses" [ref=e104]: "2"
+                  - generic [ref=e105]:
+                    - generic [ref=e106]: Daily profit target
+                    - textbox "Daily profit target" [ref=e107]
+                - button "Save Guardian Rules" [ref=e108]
+              - generic [ref=e110]:
+                - generic [ref=e111]:
+                  - heading "Today Activity" [level=3] [ref=e112]
+                  - paragraph [ref=e113]: Manual simulation inputs for v1 so Guardian evaluation can be tested before live broker connectivity.
+                - generic [ref=e114]:
+                  - generic [ref=e115]:
+                    - generic [ref=e116]: Today trades
+                    - textbox "Today trades" [ref=e117]: "0"
+                  - generic [ref=e118]:
+                    - generic [ref=e119]: Today P&L
+                    - textbox "Today P&L" [ref=e120]: "0"
+                  - generic [ref=e121]:
+                    - generic [ref=e122]: Consecutive losses
+                    - textbox "Consecutive losses" [ref=e123]: "0"
+                - button "Update Today Activity" [ref=e124]
+                - generic [ref=e125]:
+                  - paragraph [ref=e126]: Reset lifecycle
+                  - paragraph [ref=e127]: "Mode: Daily reset"
+                  - paragraph [ref=e128]: "Next allowed reset: Apr 17, 2026, 9:00 AM UTC"
+                  - paragraph [ref=e129]: "Last reset: Not reset yet"
+                  - paragraph [ref=e130]: Manual reset is blocked while Guardian is using daily reset mode.
+            - generic [ref=e131]:
+              - generic [ref=e132]:
+                - paragraph [ref=e133]: Active limits
+                - generic [ref=e134]:
+                  - generic [ref=e135]: "Max trades per day: 4"
+                  - generic [ref=e136]: "Max daily loss: 500"
+                  - generic [ref=e137]: "Stop after consecutive losses: 2"
+                  - generic [ref=e138]: "Reset mode: Daily reset"
+                  - generic [ref=e139]: "Reset time zone: UTC"
+                  - generic [ref=e140]: "Daily reset hour: 9:00"
+                  - generic [ref=e141]: "Copy trade mode: Off"
+              - generic [ref=e142]:
+                - paragraph [ref=e143]: Reset timing
+                - paragraph [ref=e144]: Reset checks use UTC.
+        - generic [ref=e145]:
+          - generic [ref=e146]:
+            - heading "Recent session events" [level=2] [ref=e147]
+            - paragraph [ref=e148]: Recent context from today’s session.
+          - generic [ref=e149]: No session events yet today. Today's activity will appear here once the session begins.
+  - button "Open Next.js Dev Tools" [ref=e155] [cursor=pointer]:
+    - img [ref=e156]
+  - alert [ref=e159]

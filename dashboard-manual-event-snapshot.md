@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Trading Coach" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]
+    - main [ref=e9]:
+      - generic [ref=e11]
+      - generic [ref=e20]
+  - button "Open Next.js Dev Tools" [ref=e195] [cursor=pointer]:
+    - img [ref=e196]
+  - alert [ref=e189]

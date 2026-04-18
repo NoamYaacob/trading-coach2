@@ -1,0 +1,297 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Guardrail" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: Onboarding
+        - heading "Set up the coaching profile." [level=1] [ref=e14]
+        - paragraph [ref=e15]: Complete the core trading, risk, and mindset setup so the platform can create the first coaching profile and prepare Telegram connection.
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - heading "Account / identity" [level=2] [ref=e21]
+            - paragraph [ref=e22]: Your authenticated account is the only identity used for onboarding.
+          - generic [ref=e23]: Signed in as verify-onboarding@example.com
+        - generic [ref=e24]:
+          - heading "Trader profile" [level=2] [ref=e25]
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - generic [ref=e28]: Primary market
+              - combobox "Primary market" [ref=e29]:
+                - option "Futures" [selected]
+                - option "US Equities"
+                - option "Forex"
+                - option "Crypto"
+            - generic [ref=e30]:
+              - generic [ref=e31]: Trading style
+              - combobox "Trading style" [ref=e32]:
+                - option "Scalping"
+                - option "Momentum" [selected]
+                - option "Intraday"
+                - option "Swing"
+                - option "Breakout"
+            - generic [ref=e33]:
+              - generic [ref=e34]: Experience years
+              - combobox "Experience years" [ref=e35]:
+                - option "Under 1 year"
+                - option "1-2 years" [selected]
+                - option "3-5 years"
+                - option "6-10 years"
+                - option "10+ years"
+            - generic [ref=e36]:
+              - generic [ref=e37]: Timezone
+              - combobox "Timezone" [ref=e38]:
+                - option "UTC" [selected]
+                - option "Africa/Casablanca"
+                - option "Africa/Cairo"
+                - option "Africa/Lagos"
+                - option "Africa/Nairobi"
+                - option "Africa/Johannesburg"
+                - option "America/Anchorage"
+                - option "America/Argentina/Buenos_Aires"
+                - option "America/Bogota"
+                - option "America/Caracas"
+                - option "America/Chicago"
+                - option "America/Edmonton"
+                - option "America/Denver"
+                - option "America/Halifax"
+                - option "America/Lima"
+                - option "America/Los_Angeles"
+                - option "America/Montevideo"
+                - option "America/Mexico_City"
+                - option "America/New_York"
+                - option "America/Panama"
+                - option "America/Phoenix"
+                - option "America/Santiago"
+                - option "America/Sao_Paulo"
+                - option "America/Toronto"
+                - option "America/Vancouver"
+                - option "Asia/Bangkok"
+                - option "Asia/Colombo"
+                - option "Asia/Dubai"
+                - option "Asia/Ho_Chi_Minh"
+                - option "Asia/Hong_Kong"
+                - option "Asia/Jakarta"
+                - option "Asia/Jerusalem"
+                - option "Asia/Kolkata"
+                - option "Asia/Kuala_Lumpur"
+                - option "Asia/Manila"
+                - option "Asia/Riyadh"
+                - option "Asia/Seoul"
+                - option "Asia/Shanghai"
+                - option "Asia/Singapore"
+                - option "Asia/Tokyo"
+                - option "Australia/Adelaide"
+                - option "Australia/Brisbane"
+                - option "Australia/Melbourne"
+                - option "Australia/Perth"
+                - option "Australia/Sydney"
+                - option "Europe/Amsterdam"
+                - option "Europe/Athens"
+                - option "Europe/Berlin"
+                - option "Europe/Brussels"
+                - option "Europe/Bucharest"
+                - option "Europe/Copenhagen"
+                - option "Europe/Dublin"
+                - option "Europe/Helsinki"
+                - option "Europe/Lisbon"
+                - option "Europe/London"
+                - option "Europe/Madrid"
+                - option "Europe/Moscow"
+                - option "Europe/Oslo"
+                - option "Europe/Paris"
+                - option "Europe/Prague"
+                - option "Europe/Rome"
+                - option "Europe/Stockholm"
+                - option "Europe/Vienna"
+                - option "Pacific/Fiji"
+                - option "Pacific/Auckland"
+                - option "Pacific/Guam"
+                - option "Pacific/Honolulu"
+                - option "Pacific/Port_Moresby"
+          - generic [ref=e39]:
+            - generic [ref=e40]: Trading days
+            - generic [ref=e41]:
+              - button "Monday" [ref=e42]
+              - button "Tuesday" [ref=e43]
+              - button "Wednesday" [ref=e44]
+              - button "Thursday" [ref=e45]
+              - button "Friday" [ref=e46]
+          - generic [ref=e47]:
+            - generic [ref=e48]: Trading session
+            - generic [ref=e49]:
+              - button "Asia23:00-05:00 local time" [ref=e50]
+              - button "US overnight05:00-07:00 local time" [ref=e51]
+              - button "London07:00-13:00 local time" [ref=e52]
+              - button "Europe / NY overlap13:00-14:30 local time" [ref=e53]
+              - button "New York open14:30-16:00 local time" [ref=e54]
+              - button "US midday16:00-19:00 local time" [ref=e55]
+              - button "US power hour19:00-21:00 local time" [ref=e56]
+        - generic [ref=e57]:
+          - heading "Risk rules" [level=2] [ref=e58]
+          - generic [ref=e59]:
+            - generic [ref=e60]:
+              - generic [ref=e61]: Account size
+              - generic [ref=e62]:
+                - button "$5k" [ref=e63]
+                - button "$10k" [ref=e64]
+                - button "$25k" [ref=e65]
+                - button "$50k" [ref=e66]
+                - button "$100k" [ref=e67]
+                - button "Custom" [ref=e68]
+            - generic [ref=e69]:
+              - generic [ref=e70]: Max daily loss
+              - generic [ref=e71]:
+                - button "$100" [ref=e72]
+                - button "$250" [ref=e73]
+                - button "$500" [ref=e74]
+                - button "$750" [ref=e75]
+                - button "$1,000" [ref=e76]
+                - button "Custom" [ref=e77]
+            - generic [ref=e78]:
+              - generic [ref=e79]: Risk per trade
+              - generic [ref=e80]:
+                - button "$25" [ref=e81]
+                - button "$50" [ref=e82]
+                - button "$100" [ref=e83]
+                - button "$150" [ref=e84]
+                - button "$200" [ref=e85]
+                - button "Custom" [ref=e86]
+          - generic [ref=e87]:
+            - generic [ref=e88]:
+              - generic [ref=e89]: Max trades per day
+              - combobox "Max trades per day" [ref=e90]:
+                - option "1"
+                - option "2"
+                - option "3"
+                - option "4" [selected]
+                - option "5"
+                - option "6+"
+            - generic [ref=e91]:
+              - generic [ref=e92]: Stop after losses
+              - combobox "Stop after losses" [ref=e93]:
+                - option "1 loss"
+                - option "2 losses" [selected]
+                - option "3 losses"
+                - option "4 losses"
+        - generic [ref=e94]:
+          - heading "Mental profile" [level=2] [ref=e95]
+          - generic [ref=e96]:
+            - generic [ref=e97]: Primary challenge
+            - generic [ref=e98]:
+              - button "Revenge trading" [ref=e99]
+              - button "Overtrading" [ref=e100]
+              - button "FOMO" [ref=e101]
+              - button "Cutting winners early" [ref=e102]
+              - button "Holding losers too long" [ref=e103]
+              - button "Hesitation" [ref=e104]
+              - button "Other" [ref=e105]
+          - generic [ref=e106]:
+            - generic [ref=e107]: Tilt trigger
+            - generic [ref=e108]:
+              - button "Two losses in a row" [ref=e109]
+              - button "Missing a move" [ref=e110]
+              - button "Giving back profits" [ref=e111]
+              - button "News volatility" [ref=e112]
+              - button "Choppy market" [ref=e113]
+              - button "External stress" [ref=e114]
+              - button "Other" [ref=e115]
+          - generic [ref=e117]:
+            - generic [ref=e118]: Tilt thought
+            - combobox "Tilt thought" [ref=e119]:
+              - option "I need to make it back now" [selected]
+              - option "I can’t miss this move"
+              - option "One more trade will fix it"
+              - option "I’m trading badly today"
+              - option "I need to prove I’m right"
+              - option "Other"
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - generic [ref=e122]: Coaching tone
+              - generic [ref=e123]:
+                - button "Calm" [ref=e124]
+                - button "Direct" [ref=e125]
+                - button "Supportive" [ref=e126]
+                - button "Tough-love" [ref=e127]
+            - generic [ref=e128]:
+              - generic [ref=e129]: Interruption style
+              - generic [ref=e130]:
+                - button "Gentle pause" [ref=e131]
+                - button "Pattern interrupt" [ref=e132]
+                - button "Ask a question" [ref=e133]
+                - button "Hard stop reminder" [ref=e134]
+            - generic [ref=e135]:
+              - generic [ref=e136]: Response style
+              - generic [ref=e137]:
+                - button "One-line prompts" [ref=e138]
+                - button "Short bullets" [ref=e139]
+                - button "Reflective questions" [ref=e140]
+                - button "Action checklist" [ref=e141]
+        - generic [ref=e142]:
+          - heading "Coaching preferences" [level=2] [ref=e143]
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]: Enable premarket check-in
+              - button "Enable premarket check-in" [pressed] [ref=e147]
+            - generic [ref=e149]:
+              - generic [ref=e150]: Enable postmarket review
+              - button "Enable postmarket review" [pressed] [ref=e151]
+            - generic [ref=e153]:
+              - generic [ref=e154]: Enable news alerts
+              - button "Enable news alerts" [ref=e155]
+            - generic [ref=e157]:
+              - generic [ref=e158]: Only high-impact news
+              - button "Only high-impact news" [disabled] [pressed] [ref=e159]
+          - generic [ref=e161]:
+            - generic [ref=e162]:
+              - generic [ref=e163]: Check-in format
+              - generic [ref=e164]:
+                - button "Bullet prompts" [ref=e165]
+                - button "Quick checklist" [ref=e166]
+                - button "Short conversation" [ref=e167]
+            - generic [ref=e168]:
+              - generic [ref=e169]: Pre-news minutes
+              - combobox "Pre-news minutes" [disabled] [ref=e170]:
+                - option "5 minutes"
+                - option "10 minutes"
+                - option "15 minutes" [selected]
+                - option "30 minutes"
+                - option "60 minutes"
+            - generic [ref=e171]:
+              - generic [ref=e172]: Economic calendar source
+              - combobox "Economic calendar source Uses the internal demo feed for standard news-awareness behavior." [ref=e173]:
+                - option "Demo calendar feed" [selected]
+                - option "TradingEconomics-ready feed"
+              - generic [ref=e174]: Uses the internal demo feed for standard news-awareness behavior.
+            - generic [ref=e175]:
+              - generic [ref=e176]: News scenario for demo testing
+              - combobox "News scenario for demo testing Scenario selection becomes available when the TradingEconomics-ready feed is selected." [disabled] [ref=e177]:
+                - option "Mixed session day" [selected]
+                - option "Quiet news day"
+                - option "Major event later"
+                - option "Pre-news caution window"
+                - option "Start blocked by major event"
+                - option "Post-event discipline window"
+              - generic [ref=e178]: Scenario selection becomes available when the TradingEconomics-ready feed is selected.
+          - generic [ref=e179]:
+            - generic [ref=e180]: Review focus
+            - generic [ref=e181]:
+              - button "Execution quality" [ref=e182]
+              - button "Rule adherence" [ref=e183]
+              - button "Emotional control" [ref=e184]
+              - button "Risk discipline" [ref=e185]
+              - button "Missed opportunities" [ref=e186]
+              - button "Other" [ref=e187]
+        - button "Save onboarding" [ref=e189]
+  - button "Open Next.js Dev Tools" [ref=e195] [cursor=pointer]:
+    - img [ref=e196]
+  - alert [ref=e199]

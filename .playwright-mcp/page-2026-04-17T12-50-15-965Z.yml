@@ -1,0 +1,197 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Guardrail" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e5]:
+        - link "Onboarding" [ref=e6] [cursor=pointer]:
+          - /url: /onboarding
+        - link "Guardian" [ref=e7] [cursor=pointer]:
+          - /url: /guardian
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+    - main [ref=e9]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: Control Center
+          - heading "Today’s trading session." [level=1] [ref=e14]
+          - paragraph [ref=e15]: Monitor your session in real time, log activity, and let Guardrail enforce your rules automatically.
+        - generic [ref=e17]:
+          - button "Connect Telegram" [ref=e18]
+          - button "Logout" [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Session status
+          - generic [ref=e24]:
+            - generic [ref=e25]:
+              - generic [ref=e26]: Ready to start
+              - paragraph [ref=e27]: You are clear to begin the session.
+              - paragraph [ref=e28]: Guardian is active, setup is complete, and the day is inside limits.
+              - paragraph [ref=e29]: "Demo calendar: Upcoming high-impact event. US jobs report at Apr 17, 2026, 6:00 PM UTC."
+            - link "Start session" [ref=e30] [cursor=pointer]:
+              - /url: /dashboard
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]: Today is open
+              - heading "Trading is open." [level=2] [ref=e35]
+              - paragraph [ref=e36]: Next reset window is Apr 18, 2026, 9:00 AM UTC.
+              - generic [ref=e37]:
+                - paragraph [ref=e38]: What to do next
+                - paragraph [ref=e39]: Review your rules and start clean.
+                - button "Start session" [ref=e40]
+            - generic [ref=e41]:
+              - generic [ref=e42]:
+                - generic [ref=e43]:
+                  - paragraph [ref=e44]: Today status
+                  - paragraph [ref=e45]: Trading open
+                - generic [ref=e46]:
+                  - paragraph [ref=e47]: Next reset
+                  - paragraph [ref=e48]: Apr 18, 2026, 9:00 AM UTC
+                  - paragraph [ref=e49]: "Reset mode: Daily"
+              - generic [ref=e50]:
+                - generic [ref=e51]:
+                  - paragraph [ref=e52]: Trades
+                  - paragraph [ref=e53]: "0"
+                - generic [ref=e54]:
+                  - paragraph [ref=e55]: P&L
+                  - paragraph [ref=e56]: "0"
+                - generic [ref=e57]:
+                  - paragraph [ref=e58]: Loss streak
+                  - paragraph [ref=e59]: "0"
+              - generic [ref=e60]:
+                - paragraph [ref=e61]: Active limits
+                - generic [ref=e62]:
+                  - generic [ref=e63]: "Max trades per day: 4"
+                  - generic [ref=e64]: "Max daily loss: 500"
+                  - generic [ref=e65]: "Stop after consecutive losses: 2"
+                  - generic [ref=e66]: "Reset mode: Daily reset"
+        - generic [ref=e67]:
+          - paragraph [ref=e68]: Risk environment
+          - generic [ref=e69]:
+            - generic [ref=e70]:
+              - heading "Economic events" [level=2] [ref=e71]
+              - paragraph [ref=e72]: Upcoming calendar context that may affect session start, risk, or execution pace.
+            - generic [ref=e73]:
+              - paragraph [ref=e74]: Demo calendar
+              - paragraph [ref=e75]: Demo data. Live calendar provider is not connected.
+            - generic [ref=e76]:
+              - generic [ref=e77]:
+                - generic [ref=e78]:
+                  - paragraph [ref=e79]: US jobs report
+                  - generic [ref=e80]: high impact
+                  - generic [ref=e81]: Upcoming
+                - paragraph [ref=e82]: Apr 17, 06:00 PM UTC
+                - paragraph [ref=e83]: USD · Equities / FX
+              - generic [ref=e84]:
+                - generic [ref=e85]:
+                  - paragraph [ref=e86]: Eurozone CPI
+                  - generic [ref=e87]: medium impact
+                  - generic [ref=e88]: Upcoming
+                - paragraph [ref=e89]: Apr 18, 08:30 AM UTC
+                - paragraph [ref=e90]: EUR · FX
+              - generic [ref=e91]:
+                - generic [ref=e92]:
+                  - paragraph [ref=e93]: Central bank speech
+                  - generic [ref=e94]: low impact
+                  - generic [ref=e95]: Upcoming
+                - paragraph [ref=e96]: Apr 18, 12:00 PM UTC
+                - paragraph [ref=e97]: USD · Fixed income / FX
+        - generic [ref=e98]:
+          - paragraph [ref=e99]: Session record
+          - generic [ref=e100]:
+            - generic [ref=e101]:
+              - heading "Today activity" [level=2] [ref=e102]
+              - paragraph [ref=e103]: What has happened so far today.
+            - generic [ref=e104]:
+              - paragraph [ref=e105]: No activity yet.
+              - paragraph [ref=e106]: Events appear here as the session progresses — session start, Guardian triggers, and logged trades.
+        - generic [ref=e107]:
+          - paragraph [ref=e108]: Account & tools
+          - generic [ref=e109]:
+            - generic [ref=e110]:
+              - generic [ref=e111]:
+                - heading "Account & access" [level=2] [ref=e112]
+                - paragraph [ref=e113]: Your login details and current subscription access.
+              - generic [ref=e114]:
+                - generic [ref=e115]:
+                  - term [ref=e116]: Email
+                  - definition [ref=e117]: verify-onboarding@example.com
+                - generic [ref=e118]:
+                  - term [ref=e119]: Role
+                  - definition [ref=e120]: USER
+                - generic [ref=e121]:
+                  - term [ref=e122]: Subscription
+                  - definition [ref=e123]: TRIALING
+                - generic [ref=e124]:
+                  - term [ref=e125]: Trial
+                  - definition [ref=e126]: Active — ends Apr 21, 2026, 6:34 AM UTC
+            - generic [ref=e127]:
+              - generic [ref=e128]:
+                - heading "Setup status" [level=2] [ref=e129]
+                - paragraph [ref=e130]: Onboarding profile and Telegram coach connection.
+              - generic [ref=e131]:
+                - generic [ref=e132]:
+                  - term [ref=e133]: Onboarding
+                  - definition [ref=e134]: Profile complete.
+                - generic [ref=e135]:
+                  - term [ref=e136]: Telegram coach
+                  - definition [ref=e137]: Not connected.
+                  - paragraph [ref=e138]: Connect Telegram to continue the session flow in the coach bot.
+            - generic [ref=e139]:
+              - generic [ref=e140]:
+                - heading "Guardian" [level=2] [ref=e141]
+                - paragraph [ref=e142]: Rule engine status and session enforcement.
+              - generic [ref=e143]:
+                - generic [ref=e144]:
+                  - generic [ref=e145]:
+                    - paragraph [ref=e146]: Status
+                    - paragraph [ref=e147]: Active
+                    - paragraph [ref=e148]: Demo mode active
+                  - generic [ref=e149]:
+                    - paragraph [ref=e150]: Today
+                    - paragraph [ref=e151]: Ready — limits enforcing.
+                - link "Open Guardian" [ref=e152] [cursor=pointer]:
+                  - /url: /guardian
+            - generic [ref=e153]:
+              - generic [ref=e154]:
+                - heading "Session event log" [level=2] [ref=e155]
+                - paragraph [ref=e156]: Log a trade or session event manually — captured in Today Activity and the post-session review.
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - generic [ref=e159]: Event type
+                  - combobox [ref=e160]:
+                    - option "Trade opened" [selected]
+                    - option "Trade closed"
+                    - option "Win"
+                    - option "Loss"
+                    - option "P&L update"
+                    - option "Rule breach"
+                    - option "Note"
+                  - paragraph [ref=e161]: Log when you enter a trade.
+                - generic [ref=e162]:
+                  - generic [ref=e163]: Note (optional)
+                  - textbox "Brief note about this event" [ref=e164]
+                - button "Log event" [ref=e166]
+            - generic [ref=e167]:
+              - generic [ref=e168]:
+                - heading "Trader context" [level=2] [ref=e169]
+                - paragraph [ref=e170]: Short-term session signals supporting the Guardian flow.
+              - generic [ref=e171]:
+                - paragraph [ref=e172]: none
+                - paragraph [ref=e173]: No live state active right now.
+                - generic [ref=e174]:
+                  - generic [ref=e175]:
+                    - paragraph [ref=e176]: Cooldown
+                    - paragraph [ref=e177]: Not active
+                    - paragraph [ref=e178]: Until Not set
+                  - generic [ref=e179]:
+                    - paragraph [ref=e180]: Loss streak
+                    - paragraph [ref=e181]: "0"
+                    - paragraph [ref=e182]: Updated Not set
+                  - generic [ref=e183]:
+                    - paragraph [ref=e184]: Events today
+                    - paragraph [ref=e185]: "0"
+                    - paragraph [ref=e186]: "Distress: 0"
+  - button "Open Next.js Dev Tools" [ref=e192] [cursor=pointer]:
+    - img [ref=e193]
+  - alert [ref=e196]
