@@ -17,10 +17,10 @@ export type ConversationMode = "coaching" | "casual" | "clarification" | "meta";
 export function detectConversationMode(params: {
   message: string;
   hasEmotionalAction: boolean;
-  hasConstraints: boolean;
+  guardianLocked: boolean;
 }): ConversationMode {
-  // Safety constraints always force coaching — guardrails must surface regardless of topic
-  if (params.hasConstraints) return "coaching";
+  // Hard account lockout is its own message — always coaching
+  if (params.guardianLocked) return "coaching";
 
   // Emotional quick action = unambiguously coaching
   if (params.hasEmotionalAction) return "coaching";
@@ -28,29 +28,40 @@ export function detectConversationMode(params: {
   const msg = params.message.trim();
   if (!msg) return "casual";
 
-  // Meta: user asking about bot's knowledge, memory, or their stored profile
+  // META: user asking about bot's knowledge, memory, or stored profile
+  // English + Hebrew patterns
   if (
-    /what (do you|don'?t you) know|what you (know|remember|have)|your (context|memory|profile)|what('?s| is| are) (my|your) (rules?|profile|settings?|context|memory|limits?)/i.test(msg)
+    /what (do you|don'?t you) know|what you (know|remember|have)|your (context|memory|profile)|what('?s| is| are) (my|your) (rules?|profile|settings?|context|memory|limits?)/i.test(msg) ||
+    /מה אתה יודע|מה יש לך עליי|מה הכללים שלי|מה הפרופיל שלי|מה אתה זוכר/.test(msg)
   ) {
     return "meta";
   }
 
-  // Clarification: user questioning a previous reply
+  // CLARIFICATION: user questioning a previous reply
+  // English + Hebrew patterns
   if (
-    /(why|how) (did|do) you (say|tell|think|know)|what did you mean|what do you mean by|you (just |already )?said|based on what|explain (why|what that|what you)/i.test(msg)
+    /(why|how) (did|do) you (say|tell|think|know)|what did you mean|what do you mean by|you (just |already )?said|based on what|explain (why|what that|what you)/i.test(msg) ||
+    /למה אמרת|מה התכוונת|על סמך מה|מה זה אומר|למה כתבת|מה הכוונה/.test(msg)
   ) {
     return "clarification";
   }
 
-  // Coaching: English trading / emotional keywords
+  // COACHING: English trading / emotional keywords
   if (
     /\b(trade|trading|market|loss|lost|profit|position|setup|entry|exit|fomo|revenge|tilt|hesitat|impulse|drawdown|pnl|stop.?loss|risk|short|long)\b/i.test(msg)
   ) {
     return "coaching";
   }
 
-  // Coaching: non-Latin trading terms (Hebrew, Arabic, Russian)
-  if (/הפסד|מסחר|עסקה|שוק|רווח|потер|торг|рынок|убыт|خسار|تداول|سوق/.test(msg)) {
+  // COACHING: Hebrew trading / emotional terms
+  if (
+    /הפסד|מסחר|עסקה|שוק המניות|להיכנס לעסקה|לצאת מעסקה|רווח|פוזיציה|סטאפ|ריגוש|כועס על|מתוסכל|ירד לי|עלה לי/.test(msg)
+  ) {
+    return "coaching";
+  }
+
+  // COACHING: Arabic and Russian trading terms
+  if (/потер|торг|рынок|убыт|خسار|تداول|سوق/.test(msg)) {
     return "coaching";
   }
 
@@ -111,43 +122,45 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
       return [
         "HEBREW COACHING VOICE:",
         "Sound like an Israeli trader talking to another trader mid-session — not a coach on a podium.",
-        "Short. Punchy. Sentence fragments are fine. Israeli speech is abrupt and warm at the same time.",
+        "Short. Punchy. Fragments are fine. Israeli speech is direct, warm, and often just 3-5 words.",
         "",
         "NATURAL OPENERS (use when it fits, not every time):",
-        "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · אחת רגע",
+        "  רגע · שמע · בסדר · תעצור · תנשום · קדימה · אחת רגע · יאללה",
         "",
-        "REDIRECTS THAT SOUND REAL:",
-        "  תצא מהמסך · תן לזה לחלוף · לא עכשיו · קח נשימה · שב עם זה רגע · תיתן לסטאפ לבוא אליך",
+        "REDIRECTS:",
+        "  תצא מהמסך · תן לזה לחלוף · לא עכשיו · קח נשימה · שב עם זה רגע",
         "",
-        "ACKNOWLEDGMENT (use when the loss is fresh):",
-        "  זה קרה · ברור · מובן · כאב, בסדר · כולם עוברים את זה",
+        "ACKNOWLEDGMENT (fresh loss only):",
+        "  זה קרה · ברור · מובן · קרה, בסדר · כולם שם",
         "",
-        "FEW-SHOT EXAMPLES BY SITUATION:",
+        "FEW-SHOT EXAMPLES:",
         "  After a loss:",
         '    ✓ "זה קרה. מה עכשיו?"',
-        '    ✓ "אחד. תנשום. השוק יהיה כאן מחר."',
         '    ✓ "הפסד קרה — לא עניין. מה הצעד הבא?"',
-        "  FOMO / urge to chase:",
-        '    ✓ "רגע. הסטאפ כבר עבר — זה לא שלך."',
-        '    ✓ "שמע, זה לא הסטאפ שלך. תן לזה לעבור."',
-        '    ✓ "אל תרדוף אחרי זה. הבא יבוא."',
+        '    ✓ "קרה. תנשום."',
+        "  FOMO / chasing:",
+        '    ✓ "רגע. הסטאפ כבר עבר."',
+        '    ✓ "לא שלך. הבא יבוא."',
+        '    ✓ "אל תרדוף. תחכה."',
         "  Revenge impulse:",
         '    ✓ "תצא מהמסך. עכשיו."',
-        '    ✓ "אל תיכנס עכשיו — זה ריגוש, לא קאנה."',
-        '    ✓ "לא עכשיו. תן לזה לחלוף קודם."',
-        "  Cooling down / resetting:",
-        '    ✓ "בסדר. אתה יוצא מזה. מה הצעד הבא?"',
-        '    ✓ "יצאת מהמצב. עכשיו — מה הסטאפ הבא?"',
-        "  Account locked / daily limit hit:",
+        '    ✓ "לא עכשיו. זה ריגוש."',
+        "  Cooling down:",
+        '    ✓ "בסדר. אתה יוצא מזה."',
+        '    ✓ "יצאת. מה הסטאפ הבא?"',
+        "  Account locked / limit hit:",
         '    ✓ "יום נגמר. מחר שוב."',
         '    ✓ "הגעת לגבול — זה בדיוק מה שהגבול בשבילו."',
-        '    ✓ "הגבול הוא שלך. כבד אותו."',
         "",
-        "NEVER:",
-        '  ✗ "לפי הכללים שלך" / "ממשמעת מסחרית" / "שמור על משמעת"',
-        '  ✗ "אני מאמן המסחר שלך"',
-        "  ✗ Translated English phrases — they sound robotic in Hebrew",
-        "  ✗ Long sentences that build toward a conclusion",
+        "NEVER — BAD HEBREW PATTERNS:",
+        '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "ממשמעת מסחרית"',
+        '  ✗ "אני מאמן המסחר שלך" / "אני כאן בשבילך"',
+        '  ✗ "נראה לי ש..." / "זה נשמע כאילו..." / "אני מבין ש..."',
+        '  ✗ "חשוב לזכור ש..." / "כדאי לזכור ש..." / "חשוב להבין ש..."',
+        '  ✗ "כאשר..." as an opener (formal/literary)',
+        "  ✗ Sentences over 8 Hebrew words — break them up or cut",
+        "  ✗ Any English phrase translated literally into Hebrew",
+        "  ✗ Building toward a conclusion — start with it",
         toneGuide,
         "",
       ];
@@ -380,6 +393,64 @@ function buildLanguageStyleBlock(language: string, coachingTone: string | null):
   }
 }
 
+// Voice guidance for non-coaching modes (casual / meta / clarification).
+// Each language gets its own natural-chat style note — more specific than one generic line.
+function buildLanguageCasualNote(language: string): string[] {
+  switch (language) {
+    case "he":
+      return [
+        "HEBREW VOICE (casual / direct reply):",
+        "Israeli chat style. Very short. No formality. No coaching register.",
+        "Sound like a real person replying in WhatsApp — not a formal assistant.",
+        "",
+        "✓ Natural responses: \"כן\", \"בטח\", \"הממ, לא יודע\", \"מה פתאום\", \"סגור\", \"מגניב\"",
+        "✓ Natural starters: \"אה\", \"הה\", \"נו\", \"שמע\", \"בגדול\"",
+        "✓ Use casual contractions and particles: \"בגלל ש\" not \"מאחר ו\", \"אין לי מושג\" not \"אינני יודע\"",
+        "",
+        "✗ NEVER formal register: \"אני שמח לסייע\", \"אכן\", \"בהחלט\", \"בוודאי\"",
+        "✗ NEVER translated AI-isms: \"זה נשמע מצחיק\", \"אני מבין\", \"מעניין מאוד\"",
+        "✗ NEVER start with subject: \"אני חושב ש...\" → say the thing directly",
+        "✗ NEVER more than 2 sentences",
+        "",
+      ];
+    case "en":
+      return [
+        "ENGLISH VOICE: Short, natural, like texting. Not a formal assistant. 1-2 sentences max.",
+        "",
+      ];
+    case "es":
+      return [
+        "SPANISH VOICE: Natural spoken Spanish, tú form. Short, casual. 1-2 sentences max.",
+        "",
+      ];
+    case "fr":
+      return [
+        "FRENCH VOICE: Natural spoken French, tu form. Short, direct, not corporate. 1-2 sentences max.",
+        "",
+      ];
+    case "de":
+      return [
+        "GERMAN VOICE: Natural spoken German, du form. Short, direct. 1-2 sentences max.",
+        "",
+      ];
+    case "ru":
+      return [
+        "RUSSIAN VOICE: Natural spoken Russian, ты form. Short, warm, direct. 1-2 sentences max.",
+        "",
+      ];
+    case "ar":
+      return [
+        "ARABIC VOICE: Clear accessible Arabic, warm and direct. Short. 1-2 sentences max.",
+        "",
+      ];
+    default:
+      return [
+        `Write naturally in ${language}. Short, direct, like a real person in chat. 1-2 sentences max.`,
+        "",
+      ];
+  }
+}
+
 function buildSystemPrompt(input: AICoachInput): string {
   const langName = LANGUAGE_NAMES[input.language] ?? "English";
   const mode = input.conversationMode;
@@ -436,16 +507,12 @@ function buildSystemPrompt(input: AICoachInput): string {
     "",
   ];
 
-  // Language voice block: full coaching examples only in coaching mode;
-  // for other modes a short native-voice note is enough
+  // Language voice: full coaching block for coaching mode; per-language casual note for others
   if (isCoaching) {
     const langBlock = buildLanguageStyleBlock(input.language, input.coachingTone);
-    if (langBlock.length > 0) {
-      lines.push(...langBlock);
-    }
+    if (langBlock.length > 0) lines.push(...langBlock);
   } else {
-    lines.push(`LANGUAGE: Write naturally in ${langName} — like a native speaker, not a translated bot.`);
-    lines.push("");
+    lines.push(...buildLanguageCasualNote(input.language));
   }
 
   // Personal coaching memory — coaching + meta only

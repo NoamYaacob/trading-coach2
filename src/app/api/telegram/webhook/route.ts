@@ -350,10 +350,7 @@ export async function POST(request: Request) {
   const conversationMode = detectConversationMode({
     message: rawText,
     hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
-    hasConstraints:
-      guardian.evaluation.lockoutActive ||
-      violationFeed.hasBlockingViolation ||
-      flags.cooldownActive,
+    guardianLocked: guardian.evaluation.lockoutActive,
   });
 
   const isCoachingMode = conversationMode === "coaching";
