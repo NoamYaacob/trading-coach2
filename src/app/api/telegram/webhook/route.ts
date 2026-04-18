@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { TraderCurrentState } from "@prisma/client";
 
-import { generateAICoachReply, isAICoachEnabled } from "@/lib/ai-coach";
+import {
+  generateAICoachReply,
+  isAICoachEnabled,
+  EMOTIONAL_ACTION_IDS,
+  shouldUseAICoach,
+} from "@/lib/ai-coach";
 import type { CoachIntent } from "@/lib/coach";
 import {
   findActionByLocaleText,
@@ -288,14 +293,19 @@ export async function POST(request: Request) {
 
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
-  const aiEnabled = isAICoachEnabled();
+  const isFreeText = rawText.length > 0 && matchedAction === null;
+  // Pre-decision using only what we know before DB fetches — session context
+  // is only loaded when AI is at least plausible for this message type.
+  const mightUseAI =
+    isAICoachEnabled() &&
+    (isFreeText || (matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id)));
 
   const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
     getTodayManualEvents(connection.user.id),
-    aiEnabled ? getRecentSessionContext(connection.user.id) : Promise.resolve(null),
+    mightUseAI ? getRecentSessionContext(connection.user.id) : Promise.resolve(null),
   ]);
 
   const todaySessionState = deriveTodaySessionState(guardian, {
@@ -367,7 +377,15 @@ export async function POST(request: Request) {
     recentMessages,
   };
 
-  const aiReply = aiEnabled ? await generateAICoachReply(aiInput) : null;
+  const useAI = shouldUseAICoach({
+    actionId: matchedAction?.id ?? null,
+    isFreeText,
+    guardianLocked: guardian.evaluation.lockoutActive,
+    hasBlockingViolation: violationFeed.hasBlockingViolation,
+    cooldownActive: flags.cooldownActive,
+  });
+
+  const aiReply = useAI ? await generateAICoachReply(aiInput) : null;
 
   // Fallback priority: quick-action locale reply → state-derived reply → session-state reply → generic
   const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
@@ -400,7 +418,7 @@ export async function POST(request: Request) {
     source: "telegram",
     message: rawText || locale.keyboard.checkIn,
     detectedIntent: deriveLogIntent(matchedAction?.id ?? null, rawText),
-    coachMode: aiEnabled ? "AI_COACH" : "RULE_BASED",
+    coachMode: useAI ? "AI_COACH" : "RULE_BASED",
     traderState: loggedTraderState,
     cooldownActive: flags.cooldownActive,
     metadataJson: {

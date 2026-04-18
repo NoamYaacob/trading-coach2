@@ -170,6 +170,36 @@ export function isAICoachEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
+// Quick-action IDs where emotional coaching adds real value
+export const EMOTIONAL_ACTION_IDS = new Set([
+  "fomo",
+  "revenge",
+  "just-lost",
+  "lost-twice",
+  "angry",
+  "out-of-control",
+  "calming-down",
+  "back-in-control",
+]);
+
+export function shouldUseAICoach(params: {
+  actionId: string | null;
+  isFreeText: boolean;
+  guardianLocked: boolean;
+  hasBlockingViolation: boolean;
+  cooldownActive: boolean;
+}): boolean {
+  if (!isAICoachEnabled()) return false;
+  // User typed something — always worth a human-feeling reply
+  if (params.isFreeText) return true;
+  // Emotional quick actions benefit from contextual coaching
+  if (params.actionId && EMOTIONAL_ACTION_IDS.has(params.actionId)) return true;
+  // Hard safety enforcement should feel human, not robotic
+  if (params.guardianLocked || params.hasBlockingViolation || params.cooldownActive) return true;
+  // Lightweight button taps (check-in, day-summary, rule-limits) → skip AI
+  return false;
+}
+
 export async function generateAICoachReply(
   input: AICoachInput,
 ): Promise<string | null> {
