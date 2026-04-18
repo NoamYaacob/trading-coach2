@@ -166,11 +166,17 @@ function buildSystemPrompt(input: AICoachInput): string {
   return lines.join("\n");
 }
 
-const client = new Anthropic();
+export function isAICoachEnabled(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY);
+}
 
 export async function generateAICoachReply(
   input: AICoachInput,
 ): Promise<string | null> {
+  if (!isAICoachEnabled()) return null;
+
+  const client = new Anthropic();
+
   try {
     const response = await client.messages.create(
       {
