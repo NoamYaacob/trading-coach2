@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AccountForm } from "../../_components/account-form";
 import type { AccountFormInitialData } from "../../_components/account-form";
+import { ConnectionPoller } from "./_components/connection-poller";
 
 export const metadata: Metadata = {
   title: "Edit Account",
@@ -142,7 +143,9 @@ export default async function EditAccountPage({
 
   const cfg = READINESS_CONFIG[readiness];
 
-  const checks = [
+  // Static checks (account ID + rules) are passed to the client ConnectionPoller
+  // when in pending state so it can render the full panel with live broker-events check.
+  const staticChecks = [
     {
       label: isTradovate ? "Tradovate account ID" : "Account ID",
       pass: hasAccountId,
@@ -159,6 +162,11 @@ export default async function EditAccountPage({
         ? `${rulesCount} rule${rulesCount !== 1 ? "s" : ""} configured`
         : "None — add at least one limit",
     },
+  ];
+
+  // Full check list for static (non-polling) panel states.
+  const checks = [
+    ...staticChecks,
     ...(isTradovate
       ? [
           {
@@ -213,47 +221,47 @@ export default async function EditAccountPage({
       }
     >
       <div className="grid gap-6">
-        {/* Connection readiness panel */}
-        <div className={`rounded-[1.75rem] border ${cfg.border} ${cfg.bg} p-6`}>
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Connection readiness
-              </p>
-              <p className="mt-1 text-lg font-semibold text-stone-950">{cfg.status}</p>
-              <p className="mt-1 text-sm text-stone-600">{cfg.description}</p>
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}
-            >
-              {readiness === "active"
-                ? "Ready"
-                : readiness === "pending_first_event"
-                  ? "Pending"
+        {/* When pending, hand off to the client ConnectionPoller which polls for the
+            first broker event and transitions the panel to the active state in-place. */}
+        {readiness === "pending_first_event" ? (
+          <ConnectionPoller accountId={account.id} staticChecks={staticChecks} />
+        ) : (
+          <div className={`rounded-[1.75rem] border ${cfg.border} ${cfg.bg} p-6`}>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  Connection readiness
+                </p>
+                <p className="mt-1 text-lg font-semibold text-stone-950">{cfg.status}</p>
+                <p className="mt-1 text-sm text-stone-600">{cfg.description}</p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}
+              >
+                {readiness === "active"
+                  ? "Ready"
                   : readiness === "no_rules"
                     ? "Partial"
                     : "Incomplete"}
-            </span>
+              </span>
+            </div>
+            <div className="grid gap-2">
+              {checks.map((check) => (
+                <div key={check.label} className="flex items-baseline gap-3 text-sm">
+                  <span
+                    className={`shrink-0 font-semibold ${check.pass ? "text-emerald-600" : "text-red-500"}`}
+                  >
+                    {check.pass ? "✓" : "✗"}
+                  </span>
+                  <span className="text-stone-700">
+                    <span className="font-medium">{check.label}</span>
+                    <span className="text-stone-500"> — {check.detail}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid gap-2">
-            {checks.map((check) => (
-              <div
-                key={check.label}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span
-                  className={`shrink-0 font-semibold ${check.pass ? "text-emerald-600" : "text-red-500"}`}
-                >
-                  {check.pass ? "✓" : "✗"}
-                </span>
-                <span className="text-stone-700">
-                  <span className="font-medium">{check.label}</span>
-                  <span className="text-stone-500"> — {check.detail}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
 
         <SectionCard
           title="Account setup"
