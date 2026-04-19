@@ -1,6 +1,13 @@
 import type { NormalizedEvent } from "@/lib/guardian-engine/types";
 import type { TradovateOrderFill, TradovateOrder, TradovateAccountSummary } from "./types";
 
+function parseTimestamp(ts: string | undefined | null, field: string): Date {
+  if (!ts) throw new Error(`Missing ${field}`);
+  const date = new Date(ts);
+  if (isNaN(date.getTime())) throw new Error(`Invalid ${field}: "${ts}"`);
+  return date;
+}
+
 export function normalizeFill(
   internalAccountId: string,
   fill: TradovateOrderFill,
@@ -13,7 +20,7 @@ export function normalizeFill(
     quantity: fill.qty,
     price: fill.price,
     pnl: fill.profit,
-    occurredAt: new Date(fill.timestamp),
+    occurredAt: parseTimestamp(fill.timestamp, "fill.timestamp"),
     rawPayload: fill,
   };
 }
@@ -29,7 +36,7 @@ export function normalizeOrder(
     side: order.action === "Buy" ? "BUY" : "SELL",
     quantity: order.qty,
     price: order.price,
-    occurredAt: new Date(order.timestamp),
+    occurredAt: parseTimestamp(order.timestamp, "order.timestamp"),
     rawPayload: order,
   };
 }
@@ -42,7 +49,7 @@ export function normalizeAccountSummary(
     accountId: internalAccountId,
     eventType: "daily_pnl_updated",
     pnl: summary.realizedPnl,
-    occurredAt: new Date(summary.timestamp),
+    occurredAt: parseTimestamp(summary.timestamp, "summary.timestamp"),
     rawPayload: summary,
   };
 }

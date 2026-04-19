@@ -53,7 +53,19 @@ export async function getOrCreateSessionState(accountId: string): Promise<Sessio
     );
   }
 
-  if (existing) return toSessionState(existing);
+  if (existing) {
+    // Clear expired cooldown — account re-enters NORMAL state when cooldownUntil has passed.
+    // Hard stops (riskState=STOPPED, cooldownActive=false) are intentionally not cleared here.
+    if (existing.cooldownActive && existing.cooldownUntil && existing.cooldownUntil < new Date()) {
+      return toSessionState(
+        await prisma.liveSessionState.update({
+          where: { accountId },
+          data: { cooldownActive: false, cooldownUntil: null, riskState: "NORMAL" },
+        }),
+      );
+    }
+    return toSessionState(existing);
+  }
 
   return toSessionState(
     await prisma.liveSessionState.create({

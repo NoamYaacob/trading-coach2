@@ -18,6 +18,17 @@ import {
 import { detectIntervention } from "@/lib/guardian-engine/detector";
 import type { AccountRules, NormalizedEvent } from "@/lib/guardian-engine/types";
 
+// Triggers that should fire at most once per trading session.
+// Concurrent requests can both read NORMAL state before either writes STOPPED,
+// so we do a DB-level check before creating the intervention record.
+const ONCE_PER_SESSION_TRIGGERS = new Set(["daily_loss_limit", "max_trades_reached"]);
+
+function todayUTCStart(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
 export async function POST(request: Request) {
   const secret = request.headers.get("x-tradovate-secret");
   const expected = process.env.TRADOVATE_WEBHOOK_SECRET;
@@ -25,7 +36,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as TradovateWebhookEvent;
+  // Malformed JSON causes request.json() to throw. Return 400 so Tradovate
+  // does not retry — retrying a malformed payload would never succeed.
+  let body: TradovateWebhookEvent;
+  try {
+    body = (await request.json()) as TradovateWebhookEvent;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  // Validate the top-level accountId is present before any DB work.
+  if (!body.accountId) {
+    return NextResponse.json({ ok: true, skipped: "missing_account_id" });
+  }
 
   const account = await prisma.connectedAccount.findFirst({
     where: {
@@ -61,21 +84,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: "account_not_found" });
   }
 
-  // Normalize the incoming Tradovate event
+  // Normalize the incoming Tradovate event. Adapter throws on invalid
+  // timestamps or missing required fields — treat those as bad data, not
+  // server errors, so Tradovate does not retry.
   let normalizedEvent: NormalizedEvent | null = null;
-  if (body.type === "fill") {
-    normalizedEvent = normalizeFill(account.id, body.data);
-  } else if (body.type === "order") {
-    normalizedEvent = normalizeOrder(account.id, body.data);
-  } else if (body.type === "account_summary") {
-    normalizedEvent = normalizeAccountSummary(account.id, body.data);
+  try {
+    if (body.type === "fill") {
+      normalizedEvent = normalizeFill(account.id, body.data);
+    } else if (body.type === "order") {
+      normalizedEvent = normalizeOrder(account.id, body.data);
+    } else if (body.type === "account_summary") {
+      normalizedEvent = normalizeAccountSummary(account.id, body.data);
+    }
+  } catch {
+    return NextResponse.json({ ok: true, skipped: "invalid_event_data" });
   }
 
   if (!normalizedEvent) {
     return NextResponse.json({ ok: true, skipped: "unhandled_event_type" });
   }
 
-  // Persist the normalized event
+  // Deduplication: fills and orders carry a stable externalTradeId from Tradovate.
+  // If we have already persisted this event (Tradovate retry / duplicate delivery),
+  // skip the entire pipeline — no state mutation, no intervention.
+  if (normalizedEvent.externalTradeId) {
+    const duplicate = await prisma.normalizedTradeEvent.findFirst({
+      where: {
+        accountId: account.id,
+        externalTradeId: normalizedEvent.externalTradeId,
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return NextResponse.json({ ok: true, skipped: "duplicate_event" });
+    }
+  }
+
+  // Persist the normalized event.
   await prisma.normalizedTradeEvent.create({
     data: {
       accountId: account.id,
@@ -90,7 +135,7 @@ export async function POST(request: Request) {
     },
   });
 
-  // Get or create session state, then apply the event
+  // Apply state mutation. getOrCreateSessionState also clears expired cooldowns.
   let state = await getOrCreateSessionState(account.id);
 
   if (normalizedEvent.eventType === "trade_closed" && normalizedEvent.pnl != null) {
@@ -99,7 +144,7 @@ export async function POST(request: Request) {
     state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
   }
 
-  // Get the previous closed trade for pnl/qty context (skip current if it was a close)
+  // Get the previous closed trade for pnl/qty context (skip current if it was a close).
   const prevEvent = await prisma.normalizedTradeEvent.findFirst({
     where: {
       accountId: account.id,
@@ -109,7 +154,6 @@ export async function POST(request: Request) {
     skip: normalizedEvent.eventType === "trade_closed" ? 1 : 0,
   });
 
-  // Build account rules
   const rules: AccountRules = {
     maxDailyLoss: account.riskRules?.maxDailyLoss != null ? Number(account.riskRules.maxDailyLoss) : null,
     riskPerTrade: account.riskRules?.riskPerTrade != null ? Number(account.riskRules.riskPerTrade) : null,
@@ -129,7 +173,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, outcome: "no_action" });
   }
 
-  // Log the intervention
+  // Prevent firing the same once-per-session trigger more than once.
+  // This guards against concurrent requests that both read NORMAL state before
+  // either one writes STOPPED — without this check, both would create
+  // interventions and both would attempt Telegram sends.
+  if (ONCE_PER_SESSION_TRIGGERS.has(outcome.trigger)) {
+    const alreadyFired = await prisma.guardianIntervention.findFirst({
+      where: {
+        accountId: account.id,
+        triggerType: outcome.trigger,
+        createdAt: { gte: todayUTCStart() },
+      },
+      select: { id: true },
+    });
+    if (alreadyFired) {
+      return NextResponse.json({ ok: true, skipped: "already_intervened", trigger: outcome.trigger });
+    }
+  }
+
+  // Log the intervention.
   const intervention = await prisma.guardianIntervention.create({
     data: {
       accountId: account.id,
@@ -140,27 +202,26 @@ export async function POST(request: Request) {
     },
   });
 
-  // Apply cooldown to session state
+  // Apply state effects in order of severity.
   if (outcome.action === "cooldown") {
     await setCooldown(account.id, outcome.durationMinutes);
   }
 
-  // Mark as stopped for hard stops
   if (outcome.action === "stop") {
     await setRiskState(account.id, "STOPPED");
   }
 
-  // Mark as warning for warnings
   if (outcome.action === "warning") {
     await setRiskState(account.id, "WARNING");
   }
 
-  // Enforce hard stop for daily loss limit (in addition to sending the coaching message)
   if (outcome.action === "telegram_message_trigger" && outcome.trigger === "daily_loss_limit") {
     await setRiskState(account.id, "STOPPED");
   }
 
-  // Send Telegram intervention for serious events
+  // Send Telegram coaching message. Wrapped in try/catch so a Telegram or
+  // voice-generation failure does not cause a 500 — which would make Tradovate
+  // retry and double-process the event. The intervention is already persisted.
   if (outcome.action === "telegram_message_trigger") {
     const chatId = account.user.telegramConnection?.telegramChatId;
     if (chatId) {
@@ -198,8 +259,7 @@ export async function POST(request: Request) {
           });
         }
       } catch {
-        // Telegram or voice generation failed — intervention is already logged without sentAt.
-        // Return 200 so the broker does not retry and double-process the event.
+        // Intervention is already logged without sentAt.
       }
     }
   }
