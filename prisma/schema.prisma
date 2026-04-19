@@ -71,6 +71,7 @@ model User {
   dailyGuardianSessions DailyGuardianSession[]
   guardianProfile    GuardianProfile?
   guardianStatus     GuardianStatus?
+  connectedAccounts  ConnectedAccount[]
 }
 
 model Session {
@@ -272,4 +273,113 @@ model GuardianStatus {
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([currentLockoutActive, lockoutReason])
+}
+
+enum TradingPlatform {
+  tradovate
+  tradingview
+  manual
+}
+
+enum AccountType {
+  evaluation
+  funded
+  personal
+  demo
+}
+
+enum AccountRiskState {
+  NORMAL
+  WARNING
+  STOPPED
+}
+
+model ConnectedAccount {
+  id                String           @id @default(cuid())
+  userId            String
+  label             String
+  externalAccountId String?
+  platform          TradingPlatform  @default(manual)
+  propFirm          String?
+  accountType       AccountType      @default(personal)
+  currency          String           @default("USD")
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  riskRules         AccountRiskRules?
+  sessionState      LiveSessionState?
+  tradeEvents       NormalizedTradeEvent[]
+  interventions     GuardianIntervention[]
+
+  @@unique([userId, externalAccountId, platform])
+  @@index([userId, isActive])
+}
+
+model AccountRiskRules {
+  id               String            @id @default(cuid())
+  accountId        String            @unique
+  maxDailyLoss     Decimal?          @db.Decimal(10, 2)
+  riskPerTrade     Decimal?          @db.Decimal(10, 2)
+  maxTradesPerDay  Int?
+  stopAfterLosses  Int?
+  allowedStartHour Int?
+  allowedEndHour   Int?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  account          ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model LiveSessionState {
+  id                String            @id @default(cuid())
+  accountId         String            @unique
+  sessionDate       String
+  dailyPnl          Decimal           @default(0) @db.Decimal(10, 2)
+  tradesCount       Int               @default(0)
+  consecutiveLosses Int               @default(0)
+  lastTradeAt       DateTime?
+  cooldownActive    Boolean           @default(false)
+  cooldownUntil     DateTime?
+  riskState         AccountRiskState  @default(NORMAL)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  account           ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model NormalizedTradeEvent {
+  id              String            @id @default(cuid())
+  accountId       String
+  eventType       String
+  externalTradeId String?
+  side            String?
+  quantity        Decimal?          @db.Decimal(10, 4)
+  price           Decimal?          @db.Decimal(12, 4)
+  pnl             Decimal?          @db.Decimal(10, 2)
+  rawPayload      Json?
+  occurredAt      DateTime
+  createdAt       DateTime          @default(now())
+
+  account         ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, occurredAt])
+  @@index([accountId, eventType, occurredAt])
+}
+
+model GuardianIntervention {
+  id          String            @id @default(cuid())
+  accountId   String
+  userId      String
+  triggerType String
+  outcome     String
+  message     String?
+  sentAt      DateTime?
+  createdAt   DateTime          @default(now())
+
+  account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
 }
