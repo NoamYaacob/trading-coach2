@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
+import { getAppBaseUrl } from "@/lib/app-url";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 10,
   });
 
-  const redirectUri = new URL("/api/auth/google/callback", request.url).toString();
+  const redirectUri = `${getAppBaseUrl(request)}/api/auth/google/callback`;
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,

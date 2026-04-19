@@ -7,6 +7,7 @@ import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { getTrialDates } from "@/lib/trial";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { GOOGLE_OAUTH_STATE_COOKIE } from "../connect/route";
 
 type StatePayload = {
@@ -65,8 +66,8 @@ export async function GET(request: NextRequest) {
     return errorRedirect(request, mode, "google_not_configured");
   }
 
-  // Exchange authorization code for tokens
-  const redirectUri = new URL("/api/auth/google/callback", request.url).toString();
+  // Exchange authorization code for tokens — must match the value sent in the connect route exactly.
+  const redirectUri = `${getAppBaseUrl(request)}/api/auth/google/callback`;
   let accessToken: string;
   try {
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
