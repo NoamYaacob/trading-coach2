@@ -49,9 +49,7 @@ export default async function AccountsPage() {
         {accounts.length === 0 ? (
           <SectionCard title="No accounts connected">
             <p className="text-sm text-stone-600">
-              No connected trading accounts found. POST to{" "}
-              <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs">/api/accounts</code>{" "}
-              to add one.
+              No connected trading accounts yet. Use the New account button above to get started.
             </p>
           </SectionCard>
         ) : (

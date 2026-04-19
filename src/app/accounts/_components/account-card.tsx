@@ -119,6 +119,16 @@ export function AccountCard({ account }: { account: AccountWithRelations }) {
             <p className="mt-1 text-sm text-stone-500">
               {account.externalAccountId ? `ID: ${account.externalAccountId}` : "No external ID"}
             </p>
+            {account.platform === "tradovate" && !account.externalAccountId && (
+              <p className="mt-1 text-xs text-amber-700">
+                No account ID — webhook events will not be received.
+              </p>
+            )}
+            {sessionState?.lastTradeAt && (
+              <p className="mt-1 text-xs text-stone-400">
+                Last event: {shortDate(sessionState.lastTradeAt)}
+              </p>
+            )}
           </div>
         </div>
 

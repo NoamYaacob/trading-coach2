@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     data: {
       userId: currentUser.id,
       label: body.label,
-      externalAccountId: body.externalAccountId ?? null,
+      externalAccountId: body.externalAccountId?.trim() || null,
       platform,
       propFirm: body.propFirm ?? null,
       accountType,

@@ -99,6 +99,10 @@ export function AccountForm(props: Props) {
       setError("Account label is required.");
       return;
     }
+    if (form.platform === "tradovate" && !form.externalAccountId.trim()) {
+      setError("Tradovate Account ID is required. Find it in Account → Account Settings in the Tradovate desktop app.");
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     setFeedback(null);
@@ -181,14 +185,22 @@ export function AccountForm(props: Props) {
             </select>
           </Field>
 
-          <Field label="External account ID">
+          <div className="grid gap-1.5">
+            <span className={LABEL_CLASS}>
+              {form.platform === "tradovate" ? "Tradovate account ID" : "External account ID"}
+            </span>
             <input
               value={form.externalAccountId}
               onChange={(e) => set("externalAccountId", e.target.value)}
-              placeholder="Broker-side account number"
+              placeholder={form.platform === "tradovate" ? "e.g. 12345" : "Broker-side account number"}
               className={INPUT_CLASS}
             />
-          </Field>
+            {form.platform === "tradovate" && (
+              <p className="text-xs text-stone-500">
+                Found in Account → Account Settings in the Tradovate desktop app.
+              </p>
+            )}
+          </div>
 
           <Field label="Currency">
             <input
@@ -311,6 +323,28 @@ export function AccountForm(props: Props) {
               : "Create account"}
         </button>
       </div>
+
+      {form.platform === "tradovate" && (
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+            Webhook setup
+          </p>
+          <div className="grid gap-3 text-sm text-stone-700">
+            <p>Configure Tradovate to send events to your deployed endpoint:</p>
+            <code className="block rounded-lg bg-stone-100 px-3 py-2 text-xs font-mono text-stone-800">
+              POST /api/tradovate/webhook
+            </code>
+            <p>Include this header on every request:</p>
+            <code className="block rounded-lg bg-stone-100 px-3 py-2 text-xs font-mono text-stone-800">
+              x-tradovate-secret: [TRADOVATE_WEBHOOK_SECRET]
+            </code>
+            <p className="text-xs text-stone-500">
+              Set <span className="font-mono">TRADOVATE_WEBHOOK_SECRET</span> as an environment variable.
+              The account ID above must exactly match the numeric account ID Tradovate sends in webhook events.
+            </p>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

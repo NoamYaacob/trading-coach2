@@ -72,7 +72,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(platform !== undefined && { platform }),
       ...(body.propFirm !== undefined && { propFirm: body.propFirm }),
       ...(accountType !== undefined && { accountType }),
-      ...(body.externalAccountId !== undefined && { externalAccountId: body.externalAccountId }),
+      ...(body.externalAccountId !== undefined && { externalAccountId: body.externalAccountId?.trim() || null }),
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
     },
