@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export type DiagnosticsEvent = {
   eventType: string;
@@ -75,6 +76,7 @@ export function DiagnosticsPanel({
   recentInterventions,
   isDev,
 }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [firing, setFiring] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
@@ -95,6 +97,9 @@ export function DiagnosticsPanel({
         setTestError((data.error as string) ?? "Request failed");
       } else {
         setTestResult(data);
+        // Refresh server data so the panel immediately shows the new event,
+        // updated session state, and any new intervention.
+        router.refresh();
       }
     } catch {
       setTestError("Network error");
