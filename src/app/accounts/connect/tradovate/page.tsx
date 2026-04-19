@@ -11,12 +11,13 @@ export const metadata: Metadata = {
   title: "Connect Tradovate",
 };
 
-// Show the OAuth connect button only when the required env vars are set.
-// The button links to /api/auth/tradovate/connect which builds the real
-// Tradovate authorization redirect. When env vars are absent, the page
-// falls back to the manual webhook setup form.
+// Show the OAuth connect button only when TRADOVATE_CLIENT_ID is set.
+// TRADOVATE_CLIENT_SECRET is also required but only at token-exchange time —
+// its absence surfaces a clear error in the callback rather than hiding the button.
+// NEXT_PUBLIC_APP_URL is NOT required here: the redirect_uri is derived from the
+// incoming request URL in both the connect and callback routes.
 function isOAuthConfigured(): boolean {
-  return !!(process.env.TRADOVATE_CLIENT_ID && process.env.NEXT_PUBLIC_APP_URL);
+  return !!process.env.TRADOVATE_CLIENT_ID;
 }
 
 export default async function ConnectTradovatePage({
@@ -117,9 +118,8 @@ export default async function ConnectTradovatePage({
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-700">
               OAuth is not configured on this server — using manual webhook setup instead. To
               enable OAuth, set{" "}
-              <code className="font-mono">TRADOVATE_CLIENT_ID</code>,{" "}
-              <code className="font-mono">TRADOVATE_CLIENT_SECRET</code>, and{" "}
-              <code className="font-mono">NEXT_PUBLIC_APP_URL</code> in your environment.
+              <code className="font-mono">TRADOVATE_CLIENT_ID</code> and{" "}
+              <code className="font-mono">TRADOVATE_CLIENT_SECRET</code> in your environment.
             </div>
 
             <div className="grid grid-cols-3 gap-3">

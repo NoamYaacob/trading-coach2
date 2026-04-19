@@ -23,9 +23,8 @@ export async function GET(request: NextRequest) {
   }
 
   const clientId = process.env.TRADOVATE_CLIENT_ID;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
-  if (!clientId || !appUrl) {
+  if (!clientId) {
     // OAuth not configured — caller should surface the manual setup path instead.
     return NextResponse.json(
       { error: "oauth_not_configured" },
@@ -34,7 +33,9 @@ export async function GET(request: NextRequest) {
   }
 
   const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
-  const redirectUri = `${appUrl}/api/auth/tradovate/callback`;
+  // Derive the callback URL from the incoming request — no env var needed and
+  // it's guaranteed to match the origin Railway routes traffic to.
+  const redirectUri = new URL("/api/auth/tradovate/callback", request.url).toString();
 
   // State encodes enough context to resume after the callback without a DB round-trip,
   // plus a random nonce for CSRF protection.

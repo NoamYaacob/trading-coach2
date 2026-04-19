@@ -55,9 +55,8 @@ export async function GET(request: NextRequest) {
 
   const clientId = process.env.TRADOVATE_CLIENT_ID;
   const clientSecret = process.env.TRADOVATE_CLIENT_SECRET;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
-  if (!clientId || !clientSecret || !appUrl) {
+  if (!clientId || !clientSecret) {
     return NextResponse.redirect(
       new URL("/accounts/new?oauth_error=oauth_not_configured", request.url),
     );
@@ -68,7 +67,8 @@ export async function GET(request: NextRequest) {
   // POST to Tradovate's token endpoint with the authorization code.
   // On success, Tradovate returns access_token, refresh_token, and account info.
   // -----------------------------------------------------------------------
-  const redirectUri = `${appUrl}/api/auth/tradovate/callback`;
+  // Derive the same redirect_uri used in the connect route — must match exactly.
+  const redirectUri = new URL("/api/auth/tradovate/callback", request.url).toString();
 
   let tokenData: {
     access_token: string;
