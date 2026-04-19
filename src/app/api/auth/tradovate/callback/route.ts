@@ -108,27 +108,51 @@ export async function GET(request: NextRequest) {
 
   // -----------------------------------------------------------------------
   // Upsert the connected account.
-  // We have an access token and, if Tradovate includes it in the token
-  // response, the broker-side account ID. Create a pending_webhook account
-  // so the user can set their guardian rules before their first live trade.
+  // Reconnect case: if an account already exists for this user + platform +
+  // externalAccountId (possibly soft-deleted or in connection_error), reuse
+  // it — reactivate and reset connection status. Otherwise create a fresh
+  // pending_webhook account so the user can set their guardian rules before
+  // their first live trade.
   // -----------------------------------------------------------------------
   const externalAccountId = tokenData.account_id ? String(tokenData.account_id) : null;
+  const nextStatus = externalAccountId ? "pending_webhook" : "not_connected";
 
-  const account = await prisma.connectedAccount.create({
-    data: {
-      userId: payload.userId,
-      label: `Tradovate ${payload.env === "demo" ? "Demo" : "Live"}`,
-      platform: "tradovate",
-      propFirm: null,
-      accountType: payload.env === "demo" ? "demo" : "funded",
-      externalAccountId,
-      currency: "USD",
-      isActive: true,
-      connectionStatus: externalAccountId ? "pending_webhook" : "not_connected",
-      brokerUserId: null,
-    },
-    select: { id: true },
-  });
+  const existing = externalAccountId
+    ? await prisma.connectedAccount.findFirst({
+        where: {
+          userId: payload.userId,
+          platform: "tradovate",
+          externalAccountId,
+        },
+        select: { id: true },
+      })
+    : null;
+
+  const account = existing
+    ? await prisma.connectedAccount.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          connectionStatus: nextStatus,
+          connectedAt: null,
+        },
+        select: { id: true },
+      })
+    : await prisma.connectedAccount.create({
+        data: {
+          userId: payload.userId,
+          label: `Tradovate ${payload.env === "demo" ? "Demo" : "Live"}`,
+          platform: "tradovate",
+          propFirm: null,
+          accountType: payload.env === "demo" ? "demo" : "funded",
+          externalAccountId,
+          currency: "USD",
+          isActive: true,
+          connectionStatus: nextStatus,
+          brokerUserId: null,
+        },
+        select: { id: true },
+      });
 
   // Redirect to the edit/manage page so the user can set guardian rules and
   // see the connection readiness panel. Query param signals OAuth success for

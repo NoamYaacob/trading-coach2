@@ -11,6 +11,7 @@ import type { AccountFormInitialData } from "../../_components/account-form";
 import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 import { DisconnectButton } from "./_components/disconnect-button";
+import { ReactivateButton } from "./_components/reactivate-button";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
@@ -32,7 +33,13 @@ function shortDate(date: Date): string {
   }).format(date);
 }
 
-type ReadinessLevel = "active" | "pending_first_event" | "no_rules" | "not_connected" | "connection_error";
+type ReadinessLevel =
+  | "active"
+  | "pending_first_event"
+  | "no_rules"
+  | "not_connected"
+  | "connection_error"
+  | "disconnected";
 
 const READINESS_CONFIG: Record<
   ReadinessLevel,
@@ -41,6 +48,7 @@ const READINESS_CONFIG: Record<
     bg: string;
     badgeBg: string;
     badgeText: string;
+    badgeLabel: string;
     status: string;
     description: string;
   }
@@ -50,6 +58,7 @@ const READINESS_CONFIG: Record<
     bg: "bg-emerald-50",
     badgeBg: "bg-emerald-100",
     badgeText: "text-emerald-700",
+    badgeLabel: "Ready",
     status: "Live protection active",
     description:
       "Events are arriving and guardian rules are in effect. The guardian will intervene when limits are hit.",
@@ -59,7 +68,8 @@ const READINESS_CONFIG: Record<
     bg: "bg-amber-50",
     badgeBg: "bg-amber-100",
     badgeText: "text-amber-700",
-    status: "Webhook pending",
+    badgeLabel: "Pending sync",
+    status: "Waiting for first event",
     description:
       "Account ID and rules are configured. No events received yet — complete the webhook setup below.",
   },
@@ -68,6 +78,7 @@ const READINESS_CONFIG: Record<
     bg: "bg-amber-50",
     badgeBg: "bg-amber-100",
     badgeText: "text-amber-700",
+    badgeLabel: "Add rules",
     status: "Monitoring only",
     description:
       "Events will be received and logged, but no intervention rules are set. Add at least one limit to enable protection.",
@@ -77,18 +88,30 @@ const READINESS_CONFIG: Record<
     bg: "bg-red-50",
     badgeBg: "bg-red-100",
     badgeText: "text-red-700",
+    badgeLabel: "Connect required",
     status: "Not connected",
     description:
-      "Tradovate account ID is missing. Webhook events cannot be routed to this account without it.",
+      "Tradovate account ID is missing. Authorize Tradovate to link this account, or enter the account ID manually below.",
   },
   connection_error: {
     border: "border-red-200",
     bg: "bg-red-50",
     badgeBg: "bg-red-100",
     badgeText: "text-red-700",
+    badgeLabel: "Error",
     status: "Connection error",
     description:
-      "Broker events have stopped arriving. Verify your Tradovate webhook is still active and pointing to this app.",
+      "Broker events have stopped arriving. Reauthorize with Tradovate or verify your webhook configuration.",
+  },
+  disconnected: {
+    border: "border-stone-200",
+    bg: "bg-stone-50",
+    badgeBg: "bg-stone-200",
+    badgeText: "text-stone-700",
+    badgeLabel: "Inactive",
+    status: "Disconnected",
+    description:
+      "This account is deactivated. Monitoring is paused and no events are processed. Reactivate to resume.",
   },
 };
 
@@ -158,9 +181,11 @@ export default async function EditAccountPage({
     : 0;
 
   const isTradovate = account.platform === "tradovate";
+  const oauthConfigured = !!process.env.TRADOVATE_CLIENT_ID;
 
-  const readiness: ReadinessLevel =
-    account.connectionStatus === "connection_error"
+  const readiness: ReadinessLevel = !account.isActive
+    ? "disconnected"
+    : account.connectionStatus === "connection_error"
       ? "connection_error"
       : isTradovate && !hasAccountId
         ? "not_connected"
@@ -171,6 +196,9 @@ export default async function EditAccountPage({
             : "active";
 
   const cfg = READINESS_CONFIG[readiness];
+
+  // OAuth env mirrors the account type — demo accounts authorize against demo.
+  const oauthEnv = account.accountType === "demo" ? "demo" : "live";
 
   // Static checks (account ID + rules) are passed to the client ConnectionPoller
   // when in pending state so it can render the full panel with live broker-events check.
@@ -279,30 +307,52 @@ export default async function EditAccountPage({
               <span
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}
               >
-                {readiness === "active"
-                  ? "Ready"
-                  : readiness === "no_rules"
-                    ? "Add rules"
-                    : readiness === "connection_error"
-                      ? "Error"
-                      : "Incomplete"}
+                {cfg.badgeLabel}
               </span>
             </div>
-            <div className="grid gap-2">
-              {checks.map((check) => (
-                <div key={check.label} className="flex items-baseline gap-3 text-sm">
-                  <span
-                    className={`shrink-0 font-semibold ${check.pass ? "text-emerald-600" : "text-red-500"}`}
-                  >
-                    {check.pass ? "✓" : "✗"}
-                  </span>
-                  <span className="text-stone-700">
-                    <span className="font-medium">{check.label}</span>
-                    <span className="text-stone-500"> — {check.detail}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+
+            {/* State-specific primary action */}
+            {readiness === "disconnected" ? (
+              <div className="mb-4">
+                <ReactivateButton accountId={account.id} />
+              </div>
+            ) : isTradovate && oauthConfigured && readiness === "not_connected" ? (
+              <div className="mb-4">
+                <a
+                  href={`/api/auth/tradovate/connect?env=${oauthEnv}`}
+                  className="inline-flex w-fit rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Connect Tradovate
+                </a>
+              </div>
+            ) : isTradovate && oauthConfigured && readiness === "connection_error" ? (
+              <div className="mb-4">
+                <a
+                  href={`/api/auth/tradovate/connect?env=${oauthEnv}`}
+                  className="inline-flex w-fit rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Reconnect Tradovate
+                </a>
+              </div>
+            ) : null}
+
+            {readiness !== "disconnected" && (
+              <div className="grid gap-2">
+                {checks.map((check) => (
+                  <div key={check.label} className="flex items-baseline gap-3 text-sm">
+                    <span
+                      className={`shrink-0 font-semibold ${check.pass ? "text-emerald-600" : "text-red-500"}`}
+                    >
+                      {check.pass ? "✓" : "✗"}
+                    </span>
+                    <span className="text-stone-700">
+                      <span className="font-medium">{check.label}</span>
+                      <span className="text-stone-500"> — {check.detail}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -313,12 +363,14 @@ export default async function EditAccountPage({
           <AccountForm mode="edit" accountId={account.id} initialData={initialData} />
         </SectionCard>
 
-        <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-6 py-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-            Connection management
-          </p>
-          <DisconnectButton accountId={account.id} />
-        </div>
+        {account.isActive && (
+          <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-6 py-5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Connection management
+            </p>
+            <DisconnectButton accountId={account.id} />
+          </div>
+        )}
 
         {isTradovate && (
           <DiagnosticsPanel

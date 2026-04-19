@@ -182,10 +182,12 @@ export function AccountCard({
                 className="text-xs text-stone-500 underline-offset-2 hover:underline"
               >
                 {account.connectionStatus === "not_connected"
-                  ? "Set up connection"
+                  ? "Connect Tradovate"
                   : account.connectionStatus === "connection_error"
-                    ? "Fix connection"
-                    : "Manage connection"}
+                    ? "Reconnect Tradovate"
+                    : !hasAnyRule
+                      ? "Configure rules"
+                      : "Manage connection"}
               </Link>
             )}
           </div>
