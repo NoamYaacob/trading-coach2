@@ -2,10 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const BULLETS = [
-  "Connect your tradi accounts in one click",
-  "Set account-specific guardrails and daily limits",
-  "Automated real-time intervention alerts",
-  "Built for funded futures traders",
+  "Build account-specific risk guardrails",
+  "Catch tilt, overtrading, and impulsive behavior",
+  "Turn your trading rules into daily structure",
+  "Stay consistent across volatile sessions",
 ];
 
 export function AuthLayout({ children }: { children: ReactNode }) {
@@ -64,7 +64,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
               Protect your edge.
             </h2>
             <p className="mt-4 text-[15px] leading-7 text-stone-400">
-              Automated guardrails for funded futures traders.
+              Guardrails, coaching, and execution support for serious traders.
             </p>
 
             <ul className="mt-8 grid gap-3.5">
