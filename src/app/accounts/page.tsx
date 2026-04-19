@@ -19,7 +19,7 @@ export default async function AccountsPage() {
   }
 
   const accounts = await prisma.connectedAccount.findMany({
-    where: { userId: currentUser.id },
+    where: { userId: currentUser.id, isActive: true },
     include: {
       riskRules: true,
       sessionState: true,
