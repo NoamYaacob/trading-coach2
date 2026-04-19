@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { AccountForm } from "../../_components/account-form";
 import type { AccountFormInitialData } from "../../_components/account-form";
 import { ConnectionPoller } from "./_components/connection-poller";
+import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
@@ -114,12 +115,24 @@ export default async function EditAccountPage({
     notFound();
   }
 
-  // Most recent broker event for this account — used in the readiness panel.
-  const lastEvent = await prisma.normalizedTradeEvent.findFirst({
+  // Recent broker events — first row drives the readiness panel; full list feeds diagnostics.
+  const recentEvents = await prisma.normalizedTradeEvent.findMany({
     where: { accountId: account.id },
     orderBy: { occurredAt: "desc" },
-    select: { eventType: true, occurredAt: true },
+    take: 5,
+    select: { eventType: true, occurredAt: true, pnl: true, side: true },
   });
+  const lastEvent = recentEvents[0] ?? null;
+
+  const recentInterventions =
+    account.platform === "tradovate"
+      ? await prisma.guardianIntervention.findMany({
+          where: { accountId: account.id },
+          orderBy: { createdAt: "desc" },
+          take: 3,
+          select: { triggerType: true, outcome: true, createdAt: true, message: true },
+        })
+      : [];
 
   // Readiness checks
   const hasAccountId = !!account.externalAccountId;
@@ -298,6 +311,41 @@ export default async function EditAccountPage({
         >
           <AccountForm mode="edit" accountId={account.id} initialData={initialData} />
         </SectionCard>
+
+        {isTradovate && (
+          <DiagnosticsPanel
+            accountId={account.id}
+            connectionStatus={account.connectionStatus}
+            externalAccountId={account.externalAccountId}
+            connectedAt={account.connectedAt?.toISOString() ?? null}
+            sessionSnapshot={
+              account.sessionState
+                ? {
+                    riskState: account.sessionState.riskState,
+                    dailyPnl: account.sessionState.dailyPnl.toString(),
+                    tradesCount: account.sessionState.tradesCount ?? 0,
+                    consecutiveLosses: account.sessionState.consecutiveLosses ?? 0,
+                    cooldownActive: account.sessionState.cooldownActive,
+                    cooldownUntil: account.sessionState.cooldownUntil?.toISOString() ?? null,
+                    sessionDate: account.sessionState.sessionDate,
+                  }
+                : null
+            }
+            recentEvents={recentEvents.map((e) => ({
+              eventType: e.eventType,
+              occurredAt: e.occurredAt.toISOString(),
+              pnl: e.pnl?.toString() ?? null,
+              side: e.side,
+            }))}
+            recentInterventions={recentInterventions.map((iv) => ({
+              triggerType: iv.triggerType,
+              outcome: iv.outcome,
+              createdAt: iv.createdAt.toISOString(),
+              message: iv.message,
+            }))}
+            isDev={process.env.NODE_ENV !== "production"}
+          />
+        )}
       </div>
     </AppShell>
   );
