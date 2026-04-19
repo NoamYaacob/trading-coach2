@@ -1392,7 +1392,160 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </div>
         )}
 
-        {/* Steps 4–5: added in follow-up turns */}
+        {/* Step 4: Protection rules */}
+        {currentStep === 3 && (
+          <div className="space-y-4">
+            <NumericPresetFieldControl
+              label="Account size"
+              field={form.accountSize}
+              options={accountSizeOptions}
+              onModeChange={(value) => updateNumericField("accountSize", { mode: value })}
+              onCustomChange={(value) => updateNumericField("accountSize", { custom: value })}
+              placeholder="Enter account size"
+            />
+            <NumericPresetFieldControl
+              label="Max daily loss"
+              field={form.maxDailyLoss}
+              options={dailyLossOptions}
+              onModeChange={(value) => updateNumericField("maxDailyLoss", { mode: value })}
+              onCustomChange={(value) => updateNumericField("maxDailyLoss", { custom: value })}
+              placeholder="Enter max daily loss"
+            />
+            <NumericPresetFieldControl
+              label="Risk per trade"
+              field={form.riskPerTrade}
+              options={riskPerTradeOptions}
+              onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
+              onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
+              placeholder="Enter risk per trade"
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Max trades per day"
+                value={form.maxTradesPerDay}
+                options={maxTradesOptions}
+                onChange={(value) => updateTextField("maxTradesPerDay", value)}
+              />
+              <SelectField
+                label="Stop after losses"
+                value={form.stopAfterLosses}
+                options={stopAfterLossesOptions}
+                onChange={(value) => updateTextField("stopAfterLosses", value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Advanced & coaching */}
+        {currentStep === 4 && (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Experience years"
+                value={form.experienceYears}
+                options={experienceOptions}
+                onChange={(value) => updateTextField("experienceYears", value)}
+              />
+              <SelectField
+                label="Timezone"
+                value={form.timezone}
+                options={timezoneOptions}
+                onChange={(value) => updateTextField("timezone", value)}
+              />
+            </div>
+            <ChipGroup
+              label="Trading days"
+              options={tradingDayOptions}
+              selected={ensureArray(form.tradingDays)}
+              onToggle={(value) => toggleMultiValue("tradingDays", value)}
+            />
+            <ChipGroup
+              label="Trading session"
+              options={visibleSessionOptions}
+              selected={ensureArray(form.tradingSession)}
+              onToggle={(value) => toggleMultiValue("tradingSession", value)}
+            />
+            <div className="grid gap-4">
+              <ToggleField
+                label="Enable premarket check-in"
+                checked={form.premarketCheckinEnabled}
+                onChange={(checked) => updateBooleanField("premarketCheckinEnabled", checked)}
+              />
+              <ToggleField
+                label="Enable postmarket review"
+                checked={form.postmarketReviewEnabled}
+                onChange={(checked) => updateBooleanField("postmarketReviewEnabled", checked)}
+              />
+              <ToggleField
+                label="Enable news alerts"
+                checked={form.newsAlertsEnabled}
+                onChange={(checked) => updateBooleanField("newsAlertsEnabled", checked)}
+              />
+              <ToggleField
+                label="Only high-impact news"
+                checked={form.highImpactOnly}
+                onChange={(checked) => updateBooleanField("highImpactOnly", checked)}
+                disabled={!form.newsAlertsEnabled}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SegmentedControl
+                label="Check-in format"
+                value={form.checkinFormat}
+                options={checkinFormatOptions}
+                onChange={(value) => updateTextField("checkinFormat", value)}
+                disabled={!form.premarketCheckinEnabled}
+              />
+              <SelectField
+                label="Pre-news minutes"
+                value={form.preNewsMinutes}
+                options={preNewsMinutesOptions}
+                onChange={(value) => updateTextField("preNewsMinutes", value)}
+                disabled={!form.newsAlertsEnabled}
+              />
+              <SelectField
+                label="Economic calendar source"
+                value={form.economicCalendarProviderKey}
+                options={economicCalendarProviderOptions}
+                onChange={(value) => updateTextField("economicCalendarProviderKey", value)}
+                helperText={
+                  form.economicCalendarProviderKey === "tradingeconomics_stub"
+                    ? "Uses realistic TradingEconomics-style test data. Live sync is not connected yet."
+                    : "Uses the internal demo feed for standard news-awareness behavior."
+                }
+              />
+              <SelectField
+                label="News scenario for demo testing"
+                value={form.economicCalendarStubScenario}
+                options={economicCalendarStubScenarioOptions}
+                onChange={(value) => updateTextField("economicCalendarStubScenario", value)}
+                disabled={form.economicCalendarProviderKey !== "tradingeconomics_stub"}
+                helperText={
+                  form.economicCalendarProviderKey === "tradingeconomics_stub"
+                    ? "Choose the market-news condition you want the product to simulate."
+                    : "Scenario selection becomes available when the TradingEconomics-ready feed is selected."
+                }
+              />
+            </div>
+            <ChipGroup
+              label="Review focus"
+              options={reviewFocusOptions}
+              selected={ensureArray(form.reviewFocus)}
+              onToggle={(value) => toggleMultiValue("reviewFocus", value)}
+              disabled={!form.postmarketReviewEnabled}
+            />
+            {ensureArray(form.reviewFocus).includes("Other") && (
+              <TextField
+                label="Other review focus"
+                name="reviewFocusOther"
+                value={form.reviewFocusOther}
+                onChange={updateTextField}
+                placeholder="Optional"
+                disabled={!form.postmarketReviewEnabled}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Notice ── */}
