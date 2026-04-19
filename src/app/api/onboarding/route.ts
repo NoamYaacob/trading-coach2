@@ -1,3 +1,4 @@
+import { GuardianConnectionStatus, GuardianResetMode } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -198,6 +199,32 @@ export async function POST(request: Request) {
             where: { userId: currentUser.id },
             create: { userId: currentUser.id, ...riskRules },
             update: riskRules,
+          })
+        : null,
+      // Keep GuardianProfile in sync with RiskRules — Guardian reads from
+      // GuardianProfile, not RiskRules, so changes here must propagate.
+      riskRules
+        ? prisma.guardianProfile.upsert({
+            where: { userId: currentUser.id },
+            create: {
+              userId: currentUser.id,
+              guardianEnabled: true,
+              adapterKey: "mock",
+              platformName: "Mock Platform",
+              connectionStatus: GuardianConnectionStatus.MOCK_CONNECTED,
+              maxTradesPerDay: riskRules.maxTradesPerDay ?? null,
+              maxDailyLoss: riskRules.maxDailyLoss ?? null,
+              stopAfterConsecutiveLosses: riskRules.stopAfterLosses ?? null,
+              copyTradeMode: false,
+              resetMode: GuardianResetMode.DAILY,
+              dailyResetHour: 9,
+              dailyResetTimezone: "UTC",
+            },
+            update: {
+              maxTradesPerDay: riskRules.maxTradesPerDay ?? null,
+              maxDailyLoss: riskRules.maxDailyLoss ?? null,
+              stopAfterConsecutiveLosses: riskRules.stopAfterLosses ?? null,
+            },
           })
         : null,
       mentalProfile

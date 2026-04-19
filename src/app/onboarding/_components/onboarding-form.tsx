@@ -1263,7 +1263,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
             </a>
           )}
           <a
-            href="/accounts"
+            href="/dashboard"
             className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
           >
             Go to dashboard

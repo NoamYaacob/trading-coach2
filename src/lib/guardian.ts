@@ -406,10 +406,16 @@ async function ensureGuardianRecordsWithRetries(
   userId: string,
   retries: number,
 ) {
-  const onboardingProfile = await prisma.traderProfile.findUnique({
-    where: { userId },
-    select: { timezone: true },
-  });
+  const [onboardingProfile, savedRiskRules] = await Promise.all([
+    prisma.traderProfile.findUnique({
+      where: { userId },
+      select: { timezone: true },
+    }),
+    prisma.riskRules.findUnique({
+      where: { userId },
+      select: { maxTradesPerDay: true, maxDailyLoss: true, stopAfterLosses: true },
+    }),
+  ]);
   const fallbackTimezone = resolveTimeZone(onboardingProfile?.timezone);
   const initialNextResetAt = calculateNextDailyResetAt(9, fallbackTimezone, new Date());
 
@@ -423,9 +429,9 @@ async function ensureGuardianRecordsWithRetries(
           adapterKey: "mock",
           platformName: "Mock Platform",
           connectionStatus: GuardianConnectionStatus.MOCK_CONNECTED,
-          maxTradesPerDay: 4,
-          maxDailyLoss: 500,
-          stopAfterConsecutiveLosses: 2,
+          maxTradesPerDay: savedRiskRules?.maxTradesPerDay ?? null,
+          maxDailyLoss: savedRiskRules?.maxDailyLoss ?? null,
+          stopAfterConsecutiveLosses: savedRiskRules?.stopAfterLosses ?? null,
           dailyProfitTarget: null,
           copyTradeMode: false,
           resetMode: GuardianResetMode.DAILY,
