@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 type Option = {
   label: string;
@@ -979,6 +979,14 @@ function NumericPresetFieldControl({
   );
 }
 
+const STEP_TITLES = [
+  "Trader identity",
+  "Discipline profile",
+  "Motivation",
+  "Protection rules",
+  "Advanced & coaching",
+] as const;
+
 type OnboardingFormProps = {
   userEmail: string;
   savedData?: SavedOnboardingData;
@@ -992,22 +1000,21 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
   const [didSave, setDidSave] = useState(false);
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
   const visibleSessionOptions = getVisibleSessionOptions(
     form.primaryMarket,
     form.timezone,
   );
 
-  const sectionCompletion = [
-    !!form.primaryMarket && !!form.tradingStyle,
-    ensureArray(form.primaryChallenge).length > 0 &&
-      ensureArray(form.tiltTrigger).length > 0,
-    !!form.tradingWhy.trim() && !!form.tradingGoal.trim(),
-    !!form.accountSize.mode && !!form.maxDailyLoss.mode && !!form.riskPerTrade.mode,
-    !!form.coachingTone && !!form.interruptionStyle && !!form.responseStyle,
-  ];
-  const completedCount = sectionCompletion.filter(Boolean).length;
-  const sequentialCount = sectionCompletion.findIndex((done) => !done);
-  const filledSegments = sequentialCount === -1 ? sectionCompletion.length : sequentialCount;
+  function goNext() {
+    setCurrentStep((s) => Math.min(s + 1, STEP_TITLES.length - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goBack() {
+    setCurrentStep((s) => Math.max(s - 1, 0));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function updateTextField(name: TextFieldName, value: string) {
     setForm((current) => ({
@@ -1209,402 +1216,168 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="rounded-[2rem] border border-stone-200 bg-white/95 p-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.45)] sm:p-8"
-    >
-      <div className="space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Progress */}
-        <div>
-          <div className="flex gap-1.5">
-            {(["Profile", "Discipline", "Motivation", "Rules", "Coaching"] as const).map(
-              (label, i) => (
-                <div key={label} className="flex flex-1 flex-col gap-1.5">
-                  <div
-                    className={`h-1.5 rounded-full transition-colors ${
-                      i < filledSegments ? "bg-amber-600" : "bg-stone-200"
-                    }`}
-                  />
-                  <span className="hidden truncate text-[10px] text-stone-500 sm:block">
-                    {label}
-                  </span>
-                </div>
-              ),
-            )}
-          </div>
-          <p className="mt-2 text-right text-[11px] text-stone-400">
-            {completedCount} / 5 sections complete
+      {/* ── Stepper ── */}
+      <div>
+        <div className="flex items-center">
+          {STEP_TITLES.map((_, i) => (
+            <Fragment key={i}>
+              <div
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+                  i < currentStep
+                    ? "bg-amber-600 text-white"
+                    : i === currentStep
+                      ? "bg-stone-950 text-white"
+                      : "bg-stone-100 text-stone-400"
+                }`}
+              >
+                {i < currentStep ? "✓" : i + 1}
+              </div>
+              {i < STEP_TITLES.length - 1 && (
+                <div
+                  className={`h-px flex-1 transition-colors ${
+                    i < currentStep ? "bg-amber-600" : "bg-stone-200"
+                  }`}
+                />
+              )}
+            </Fragment>
+          ))}
+        </div>
+        <div className="mt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+            Step {currentStep + 1} of {STEP_TITLES.length}
+          </p>
+          <p className="mt-0.5 text-lg font-semibold text-stone-950">
+            {STEP_TITLES[currentStep]}
           </p>
         </div>
+      </div>
 
-        {/* Account */}
-        <section className="space-y-3">
-          <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
-            Signed in as <span className="font-medium text-stone-950">{userEmail}</span>
-          </div>
-        </section>
-
-        {/* Section 1: Trader identity */}
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <div>
-            <h2 className="text-lg font-semibold text-stone-950">Trader identity</h2>
-            <p className="mt-1 text-sm text-stone-500">How you trade and how you want to be coached.</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Preferred language"
-              value={form.preferredLanguage}
-              options={languageOptions}
-              onChange={(value) => updateTextField("preferredLanguage", value)}
-            />
-            <SelectField
-              label="Primary market"
-              value={form.primaryMarket}
-              options={marketOptions}
-              onChange={updatePrimaryMarket}
-            />
-            <SelectField
-              label="Trading style"
-              value={form.tradingStyle}
-              options={tradingStyleOptions}
-              onChange={(value) => updateTextField("tradingStyle", value)}
-            />
-          </div>
-          <div className="grid gap-4">
-            <SegmentedControl
-              label="Coaching tone"
-              value={form.coachingTone}
-              options={coachingToneOptions}
-              onChange={(value) => updateTextField("coachingTone", value)}
-            />
-            <SegmentedControl
-              label="Interruption style"
-              value={form.interruptionStyle}
-              options={interruptionStyleOptions}
-              onChange={(value) => updateTextField("interruptionStyle", value)}
-            />
-            <SegmentedControl
-              label="Response style"
-              value={form.responseStyle}
-              options={responseStyleOptions}
-              onChange={(value) => updateTextField("responseStyle", value)}
-            />
-            <SegmentedControl
-              label="Preferred form of address"
-              value={form.preferredAddress}
-              options={preferredAddressOptions}
-              onChange={(value) => updateTextField("preferredAddress", value)}
-            />
-          </div>
-        </section>
-
-        {/* Section 2: What breaks your discipline */}
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <div>
-            <h2 className="text-lg font-semibold text-stone-950">What breaks your discipline</h2>
-            <p className="mt-1 text-sm text-stone-500">Knowing your patterns helps the coach catch you before you spiral.</p>
-          </div>
-          <ChipGroup
-            label="Primary challenge"
-            options={primaryChallengeOptions}
-            selected={ensureArray(form.primaryChallenge)}
-            onToggle={(value) => toggleMultiValue("primaryChallenge", value)}
-          />
-          {ensureArray(form.primaryChallenge).includes("Other") ? (
-            <TextField
-              label="Other primary challenge"
-              name="primaryChallengeOther"
-              value={form.primaryChallengeOther}
-              onChange={updateTextField}
-              placeholder="Optional"
-            />
-          ) : null}
-          <ChipGroup
-            label="Tilt trigger"
-            options={tiltTriggerOptions}
-            selected={ensureArray(form.tiltTrigger)}
-            onToggle={(value) => toggleMultiValue("tiltTrigger", value)}
-          />
-          {ensureArray(form.tiltTrigger).includes("Other") ? (
-            <TextField
-              label="Other tilt trigger"
-              name="tiltTriggerOther"
-              value={form.tiltTriggerOther}
-              onChange={updateTextField}
-              placeholder="Optional"
-            />
-          ) : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Tilt thought"
-              value={form.tiltThought}
-              options={tiltThoughtOptions}
-              onChange={(value) => updateTextField("tiltThought", value)}
-            />
-            {form.tiltThought === "Other" ? (
-              <TextField
-                label="Other tilt thought"
-                name="tiltThoughtOther"
-                value={form.tiltThoughtOther}
-                onChange={updateTextField}
-                placeholder="Optional"
-              />
-            ) : null}
-          </div>
-        </section>
-
-        {/* Section 3: What really matters to you */}
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <div>
-            <h2 className="text-lg font-semibold text-stone-950">What really matters to you</h2>
-            <p className="mt-1 text-sm text-stone-500">The coach uses this to ground you when you&apos;re off track — sparingly, not on repeat.</p>
-          </div>
-          <TextareaField
-            label="Why do you trade?"
-            name="tradingWhy"
-            value={form.tradingWhy}
-            onChange={updateTextField}
-            placeholder="e.g. financial freedom, replace my salary, passion for markets…"
-          />
-          <TextareaField
-            label="What are you building toward?"
-            name="tradingGoal"
-            value={form.tradingGoal}
-            onChange={updateTextField}
-            placeholder="e.g. leave my job in 2 years, support my family, grow a prop account…"
-          />
-          <TextareaField
-            label="What helps you refocus under pressure?"
-            name="groundingReminder"
-            value={form.groundingReminder}
-            onChange={updateTextField}
-            placeholder="e.g. remember my rules, step away for 5 minutes, think about why I started…"
-          />
-        </section>
-
-        {/* Section 4: Protection rules */}
-        <section className="space-y-4 border-t border-stone-200 pt-8">
-          <div>
-            <h2 className="text-lg font-semibold text-stone-950">Your protection rules</h2>
-            <p className="mt-1 text-sm text-stone-500">Hard limits that protect your account and your psychology.</p>
-          </div>
-          <div className="grid gap-4">
-            <NumericPresetFieldControl
-              label="Account size"
-              field={form.accountSize}
-              options={accountSizeOptions}
-              onModeChange={(value) => updateNumericField("accountSize", { mode: value })}
-              onCustomChange={(value) => updateNumericField("accountSize", { custom: value })}
-              placeholder="Enter account size"
-            />
-            <NumericPresetFieldControl
-              label="Max daily loss"
-              field={form.maxDailyLoss}
-              options={dailyLossOptions}
-              onModeChange={(value) => updateNumericField("maxDailyLoss", { mode: value })}
-              onCustomChange={(value) => updateNumericField("maxDailyLoss", { custom: value })}
-              placeholder="Enter max daily loss"
-            />
-            <NumericPresetFieldControl
-              label="Risk per trade"
-              field={form.riskPerTrade}
-              options={riskPerTradeOptions}
-              onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
-              onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
-              placeholder="Enter risk per trade"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Max trades per day"
-              value={form.maxTradesPerDay}
-              options={maxTradesOptions}
-              onChange={(value) => updateTextField("maxTradesPerDay", value)}
-            />
-            <SelectField
-              label="Stop after losses"
-              value={form.stopAfterLosses}
-              options={stopAfterLossesOptions}
-              onChange={(value) => updateTextField("stopAfterLosses", value)}
-            />
-          </div>
-        </section>
-
-        {/* Section 5: Advanced settings [collapsed] */}
-        <section className="border-t border-stone-200 pt-8">
-          <div className="rounded-2xl border border-stone-200 bg-stone-50">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
-            >
-              <div>
-                <span className="text-sm font-medium text-stone-800">Advanced settings</span>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Trading schedule, check-ins, news alerts, and calendar settings.
-                </p>
-              </div>
-              <span className="ml-4 shrink-0 text-stone-400 text-sm">
-                {advancedOpen ? "▲" : "▼"}
-              </span>
-            </button>
-
-            {advancedOpen ? (
-              <div className="space-y-4 border-t border-stone-200 px-4 pb-4 pt-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <SelectField
-                    label="Experience years"
-                    value={form.experienceYears}
-                    options={experienceOptions}
-                    onChange={(value) => updateTextField("experienceYears", value)}
-                  />
-                  <SelectField
-                    label="Timezone"
-                    value={form.timezone}
-                    options={timezoneOptions}
-                    onChange={(value) => updateTextField("timezone", value)}
-                  />
-                </div>
-                <ChipGroup
-                  label="Trading days"
-                  options={tradingDayOptions}
-                  selected={ensureArray(form.tradingDays)}
-                  onToggle={(value) => toggleMultiValue("tradingDays", value)}
-                />
-                <ChipGroup
-                  label="Trading session"
-                  options={visibleSessionOptions}
-                  selected={ensureArray(form.tradingSession)}
-                  onToggle={(value) => toggleMultiValue("tradingSession", value)}
-                />
-                <div className="grid gap-4">
-                  <ToggleField
-                    label="Enable premarket check-in"
-                    checked={form.premarketCheckinEnabled}
-                    onChange={(checked) => updateBooleanField("premarketCheckinEnabled", checked)}
-                  />
-                  <ToggleField
-                    label="Enable postmarket review"
-                    checked={form.postmarketReviewEnabled}
-                    onChange={(checked) => updateBooleanField("postmarketReviewEnabled", checked)}
-                  />
-                  <ToggleField
-                    label="Enable news alerts"
-                    checked={form.newsAlertsEnabled}
-                    onChange={(checked) => updateBooleanField("newsAlertsEnabled", checked)}
-                  />
-                  <ToggleField
-                    label="Only high-impact news"
-                    checked={form.highImpactOnly}
-                    onChange={(checked) => updateBooleanField("highImpactOnly", checked)}
-                    disabled={!form.newsAlertsEnabled}
-                  />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <SegmentedControl
-                    label="Check-in format"
-                    value={form.checkinFormat}
-                    options={checkinFormatOptions}
-                    onChange={(value) => updateTextField("checkinFormat", value)}
-                    disabled={!form.premarketCheckinEnabled}
-                  />
-                  <SelectField
-                    label="Pre-news minutes"
-                    value={form.preNewsMinutes}
-                    options={preNewsMinutesOptions}
-                    onChange={(value) => updateTextField("preNewsMinutes", value)}
-                    disabled={!form.newsAlertsEnabled}
-                  />
-                  <SelectField
-                    label="Economic calendar source"
-                    value={form.economicCalendarProviderKey}
-                    options={economicCalendarProviderOptions}
-                    onChange={(value) => updateTextField("economicCalendarProviderKey", value)}
-                    helperText={
-                      form.economicCalendarProviderKey === "tradingeconomics_stub"
-                        ? "Uses realistic TradingEconomics-style test data. Live sync is not connected yet."
-                        : "Uses the internal demo feed for standard news-awareness behavior."
-                    }
-                  />
-                  <SelectField
-                    label="News scenario for demo testing"
-                    value={form.economicCalendarStubScenario}
-                    options={economicCalendarStubScenarioOptions}
-                    onChange={(value) => updateTextField("economicCalendarStubScenario", value)}
-                    disabled={form.economicCalendarProviderKey !== "tradingeconomics_stub"}
-                    helperText={
-                      form.economicCalendarProviderKey === "tradingeconomics_stub"
-                        ? "Choose the market-news condition you want the product to simulate."
-                        : "Scenario selection becomes available when the TradingEconomics-ready feed is selected."
-                    }
-                  />
-                </div>
-                <ChipGroup
-                  label="Review focus"
-                  options={reviewFocusOptions}
-                  selected={ensureArray(form.reviewFocus)}
-                  onToggle={(value) => toggleMultiValue("reviewFocus", value)}
-                  disabled={!form.postmarketReviewEnabled}
-                />
-                {ensureArray(form.reviewFocus).includes("Other") ? (
-                  <TextField
-                    label="Other review focus"
-                    name="reviewFocusOther"
-                    value={form.reviewFocusOther}
-                    onChange={updateTextField}
-                    placeholder="Optional"
-                    disabled={!form.postmarketReviewEnabled}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        {notice ? (
-          <div
-            className={`rounded-xl border px-4 py-3 text-sm ${
-              notice.kind === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-800"
-            }`}
-          >
-            {notice.message}
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-3 border-t border-stone-200 pt-8 sm:flex-row sm:items-center">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
-          >
-            {isSaving ? "Saving..." : "Save onboarding"}
-          </button>
-
-          {didSave ? (
-            <button
-              type="button"
-              onClick={handleConnectTelegram}
-              disabled={isLinkingTelegram}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950 disabled:cursor-not-allowed disabled:border-stone-200 disabled:text-stone-400"
-            >
-              {isLinkingTelegram ? "Generating link..." : "Connect Telegram"}
-            </button>
-          ) : null}
-
-          {telegramLink ? (
-            <a
-              href={telegramLink}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-11 items-center justify-center rounded-full bg-amber-600 px-5 text-sm font-medium text-white transition hover:bg-amber-700"
-            >
-              Open Telegram Bot
-            </a>
-          ) : null}
+      {/* ── Step content card ── */}
+      <div className="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+        <div className="mb-5 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          Signed in as <span className="font-medium text-stone-950">{userEmail}</span>
         </div>
+
+        {/* Step 1: Trader identity */}
+        {currentStep === 0 && (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Preferred language"
+                value={form.preferredLanguage}
+                options={languageOptions}
+                onChange={(value) => updateTextField("preferredLanguage", value)}
+              />
+              <SelectField
+                label="Primary market"
+                value={form.primaryMarket}
+                options={marketOptions}
+                onChange={updatePrimaryMarket}
+              />
+              <SelectField
+                label="Trading style"
+                value={form.tradingStyle}
+                options={tradingStyleOptions}
+                onChange={(value) => updateTextField("tradingStyle", value)}
+              />
+            </div>
+            <div className="grid gap-4">
+              <SegmentedControl
+                label="Coaching tone"
+                value={form.coachingTone}
+                options={coachingToneOptions}
+                onChange={(value) => updateTextField("coachingTone", value)}
+              />
+              <SegmentedControl
+                label="Interruption style"
+                value={form.interruptionStyle}
+                options={interruptionStyleOptions}
+                onChange={(value) => updateTextField("interruptionStyle", value)}
+              />
+              <SegmentedControl
+                label="Response style"
+                value={form.responseStyle}
+                options={responseStyleOptions}
+                onChange={(value) => updateTextField("responseStyle", value)}
+              />
+              <SegmentedControl
+                label="Preferred form of address"
+                value={form.preferredAddress}
+                options={preferredAddressOptions}
+                onChange={(value) => updateTextField("preferredAddress", value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Steps 2–5: added in follow-up turns */}
+      </div>
+
+      {/* ── Notice ── */}
+      {notice && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            notice.kind === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-red-200 bg-red-50 text-red-800"
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
+
+      {/* ── Navigation ── */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={goBack}
+          disabled={currentStep === 0}
+          className="inline-flex h-10 items-center gap-1.5 rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950 disabled:pointer-events-none disabled:opacity-30"
+        >
+          ← Back
+        </button>
+
+        {currentStep < STEP_TITLES.length - 1 ? (
+          <button
+            type="button"
+            onClick={goNext}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Continue →
+          </button>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="inline-flex h-10 items-center justify-center rounded-full bg-amber-600 px-5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSaving ? "Saving…" : "Save profile"}
+            </button>
+            {didSave && (
+              <button
+                type="button"
+                onClick={handleConnectTelegram}
+                disabled={isLinkingTelegram}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950 disabled:cursor-not-allowed disabled:border-stone-200 disabled:text-stone-400"
+              >
+                {isLinkingTelegram ? "Generating link…" : "Connect Telegram"}
+              </button>
+            )}
+            {telegramLink && (
+              <a
+                href={telegramLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              >
+                Open Telegram Bot
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </form>
   );
