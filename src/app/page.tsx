@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
+import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Guardrail — Broker-Connected Trading Guardian",
@@ -133,28 +134,39 @@ const faqs = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const user = await getCurrentUser();
+
+  const heroActions = user ? (
+    <Link
+      href="/dashboard"
+      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+    >
+      Go to dashboard
+    </Link>
+  ) : (
+    <>
+      <Link
+        href="/signup"
+        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      >
+        Connect your account
+      </Link>
+      <Link
+        href="/login"
+        className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+      >
+        Log in
+      </Link>
+    </>
+  );
+
   return (
     <AppShell
       eyebrow="Guardrail · Broker-Connected Trading Guardian"
       title="Your broker account, watched in real time."
       description="Guardrail connects to your trading account, reads every fill and P&L update live, and enforces your rules automatically. When a limit is hit, the account locks. When you're approaching the edge, it warns you through Telegram — before the damage is done."
-      actions={
-        <>
-          <Link
-            href="/signup"
-            className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-          >
-            Connect your account
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-          >
-            Log in
-          </Link>
-        </>
-      }
+      actions={heroActions}
     >
       <div className="grid gap-16">
 
@@ -609,18 +621,29 @@ export default function Home() {
               </div>
               <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  href="/signup"
-                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-                >
-                  Set up account protection
-                </Link>
-                <Link
-                  href="/login"
-                  className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-                >
-                  Log in
-                </Link>
+                {user ? (
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  >
+                    Go to dashboard
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      href="/signup"
+                      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                    >
+                      Set up account protection
+                    </Link>
+                    <Link
+                      href="/login"
+                      className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                    >
+                      Log in
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -680,18 +703,29 @@ export default function Home() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link
-                href="/signup"
-                className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-              >
-                Connect your account
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-              >
-                Log in
-              </Link>
+              {user ? (
+                <Link
+                  href="/dashboard"
+                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Go to dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/signup"
+                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  >
+                    Connect your account
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                  >
+                    Log in
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </section>

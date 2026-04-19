@@ -1,6 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { getCurrentUser } from "@/lib/auth";
+import { LogoutButton } from "./logout-button";
+
 type AppShellProps = {
   eyebrow: string;
   title: string;
@@ -9,13 +12,15 @@ type AppShellProps = {
   actions?: ReactNode;
 };
 
-export function AppShell({
+export async function AppShell({
   eyebrow,
   title,
   description,
   children,
   actions,
 }: AppShellProps) {
+  const user = await getCurrentUser();
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(113,63,18,0.12),_transparent_32%),linear-gradient(180deg,_#f8f5ef_0%,_#f4efe6_100%)] text-stone-950">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -23,18 +28,32 @@ export function AppShell({
           Guardrail
         </Link>
         <nav className="flex items-center gap-2 text-sm text-stone-600">
-          <Link href="/onboarding" className="rounded-full px-4 py-2 transition hover:text-stone-950">
-            Onboarding
-          </Link>
-          <Link href="/guardian" className="rounded-full px-4 py-2 transition hover:text-stone-950">
-            Guardian
-          </Link>
-          <Link href="/accounts" className="rounded-full px-4 py-2 transition hover:text-stone-950">
-            Accounts
-          </Link>
-          <Link href="/dashboard" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
-            Dashboard
-          </Link>
+          {user ? (
+            <>
+              <Link href="/onboarding" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Onboarding
+              </Link>
+              <Link href="/guardian" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Guardian
+              </Link>
+              <Link href="/accounts" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Accounts
+              </Link>
+              <Link href="/dashboard" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
+                Dashboard
+              </Link>
+              <LogoutButton />
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Log in
+              </Link>
+              <Link href="/signup" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
+                Sign up
+              </Link>
+            </>
+          )}
         </nav>
       </header>
 

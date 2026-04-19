@@ -260,7 +260,7 @@ export function TodaySessionPanel({
                   type="button"
                   onClick={handleStartSession}
                   disabled={isStartingSession}
-                  className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+                  className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
                 >
                   {isStartingSession ? "Starting session..." : cta.label}
                 </button>
@@ -270,7 +270,7 @@ export function TodaySessionPanel({
                 type="button"
                 onClick={handleEndSession}
                 disabled={isEndingSession}
-                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isEndingSession ? "Ending session..." : "End session"}
               </button>

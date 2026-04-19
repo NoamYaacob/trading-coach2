@@ -1544,7 +1544,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+            className="inline-flex h-11 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
           >
             {isSaving ? "Saving..." : "Save onboarding"}
           </button>

@@ -312,7 +312,7 @@ export function AccountForm(props: Props) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+          className="inline-flex rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
         >
           {isSubmitting
             ? isEdit

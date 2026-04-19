@@ -419,7 +419,7 @@ export function GuardianControls({
         <button
           type="submit"
           disabled={isSavingRules}
-          className="mt-6 inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+          className="mt-6 inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
         >
           {isSavingRules ? "Saving rules..." : "Save Guardian Rules"}
         </button>
