@@ -315,7 +315,7 @@ export default async function EditAccountPage({
 
         <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-6 py-5">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-            Danger zone
+            Connection management
           </p>
           <DisconnectButton accountId={account.id} />
         </div>

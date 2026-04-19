@@ -18,7 +18,7 @@ export function DisconnectButton({ accountId }: Props) {
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        setError(data.error ?? "Failed to remove account.");
+        setError(data.error ?? "Failed to disconnect account.");
         setRemoving(false);
         return;
       }
@@ -36,7 +36,7 @@ export function DisconnectButton({ accountId }: Props) {
         onClick={() => setConfirming(true)}
         className="inline-flex rounded-full border border-red-200 px-4 py-2 text-xs font-medium text-red-600 transition hover:border-red-400 hover:text-red-700"
       >
-        Remove account
+        Disconnect account
       </button>
     );
   }
@@ -44,7 +44,7 @@ export function DisconnectButton({ accountId }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <p className="text-xs text-stone-600">
-        This will deactivate the account and stop all monitoring. Continue?
+        This deactivates the account and stops all monitoring. Continue?
       </p>
       <div className="flex gap-2">
         <button
@@ -53,7 +53,7 @@ export function DisconnectButton({ accountId }: Props) {
           disabled={removing}
           className="inline-flex rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {removing ? "Removing…" : "Yes, remove"}
+          {removing ? "Disconnecting…" : "Yes, disconnect"}
         </button>
         <button
           type="button"
