@@ -60,7 +60,12 @@ export async function getOrCreateSessionState(accountId: string): Promise<Sessio
       return toSessionState(
         await prisma.liveSessionState.update({
           where: { accountId },
-          data: { cooldownActive: false, cooldownUntil: null, riskState: "NORMAL" },
+          data: {
+            cooldownActive: false,
+            cooldownUntil: null,
+            riskState: "NORMAL",
+            consecutiveLosses: 0,
+          },
         }),
       );
     }

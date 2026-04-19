@@ -111,6 +111,7 @@ export async function POST(request: Request) {
     const duplicate = await prisma.normalizedTradeEvent.findFirst({
       where: {
         accountId: account.id,
+        eventType: normalizedEvent.eventType,
         externalTradeId: normalizedEvent.externalTradeId,
       },
       select: { id: true },
