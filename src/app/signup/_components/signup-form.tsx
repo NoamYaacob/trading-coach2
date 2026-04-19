@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const INPUT =
+  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+
+const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
+
 export function SignupForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -43,79 +48,69 @@ export function SignupForm() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Social auth placeholders — wired when OAuth providers are configured */}
-      <div className="grid gap-2">
-        <button
-          type="button"
-          disabled
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-5 text-sm font-medium text-stone-400 disabled:cursor-not-allowed"
-        >
-          Continue with Google
-        </button>
-        <button
-          type="button"
-          disabled
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-5 text-sm font-medium text-stone-400 disabled:cursor-not-allowed"
-        >
-          Continue with Apple
-        </button>
-      </div>
-      <p className="text-center text-xs text-stone-400">Google and Apple sign-in coming soon</p>
+    <div>
+      {/* Heading */}
+      <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
+        Create your account
+      </h1>
+      <p className="mt-2.5 text-sm leading-6 text-stone-500">
+        Set up your trading protection in minutes.
+      </p>
 
-      <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs text-stone-400">or continue with email</span>
-        <div className="h-px flex-1 bg-stone-200" />
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="mt-9 grid gap-5">
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-stone-800">Email</span>
+          <span className={LABEL}>Email</span>
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+            onChange={(e) => setEmail(e.target.value)}
+            className={INPUT}
             placeholder="trader@example.com"
+            autoComplete="email"
             required
           />
         </label>
 
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-stone-800">Password</span>
+          <span className={LABEL}>Password</span>
           <input
             type="password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+            onChange={(e) => setPassword(e.target.value)}
+            className={INPUT}
             placeholder="At least 8 characters"
+            autoComplete="new-password"
             minLength={8}
             required
           />
         </label>
 
-        {error ? (
+        {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {error}
           </div>
-        ) : null}
+        )}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
         >
-          {isSubmitting ? "Creating account..." : "Create account"}
+          {isSubmitting ? "Creating account…" : "Create account"}
         </button>
-
-        <p className="text-sm text-stone-600">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium text-stone-950">
-            Log in
-          </Link>
-        </p>
       </form>
+
+      {/* Switch link */}
+      <p className="mt-6 text-center text-sm text-stone-500">
+        Already have an account?{" "}
+        <Link
+          href="/login"
+          className="font-medium text-stone-950 underline-offset-2 hover:underline"
+        >
+          Log in
+        </Link>
+      </p>
     </div>
   );
 }
