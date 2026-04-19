@@ -8,6 +8,12 @@ type AccountWithRelations = ConnectedAccount & {
   interventions: GuardianIntervention[];
 };
 
+type LastEvent = {
+  accountId: string;
+  eventType: string;
+  occurredAt: Date;
+} | null;
+
 const RISK_STATE_STYLE = {
   NORMAL: { label: "Normal", card: "border-emerald-200 bg-emerald-50", text: "text-emerald-700" },
   WARNING: { label: "Warning", card: "border-amber-200 bg-amber-50", text: "text-amber-700" },
@@ -34,6 +40,22 @@ const OUTCOME_LABEL: Record<string, string> = {
   telegram_message_trigger: "Coaching message",
 };
 
+const TRIGGER_LABEL: Record<string, string> = {
+  daily_loss_limit: "Daily loss limit",
+  consecutive_losses: "Consecutive losses",
+  max_trades_reached: "Max trades reached",
+  rapid_trading: "Rapid trading",
+  revenge_entry: "Revenge entry",
+  increased_size_after_loss: "Size increase after loss",
+  outside_allowed_hours: "Outside trading hours",
+};
+
+const EVENT_TYPE_LABEL: Record<string, string> = {
+  trade_closed: "Trade closed",
+  trade_opened: "Trade opened",
+  daily_pnl_updated: "P&L update",
+};
+
 function shortDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -44,14 +66,53 @@ function shortDate(date: Date): string {
   }).format(date);
 }
 
-export function AccountCard({ account }: { account: AccountWithRelations }) {
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function AccountCard({
+  account,
+  lastEvent,
+}: {
+  account: AccountWithRelations;
+  lastEvent: LastEvent;
+}) {
   const { sessionState, riskRules, interventions } = account;
 
-  const riskState = (sessionState?.riskState ?? "NORMAL") as keyof typeof RISK_STATE_STYLE;
+  // Session state is only "live" if it belongs to today's date.
+  // A stale row (from a previous day) means today's session hasn't started yet —
+  // the pipeline resets it lazily on the first incoming event.
+  const today = todayKey();
+  const hasLiveData = sessionState != null && sessionState.sessionDate === today;
+
+  const riskState = (hasLiveData ? sessionState.riskState : "NORMAL") as keyof typeof RISK_STATE_STYLE;
   const riskStyle = RISK_STATE_STYLE[riskState] ?? RISK_STATE_STYLE.NORMAL;
 
-  const dailyPnl = sessionState ? Number(sessionState.dailyPnl) : 0;
-  const pnlClass = dailyPnl > 0 ? "text-emerald-700" : dailyPnl < 0 ? "text-red-700" : "text-stone-950";
+  // When account is stopped or in warning, surface the most recent trigger as the reason.
+  const latestIntervention = interventions[0] ?? null;
+  const stateReason =
+    (riskState === "STOPPED" || riskState === "WARNING") && latestIntervention
+      ? (TRIGGER_LABEL[latestIntervention.triggerType] ??
+          latestIntervention.triggerType.replace(/_/g, " "))
+      : null;
+
+  const dailyPnl = hasLiveData ? Number(sessionState.dailyPnl) : 0;
+  const pnlClass =
+    dailyPnl > 0 ? "text-emerald-700" : dailyPnl < 0 ? "text-red-700" : "text-stone-950";
+
+  const maxDailyLoss =
+    riskRules?.maxDailyLoss != null ? Number(riskRules.maxDailyLoss) : null;
+  // Remaining headroom before daily loss limit: positive = still room, zero/negative = hit.
+  const pnlHeadroom =
+    maxDailyLoss != null && dailyPnl < 0 ? maxDailyLoss + dailyPnl : null;
+
+  const tradesCount = hasLiveData ? (sessionState.tradesCount ?? 0) : 0;
+  const consecutiveLosses = hasLiveData ? (sessionState.consecutiveLosses ?? 0) : 0;
+  const stopAfterLosses = riskRules?.stopAfterLosses ?? null;
+  const maxTradesPerDay = riskRules?.maxTradesPerDay ?? null;
+
+  const cooldownActive = hasLiveData ? sessionState.cooldownActive : false;
+  const cooldownUntil = hasLiveData ? sessionState.cooldownUntil : null;
 
   const subtitle = [
     PLATFORM_LABEL[account.platform] ?? account.platform,
@@ -62,71 +123,111 @@ export function AccountCard({ account }: { account: AccountWithRelations }) {
     .filter(Boolean)
     .join(" · ");
 
-  const hasAnyRule = riskRules != null && (
-    riskRules.maxDailyLoss != null ||
-    riskRules.maxTradesPerDay != null ||
-    riskRules.stopAfterLosses != null ||
-    riskRules.riskPerTrade != null ||
-    (riskRules.allowedStartHour != null && riskRules.allowedEndHour != null)
-  );
+  const hasAnyRule =
+    riskRules != null &&
+    (riskRules.maxDailyLoss != null ||
+      riskRules.maxTradesPerDay != null ||
+      riskRules.stopAfterLosses != null ||
+      riskRules.riskPerTrade != null ||
+      (riskRules.allowedStartHour != null && riskRules.allowedEndHour != null));
 
   return (
     <SectionCard title={account.label} description={subtitle}>
       <div className="grid gap-5">
+        {!hasLiveData && sessionState != null && (
+          <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-500">
+            Today&apos;s session has not started — stats below are reset to zero until the first
+            broker event arrives.
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Guardian state */}
           <div className={`rounded-2xl border px-4 py-4 ${riskStyle.card}`}>
-            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${riskStyle.text} opacity-80`}>
+            <p
+              className={`text-xs font-semibold uppercase tracking-[0.2em] ${riskStyle.text} opacity-80`}
+            >
               Guardian state
             </p>
             <p className={`mt-2 text-lg font-semibold ${riskStyle.text}`}>{riskStyle.label}</p>
-            {sessionState?.cooldownActive ? (
+            {stateReason ? (
+              <p className={`mt-1 text-sm ${riskStyle.text}`}>{stateReason}</p>
+            ) : cooldownActive ? (
               <p className={`mt-1 text-sm ${riskStyle.text}`}>
-                Cooldown
-                {sessionState.cooldownUntil ? ` until ${shortDate(sessionState.cooldownUntil)}` : " active"}
+                Cooldown{cooldownUntil ? ` until ${shortDate(cooldownUntil)}` : " active"}
               </p>
             ) : (
-              <p className={`mt-1 text-sm opacity-60 ${riskStyle.text}`}>No cooldown</p>
+              <p className={`mt-1 text-sm opacity-60 ${riskStyle.text}`}>
+                {hasLiveData ? "No active limit hit" : "Awaiting first event"}
+              </p>
             )}
           </div>
 
+          {/* Daily P&L */}
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Daily P&amp;L</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Daily P&amp;L
+            </p>
             <p className={`mt-2 text-lg font-semibold tabular-nums ${pnlClass}`}>
               {dailyPnl >= 0 ? "+" : ""}
               {dailyPnl.toFixed(2)}
             </p>
-            <p className="mt-1 text-sm text-stone-500">{account.currency}</p>
+            {pnlHeadroom !== null ? (
+              <p
+                className={`mt-1 text-sm tabular-nums ${pnlHeadroom <= 0 ? "text-red-600" : "text-stone-500"}`}
+              >
+                {pnlHeadroom > 0
+                  ? `${pnlHeadroom.toFixed(2)} to limit`
+                  : "Limit reached"}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-stone-500">
+                {maxDailyLoss != null ? `Limit: ${maxDailyLoss}` : account.currency}
+              </p>
+            )}
           </div>
 
+          {/* Trades today */}
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Trades today</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Trades today
+            </p>
             <p className="mt-2 text-lg font-semibold text-stone-950">
-              {sessionState?.tradesCount ?? 0}
-              {riskRules?.maxTradesPerDay != null ? ` / ${riskRules.maxTradesPerDay}` : ""}
+              {tradesCount}
+              {maxTradesPerDay != null ? ` / ${maxTradesPerDay}` : ""}
             </p>
             <p className="mt-1 text-sm text-stone-500">
-              {(sessionState?.consecutiveLosses ?? 0) > 0
-                ? `${sessionState?.consecutiveLosses} consecutive losses`
+              {consecutiveLosses > 0
+                ? stopAfterLosses != null
+                  ? `${consecutiveLosses} / ${stopAfterLosses} loss streak`
+                  : `${consecutiveLosses} consecutive ${consecutiveLosses === 1 ? "loss" : "losses"}`
                 : "No loss streak"}
             </p>
           </div>
 
+          {/* Last activity */}
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Account</p>
-            <p className="mt-2 text-lg font-semibold text-stone-950">
-              {account.isActive ? "Active" : "Inactive"}
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Last activity
             </p>
-            <p className="mt-1 text-sm text-stone-500">
-              {account.externalAccountId ? `ID: ${account.externalAccountId}` : "No external ID"}
+            {lastEvent ? (
+              <>
+                <p className="mt-2 text-lg font-semibold text-stone-950">
+                  {EVENT_TYPE_LABEL[lastEvent.eventType] ??
+                    lastEvent.eventType.replace(/_/g, " ")}
+                </p>
+                <p className="mt-1 text-sm text-stone-500">{shortDate(lastEvent.occurredAt)}</p>
+              </>
+            ) : (
+              <p className="mt-2 text-lg font-semibold text-stone-400">No events yet</p>
+            )}
+            <p className="mt-1 text-xs text-stone-400">
+              {account.isActive ? "Active" : "Inactive"}
+              {account.externalAccountId ? ` · ID ${account.externalAccountId}` : ""}
             </p>
             {account.platform === "tradovate" && !account.externalAccountId && (
               <p className="mt-1 text-xs text-amber-700">
                 No account ID — webhook events will not be received.
-              </p>
-            )}
-            {sessionState?.lastTradeAt && (
-              <p className="mt-1 text-xs text-stone-400">
-                Last event: {shortDate(sessionState.lastTradeAt)}
               </p>
             )}
           </div>
@@ -176,24 +277,32 @@ export function AccountCard({ account }: { account: AccountWithRelations }) {
                     ? "border-amber-200 bg-amber-50"
                     : "border-stone-200 bg-stone-50";
                 return (
-                  <div key={item.id} className={`rounded-xl border px-4 py-3 text-sm ${borderBg}`}>
+                  <div
+                    key={item.id}
+                    className={`rounded-xl border px-4 py-3 text-sm ${borderBg}`}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div className="grid gap-0.5">
                         <p className="font-medium text-stone-950">
                           {OUTCOME_LABEL[item.outcome] ?? item.outcome}
                           <span className="font-normal text-stone-500">
                             {" · "}
-                            {item.triggerType.replace(/_/g, " ")}
+                            {TRIGGER_LABEL[item.triggerType] ??
+                              item.triggerType.replace(/_/g, " ")}
                           </span>
                         </p>
-                        {item.message ? <p className="text-stone-600">{item.message}</p> : null}
+                        {item.message ? (
+                          <p className="text-stone-600">{item.message}</p>
+                        ) : null}
                         {item.sentAt ? (
                           <p className="text-xs text-stone-400">
                             Telegram sent {shortDate(item.sentAt)}
                           </p>
                         ) : null}
                       </div>
-                      <p className="shrink-0 text-xs text-stone-400">{shortDate(item.createdAt)}</p>
+                      <p className="shrink-0 text-xs text-stone-400">
+                        {shortDate(item.createdAt)}
+                      </p>
                     </div>
                   </div>
                 );
