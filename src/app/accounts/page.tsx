@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
@@ -35,6 +36,14 @@ export default async function AccountsPage() {
       eyebrow="Connected Accounts"
       title="Account & Guardian Status"
       description="Live guardian state, session stats, and recent interventions per connected trading account."
+      actions={
+        <Link
+          href="/accounts/new"
+          className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          New account
+        </Link>
+      }
     >
       <div className="grid gap-6">
         {accounts.length === 0 ? (
