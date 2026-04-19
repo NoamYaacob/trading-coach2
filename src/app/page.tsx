@@ -109,27 +109,27 @@ const includedFeatures = [
 const faqs = [
   {
     q: "Is this a trading journal?",
-    a: "No. A journal reviews what happened. Guardrail controls the session while it is happening. Post-session review is one component — the live enforcement layer is the core.",
+    a: "No. A journal reviews what happened. Guardrail controls the session while it is happening — watching fills, enforcing rules, and locking the account automatically. Post-session review is one component. The live enforcement layer is the core.",
   },
   {
-    q: "Does it connect to my broker?",
-    a: "Not yet. The current build runs on a manual entry flow. Platform integration is on the roadmap, with the adapter layer already prepared for live connections.",
+    q: "Which brokers are supported?",
+    a: "Tradovate is the first supported broker. The architecture is built around direct broker connectivity — live fills, P&L updates, and order events flow in automatically. Additional broker connections are in progress. During the rollout, a manual entry path is also available.",
   },
   {
-    q: "How does the Telegram coach work?",
-    a: "The bot reads your live Guardian status, session state, and loss streak before every reply. When you're locked out, it confirms the close. When you're mid-session under stress, it responds to that.",
+    q: "How does Telegram fit in?",
+    a: "Telegram is the intervention surface, not the whole product. The guardian engine watches your account and makes enforcement decisions automatically. Telegram is where you receive warnings, lockout messages, and reset confirmations — grounded in your actual live session state.",
   },
   {
     q: "What happens during a Guardian lockout?",
-    a: "The session closes for the day. You receive a lockout message in Telegram with the reason and reset window. There is no override path.",
+    a: "The account is marked stopped the moment a limit is crossed — daily loss, max trades, or consecutive losses. You receive a Telegram message with the reason and reset timing. There is no override path. The decision was made before the session started.",
   },
   {
     q: "Who is this for?",
-    a: "Active intraday traders — futures, equities, forex — who trade by defined rules and need those rules enforced in real time, not reviewed after the damage is done.",
+    a: "Active intraday traders — primarily futures traders on funded or evaluation accounts — who trade by defined rules and need those rules enforced in real time, not reviewed after the damage is done.",
   },
   {
-    q: "What is manual trade logging?",
-    a: "Since live broker sync is not connected yet, you can log wins, losses, P&L, and rule breaches manually from the dashboard. These feed directly into Today Activity and Post-Session Review.",
+    q: "Do I need to log trades manually?",
+    a: "Not if your broker is connected. When live broker sync is active, Guardrail receives fills and P&L updates automatically — nothing to log. A manual entry path exists as a fallback during the broker rollout period.",
   },
 ];
 
@@ -601,8 +601,7 @@ export default function Home() {
                 Start your free trial.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Full access during your trial. No credit card required. After the trial, continue
-                with a simple monthly plan.
+                Full access during your trial. Connect your account, configure your protection rules, link Telegram, and run your first protected session. No credit card required.
               </p>
               <div className="mt-8 flex items-baseline gap-2">
                 <span className="text-5xl font-bold tracking-[-0.04em] text-stone-950">$49</span>
@@ -614,7 +613,7 @@ export default function Home() {
                   href="/signup"
                   className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
-                  Start free trial
+                  Set up account protection
                 </Link>
                 <Link
                   href="/login"
@@ -674,11 +673,10 @@ export default function Home() {
                 Ready to start?
               </p>
               <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-                Protect your next session.
+                Your next session, under real protection.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Set up Guardian, complete onboarding, connect Telegram, and open your first
-                protected session. The whole operating loop is live and ready to run through.
+                Connect your broker account, set your daily rules, link Telegram, and let Guardrail watch the session. When limits are hit, the account locks — automatically, before you override yourself.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -686,7 +684,7 @@ export default function Home() {
                 href="/signup"
                 className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                Start free trial
+                Connect your account
               </Link>
               <Link
                 href="/login"
