@@ -10,6 +10,7 @@ import { AccountForm } from "../../_components/account-form";
 import type { AccountFormInitialData } from "../../_components/account-form";
 import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
+import { DisconnectButton } from "./_components/disconnect-button";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
@@ -311,6 +312,13 @@ export default async function EditAccountPage({
         >
           <AccountForm mode="edit" accountId={account.id} initialData={initialData} />
         </SectionCard>
+
+        <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-6 py-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+            Danger zone
+          </p>
+          <DisconnectButton accountId={account.id} />
+        </div>
 
         {isTradovate && (
           <DiagnosticsPanel

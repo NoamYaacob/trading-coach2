@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -56,33 +57,54 @@ export async function POST(request: Request) {
     ? (body.accountType as (typeof validAccountTypes)[number])
     : ("personal" as const);
 
-  const account = await prisma.connectedAccount.create({
-    data: {
-      userId: currentUser.id,
-      label: body.label,
-      externalAccountId: body.externalAccountId?.trim() || null,
-      platform,
-      propFirm: body.propFirm ?? null,
-      accountType,
-      currency: body.currency ?? "USD",
-      connectionStatus: body.externalAccountId?.trim() ? "pending_webhook" : "not_connected",
-      ...(body.riskRules
-        ? {
-            riskRules: {
-              create: {
-                maxDailyLoss: body.riskRules.maxDailyLoss != null ? String(body.riskRules.maxDailyLoss) : null,
-                riskPerTrade: body.riskRules.riskPerTrade != null ? String(body.riskRules.riskPerTrade) : null,
-                maxTradesPerDay: body.riskRules.maxTradesPerDay ?? null,
-                stopAfterLosses: body.riskRules.stopAfterLosses ?? null,
-                allowedStartHour: body.riskRules.allowedStartHour ?? null,
-                allowedEndHour: body.riskRules.allowedEndHour ?? null,
-              },
-            },
-          }
-        : {}),
-    },
-    include: { riskRules: true },
-  });
+  const hasAnyRule =
+    body.riskRules != null &&
+    Object.values(body.riskRules).some((v) => v != null);
 
-  return NextResponse.json({ account }, { status: 201 });
+  try {
+    const account = await prisma.connectedAccount.create({
+      data: {
+        userId: currentUser.id,
+        label: body.label,
+        externalAccountId: body.externalAccountId?.trim() || null,
+        platform,
+        propFirm: body.propFirm ?? null,
+        accountType,
+        currency: body.currency ?? "USD",
+        connectionStatus: body.externalAccountId?.trim() ? "pending_webhook" : "not_connected",
+        ...(hasAnyRule && body.riskRules
+          ? {
+              riskRules: {
+                create: {
+                  maxDailyLoss:
+                    body.riskRules.maxDailyLoss != null
+                      ? String(body.riskRules.maxDailyLoss)
+                      : null,
+                  riskPerTrade:
+                    body.riskRules.riskPerTrade != null
+                      ? String(body.riskRules.riskPerTrade)
+                      : null,
+                  maxTradesPerDay: body.riskRules.maxTradesPerDay ?? null,
+                  stopAfterLosses: body.riskRules.stopAfterLosses ?? null,
+                  allowedStartHour: body.riskRules.allowedStartHour ?? null,
+                  allowedEndHour: body.riskRules.allowedEndHour ?? null,
+                },
+              },
+            }
+          : {}),
+      },
+      include: { riskRules: true },
+    });
+
+    return NextResponse.json({ account }, { status: 201 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return NextResponse.json(
+        { error: "An account with this external ID already exists." },
+        { status: 409 },
+      );
+    }
+    console.error("[POST /api/accounts]", err);
+    return NextResponse.json({ error: "Failed to create account." }, { status: 500 });
+  }
 }
