@@ -212,6 +212,118 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── Real-life protection sequence ───────────────────────────────── */}
+        <section>
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              In practice
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+              What a protected session actually looks like.
+            </h2>
+            <p className="mt-3 text-base leading-7 text-stone-600">
+              This is a realistic sequence. Rules were set before the session. Nothing below required manual input.
+            </p>
+          </div>
+
+          <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-8 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.14)]">
+            <div className="grid gap-0">
+
+              {/* Event 1 */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-100">
+                    <div className="h-2.5 w-2.5 rounded-full bg-stone-400" />
+                  </div>
+                  <div className="w-px flex-1 bg-stone-100 my-1" />
+                </div>
+                <div className="pb-6 pt-1 min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <p className="font-mono text-xs text-stone-400 shrink-0">9:04 AM</p>
+                    <p className="text-sm font-medium text-stone-950">Trade closed · −$180</p>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">First loss of the session. Consecutive loss count: 1 of 3. P&L: −$180 of −$500 limit.</p>
+                </div>
+              </div>
+
+              {/* Event 2 */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-100">
+                    <div className="h-2.5 w-2.5 rounded-full bg-stone-400" />
+                  </div>
+                  <div className="w-px flex-1 bg-stone-100 my-1" />
+                </div>
+                <div className="pb-6 pt-1 min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <p className="font-mono text-xs text-stone-400 shrink-0">9:09 AM</p>
+                    <p className="text-sm font-medium text-stone-950">New order opened · 2 contracts</p>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">Re-entry five minutes after a loss. Guardrail registers the open and begins tracking.</p>
+                </div>
+              </div>
+
+              {/* Event 3 — warning */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                    <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  </div>
+                  <div className="w-px flex-1 bg-amber-100 my-1" />
+                </div>
+                <div className="pb-6 pt-1 min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <p className="font-mono text-xs text-stone-400 shrink-0">9:13 AM</p>
+                    <p className="text-sm font-medium text-amber-800">Trade closed · −$230 · Guardian warning sent</p>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">Second consecutive loss. P&L now −$410 against a −$500 limit. Guardian fires a Telegram warning.</p>
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-800">
+                    <p className="mb-1 text-xs font-semibold text-amber-700">Guardrail · Telegram</p>
+                    Two consecutive losses. P&L at −$410, limit is −$500. You have $90 of room left. Consider stopping now.
+                  </div>
+                </div>
+              </div>
+
+              {/* Event 4 — limit breached */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  </div>
+                  <div className="w-px flex-1 bg-red-100 my-1" />
+                </div>
+                <div className="pb-6 pt-1 min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <p className="font-mono text-xs text-stone-400 shrink-0">9:28 AM</p>
+                    <p className="text-sm font-medium text-red-800">Trade closed · −$110 · Daily loss limit reached</p>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">P&L crossed −$500. Guardian immediately marks the account stopped. No further trades process.</p>
+                </div>
+              </div>
+
+              {/* Event 5 — lockout */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-600" />
+                  </div>
+                </div>
+                <div className="pb-2 pt-1 min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <p className="font-mono text-xs text-stone-400 shrink-0">9:28 AM</p>
+                    <p className="text-sm font-medium text-red-800">Account locked · session closed</p>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-stone-800">
+                    <p className="mb-1 text-xs font-semibold text-red-700">Guardrail · Telegram</p>
+                    Daily loss limit reached (−$520 / −$500). Session is closed for today. No more trades. Reset window opens tomorrow at market open.
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
         {/* ── Problem ─────────────────────────────────────────────────────── */}
         <section>
           <div className="mb-8 max-w-2xl">
