@@ -18,7 +18,7 @@ export function detectIntervention(
   rules: AccountRules,
   ctx: DetectionContext,
 ): InterventionOutcome {
-  if (state.cooldownActive) {
+  if (state.cooldownActive || state.riskState === "STOPPED") {
     return { action: "no_action" };
   }
 

@@ -155,6 +155,11 @@ export async function POST(request: Request) {
     await setRiskState(account.id, "WARNING");
   }
 
+  // Enforce hard stop for daily loss limit (in addition to sending the coaching message)
+  if (outcome.action === "telegram_message_trigger" && outcome.trigger === "daily_loss_limit") {
+    await setRiskState(account.id, "STOPPED");
+  }
+
   // Send Telegram intervention for serious events
   if (outcome.action === "telegram_message_trigger") {
     const chatId = account.user.telegramConnection?.telegramChatId;
