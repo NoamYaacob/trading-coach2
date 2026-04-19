@@ -168,22 +168,36 @@ export function AccountCard({
     <SectionCard title={account.label} description={subtitle}>
       <div className="grid gap-5">
         {/* Connection status badge — primary signal for broker connectivity */}
-        <div className="flex items-center gap-3">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${connStatus.badge} ${connStatus.badgeText}`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${connStatus.dot} ${account.connectionStatus === "pending_webhook" ? "animate-pulse" : ""}`} />
-            {connStatus.label}
-          </span>
-          {account.connectionStatus !== "connected_live" && account.platform === "tradovate" && (
-            <Link
-              href={`/accounts/${account.id}/edit`}
-              className="text-xs text-stone-500 underline-offset-2 hover:underline"
+        <div className="grid gap-1.5">
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${connStatus.badge} ${connStatus.badgeText}`}
             >
-              {account.connectionStatus === "not_connected"
-                ? "Set up connection"
-                : "Manage connection"}
-            </Link>
+              <span className={`h-1.5 w-1.5 rounded-full ${connStatus.dot} ${account.connectionStatus === "pending_webhook" ? "animate-pulse" : ""}`} />
+              {connStatus.label}
+            </span>
+            {account.connectionStatus !== "connected_live" && account.platform === "tradovate" && (
+              <Link
+                href={`/accounts/${account.id}/edit`}
+                className="text-xs text-stone-500 underline-offset-2 hover:underline"
+              >
+                {account.connectionStatus === "not_connected"
+                  ? "Set up connection"
+                  : account.connectionStatus === "connection_error"
+                    ? "Fix connection"
+                    : "Manage connection"}
+              </Link>
+            )}
+          </div>
+          {account.connectionStatus === "pending_webhook" && (
+            <p className="text-xs text-amber-700">
+              Waiting for first broker event — ensure your Tradovate webhook is configured.
+            </p>
+          )}
+          {account.connectionStatus === "connection_error" && (
+            <p className="text-xs text-red-700">
+              Events have stopped arriving from Tradovate — check your webhook configuration.
+            </p>
           )}
         </div>
 

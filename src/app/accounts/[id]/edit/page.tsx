@@ -30,7 +30,7 @@ function shortDate(date: Date): string {
   }).format(date);
 }
 
-type ReadinessLevel = "active" | "pending_first_event" | "no_rules" | "not_connected";
+type ReadinessLevel = "active" | "pending_first_event" | "no_rules" | "not_connected" | "connection_error";
 
 const READINESS_CONFIG: Record<
   ReadinessLevel,
@@ -78,6 +78,15 @@ const READINESS_CONFIG: Record<
     status: "Not connected",
     description:
       "Tradovate account ID is missing. Webhook events cannot be routed to this account without it.",
+  },
+  connection_error: {
+    border: "border-red-200",
+    bg: "bg-red-50",
+    badgeBg: "bg-red-100",
+    badgeText: "text-red-700",
+    status: "Connection error",
+    description:
+      "Broker events have stopped arriving. Verify your Tradovate webhook is still active and pointing to this app.",
   },
 };
 
@@ -136,13 +145,16 @@ export default async function EditAccountPage({
 
   const isTradovate = account.platform === "tradovate";
 
-  const readiness: ReadinessLevel = isTradovate && !hasAccountId
-    ? "not_connected"
-    : !hasRules
-      ? "no_rules"
-      : !hasEvent
-        ? "pending_first_event"
-        : "active";
+  const readiness: ReadinessLevel =
+    account.connectionStatus === "connection_error"
+      ? "connection_error"
+      : isTradovate && !hasAccountId
+        ? "not_connected"
+        : !hasRules
+          ? "no_rules"
+          : !hasEvent
+            ? "pending_first_event"
+            : "active";
 
   const cfg = READINESS_CONFIG[readiness];
 
@@ -172,13 +184,19 @@ export default async function EditAccountPage({
     ...staticChecks,
     ...(isTradovate
       ? [
-          {
-            label: "Broker events received",
-            pass: hasEvent,
-            detail: hasEvent
-              ? `Last: ${EVENT_TYPE_LABEL[lastEvent.eventType] ?? lastEvent.eventType.replace(/_/g, " ")} · ${shortDate(lastEvent.occurredAt)}`
-              : "No events yet — complete webhook setup",
-          },
+          readiness === "connection_error"
+            ? {
+                label: "Webhook active",
+                pass: false,
+                detail: "Events have stopped — verify the webhook in Tradovate is still enabled",
+              }
+            : {
+                label: "Broker events received",
+                pass: hasEvent,
+                detail: hasEvent
+                  ? `Last: ${EVENT_TYPE_LABEL[lastEvent.eventType] ?? lastEvent.eventType.replace(/_/g, " ")} · ${shortDate(lastEvent.occurredAt)}`
+                  : "No events yet — complete webhook setup",
+              },
         ]
       : []),
   ];
@@ -250,8 +268,10 @@ export default async function EditAccountPage({
                 {readiness === "active"
                   ? "Ready"
                   : readiness === "no_rules"
-                    ? "Partial"
-                    : "Incomplete"}
+                    ? "Add rules"
+                    : readiness === "connection_error"
+                      ? "Error"
+                      : "Incomplete"}
               </span>
             </div>
             <div className="grid gap-2">

@@ -83,10 +83,9 @@ export default async function AccountsPage() {
                   How it works
                 </p>
                 <ol className="grid gap-2 text-stone-600">
-                  <li>1. Enter your Tradovate account ID</li>
-                  <li>2. Configure your protection rules</li>
-                  <li>3. Set up the webhook in Tradovate</li>
-                  <li>4. Guardrail goes live — rules enforced on every trade</li>
+                  <li>1. Authorize Tradovate — one click to connect</li>
+                  <li>2. Set your protection rules — daily loss, trade limits</li>
+                  <li>3. Go live — Guardrail enforces rules on every trade</li>
                 </ol>
               </div>
             </div>
