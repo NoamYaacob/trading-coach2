@@ -83,8 +83,10 @@ const READINESS_CONFIG: Record<
 
 export default async function EditAccountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ oauth?: string }>;
 }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
@@ -92,6 +94,7 @@ export default async function EditAccountPage({
   }
 
   const { id } = await params;
+  const { oauth } = await searchParams;
 
   const account = await prisma.connectedAccount.findFirst({
     where: { id, userId: currentUser.id },
@@ -221,6 +224,12 @@ export default async function EditAccountPage({
       }
     >
       <div className="grid gap-6">
+        {oauth === "connected" && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
+            Tradovate authorized. Set your guardian rules below, then complete webhook setup to go live.
+          </div>
+        )}
+
         {/* When pending, hand off to the client ConnectionPoller which polls for the
             first broker event and transitions the panel to the active state in-place. */}
         {readiness === "pending_first_event" ? (
