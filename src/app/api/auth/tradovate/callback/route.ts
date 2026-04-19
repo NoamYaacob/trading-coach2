@@ -28,12 +28,12 @@ export async function GET(request: NextRequest) {
   // User denied the OAuth consent.
   if (error) {
     return NextResponse.redirect(
-      new URL(`/accounts/new?oauth_error=${encodeURIComponent(error)}`, request.url),
+      new URL(`/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`, request.url),
     );
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/accounts/new?oauth_error=missing_params", request.url));
+    return NextResponse.redirect(new URL("/accounts/connect/tradovate?oauth_error=missing_params", request.url));
   }
 
   // Decode and validate state.
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   try {
     payload = JSON.parse(Buffer.from(state, "base64url").toString()) as StatePayload;
   } catch {
-    return NextResponse.redirect(new URL("/accounts/new?oauth_error=invalid_state", request.url));
+    return NextResponse.redirect(new URL("/accounts/connect/tradovate?oauth_error=invalid_state", request.url));
   }
 
   // CSRF check: nonce must match the cookie set in the connect route.
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   cookieStore.delete(OAUTH_STATE_COOKIE);
 
   if (!storedNonce || storedNonce !== payload.nonce) {
-    return NextResponse.redirect(new URL("/accounts/new?oauth_error=csrf_mismatch", request.url));
+    return NextResponse.redirect(new URL("/accounts/connect/tradovate?oauth_error=csrf_mismatch", request.url));
   }
 
   const clientId = process.env.TRADOVATE_CLIENT_ID;
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(
-      new URL("/accounts/new?oauth_error=oauth_not_configured", request.url),
+      new URL("/accounts/connect/tradovate?oauth_error=oauth_not_configured", request.url),
     );
   }
 
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       const errText = await tokenRes.text();
       console.error("[tradovate/callback] token exchange failed:", errText);
       return NextResponse.redirect(
-        new URL("/accounts/new?oauth_error=token_exchange_failed", request.url),
+        new URL("/accounts/connect/tradovate?oauth_error=token_exchange_failed", request.url),
       );
     }
 
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("[tradovate/callback] token exchange error:", err);
     return NextResponse.redirect(
-      new URL("/accounts/new?oauth_error=token_exchange_error", request.url),
+      new URL("/accounts/connect/tradovate?oauth_error=token_exchange_error", request.url),
     );
   }
 

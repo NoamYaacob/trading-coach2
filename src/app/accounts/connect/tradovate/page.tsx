@@ -67,7 +67,7 @@ export default async function ConnectTradovatePage({
           /* ── OAuth path (env vars present) ─────────────────────────────── */
           <SectionCard
             title="Authorize with Tradovate"
-            description="Click below to open the Tradovate authorization page. You will be redirected back here once authorized."
+            description="Click below to open the Tradovate authorization page. After authorizing, you will land on the account setup page to configure your guardian rules."
           >
             <div className="grid gap-6">
               <div className="grid grid-cols-3 gap-3">
