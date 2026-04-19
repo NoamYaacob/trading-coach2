@@ -1006,6 +1006,8 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
     !!form.coachingTone && !!form.interruptionStyle && !!form.responseStyle,
   ];
   const completedCount = sectionCompletion.filter(Boolean).length;
+  const sequentialCount = sectionCompletion.findIndex((done) => !done);
+  const filledSegments = sequentialCount === -1 ? sectionCompletion.length : sequentialCount;
 
   function updateTextField(name: TextFieldName, value: string) {
     setForm((current) => ({
@@ -1221,7 +1223,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
                 <div key={label} className="flex flex-1 flex-col gap-1.5">
                   <div
                     className={`h-1.5 rounded-full transition-colors ${
-                      sectionCompletion[i] ? "bg-amber-600" : "bg-stone-200"
+                      i < filledSegments ? "bg-amber-600" : "bg-stone-200"
                     }`}
                   />
                   <span className="hidden truncate text-[10px] text-stone-500 sm:block">
