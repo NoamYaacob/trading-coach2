@@ -11,7 +11,7 @@ import type { AccountFormInitialData } from "../../_components/account-form";
 import { ConnectionPoller } from "./_components/connection-poller";
 
 export const metadata: Metadata = {
-  title: "Edit Account",
+  title: "Manage Connection",
 };
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -208,15 +208,15 @@ export default async function EditAccountPage({
 
   return (
     <AppShell
-      eyebrow="Accounts"
+      eyebrow="Broker Connections"
       title={account.label}
-      description="Update this account's details and guardian rules."
+      description="Manage this broker connection, update protection rules, and verify the live event feed."
       actions={
         <Link
           href="/accounts"
           className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
         >
-          Back to accounts
+          All connections
         </Link>
       }
     >
@@ -264,7 +264,7 @@ export default async function EditAccountPage({
         )}
 
         <SectionCard
-          title="Account setup"
+          title="Connection details"
           description="Changes take effect immediately. Guardian rules apply to the next event processed."
         >
           <AccountForm mode="edit" accountId={account.id} initialData={initialData} />

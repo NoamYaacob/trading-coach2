@@ -65,6 +65,7 @@ export async function POST(request: Request) {
       propFirm: body.propFirm ?? null,
       accountType,
       currency: body.currency ?? "USD",
+      connectionStatus: body.externalAccountId?.trim() ? "pending_webhook" : "not_connected",
       ...(body.riskRules
         ? {
             riskRules: {

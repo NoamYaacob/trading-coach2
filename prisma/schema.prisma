@@ -304,6 +304,11 @@ model ConnectedAccount {
   accountType       AccountType      @default(personal)
   currency          String           @default("USD")
   isActive          Boolean          @default(true)
+  // Broker connection lifecycle — updated by API on create/edit, by webhook on first event.
+  // Values: not_connected | pending_webhook | connected_live | connection_error
+  connectionStatus  String           @default("not_connected")
+  brokerUserId      String?          // broker-side user ID (populated by future OAuth)
+  connectedAt       DateTime?        // when the connection became live (first event received)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 

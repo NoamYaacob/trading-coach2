@@ -14,6 +14,36 @@ type LastEvent = {
   occurredAt: Date;
 } | null;
 
+const CONNECTION_STATUS_STYLE: Record<
+  string,
+  { label: string; badge: string; badgeText: string; dot: string }
+> = {
+  connected_live: {
+    label: "Live",
+    badge: "bg-emerald-100",
+    badgeText: "text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+  pending_webhook: {
+    label: "Pending sync",
+    badge: "bg-amber-100",
+    badgeText: "text-amber-700",
+    dot: "bg-amber-400",
+  },
+  not_connected: {
+    label: "Not connected",
+    badge: "bg-stone-100",
+    badgeText: "text-stone-600",
+    dot: "bg-stone-400",
+  },
+  connection_error: {
+    label: "Connection error",
+    badge: "bg-red-100",
+    badgeText: "text-red-700",
+    dot: "bg-red-500",
+  },
+};
+
 const RISK_STATE_STYLE = {
   NORMAL: { label: "Normal", card: "border-emerald-200 bg-emerald-50", text: "text-emerald-700" },
   WARNING: { label: "Warning", card: "border-amber-200 bg-amber-50", text: "text-amber-700" },
@@ -131,9 +161,32 @@ export function AccountCard({
       riskRules.riskPerTrade != null ||
       (riskRules.allowedStartHour != null && riskRules.allowedEndHour != null));
 
+  const connStatus = CONNECTION_STATUS_STYLE[account.connectionStatus] ??
+    CONNECTION_STATUS_STYLE["not_connected"];
+
   return (
     <SectionCard title={account.label} description={subtitle}>
       <div className="grid gap-5">
+        {/* Connection status badge — primary signal for broker connectivity */}
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${connStatus.badge} ${connStatus.badgeText}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${connStatus.dot} ${account.connectionStatus === "pending_webhook" ? "animate-pulse" : ""}`} />
+            {connStatus.label}
+          </span>
+          {account.connectionStatus !== "connected_live" && account.platform === "tradovate" && (
+            <Link
+              href={`/accounts/${account.id}/edit`}
+              className="text-xs text-stone-500 underline-offset-2 hover:underline"
+            >
+              {account.connectionStatus === "not_connected"
+                ? "Set up connection"
+                : "Manage connection"}
+            </Link>
+          )}
+        </div>
+
         {!hasLiveData && sessionState != null && (
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-500">
             Today&apos;s session has not started — stats below are reset to zero until the first
@@ -311,13 +364,18 @@ export function AccountCard({
           )}
         </div>
 
-        <div className="border-t border-stone-100 pt-4">
+        <div className="flex items-center gap-3 border-t border-stone-100 pt-4">
           <Link
             href={`/accounts/${account.id}/edit`}
             className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
           >
-            Edit account
+            Manage connection
           </Link>
+          {account.connectionStatus === "connected_live" && account.connectedAt && (
+            <p className="text-xs text-stone-400">
+              Live since {shortDate(account.connectedAt)}
+            </p>
+          )}
         </div>
       </div>
     </SectionCard>

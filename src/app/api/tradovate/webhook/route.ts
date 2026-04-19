@@ -136,6 +136,15 @@ export async function POST(request: Request) {
     },
   });
 
+  // Transition connection status to live on first successful event.
+  // This is idempotent — safe to run on every event, not just the first.
+  if (account.connectionStatus !== "connected_live") {
+    await prisma.connectedAccount.update({
+      where: { id: account.id },
+      data: { connectionStatus: "connected_live", connectedAt: normalizedEvent.occurredAt },
+    });
+  }
+
   // Apply state mutation. getOrCreateSessionState also clears expired cooldowns.
   let state = await getOrCreateSessionState(account.id);
 

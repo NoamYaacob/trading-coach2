@@ -72,7 +72,15 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(platform !== undefined && { platform }),
       ...(body.propFirm !== undefined && { propFirm: body.propFirm }),
       ...(accountType !== undefined && { accountType }),
-      ...(body.externalAccountId !== undefined && { externalAccountId: body.externalAccountId?.trim() || null }),
+      ...(body.externalAccountId !== undefined && {
+        externalAccountId: body.externalAccountId?.trim() || null,
+        // Keep live status if already connected — only walk back if ID is cleared.
+        ...(existing.connectionStatus !== "connected_live"
+          ? { connectionStatus: body.externalAccountId?.trim() ? "pending_webhook" : "not_connected" }
+          : !body.externalAccountId?.trim()
+            ? { connectionStatus: "not_connected", connectedAt: null }
+            : {}),
+      }),
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
     },

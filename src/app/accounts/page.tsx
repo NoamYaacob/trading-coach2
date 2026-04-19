@@ -9,7 +9,7 @@ import { prisma } from "@/lib/db";
 import { AccountCard } from "./_components/account-card";
 
 export const metadata: Metadata = {
-  title: "Accounts",
+  title: "Broker Connections",
 };
 
 export default async function AccountsPage() {
@@ -31,7 +31,7 @@ export default async function AccountsPage() {
     orderBy: { createdAt: "asc" },
   });
 
-  // Most recent normalized trade event per account — used to show last-event type.
+  // Most recent normalized trade event per account.
   const recentEvents =
     accounts.length > 0
       ? await prisma.normalizedTradeEvent.findMany({
@@ -44,35 +44,76 @@ export default async function AccountsPage() {
 
   const lastEventByAccount = Object.fromEntries(recentEvents.map((e) => [e.accountId, e]));
 
+  const hasTradovate = accounts.some((a) => a.platform === "tradovate");
+
   return (
     <AppShell
-      eyebrow="Connected Accounts"
-      title="Account & Guardian Status"
-      description="Live guardian state, session stats, and recent interventions per connected trading account."
+      eyebrow="Broker Connections"
+      title="Connected brokers"
+      description="Guardrail watches your live accounts and enforces your protection rules in real time."
       actions={
         <Link
-          href="/accounts/new"
+          href="/accounts/connect/tradovate"
           className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          New account
+          Connect Tradovate
         </Link>
       }
     >
       <div className="grid gap-6">
         {accounts.length === 0 ? (
-          <SectionCard title="No accounts connected">
-            <p className="text-sm text-stone-600">
-              No connected trading accounts yet. Use the New account button above to get started.
-            </p>
+          <SectionCard title="No brokers connected">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="grid gap-3">
+                <p className="text-sm text-stone-600">
+                  Connect your Tradovate account to start live protection. Guardrail receives your
+                  trade events and enforces your rules automatically via Telegram.
+                </p>
+                <div>
+                  <Link
+                    href="/accounts/connect/tradovate"
+                    className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  >
+                    Connect Tradovate
+                  </Link>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  How it works
+                </p>
+                <ol className="grid gap-2 text-stone-600">
+                  <li>1. Enter your Tradovate account ID</li>
+                  <li>2. Configure your protection rules</li>
+                  <li>3. Set up the webhook in Tradovate</li>
+                  <li>4. Guardrail goes live — rules enforced on every trade</li>
+                </ol>
+              </div>
+            </div>
           </SectionCard>
         ) : (
-          accounts.map((account) => (
-            <AccountCard
-              key={account.id}
-              account={account}
-              lastEvent={lastEventByAccount[account.id] ?? null}
-            />
-          ))
+          <>
+            {accounts.map((account) => (
+              <AccountCard
+                key={account.id}
+                account={account}
+                lastEvent={lastEventByAccount[account.id] ?? null}
+              />
+            ))}
+            {!hasTradovate && (
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+                <p className="text-sm text-stone-600">
+                  Add a Tradovate account for live protection.{" "}
+                  <Link
+                    href="/accounts/connect/tradovate"
+                    className="font-medium text-stone-950 underline-offset-2 hover:underline"
+                  >
+                    Connect Tradovate
+                  </Link>
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </AppShell>

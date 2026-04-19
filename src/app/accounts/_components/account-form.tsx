@@ -22,8 +22,8 @@ export type AccountFormInitialData = {
 };
 
 type Props =
-  | { mode: "create" }
-  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData };
+  | { mode: "create"; lockedPlatform?: string }
+  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData; lockedPlatform?: string };
 
 function parseNumberOrNull(value: string): number | null {
   if (!value.trim()) return null;
@@ -48,10 +48,11 @@ export function AccountForm(props: Props) {
   const router = useRouter();
   const isEdit = props.mode === "edit";
   const init = isEdit ? props.initialData : null;
+  const lockedPlatform = props.lockedPlatform ?? null;
 
   const [form, setForm] = useState({
     label: init?.label ?? "",
-    platform: init?.platform ?? "tradovate",
+    platform: lockedPlatform ?? init?.platform ?? "tradovate",
     propFirm: init?.propFirm ?? "",
     accountType: init?.accountType ?? "personal",
     externalAccountId: init?.externalAccountId ?? "",
@@ -164,17 +165,19 @@ export function AccountForm(props: Props) {
             />
           </Field>
 
-          <Field label="Platform">
-            <select
-              value={form.platform}
-              onChange={(e) => set("platform", e.target.value)}
-              className={INPUT_CLASS}
-            >
-              <option value="tradovate">Tradovate</option>
-              <option value="tradingview">TradingView</option>
-              <option value="manual">Manual</option>
-            </select>
-          </Field>
+          {lockedPlatform ? null : (
+            <Field label="Platform">
+              <select
+                value={form.platform}
+                onChange={(e) => set("platform", e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="tradovate">Tradovate</option>
+                <option value="tradingview">TradingView</option>
+                <option value="manual">Manual</option>
+              </select>
+            </Field>
+          )}
 
           <Field label="Prop firm">
             <input
