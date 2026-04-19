@@ -393,13 +393,13 @@ const economicCalendarStubScenarioOptions: Option[] = [
 ];
 
 const languageOptions: Option[] = [
-  { label: "עברית (Hebrew)", value: "he" },
   { label: "English", value: "en" },
   { label: "Español", value: "es" },
   { label: "Français", value: "fr" },
   { label: "Deutsch", value: "de" },
   { label: "Русский", value: "ru" },
-  { label: "العربية (Arabic)", value: "ar" },
+  { label: "עברית", value: "he" },
+  { label: "العربية", value: "ar" },
 ];
 
 const preferredAddressOptions: Option[] = [
@@ -410,7 +410,7 @@ const preferredAddressOptions: Option[] = [
 ];
 
 const newUserDefaults: OnboardingFormState = {
-  primaryMarket: "FUTURES",
+  primaryMarket: "",
   tradingStyle: "",
   experienceYears: "",
   tradingDays: [],
@@ -441,7 +441,7 @@ const newUserDefaults: OnboardingFormState = {
   highImpactOnly: false,
   economicCalendarProviderKey: "mock",
   economicCalendarStubScenario: "mixed_day",
-  preferredLanguage: "he",
+  preferredLanguage: "",
   tradingWhy: "",
   tradingGoal: "",
   groundingReminder: "",
@@ -577,7 +577,7 @@ function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
     highImpactOnly: cp?.highImpactOnly ?? false,
     economicCalendarProviderKey: cp?.economicCalendarProviderKey ?? "mock",
     economicCalendarStubScenario: cp?.economicCalendarStubScenario ?? "mixed_day",
-    preferredLanguage: cp?.preferredLanguage ?? "he",
+    preferredLanguage: cp?.preferredLanguage ?? "",
     tradingWhy: mp?.tradingWhy ?? "",
     tradingGoal: mp?.tradingGoal ?? "",
     groundingReminder: mp?.groundingReminder ?? "",
@@ -765,6 +765,7 @@ type SelectFieldProps = {
   onChange: (value: string) => void;
   disabled?: boolean;
   helperText?: string;
+  placeholder?: string;
 };
 
 function SelectField({
@@ -774,6 +775,7 @@ function SelectField({
   onChange,
   disabled = false,
   helperText,
+  placeholder,
 }: SelectFieldProps) {
   const safeOptions = Array.isArray(options) ? options : [];
 
@@ -786,6 +788,11 @@ function SelectField({
         onChange={(event) => onChange(event.target.value)}
         className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed"
       >
+        {placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
         {safeOptions.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -1158,10 +1165,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
       }
 
       setDidSave(true);
-      setNotice({
-        kind: "success",
-        message: "Onboarding saved successfully. You can now connect Telegram.",
-      });
+      setNotice(null);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -1213,6 +1217,65 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
     } finally {
       setIsLinkingTelegram(false);
     }
+  }
+
+  if (didSave) {
+    return (
+      <div className="rounded-2xl border border-stone-200 bg-white p-8">
+        <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-6 w-6 text-emerald-600"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-stone-950">
+          Your coaching profile is ready
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-stone-500">
+          You can now connect Telegram and start using Guardrail with your
+          personalized rules, coaching style, and protection settings.
+        </p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {!telegramLink ? (
+            <button
+              type="button"
+              onClick={handleConnectTelegram}
+              disabled={isLinkingTelegram}
+              className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLinkingTelegram ? "Generating link…" : "Connect Telegram"}
+            </button>
+          ) : (
+            <a
+              href={telegramLink}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-full bg-amber-600 px-5 text-sm font-medium text-white transition hover:bg-amber-700"
+            >
+              Open Telegram Bot
+            </a>
+          )}
+          <a
+            href="/accounts"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+          >
+            Go to dashboard
+          </a>
+        </div>
+        {notice?.kind === "error" && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {notice.message}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1269,18 +1332,21 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
                 value={form.preferredLanguage}
                 options={languageOptions}
                 onChange={(value) => updateTextField("preferredLanguage", value)}
+                placeholder="Select a language"
               />
               <SelectField
                 label="Primary market"
                 value={form.primaryMarket}
                 options={marketOptions}
                 onChange={updatePrimaryMarket}
+                placeholder="Select your market"
               />
               <SelectField
                 label="Trading style"
                 value={form.tradingStyle}
                 options={tradingStyleOptions}
                 onChange={(value) => updateTextField("tradingStyle", value)}
+                placeholder="Select a trading style"
               />
             </div>
             <div className="grid gap-4">
