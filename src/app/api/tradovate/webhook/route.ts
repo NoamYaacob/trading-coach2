@@ -99,14 +99,14 @@ export async function POST(request: Request) {
     state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
   }
 
-  // Get the second-most-recent trade event for detection context (skip the one we just inserted)
+  // Get the previous closed trade for pnl/qty context (skip current if it was a close)
   const prevEvent = await prisma.normalizedTradeEvent.findFirst({
     where: {
       accountId: account.id,
-      eventType: { in: ["trade_opened", "trade_closed"] },
+      eventType: "trade_closed",
     },
     orderBy: { occurredAt: "desc" },
-    skip: 1,
+    skip: normalizedEvent.eventType === "trade_closed" ? 1 : 0,
   });
 
   // Build account rules

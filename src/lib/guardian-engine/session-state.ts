@@ -89,7 +89,6 @@ export async function applyTradeOpen(
     await prisma.liveSessionState.update({
       where: { accountId },
       data: {
-        tradesCount: { increment: 1 },
         lastTradeAt: occurredAt,
       },
     }),
