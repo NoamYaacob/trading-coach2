@@ -93,13 +93,13 @@ export function SignupForm() {
         body: JSON.stringify({ email, password }),
       });
 
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json()) as { error?: string; redirectTo?: string };
 
       if (!response.ok) {
         throw new Error(result.error ?? "Unable to create account.");
       }
 
-      router.push("/onboarding");
+      router.push(result.redirectTo ?? "/onboarding");
       router.refresh();
     } catch (submitError) {
       setError(

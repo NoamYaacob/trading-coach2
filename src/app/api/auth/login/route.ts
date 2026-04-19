@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createSession, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { hasCompletedOnboarding } from "@/lib/onboarding";
 
 type LoginRequest = {
   email?: string;
@@ -51,8 +52,11 @@ export async function POST(request: Request) {
 
   await createSession(user.id);
 
+  const onboardingDone = await hasCompletedOnboarding(user.id);
+
   return NextResponse.json({
     ok: true,
+    redirectTo: onboardingDone ? "/dashboard" : "/onboarding",
     user: {
       id: user.id,
       email: user.email,
