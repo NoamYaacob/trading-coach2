@@ -164,37 +164,42 @@ export async function POST(request: Request) {
   if (outcome.action === "telegram_message_trigger") {
     const chatId = account.user.telegramConnection?.telegramChatId;
     if (chatId) {
-      const language = account.user.coachingPreferences?.preferredLanguage ?? "he";
-      const locale = getLocale(language);
+      try {
+        const language = account.user.coachingPreferences?.preferredLanguage ?? "he";
+        const locale = getLocale(language);
 
-      const message = await generateVoiceReply({
-        intent: outcome.coachingIntent as CoachingIntent,
-        traderMessage: `[Guardian alert: ${outcome.trigger}]`,
-        constraintMessage: null,
-        personalCue: null,
-        knownPattern: null,
-        askQuestion: false,
-        language,
-        coachingTone: account.user.mentalProfile?.coachingTone ?? null,
-        interruptionStyle: account.user.mentalProfile?.interruptionStyle ?? null,
-        responseStyle: account.user.mentalProfile?.responseStyle ?? null,
-        preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
-        recentMessages: [],
-      });
-
-      if (message) {
-        await sendTelegramMessage(chatId, message, {
-          replyMarkup: {
-            keyboard: getTelegramQuickActionKeyboard(locale),
-            resize_keyboard: true,
-            input_field_placeholder: locale.system.inputPlaceholder,
-          },
+        const message = await generateVoiceReply({
+          intent: outcome.coachingIntent as CoachingIntent,
+          traderMessage: `[Guardian alert: ${outcome.trigger}]`,
+          constraintMessage: null,
+          personalCue: null,
+          knownPattern: null,
+          askQuestion: false,
+          language,
+          coachingTone: account.user.mentalProfile?.coachingTone ?? null,
+          interruptionStyle: account.user.mentalProfile?.interruptionStyle ?? null,
+          responseStyle: account.user.mentalProfile?.responseStyle ?? null,
+          preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
+          recentMessages: [],
         });
 
-        await prisma.guardianIntervention.update({
-          where: { id: intervention.id },
-          data: { message, sentAt: new Date() },
-        });
+        if (message) {
+          await sendTelegramMessage(chatId, message, {
+            replyMarkup: {
+              keyboard: getTelegramQuickActionKeyboard(locale),
+              resize_keyboard: true,
+              input_field_placeholder: locale.system.inputPlaceholder,
+            },
+          });
+
+          await prisma.guardianIntervention.update({
+            where: { id: intervention.id },
+            data: { message, sentAt: new Date() },
+          });
+        }
+      } catch {
+        // Telegram or voice generation failed — intervention is already logged without sentAt.
+        // Return 200 so the broker does not retry and double-process the event.
       }
     }
   }
