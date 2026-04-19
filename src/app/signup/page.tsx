@@ -9,13 +9,15 @@ export const metadata: Metadata = {
   title: "Sign up — Guardrail",
 };
 
-export default async function SignupPage() {
+export default async function SignupPage({ searchParams }: { searchParams: Promise<{ oauth_error?: string }> }) {
   const user = await getCurrentUser();
   if (user) redirect("/onboarding");
 
+  const params = await searchParams;
+
   return (
     <AuthLayout>
-      <SignupForm />
+      <SignupForm oauthError={params.oauth_error} />
     </AuthLayout>
   );
 }

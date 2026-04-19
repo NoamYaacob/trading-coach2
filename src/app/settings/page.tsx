@@ -6,18 +6,21 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 
-import { PasswordForm } from "./_components/password-form";
 import { DeleteAccount } from "./_components/delete-account";
+import { GoogleConnection } from "./_components/google-connection";
+import { PasswordForm } from "./_components/password-form";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
 };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ oauth_error?: string; google_connected?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [dbUser, telegramConnection] = await Promise.all([
+  const params = await searchParams;
+
+  const [dbUser, telegramConnection, googleConnection, oauthConnections] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -26,9 +29,21 @@ export default async function SettingsPage() {
       where: { userId: user.id },
       select: { telegramUsername: true, connectedAt: true },
     }),
+    prisma.oAuthConnection.findFirst({
+      where: { userId: user.id, provider: "google" },
+      select: { email: true },
+    }),
+    prisma.oAuthConnection.findMany({
+      where: { userId: user.id },
+      select: { provider: true },
+    }),
   ]);
 
   const hasPassword = Boolean(dbUser?.passwordHash);
+  const googleConnected = Boolean(googleConnection);
+  // User can disconnect Google only if they have another sign-in method.
+  const canDisconnectGoogle =
+    hasPassword || oauthConnections.filter((c) => c.provider !== "google").length > 0;
 
   return (
     <AppShell
@@ -37,6 +52,22 @@ export default async function SettingsPage() {
       description="Manage your account, security, and connected services."
     >
       <div className="grid gap-6">
+        {/* OAuth error / success banners */}
+        {params.oauth_error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {params.oauth_error === "google_already_linked_to_another_account"
+              ? "This Google account is already linked to a different Guardrail account."
+              : params.oauth_error === "google_not_configured"
+                ? "Google sign-in is not configured yet."
+                : "Something went wrong connecting Google. Please try again."}
+          </div>
+        )}
+        {params.google_connected === "1" && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Google account connected successfully.
+          </div>
+        )}
+
         {/* Account info */}
         <SectionCard title="Account" description="Basic information about your account.">
           <dl className="grid gap-3 text-sm">
@@ -72,6 +103,18 @@ export default async function SettingsPage() {
             <PasswordForm />
           </SectionCard>
         )}
+
+        {/* Google */}
+        <SectionCard
+          title="Google"
+          description="Sign in with your Google account."
+        >
+          <GoogleConnection
+            connected={googleConnected}
+            email={googleConnection?.email ?? null}
+            canDisconnect={canDisconnectGoogle}
+          />
+        </SectionCard>
 
         {/* Telegram */}
         <SectionCard
