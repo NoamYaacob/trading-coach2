@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export type StaticCheck = {
@@ -40,19 +40,29 @@ export function ConnectionPoller({ accountId, staticChecks }: Props) {
   const [activated, setActivated] = useState(false);
   const [activatedEvent, setActivatedEvent] = useState<ActivatedEvent | null>(null);
 
+  // Synchronous guard: prevents double-activation if two concurrent poll
+  // responses both resolve with a lastEvent before React batches state.
+  const activatedRef = useRef(false);
+  // Stored so the pending refresh can be cancelled if the component unmounts
+  // before the 3.5 s window elapses (e.g. user navigates away).
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const poll = useCallback(async () => {
+    if (activatedRef.current) return;
     try {
       const res = await fetch(`/api/accounts/${accountId}/connection-status`);
       if (!res.ok) return;
       const data = (await res.json()) as {
         lastEvent: { eventType: string; occurredAt: string } | null;
       };
-      if (data.lastEvent) {
+      if (data.lastEvent && !activatedRef.current) {
+        // Mark synchronously so any concurrent in-flight poll sees it immediately.
+        activatedRef.current = true;
         setActivatedEvent(data.lastEvent);
         setActivated(true);
         // Give the user a moment to see the activation state, then let the
         // server-rendered panel take over with a full refresh.
-        setTimeout(() => router.refresh(), 3_500);
+        refreshTimerRef.current = setTimeout(() => router.refresh(), 3_500);
       }
     } catch {
       // Network error — silently retry on next interval.
@@ -64,8 +74,13 @@ export function ConnectionPoller({ accountId, staticChecks }: Props) {
     // Poll immediately on mount in case an event arrived since the server render,
     // then continue every 5 seconds.
     void poll();
-    const id = setInterval(poll, 5_000);
-    return () => clearInterval(id);
+    const intervalId = setInterval(poll, 5_000);
+    return () => {
+      clearInterval(intervalId);
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+      }
+    };
   }, [activated, poll]);
 
   const eventTypeLabel = activatedEvent
@@ -73,17 +88,18 @@ export function ConnectionPoller({ accountId, staticChecks }: Props) {
         activatedEvent.eventType.replace(/_/g, " "))
     : null;
 
-  const brokerEventsCheck: StaticCheck = activated && activatedEvent
-    ? {
-        label: "Broker events received",
-        pass: true,
-        detail: `${eventTypeLabel} · ${shortDate(activatedEvent.occurredAt)}`,
-      }
-    : {
-        label: "Broker events received",
-        pass: false,
-        detail: "Watching...",
-      };
+  const brokerEventsCheck: StaticCheck =
+    activated && activatedEvent
+      ? {
+          label: "Broker events received",
+          pass: true,
+          detail: `${eventTypeLabel} · ${shortDate(activatedEvent.occurredAt)}`,
+        }
+      : {
+          label: "Broker events received",
+          pass: false,
+          detail: "Watching...",
+        };
 
   const allChecks = [...staticChecks, brokerEventsCheck];
 
