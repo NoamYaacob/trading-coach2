@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 
 export const metadata: Metadata = {
-  title: "Guardrail — Discipline AI for Active Traders",
+  title: "Guardrail — Broker-Connected Trading Guardian",
   description:
-    "Real-time session control, Guardian enforcement, and Telegram live coaching. Guardrail keeps your trading rules intact when discipline breaks.",
+    "Guardrail connects to your broker account, watches fills and P&L in real time, and enforces your rules automatically — warning through Telegram and locking the account when limits are hit.",
 };
 
 const pillars = [
@@ -136,16 +136,16 @@ const faqs = [
 export default function Home() {
   return (
     <AppShell
-      eyebrow="Guardrail AI · Active Traders"
-      title="Your trading rules, enforced in real time."
-      description="Guardrail watches every session live. When your limits are hit, it closes the day automatically. When you're on the edge, it coaches you in Telegram — so discipline holds when emotions don't."
+      eyebrow="Guardrail · Broker-Connected Trading Guardian"
+      title="Your broker account, watched in real time."
+      description="Guardrail connects to your trading account, reads every fill and P&L update live, and enforces your rules automatically. When a limit is hit, the account locks. When you're approaching the edge, it warns you through Telegram — before the damage is done."
       actions={
         <>
           <Link
             href="/signup"
             className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
           >
-            Start free trial
+            Connect your account
           </Link>
           <Link
             href="/login"
@@ -157,6 +157,60 @@ export default function Home() {
       }
     >
       <div className="grid gap-16">
+
+        {/* ── Broker-connected flow ────────────────────────────────────────── */}
+        <section>
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              How it works
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+              Guardrail watches your live account.
+            </h2>
+            <p className="mt-3 text-base leading-7 text-stone-600">
+              The system is built around direct broker connectivity. Connect your account, set your rules once, and Guardrail runs the protection loop automatically — no manual input required during the session.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[1.75rem] bg-stone-950 p-6 text-stone-50">
+              <p className="font-mono text-2xl font-bold text-stone-700">01</p>
+              <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] leading-6">
+                Connect your broker account
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                Link your Tradovate account once. Guardrail receives live fill data, P&L updates, and order events directly from your broker. No manual logging.
+              </p>
+              <p className="mt-3 text-xs font-medium text-amber-500">Tradovate-first · more brokers in progress</p>
+            </div>
+            <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+              <p className="font-mono text-2xl font-bold text-stone-200">02</p>
+              <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
+                Set your rules once
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Define your daily loss limit, max trades, consecutive loss stop, and allowed trading hours. Guardrail enforces them on every event — you don't touch the rules again.
+              </p>
+            </div>
+            <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6">
+              <p className="font-mono text-2xl font-bold text-amber-200">03</p>
+              <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
+                Guardian watches every fill
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                Every trade close, P&L update, and loss streak is evaluated in real time. When you're approaching a limit, Guardian fires a warning through Telegram before the breach.
+              </p>
+            </div>
+            <div className="rounded-[1.75rem] border border-red-200 bg-red-50 p-6">
+              <p className="font-mono text-2xl font-bold text-red-200">04</p>
+              <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
+                Hard lock when limits are hit
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                When a rule is crossed — daily loss, trade count, loss streak — the account is marked stopped. No override. You get a Telegram message with the reason and reset timing.
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* ── Problem ─────────────────────────────────────────────────────── */}
         <section>
