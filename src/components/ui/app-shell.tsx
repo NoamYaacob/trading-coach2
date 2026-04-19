@@ -39,6 +39,9 @@ export async function AppShell({
               <Link href="/accounts" className="rounded-full px-4 py-2 transition hover:text-stone-950">
                 Accounts
               </Link>
+              <Link href="/settings" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Settings
+              </Link>
               <Link href="/dashboard" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
                 Dashboard
               </Link>
