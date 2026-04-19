@@ -100,7 +100,9 @@ export function AccountForm(props: Props) {
       return;
     }
     if (form.platform === "tradovate" && !form.externalAccountId.trim()) {
-      setError("Tradovate Account ID is required. Find it in Account → Account Settings in the Tradovate desktop app.");
+      setError(
+        "Tradovate account ID is required — find it in Tradovate → Account → Account Settings.",
+      );
       return;
     }
     setIsSubmitting(true);
@@ -114,9 +116,10 @@ export function AccountForm(props: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(buildBody()),
         });
-        const data = (await res.json()) as { error?: string };
+        const data = (await res.json()) as { error?: string; account?: { id: string } };
         if (!res.ok) throw new Error(data.error ?? "Failed to create account.");
-        router.push("/accounts");
+        // Redirect to the edit page so the user immediately sees the readiness panel.
+        router.push(data.account?.id ? `/accounts/${data.account.id}/edit` : "/accounts");
       } else {
         const res = await fetch(`/api/accounts/${props.accountId}`, {
           method: "PATCH",
@@ -134,6 +137,16 @@ export function AccountForm(props: Props) {
       setIsSubmitting(false);
     }
   }
+
+  const isTradovate = form.platform === "tradovate";
+  const accountIdMissing = isTradovate && !form.externalAccountId.trim();
+  const allRulesEmpty =
+    !form.maxDailyLoss.trim() &&
+    !form.riskPerTrade.trim() &&
+    !form.maxTradesPerDay.trim() &&
+    !form.stopAfterLosses.trim() &&
+    !form.allowedStartHour.trim() &&
+    !form.allowedEndHour.trim();
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-8">
@@ -185,19 +198,36 @@ export function AccountForm(props: Props) {
             </select>
           </Field>
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-1.5 sm:col-span-2">
             <span className={LABEL_CLASS}>
-              {form.platform === "tradovate" ? "Tradovate account ID" : "External account ID"}
+              {isTradovate ? (
+                <>
+                  Tradovate account ID{" "}
+                  <span className="font-normal normal-case tracking-normal text-red-500">
+                    required
+                  </span>
+                </>
+              ) : (
+                "External account ID"
+              )}
             </span>
             <input
               value={form.externalAccountId}
               onChange={(e) => set("externalAccountId", e.target.value)}
-              placeholder={form.platform === "tradovate" ? "e.g. 12345" : "Broker-side account number"}
+              placeholder={isTradovate ? "Numeric ID, e.g. 12345" : "Broker-side account number"}
               className={INPUT_CLASS}
             />
-            {form.platform === "tradovate" && (
-              <p className="text-xs text-stone-500">
-                Found in Account → Account Settings in the Tradovate desktop app.
+            {isTradovate && (
+              <p
+                className={`rounded-lg px-3 py-2 text-xs ${
+                  accountIdMissing
+                    ? "border border-amber-200 bg-amber-50 text-amber-700"
+                    : "text-stone-500"
+                }`}
+              >
+                {accountIdMissing
+                  ? "Required for webhook routing. Find it in Tradovate → Account → Account Settings. It is a numeric ID (e.g. 12345)."
+                  : "This ID must exactly match the account ID Tradovate sends in webhook payloads."}
               </p>
             )}
           </div>
@@ -294,6 +324,13 @@ export function AccountForm(props: Props) {
             />
           </Field>
         </div>
+
+        {allRulesEmpty && (
+          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-500">
+            No rules set — the guardian will receive and log events but cannot intervene. Add at
+            least one limit to enable protection.
+          </p>
+        )}
       </div>
 
       {(error ?? feedback) ? (
@@ -324,25 +361,64 @@ export function AccountForm(props: Props) {
         </button>
       </div>
 
-      {form.platform === "tradovate" && (
-        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+      {isTradovate && (
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-5">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             Webhook setup
           </p>
-          <div className="grid gap-3 text-sm text-stone-700">
-            <p>Configure Tradovate to send events to your deployed endpoint:</p>
-            <code className="block rounded-lg bg-stone-100 px-3 py-2 text-xs font-mono text-stone-800">
-              POST /api/tradovate/webhook
-            </code>
-            <p>Include this header on every request:</p>
-            <code className="block rounded-lg bg-stone-100 px-3 py-2 text-xs font-mono text-stone-800">
-              x-tradovate-secret: [TRADOVATE_WEBHOOK_SECRET]
-            </code>
-            <p className="text-xs text-stone-500">
-              Set <span className="font-mono">TRADOVATE_WEBHOOK_SECRET</span> as an environment variable.
-              The account ID above must exactly match the numeric account ID Tradovate sends in webhook events.
-            </p>
-          </div>
+          <ol className="grid gap-5">
+            <li className="flex gap-3 text-sm text-stone-700">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                1
+              </span>
+              <span>
+                Enter your <strong>Tradovate account ID</strong> in the field above. Open the
+                Tradovate desktop app → <em>Account</em> → <em>Account Settings</em>. The ID is
+                the numeric value shown at the top (e.g. 12345).
+              </span>
+            </li>
+            <li className="flex gap-3 text-sm text-stone-700">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                2
+              </span>
+              <span className="grid gap-1.5">
+                <span>
+                  Configure Tradovate to POST events to your app&apos;s webhook endpoint:
+                </span>
+                <code className="block rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-mono text-stone-800">
+                  https://your-app-url/api/tradovate/webhook
+                </code>
+              </span>
+            </li>
+            <li className="flex gap-3 text-sm text-stone-700">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                3
+              </span>
+              <span className="grid gap-1.5">
+                <span>
+                  Include the following header on every request:
+                </span>
+                <code className="block rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-mono text-stone-800">
+                  x-tradovate-secret: [TRADOVATE_WEBHOOK_SECRET]
+                </code>
+                <span className="text-xs text-stone-500">
+                  Set{" "}
+                  <code className="font-mono">TRADOVATE_WEBHOOK_SECRET</code> as an environment
+                  variable on your server. Keep it secret.
+                </span>
+              </span>
+            </li>
+            <li className="flex gap-3 text-sm text-stone-700">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                4
+              </span>
+              <span>
+                Save this account, then place a test trade. The{" "}
+                <strong>connection readiness</strong> panel on this page will update to confirm the
+                first event was received.
+              </span>
+            </li>
+          </ol>
         </div>
       )}
     </form>
