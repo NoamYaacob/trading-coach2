@@ -991,12 +991,21 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
   const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
   const [didSave, setDidSave] = useState(false);
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
-  const [personalCoachingOpen, setPersonalCoachingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const visibleSessionOptions = getVisibleSessionOptions(
     form.primaryMarket,
     form.timezone,
   );
+
+  const sectionCompletion = [
+    !!form.primaryMarket && !!form.tradingStyle,
+    ensureArray(form.primaryChallenge).length > 0 &&
+      ensureArray(form.tiltTrigger).length > 0,
+    !!form.tradingWhy.trim() && !!form.tradingGoal.trim(),
+    !!form.accountSize.mode && !!form.maxDailyLoss.mode && !!form.riskPerTrade.mode,
+    !!form.coachingTone && !!form.interruptionStyle && !!form.responseStyle,
+  ];
+  const completedCount = sectionCompletion.filter(Boolean).length;
 
   function updateTextField(name: TextFieldName, value: string) {
     setForm((current) => ({
@@ -1203,6 +1212,29 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
       className="rounded-[2rem] border border-stone-200 bg-white/95 p-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.45)] sm:p-8"
     >
       <div className="space-y-8">
+
+        {/* Progress */}
+        <div>
+          <div className="flex gap-1.5">
+            {(["Profile", "Discipline", "Motivation", "Rules", "Coaching"] as const).map(
+              (label, i) => (
+                <div key={label} className="flex flex-1 flex-col gap-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-colors ${
+                      sectionCompletion[i] ? "bg-amber-600" : "bg-stone-200"
+                    }`}
+                  />
+                  <span className="hidden truncate text-[10px] text-stone-500 sm:block">
+                    {label}
+                  </span>
+                </div>
+              ),
+            )}
+          </div>
+          <p className="mt-2 text-right text-[11px] text-stone-400">
+            {completedCount} / 5 sections complete
+          </p>
+        </div>
 
         {/* Account */}
         <section className="space-y-3">

@@ -1,15 +1,16 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { LogoutButton } from "@/components/ui/logout-button";
 
 import { OnboardingForm } from "./_components/onboarding-form";
 import type { SavedOnboardingData } from "./_components/onboarding-form";
 
 export const metadata: Metadata = {
-  title: "Onboarding",
+  title: "Set up your profile — Guardrail",
 };
 
 export default async function OnboardingPage() {
@@ -77,14 +78,32 @@ export default async function OnboardingPage() {
   };
 
   return (
-    <AppShell
-      eyebrow="Onboarding"
-      title="Set up the coaching profile."
-      description="Complete the core trading, risk, and mindset setup so the platform can create the first coaching profile and prepare Telegram connection."
-    >
-      <div className="mx-auto w-full max-w-3xl">
+    <div className="min-h-screen bg-stone-50">
+      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 sm:px-6">
+        <Link
+          href="/"
+          className="text-[10px] font-bold uppercase tracking-[0.38em] text-stone-900 transition-opacity hover:opacity-70"
+        >
+          Guardrail
+        </Link>
+        <LogoutButton />
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+        <div className="mb-8">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-amber-600">
+            Getting started
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
+            Set up your coaching profile
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-stone-500">
+            Tell the coach how you trade and what to watch for. Takes about 3 minutes.
+          </p>
+        </div>
+
         <OnboardingForm userEmail={user.email} savedData={savedData} />
-      </div>
-    </AppShell>
+      </main>
+    </div>
   );
 }
