@@ -1312,7 +1312,87 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </div>
         )}
 
-        {/* Steps 2–5: added in follow-up turns */}
+        {/* Step 2: Discipline profile */}
+        {currentStep === 1 && (
+          <div className="space-y-4">
+            <ChipGroup
+              label="Primary challenge"
+              options={primaryChallengeOptions}
+              selected={ensureArray(form.primaryChallenge)}
+              onToggle={(value) => toggleMultiValue("primaryChallenge", value)}
+            />
+            {ensureArray(form.primaryChallenge).includes("Other") && (
+              <TextField
+                label="Other primary challenge"
+                name="primaryChallengeOther"
+                value={form.primaryChallengeOther}
+                onChange={updateTextField}
+                placeholder="Optional"
+              />
+            )}
+            <ChipGroup
+              label="Tilt trigger"
+              options={tiltTriggerOptions}
+              selected={ensureArray(form.tiltTrigger)}
+              onToggle={(value) => toggleMultiValue("tiltTrigger", value)}
+            />
+            {ensureArray(form.tiltTrigger).includes("Other") && (
+              <TextField
+                label="Other tilt trigger"
+                name="tiltTriggerOther"
+                value={form.tiltTriggerOther}
+                onChange={updateTextField}
+                placeholder="Optional"
+              />
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Tilt thought"
+                value={form.tiltThought}
+                options={tiltThoughtOptions}
+                onChange={(value) => updateTextField("tiltThought", value)}
+              />
+              {form.tiltThought === "Other" && (
+                <TextField
+                  label="Other tilt thought"
+                  name="tiltThoughtOther"
+                  value={form.tiltThoughtOther}
+                  onChange={updateTextField}
+                  placeholder="Optional"
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Motivation */}
+        {currentStep === 2 && (
+          <div className="space-y-4">
+            <TextareaField
+              label="Why do you trade?"
+              name="tradingWhy"
+              value={form.tradingWhy}
+              onChange={updateTextField}
+              placeholder="e.g. financial freedom, replace my salary, passion for markets…"
+            />
+            <TextareaField
+              label="What are you building toward?"
+              name="tradingGoal"
+              value={form.tradingGoal}
+              onChange={updateTextField}
+              placeholder="e.g. leave my job in 2 years, support my family, grow a prop account…"
+            />
+            <TextareaField
+              label="What helps you refocus under pressure?"
+              name="groundingReminder"
+              value={form.groundingReminder}
+              onChange={updateTextField}
+              placeholder="e.g. remember my rules, step away for 5 minutes… (optional)"
+            />
+          </div>
+        )}
+
+        {/* Steps 4–5: added in follow-up turns */}
       </div>
 
       {/* ── Notice ── */}
