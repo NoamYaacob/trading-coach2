@@ -61,6 +61,14 @@ export function AccountCard({ account }: { account: AccountWithRelations }) {
     .filter(Boolean)
     .join(" · ");
 
+  const hasAnyRule = riskRules != null && (
+    riskRules.maxDailyLoss != null ||
+    riskRules.maxTradesPerDay != null ||
+    riskRules.stopAfterLosses != null ||
+    riskRules.riskPerTrade != null ||
+    (riskRules.allowedStartHour != null && riskRules.allowedEndHour != null)
+  );
+
   return (
     <SectionCard title={account.label} description={subtitle}>
       <div className="grid gap-5">
@@ -113,7 +121,7 @@ export function AccountCard({ account }: { account: AccountWithRelations }) {
           </div>
         </div>
 
-        {riskRules ? (
+        {hasAnyRule ? (
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               Account rules
