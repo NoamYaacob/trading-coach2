@@ -168,31 +168,41 @@ export default async function GuardianPage() {
       <div className="grid gap-6">
         <section
           className={`rounded-[1.9rem] border px-6 py-6 shadow-[0_24px_80px_-50px_rgba(28,25,23,0.45)] ${
-            guardian.evaluation.lockoutActive
-              ? "border-red-300 bg-red-100"
-              : "border-emerald-200 bg-emerald-50"
+            !guardian.evaluation.guardianActive
+              ? "border-amber-200 bg-amber-50"
+              : guardian.evaluation.lockoutActive
+                ? "border-red-300 bg-red-100"
+                : "border-emerald-200 bg-emerald-50"
           }`}
         >
           <p
             className={`text-xs font-semibold uppercase tracking-[0.22em] ${
-              guardian.evaluation.lockoutActive ? "text-red-700" : "text-emerald-700"
+              !guardian.evaluation.guardianActive
+                ? "text-amber-700"
+                : guardian.evaluation.lockoutActive
+                  ? "text-red-700"
+                  : "text-emerald-700"
             }`}
           >
             Current state
           </p>
           <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">
-            {guardian.evaluation.lockoutActive
-              ? "Trading is closed for today."
-              : onboardingComplete
-                ? "Trading is open right now."
-                : "Trading is not enabled until onboarding is complete."}
+            {!guardian.evaluation.guardianActive
+              ? "Guardian is off — rules are not enforcing."
+              : guardian.evaluation.lockoutActive
+                ? "Trading is closed for today."
+                : onboardingComplete
+                  ? "Trading is open right now."
+                  : "Complete onboarding to enable today's session."}
           </p>
           <p className="mt-3 text-sm text-stone-800">
-            {guardian.evaluation.lockoutActive
-              ? guardian.evaluation.primaryReasonLabel
-              : onboardingComplete
-                ? "Guardian is active and the session is inside limits."
-                : "Complete your profile to open trading for today."}
+            {!guardian.evaluation.guardianActive
+              ? "Turn Guardian back on before relying on session boundaries."
+              : guardian.evaluation.lockoutActive
+                ? guardian.evaluation.primaryReasonLabel
+                : onboardingComplete
+                  ? "Guardian is active. No rule limits have been hit."
+                  : "Finish onboarding to set your trading profile and rules."}
           </p>
           <div className="mt-4 grid gap-2 rounded-2xl border border-white/70 bg-white/55 px-4 py-3 text-sm text-stone-700">
             <p className="font-medium text-stone-950">
@@ -215,19 +225,27 @@ export default async function GuardianPage() {
         <RuleNoticeList notices={guardianNotices} />
 
         <SectionCard
-          title="Current state"
-          description="The live session view: Guardian, connection, today’s activity, and when you can check the day again."
+          title="Today snapshot"
+          description="Session state, connection, today’s activity, and the next reset window."
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Guardian status
+                Today session
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
-                {guardian.evaluation.guardianActive ? "Active" : "Inactive"}
+                {todayGuardianSessionStart?.endedAt
+                  ? "Ended"
+                  : todayGuardianSessionStart
+                    ? "Active"
+                    : "Not started"}
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                {guardian.evaluation.lockoutActive ? "Trading is blocked." : "Trading is clear."}
+                {todayGuardianSessionStart?.endedAt
+                  ? `Ended ${formatGuardianDate(todayGuardianSessionStart.endedAt, displayTimeZone)}`
+                  : todayGuardianSessionStart
+                    ? `Started ${formatGuardianDate(todayGuardianSessionStart.startedAt, displayTimeZone)}`
+                    : "No session opened for today yet."}
               </p>
             </div>
 
@@ -416,14 +434,18 @@ export default async function GuardianPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                   Active limits
                 </p>
-                <ul className="mt-3 grid gap-2 text-sm text-stone-700">
-                  {guardian.evaluation.activeRules.map((rule) => (
-                    <li key={rule} className="flex items-start gap-2">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" />
-                      {rule}
-                    </li>
-                  ))}
-                </ul>
+                {guardian.evaluation.activeRules.length > 0 ? (
+                  <ul className="mt-3 grid gap-2 text-sm text-stone-700">
+                    {guardian.evaluation.activeRules.map((rule) => (
+                      <li key={rule} className="flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" />
+                        {rule}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-sm text-stone-500">No enforcement limits configured. Go to onboarding or edit rules above to add limits.</p>
+                )}
               </div>
 
               <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-5 text-sm text-stone-700">

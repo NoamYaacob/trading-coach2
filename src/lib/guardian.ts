@@ -353,15 +353,9 @@ function evaluateGuardianRules(
       profile.maxTradesPerDay ? `Max trades per day: ${profile.maxTradesPerDay}` : null,
       maxDailyLoss !== null ? `Max daily loss: ${maxDailyLoss}` : null,
       profile.stopAfterConsecutiveLosses
-        ? `Stop after consecutive losses: ${profile.stopAfterConsecutiveLosses}`
+        ? `Stop after ${profile.stopAfterConsecutiveLosses} consecutive losses`
         : null,
       dailyProfitTarget !== null ? `Daily profit target: ${dailyProfitTarget}` : null,
-      `Reset mode: ${humanizeResetMode(profile.resetMode)}`,
-      `Reset time zone: ${resolveTimeZone(profile.dailyResetTimezone)}`,
-      profile.resetMode === GuardianResetMode.DAILY
-        ? `Daily reset hour: ${clampResetHour(profile.dailyResetHour)}:00`
-        : null,
-      `Copy trade mode: ${profile.copyTradeMode ? "On" : "Off"}`,
     ].filter(Boolean) as string[],
     todayTradesCount: status.todayTradesCount,
     todayPnL,

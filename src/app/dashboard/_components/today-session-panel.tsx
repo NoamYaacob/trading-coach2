@@ -413,21 +413,20 @@ export function TodaySessionPanel({
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               Active limits
             </p>
-            {sessionState.sessionStarted && sessionState.sessionStartSource ? (
-              <p className="mt-2 text-sm text-stone-600">
-                Started from {sessionState.sessionStartSource}.
-              </p>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {sessionState.activeRules.slice(0, 4).map((rule) => (
-                <span
-                  key={rule}
-                  className="rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700"
-                >
-                  {rule}
-                </span>
-              ))}
-            </div>
+            {sessionState.activeRules.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {sessionState.activeRules.map((rule) => (
+                  <span
+                    key={rule}
+                    className="rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700"
+                  >
+                    {rule}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-stone-500">No limits configured yet.</p>
+            )}
           </div>
         </div>
       </div>
