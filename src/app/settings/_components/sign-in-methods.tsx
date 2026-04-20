@@ -46,8 +46,14 @@ function MethodIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PasswordRow({ hasPassword }: { hasPassword: boolean }) {
+function PasswordRow({ initialHasPassword }: { initialHasPassword: boolean }) {
+  const [hasPassword, setHasPassword] = useState(initialHasPassword);
   const [open, setOpen] = useState(false);
+
+  function handleSuccess() {
+    setHasPassword(true);
+    setOpen(false);
+  }
 
   return (
     <div>
@@ -67,7 +73,7 @@ function PasswordRow({ hasPassword }: { hasPassword: boolean }) {
       </div>
       {open && (
         <div className="pb-5 pt-1">
-          <PasswordForm hasPassword={hasPassword} />
+          <PasswordForm hasPassword={hasPassword} onSuccess={handleSuccess} />
         </div>
       )}
     </div>
@@ -105,7 +111,7 @@ type SignInMethodsProps = {
 export function SignInMethods({ hasPassword, googleConnected, googleEmail }: SignInMethodsProps) {
   return (
     <div className="divide-y divide-stone-100">
-      <PasswordRow hasPassword={hasPassword} />
+      <PasswordRow initialHasPassword={hasPassword} />
       <GoogleRow connected={googleConnected} email={googleEmail} />
     </div>
   );

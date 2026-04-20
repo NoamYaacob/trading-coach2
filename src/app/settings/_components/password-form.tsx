@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const INPUT =
   "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 pl-3.5 pr-10 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
@@ -37,7 +37,7 @@ function EyeToggle({
   );
 }
 
-export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
+export function PasswordForm({ hasPassword, onSuccess }: { hasPassword: boolean; onSuccess?: () => void }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -47,6 +47,15 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!success) return;
+    const id = setTimeout(() => {
+      setSuccess(false);
+      onSuccess?.();
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [success, onSuccess]);
 
   const rules = {
     length: newPassword.length >= 8,
@@ -78,7 +87,6 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      if (!hasPassword) window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save password.");
     } finally {
@@ -165,9 +173,9 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
         </div>
       )}
       {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {hasPassword ? "Password updated successfully." : "Password set successfully."}
-        </div>
+        <p className="text-xs text-emerald-600">
+          ✓ {hasPassword ? "Password updated." : "Password set."}
+        </p>
       )}
 
       <div>

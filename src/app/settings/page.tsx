@@ -89,7 +89,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {/* Sign-in methods */}
         <SectionCard
           title="Sign-in methods"
-          description="Ways you can sign in to your account."
+          description="Choose how you sign in to Guardrail."
         >
           <SignInMethods
             hasPassword={hasPassword}
