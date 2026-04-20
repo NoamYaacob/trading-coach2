@@ -554,7 +554,20 @@ function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
     timezone: tp?.timezone ?? "UTC",
     accountSize: toNumericPreset(rr?.accountSize, accountSizeOptions),
     maxDailyLoss: toNumericPreset(rr?.maxDailyLoss, dailyLossOptions),
-    riskPerTrade: toNumericPreset(rr?.riskPerTrade, riskPerTradeOptions),
+    riskPerTrade: (() => {
+      const field = toNumericPreset(rr?.riskPerTrade, riskPerTradeOptions);
+      const rptValue = getNumericValue(field);
+      const mdlValue = getNumericValue(toNumericPreset(rr?.maxDailyLoss, dailyLossOptions));
+      if (rptValue !== undefined && mdlValue !== undefined && rptValue > mdlValue) {
+        const validPresets = riskPerTradeOptions.filter(
+          (o) => o.value !== "custom" && Number(o.value) <= mdlValue,
+        );
+        return validPresets.length > 0
+          ? { mode: validPresets[validPresets.length - 1].value, custom: "" }
+          : { mode: "", custom: "" };
+      }
+      return field;
+    })(),
     maxTradesPerDay: rr?.maxTradesPerDay != null ? String(rr.maxTradesPerDay) : "",
     stopAfterLosses: (() => {
       const s = rr?.stopAfterLosses;
@@ -946,6 +959,7 @@ type NumericPresetProps = {
   onModeChange: (value: string) => void;
   onCustomChange: (value: string) => void;
   placeholder: string;
+  disabledValues?: Set<string>;
 };
 
 function NumericPresetFieldControl({
@@ -955,6 +969,7 @@ function NumericPresetFieldControl({
   onModeChange,
   onCustomChange,
   placeholder,
+  disabledValues,
 }: NumericPresetProps) {
   return (
     <div className="grid gap-2">
@@ -962,15 +977,19 @@ function NumericPresetFieldControl({
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const active = field.mode === option.value;
+          const isOptionDisabled = disabledValues?.has(option.value) ?? false;
           return (
             <button
               key={option.value}
               type="button"
+              disabled={isOptionDisabled}
               onClick={() => onModeChange(option.value)}
               className={`rounded-full border px-3 py-2 text-sm transition ${
                 active
                   ? "border-stone-950 bg-stone-950 text-white"
-                  : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
+                  : isOptionDisabled
+                    ? "cursor-not-allowed border-stone-200 text-stone-400"
+                    : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
               }`}
             >
               {option.label}
@@ -1017,6 +1036,23 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
     form.primaryMarket,
     form.timezone,
   );
+
+  const maxDailyLossValue = getNumericValue(form.maxDailyLoss) ?? null;
+  const riskPerTradeValue = getNumericValue(form.riskPerTrade) ?? null;
+  const riskPerTradeError =
+    maxDailyLossValue !== null &&
+    riskPerTradeValue !== null &&
+    riskPerTradeValue > maxDailyLossValue
+      ? `Must be ≤ max daily loss ($${maxDailyLossValue})`
+      : null;
+  const disabledRiskPresets: Set<string> =
+    maxDailyLossValue !== null
+      ? new Set(
+          riskPerTradeOptions
+            .filter((o) => o.value !== "custom" && Number(o.value) > maxDailyLossValue)
+            .map((o) => o.value),
+        )
+      : new Set();
 
   function goNext() {
     setCurrentStep((s) => Math.min(s + 1, STEP_TITLES.length - 1));
@@ -1068,6 +1104,32 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
         maxTradesPerDay: value,
         stopAfterLosses: shouldClamp ? value : current.stopAfterLosses,
       };
+    });
+  }
+
+  function updateMaxDailyLoss(patch: Partial<NumericPresetField>) {
+    setForm((current) => {
+      const newDailyLoss = { ...current.maxDailyLoss, ...patch };
+      const newDailyLossValue = getNumericValue(newDailyLoss);
+      const currentRPTValue = getNumericValue(current.riskPerTrade);
+      if (
+        newDailyLossValue !== undefined &&
+        currentRPTValue !== undefined &&
+        currentRPTValue > newDailyLossValue
+      ) {
+        const validPresets = riskPerTradeOptions.filter(
+          (o) => o.value !== "custom" && Number(o.value) <= newDailyLossValue,
+        );
+        return {
+          ...current,
+          maxDailyLoss: newDailyLoss,
+          riskPerTrade:
+            validPresets.length > 0
+              ? { mode: validPresets[validPresets.length - 1].value, custom: "" }
+              : { mode: "", custom: "" },
+        };
+      }
+      return { ...current, maxDailyLoss: newDailyLoss };
     });
   }
 
@@ -1492,18 +1554,24 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
               label="Max daily loss"
               field={form.maxDailyLoss}
               options={dailyLossOptions}
-              onModeChange={(value) => updateNumericField("maxDailyLoss", { mode: value })}
-              onCustomChange={(value) => updateNumericField("maxDailyLoss", { custom: value })}
+              onModeChange={(value) => updateMaxDailyLoss({ mode: value })}
+              onCustomChange={(value) => updateMaxDailyLoss({ custom: value })}
               placeholder="Enter max daily loss"
             />
-            <NumericPresetFieldControl
-              label="Risk per trade"
-              field={form.riskPerTrade}
-              options={riskPerTradeOptions}
-              onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
-              onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
-              placeholder="Enter risk per trade"
-            />
+            <div className="grid gap-1.5">
+              <NumericPresetFieldControl
+                label="Risk per trade"
+                field={form.riskPerTrade}
+                options={riskPerTradeOptions}
+                onModeChange={(value) => updateNumericField("riskPerTrade", { mode: value })}
+                onCustomChange={(value) => updateNumericField("riskPerTrade", { custom: value })}
+                placeholder="Enter risk per trade"
+                disabledValues={disabledRiskPresets}
+              />
+              {riskPerTradeError && (
+                <p className="text-xs text-red-600">{riskPerTradeError}</p>
+              )}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
                 label="Max trades per day"
@@ -1684,7 +1752,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || Boolean(riskPerTradeError)}
               className="inline-flex h-10 items-center justify-center rounded-full bg-amber-600 px-5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSaving ? "Saving…" : "Save profile"}

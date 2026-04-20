@@ -187,6 +187,19 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    body.riskRules?.riskPerTrade !== undefined &&
+    body.riskRules.riskPerTrade !== null &&
+    body.riskRules?.maxDailyLoss !== undefined &&
+    body.riskRules.maxDailyLoss !== null &&
+    body.riskRules.riskPerTrade > body.riskRules.maxDailyLoss
+  ) {
+    return NextResponse.json(
+      { error: "Risk per trade cannot exceed max daily loss." },
+      { status: 400 },
+    );
+  }
+
   const newLanguage = body.coachingPreferences?.preferredLanguage;
   const existingPrefs = newLanguage
     ? await prisma.coachingPreferences.findUnique({
