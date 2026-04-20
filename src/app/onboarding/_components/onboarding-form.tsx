@@ -1054,7 +1054,16 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
         )
       : new Set();
 
-  const stepHasError = currentStep === 3 && Boolean(riskPerTradeError);
+  const stopAfterLossesError =
+    form.maxTradesPerDay !== "" &&
+    form.stopAfterLosses !== "" &&
+    Number(form.stopAfterLosses) > Number(form.maxTradesPerDay)
+      ? `Must be ≤ max trades per day (${form.maxTradesPerDay})`
+      : null;
+
+  const stepHasError =
+    currentStep === 3 &&
+    (Boolean(riskPerTradeError) || Boolean(stopAfterLossesError));
 
   function goNext() {
     if (stepHasError) return;
@@ -1582,27 +1591,32 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
                 options={maxTradesOptions}
                 onChange={updateMaxTradesPerDay}
               />
-              <SelectField
-                label="Stop after losses"
-                value={form.stopAfterLosses}
-                options={
-                  form.maxTradesPerDay
-                    ? Array.from(
-                        { length: Number(form.maxTradesPerDay) },
-                        (_, i) => ({
-                          label: i === 0 ? "1 loss" : `${i + 1} losses`,
-                          value: String(i + 1),
-                        }),
-                      )
-                    : stopAfterLossesOptions
-                }
-                onChange={(value) => updateTextField("stopAfterLosses", value)}
-                helperText={
-                  form.maxTradesPerDay
-                    ? `Cannot exceed max trades per day (${form.maxTradesPerDay})`
-                    : undefined
-                }
-              />
+              <div className="grid gap-1.5">
+                <SelectField
+                  label="Stop after losses"
+                  value={form.stopAfterLosses}
+                  options={
+                    form.maxTradesPerDay
+                      ? Array.from(
+                          { length: Number(form.maxTradesPerDay) },
+                          (_, i) => ({
+                            label: i === 0 ? "1 loss" : `${i + 1} losses`,
+                            value: String(i + 1),
+                          }),
+                        )
+                      : stopAfterLossesOptions
+                  }
+                  onChange={(value) => updateTextField("stopAfterLosses", value)}
+                  helperText={
+                    !stopAfterLossesError && form.maxTradesPerDay
+                      ? `Available range: 1 to ${form.maxTradesPerDay}`
+                      : undefined
+                  }
+                />
+                {stopAfterLossesError && (
+                  <p className="text-xs text-red-600">{stopAfterLossesError}</p>
+                )}
+              </div>
             </div>
           </div>
         )}
