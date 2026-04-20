@@ -7,8 +7,7 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 
 import { DeleteAccount } from "./_components/delete-account";
-import { GoogleConnection } from "./_components/google-connection";
-import { PasswordForm } from "./_components/password-form";
+import { SignInMethods } from "./_components/sign-in-methods";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
@@ -20,7 +19,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams;
 
-  const [dbUser, telegramConnection, googleConnection, oauthConnections] = await Promise.all([
+  const [dbUser, telegramConnection, googleConnection] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -33,17 +32,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       where: { userId: user.id, provider: "google" },
       select: { email: true },
     }),
-    prisma.oAuthConnection.findMany({
-      where: { userId: user.id },
-      select: { provider: true },
-    }),
   ]);
 
   const hasPassword = Boolean(dbUser?.passwordHash);
   const googleConnected = Boolean(googleConnection);
-  // User can disconnect Google only if they have another sign-in method.
-  const canDisconnectGoogle =
-    hasPassword || oauthConnections.filter((c) => c.provider !== "google").length > 0;
 
   return (
     <AppShell
@@ -94,26 +86,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </dl>
         </SectionCard>
 
-        {/* Password */}
-        <div id="password-section">
-          <SectionCard
-            title="Password"
-            description={hasPassword ? "Update the password you use to sign in." : "Set a password to enable email/password sign-in alongside Google."}
-          >
-            <PasswordForm hasPassword={hasPassword} />
-          </SectionCard>
-        </div>
-
-        {/* Google */}
+        {/* Sign-in methods */}
         <SectionCard
-          title="Google"
-          description="Sign in with your Google account."
+          title="Sign-in methods"
+          description="Ways you can sign in to your account."
         >
-          <GoogleConnection
-            connected={googleConnected}
-            email={googleConnection?.email ?? null}
-            canDisconnect={canDisconnectGoogle}
+          <SignInMethods
             hasPassword={hasPassword}
+            googleConnected={googleConnected}
+            googleEmail={googleConnection?.email ?? null}
           />
         </SectionCard>
 
