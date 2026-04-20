@@ -174,6 +174,19 @@ export async function POST(request: Request) {
     body.coachingPreferences,
   );
 
+  if (
+    riskRules?.maxTradesPerDay !== undefined &&
+    riskRules.maxTradesPerDay !== null &&
+    riskRules?.stopAfterLosses !== undefined &&
+    riskRules.stopAfterLosses !== null &&
+    riskRules.stopAfterLosses > riskRules.maxTradesPerDay
+  ) {
+    return NextResponse.json(
+      { error: "Stop after consecutive losses cannot exceed max trades per day." },
+      { status: 400 },
+    );
+  }
+
   const newLanguage = body.coachingPreferences?.preferredLanguage;
   const existingPrefs = newLanguage
     ? await prisma.coachingPreferences.findUnique({

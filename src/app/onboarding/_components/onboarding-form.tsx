@@ -556,7 +556,12 @@ function buildInitialState(saved?: SavedOnboardingData): OnboardingFormState {
     maxDailyLoss: toNumericPreset(rr?.maxDailyLoss, dailyLossOptions),
     riskPerTrade: toNumericPreset(rr?.riskPerTrade, riskPerTradeOptions),
     maxTradesPerDay: rr?.maxTradesPerDay != null ? String(rr.maxTradesPerDay) : "",
-    stopAfterLosses: rr?.stopAfterLosses != null ? String(rr.stopAfterLosses) : "",
+    stopAfterLosses: (() => {
+      const s = rr?.stopAfterLosses;
+      if (s == null) return "";
+      const m = rr?.maxTradesPerDay;
+      return String(m != null && s > m ? m : s);
+    })(),
     primaryChallenge: primaryChallenge.chips,
     primaryChallengeOther: primaryChallenge.other,
     tiltTrigger: tiltTrigger.chips,
@@ -1052,6 +1057,20 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
     }));
   }
 
+  function updateMaxTradesPerDay(value: string) {
+    setForm((current) => {
+      const newMax = Number(value);
+      const currentStop = Number(current.stopAfterLosses);
+      const shouldClamp =
+        value !== "" && current.stopAfterLosses !== "" && currentStop > newMax;
+      return {
+        ...current,
+        maxTradesPerDay: value,
+        stopAfterLosses: shouldClamp ? value : current.stopAfterLosses,
+      };
+    });
+  }
+
   function updateNumericField(name: NumericPresetName, patch: Partial<NumericPresetField>) {
     setForm((current) => ({
       ...current,
@@ -1490,13 +1509,22 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
                 label="Max trades per day"
                 value={form.maxTradesPerDay}
                 options={maxTradesOptions}
-                onChange={(value) => updateTextField("maxTradesPerDay", value)}
+                onChange={updateMaxTradesPerDay}
               />
               <SelectField
                 label="Stop after losses"
                 value={form.stopAfterLosses}
-                options={stopAfterLossesOptions}
+                options={stopAfterLossesOptions.filter(
+                  (o) =>
+                    !form.maxTradesPerDay ||
+                    Number(o.value) <= Number(form.maxTradesPerDay),
+                )}
                 onChange={(value) => updateTextField("stopAfterLosses", value)}
+                helperText={
+                  form.maxTradesPerDay
+                    ? `Cannot exceed max trades per day (${form.maxTradesPerDay})`
+                    : undefined
+                }
               />
             </div>
           </div>

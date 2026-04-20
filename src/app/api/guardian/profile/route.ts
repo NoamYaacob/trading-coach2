@@ -28,6 +28,15 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as GuardianProfileRequest;
 
+  const maxTrades = body.maxTradesPerDay ?? null;
+  const stopAfter = body.stopAfterConsecutiveLosses ?? null;
+  if (maxTrades !== null && stopAfter !== null && stopAfter > maxTrades) {
+    return NextResponse.json(
+      { error: "Stop after consecutive losses cannot exceed max trades per day." },
+      { status: 400 },
+    );
+  }
+
   const snapshot = await updateGuardianProfile(currentUser.id, {
     guardianEnabled: Boolean(body.guardianEnabled),
     adapterKey: body.adapterKey?.trim() || "mock",

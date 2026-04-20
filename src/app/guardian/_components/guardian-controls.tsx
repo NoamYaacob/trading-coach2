@@ -68,6 +68,13 @@ export function GuardianControls({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const maxTradesParsed = parseNumberOrNull(profile.maxTradesPerDay);
+  const stopAfterParsed = parseNumberOrNull(profile.stopAfterConsecutiveLosses);
+  const consecutiveLossesError =
+    maxTradesParsed !== null && stopAfterParsed !== null && stopAfterParsed > maxTradesParsed
+      ? `Must be ≤ max trades per day (${maxTradesParsed})`
+      : null;
+
   async function handleSaveRules(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSavingRules(true);
@@ -381,22 +388,31 @@ export function GuardianControls({
             />
           </label>
 
-          <label className="min-w-0 grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-              Stop after consecutive losses
-            </span>
-            <input
-              inputMode="numeric"
-              value={profile.stopAfterConsecutiveLosses}
-              onChange={(event) =>
-                setProfile((current) => ({
-                  ...current,
-                  stopAfterConsecutiveLosses: event.target.value,
-                }))
-              }
-              className="h-9 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 outline-none transition focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
-            />
-          </label>
+          <div className="min-w-0 grid gap-1.5">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                Stop after consecutive losses
+              </span>
+              <input
+                inputMode="numeric"
+                value={profile.stopAfterConsecutiveLosses}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    stopAfterConsecutiveLosses: event.target.value,
+                  }))
+                }
+                className={`h-9 w-full rounded-xl border px-3 text-sm text-stone-900 outline-none transition focus:ring-2 ${
+                  consecutiveLossesError
+                    ? "border-red-400 bg-red-50 focus:border-red-500 focus:ring-red-200"
+                    : "border-stone-300 bg-white focus:border-amber-600 focus:ring-amber-200"
+                }`}
+              />
+            </label>
+            {consecutiveLossesError && (
+              <p className="text-xs text-red-600">{consecutiveLossesError}</p>
+            )}
+          </div>
 
           <label className="min-w-0 grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
@@ -418,7 +434,7 @@ export function GuardianControls({
 
         <button
           type="submit"
-          disabled={isSavingRules}
+          disabled={isSavingRules || Boolean(consecutiveLossesError)}
           className="mt-6 inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
         >
           {isSavingRules ? "Saving rules..." : "Save Guardian Rules"}
