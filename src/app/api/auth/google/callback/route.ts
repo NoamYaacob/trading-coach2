@@ -25,7 +25,7 @@ type GoogleUserInfo = {
 
 function errorRedirect(request: NextRequest, mode: string, code: string) {
   const dest = mode === "connect" ? `/settings?oauth_error=${code}` : `/login?oauth_error=${code}`;
-  return NextResponse.redirect(new URL(dest, request.url));
+  return NextResponse.redirect(`${getAppBaseUrl(request)}${dest}`);
 }
 
 export async function GET(request: NextRequest) {
@@ -35,18 +35,18 @@ export async function GET(request: NextRequest) {
   const oauthError = searchParams.get("error");
 
   if (oauthError) {
-    return NextResponse.redirect(new URL(`/login?oauth_error=${encodeURIComponent(oauthError)}`, request.url));
+    return NextResponse.redirect(`${getAppBaseUrl(request)}/login?oauth_error=${encodeURIComponent(oauthError)}`);
   }
 
   if (!code || !rawState) {
-    return NextResponse.redirect(new URL("/login?oauth_error=missing_params", request.url));
+    return NextResponse.redirect(`${getAppBaseUrl(request)}/login?oauth_error=missing_params`);
   }
 
   let payload: StatePayload;
   try {
     payload = JSON.parse(Buffer.from(rawState, "base64url").toString()) as StatePayload;
   } catch {
-    return NextResponse.redirect(new URL("/login?oauth_error=invalid_state", request.url));
+    return NextResponse.redirect(`${getAppBaseUrl(request)}/login?oauth_error=invalid_state`);
   }
 
   const { mode = "auth" } = payload;
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       update: { email: googleUser.email, displayName: googleUser.name ?? null },
     });
 
-    return NextResponse.redirect(new URL("/settings?google_connected=1", request.url));
+    return NextResponse.redirect(`${getAppBaseUrl(request)}/settings?google_connected=1`);
   }
 
   // ── Auth mode: sign in or sign up ─────────────────────────────────────────
@@ -182,5 +182,5 @@ export async function GET(request: NextRequest) {
   await createSession(userId);
 
   const onboardingDone = await hasCompletedOnboarding(userId);
-  return NextResponse.redirect(new URL(onboardingDone ? "/dashboard" : "/onboarding", request.url));
+  return NextResponse.redirect(`${getAppBaseUrl(request)}${onboardingDone ? "/dashboard" : "/onboarding"}`);
 }
