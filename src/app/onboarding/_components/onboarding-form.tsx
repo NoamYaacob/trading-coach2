@@ -1061,20 +1061,19 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
       ? `Must be ≤ max trades per day (${form.maxTradesPerDay})`
       : null;
 
-  const stepHasError =
-    currentStep === 3 &&
-    (Boolean(riskPerTradeError) || Boolean(stopAfterLossesError));
+  const protectionRulesInvalid =
+    riskPerTradeError !== null || stopAfterLossesError !== null;
 
-  function goNext() {
-    if (stepHasError) return;
+  const goNext = () => {
+    if (currentStep === 3 && protectionRulesInvalid) return;
     setCurrentStep((s) => Math.min(s + 1, STEP_TITLES.length - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  };
 
-  function goBack() {
+  const goBack = () => {
     setCurrentStep((s) => Math.max(s - 1, 0));
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  };
 
   function updateTextField(name: TextFieldName, value: string) {
     setForm((current) => ({
@@ -1761,7 +1760,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           <button
             type="button"
             onClick={goNext}
-            disabled={stepHasError}
+            disabled={currentStep === 3 && protectionRulesInvalid}
             className="inline-flex h-10 items-center gap-1.5 rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Continue →
