@@ -95,14 +95,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </SectionCard>
 
         {/* Password */}
-        {hasPassword && (
+        <div id="password-section">
           <SectionCard
             title="Password"
-            description="Update the password you use to sign in."
+            description={hasPassword ? "Update the password you use to sign in." : "Set a password to enable email/password sign-in alongside Google."}
           >
-            <PasswordForm />
+            <PasswordForm hasPassword={hasPassword} />
           </SectionCard>
-        )}
+        </div>
 
         {/* Google */}
         <SectionCard
@@ -113,6 +113,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             connected={googleConnected}
             email={googleConnection?.email ?? null}
             canDisconnect={canDisconnectGoogle}
+            hasPassword={hasPassword}
           />
         </SectionCard>
 

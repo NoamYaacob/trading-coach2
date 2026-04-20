@@ -6,6 +6,7 @@ type GoogleConnectionProps = {
   connected: boolean;
   email: string | null;
   canDisconnect: boolean;
+  hasPassword: boolean;
 };
 
 function GoogleLogo() {
@@ -19,7 +20,7 @@ function GoogleLogo() {
   );
 }
 
-export function GoogleConnection({ connected, email, canDisconnect }: GoogleConnectionProps) {
+export function GoogleConnection({ connected, email, canDisconnect, hasPassword }: GoogleConnectionProps) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +61,20 @@ export function GoogleConnection({ connected, email, canDisconnect }: GoogleConn
           </div>
         ) : (
           <p className="text-xs text-stone-500">
-            Google is your only sign-in method. Add a password before disconnecting.
+            Google is your only sign-in method.{" "}
+            {hasPassword ? (
+              "Remove your password first? (This shouldn\u2019t happen.)"
+            ) : (
+              <>
+                <a
+                  href="#password-section"
+                  className="font-medium text-stone-700 underline underline-offset-2 hover:text-stone-900"
+                >
+                  Set a password
+                </a>{" "}
+                before disconnecting Google.
+              </>
+            )}
           </p>
         )}
         {error && (

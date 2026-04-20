@@ -37,7 +37,7 @@ function EyeToggle({
   );
 }
 
-export function PasswordForm() {
+export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -57,7 +57,7 @@ export function PasswordForm() {
   };
   const newPasswordValid = Object.values(rules).every(Boolean);
   const confirmMatch = confirmPassword !== "" && newPassword === confirmPassword;
-  const formValid = currentPassword !== "" && newPasswordValid && confirmMatch;
+  const formValid = (hasPassword ? currentPassword !== "" : true) && newPasswordValid && confirmMatch;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -68,18 +68,19 @@ export function PasswordForm() {
 
     try {
       const res = await fetch("/api/account/password", {
-        method: "PATCH",
+        method: hasPassword ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify(hasPassword ? { currentPassword, newPassword } : { newPassword }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to update password.");
+      if (!res.ok) throw new Error(data.error ?? "Failed to save password.");
       setSuccess(true);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      if (!hasPassword) window.location.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update password.");
+      setError(err instanceof Error ? err.message : "Failed to save password.");
     } finally {
       setIsSaving(false);
     }
@@ -87,7 +88,8 @@ export function PasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-5">
-      {/* Current password */}
+      {/* Current password — only needed when changing an existing password */}
+      {hasPassword && (
       <label className="grid gap-2">
         <span className={LABEL}>Current password</span>
         <div className="relative">
@@ -102,6 +104,7 @@ export function PasswordForm() {
           <EyeToggle visible={showCurrent} onToggle={() => setShowCurrent((v) => !v)} label={showCurrent ? "Hide password" : "Show password"} />
         </div>
       </label>
+      )}
 
       {/* New password */}
       <div className="grid gap-2">
@@ -163,7 +166,7 @@ export function PasswordForm() {
       )}
       {success && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Password updated successfully.
+          {hasPassword ? "Password updated successfully." : "Password set successfully."}
         </div>
       )}
 
@@ -173,7 +176,7 @@ export function PasswordForm() {
           disabled={!formValid || isSaving}
           className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
         >
-          {isSaving ? "Updating…" : "Update password"}
+          {isSaving ? "Saving…" : hasPassword ? "Update password" : "Set password"}
         </button>
       </div>
     </form>
