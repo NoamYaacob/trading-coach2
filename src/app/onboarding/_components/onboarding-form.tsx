@@ -1514,11 +1514,17 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
               <SelectField
                 label="Stop after losses"
                 value={form.stopAfterLosses}
-                options={stopAfterLossesOptions.filter(
-                  (o) =>
-                    !form.maxTradesPerDay ||
-                    Number(o.value) <= Number(form.maxTradesPerDay),
-                )}
+                options={
+                  form.maxTradesPerDay
+                    ? Array.from(
+                        { length: Number(form.maxTradesPerDay) },
+                        (_, i) => ({
+                          label: i === 0 ? "1 loss" : `${i + 1} losses`,
+                          value: String(i + 1),
+                        }),
+                      )
+                    : stopAfterLossesOptions
+                }
                 onChange={(value) => updateTextField("stopAfterLosses", value)}
                 helperText={
                   form.maxTradesPerDay
