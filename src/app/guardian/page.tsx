@@ -229,14 +229,14 @@ export default async function GuardianPage() {
             guardian.evaluation.lockoutActive
               ? "Why trading is closed"
               : !guardian.evaluation.guardianActive
-                ? "No active enforcement"
+                ? "Enforcement is paused"
                 : "Active session boundaries"
           }
           description={
             guardian.evaluation.lockoutActive
               ? "The rule that closed the day, what else hit, and the next move from here."
               : !guardian.evaluation.guardianActive
-                ? "Guardian is off — rules are not running. Enable Guardian before relying on session limits."
+                ? "Guardian is off, so none of your limits are running. Turn it back on to resume enforcement."
                 : "What is keeping this session open right now."
           }
         >
@@ -276,7 +276,10 @@ export default async function GuardianPage() {
               <ul className="mt-2 grid gap-1 text-sm">
                 {(guardian.evaluation.actionGuidance.length > 0
                   ? guardian.evaluation.actionGuidance
-                  : ["No immediate action is required."]).map((actionText) => (
+                  : !guardian.evaluation.guardianActive
+                    ? ["Turn Guardian back on to resume enforcement."]
+                    : ["Nothing to do — stay disciplined."]
+                ).map((actionText) => (
                   <li key={actionText}>• {actionText}</li>
                 ))}
               </ul>
@@ -371,7 +374,7 @@ export default async function GuardianPage() {
 
         <SectionCard
           title="Settings"
-          description="Enforcement rules and reset configuration."
+          description="Rule limits and reset schedule."
         >
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <GuardianControls
@@ -432,14 +435,14 @@ export default async function GuardianPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-3 text-sm text-stone-500">No enforcement limits configured. Go to onboarding or edit rules above to add limits.</p>
+                  <p className="mt-3 text-sm text-stone-500">No limits set yet — add them in the rules form.</p>
                 )}
               </div>
 
-              <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-5 text-sm text-stone-700">
+              <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-700">
                 <p className="font-medium text-stone-950">Reset timing</p>
                 <p className="mt-2">
-                  Reset checks use{" "}
+                  Checks run in{" "}
                   <span className="font-medium">{guardian.evaluation.resetTimezone}</span>.
                 </p>
               </div>

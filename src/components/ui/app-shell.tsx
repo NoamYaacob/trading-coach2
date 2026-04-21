@@ -61,16 +61,16 @@ export async function AppShell({
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 pb-20 lg:px-10">
-        <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-8 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-6 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
                 {eyebrow}
               </p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-5xl">
+              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-4xl">
                 {title}
               </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600 sm:text-lg">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600 sm:text-base">
                 {description}
               </p>
             </div>

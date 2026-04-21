@@ -60,12 +60,9 @@ export function RecentSessionEvents({ items, timeZone }: RecentSessionEventsProp
           ))}
         </div>
       ) : (
-        <div className="rounded-[1.35rem] border border-dashed border-stone-300 bg-stone-50 px-5 py-6 text-sm">
-          <p className="font-medium text-stone-800">No recent events.</p>
-          <p className="mt-1 text-stone-500">
-            Activity appears here once the session is started.
-          </p>
-        </div>
+        <p className="rounded-[1.35rem] border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-500">
+          No recent events — activity appears here once the session starts.
+        </p>
       )}
     </SectionCard>
   );

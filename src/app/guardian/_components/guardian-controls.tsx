@@ -194,14 +194,14 @@ export function GuardianControls({
     <div className="grid gap-6 min-w-0 lg:grid-cols-[1.15fr_0.85fr]">
       <form
         onSubmit={handleSaveRules}
-        className="min-w-0 rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]"
+        className="min-w-0 rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]"
       >
-        <div className="mb-5">
-          <h3 className="text-xl font-semibold tracking-[-0.03em] text-stone-950">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold tracking-[-0.03em] text-stone-950">
             Enforcement rules
           </h3>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            The limits Guardian enforces every session. Changes take effect from the next reset.
+          <p className="mt-1.5 text-sm leading-5 text-stone-600">
+            Limits Guardian enforces each session. Changes apply from the next reset.
           </p>
         </div>
 
@@ -443,15 +443,14 @@ export function GuardianControls({
       <div className="grid gap-6">
         <form
           onSubmit={handleSaveStatus}
-          className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]"
+          className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]"
         >
-          <div className="mb-5">
-            <h3 className="text-xl font-semibold tracking-[-0.03em] text-stone-950">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold tracking-[-0.03em] text-stone-950">
               Activity override
             </h3>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
-              Manually set today's numbers. Guardian uses these values until live
-              broker data is connected.
+            <p className="mt-1.5 text-sm leading-5 text-stone-600">
+              Manual entry used until live broker data is connected.
             </p>
           </div>
 

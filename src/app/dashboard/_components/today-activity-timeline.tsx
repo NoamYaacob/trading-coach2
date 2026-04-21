@@ -92,12 +92,9 @@ export function TodayActivityTimeline({
           })}
         </div>
       ) : (
-        <div className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50 px-5 py-6 text-sm">
-          <p className="font-medium text-stone-800">No activity yet.</p>
-          <p className="mt-1 text-stone-500">
-            Events appear here as the session progresses — session start, Guardian triggers, and logged trades.
-          </p>
-        </div>
+        <p className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-500">
+          No activity yet — events appear here as the session progresses.
+        </p>
       )}
     </SectionCard>
   );

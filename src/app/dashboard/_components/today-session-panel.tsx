@@ -310,7 +310,7 @@ export function TodaySessionPanel({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Today status
+                {sessionState.kind === "GUARDIAN_DISABLED" ? "Rule enforcement" : "Today status"}
               </p>
               <p className={`mt-2 text-lg font-semibold ${styles.accent}`}>
                 {sessionState.kind === "ONBOARDING_REQUIRED"
@@ -320,40 +320,48 @@ export function TodaySessionPanel({
                     : sessionState.kind === "READY_TO_TRADE"
                   ? "Trading open"
                   : sessionState.kind === "GUARDIAN_DISABLED"
-                    ? "Guardian off"
+                    ? "Paused"
                     : "Trading locked"}
               </p>
-              {sessionState.primaryReasonLabel ? (
+              {sessionState.kind === "GUARDIAN_DISABLED" ? (
                 <p className="mt-2 text-sm text-stone-700">
-                  Reason: {sessionState.primaryReasonLabel}
+                  Limits resume when Guardian is enabled.
                 </p>
-              ) : null}
-              {sessionState.sessionStartedAt ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Started {formatGuardianDate(sessionState.sessionStartedAt, displayTimeZone)}
-                </p>
-              ) : null}
-              {sessionState.sessionEndedAt ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Ended {formatGuardianDate(sessionState.sessionEndedAt, displayTimeZone)}
-                </p>
-              ) : null}
-              {sessionState.sessionStarted && sessionState.sessionStartSource ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Started from {sessionState.sessionStartSource}.
-                </p>
-              ) : null}
-              {sessionState.sessionEnded && sessionState.sessionEndSource ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Ended from {sessionState.sessionEndSource}.
-                </p>
-              ) : null}
-              {additionalTriggeredRulesCount > 0 ? (
-                <p className="mt-1 text-xs text-stone-600">
-                  +{additionalTriggeredRulesCount} additional Guardian rule
-                  {additionalTriggeredRulesCount > 1 ? "s" : ""} hit
-                </p>
-              ) : null}
+              ) : (
+                <>
+                  {sessionState.primaryReasonLabel ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Reason: {sessionState.primaryReasonLabel}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionStartedAt ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Started {formatGuardianDate(sessionState.sessionStartedAt, displayTimeZone)}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionEndedAt ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Ended {formatGuardianDate(sessionState.sessionEndedAt, displayTimeZone)}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionStarted && sessionState.sessionStartSource ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Started from {sessionState.sessionStartSource}.
+                    </p>
+                  ) : null}
+                  {sessionState.sessionEnded && sessionState.sessionEndSource ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Ended from {sessionState.sessionEndSource}.
+                    </p>
+                  ) : null}
+                  {additionalTriggeredRulesCount > 0 ? (
+                    <p className="mt-1 text-xs text-stone-600">
+                      +{additionalTriggeredRulesCount} additional Guardian rule
+                      {additionalTriggeredRulesCount > 1 ? "s" : ""} hit
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
