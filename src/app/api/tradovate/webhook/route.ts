@@ -16,12 +16,28 @@ import {
   setRiskState,
 } from "@/lib/guardian-engine/session-state";
 import { detectIntervention } from "@/lib/guardian-engine/detector";
+import { buildEnforcementPlan } from "@/lib/guardian-engine/enforcement";
 import type { AccountRules, NormalizedEvent } from "@/lib/guardian-engine/types";
 
-// Triggers that should fire at most once per trading session.
-// Concurrent requests can both read NORMAL state before either writes STOPPED,
-// so we do a DB-level check before creating the intervention record.
-const ONCE_PER_SESSION_TRIGGERS = new Set(["daily_loss_limit", "max_trades_reached"]);
+// Triggers that fire at most once per session (prevents Telegram spam on repeated signals).
+// Concurrent requests are guarded by the DB-level check below.
+const ONCE_PER_SESSION_TRIGGERS = new Set([
+  "daily_loss_limit",
+  "max_trades_reached",
+  "rapid_trading",
+  "increased_size_after_loss",
+  "unrealized_drawdown",
+  "outside_allowed_hours",
+]);
+
+/** Returns true for any event type that represents a closed trade. */
+function isTradeClose(eventType: string): boolean {
+  return (
+    eventType === "trade_closed" ||
+    eventType === "trade_closed_win" ||
+    eventType === "trade_closed_loss"
+  );
+}
 
 function todayUTCStart(): Date {
   const d = new Date();
@@ -36,8 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // Malformed JSON causes request.json() to throw. Return 400 so Tradovate
-  // does not retry — retrying a malformed payload would never succeed.
+  // Malformed JSON returns 400 so Tradovate does not retry an unprocessable payload.
   let body: TradovateWebhookEvent;
   try {
     body = (await request.json()) as TradovateWebhookEvent;
@@ -45,7 +60,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  // Validate the top-level accountId is present before any DB work.
   if (!body.accountId) {
     return NextResponse.json({ ok: true, skipped: "missing_account_id" });
   }
@@ -90,9 +104,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: "account_not_found" });
   }
 
-  // Normalize the incoming Tradovate event. Adapter throws on invalid
-  // timestamps or missing required fields — treat those as bad data, not
-  // server errors, so Tradovate does not retry.
+  // Normalize the incoming event — adapter throws on invalid timestamps or missing required
+  // fields, which are treated as bad data (400) so Tradovate does not retry them.
   let normalizedEvent: NormalizedEvent | null = null;
   try {
     if (body.type === "fill") {
@@ -110,16 +123,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: "unhandled_event_type" });
   }
 
-  // Deduplication: fills and orders carry a stable externalTradeId from Tradovate.
-  // If we have already persisted this event (Tradovate retry / duplicate delivery),
-  // skip the entire pipeline — no state mutation, no intervention.
+  // Deduplication: fills and orders carry a stable externalTradeId.
+  // Treat all trade_closed* variants as equivalent for dedup (a fill retry keeps the same ID).
   if (normalizedEvent.externalTradeId) {
+    const dupWhere = isTradeClose(normalizedEvent.eventType)
+      ? {
+          accountId: account.id,
+          eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
+          externalTradeId: normalizedEvent.externalTradeId,
+        }
+      : {
+          accountId: account.id,
+          eventType: normalizedEvent.eventType,
+          externalTradeId: normalizedEvent.externalTradeId,
+        };
+
     const duplicate = await prisma.normalizedTradeEvent.findFirst({
-      where: {
-        accountId: account.id,
-        eventType: normalizedEvent.eventType,
-        externalTradeId: normalizedEvent.externalTradeId,
-      },
+      where: dupWhere,
       select: { id: true },
     });
     if (duplicate) {
@@ -142,8 +162,7 @@ export async function POST(request: Request) {
     },
   });
 
-  // Transition connection status to live on first successful event.
-  // This is idempotent — safe to run on every event, not just the first.
+  // Transition connection status to live on first successful event (idempotent).
   if (account.connectionStatus !== "connected_live") {
     await prisma.connectedAccount.update({
       where: { id: account.id },
@@ -151,23 +170,23 @@ export async function POST(request: Request) {
     });
   }
 
-  // Apply state mutation. getOrCreateSessionState also clears expired cooldowns.
+  // Apply session state mutations. getOrCreateSessionState clears expired cooldowns.
   let state = await getOrCreateSessionState(account.id);
 
-  if (normalizedEvent.eventType === "trade_closed" && normalizedEvent.pnl != null) {
+  if (isTradeClose(normalizedEvent.eventType) && normalizedEvent.pnl != null) {
     state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
   } else if (normalizedEvent.eventType === "trade_opened") {
     state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
   }
 
-  // Get the previous closed trade for pnl/qty context (skip current if it was a close).
+  // Load the most recent closed trade for context (skip the current one if it was a close).
   const prevEvent = await prisma.normalizedTradeEvent.findFirst({
     where: {
       accountId: account.id,
-      eventType: "trade_closed",
+      eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
     },
     orderBy: { occurredAt: "desc" },
-    skip: normalizedEvent.eventType === "trade_closed" ? 1 : 0,
+    skip: isTradeClose(normalizedEvent.eventType) ? 1 : 0,
   });
 
   const rules: AccountRules = {
@@ -189,10 +208,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, outcome: "no_action" });
   }
 
-  // Prevent firing the same once-per-session trigger more than once.
-  // This guards against concurrent requests that both read NORMAL state before
-  // either one writes STOPPED — without this check, both would create
-  // interventions and both would attempt Telegram sends.
+  // Dedup once-per-session triggers before creating the intervention record.
+  // Guards against concurrent requests and repeated rapid-trading events.
   if (ONCE_PER_SESSION_TRIGGERS.has(outcome.trigger)) {
     const alreadyFired = await prisma.guardianIntervention.findFirst({
       where: {
@@ -207,82 +224,80 @@ export async function POST(request: Request) {
     }
   }
 
-  // Log the intervention.
+  // Build the enforcement plan — determines tier, DB action, and coaching intent.
+  const plan = buildEnforcementPlan(outcome);
+  if (!plan) {
+    return NextResponse.json({ ok: true, outcome: "no_action" });
+  }
+
+  // Log the intervention with the enforcement tier as part of the outcome label.
   const intervention = await prisma.guardianIntervention.create({
     data: {
       accountId: account.id,
       userId: account.userId,
       triggerType: outcome.trigger,
-      outcome: outcome.action,
+      outcome: `${outcome.action}:${plan.tier}`,
       message: "message" in outcome ? outcome.message : null,
     },
   });
 
-  // Apply state effects in order of severity.
-  if (outcome.action === "cooldown") {
+  // Apply DB state changes based on enforcement tier.
+  if (plan.tier === "cooldown" && outcome.action === "cooldown") {
     await setCooldown(account.id, outcome.durationMinutes);
-  }
-
-  if (outcome.action === "stop") {
+  } else if (plan.tier === "lockdown") {
     await setRiskState(account.id, "STOPPED");
-  }
-
-  if (outcome.action === "warning") {
+  } else if (plan.tier === "hard_warning") {
     await setRiskState(account.id, "WARNING");
   }
+  // soft_warning: no riskState change — the account can continue trading
 
-  if (outcome.action === "telegram_message_trigger" && outcome.trigger === "daily_loss_limit") {
-    await setRiskState(account.id, "STOPPED");
-  }
+  // Send Telegram coaching message for ALL enforcement tiers.
+  // A Telegram or voice-generation failure must not cause a 500 — the intervention is
+  // already persisted and the state has been updated. Tradovate retrying the webhook
+  // would re-process the event with the wrong state.
+  const chatId = account.user.telegramConnection?.telegramChatId;
+  if (chatId) {
+    try {
+      const language = account.user.coachingPreferences?.preferredLanguage ?? "he";
+      const locale = getLocale(language);
 
-  // Send Telegram coaching message. Wrapped in try/catch so a Telegram or
-  // voice-generation failure does not cause a 500 — which would make Tradovate
-  // retry and double-process the event. The intervention is already persisted.
-  if (outcome.action === "telegram_message_trigger") {
-    const chatId = account.user.telegramConnection?.telegramChatId;
-    if (chatId) {
-      try {
-        const language = account.user.coachingPreferences?.preferredLanguage ?? "he";
-        const locale = getLocale(language);
+      const message = await generateVoiceReply({
+        intent: plan.coachingIntent as CoachingIntent,
+        traderMessage: `[Guardian alert: ${outcome.trigger}]`,
+        constraintMessage: "message" in outcome ? outcome.message : null,
+        personalCue: null,
+        knownPattern: null,
+        askQuestion: false,
+        language,
+        coachingTone: account.user.mentalProfile?.coachingTone ?? null,
+        interruptionStyle: account.user.mentalProfile?.interruptionStyle ?? null,
+        responseStyle: account.user.mentalProfile?.responseStyle ?? null,
+        preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
+        recentMessages: [],
+        reminderAnchors: account.user.mentalProfile?.reminderAnchors ?? [],
+        disciplineBreakPattern: account.user.mentalProfile?.disciplineBreakPattern ?? null,
+        whatHelpsRefocus: account.user.mentalProfile?.whatHelpsRefocus ?? null,
+        wantsToughIntervention: account.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true,
+      });
 
-        const message = await generateVoiceReply({
-          intent: outcome.coachingIntent as CoachingIntent,
-          traderMessage: `[Guardian alert: ${outcome.trigger}]`,
-          constraintMessage: null,
-          personalCue: null,
-          knownPattern: null,
-          askQuestion: false,
-          language,
-          coachingTone: account.user.mentalProfile?.coachingTone ?? null,
-          interruptionStyle: account.user.mentalProfile?.interruptionStyle ?? null,
-          responseStyle: account.user.mentalProfile?.responseStyle ?? null,
-          preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
-          recentMessages: [],
-          reminderAnchors: account.user.mentalProfile?.reminderAnchors ?? [],
-          disciplineBreakPattern: account.user.mentalProfile?.disciplineBreakPattern ?? null,
-          whatHelpsRefocus: account.user.mentalProfile?.whatHelpsRefocus ?? null,
-          wantsToughIntervention: account.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true,
+      if (message) {
+        await sendTelegramMessage(chatId, message, {
+          replyMarkup: {
+            keyboard: getTelegramQuickActionKeyboard(locale),
+            resize_keyboard: true,
+            input_field_placeholder: locale.system.inputPlaceholder,
+          },
         });
 
-        if (message) {
-          await sendTelegramMessage(chatId, message, {
-            replyMarkup: {
-              keyboard: getTelegramQuickActionKeyboard(locale),
-              resize_keyboard: true,
-              input_field_placeholder: locale.system.inputPlaceholder,
-            },
-          });
-
-          await prisma.guardianIntervention.update({
-            where: { id: intervention.id },
-            data: { message, sentAt: new Date() },
-          });
-        }
-      } catch {
-        // Intervention is already logged without sentAt.
+        await prisma.guardianIntervention.update({
+          where: { id: intervention.id },
+          data: { message, sentAt: new Date() },
+        });
       }
+    } catch {
+      // Intervention is already logged. sentAt remains null to indicate message was not sent.
     }
   }
 
-  return NextResponse.json({ ok: true, outcome: outcome.action });
+  return NextResponse.json({ ok: true, outcome: outcome.action, tier: plan.tier });
 }

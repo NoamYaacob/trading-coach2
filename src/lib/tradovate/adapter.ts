@@ -12,9 +12,17 @@ export function normalizeFill(
   internalAccountId: string,
   fill: TradovateOrderFill,
 ): NormalizedEvent {
+  // Distinguish wins from losses when profit is present — enables richer downstream detection.
+  const hasProfit = fill.profit !== undefined && fill.profit !== null;
+  const eventType = hasProfit
+    ? fill.profit! >= 0
+      ? "trade_closed_win"
+      : "trade_closed_loss"
+    : "trade_closed";
+
   return {
     accountId: internalAccountId,
-    eventType: "trade_closed",
+    eventType,
     externalTradeId: String(fill.id),
     side: fill.action === "Buy" ? "BUY" : "SELL",
     quantity: fill.qty,
@@ -49,6 +57,7 @@ export function normalizeAccountSummary(
     accountId: internalAccountId,
     eventType: "daily_pnl_updated",
     pnl: summary.realizedPnl,
+    unrealizedPnl: summary.unrealizedPnl,
     occurredAt: parseTimestamp(summary.timestamp, "summary.timestamp"),
     rawPayload: summary,
   };

@@ -18,31 +18,45 @@ export default async function AccountsPage() {
     redirect("/login");
   }
 
-  const accounts = await prisma.connectedAccount.findMany({
-    where: { userId: currentUser.id, isActive: true },
-    include: {
-      riskRules: true,
-      sessionState: true,
-      interventions: {
-        orderBy: { createdAt: "desc" },
-        take: 5,
+  const [accounts, telegramConnection] = await Promise.all([
+    prisma.connectedAccount.findMany({
+      where: { userId: currentUser.id, isActive: true },
+      include: {
+        riskRules: true,
+        sessionState: true,
+        interventions: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        },
       },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.telegramConnection.findUnique({
+      where: { userId: currentUser.id },
+      select: { telegramChatId: true },
+    }),
+  ]);
 
-  // Most recent normalized trade event per account.
-  const recentEvents =
+  const telegramReady = Boolean(telegramConnection?.telegramChatId);
+
+  // Fetch last 10 events per account for the live event feed.
+  // We over-fetch and group in JS to avoid per-group LIMIT queries.
+  const recentEventsRaw =
     accounts.length > 0
       ? await prisma.normalizedTradeEvent.findMany({
           where: { accountId: { in: accounts.map((a) => a.id) } },
           orderBy: { occurredAt: "desc" },
-          distinct: ["accountId"],
-          select: { accountId: true, eventType: true, occurredAt: true },
+          take: Math.max(accounts.length * 10, 50),
+          select: { accountId: true, eventType: true, occurredAt: true, pnl: true, side: true },
         })
       : [];
 
-  const lastEventByAccount = Object.fromEntries(recentEvents.map((e) => [e.accountId, e]));
+  // Group events by account, keeping up to 10 per account.
+  const eventsByAccount: Record<string, typeof recentEventsRaw> = {};
+  for (const ev of recentEventsRaw) {
+    const bucket = (eventsByAccount[ev.accountId] ??= []);
+    if (bucket.length < 10) bucket.push(ev);
+  }
 
   const hasTradovate = accounts.some((a) => a.platform === "tradovate");
 
@@ -96,7 +110,8 @@ export default async function AccountsPage() {
               <AccountCard
                 key={account.id}
                 account={account}
-                lastEvent={lastEventByAccount[account.id] ?? null}
+                recentEvents={eventsByAccount[account.id] ?? []}
+                telegramReady={telegramReady}
               />
             ))}
             {!hasTradovate && (

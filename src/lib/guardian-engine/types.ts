@@ -1,8 +1,10 @@
 export type NormalizedEventType =
   | "trade_opened"
-  | "trade_closed"
+  | "trade_closed"          // close with unknown outcome (legacy / no profit data)
+  | "trade_closed_win"      // close with positive or zero realized PnL
+  | "trade_closed_loss"     // close with negative realized PnL
   | "position_size_changed"
-  | "daily_pnl_updated"
+  | "daily_pnl_updated"     // account summary snapshot (realizedPnl + unrealizedPnl)
   | "loss_streak_updated"
   | "rule_warning_triggered"
   | "rule_breach_triggered"
@@ -17,6 +19,8 @@ export type NormalizedEvent = {
   quantity?: number;
   price?: number;
   pnl?: number;
+  /** Unrealized PnL from broker account snapshots (daily_pnl_updated events only). */
+  unrealizedPnl?: number;
   occurredAt: Date;
   rawPayload?: unknown;
 };
@@ -49,7 +53,8 @@ export type DetectionTrigger =
   | "increased_size_after_loss"
   | "outside_allowed_hours"
   | "daily_loss_limit"
-  | "max_trades_reached";
+  | "max_trades_reached"
+  | "unrealized_drawdown";
 
 export type DetectionContext = {
   previousTradeAt: Date | null;

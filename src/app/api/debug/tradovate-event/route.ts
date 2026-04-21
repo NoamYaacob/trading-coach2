@@ -79,19 +79,25 @@ export async function POST(request: Request) {
     },
   });
 
+  const isTradeClose = (t: string) =>
+    t === "trade_closed" || t === "trade_closed_win" || t === "trade_closed_loss";
+
   const stateBefore = await getOrCreateSessionState(account.id);
 
   let stateAfter = stateBefore;
-  if (normalizedEvent.eventType === "trade_closed" && normalizedEvent.pnl != null) {
+  if (isTradeClose(normalizedEvent.eventType) && normalizedEvent.pnl != null) {
     stateAfter = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
   } else if (normalizedEvent.eventType === "trade_opened") {
     stateAfter = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
   }
 
   const prevEvent = await prisma.normalizedTradeEvent.findFirst({
-    where: { accountId: account.id, eventType: "trade_closed" },
+    where: {
+      accountId: account.id,
+      eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
+    },
     orderBy: { occurredAt: "desc" },
-    skip: normalizedEvent.eventType === "trade_closed" ? 1 : 0,
+    skip: isTradeClose(normalizedEvent.eventType) ? 1 : 0,
   });
 
   const rules: AccountRules = {

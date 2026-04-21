@@ -105,5 +105,20 @@ export function detectIntervention(
     }
   }
 
+  // Unrealized drawdown warning: current open position has floated past risk-per-trade.
+  // This fires on daily_pnl_updated events from broker account snapshots.
+  if (
+    event.unrealizedPnl !== undefined &&
+    event.unrealizedPnl < 0 &&
+    rules.riskPerTrade !== null &&
+    Math.abs(event.unrealizedPnl) > rules.riskPerTrade
+  ) {
+    return {
+      action: "warning",
+      trigger: "unrealized_drawdown",
+      message: `Unrealized loss (${event.unrealizedPnl.toFixed(2)}) exceeds risk-per-trade (${rules.riskPerTrade}).`,
+    };
+  }
+
   return { action: "no_action" };
 }

@@ -8,11 +8,13 @@ type AccountWithRelations = ConnectedAccount & {
   interventions: GuardianIntervention[];
 };
 
-type LastEvent = {
+type RecentEvent = {
   accountId: string;
   eventType: string;
   occurredAt: Date;
-} | null;
+  pnl: { toString(): string } | null;
+  side: string | null;
+};
 
 const CONNECTION_STATUS_STYLE: Record<
   string,
@@ -63,27 +65,38 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   demo: "Demo",
 };
 
-const OUTCOME_LABEL: Record<string, string> = {
-  warning: "Warning",
-  stop: "Stop",
-  cooldown: "Cooldown",
-  telegram_message_trigger: "Coaching message",
+// Enforcement outcome format: "action:tier" (e.g. "warning:soft_warning", "stop:lockdown")
+// Older records may use the plain action string without a tier suffix.
+function parseOutcome(raw: string): { action: string; tier: string | null } {
+  const colon = raw.indexOf(":");
+  if (colon === -1) return { action: raw, tier: null };
+  return { action: raw.slice(0, colon), tier: raw.slice(colon + 1) };
+}
+
+const TIER_LABEL: Record<string, string> = {
+  soft_warning: "Warning",
+  hard_warning: "Strong warning",
+  cooldown:     "Cooldown",
+  lockdown:     "Lockdown",
 };
 
 const TRIGGER_LABEL: Record<string, string> = {
-  daily_loss_limit: "Daily loss limit",
-  consecutive_losses: "Consecutive losses",
-  max_trades_reached: "Max trades reached",
-  rapid_trading: "Rapid trading",
-  revenge_entry: "Revenge entry",
-  increased_size_after_loss: "Size increase after loss",
-  outside_allowed_hours: "Outside trading hours",
+  daily_loss_limit:           "Daily loss limit",
+  consecutive_losses:         "Consecutive losses",
+  max_trades_reached:         "Max trades reached",
+  rapid_trading:              "Rapid trading",
+  revenge_entry:              "Revenge entry",
+  increased_size_after_loss:  "Size increase after loss",
+  outside_allowed_hours:      "Outside trading hours",
+  unrealized_drawdown:        "Unrealized drawdown",
 };
 
-const EVENT_TYPE_LABEL: Record<string, string> = {
-  trade_closed: "Trade closed",
-  trade_opened: "Trade opened",
-  daily_pnl_updated: "P&L update",
+const EVENT_TYPE_LABEL: Record<string, { label: string; pnlColor: string }> = {
+  trade_closed_win:    { label: "Win",           pnlColor: "text-emerald-700" },
+  trade_closed_loss:   { label: "Loss",          pnlColor: "text-red-700" },
+  trade_closed:        { label: "Trade closed",  pnlColor: "text-stone-700" },
+  trade_opened:        { label: "Trade opened",  pnlColor: "text-stone-500" },
+  daily_pnl_updated:   { label: "P&L update",    pnlColor: "text-stone-500" },
 };
 
 function shortDate(date: Date): string {
@@ -100,25 +113,72 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Derive a plain-language enforcement mode label from live account state and rules. */
+function deriveEnforcementMode(
+  riskState: string,
+  cooldownActive: boolean,
+  hasLiveData: boolean,
+  hasRules: boolean,
+): { label: string; detail: string; style: string } {
+  if (riskState === "STOPPED" && cooldownActive) {
+    return {
+      label: "Cooldown",
+      detail: "Trading paused — consecutive loss limit hit.",
+      style: "text-orange-700 bg-orange-50 border-orange-200",
+    };
+  }
+  if (riskState === "STOPPED") {
+    return {
+      label: "Locked down",
+      detail: "Daily or trade limit reached. Manual reset required.",
+      style: "text-red-700 bg-red-50 border-red-200",
+    };
+  }
+  if (riskState === "WARNING") {
+    return {
+      label: "Warning state",
+      detail: "A rule was triggered. Review before continuing.",
+      style: "text-amber-700 bg-amber-50 border-amber-200",
+    };
+  }
+  if (!hasRules) {
+    return {
+      label: "Monitoring only",
+      detail: "No rules configured — events are logged but nothing is enforced.",
+      style: "text-stone-600 bg-stone-50 border-stone-200",
+    };
+  }
+  if (!hasLiveData) {
+    return {
+      label: "Enforcement ready",
+      detail: "Rules configured — awaiting first live event.",
+      style: "text-stone-600 bg-stone-50 border-stone-200",
+    };
+  }
+  return {
+    label: "Enforcement active",
+    detail: "Watching every trade. Rules will fire when limits are hit.",
+    style: "text-emerald-700 bg-emerald-50 border-emerald-200",
+  };
+}
+
 export function AccountCard({
   account,
-  lastEvent,
+  recentEvents,
+  telegramReady,
 }: {
   account: AccountWithRelations;
-  lastEvent: LastEvent;
+  recentEvents: RecentEvent[];
+  telegramReady: boolean;
 }) {
   const { sessionState, riskRules, interventions } = account;
 
-  // Session state is only "live" if it belongs to today's date.
-  // A stale row (from a previous day) means today's session hasn't started yet —
-  // the pipeline resets it lazily on the first incoming event.
   const today = todayKey();
   const hasLiveData = sessionState != null && sessionState.sessionDate === today;
 
   const riskState = (hasLiveData ? sessionState.riskState : "NORMAL") as keyof typeof RISK_STATE_STYLE;
   const riskStyle = RISK_STATE_STYLE[riskState] ?? RISK_STATE_STYLE.NORMAL;
 
-  // When account is stopped or in warning, surface the most recent trigger as the reason.
   const latestIntervention = interventions[0] ?? null;
   const stateReason =
     (riskState === "STOPPED" || riskState === "WARNING") && latestIntervention
@@ -132,7 +192,6 @@ export function AccountCard({
 
   const maxDailyLoss =
     riskRules?.maxDailyLoss != null ? Number(riskRules.maxDailyLoss) : null;
-  // Remaining headroom before daily loss limit: positive = still room, zero/negative = hit.
   const pnlHeadroom =
     maxDailyLoss != null && dailyPnl < 0 ? maxDailyLoss + dailyPnl : null;
 
@@ -164,10 +223,17 @@ export function AccountCard({
   const connStatus = CONNECTION_STATUS_STYLE[account.connectionStatus] ??
     CONNECTION_STATUS_STYLE["not_connected"];
 
+  const enfMode = deriveEnforcementMode(
+    riskState,
+    cooldownActive,
+    hasLiveData,
+    hasAnyRule,
+  );
+
   return (
     <SectionCard title={account.label} description={subtitle}>
       <div className="grid gap-5">
-        {/* Connection status badge — primary signal for broker connectivity */}
+        {/* Connection status */}
         <div className="grid gap-1.5">
           <div className="flex items-center gap-3">
             <span
@@ -205,17 +271,31 @@ export function AccountCard({
 
         {!hasLiveData && sessionState != null && (
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-500">
-            Today&apos;s session has not started — stats below are reset to zero until the first
-            broker event arrives.
+            Today&apos;s session has not started — stats reset until the first broker event arrives.
           </div>
         )}
+
+        {/* Enforcement mode — explicit product truth about what Guardrail is doing */}
+        <div className={`rounded-2xl border px-4 py-3 ${enfMode.style}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">
+                Enforcement mode
+              </p>
+              <p className="mt-1 font-semibold">{enfMode.label}</p>
+              <p className="mt-0.5 text-sm opacity-80">{enfMode.detail}</p>
+            </div>
+            <div className="shrink-0 text-right text-xs opacity-60">
+              <p>{telegramReady ? "Telegram: active" : "Telegram: not connected"}</p>
+              <p className="mt-0.5">Broker stop: not available</p>
+            </div>
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {/* Guardian state */}
           <div className={`rounded-2xl border px-4 py-4 ${riskStyle.card}`}>
-            <p
-              className={`text-xs font-semibold uppercase tracking-[0.2em] ${riskStyle.text} opacity-80`}
-            >
+            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${riskStyle.text} opacity-80`}>
               Guardian state
             </p>
             <p className={`mt-2 text-lg font-semibold ${riskStyle.text}`}>{riskStyle.label}</p>
@@ -238,16 +318,11 @@ export function AccountCard({
               Daily P&amp;L
             </p>
             <p className={`mt-2 text-lg font-semibold tabular-nums ${pnlClass}`}>
-              {dailyPnl >= 0 ? "+" : ""}
-              {dailyPnl.toFixed(2)}
+              {dailyPnl >= 0 ? "+" : ""}{dailyPnl.toFixed(2)}
             </p>
             {pnlHeadroom !== null ? (
-              <p
-                className={`mt-1 text-sm tabular-nums ${pnlHeadroom <= 0 ? "text-red-600" : "text-stone-500"}`}
-              >
-                {pnlHeadroom > 0
-                  ? `${pnlHeadroom.toFixed(2)} to limit`
-                  : "Limit reached"}
+              <p className={`mt-1 text-sm tabular-nums ${pnlHeadroom <= 0 ? "text-red-600" : "text-stone-500"}`}>
+                {pnlHeadroom > 0 ? `${pnlHeadroom.toFixed(2)} to limit` : "Limit reached"}
               </p>
             ) : (
               <p className="mt-1 text-sm text-stone-500">
@@ -262,8 +337,7 @@ export function AccountCard({
               Trades today
             </p>
             <p className="mt-2 text-lg font-semibold text-stone-950">
-              {tradesCount}
-              {maxTradesPerDay != null ? ` / ${maxTradesPerDay}` : ""}
+              {tradesCount}{maxTradesPerDay != null ? ` / ${maxTradesPerDay}` : ""}
             </p>
             <p className="mt-1 text-sm text-stone-500">
               {consecutiveLosses > 0
@@ -279,13 +353,15 @@ export function AccountCard({
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               Last activity
             </p>
-            {lastEvent ? (
+            {recentEvents.length > 0 ? (
               <>
                 <p className="mt-2 text-lg font-semibold text-stone-950">
-                  {EVENT_TYPE_LABEL[lastEvent.eventType] ??
-                    lastEvent.eventType.replace(/_/g, " ")}
+                  {EVENT_TYPE_LABEL[recentEvents[0].eventType]?.label ??
+                    recentEvents[0].eventType.replace(/_/g, " ")}
                 </p>
-                <p className="mt-1 text-sm text-stone-500">{shortDate(lastEvent.occurredAt)}</p>
+                <p className="mt-1 text-sm text-stone-500">
+                  {shortDate(recentEvents[0].occurredAt)}
+                </p>
               </>
             ) : (
               <p className="mt-2 text-lg font-semibold text-stone-400">No events yet</p>
@@ -308,27 +384,70 @@ export function AccountCard({
               Account rules
             </p>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-700">
-              {riskRules.maxDailyLoss != null && (
-                <span>Max daily loss: {Number(riskRules.maxDailyLoss)}</span>
+              {riskRules!.maxDailyLoss != null && (
+                <span>Max daily loss: {Number(riskRules!.maxDailyLoss)}</span>
               )}
-              {riskRules.maxTradesPerDay != null && (
-                <span>Max trades/day: {riskRules.maxTradesPerDay}</span>
+              {riskRules!.maxTradesPerDay != null && (
+                <span>Max trades/day: {riskRules!.maxTradesPerDay}</span>
               )}
-              {riskRules.stopAfterLosses != null && (
-                <span>Stop after losses: {riskRules.stopAfterLosses}</span>
+              {riskRules!.stopAfterLosses != null && (
+                <span>Stop after losses: {riskRules!.stopAfterLosses}</span>
               )}
-              {riskRules.riskPerTrade != null && (
-                <span>Risk/trade: {Number(riskRules.riskPerTrade)}</span>
+              {riskRules!.riskPerTrade != null && (
+                <span>Risk/trade: {Number(riskRules!.riskPerTrade)}</span>
               )}
-              {riskRules.allowedStartHour != null && riskRules.allowedEndHour != null && (
+              {riskRules!.allowedStartHour != null && riskRules!.allowedEndHour != null && (
                 <span>
-                  Hours: {riskRules.allowedStartHour}:00–{riskRules.allowedEndHour}:00 UTC
+                  Hours: {riskRules!.allowedStartHour}:00–{riskRules!.allowedEndHour}:00 UTC
                 </span>
               )}
             </div>
           </div>
         ) : null}
 
+        {/* Live event feed */}
+        {recentEvents.length > 0 && (
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+              Live event feed
+            </p>
+            <div className="grid gap-1.5">
+              {recentEvents.map((ev, i) => {
+                const meta = EVENT_TYPE_LABEL[ev.eventType];
+                const pnlNum = ev.pnl != null ? Number(ev.pnl.toString()) : null;
+                const pnlStr =
+                  pnlNum != null
+                    ? `${pnlNum >= 0 ? "+" : ""}${pnlNum.toFixed(2)}`
+                    : null;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-baseline justify-between gap-4 rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-2 text-sm"
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-medium text-stone-800">
+                        {meta?.label ?? ev.eventType.replace(/_/g, " ")}
+                      </span>
+                      {ev.side && (
+                        <span className="text-xs text-stone-500">{ev.side}</span>
+                      )}
+                      {pnlStr && (
+                        <span className={`text-xs font-semibold tabular-nums ${meta?.pnlColor ?? "text-stone-700"}`}>
+                          {pnlStr}
+                        </span>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-xs text-stone-400">
+                      {shortDate(ev.occurredAt)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Intervention log */}
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Recent interventions
@@ -338,22 +457,21 @@ export function AccountCard({
           ) : (
             <div className="grid gap-2">
               {interventions.map((item) => {
-                const isStop = item.outcome === "stop" || item.outcome === "cooldown";
-                const isWarn = item.outcome === "warning";
-                const borderBg = isStop
+                const { tier } = parseOutcome(item.outcome);
+                const isHardStop = tier === "lockdown" || tier === "cooldown";
+                const isWarn = tier === "hard_warning" || tier === "soft_warning";
+                const borderBg = isHardStop
                   ? "border-red-200 bg-red-50"
                   : isWarn
                     ? "border-amber-200 bg-amber-50"
                     : "border-stone-200 bg-stone-50";
+
                 return (
-                  <div
-                    key={item.id}
-                    className={`rounded-xl border px-4 py-3 text-sm ${borderBg}`}
-                  >
+                  <div key={item.id} className={`rounded-xl border px-4 py-3 text-sm ${borderBg}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="grid gap-0.5">
                         <p className="font-medium text-stone-950">
-                          {OUTCOME_LABEL[item.outcome] ?? item.outcome}
+                          {tier ? (TIER_LABEL[tier] ?? tier) : item.outcome}
                           <span className="font-normal text-stone-500">
                             {" · "}
                             {TRIGGER_LABEL[item.triggerType] ??
@@ -367,7 +485,9 @@ export function AccountCard({
                           <p className="text-xs text-stone-400">
                             Telegram sent {shortDate(item.sentAt)}
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="text-xs text-stone-400">Telegram not sent</p>
+                        )}
                       </div>
                       <p className="shrink-0 text-xs text-stone-400">
                         {shortDate(item.createdAt)}
