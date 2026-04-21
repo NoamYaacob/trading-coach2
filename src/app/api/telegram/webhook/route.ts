@@ -307,6 +307,12 @@ export async function POST(request: Request) {
     });
   }
 
+  // /start without a token — not yet linked or just starting the bot fresh
+  if (rawText === "/start") {
+    const defaultLocale = getLocale();
+    return replyToTelegram(chatId, defaultLocale.commands.welcome, defaultLocale);
+  }
+
   const connection = await loadLinkedUserByTelegramUserId(String(telegramUserId));
 
   if (!connection) {
@@ -340,8 +346,31 @@ export async function POST(request: Request) {
     },
   });
 
-  const matchedAction = rawText ? findActionByLocaleText(rawText, locale) : null;
-  const canonicalText = matchedAction?.message ?? rawText;
+  // Slash command shortcuts — resolve to canonical keyboard text so the rest
+  // of the pipeline handles them identically to button taps.
+  const SLASH_COMMAND_OVERRIDES: Record<string, string> = {
+    "/checkin": locale.keyboard.checkIn,
+    "/review": locale.keyboard.daySummary,
+    "/limits": locale.keyboard.ruleLimits,
+  };
+
+  if (rawText === "/help") {
+    return replyToTelegram(chatId, locale.commands.help, locale);
+  }
+
+  if (rawText === "/menu") {
+    return replyToTelegram(chatId, locale.commands.welcome, locale);
+  }
+
+  // Unknown slash commands (not /start, /help, /menu, or our shortcuts)
+  if (rawText.startsWith("/") && !SLASH_COMMAND_OVERRIDES[rawText]) {
+    return replyToTelegram(chatId, locale.commands.unknownCommand, locale);
+  }
+
+  const effectiveText = SLASH_COMMAND_OVERRIDES[rawText] ?? rawText;
+
+  const matchedAction = effectiveText ? findActionByLocaleText(effectiveText, locale) : null;
+  const canonicalText = matchedAction?.message ?? effectiveText;
 
   const stateUpdate = canonicalText ? deriveTraderStateUpdate(canonicalText) : null;
 
@@ -357,7 +386,7 @@ export async function POST(request: Request) {
 
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
-  const isFreeText = rawText.length > 0 && matchedAction === null;
+  const isFreeText = effectiveText.length > 0 && matchedAction === null && !effectiveText.startsWith("/");
   const mightUseAI =
     isAICoachEnabled() &&
     (isFreeText ||
@@ -409,7 +438,7 @@ export async function POST(request: Request) {
 
   // rule-limits uses meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
   const rawConversationMode = detectConversationMode({
-    message: rawText,
+    message: effectiveText,
     hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
     guardianLocked: guardian.evaluation.lockoutActive,
   });
@@ -433,7 +462,7 @@ export async function POST(request: Request) {
     : null;
 
   const aiInput = {
-    message: rawText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
+    message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
     source: "telegram" as const,
     alertContext: interventionAlertContext,
@@ -530,8 +559,8 @@ export async function POST(request: Request) {
   await logCoachEvent({
     userId: connection.user.id,
     source: "telegram",
-    message: rawText || locale.keyboard.checkIn,
-    detectedIntent: deriveLogIntent(matchedAction?.id ?? null, rawText),
+    message: effectiveText || locale.keyboard.checkIn,
+    detectedIntent: deriveLogIntent(matchedAction?.id ?? null, effectiveText),
     coachMode: useAI ? "AI_COACH" : "RULE_BASED",
     traderState: loggedTraderState,
     cooldownActive: flags.cooldownActive,

@@ -47,4 +47,12 @@ export const fr: BotLocale = {
     warning: "Attention, vous approchez de votre limite.",
     discipline: "Vos règles existent pour une raison. Respectez-les.",
   },
+  commands: {
+    welcome:
+      "Bienvenue sur Guardrail Coach. Utilisez le menu ci-dessous ou tapez un message. /checkin pour commencer votre journée, /review pour le bilan quotidien, /limits pour vos règles, /help pour toutes les commandes.",
+    help:
+      "Commandes disponibles:\n/checkin — check-in avant la session\n/review — bilan de fin de journée\n/limits — vos limites de risque aujourd'hui\n/help — ce message\n\nOu écrivez simplement comment vous vous sentez et le coach répondra.",
+    unknownCommand:
+      "Je n'ai pas reconnu cette commande. Utilisez /help pour voir ce qui est disponible, ou tapez simplement un message.",
+  },
 };

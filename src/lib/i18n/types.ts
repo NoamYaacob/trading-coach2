@@ -41,4 +41,9 @@ export type BotLocale = {
     warning: string;
     discipline: string;
   };
+  commands: {
+    welcome: string;
+    help: string;
+    unknownCommand: string;
+  };
 };
