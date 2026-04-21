@@ -67,10 +67,16 @@ export async function POST(request: Request) {
               interruptionStyle: true,
               responseStyle: true,
               preferredAddress: true,
+              reminderAnchors: true,
+              disciplineBreakPattern: true,
+              whatHelpsRefocus: true,
             },
           },
           coachingPreferences: {
-            select: { preferredLanguage: true },
+            select: {
+              preferredLanguage: true,
+              wantsToughInterventionWhenTilting: true,
+            },
           },
           telegramConnection: {
             select: { telegramChatId: true },
@@ -252,6 +258,10 @@ export async function POST(request: Request) {
           responseStyle: account.user.mentalProfile?.responseStyle ?? null,
           preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
           recentMessages: [],
+          reminderAnchors: account.user.mentalProfile?.reminderAnchors ?? [],
+          disciplineBreakPattern: account.user.mentalProfile?.disciplineBreakPattern ?? null,
+          whatHelpsRefocus: account.user.mentalProfile?.whatHelpsRefocus ?? null,
+          wantsToughIntervention: account.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true,
         });
 
         if (message) {

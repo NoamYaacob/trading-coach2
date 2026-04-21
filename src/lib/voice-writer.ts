@@ -24,7 +24,10 @@ export type CoachingIntent =
   | "rule_limit_hit"
   | "cooldown_active"
   | "news_warning"
-  | "general_coaching";
+  | "general_coaching"
+  | "pre_session_checkin"
+  | "end_of_day_review"
+  | "rule_limits_summary";
 
 export type PersonalCue = {
   type: "why" | "goal" | "grounding" | "pattern";
@@ -44,6 +47,11 @@ export type VoiceWriterInput = {
   responseStyle: string | null;
   preferredAddress: string | null;
   recentMessages: Array<{ message: string; traderState: string }>;
+  // New coaching profile fields
+  reminderAnchors: string[];
+  disciplineBreakPattern: string | null;
+  whatHelpsRefocus: string | null;
+  wantsToughIntervention: boolean;
 };
 
 const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: string }> = {
@@ -102,6 +110,18 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
   general_coaching: {
     situation: "General coaching moment — emotional check-in, question, or free-text conversation.",
     goal: "Match the emotional register. Acknowledge, redirect, or hold space. No generic replies.",
+  },
+  pre_session_checkin: {
+    situation: "The trader is about to begin a session and wants to prepare mentally.",
+    goal: "Ground them in three things — briefly, naturally: (1) what they are protecting today (key limit or rule if available), (2) what success looks like for them today (stated goal or why if available), (3) what to watch for in themselves (known tilt trigger or discipline break pattern if available). End with a single intention-setting question or anchor. Not a checklist — weave it into a natural short message.",
+  },
+  end_of_day_review: {
+    situation: "The trading session has ended. The trader wants to reflect on the day.",
+    goal: "Pick exactly TWO of these four questions — the most honest and useful pair for this trader's situation: (1) Did you follow your rules today? (2) Where did emotion take over? (3) What will you repeat tomorrow? (4) What are you stopping tomorrow? Acknowledge the day in one line first. Then ask your two questions. Never list all four. Never use bullet points. Keep it brief and grounded.",
+  },
+  rule_limits_summary: {
+    situation: "The trader wants to know their current risk limits and where they stand right now.",
+    goal: "State their active rules plainly — what the limits are and, if current usage is provided, where they stand. Numbers speak. No moralizing. No framing. If they are near or at a limit, say so directly. One fact per sentence.",
   },
 };
 
@@ -310,13 +330,15 @@ function buildAddressGuidance(preferredAddress: string | null, language: string)
 function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
   const langName = LANGUAGE_NAMES[input.language] ?? "English";
   const desc = INTENT_DESCRIPTIONS[input.intent];
-  const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
-  const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
+  const tone = input.coachingTone?.toLowerCase() ?? "";
+  const isDirect = tone.includes("direct") || tone.includes("strict") || tone === "tough_love" || tone === "brother_like";
+  const isSupportive = tone.includes("calm") || tone.includes("support");
 
   const STOP_INTENTS = new Set<CoachingIntent>([
     "account_locked", "stop_fomo", "stop_revenge", "ground_tilt", "rule_limit_hit", "cooldown_active",
   ]);
-  const isStopMode = STOP_INTENTS.has(input.intent);
+  // When wantsToughIntervention is true, stop intents get extra directness
+  const isStopMode = STOP_INTENTS.has(input.intent) || (input.wantsToughIntervention && input.intent === "acknowledge_multiple_losses");
 
   const replyLengthLine = isStopMode
     ? "- 1 sentence. 2 if you must. No more."
@@ -372,10 +394,32 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
       lines.push("");
     }
 
-    if (input.knownPattern) {
+    // disciplineBreakPattern: augments knownPattern for relevant intents
+    const showDisciplineBreak = Boolean(input.disciplineBreakPattern) && !input.knownPattern;
+    if (input.knownPattern || showDisciplineBreak) {
       lines.push("KNOWN TRADER PATTERN (they told you this — reflect it, don't explain it):");
-      lines.push(`- ${input.knownPattern}`);
+      if (input.knownPattern) lines.push(`- ${input.knownPattern}`);
+      if (showDisciplineBreak) lines.push(`- How their discipline breaks: ${input.disciplineBreakPattern}`);
       lines.push("Name it accurately. Not as a judgment.");
+      lines.push("");
+    }
+
+    // whatHelpsRefocus: surface for grounding intents only
+    const groundingIntents = new Set<CoachingIntent>([
+      "stop_revenge", "ground_tilt", "acknowledge_multiple_losses",
+    ]);
+    if (input.whatHelpsRefocus && groundingIntents.has(input.intent)) {
+      lines.push("WHAT HELPS THEM REFOCUS (they told you this works — suggest it once, if it fits):");
+      lines.push(`- ${input.whatHelpsRefocus}`);
+      lines.push("Offer it as a suggestion, not a prescription.");
+      lines.push("");
+    }
+
+    // Reminder anchors: phrases trader wants echoed back
+    if (input.reminderAnchors.length > 0) {
+      lines.push("PERSONAL ANCHORS (can echo verbatim at the right moment — one, once, when it genuinely fits):");
+      lines.push(input.reminderAnchors.map((a) => `"${a}"`).join(" · "));
+      lines.push("Do not force them. Skip if nothing fits naturally.");
       lines.push("");
     }
 

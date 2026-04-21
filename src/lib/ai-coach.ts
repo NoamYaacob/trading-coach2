@@ -49,22 +49,28 @@ export function detectConversationMode(params: {
     return "clarification";
   }
 
-  // COACHING: English trading / emotional keywords
+  // COACHING: English trading / emotional / distress keywords
   if (
     /\b(trade|trading|market|loss|lost|profit|position|setup|entry|exit|fomo|revenge|tilt|hesitat|impulse|drawdown|pnl|stop.?loss|risk|short|long)\b/i.test(msg)
   ) {
     return "coaching";
   }
-
-  // COACHING: Hebrew trading / emotional terms
+  // COACHING: English distress phrases (free-text distress signals)
   if (
-    /הפסד|מסחר|עסקה|שוק המניות|להיכנס לעסקה|לצאת מעסקה|רווח|פוזיציה|סטאפ|ריגוש|כועס על|מתוסכל|ירד לי|עלה לי/.test(msg)
+    /\b(messed up|tilted|make it back|one more trade|recover this|don.?t care|going to blow|can.?t stop|need to win|making back|chasing|revenge|screwed up|out of control|losing it|losing control|breaking rules|broke my rules|breaking my rules|impulse trade|overtrad)\b/i.test(msg)
   ) {
     return "coaching";
   }
 
-  // COACHING: Arabic and Russian trading terms
-  if (/потер|торг|рынок|убыт|خسار|تداول|سوق/.test(msg)) {
+  // COACHING: Hebrew trading / emotional / distress terms
+  if (
+    /הפסד|מסחר|עסקה|שוק המניות|להיכנס לעסקה|לצאת מעסקה|רווח|פוזיציה|סטאפ|ריגוש|כועס על|מתוסכל|ירד לי|עלה לי|לא בשליטה|עוד עסקה|צריך להחזיר|עשיתי שטות|שברתי את הכללים|לא אכפת לי|הולך לפוצץ|אין לי שליטה/.test(msg)
+  ) {
+    return "coaching";
+  }
+
+  // COACHING: Arabic and Russian trading / distress terms
+  if (/потер|торг|рынок|убыт|вышел из под контроля|ещё одну сделку|خسار|تداول|سوق|فقدت السيطرة/.test(msg)) {
     return "coaching";
   }
 
@@ -116,6 +122,11 @@ export type AICoachInput = {
   disciplineBreakPattern: string | null;
   whatHelpsRefocus: string | null;
   reminderAnchors: string[];
+  wantsGoalReminders: boolean;
+  wantsToughInterventionWhenTilting: boolean;
+  todayTradesCount: number;
+  todayPnL: number;
+  consecutiveLosses: number;
   conversationMode: ConversationMode;
 };
 
@@ -527,6 +538,11 @@ function buildSystemPrompt(input: AICoachInput): string {
 // ─── Brain helpers — decide intent/cues before writing ──────────────────────
 
 function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
+  // Explicit structured action IDs override state-derived intents
+  if (input.actionId === "check-in") return "pre_session_checkin";
+  if (input.actionId === "day-summary") return "end_of_day_review";
+  if (input.actionId === "rule-limits") return "rule_limits_summary";
+
   if (input.guardianLocked) return "account_locked";
   if (input.cooldownActive) return "cooldown_active";
   if (input.stopAfterLosses && input.recentLossStreak >= input.stopAfterLosses) return "rule_limit_hit";
@@ -547,27 +563,33 @@ function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
 }
 
 function derivePersonalCue(intent: CoachingIntent, input: AICoachInput): PersonalCue | null {
+  const goalOk = input.wantsGoalReminders;
   switch (intent) {
     case "surface_purpose":
-      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
-      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      if (goalOk && input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      if (goalOk && input.tradingGoal) return { type: "goal", text: input.tradingGoal };
       return null;
     case "acknowledge_loss":
     case "acknowledge_multiple_losses":
-      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
-      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      if (goalOk && input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      if (goalOk && input.tradingWhy) return { type: "why", text: input.tradingWhy };
       return null;
     case "ground_tilt":
     case "stop_revenge":
       if (input.groundingReminder) return { type: "grounding", text: input.groundingReminder };
+      if (goalOk && input.tradingGoal) return { type: "goal", text: input.tradingGoal };
       return null;
     case "morning_anchor":
-      if (input.tradingWhy) return { type: "why", text: input.tradingWhy };
+    case "pre_session_checkin":
+      if (goalOk && input.tradingWhy) return { type: "why", text: input.tradingWhy };
+      if (goalOk && input.tradingGoal) return { type: "goal", text: input.tradingGoal };
       if (input.groundingReminder) return { type: "grounding", text: input.groundingReminder };
       return null;
     case "forward_anchor":
     case "end_of_day":
-      if (input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+    case "end_of_day_review":
+      if (goalOk && input.tradingGoal) return { type: "goal", text: input.tradingGoal };
+      if (goalOk && input.tradingWhy) return { type: "why", text: input.tradingWhy };
       return null;
     default:
       return null;
@@ -579,16 +601,50 @@ function deriveKnownPattern(input: AICoachInput): string | null {
   const hasTiltOrRevenge =
     state.includes("tilt") || state.includes("out_of_control") || state.includes("revenge");
   const hasLoss = state.includes("just_took_loss") || state.includes("fomo");
-  if (!hasTiltOrRevenge && !hasLoss) return null;
 
   const parts: string[] = [];
   if (input.primaryChallenge) parts.push(input.primaryChallenge);
   if (input.tiltTrigger && hasTiltOrRevenge) parts.push(`Trigger: ${input.tiltTrigger}`);
   if (input.tiltThought && hasTiltOrRevenge) parts.push(`They think: "${input.tiltThought}"`);
+  // disciplineBreakPattern: only show for tilt/revenge/loss states — not in calm/premarket
+  if (input.disciplineBreakPattern && (hasTiltOrRevenge || hasLoss)) {
+    parts.push(`Discipline break pattern: ${input.disciplineBreakPattern}`);
+  }
   return parts.length > 0 ? parts.join(" | ") : null;
 }
 
-function buildConstraintMessage(input: AICoachInput): string | null {
+function buildConstraintMessage(input: AICoachInput, intent: CoachingIntent): string | null {
+  // Structured flows get context-specific constraint messages
+  if (intent === "pre_session_checkin") {
+    const parts: string[] = [];
+    if (input.maxDailyLoss) parts.push(`max daily loss: $${input.maxDailyLoss}`);
+    if (input.maxTradesPerDay) parts.push(`max ${input.maxTradesPerDay} trades`);
+    if (input.stopAfterLosses) parts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
+    return parts.length > 0 ? `Today's rules: ${parts.join(", ")}` : null;
+  }
+
+  if (intent === "rule_limits_summary") {
+    const parts: string[] = [];
+    if (input.maxDailyLoss) {
+      const used = Math.abs(Math.min(input.todayPnL, 0));
+      if (used > 0) {
+        const pctUsed = Math.round((used / input.maxDailyLoss) * 100);
+        const remaining = Math.max(0, input.maxDailyLoss - used);
+        parts.push(`Daily loss: $${used.toFixed(2)} used of $${input.maxDailyLoss} limit ($${remaining.toFixed(2)} remaining, ${pctUsed}% used)`);
+      } else {
+        parts.push(`Daily loss limit: $${input.maxDailyLoss} (none used yet)`);
+      }
+    }
+    if (input.maxTradesPerDay) {
+      parts.push(`Trades: ${input.todayTradesCount} of ${input.maxTradesPerDay} taken today`);
+    }
+    if (input.stopAfterLosses) {
+      parts.push(`Consecutive losses: ${input.consecutiveLosses} of ${input.stopAfterLosses} limit`);
+    }
+    if (parts.length === 0) return "No specific limits configured.";
+    return parts.join(". ");
+  }
+
   if (input.guardianLocked) {
     const reason = input.lockoutReason ?? "daily limit reached";
     return `Account locked for today (${reason}).`;
@@ -608,25 +664,38 @@ function shouldAskQuestion(intent: CoachingIntent, responseStyle: string | null)
   if (responseStyle === "One-line prompts") return false;
   const askIntents = new Set<CoachingIntent>([
     "surface_purpose", "acknowledge_loss", "morning_anchor", "general_coaching", "forward_anchor",
+    "pre_session_checkin",  // ends with intention-setting question
+    "end_of_day_review",    // structured review always asks questions
   ]);
   return askIntents.has(intent);
 }
 
 function buildVoiceWriterInputFromCoachInput(input: AICoachInput): VoiceWriterInput {
   const intent = deriveCoachingIntent(input);
+  // Tone override: when wantsToughInterventionWhenTilting and in a critical tilt/revenge state
+  const state = input.currentState?.toLowerCase() ?? "";
+  const isCriticalState = state.includes("revenge") || state.includes("tilt") || state.includes("out_of_control");
+  const effectiveTone = (input.wantsToughInterventionWhenTilting && isCriticalState)
+    ? "tough_love"
+    : input.coachingTone;
+
   return {
     intent,
     traderMessage: input.message,
-    constraintMessage: buildConstraintMessage(input),
+    constraintMessage: buildConstraintMessage(input, intent),
     personalCue: derivePersonalCue(intent, input),
     knownPattern: deriveKnownPattern(input),
     askQuestion: shouldAskQuestion(intent, input.responseStyle),
     language: input.language,
-    coachingTone: input.coachingTone,
+    coachingTone: effectiveTone,
     interruptionStyle: input.interruptionStyle,
     responseStyle: input.responseStyle,
     preferredAddress: input.preferredAddress,
     recentMessages: input.recentMessages,
+    reminderAnchors: input.reminderAnchors,
+    disciplineBreakPattern: input.disciplineBreakPattern,
+    whatHelpsRefocus: input.whatHelpsRefocus,
+    wantsToughIntervention: input.wantsToughInterventionWhenTilting,
   };
 }
 
@@ -634,7 +703,7 @@ export function isAICoachEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-// Quick-action IDs where emotional coaching adds real value
+// Emotional quick actions — state-updating, conversationMode → "coaching"
 export const EMOTIONAL_ACTION_IDS = new Set([
   "fomo",
   "revenge",
@@ -644,6 +713,14 @@ export const EMOTIONAL_ACTION_IDS = new Set([
   "out-of-control",
   "calming-down",
   "back-in-control",
+  // Structured flows that want coaching mode
+  "check-in",
+  "day-summary",
+]);
+
+// Structured flows that need AI but use "meta" mode (factual, not emotional)
+export const STRUCTURED_COACHING_ACTION_IDS = new Set([
+  "rule-limits",
 ]);
 
 export function shouldUseAICoach(params: {
@@ -654,13 +731,9 @@ export function shouldUseAICoach(params: {
   cooldownActive: boolean;
 }): boolean {
   if (!isAICoachEnabled()) return false;
-  // User typed something — always worth a human-feeling reply
   if (params.isFreeText) return true;
-  // Emotional quick actions benefit from contextual coaching
-  if (params.actionId && EMOTIONAL_ACTION_IDS.has(params.actionId)) return true;
-  // Hard safety enforcement should feel human, not robotic
+  if (params.actionId && (EMOTIONAL_ACTION_IDS.has(params.actionId) || STRUCTURED_COACHING_ACTION_IDS.has(params.actionId))) return true;
   if (params.guardianLocked || params.hasBlockingViolation || params.cooldownActive) return true;
-  // Lightweight button taps (check-in, day-summary, rule-limits) → skip AI
   return false;
 }
 

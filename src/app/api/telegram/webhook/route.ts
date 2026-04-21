@@ -5,9 +5,12 @@ import {
   generateAICoachReply,
   isAICoachEnabled,
   EMOTIONAL_ACTION_IDS,
+  STRUCTURED_COACHING_ACTION_IDS,
   shouldUseAICoach,
   detectConversationMode,
 } from "@/lib/ai-coach";
+import { filterActionableInterventions } from "@/lib/intervention-engine";
+import type { InterventionEvent } from "@/lib/intervention-engine";
 import type { CoachIntent } from "@/lib/coach";
 import {
   findActionByLocaleText,
@@ -22,11 +25,13 @@ import {
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
+import type { GuardianSnapshot } from "@/lib/guardian";
 import { deriveManualEventSignals, getTodayManualEvents } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
+import type { ManualEventSignals, ViolationFeed } from "@/lib/rule-engine";
 import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -216,6 +221,57 @@ async function connectTelegramAccount(params: {
   );
 }
 
+function deriveInterventionAlertContext(params: {
+  violationFeed: ViolationFeed;
+  currentState: string;
+  guardian: GuardianSnapshot;
+  manualSignals: ManualEventSignals;
+  tradingGoal: string | null;
+  wantsGoalReminders: boolean;
+}): string | null {
+  const events: InterventionEvent[] = [];
+
+  for (const v of params.violationFeed.warningViolations) {
+    if (v.ruleId === "max_daily_loss" && params.guardian.profile.maxDailyLoss) {
+      const maxLoss = parseFloat(String(params.guardian.profile.maxDailyLoss));
+      const todayPnL = params.guardian.evaluation.todayPnL;
+      const used = Math.abs(Math.min(todayPnL, 0));
+      const remaining = Math.max(0, maxLoss - used);
+      const pctUsed = maxLoss > 0 ? used / maxLoss : 0;
+      events.push({ type: "near_daily_loss_limit", pctUsed, remaining });
+    } else if (v.ruleId === "stop_after_consecutive_losses" && params.guardian.profile.stopAfterConsecutiveLosses) {
+      const streak = Math.max(
+        params.guardian.evaluation.consecutiveLosses,
+        params.manualSignals.consecutiveLosses,
+      );
+      events.push({
+        type: "consecutive_losses_warning",
+        streak,
+        limit: params.guardian.profile.stopAfterConsecutiveLosses,
+      });
+    }
+  }
+
+  const state = params.currentState.toLowerCase();
+  if (state.includes("revenge") || state.includes("tilt") || state.includes("out_of_control")) {
+    events.push({ type: "revenge_trading_signal", traderState: params.currentState });
+  }
+
+  if (events.length === 0) return null;
+
+  const results = filterActionableInterventions(events);
+  if (results.length === 0) return null;
+
+  const top = results[0];
+  if (top.urgency === "low") return null;
+
+  let context = top.coachingPrompt;
+  if (params.wantsGoalReminders && params.tradingGoal && (top.urgency === "high" || top.urgency === "critical")) {
+    context += ` (Their stated goal: "${params.tradingGoal}" — surface it only if it genuinely strengthens this.)`;
+  }
+  return context;
+}
+
 function deriveLogIntent(actionId: string | null, rawText: string): CoachIntent {
   if (actionId) {
     if (actionId === "check-in") return "check_in";
@@ -302,11 +358,11 @@ export async function POST(request: Request) {
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
   const isFreeText = rawText.length > 0 && matchedAction === null;
-  // Pre-decision using only what we know before DB fetches — session context
-  // is only loaded when AI is at least plausible for this message type.
   const mightUseAI =
     isAICoachEnabled() &&
-    (isFreeText || (matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id)));
+    (isFreeText ||
+      (matchedAction !== null &&
+        (EMOTIONAL_ACTION_IDS.has(matchedAction.id) || STRUCTURED_COACHING_ACTION_IDS.has(matchedAction.id))));
 
   const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
@@ -351,19 +407,36 @@ export async function POST(request: Request) {
         }))
     : [];
 
-  const conversationMode = detectConversationMode({
+  // rule-limits uses meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
+  const rawConversationMode = detectConversationMode({
     message: rawText,
     hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
     guardianLocked: guardian.evaluation.lockoutActive,
   });
+  const conversationMode = matchedAction?.id === "rule-limits" ? "meta" : rawConversationMode;
 
   const isCoachingMode = conversationMode === "coaching";
+
+  const wantsGoalReminders = connection.user.coachingPreferences?.wantsGoalReminders ?? true;
+  const wantsToughInterventionWhenTilting = connection.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true;
+
+  // Build intervention alert context for coaching mode — injects urgency-aware coaching prompt
+  const interventionAlertContext = isCoachingMode
+    ? deriveInterventionAlertContext({
+        violationFeed,
+        currentState: String(flags.currentState),
+        guardian,
+        manualSignals: manualEventSignals,
+        tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
+        wantsGoalReminders,
+      })
+    : null;
 
   const aiInput = {
     message: rawText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
     source: "telegram" as const,
-    alertContext: null,
+    alertContext: interventionAlertContext,
     actionId: matchedAction?.id ?? null,
     primaryMarket: connection.user.traderProfile?.primaryMarket ?? null,
     tradingStyle: connection.user.traderProfile?.tradingStyle ?? null,
@@ -407,6 +480,14 @@ export async function POST(request: Request) {
     disciplineBreakPattern: connection.user.mentalProfile?.disciplineBreakPattern ?? null,
     whatHelpsRefocus: connection.user.mentalProfile?.whatHelpsRefocus ?? null,
     reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
+    wantsGoalReminders,
+    wantsToughInterventionWhenTilting,
+    todayTradesCount: guardian.evaluation.todayTradesCount,
+    todayPnL: guardian.evaluation.todayPnL,
+    consecutiveLosses: Math.max(
+      guardian.evaluation.consecutiveLosses,
+      manualEventSignals.consecutiveLosses,
+    ),
     conversationMode,
   };
 
