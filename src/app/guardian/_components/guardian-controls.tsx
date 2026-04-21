@@ -198,11 +198,10 @@ export function GuardianControls({
       >
         <div className="mb-5">
           <h3 className="text-xl font-semibold tracking-[-0.03em] text-stone-950">
-            Protection Rules
+            Enforcement rules
           </h3>
           <p className="mt-2 text-sm leading-6 text-stone-600">
-            Set the limits that define your trading discipline. These rules drive
-            Guardian enforcement every session.
+            The limits Guardian enforces every session. Changes take effect from the next reset.
           </p>
         </div>
 
@@ -448,11 +447,11 @@ export function GuardianControls({
         >
           <div className="mb-5">
             <h3 className="text-xl font-semibold tracking-[-0.03em] text-stone-950">
-              Today Activity
+              Activity override
             </h3>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Set today's activity manually. Guardian evaluates these values until
-              live data is connected.
+              Manually set today's numbers. Guardian uses these values until live
+              broker data is connected.
             </p>
           </div>
 

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
@@ -237,7 +236,12 @@ export default async function DashboardPage() {
     todaySessionState.kind === "READY_TO_TRADE" &&
     todaySessionState.sessionStarted &&
     !todaySessionState.sessionEnded;
-  const showPremarketReadiness = Boolean(premarketReadiness);
+  // Suppress the premarket banner when the session panel already explains the same state
+  // prominently (GUARDIAN_DISABLED and RESET_PENDING each render their own large hero).
+  const showPremarketReadiness =
+    Boolean(premarketReadiness) &&
+    todaySessionState.kind !== "GUARDIAN_DISABLED" &&
+    todaySessionState.kind !== "RESET_PENDING";
   const activityTitle = isSessionEnded ? "Today activity recap" : "Today activity";
   const activityDescription = isSessionEnded
     ? "The sequence that led into the close."
@@ -290,33 +294,35 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Session record */}
-        <div className="grid gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Session record
-          </p>
-          {postSessionReview ? (
-            <div className="grid gap-4">
-              <PostSessionReviewPanel
-                review={postSessionReview}
-                timeZone={displayTimeZone}
-              />
+        {/* Session record — only shown once the session has started or there is activity */}
+        {(mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded) ? (
+          <div className="grid gap-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+              Session record
+            </p>
+            {postSessionReview ? (
+              <div className="grid gap-4">
+                <PostSessionReviewPanel
+                  review={postSessionReview}
+                  timeZone={displayTimeZone}
+                />
+                <TodayActivityTimeline
+                  items={mergedActivityTimeline}
+                  title={activityTitle}
+                  description={activityDescription}
+                  timeZone={displayTimeZone}
+                />
+              </div>
+            ) : (
               <TodayActivityTimeline
                 items={mergedActivityTimeline}
                 title={activityTitle}
                 description={activityDescription}
                 timeZone={displayTimeZone}
               />
-            </div>
-          ) : (
-            <TodayActivityTimeline
-              items={todayActivityTimeline}
-              title={activityTitle}
-              description={activityDescription}
-              timeZone={displayTimeZone}
-            />
-          )}
-        </div>
+            )}
+          </div>
+        ) : null}
 
         {/* Tools & context */}
         <div className="grid gap-4">
@@ -324,7 +330,7 @@ export default async function DashboardPage() {
             Tools &amp; context
           </p>
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Log a trade — most actionable, first */}
+            {/* Log a trade — most actionable, always first */}
             <SectionCard
               title="Log a trade"
               description="Record a trade or session event — feeds Today activity and the post-session review."
@@ -332,29 +338,30 @@ export default async function DashboardPage() {
               <ManualEventForm />
             </SectionCard>
 
-            {/* Guardian — status + link, no today duplicate */}
+            {/* Trader context — mental state signals used by the coaching flow */}
             <SectionCard
-              title="Guardian"
-              description="Rule engine status and session enforcement."
+              title="Trader context"
+              description="Short-term mental state signals used by the coaching flow."
             >
-              <div className="grid gap-4">
-                <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Status
+              <div className="text-sm text-stone-700">
+                {user.traderState?.currentState && user.traderState.currentState !== "NONE" ? (
+                  <p className="font-medium text-stone-950">
+                    {humanizeTraderState(user.traderState.currentState)}
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {guardian.evaluation.guardianActive ? "Active" : "Inactive"}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    {guardian.evaluation.connectionLabel}
-                  </p>
-                </div>
-                <Link
-                  href="/guardian"
-                  className="inline-flex w-fit rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-900"
-                >
-                  Open Guardian
-                </Link>
+                ) : null}
+                <p className={user.traderState?.currentState && user.traderState.currentState !== "NONE" ? "mt-1 text-stone-500" : "text-stone-500"}>
+                  {user.traderState?.stateNotes ?? "No active mental state flagged right now."}
+                </p>
+                {liveStateFlags.cooldownActive ? (
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                      Cooldown active
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </SectionCard>
 
@@ -382,31 +389,6 @@ export default async function DashboardPage() {
                 </dl>
               </SectionCard>
             ) : null}
-
-            {/* Trader context — supporting signals only, de-emphasised */}
-            <SectionCard
-              title="Trader context"
-              description="Short-term mental state signals used by the coaching flow."
-            >
-              <div className="text-sm text-stone-700">
-                <p className="font-medium text-stone-950">
-                  {humanizeTraderState(user.traderState?.currentState ?? "NONE")}
-                </p>
-                <p className="mt-1 text-stone-500">
-                  {user.traderState?.stateNotes ?? "No live state active right now."}
-                </p>
-                {liveStateFlags.cooldownActive ? (
-                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                      Cooldown active
-                    </p>
-                    <p className="mt-1 text-xs text-stone-500">
-                      Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </SectionCard>
           </div>
         </div>
       </div>

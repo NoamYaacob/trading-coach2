@@ -225,8 +225,79 @@ export default async function GuardianPage() {
         <RuleNoticeList notices={guardianNotices} />
 
         <SectionCard
+          title={
+            guardian.evaluation.lockoutActive
+              ? "Why trading is closed"
+              : !guardian.evaluation.guardianActive
+                ? "No active enforcement"
+                : "Active session boundaries"
+          }
+          description={
+            guardian.evaluation.lockoutActive
+              ? "The rule that closed the day, what else hit, and the next move from here."
+              : !guardian.evaluation.guardianActive
+                ? "Guardian is off — rules are not running. Enable Guardian before relying on session limits."
+                : "What is keeping this session open right now."
+          }
+        >
+          <div
+            className={`rounded-[1.5rem] border px-5 py-5 ${
+              guardian.evaluation.lockoutActive
+                ? "border-red-200 bg-red-50 text-red-900"
+                : !guardian.evaluation.guardianActive
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-stone-200 bg-stone-50 text-stone-800"
+            }`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
+              {guardian.evaluation.lockoutActive ? "Why it happened" : "Current read"}
+            </p>
+            <p className="mt-2 text-lg font-semibold">
+              {guardian.evaluation.primaryReasonLabel}
+            </p>
+
+            {additionalTriggeredRuleLabels.length ? (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
+                  Also hit
+                </p>
+                <ul className="mt-2 grid gap-1 text-sm">
+                  {additionalTriggeredRuleLabels.map((ruleLabel) => (
+                    <li key={ruleLabel}>• {ruleLabel}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
+                What to do now
+              </p>
+              <ul className="mt-2 grid gap-1 text-sm">
+                {(guardian.evaluation.actionGuidance.length > 0
+                  ? guardian.evaluation.actionGuidance
+                  : ["No immediate action is required."]).map((actionText) => (
+                  <li key={actionText}>• {actionText}</li>
+                ))}
+              </ul>
+            </div>
+
+            {guardian.profile.resetMode === "MANUAL" ? (
+              <div className="mt-4 grid gap-1 text-sm">
+                <p>Manual reset is required before the day can reopen.</p>
+                <p>
+                  {guardian.evaluation.resetAllowedNow
+                    ? "Reset is available now."
+                    : "Reset is not available yet."}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+
+        <SectionCard
           title="Today snapshot"
-          description="Session state, connection, today’s activity, and the next reset window."
+          description="Live numbers for today’s session."
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
@@ -260,25 +331,8 @@ export default async function GuardianPage() {
                 {brokerIntegration.account.adapterDisplay.label} · {brokerIntegration.account.platformName}
               </p>
               <p className="mt-1 text-sm text-stone-600">
-                {connectionProgression.description}
-              </p>
-              <p className="mt-3 text-sm text-stone-700">
                 {connectionProgression.nextStep}
               </p>
-              <p className="mt-2 text-sm text-stone-600">
-                {brokerIntegration.account.connectionState === "CONNECTED"
-                  ? brokerIntegration.account.externalAccountId
-                    ? `${brokerIntegration.account.connectionLabel} · ${brokerIntegration.account.externalAccountId}`
-                    : brokerIntegration.account.connectionLabel
-                  : brokerIntegration.account.adapterDisplay.connectionMode === "EXTERNAL_STUB"
-                    ? "No live broker connection yet."
-                    : "No connection active."}
-              </p>
-              {plannedCapabilities.length ? (
-                <p className="mt-2 text-sm text-stone-600">
-                  Planned capabilities: {plannedCapabilities.join(", ")}
-                </p>
-              ) : null}
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
@@ -289,14 +343,14 @@ export default async function GuardianPage() {
                 {guardian.evaluation.todayTradesCount} trades
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                P&amp;L {guardian.evaluation.todayPnL} · Consecutive losses{" "}
+                P&amp;L {guardian.evaluation.todayPnL} · Losses in a row{" "}
                 {guardian.evaluation.consecutiveLosses}
               </p>
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Check again
+                Next reset
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
                 {guardian.profile.resetMode === "DAILY"
@@ -309,81 +363,15 @@ export default async function GuardianPage() {
               <p className="mt-2 text-sm text-stone-600">
                 {guardian.evaluation.resetModeLabel}
               </p>
-              <p className="mt-1 text-sm text-stone-600">
-                Last reset:{" "}
-                {formatGuardianDate(
-                  guardian.evaluation.lastResetAt,
-                  displayTimeZone,
-                )}
-              </p>
             </div>
           </div>
         </SectionCard>
 
-        <SectionCard
-          title={guardian.evaluation.lockoutActive ? "Why trading is closed" : "Why the day is still open"}
-          description={
-            guardian.evaluation.lockoutActive
-              ? "The rule that closed the day, anything else that also hit, and the next move from here."
-              : "The key boundary that is keeping the session open right now."
-          }
-        >
-          <div
-            className={`rounded-[1.5rem] border px-5 py-5 ${
-              guardian.evaluation.lockoutActive
-                ? "border-red-200 bg-red-50 text-red-900"
-                : "border-stone-200 bg-stone-50 text-stone-800"
-            }`}
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-              {guardian.evaluation.lockoutActive ? "Why it happened" : "Current read"}
-            </p>
-            <p className="mt-2 text-lg font-semibold">
-              {guardian.evaluation.primaryReasonLabel}
-            </p>
-
-            {additionalTriggeredRuleLabels.length ? (
-              <div className="mt-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                  Also hit
-                </p>
-                <ul className="mt-2 grid gap-1 text-sm">
-                  {additionalTriggeredRuleLabels.map((ruleLabel) => (
-                    <li key={ruleLabel}>• {ruleLabel}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="mt-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                What to do now
-              </p>
-              <ul className="mt-2 grid gap-1 text-sm">
-                {(guardian.evaluation.actionGuidance.length > 0
-                  ? guardian.evaluation.actionGuidance
-                  : ["No immediate lockout action is required."]).map((actionText) => (
-                  <li key={actionText}>• {actionText}</li>
-                ))}
-              </ul>
-            </div>
-
-            {guardian.profile.resetMode === "MANUAL" ? (
-              <div className="mt-4 grid gap-1 text-sm">
-                <p>Manual reset is required before the day can reopen.</p>
-                <p>
-                  {guardian.evaluation.resetAllowedNow
-                    ? "Reset is available now."
-                    : "Reset is not available yet."}
-                </p>
-              </div>
-            ) : null}
-          </div>
-        </SectionCard>
+        <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
 
         <SectionCard
-          title="Rules and settings"
-          description="The limits behind the day, plus the reset schedule."
+          title="Settings"
+          description="Enforcement rules and reset configuration."
         >
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <GuardianControls
@@ -458,8 +446,6 @@ export default async function GuardianPage() {
             </div>
           </div>
         </SectionCard>
-
-        <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
       </div>
     </AppShell>
   );
