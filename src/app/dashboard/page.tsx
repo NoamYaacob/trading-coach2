@@ -265,17 +265,7 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-10">
-        {/* Live enforcement — shown when a live broker account is connected */}
-        {liveEnforcement ? (
-          <div className="grid gap-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-              Live enforcement
-            </p>
-            <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
-          </div>
-        ) : null}
-
-        {/* Session status */}
+        {/* Session status — live enforcement panel when live account connected, manual otherwise */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Session status
@@ -283,14 +273,20 @@ export default async function DashboardPage() {
           {showPremarketReadiness ? (
             <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
           ) : null}
-          <TodaySessionPanel
-            sessionState={todaySessionStateForPanel}
-            additionalTriggeredRulesCount={guardianAdditionalRulesCount}
-            telegramAccess={telegramAccess}
-            telegramBotLink={telegramBotLink}
-            displayTimeZone={displayTimeZone}
-          />
-          <RuleNoticeList notices={dashboardNotices} />
+          {liveEnforcement ? (
+            <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
+          ) : (
+            <>
+              <TodaySessionPanel
+                sessionState={todaySessionStateForPanel}
+                additionalTriggeredRulesCount={guardianAdditionalRulesCount}
+                telegramAccess={telegramAccess}
+                telegramBotLink={telegramBotLink}
+                displayTimeZone={displayTimeZone}
+              />
+              <RuleNoticeList notices={dashboardNotices} />
+            </>
+          )}
         </div>
 
         {/* Risk environment */}
