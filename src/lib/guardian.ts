@@ -393,7 +393,7 @@ async function syncGuardianResetTimezone(
 }
 
 async function ensureGuardianRecords(userId: string) {
-  return ensureGuardianRecordsWithRetries(userId, 1);
+  return ensureGuardianRecordsWithRetries(userId, 3);
 }
 
 async function ensureGuardianRecordsWithRetries(

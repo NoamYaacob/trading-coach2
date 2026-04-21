@@ -1,4 +1,4 @@
-import { GuardianConnectionStatus, GuardianResetMode } from "@prisma/client";
+import { GuardianConnectionStatus, GuardianLockoutReason, GuardianResetMode } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -253,6 +253,20 @@ export async function POST(request: Request) {
             },
           })
         : null,
+      // Pre-create guardianStatus so concurrent getGuardianSnapshot calls after
+      // onboarding never race to INSERT the same row for the first time.
+      prisma.guardianStatus.upsert({
+        where: { userId: currentUser.id },
+        create: {
+          userId: currentUser.id,
+          todayTradesCount: 0,
+          todayPnL: 0,
+          consecutiveLosses: 0,
+          currentLockoutActive: false,
+          lockoutReason: GuardianLockoutReason.NONE,
+        },
+        update: {},
+      }),
       mentalProfile
         ? prisma.mentalProfile.upsert({
             where: { userId: currentUser.id },
