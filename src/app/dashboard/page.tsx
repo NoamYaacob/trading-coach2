@@ -20,6 +20,8 @@ import {
   getTodayGuardianSessionStart,
   type TodaySessionState,
 } from "@/lib/guardian";
+import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
+import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
 import {
@@ -115,12 +117,13 @@ export default async function DashboardPage() {
   });
   const telegramConnected = Boolean(user.telegramConnection);
   const liveStateFlags = deriveShortLivedCoachingFlags(user.traderState);
-  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart] =
+  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart, liveEnforcement] =
     await Promise.all([
       getTodaySessionSummary(currentUser.id),
       getTodaySessionEvents(currentUser.id, undefined, "asc"),
       getGuardianSnapshot(currentUser.id),
       getTodayGuardianSessionStart(currentUser.id),
+      getLiveEnforcementState(currentUser.id),
     ]);
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
@@ -262,6 +265,16 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-10">
+        {/* Live enforcement — shown when a live broker account is connected */}
+        {liveEnforcement ? (
+          <div className="grid gap-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+              Live enforcement
+            </p>
+            <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
+          </div>
+        ) : null}
+
         {/* Session status */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">

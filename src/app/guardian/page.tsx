@@ -9,6 +9,8 @@ import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot, getTodayGuardianSessionStart, deriveTodaySessionState } from "@/lib/guardian";
+import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
+import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
 import {
   buildBrokerIntegrationSnapshot,
   derivePlatformConnectionProgression,
@@ -65,6 +67,7 @@ export default async function GuardianPage() {
     user,
     todayGuardianSessionStart,
     todaySessionEvents,
+    liveEnforcement,
   ] = await Promise.all([
     getGuardianSnapshot(currentUser.id),
     prisma.user.findUnique({
@@ -76,6 +79,7 @@ export default async function GuardianPage() {
     }),
     getTodayGuardianSessionStart(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
+    getLiveEnforcementState(currentUser.id),
   ]);
   const cookieStore = await cookies();
   const displayTimeZone = resolveDisplayTimeZone({
@@ -166,6 +170,12 @@ export default async function GuardianPage() {
       description="Guardian keeps the day clear: open, closed, or waiting for the next reset window."
     >
       <div className="grid gap-6">
+        {/* Live enforcement hero — shown when a live broker is connected */}
+        {liveEnforcement ? (
+          <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
+        ) : null}
+
+        {/* Manual / demo current state — shown as fallback when no live account, or as secondary context */}
         <section
           className={`rounded-[1.9rem] border px-6 py-6 shadow-[0_24px_80px_-50px_rgba(28,25,23,0.45)] ${
             !guardian.evaluation.guardianActive
@@ -184,7 +194,7 @@ export default async function GuardianPage() {
                   : "text-emerald-700"
             }`}
           >
-            Current state
+            {liveEnforcement ? "Manual rules / demo mode" : "Current state"}
           </p>
           <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">
             {!guardian.evaluation.guardianActive
@@ -300,27 +310,48 @@ export default async function GuardianPage() {
 
         <SectionCard
           title="Today snapshot"
-          description="Live numbers for today’s session."
+          description={liveEnforcement ? `Live data from ${liveEnforcement.accountLabel}.` : "Live numbers for today’s session."}
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Today session
+                {liveEnforcement ? "Account status" : "Today session"}
               </p>
-              <p className="mt-2 text-lg font-semibold text-stone-950">
-                {todayGuardianSessionStart?.endedAt
-                  ? "Ended"
-                  : todayGuardianSessionStart
-                    ? "Active"
-                    : "Not started"}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                {todayGuardianSessionStart?.endedAt
-                  ? `Ended ${formatGuardianDate(todayGuardianSessionStart.endedAt, displayTimeZone)}`
-                  : todayGuardianSessionStart
-                    ? `Started ${formatGuardianDate(todayGuardianSessionStart.startedAt, displayTimeZone)}`
-                    : "No session opened for today yet."}
-              </p>
+              {liveEnforcement ? (
+                <>
+                  <p className="mt-2 text-lg font-semibold text-stone-950">
+                    {liveEnforcement.cooldownActive
+                      ? "Cooldown"
+                      : liveEnforcement.riskState === "STOPPED"
+                        ? "Locked"
+                        : liveEnforcement.riskState === "WARNING"
+                          ? "Warning"
+                          : "Live"}
+                  </p>
+                  <p className="mt-2 text-sm text-stone-600">
+                    {liveEnforcement.connectedAt
+                      ? `Connected ${formatGuardianDate(liveEnforcement.connectedAt, displayTimeZone)}`
+                      : "Connected live"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-lg font-semibold text-stone-950">
+                    {todayGuardianSessionStart?.endedAt
+                      ? "Ended"
+                      : todayGuardianSessionStart
+                        ? "Active"
+                        : "Not started"}
+                  </p>
+                  <p className="mt-2 text-sm text-stone-600">
+                    {todayGuardianSessionStart?.endedAt
+                      ? `Ended ${formatGuardianDate(todayGuardianSessionStart.endedAt, displayTimeZone)}`
+                      : todayGuardianSessionStart
+                        ? `Started ${formatGuardianDate(todayGuardianSessionStart.startedAt, displayTimeZone)}`
+                        : "No session opened for today yet."}
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
@@ -328,14 +359,16 @@ export default async function GuardianPage() {
                 Connection
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
-                {connectionProgression.label}
+                {liveEnforcement ? "Connected live" : connectionProgression.label}
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                {brokerIntegration.account.adapterDisplay.label} · {brokerIntegration.account.platformName}
+                {liveEnforcement
+                  ? liveEnforcement.platform.charAt(0).toUpperCase() + liveEnforcement.platform.slice(1)
+                  : `${brokerIntegration.account.adapterDisplay.label} · ${brokerIntegration.account.platformName}`}
               </p>
-              <p className="mt-1 text-sm text-stone-600">
-                {connectionProgression.nextStep}
-              </p>
+              {!liveEnforcement ? (
+                <p className="mt-1 text-sm text-stone-600">{connectionProgression.nextStep}</p>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
@@ -343,11 +376,14 @@ export default async function GuardianPage() {
                 Today activity
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
-                {guardian.evaluation.todayTradesCount} trades
+                {liveEnforcement
+                  ? `${liveEnforcement.tradesCount} trades`
+                  : `${guardian.evaluation.todayTradesCount} trades`}
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                P&amp;L {guardian.evaluation.todayPnL} · Losses in a row{" "}
-                {guardian.evaluation.consecutiveLosses}
+                {liveEnforcement
+                  ? `P&L ${liveEnforcement.dailyPnl >= 0 ? "+" : ""}${liveEnforcement.dailyPnl.toFixed(2)} · Losses in a row ${liveEnforcement.consecutiveLosses}`
+                  : `P&L ${guardian.evaluation.todayPnL} · Losses in a row ${guardian.evaluation.consecutiveLosses}`}
               </p>
             </div>
 
