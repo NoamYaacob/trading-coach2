@@ -104,6 +104,9 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
               tradingGoal: true,
               groundingReminder: true,
               preferredAddress: true,
+              disciplineBreakPattern: true,
+              whatHelpsRefocus: true,
+              reminderAnchors: true,
             },
           },
           coachingPreferences: true,
@@ -401,6 +404,9 @@ export async function POST(request: Request) {
     interruptionStyle: connection.user.mentalProfile?.interruptionStyle ?? null,
     responseStyle: connection.user.mentalProfile?.responseStyle ?? null,
     preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
+    disciplineBreakPattern: connection.user.mentalProfile?.disciplineBreakPattern ?? null,
+    whatHelpsRefocus: connection.user.mentalProfile?.whatHelpsRefocus ?? null,
+    reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
     conversationMode,
   };
 

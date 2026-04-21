@@ -36,6 +36,9 @@ export async function AppShell({
               <Link href="/guardian" className="rounded-full px-4 py-2 transition hover:text-stone-950">
                 Guardian
               </Link>
+              <Link href="/coaching" className="rounded-full px-4 py-2 transition hover:text-stone-950">
+                Coaching
+              </Link>
               <Link href="/accounts" className="rounded-full px-4 py-2 transition hover:text-stone-950">
                 Accounts
               </Link>

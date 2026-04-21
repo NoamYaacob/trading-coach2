@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import type { ManualEventSignals } from "@/lib/rule-engine";
+import { getToneVoiceGuidance, normalizeToneId } from "@/lib/coaching-tones";
 import { generateVoiceReply } from "@/lib/voice-writer";
 import type { CoachingIntent, PersonalCue, VoiceWriterInput } from "@/lib/voice-writer";
 
@@ -112,6 +113,9 @@ export type AICoachInput = {
   interruptionStyle: string | null;
   responseStyle: string | null;
   preferredAddress: string | null;
+  disciplineBreakPattern: string | null;
+  whatHelpsRefocus: string | null;
+  reminderAnchors: string[];
   conversationMode: ConversationMode;
 };
 
@@ -211,8 +215,9 @@ function buildSystemPrompt(input: AICoachInput): string {
   const mode = input.conversationMode;
   const isCoaching = mode === "coaching";
   const isMeta = mode === "meta";
-  const isDirect = input.coachingTone?.toLowerCase().includes("direct") ?? false;
-  const isSupportive = input.coachingTone?.toLowerCase().includes("support") ?? false;
+  const toneId = normalizeToneId(input.coachingTone);
+  const isDirect = toneId === "direct" || toneId === "strict" || toneId === "tough_love";
+  const isSupportive = toneId === "calm";
 
   const replyLengthLine = !isCoaching
     ? "- 1-2 sentences."
@@ -277,6 +282,15 @@ function buildSystemPrompt(input: AICoachInput): string {
     lines.push("");
   }
 
+  // Coaching tone voice guidance — coaching only
+  if (isCoaching) {
+    const toneGuidance = getToneVoiceGuidance(input.coachingTone);
+    if (toneGuidance) {
+      lines.push(`COACHING TONE (trader's preference): ${toneGuidance}`);
+      lines.push("");
+    }
+  }
+
   // Interruption style — coaching only
   if (isCoaching && input.interruptionStyle) {
     const interruptionGuides: Record<string, string> = {
@@ -312,6 +326,9 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (input.tradingWhy) personalParts.push(`Why they trade: ${input.tradingWhy}`);
   if (input.tradingGoal) personalParts.push(`Building toward: ${input.tradingGoal}`);
   if (input.groundingReminder) personalParts.push(`What grounds them: ${input.groundingReminder}`);
+  if (input.reminderAnchors.length > 0) {
+    personalParts.push(`Personal anchors: ${input.reminderAnchors.join(" / ")}`);
+  }
 
   if (personalParts.length > 0 && (isCoaching || isMeta)) {
     lines.push(isCoaching ? "PERSONAL COACHING MEMORY:" : "WHAT YOU KNOW:");
@@ -321,7 +338,8 @@ function buildSystemPrompt(input: AICoachInput): string {
       lines.push("  • Why they trade → when they question purpose or feel lost");
       lines.push("  • Their goal → as a forward anchor after a loss or when they reset");
       lines.push("  • Grounding reminder → when tilted, revenge state, or overwhelmed");
-      lines.push("Do not quote verbatim. One line max. Never preachy.");
+      lines.push("  • Personal anchors → can echo verbatim, once, when it fits the moment");
+      lines.push("Do not quote verbatim (except anchors). One line max. Never preachy.");
     }
     lines.push("");
   }
@@ -361,12 +379,17 @@ function buildSystemPrompt(input: AICoachInput): string {
     if (input.primaryChallenge) patternParts.push(`Main challenge (their own words): ${input.primaryChallenge}`);
     if (input.tiltTrigger) patternParts.push(`What triggers their tilt: ${input.tiltTrigger}`);
     if (input.tiltThought) patternParts.push(`The thought that runs when they spiral: "${input.tiltThought}"`);
+    if (input.disciplineBreakPattern) patternParts.push(`How their discipline breaks: ${input.disciplineBreakPattern}`);
+    if (input.whatHelpsRefocus) patternParts.push(`What helps them refocus: ${input.whatHelpsRefocus}`);
 
     if (patternParts.length > 0) {
       lines.push("KNOWN PATTERNS (trader told you this about themselves):");
       lines.push(...patternParts.map((p) => `- ${p}`));
       lines.push("When the moment matches one of these, name it accurately — not as a judgment.");
       lines.push("They know it about themselves. Reflect it, don't explain it.");
+      if (input.whatHelpsRefocus) {
+        lines.push("If they're stuck or in a bad state, you can suggest what they said helps them refocus — once, without lecturing.");
+      }
       lines.push("");
     }
   }
