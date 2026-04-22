@@ -5,15 +5,15 @@ export type BotLocale = {
   keyboard: {
     checkIn: string;
     fomo: string;
-    revenge: string;
-    justLost: string;
-    lostTwice: string;
     angry: string;
     outOfControl: string;
-    calmingDown: string;
+    dragged: string;
+    revenge: string;
+    stopMe: string;
     backInControl: string;
     daySummary: string;
     ruleLimits: string;
+    remaining: string;
   };
   system: {
     invalidLink: string;

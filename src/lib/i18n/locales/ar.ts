@@ -4,15 +4,15 @@ export const ar: BotLocale = {
   keyboard: {
     checkIn: "تسجيل الوصول",
     fomo: "لديّ FOMO",
-    revenge: "أريد استرداد خسارتي",
-    justLost: "خسرت للتو",
-    lostTwice: "خسرت مرتين",
     angry: "أنا غاضب",
     outOfControl: "فقدت السيطرة",
-    calmingDown: "أهدأ الآن",
+    dragged: "انجررت للتداول",
+    revenge: "أريد استرداد خسارتي",
+    stopMe: "أوقفني",
     backInControl: "استعدت السيطرة",
     daySummary: "ملخص اليوم",
     ruleLimits: "حدودي اليوم",
+    remaining: "كم تبقى لي اليوم؟",
   },
   system: {
     invalidLink:

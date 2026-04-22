@@ -276,7 +276,7 @@ function deriveLogIntent(actionId: string | null, rawText: string): CoachIntent 
   if (actionId) {
     if (actionId === "check-in") return "check_in";
     if (actionId === "day-summary") return "day_summary";
-    if (actionId === "rule-limits") return "rule_question";
+    if (actionId === "rule-limits" || actionId === "remaining") return "rule_question";
     return "emotional_distress";
   }
   if (!rawText) return "check_in";
@@ -436,21 +436,24 @@ export async function POST(request: Request) {
         }))
     : [];
 
-  // rule-limits uses meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
+  // rule-limits and remaining use meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
   const rawConversationMode = detectConversationMode({
     message: effectiveText,
     hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
     guardianLocked: guardian.evaluation.lockoutActive,
   });
-  const conversationMode = matchedAction?.id === "rule-limits" ? "meta" : rawConversationMode;
+  const isMetaAction = matchedAction?.id === "rule-limits" || matchedAction?.id === "remaining";
+  const conversationMode = isMetaAction ? "meta" : rawConversationMode;
 
   const isCoachingMode = conversationMode === "coaching";
 
   const wantsGoalReminders = connection.user.coachingPreferences?.wantsGoalReminders ?? true;
   const wantsToughInterventionWhenTilting = connection.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true;
 
-  // Build intervention alert context for coaching mode — injects urgency-aware coaching prompt
-  const interventionAlertContext = isCoachingMode
+  // Build intervention alert context only for free-text coaching messages.
+  // Button presses already carry clear intent — stacking English context on top
+  // risks language leakage and creates duplicate/contradictory signals.
+  const interventionAlertContext = isCoachingMode && isFreeText
     ? deriveInterventionAlertContext({
         violationFeed,
         currentState: String(flags.currentState),
@@ -534,10 +537,10 @@ export async function POST(request: Request) {
   const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
     [TraderCurrentState.FOMO]: "fomo",
     [TraderCurrentState.REVENGE]: "revenge",
-    [TraderCurrentState.JUST_TOOK_LOSS]: "just-lost",
-    [TraderCurrentState.JUST_TOOK_TWO_LOSSES]: "lost-twice",
+    [TraderCurrentState.JUST_TOOK_LOSS]: "angry",
+    [TraderCurrentState.JUST_TOOK_TWO_LOSSES]: "out-of-control",
     [TraderCurrentState.TILTED]: "out-of-control",
-    [TraderCurrentState.RESETTING]: "calming-down",
+    [TraderCurrentState.RESETTING]: "stop-me",
     [TraderCurrentState.CALM]: "back-in-control",
   };
   const stateActionId = stateUpdate?.nextState

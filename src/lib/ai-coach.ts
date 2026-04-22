@@ -541,7 +541,7 @@ function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
   // Explicit structured action IDs override state-derived intents
   if (input.actionId === "check-in") return "pre_session_checkin";
   if (input.actionId === "day-summary") return "end_of_day_review";
-  if (input.actionId === "rule-limits") return "rule_limits_summary";
+  if (input.actionId === "rule-limits" || input.actionId === "remaining") return "rule_limits_summary";
 
   if (input.guardianLocked) return "account_locked";
   if (input.cooldownActive) return "cooldown_active";
@@ -706,12 +706,11 @@ export function isAICoachEnabled(): boolean {
 // Emotional quick actions — state-updating, conversationMode → "coaching"
 export const EMOTIONAL_ACTION_IDS = new Set([
   "fomo",
-  "revenge",
-  "just-lost",
-  "lost-twice",
   "angry",
   "out-of-control",
-  "calming-down",
+  "dragged",
+  "revenge",
+  "stop-me",
   "back-in-control",
   // Structured flows that want coaching mode
   "check-in",
@@ -721,6 +720,7 @@ export const EMOTIONAL_ACTION_IDS = new Set([
 // Structured flows that need AI but use "meta" mode (factual, not emotional)
 export const STRUCTURED_COACHING_ACTION_IDS = new Set([
   "rule-limits",
+  "remaining",
 ]);
 
 export function shouldUseAICoach(params: {

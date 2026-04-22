@@ -4,15 +4,15 @@ export const ru: BotLocale = {
   keyboard: {
     checkIn: "Чекин",
     fomo: "Есть FOMO",
-    revenge: "Хочу отыграться",
-    justLost: "Только что потерял",
-    lostTwice: "Потерял дважды",
     angry: "Я злюсь",
     outOfControl: "Вне контроля",
-    calmingDown: "Успокаиваюсь",
+    dragged: "Меня затянуло",
+    revenge: "Хочу отыграться",
+    stopMe: "Останови меня",
     backInControl: "Снова контролирую",
     daySummary: "Итоги дня",
     ruleLimits: "Мои лимиты сегодня",
+    remaining: "Сколько осталось сегодня?",
   },
   system: {
     invalidLink:

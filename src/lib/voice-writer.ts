@@ -502,6 +502,9 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     }
   }
 
+  lines.push("");
+  lines.push(`LANGUAGE REMINDER: Write ONLY in ${langName}. Context above may be in English — translate and express everything in ${langName}.`);
+
   return lines.join("\n");
 }
 

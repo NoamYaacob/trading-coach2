@@ -34,30 +34,6 @@ export const coachQuickActions: CoachQuickAction[] = [
     updatesState: true,
   },
   {
-    id: "revenge",
-    label: "אני רוצה להחזיר הפסד",
-    message: "אני רוצה להחזיר הפסד",
-    group: "distress",
-    meaning: "Revenge-loss recovery impulse",
-    updatesState: true,
-  },
-  {
-    id: "just-lost",
-    label: "הפסדתי עכשיו",
-    message: "הפסדתי עכשיו",
-    group: "distress",
-    meaning: "Fresh loss reported",
-    updatesState: true,
-  },
-  {
-    id: "lost-twice",
-    label: "הפסדתי פעמיים",
-    message: "הפסדתי פעמיים",
-    group: "distress",
-    meaning: "Two-loss streak / likely stop-rule event",
-    updatesState: true,
-  },
-  {
     id: "angry",
     label: "אני בעצבים",
     message: "אני בעצבים",
@@ -74,11 +50,27 @@ export const coachQuickActions: CoachQuickAction[] = [
     updatesState: true,
   },
   {
-    id: "calming-down",
-    label: "נרגעתי",
-    message: "נרגעתי",
+    id: "dragged",
+    label: "נגררתי",
+    message: "נגררתי",
+    group: "distress",
+    meaning: "Got pulled into an impulsive trade without a setup",
+    updatesState: true,
+  },
+  {
+    id: "revenge",
+    label: "אני רוצה להחזיר הפסד",
+    message: "אני רוצה להחזיר הפסד",
+    group: "distress",
+    meaning: "Revenge-loss recovery impulse",
+    updatesState: true,
+  },
+  {
+    id: "stop-me",
+    label: "עצור אותי",
+    message: "עצור אותי",
     group: "reset",
-    meaning: "Resetting / decompression",
+    meaning: "Requesting a hard stop before doing something wrong",
     updatesState: true,
   },
   {
@@ -103,6 +95,14 @@ export const coachQuickActions: CoachQuickAction[] = [
     message: "מה המקסימום שלי היום?",
     group: "rules",
     meaning: "Risk-rule boundary reminder",
+    updatesState: false,
+  },
+  {
+    id: "remaining",
+    label: "כמה נשאר לי היום?",
+    message: "כמה נשאר לי היום?",
+    group: "rules",
+    meaning: "Current usage vs. limits — how much room is left",
     updatesState: false,
   },
 ];
@@ -141,25 +141,25 @@ export function getTelegramQuickActionKeyboard(locale: BotLocale) {
   const k = locale.keyboard;
   return [
     [{ text: k.checkIn }],
-    [{ text: k.fomo }, { text: k.revenge }, { text: k.justLost }],
-    [{ text: k.lostTwice }, { text: k.angry }, { text: k.outOfControl }],
-    [{ text: k.calmingDown }, { text: k.backInControl }],
-    [{ text: k.daySummary }, { text: k.ruleLimits }],
+    [{ text: k.fomo }, { text: k.angry }, { text: k.outOfControl }],
+    [{ text: k.dragged }, { text: k.revenge }],
+    [{ text: k.stopMe }, { text: k.backInControl }, { text: k.daySummary }],
+    [{ text: k.ruleLimits }, { text: k.remaining }],
   ];
 }
 
 const KEYBOARD_KEY_TO_ACTION_ID: Record<keyof BotLocale["keyboard"], string> = {
   checkIn: "check-in",
   fomo: "fomo",
-  revenge: "revenge",
-  justLost: "just-lost",
-  lostTwice: "lost-twice",
   angry: "angry",
   outOfControl: "out-of-control",
-  calmingDown: "calming-down",
+  dragged: "dragged",
+  revenge: "revenge",
+  stopMe: "stop-me",
   backInControl: "back-in-control",
   daySummary: "day-summary",
   ruleLimits: "rule-limits",
+  remaining: "remaining",
 };
 
 /**
@@ -182,15 +182,15 @@ export function findActionByLocaleText(
 const ACTION_LOCALE_REPLY: Record<string, (l: BotLocale) => string> = {
   "check-in": (l) => l.prompts.checkIn,
   "fomo": (l) => l.coaching.fomo,
-  "revenge": (l) => l.coaching.revenge,
-  "just-lost": (l) => l.coaching.loss,
-  "lost-twice": (l) => l.coaching.loss,
   "angry": (l) => l.coaching.anger,
   "out-of-control": (l) => l.coaching.anger,
-  "calming-down": (l) => l.coaching.discipline,
+  "dragged": (l) => l.coaching.fomo,
+  "revenge": (l) => l.coaching.revenge,
+  "stop-me": (l) => l.coaching.discipline,
   "back-in-control": (l) => l.coaching.discipline,
   "day-summary": (l) => l.prompts.review,
   "rule-limits": (l) => l.coaching.warning,
+  "remaining": (l) => l.coaching.warning,
 };
 
 export function getLocaleReplyForQuickAction(

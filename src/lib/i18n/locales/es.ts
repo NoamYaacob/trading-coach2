@@ -4,15 +4,15 @@ export const es: BotLocale = {
   keyboard: {
     checkIn: "Check-in",
     fomo: "Tengo FOMO",
-    revenge: "Quiero recuperar",
-    justLost: "Acabo de perder",
-    lostTwice: "Perdí dos veces",
     angry: "Estoy enojado",
     outOfControl: "Sin control",
-    calmingDown: "Me estoy calmando",
+    dragged: "Me dejé llevar",
+    revenge: "Quiero recuperar",
+    stopMe: "Para me",
     backInControl: "Recuperé el control",
     daySummary: "Resumen del día",
     ruleLimits: "Mis límites hoy",
+    remaining: "¿Cuánto me queda hoy?",
   },
   system: {
     invalidLink:
