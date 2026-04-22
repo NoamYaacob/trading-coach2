@@ -253,18 +253,32 @@ function buildSystemPrompt(input: AICoachInput): string {
     `CONVERSATION MODE: ${mode.toUpperCase()}`,
     modeInstruction[mode],
     "",
-    "REPLY STYLE:",
-    "- 1-2 sentences. If one does it, use one.",
-    "- Start with the answer. No warm-up.",
-    "",
-    "NEVER:",
-    '- Open with "As your coach", "I understand that", "It sounds like".',
-    "- Use bullet points, lists, or headers.",
-    "- Invent facts not explicitly in this prompt.",
-    '- Sound like a chatbot or assistant.',
-    "- Set up the answer — just give it.",
-    "",
   ];
+
+  if (isMeta) {
+    lines.push("REPLY STYLE:");
+    lines.push("- Numbers and facts only. 1-2 short lines. Nothing else.");
+    lines.push("- Start with the number or answer. Stop when it's stated.");
+    lines.push("");
+    lines.push("NEVER:");
+    lines.push("- End with a question of any kind.");
+    lines.push("- Add coaching, context, framing, or encouragement.");
+    lines.push("- Invent facts not in FACTS below.");
+    lines.push('- Open with "As your coach", "It sounds like", or any warm-up.');
+    lines.push("");
+  } else {
+    lines.push("REPLY STYLE:");
+    lines.push("- 1-2 sentences. If one does it, use one.");
+    lines.push("- Start with the answer. No warm-up.");
+    lines.push("");
+    lines.push("NEVER:");
+    lines.push('- Open with "As your coach", "I understand that", "It sounds like".');
+    lines.push("- Use bullet points, lists, or headers.");
+    lines.push("- Invent facts not explicitly in this prompt.");
+    lines.push('- Sound like a chatbot or assistant.');
+    lines.push("- Set up the answer — just give it.");
+    lines.push("");
+  }
 
   if (isCoaching) {
     lines.push("HOW TO RESPOND:");
@@ -523,10 +537,10 @@ function buildSystemPrompt(input: AICoachInput): string {
   }
 
   // Recent session for continuity + anti-repetition.
-  // Casual: omit entirely — no stale trading context should bleed through.
-  // Clarification/meta: include text only, no state labels.
+  // Casual/meta: omit entirely — no stale trading context should bleed through.
+  // Clarification: include text only, no state labels.
   // Coaching: include with state labels for full context.
-  if (mode !== "casual" && input.recentMessages.length > 0) {
+  if (mode !== "casual" && mode !== "meta" && input.recentMessages.length > 0) {
     lines.push("");
     lines.push("Recent session (oldest first) — do not repeat what was already addressed:");
     for (const msg of input.recentMessages) {
