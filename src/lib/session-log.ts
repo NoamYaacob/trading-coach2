@@ -114,17 +114,20 @@ export async function getRecentCoachingExchanges(
   const events = await prisma.dailySessionEvent.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    take: limit * 3,
+    take: limit * 4,
     select: { message: true, metadataJson: true, traderState: true, createdAt: true },
   });
 
   const result: CoachingExchange[] = [];
+  let lastUserMessage = "";
+
   for (const event of events) {
     const meta = event.metadataJson as Record<string, unknown> | null;
-    const reply = typeof meta?.coachReply === "string" && meta.coachReply.length > 0
-      ? meta.coachReply
-      : null;
-    if (!reply) continue;
+    const reply = typeof meta?.coachReply === "string" ? meta.coachReply.trim() : "";
+    // Skip empty, very short (locale fallback strings), or identical consecutive messages
+    if (reply.length < 20) continue;
+    if (event.message === lastUserMessage) continue;
+    lastUserMessage = event.message;
     result.push({
       userMessage: event.message,
       coachReply: reply,

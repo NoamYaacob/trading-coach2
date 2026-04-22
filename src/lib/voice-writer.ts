@@ -498,29 +498,37 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("");
   }
 
-  if (input.recentMessages.length > 0) {
+  if (input.recentCoachingExchanges.length > 0) {
+    lines.push("YOUR RECENT EXCHANGES WITH THIS TRADER (oldest first):");
+    for (const exchange of input.recentCoachingExchanges) {
+      const stateLabel = exchange.traderState !== "NONE" ? ` [${exchange.traderState}]` : "";
+      lines.push(`  Trader${stateLabel}: ${exchange.userMessage}`);
+      lines.push(`  You:    ${exchange.coachReply}`);
+      lines.push("");
+    }
+    lines.push("COACHING CONTINUITY — read the history before writing:");
+    lines.push("You are continuing a conversation. Not starting from zero.");
+    lines.push("");
+    lines.push("ANTI-REPETITION:");
+    lines.push("- Do NOT open with the same first word or phrase used in any reply above.");
+    lines.push("- Do NOT repeat the same emotional framing, metaphor, or image.");
+    lines.push("- Do NOT repeat the same coaching move — if you said 'step away' or 'breathe', that move is spent. Find a different angle.");
+    lines.push("- If the last reply ended with a question, lead with a statement. If it ended with a statement, consider a question.");
+    lines.push("");
+    lines.push("EMOTIONAL CONTINUITY:");
+    lines.push("- You already engaged this emotional moment. Do not re-explain or re-diagnose it.");
+    lines.push("- If the trader's state hasn't changed since the last exchange, they need a different approach — not the same coaching direction again.");
+    lines.push("- If they appear to be de-escalating, acknowledge forward movement — don't re-escalate.");
+    lines.push("- If you already gave a grounding instruction and they're still here, it didn't land. Try something different.");
+    lines.push("- Build on the last moment instead of restarting from the top.");
+    lines.push("");
+  } else if (input.recentMessages.length > 0) {
+    // Fallback when no full exchanges available yet — user messages only
     lines.push("Recent session (do not repeat what was already addressed):");
     for (const msg of input.recentMessages) {
       const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";
       lines.push(`- ${msg.message}${stateLabel}`);
     }
-    lines.push("");
-  }
-
-  if (input.recentCoachingExchanges.length > 0) {
-    lines.push("RECENT CONVERSATION HISTORY (oldest first):");
-    for (const exchange of input.recentCoachingExchanges) {
-      lines.push(`  Trader: ${exchange.userMessage}`);
-      lines.push(`  Coach:  ${exchange.coachReply}`);
-    }
-    lines.push("");
-    lines.push("ANTI-REPETITION RULES (read the history above before writing):");
-    lines.push("- Do NOT reuse the same opening word, phrase, or sentence structure as any recent coach reply.");
-    lines.push("- Do NOT repeat the same metaphor, analogy, or emotional framing used recently.");
-    lines.push("- If the last reply used a question, lead with a statement this time. If it used a statement, consider a question.");
-    lines.push("- If the last reply was a hard stop, allow more space this time. If it was spacious, be more direct.");
-    lines.push("- Vary sentence rhythm naturally. Same coaching identity — different expression.");
-    lines.push("- The goal is not novelty. The goal is to not sound templated.");
     lines.push("");
   }
 
