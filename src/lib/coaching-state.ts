@@ -324,27 +324,28 @@ export function buildCoachingStateBlock(state: ShortTermCoachingState): string[]
       lines.push("You are in CONTAIN mode. The trader is still in acute distress.");
       if (failedGrounding && state.sameStateRepeated) {
         lines.push(
-          "  → Grounding already tried and failed. Switch move category completely.",
+          "  → Grounding already tried and did not move it. Switch your approach entirely.",
         );
         lines.push(
-          "  → Options: name the consequence directly, use a sharp reframe, or ask one specific question that breaks the loop.",
+          "  → Try: a reframe that names the real risk plainly, or one specific question that creates a pause.",
         );
       } else if (failedGrounding) {
         lines.push(
-          "  → Grounding already used. Try a sharper interrupt or name what is happening plainly.",
+          "  → Grounding already used. Try a different angle — a reframe, a naming, or a short question.",
         );
       } else {
-        lines.push("  → Physical anchor or sharp stop. Direct and short.");
+        lines.push("  → Brief human acknowledgment + one steady reframe. Warm-firm, not harsh.");
+        lines.push("  → Do NOT open with an isolated command. Sound steady, not alarmed.");
       }
-      lines.push("  → No abstract questions. No teaching. Interrupt the spiral.");
+      lines.push("  → Lower the emotional temperature. No stacking warnings. One move, cleanly.");
       break;
 
     case "unstable":
       lines.push("You are in HOLD mode. Trader is in distress but not fully spiraling.");
-      lines.push("  → Acknowledge briefly. One concrete anchor or one short question.");
-      lines.push("  → No lectures. Not yet the moment for reflection or planning.");
+      lines.push("  → Acknowledge briefly, then one stabilizing reframe or small anchor.");
+      lines.push("  → Your tone is calmer than their message — lead them down, not sideways.");
       if (state.arc === "escalating") {
-        lines.push("  → Arc is escalating — move toward containment, not expansion.");
+        lines.push("  → Arc is escalating — shift toward more containment, not more questions.");
       }
       break;
 

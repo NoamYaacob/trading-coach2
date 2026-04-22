@@ -73,12 +73,12 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Acknowledge the pull without judging it — the move was real, the feeling makes sense. Redirect clearly: this isn't their setup. Give one anchor: the next opportunity exists and is coming. Optional: one settling question that helps them wait rather than chase.",
   },
   stop_revenge: {
-    situation: "The trader just took a loss and wants to immediately trade to recover it. The urge to 'fix it now' feels urgent.",
-    goal: "Name what's really at stake: trading from this state doesn't fix the loss, it risks making it worse. Say this without shame — the urge is completely natural, but acting on it right now is the danger. Give one clear protective step: stop here. No lecture, no negotiation, no punishment.",
+    situation: "The trader just took a loss and wants to immediately trade to recover it. The urge feels urgent and real.",
+    goal: "Acknowledge the pull briefly — it is natural and makes sense. Then name the real danger: acting on this urge now deepens the loss, it does not fix it. Give one protective frame: step back from this impulse — not forever, just for this moment. Sound like you are with them, protecting them. No scolding, no negotiation, no lectures.",
   },
   ground_tilt: {
-    situation: "The trader is overwhelmed, out of control, or spiraling — too flooded to think clearly right now.",
-    goal: "Acknowledge briefly that this is a hard moment. Give one concrete, grounding action to take right now. Name what they are protecting by stopping: the ability to come back and make real decisions. The goal right now is not the next trade — it is returning to a state where decisions are possible.",
+    situation: "The trader is overwhelmed, out of control, or spiraling — too flooded to think clearly.",
+    goal: "Acknowledge briefly that this is a hard moment — no drama, just meet them where they are. Give one small grounding thought or action. Name what they are protecting by pausing: the ability to come back and make real decisions. Your voice is steady, not alarmed. You are steady for them, not scared for them.",
   },
   acknowledge_loss: {
     situation: "The trader just took a loss. The feeling is immediate and real.",
@@ -109,8 +109,8 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Name the limit plainly. One sentence. Stop there.",
   },
   cooldown_active: {
-    situation: "The trader is in a required cooldown period — a self-set rule to step away.",
-    goal: "Confirm the pause clearly and warmly. The cooldown is there for exactly this moment: to prevent the next bad decision. Name it as protection, not punishment. Brief, firm, containing — stepping away is right.",
+    situation: "The trader is in a required cooldown — a limit they set for themselves to step away from the screen.",
+    goal: "Confirm the pause warmly: 'I'm with you — we stop here.' Say it like a person, not a system. Name the pause as protection: this is the rule they set for exactly this kind of moment. Make them feel held, not managed. Brief, human, containing — not a system status update.",
   },
   news_warning: {
     situation: "An economic news event is approaching — the pre-news warning window is active.",
@@ -413,6 +413,14 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
       lines.push("- Make them feel: seen, steadier, protected, redirected — not cornered or judged.");
       lines.push("- The tone is calm + firm: you are interrupting, not punishing.");
       lines.push("");
+      lines.push("RESPONSE ARC — move through this naturally in one flowing message, not as steps:");
+      lines.push("  1. One brief phrase that meets them where they are (acknowledgment, not evaluation)");
+      lines.push("  2. Name what is actually happening — calmly, no drama");
+      lines.push("  3. Reframe the real risk or name what can still be protected");
+      lines.push("  4. One small, concrete, safe next move");
+      lines.push("  5. Optional: one regulatory question that moves them forward");
+      lines.push("The reply should feel like one steady human voice, not a numbered checklist.");
+      lines.push("");
     }
 
     if (input.constraintMessage) {
@@ -475,7 +483,12 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
 
   lines.push("REPLY STYLE:");
   lines.push(replyLengthLine);
-  lines.push("- Lead with the action or the fact. Nothing before it.");
+  if (isDistressMode) {
+    lines.push("- Lead with a brief acknowledgment or anchoring thought — meet them first, direct them second.");
+    lines.push("- Then the reframe or protective anchor. Then the next step if it fits.");
+  } else {
+    lines.push("- Lead with the action or the fact. Nothing before it.");
+  }
   lines.push("");
 
   if (isStopMode) {
@@ -497,15 +510,22 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
     lines.push("- Repeat an idea already made in recent messages.");
     if (isDistressMode) {
+      lines.push("- Open with a standalone command: starting with 'עצור' / 'תנשום' / 'צא' alone is not coaching — it's a command.");
+      lines.push("- Label the trader's state dramatically: ('אתה בקוללאשן' / 'אתה בתילט' / 'אתה לא תפקודי').");
+      lines.push("- Use absolute language: ('לעולם' / 'בשום אופן' / 'אסור לך בשום מקרה').");
+      lines.push("- Stack multiple warnings or dangers in a single message — one reframe is enough.");
+      lines.push("- Sound scared or alarmed for them — your voice is steady even when theirs isn't.");
       lines.push("- Sound disappointed, punitive, cold, or like a system alert.");
       lines.push("- Echo or amplify the trader's self-critical inner voice.");
-      lines.push("- Lecture about what they did wrong or why the feeling is bad — they know.");
-      lines.push('- Give only clipped commands with no human context ("עצור." / "תנשום." alone is not enough).');
+      lines.push("- Lecture about what they did wrong — they know, they asked for help.");
     }
     lines.push("");
   }
 
-  if (input.interruptionStyle) {
+  // Interruption and response style preferences are suppressed for distress mode.
+  // Those preferences were set during calm onboarding — in acute distress the product
+  // standard (acknowledging, 2-3 sentence, containing) overrides individual preference.
+  if (!isDistressMode && input.interruptionStyle) {
     const interruptionGuides: Record<string, string> = {
       "Gentle pause": "INTERRUPTION STYLE: Soft, non-confrontational — like a hand on the shoulder. Pause, don't jolt.",
       "Pattern interrupt": "INTERRUPTION STYLE: Break the pattern with contrast or surprise. Jarring enough to shift attention, not harsh.",
@@ -519,7 +539,7 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     }
   }
 
-  if (input.responseStyle) {
+  if (!isDistressMode && input.responseStyle) {
     const formatGuides: Record<string, string> = {
       "One-line prompts": "RESPONSE FORMAT: One focused line — hit the key point and stop.",
       "Short bullets": "RESPONSE FORMAT: 2-3 short fragments, each landing separately. Not full sentences.",
