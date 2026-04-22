@@ -372,7 +372,7 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
   const replyLengthLine = isStopMode
     ? "- 1 sentence. The fact only."
     : isDistressMode
-      ? "- 2-3 sentences. Give it room to land as a human, containing message. No padding."
+      ? "- 2-3 sentences, under 50 words. One move. No padding."
       : isDirect
         ? "- 1 sentence ideal. 2 is fine. 3 is the hard maximum."
         : isSupportive
@@ -405,21 +405,14 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("");
 
     if (isDistressMode) {
-      lines.push("VOICE STANDARD — DISTRESS COACHING:");
-      lines.push("You are on their side — a grounded mentor interrupting a spiral to protect them from making it worse.");
-      lines.push("- Lower the emotional intensity. Do NOT add to it.");
-      lines.push("- Sound like someone who has their back, not someone who is disappointed in them.");
-      lines.push("- Do NOT sound like a warning system, robotic enforcer, or the trader's own inner critic after a loss.");
-      lines.push("- Make them feel: seen, steadier, protected, redirected — not cornered or judged.");
-      lines.push("- The tone is calm + firm: you are interrupting, not punishing.");
+      lines.push("VOICE STANDARD: Steady, grounded mentor. On their side — not disappointed in them, not alarmed for them.");
       lines.push("");
-      lines.push("RESPONSE ARC — move through this naturally in one flowing message, not as steps:");
-      lines.push("  1. One brief phrase that meets them where they are (acknowledgment, not evaluation)");
-      lines.push("  2. Name what is actually happening — calmly, no drama");
-      lines.push("  3. Reframe the real risk or name what can still be protected");
-      lines.push("  4. One small, concrete, safe next move");
-      lines.push("  5. Optional: one regulatory question that moves them forward");
-      lines.push("The reply should feel like one steady human voice, not a numbered checklist.");
+      lines.push("ONE COACHING MOVE — pick exactly one for this reply:");
+      lines.push("  CONTAIN: Brief acknowledgment + one stabilizing thought. Lower the temperature.");
+      lines.push("  REFRAME: Name what's actually happening (calmly) + redirect to what can still be protected.");
+      lines.push("  ANCHOR: Surface one personal anchor or what-helps-them fact. Ground them in something real.");
+      lines.push("  QUESTION: One short, easy question that moves them forward or gives them a next step.");
+      lines.push("Do not combine moves. One is enough.");
       lines.push("");
     }
 
@@ -484,8 +477,7 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
   lines.push("REPLY STYLE:");
   lines.push(replyLengthLine);
   if (isDistressMode) {
-    lines.push("- Lead with a brief acknowledgment or anchoring thought — meet them first, direct them second.");
-    lines.push("- Then the reframe or protective anchor. Then the next step if it fits.");
+    lines.push("- One move only. Meet them, then point them forward. That's it.");
   } else {
     lines.push("- Lead with the action or the fact. Nothing before it.");
   }
@@ -510,14 +502,10 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
     lines.push("- Repeat an idea already made in recent messages.");
     if (isDistressMode) {
-      lines.push("- Open with a standalone command: starting with 'עצור' / 'תנשום' / 'צא' alone is not coaching — it's a command.");
-      lines.push("- Label the trader's state dramatically: ('אתה בקוללאשן' / 'אתה בתילט' / 'אתה לא תפקודי').");
-      lines.push("- Use absolute language: ('לעולם' / 'בשום אופן' / 'אסור לך בשום מקרה').");
-      lines.push("- Stack multiple warnings or dangers in a single message — one reframe is enough.");
-      lines.push("- Sound scared or alarmed for them — your voice is steady even when theirs isn't.");
-      lines.push("- Sound disappointed, punitive, cold, or like a system alert.");
-      lines.push("- Echo or amplify the trader's self-critical inner voice.");
-      lines.push("- Lecture about what they did wrong — they know, they asked for help.");
+      lines.push("- Open with a bare command ('עצור' / 'תנשום' / 'צא' alone — that's not coaching).");
+      lines.push("- Label their state diagnostically ('אתה בקוללאשן' / 'אתה בתילט').");
+      lines.push("- Mix more than one coaching move — one is enough.");
+      lines.push("- Lecture, explain, or add analysis — they know what they did.");
     }
     lines.push("");
   }
@@ -615,7 +603,7 @@ export async function generateVoiceReply(input: VoiceWriterInput): Promise<strin
     const response = await client.messages.create(
       {
         model: "claude-haiku-4-5",
-        max_tokens: 200,
+        max_tokens: 150,
         temperature: 0.7,
         system: [
           {

@@ -343,7 +343,7 @@ function buildSystemPrompt(input: AICoachInput): string {
     personalParts.push(`Personal anchors: ${input.reminderAnchors.join(" / ")}`);
   }
 
-  if (personalParts.length > 0 && (isCoaching || isMeta)) {
+  if (personalParts.length > 0 && isCoaching) {
     lines.push(isCoaching ? "PERSONAL COACHING MEMORY:" : "WHAT YOU KNOW:");
     lines.push(...personalParts.map((p) => `- ${p}`));
     if (isCoaching) {
@@ -368,15 +368,18 @@ function buildSystemPrompt(input: AICoachInput): string {
   if (input.maxTradesPerDay) ruleParts.push(`max trades/day: ${input.maxTradesPerDay}`);
   if (input.stopAfterLosses) ruleParts.push(`stop after ${input.stopAfterLosses} consecutive losses`);
 
-  if ((isCoaching || isMeta) && (profileParts.length > 0 || ruleParts.length > 0)) {
+  const usageParts: string[] = [];
+  if (isMeta) {
+    if (input.todayPnL !== 0) usageParts.push(`P&L today: ${input.todayPnL > 0 ? "+" : ""}${input.todayPnL}`);
+    if (input.todayTradesCount > 0) usageParts.push(`trades taken today: ${input.todayTradesCount}`);
+    if (input.consecutiveLosses > 0) usageParts.push(`consecutive losses: ${input.consecutiveLosses}`);
+  }
+
+  if ((isCoaching || isMeta) && (profileParts.length > 0 || ruleParts.length > 0 || usageParts.length > 0)) {
     if (isMeta) {
-      // No section header for meta — list facts flat so AI answers directly
-      const allFacts = [
-        ...(profileParts.length > 0 ? [profileParts.join(", ")] : []),
-        ...(ruleParts.length > 0 ? [ruleParts.join(", ")] : []),
-      ];
       lines.push("FACTS (answer only from these):");
-      allFacts.forEach((f) => lines.push(`- ${f}`));
+      if (ruleParts.length > 0) lines.push(`- Limits: ${ruleParts.join(", ")}`);
+      if (usageParts.length > 0) lines.push(`- Current: ${usageParts.join(", ")}`);
       lines.push("");
     } else {
       lines.push("TRADER PROFILE:");
