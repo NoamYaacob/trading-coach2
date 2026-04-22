@@ -2,15 +2,13 @@ import { NextResponse } from "next/server";
 import { TraderCurrentState } from "@prisma/client";
 
 import {
-  generateAICoachReply,
   isAICoachEnabled,
   EMOTIONAL_ACTION_IDS,
   STRUCTURED_COACHING_ACTION_IDS,
-  shouldUseAICoach,
   detectConversationMode,
-  deriveCoachingIntent,
 } from "@/lib/ai-coach";
-import { mapIntentToMove } from "@/lib/coaching-state";
+import { generateCoachReply } from "@/lib/coach-brain";
+import type { CoachBrainInput } from "@/lib/coach-brain";
 import { filterActionableInterventions } from "@/lib/intervention-engine";
 import type { InterventionEvent } from "@/lib/intervention-engine";
 import type { CoachIntent } from "@/lib/coach";
@@ -34,7 +32,7 @@ import {
   buildViolationFeed,
 } from "@/lib/rule-engine";
 import type { ManualEventSignals, ViolationFeed } from "@/lib/rule-engine";
-import { getRecentCoachingExchanges, getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
+import { getRecentCoachingExchanges, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
@@ -389,19 +387,12 @@ export async function POST(request: Request) {
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
   const isFreeText = effectiveText.length > 0 && matchedAction === null && !effectiveText.startsWith("/");
-  const mightUseAI =
-    isAICoachEnabled() &&
-    (isFreeText ||
-      (matchedAction !== null &&
-        (EMOTIONAL_ACTION_IDS.has(matchedAction.id) || STRUCTURED_COACHING_ACTION_IDS.has(matchedAction.id))));
-
-  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext, recentCoachingExchanges] = await Promise.all([
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, recentCoachingExchanges] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
     getTodayManualEvents(connection.user.id),
-    mightUseAI ? getRecentSessionContext(connection.user.id) : Promise.resolve(null),
-    mightUseAI ? getRecentCoachingExchanges(connection.user.id, 3) : Promise.resolve([]),
+    isAICoachEnabled() ? getRecentCoachingExchanges(connection.user.id, 3) : Promise.resolve([]),
   ]);
 
   const todaySessionState = deriveTodaySessionState(guardian, {
@@ -427,17 +418,6 @@ export async function POST(request: Request) {
       manualSignals: manualEventSignals,
     }),
   );
-
-  const recentMessages = sessionContext
-    ? sessionContext.recentEvents
-        .slice()
-        .reverse()
-        .slice(0, 4)
-        .map((e) => ({
-          message: e.message ?? "",
-          traderState: String(e.traderState ?? "NONE"),
-        }))
-    : [];
 
   // rule-limits and remaining use meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
   const rawConversationMode = detectConversationMode({
@@ -467,78 +447,57 @@ export async function POST(request: Request) {
       })
     : null;
 
-  const aiInput = {
+  const useAI =
+    isAICoachEnabled() &&
+    (isFreeText ||
+      (matchedAction !== null &&
+        (EMOTIONAL_ACTION_IDS.has(matchedAction.id) ||
+          STRUCTURED_COACHING_ACTION_IDS.has(matchedAction.id))) ||
+      guardian.evaluation.lockoutActive ||
+      violationFeed.hasBlockingViolation ||
+      flags.cooldownActive);
+
+  const coachBrainInput: CoachBrainInput = {
+    userId: connection.user.id,
     message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
-    source: "telegram" as const,
-    alertContext: interventionAlertContext,
     actionId: matchedAction?.id ?? null,
-    primaryMarket: connection.user.traderProfile?.primaryMarket ?? null,
-    tradingStyle: connection.user.traderProfile?.tradingStyle ?? null,
+    traderState: isCoachingMode ? String(flags.currentState) : "NONE",
+    rules: {
+      maxDailyLoss: connection.user.riskRules?.maxDailyLoss
+        ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
+        : null,
+      maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
+      stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
+    },
+    usage: {
+      todayPnL: guardian.evaluation.todayPnL,
+      todayTradesCount: guardian.evaluation.todayTradesCount,
+      consecutiveLosses: Math.max(
+        guardian.evaluation.consecutiveLosses,
+        manualEventSignals.consecutiveLosses,
+      ),
+    },
     coachingTone: connection.user.mentalProfile?.coachingTone ?? null,
-    maxDailyLoss: connection.user.riskRules?.maxDailyLoss
-      ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
-      : null,
-    maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
-    stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
-    riskPerTrade: connection.user.riskRules?.riskPerTrade
-      ? parseFloat(String(connection.user.riskRules.riskPerTrade))
-      : null,
-    // Live session + emotional state: coaching only
-    currentState: isCoachingMode ? flags.currentState : "NONE",
-    recentLossStreak: isCoachingMode ? flags.recentLossStreak : 0,
-    manualSignals: isCoachingMode ? manualEventSignals : null,
-    warningMessages: isCoachingMode ? violationFeed.warningViolations.map((v) => v.message) : [],
-    isPreNewsWindow: isCoachingMode ? isInsidePreNewsWarningWindow(economicCalendarSnapshot) : false,
-    preNewsMessage: isCoachingMode && economicCalendarPolicy.isActive
-      ? (economicCalendarPolicy.message ?? null)
-      : null,
-    // Safety constraints: always pass through regardless of mode
-    cooldownActive: flags.cooldownActive,
+    preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
+    reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
+    recentContext: recentCoachingExchanges.slice(-2).map((e) => ({
+      userMessage: e.userMessage,
+      coachReply: e.coachReply,
+    })),
     guardianLocked: guardian.evaluation.lockoutActive,
     lockoutReason: guardian.evaluation.primaryReason,
-    sessionStarted: todaySessionState.sessionStarted,
-    sessionEnded: todaySessionState.sessionEnded,
-    todaySessionStateKind: todaySessionState.kind,
+    cooldownActive: flags.cooldownActive,
     hasBlockingViolation: violationFeed.hasBlockingViolation,
     violationMessage: violationFeed.primaryViolation?.message ?? null,
-    recentMessages,
-    tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
-    tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
-    groundingReminder: connection.user.mentalProfile?.groundingReminder ?? null,
-    primaryChallenge: connection.user.mentalProfile?.primaryChallenge ?? null,
-    tiltTrigger: connection.user.mentalProfile?.tiltTrigger ?? null,
-    tiltThought: connection.user.mentalProfile?.tiltThought ?? null,
-    interruptionStyle: connection.user.mentalProfile?.interruptionStyle ?? null,
-    responseStyle: connection.user.mentalProfile?.responseStyle ?? null,
-    preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
-    disciplineBreakPattern: connection.user.mentalProfile?.disciplineBreakPattern ?? null,
-    whatHelpsRefocus: connection.user.mentalProfile?.whatHelpsRefocus ?? null,
-    reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
-    wantsGoalReminders,
-    wantsToughInterventionWhenTilting,
-    todayTradesCount: guardian.evaluation.todayTradesCount,
-    todayPnL: guardian.evaluation.todayPnL,
-    consecutiveLosses: Math.max(
-      guardian.evaluation.consecutiveLosses,
-      manualEventSignals.consecutiveLosses,
-    ),
-    conversationMode,
-    recentCoachingExchanges,
+    sessionStarted: todaySessionState.sessionStarted,
+    sessionEnded: todaySessionState.sessionEnded,
+    alertContext: interventionAlertContext,
   };
 
-  const useAI = shouldUseAICoach({
-    actionId: matchedAction?.id ?? null,
-    isFreeText,
-    guardianLocked: guardian.evaluation.lockoutActive,
-    hasBlockingViolation: violationFeed.hasBlockingViolation,
-    cooldownActive: flags.cooldownActive,
-  });
-
-  const aiReply = useAI ? await generateAICoachReply(aiInput) : null;
-  const coachingMove = useAI
-    ? mapIntentToMove(deriveCoachingIntent(aiInput))
-    : undefined;
+  const brainOutput = useAI ? await generateCoachReply(coachBrainInput) : null;
+  const aiReply = brainOutput?.reply ?? null;
+  const coachingMove = brainOutput?.coachingMove;
 
   // Fallback priority: quick-action locale reply → state-derived reply → session-state reply → generic
   const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
