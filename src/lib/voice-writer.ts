@@ -534,18 +534,6 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("- If the trader is still escalating and you already used grounding, try a reframe or a direct question instead.");
     lines.push("- If the same distress pattern is repeating, change your approach — not just your words.");
     lines.push("");
-    // Arc-specific continuation instruction derived from live state
-    const arc = input.shortTermCoachingState?.arc;
-    if (arc === "escalating") {
-      lines.push("ARC NOTE: Trader is escalating. Avoid abstract reflection or open questions — keep it grounded and direct.");
-      lines.push("");
-    } else if (arc === "stabilizing") {
-      lines.push("ARC NOTE: Trader is stabilizing. Reduce emotional intensity. Help them move forward, not backward.");
-      lines.push("");
-    } else if (arc === "unresolved") {
-      lines.push("ARC NOTE: Same distress is unresolved. What you said before did not move it — try a completely different angle.");
-      lines.push("");
-    }
   } else if (input.recentMessages.length > 0) {
     // Fallback when no full exchanges stored yet — user messages only
     lines.push("Recent session (do not repeat what was already addressed):");

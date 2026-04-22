@@ -8,7 +8,7 @@ export type CoachingMove =
   | "grounding"      // physical anchor, breathe, acknowledge overwhelm
   | "step_away"      // explicit leave-the-screen instruction (cooldown, locked)
   | "space"          // acknowledged the loss, gave room
-  | "reframe"        // forward anchor / different angle (forward_anchor, general)
+  | "reframe"        // forward anchor / different angle
   | "reflective"     // question-led, surface purpose, end of day
   | "rule_reminder"  // named a limit or rule
   | "check_in"       // premarket check-in
@@ -46,7 +46,7 @@ export function mapIntentToMove(intent: CoachingIntent): CoachingMove {
   }
 }
 
-// ─── Episode and arc types ───────────────────────────────────────────────────
+// ─── Episode, arc, stabilization types ──────────────────────────────────────
 
 export type EmotionalEpisode =
   | "acute_distress"  // REVENGE, TILTED
@@ -63,12 +63,35 @@ export type ArcDirection =
   | "unresolved"   // same distress state repeated
   | "stable";      // no notable trajectory
 
-// ─── Short-term state type ───────────────────────────────────────────────────
+/** How far the trader is from calm, right now. */
+export type StabilizationLevel =
+  | "acute"        // intensity ≥ 4, or ≥ 3 without stabilizing arc
+  | "unstable"     // distress intensity 2-3, not yet improving
+  | "stabilizing"  // intensity falling — on the way down
+  | "settled";     // calm / neutral / recovered
+
+/** Whether a specific coaching move helped, made no difference, or made things worse. */
+export type MoveOutcome = {
+  move: CoachingMove;
+  result: "improved" | "unchanged" | "worsened";
+};
+
+// ─── Full short-term state type ──────────────────────────────────────────────
 
 export type ShortTermCoachingState = {
   episode: EmotionalEpisode;
   arc: ArcDirection;
-  recentMoves: CoachingMove[];  // most recent first, up to 3
+  stabilizationLevel: StabilizationLevel;
+  /** True when the last exchange was < 30 min ago and the trader was in distress. */
+  episodeActive: boolean;
+  /** How many distress-level exchanges appear in the recent history. */
+  repeatedDistressCount: number;
+  /** Most recent coaching moves, most recent first, up to 3. */
+  recentMoves: CoachingMove[];
+  /** Outcome of each of the last 2 moves — did the trader's state improve? */
+  moveOutcomes: MoveOutcome[];
+  /** Last move that was followed by a state improvement, if any. */
+  lastEffectiveMove: CoachingMove | null;
   groundingUsed: boolean;
   stepAwayUsed: boolean;
   sameStateRepeated: boolean;
@@ -77,7 +100,7 @@ export type ShortTermCoachingState = {
 
 // ─── Derivation ──────────────────────────────────────────────────────────────
 
-const STATE_INTENSITY: Record<string, number> = {
+export const STATE_INTENSITY: Record<string, number> = {
   NONE: 0,
   PREMARKET_READY: 0,
   CALM: 1,
@@ -88,6 +111,8 @@ const STATE_INTENSITY: Record<string, number> = {
   REVENGE: 4,
   TILTED: 5,
 };
+
+const EPISODE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
 function deriveEpisode(exchanges: CoachingExchange[]): EmotionalEpisode {
   if (exchanges.length === 0) return "neutral";
@@ -112,9 +137,48 @@ function deriveArc(exchanges: CoachingExchange[]): ArcDirection {
   return "stable";
 }
 
+function deriveStabilizationLevel(
+  exchanges: CoachingExchange[],
+  arc: ArcDirection,
+): StabilizationLevel {
+  if (exchanges.length === 0) return "settled";
+  const intensity = STATE_INTENSITY[exchanges[exchanges.length - 1].traderState] ?? 0;
+  if (intensity >= 4) return "acute";
+  if (intensity >= 3 && arc !== "stabilizing") return "acute";
+  if (intensity >= 2 && arc === "stabilizing") return "stabilizing";
+  if (intensity >= 2) return "unstable";
+  if (intensity >= 1 && arc === "stabilizing") return "stabilizing";
+  return "settled";
+}
+
+function deriveMoveOutcomes(exchanges: CoachingExchange[]): MoveOutcome[] {
+  if (exchanges.length < 2) return [];
+  const outcomes: MoveOutcome[] = [];
+  for (let i = 0; i < exchanges.length - 1; i++) {
+    const move = (exchanges[i].coachingMove ?? "general") as CoachingMove;
+    const before = STATE_INTENSITY[exchanges[i].traderState] ?? 0;
+    const after = STATE_INTENSITY[exchanges[i + 1].traderState] ?? 0;
+    const result: MoveOutcome["result"] =
+      after < before ? "improved" : after > before ? "worsened" : "unchanged";
+    outcomes.push({ move, result });
+  }
+  return outcomes.slice(-2);
+}
+
+function deriveLastEffectiveMove(outcomes: MoveOutcome[]): CoachingMove | null {
+  for (let i = outcomes.length - 1; i >= 0; i--) {
+    if (outcomes[i].result === "improved") return outcomes[i].move;
+  }
+  return null;
+}
+
 export function deriveShortTermCoachingState(
   exchanges: CoachingExchange[],
+  now: Date = new Date(),
 ): ShortTermCoachingState {
+  const arc = deriveArc(exchanges);
+  const moveOutcomes = deriveMoveOutcomes(exchanges);
+
   const recentMoves = exchanges
     .slice()
     .reverse()
@@ -125,16 +189,32 @@ export function deriveShortTermCoachingState(
     (e) => e.coachingMove === "grounding" || e.coachingMove === "step_away",
   );
   const stepAwayUsed = exchanges.some((e) => e.coachingMove === "step_away");
+
+  const last = exchanges[exchanges.length - 1];
+  const prev = exchanges[exchanges.length - 2];
   const sameStateRepeated =
-    exchanges.length >= 2 &&
-    exchanges[exchanges.length - 1].traderState ===
-      exchanges[exchanges.length - 2].traderState &&
-    (STATE_INTENSITY[exchanges[exchanges.length - 1].traderState] ?? 0) > 1;
+    !!last && !!prev &&
+    last.traderState === prev.traderState &&
+    (STATE_INTENSITY[last.traderState] ?? 0) > 1;
+
+  const episodeActive =
+    !!last &&
+    now.getTime() - last.createdAt.getTime() < EPISODE_WINDOW_MS &&
+    (STATE_INTENSITY[last.traderState] ?? 0) >= 2;
+
+  const repeatedDistressCount = exchanges.filter(
+    (e) => (STATE_INTENSITY[e.traderState] ?? 0) >= 2,
+  ).length;
 
   return {
     episode: deriveEpisode(exchanges),
-    arc: deriveArc(exchanges),
+    arc,
+    stabilizationLevel: deriveStabilizationLevel(exchanges, arc),
+    episodeActive,
+    repeatedDistressCount,
     recentMoves,
+    moveOutcomes,
+    lastEffectiveMove: deriveLastEffectiveMove(moveOutcomes),
     groundingUsed,
     stepAwayUsed,
     sameStateRepeated,
@@ -154,11 +234,18 @@ const EPISODE_LABELS: Record<EmotionalEpisode, string> = {
   neutral: "neutral",
 };
 
-const ARC_LABELS: Record<ArcDirection, string> = {
-  escalating: "escalating — trader is getting more activated",
-  stabilizing: "stabilizing — trader is calming down",
-  unresolved: "unresolved — same distress pattern is repeating",
-  stable: "stable",
+const STABILIZATION_LABELS: Record<StabilizationLevel, string> = {
+  acute: "acute — spiraling or unresolved",
+  unstable: "unstable — distress is present",
+  stabilizing: "stabilizing — intensity is falling",
+  settled: "settled — calm / recovered",
+};
+
+const ARC_SUFFIX: Record<ArcDirection, string> = {
+  escalating: ", escalating",
+  stabilizing: ", de-escalating",
+  unresolved: ", same state repeating",
+  stable: "",
 };
 
 const MOVE_LABELS: Record<CoachingMove, string> = {
@@ -177,18 +264,102 @@ export function buildCoachingStateBlock(state: ShortTermCoachingState): string[]
   if (state.exchangeCount === 0) return [];
 
   const lines: string[] = ["LIVE COACHING STATE:"];
-  lines.push(`- Episode: ${EPISODE_LABELS[state.episode]}`);
-  lines.push(`- Arc: ${ARC_LABELS[state.arc]}`);
 
+  // Episode + stabilization + arc in one line
+  const arcSuffix = ARC_SUFFIX[state.arc];
+  lines.push(
+    `- Status: ${STABILIZATION_LABELS[state.stabilizationLevel]}${arcSuffix}`,
+  );
+  lines.push(`- Episode type: ${EPISODE_LABELS[state.episode]}`);
+
+  if (state.repeatedDistressCount > 1) {
+    lines.push(
+      `- Distress has repeated ${state.repeatedDistressCount}× this session`,
+    );
+  }
+
+  // Moves used and their outcomes
   if (state.recentMoves.length > 0) {
     const moveStr = state.recentMoves.map((m) => MOVE_LABELS[m]).join(" → ");
     lines.push(`- Recent moves (most recent first): ${moveStr}`);
   }
-  if (state.groundingUsed) {
-    lines.push("- Physical grounding or step-away already given this session.");
+  if (state.moveOutcomes.length > 0) {
+    const resultStr = state.moveOutcomes
+      .map((o) => `${MOVE_LABELS[o.move]}: ${o.result}`)
+      .join(" | ");
+    lines.push(`- Move outcomes: ${resultStr}`);
+  }
+  if (state.lastEffectiveMove) {
+    lines.push(
+      `- ${MOVE_LABELS[state.lastEffectiveMove]} was followed by improvement — preserve if it fits`,
+    );
+  }
+
+  // Flags
+  const failedGrounding =
+    state.groundingUsed &&
+    (state.stabilizationLevel === "acute" || state.stabilizationLevel === "unstable");
+  if (failedGrounding) {
+    lines.push(
+      "- Grounding or step-away already used and trader is still in distress — do not repeat it",
+    );
   }
   if (state.sameStateRepeated) {
-    lines.push("- Trader repeated the same distress state — previous approach did not resolve it.");
+    lines.push(
+      "- Same distress state is repeating — previous coaching approach did not move it",
+    );
+  }
+  if (!state.episodeActive && state.exchangeCount > 0) {
+    lines.push(
+      "- Last exchange was > 30 min ago — treat this as a fresh context, not an active continuation",
+    );
+  }
+
+  // Phase guidance — the core of session orchestration
+  lines.push("");
+  lines.push("COACHING PHASE GUIDANCE:");
+
+  switch (state.stabilizationLevel) {
+    case "acute":
+      lines.push("You are in CONTAIN mode. The trader is still in acute distress.");
+      if (failedGrounding && state.sameStateRepeated) {
+        lines.push(
+          "  → Grounding already tried and failed. Switch move category completely.",
+        );
+        lines.push(
+          "  → Options: name the consequence directly, use a sharp reframe, or ask one specific question that breaks the loop.",
+        );
+      } else if (failedGrounding) {
+        lines.push(
+          "  → Grounding already used. Try a sharper interrupt or name what is happening plainly.",
+        );
+      } else {
+        lines.push("  → Physical anchor or sharp stop. Direct and short.");
+      }
+      lines.push("  → No abstract questions. No teaching. Interrupt the spiral.");
+      break;
+
+    case "unstable":
+      lines.push("You are in HOLD mode. Trader is in distress but not fully spiraling.");
+      lines.push("  → Acknowledge briefly. One concrete anchor or one short question.");
+      lines.push("  → No lectures. Not yet the moment for reflection or planning.");
+      if (state.arc === "escalating") {
+        lines.push("  → Arc is escalating — move toward containment, not expansion.");
+      }
+      break;
+
+    case "stabilizing":
+      lines.push("You are in TRANSITION mode. Trader is starting to come down.");
+      lines.push("  → Reduce intensity. Lighter touch. Short, forward-pointing.");
+      lines.push("  → Do not re-open the distress or revisit what just happened.");
+      lines.push("  → A soft question or one forward anchor is now appropriate.");
+      break;
+
+    case "settled":
+      lines.push("You are in REFLECT mode. Trader is calm or settled.");
+      lines.push("  → Full reflective mode available. One honest question or forward anchor.");
+      lines.push("  → Light touch. No urgency. Space for actual thinking.");
+      break;
   }
 
   lines.push("");
