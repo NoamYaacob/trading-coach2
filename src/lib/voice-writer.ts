@@ -69,24 +69,24 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Confirm the lockout matter-of-factly. One sentence. No drama, no softening, no false encouragement.",
   },
   stop_fomo: {
-    situation: "The trader is feeling FOMO — watching a move happen without them, wanting to jump in without a proper setup.",
-    goal: "Acknowledge the pull without judging it — the move was real, the feeling makes sense. Redirect clearly: this isn't their setup. Give one anchor: the next opportunity exists and is coming. Optional: one settling question that helps them wait rather than chase.",
+    situation: "The trader is feeling FOMO — watching a move without them, wanting to jump in without a setup.",
+    goal: "Acknowledge the feeling is real. One thought: this isn't their setup, and the next real opportunity will come.",
   },
   stop_revenge: {
-    situation: "The trader just took a loss and wants to immediately trade to recover it. The urge feels urgent and real.",
-    goal: "Acknowledge the pull briefly — it is natural and makes sense. Then name the real danger: acting on this urge now deepens the loss, it does not fix it. Give one protective frame: step back from this impulse — not forever, just for this moment. Sound like you are with them, protecting them. No scolding, no negotiation, no lectures.",
+    situation: "The trader took a loss and wants to trade immediately to recover it.",
+    goal: "Acknowledge the urge. One thought: acting on this impulse now deepens the loss — it doesn't fix it.",
   },
   ground_tilt: {
-    situation: "The trader is overwhelmed, out of control, or spiraling — too flooded to think clearly.",
-    goal: "Acknowledge briefly that this is a hard moment — no drama, just meet them where they are. Give one small grounding thought or action. Name what they are protecting by pausing: the ability to come back and make real decisions. Your voice is steady, not alarmed. You are steady for them, not scared for them.",
+    situation: "The trader is overwhelmed or spiraling — flooded, can't think clearly.",
+    goal: "Acknowledge briefly. One grounding thought or small anchor. Stay steady — not alarmed.",
   },
   acknowledge_loss: {
-    situation: "The trader just took a loss. The feeling is immediate and real.",
-    goal: "Acknowledge simply — it happened, the feeling makes complete sense. Protect them from the worst next move: another reactive trade from this state. The session is not over and is not ruined. One optional forward anchor only if it genuinely moves them — not a redirect, just space or a question.",
+    situation: "The trader just took a loss.",
+    goal: "Meet them where they are. Acknowledge it happened. Give them space — not another redirect.",
   },
   acknowledge_multiple_losses: {
-    situation: "The trader has taken multiple consecutive losses. The weight is cumulative and real.",
-    goal: "Honor the weight — this is genuinely hard. Give clear permission to stop adding to it. Frame the stop as self-protection, not failure: protecting what's left is the smart move right now. One optional grounding question if it fits naturally.",
+    situation: "The trader has taken multiple consecutive losses.",
+    goal: "Honor the weight. One thought: protecting what's left is the right move right now.",
   },
   forward_anchor: {
     situation: "The trader is calm or recovering — ready to think about what's next.",
@@ -109,8 +109,8 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Name the limit plainly. One sentence. Stop there.",
   },
   cooldown_active: {
-    situation: "The trader is in a required cooldown — a limit they set for themselves to step away from the screen.",
-    goal: "Confirm the pause warmly: 'I'm with you — we stop here.' Say it like a person, not a system. Name the pause as protection: this is the rule they set for exactly this kind of moment. Make them feel held, not managed. Brief, human, containing — not a system status update.",
+    situation: "The trader is in a required cooldown — their own rule to step away from the screen.",
+    goal: "Hold the pause warmly. This is the rule they set for exactly this kind of moment.",
   },
   news_warning: {
     situation: "An economic news event is approaching — the pre-news warning window is active.",
@@ -422,56 +422,62 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
       lines.push("");
     }
 
-    if (input.personalCue) {
-      const cueLabel =
-        input.personalCue.type === "why"
-          ? "Why they trade"
-          : input.personalCue.type === "goal"
-            ? "Building toward"
-            : input.personalCue.type === "grounding"
-              ? "What grounds them"
-              : "Known pattern";
-      lines.push("PERSONAL CUE (use at most once, only if it feels genuinely grounding — not every reply):");
-      lines.push(`- ${cueLabel}: ${input.personalCue.text}`);
-      lines.push("Do not quote verbatim. One line max. Never preachy.");
+    if (!isDistressMode) {
+      if (input.personalCue) {
+        const cueLabel =
+          input.personalCue.type === "why"
+            ? "Why they trade"
+            : input.personalCue.type === "goal"
+              ? "Building toward"
+              : input.personalCue.type === "grounding"
+                ? "What grounds them"
+                : "Known pattern";
+        lines.push("PERSONAL CUE (use at most once, only if it feels genuinely grounding — not every reply):");
+        lines.push(`- ${cueLabel}: ${input.personalCue.text}`);
+        lines.push("Do not quote verbatim. One line max. Never preachy.");
+        lines.push("");
+      }
+
+      // disciplineBreakPattern: augments knownPattern for relevant intents
+      const showDisciplineBreak = Boolean(input.disciplineBreakPattern) && !input.knownPattern;
+      if (input.knownPattern || showDisciplineBreak) {
+        lines.push("KNOWN TRADER PATTERN (they told you this — reflect it, don't explain it):");
+        if (input.knownPattern) lines.push(`- ${input.knownPattern}`);
+        if (showDisciplineBreak) lines.push(`- How their discipline breaks: ${input.disciplineBreakPattern}`);
+        lines.push("Name it accurately. Not as a judgment.");
+        lines.push("");
+      }
+
+      // whatHelpsRefocus: surface for grounding intents only
+      const groundingIntents = new Set<CoachingIntent>([
+        "stop_revenge", "ground_tilt", "acknowledge_multiple_losses",
+      ]);
+      if (input.whatHelpsRefocus && groundingIntents.has(input.intent)) {
+        lines.push("WHAT HELPS THEM REFOCUS (they told you this works — suggest it once, if it fits):");
+        lines.push(`- ${input.whatHelpsRefocus}`);
+        lines.push("Offer it as a suggestion, not a prescription.");
+        lines.push("");
+      }
+
+      // Reminder anchors: phrases trader wants echoed back
+      if (input.reminderAnchors.length > 0) {
+        lines.push("PERSONAL ANCHORS (can echo verbatim at the right moment — one, once, when it genuinely fits):");
+        lines.push(input.reminderAnchors.map((a) => `"${a}"`).join(" · "));
+        lines.push("Do not force them. Skip if nothing fits naturally.");
+        lines.push("");
+      }
+
+      if (input.askQuestion) {
+        lines.push("END WITH A QUESTION: Yes — one short question. Make it move something forward.");
+      } else {
+        lines.push("END WITH A QUESTION: No — land on the point and stop.");
+      }
+      lines.push("");
+    } else if (input.reminderAnchors.length > 0) {
+      // Distress mode: only surface anchors — the one personal element short enough to fit
+      lines.push(`ANCHOR (only if it fits the moment naturally): ${input.reminderAnchors.map((a) => `"${a}"`).join(" · ")}`);
       lines.push("");
     }
-
-    // disciplineBreakPattern: augments knownPattern for relevant intents
-    const showDisciplineBreak = Boolean(input.disciplineBreakPattern) && !input.knownPattern;
-    if (input.knownPattern || showDisciplineBreak) {
-      lines.push("KNOWN TRADER PATTERN (they told you this — reflect it, don't explain it):");
-      if (input.knownPattern) lines.push(`- ${input.knownPattern}`);
-      if (showDisciplineBreak) lines.push(`- How their discipline breaks: ${input.disciplineBreakPattern}`);
-      lines.push("Name it accurately. Not as a judgment.");
-      lines.push("");
-    }
-
-    // whatHelpsRefocus: surface for grounding intents only
-    const groundingIntents = new Set<CoachingIntent>([
-      "stop_revenge", "ground_tilt", "acknowledge_multiple_losses",
-    ]);
-    if (input.whatHelpsRefocus && groundingIntents.has(input.intent)) {
-      lines.push("WHAT HELPS THEM REFOCUS (they told you this works — suggest it once, if it fits):");
-      lines.push(`- ${input.whatHelpsRefocus}`);
-      lines.push("Offer it as a suggestion, not a prescription.");
-      lines.push("");
-    }
-
-    // Reminder anchors: phrases trader wants echoed back
-    if (input.reminderAnchors.length > 0) {
-      lines.push("PERSONAL ANCHORS (can echo verbatim at the right moment — one, once, when it genuinely fits):");
-      lines.push(input.reminderAnchors.map((a) => `"${a}"`).join(" · "));
-      lines.push("Do not force them. Skip if nothing fits naturally.");
-      lines.push("");
-    }
-
-    if (input.askQuestion) {
-      lines.push("END WITH A QUESTION: Yes — one short question. Make it move something forward.");
-    } else {
-      lines.push("END WITH A QUESTION: No — land on the point and stop.");
-    }
-    lines.push("");
   }
 
   lines.push("REPLY STYLE:");
@@ -492,6 +498,14 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push('- Open with "I understand", "It sounds like", "As your coach".');
     lines.push('- Close with any encouragement.');
     lines.push("");
+  } else if (isDistressMode) {
+    lines.push("NEVER:");
+    lines.push("- Lecture, explain, or analyze — say the one thing and stop.");
+    lines.push("- Open with a bare command ('עצור' / 'תנשום' / 'צא' alone) or diagnostic label ('אתה בתילט' / 'אתה בקוללאשן').");
+    lines.push("- Combine multiple moves in one reply.");
+    lines.push("- Ask more than one question.");
+    lines.push('- Open with "As your coach", "I understand that", "It sounds like".');
+    lines.push("");
   } else {
     lines.push("NEVER:");
     lines.push("- Explain your reasoning — just say the thing.");
@@ -501,12 +515,6 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("- Ask more than one question.");
     lines.push('- Sound like a therapist, motivational speaker, or chatbot.');
     lines.push("- Repeat an idea already made in recent messages.");
-    if (isDistressMode) {
-      lines.push("- Open with a bare command ('עצור' / 'תנשום' / 'צא' alone — that's not coaching).");
-      lines.push("- Label their state diagnostically ('אתה בקוללאשן' / 'אתה בתילט').");
-      lines.push("- Mix more than one coaching move — one is enough.");
-      lines.push("- Lecture, explain, or add analysis — they know what they did.");
-    }
     lines.push("");
   }
 
@@ -550,37 +558,48 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("");
   }
 
-  // Coaching state block — live episode/arc/move facts, injected before exchanges
-  if (input.shortTermCoachingState) {
+  // Coaching state block — suppressed for distress (exchange history handles anti-repetition)
+  if (!isDistressMode && input.shortTermCoachingState) {
     const stateBlock = buildCoachingStateBlock(input.shortTermCoachingState);
     if (stateBlock.length > 0) lines.push(...stateBlock);
   }
 
   if (input.recentCoachingExchanges.length > 0) {
-    lines.push("YOUR RECENT EXCHANGES WITH THIS TRADER (oldest first):");
-    for (const exchange of input.recentCoachingExchanges) {
-      const stateLabel = exchange.traderState !== "NONE" ? ` [${exchange.traderState}]` : "";
-      const moveLabel = exchange.coachingMove ? ` (${exchange.coachingMove})` : "";
-      lines.push(`  Trader${stateLabel}: ${exchange.userMessage}`);
-      lines.push(`  You${moveLabel}:    ${exchange.coachReply}`);
+    if (isDistressMode) {
+      // Distress: show only the last exchange, one anti-repetition line
+      const last = input.recentCoachingExchanges[input.recentCoachingExchanges.length - 1];
+      const moveLabel = last.coachingMove ? ` (${last.coachingMove})` : "";
+      lines.push("LAST EXCHANGE:");
+      lines.push(`  Trader: ${last.userMessage}`);
+      lines.push(`  You${moveLabel}: ${last.coachReply}`);
+      lines.push("Don't repeat the same opening word, emotional frame, or coaching move as above.");
+      lines.push("");
+    } else {
+      lines.push("YOUR RECENT EXCHANGES WITH THIS TRADER (oldest first):");
+      for (const exchange of input.recentCoachingExchanges) {
+        const stateLabel = exchange.traderState !== "NONE" ? ` [${exchange.traderState}]` : "";
+        const moveLabel = exchange.coachingMove ? ` (${exchange.coachingMove})` : "";
+        lines.push(`  Trader${stateLabel}: ${exchange.userMessage}`);
+        lines.push(`  You${moveLabel}:    ${exchange.coachReply}`);
+        lines.push("");
+      }
+      lines.push("COACHING CONTINUITY — read the state and history above before writing:");
+      lines.push("You are inside a live emotional sequence. You are not starting from zero.");
+      lines.push("");
+      lines.push("ANTI-REPETITION:");
+      lines.push("- Do NOT open with the same first word or phrase used in any reply above.");
+      lines.push("- Do NOT repeat the same emotional framing, metaphor, or image.");
+      lines.push("- Do NOT repeat the same coaching move — if you used grounding, interrupt, or step-away, that move is spent unless the arc has clearly shifted.");
+      lines.push("- If the last reply ended with a question, lead with a statement. If it ended with a statement, consider a question.");
+      lines.push("");
+      lines.push("EMOTIONAL CONTINUITY:");
+      lines.push("- You already engaged this emotional moment. Do not re-explain or re-diagnose it.");
+      lines.push("- Build on the last moment — do not restart from the top of the emotional situation.");
+      lines.push("- If the trader is de-escalating, match that — reduce intensity, move forward.");
+      lines.push("- If the trader is still escalating and you already used grounding, try a reframe or a direct question instead.");
+      lines.push("- If the same distress pattern is repeating, change your approach — not just your words.");
       lines.push("");
     }
-    lines.push("COACHING CONTINUITY — read the state and history above before writing:");
-    lines.push("You are inside a live emotional sequence. You are not starting from zero.");
-    lines.push("");
-    lines.push("ANTI-REPETITION:");
-    lines.push("- Do NOT open with the same first word or phrase used in any reply above.");
-    lines.push("- Do NOT repeat the same emotional framing, metaphor, or image.");
-    lines.push("- Do NOT repeat the same coaching move — if you used grounding, interrupt, or step-away, that move is spent unless the arc has clearly shifted.");
-    lines.push("- If the last reply ended with a question, lead with a statement. If it ended with a statement, consider a question.");
-    lines.push("");
-    lines.push("EMOTIONAL CONTINUITY:");
-    lines.push("- You already engaged this emotional moment. Do not re-explain or re-diagnose it.");
-    lines.push("- Build on the last moment — do not restart from the top of the emotional situation.");
-    lines.push("- If the trader is de-escalating, match that — reduce intensity, move forward.");
-    lines.push("- If the trader is still escalating and you already used grounding, try a reframe or a direct question instead.");
-    lines.push("- If the same distress pattern is repeating, change your approach — not just your words.");
-    lines.push("");
   } else if (input.recentMessages.length > 0) {
     // Fallback when no full exchanges stored yet — user messages only
     lines.push("Recent session (do not repeat what was already addressed):");
