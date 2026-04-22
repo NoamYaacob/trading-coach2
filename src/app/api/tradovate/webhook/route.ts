@@ -274,6 +274,7 @@ export async function POST(request: Request) {
         responseStyle: account.user.mentalProfile?.responseStyle ?? null,
         preferredAddress: account.user.mentalProfile?.preferredAddress ?? null,
         recentMessages: [],
+        recentCoachingExchanges: [],
         reminderAnchors: account.user.mentalProfile?.reminderAnchors ?? [],
         disciplineBreakPattern: account.user.mentalProfile?.disciplineBreakPattern ?? null,
         whatHelpsRefocus: account.user.mentalProfile?.whatHelpsRefocus ?? null,

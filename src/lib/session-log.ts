@@ -12,6 +12,7 @@ type LogCoachEventInput = {
   coachMode: string;
   traderState: TraderCurrentState;
   cooldownActive: boolean;
+  coachReply?: string;
   metadataJson?: Prisma.InputJsonValue;
 };
 
@@ -77,6 +78,10 @@ function inferEventType(input: {
 }
 
 export async function logCoachEvent(input: LogCoachEventInput) {
+  const metadataJson = input.coachReply
+    ? { ...(input.metadataJson as Record<string, unknown> ?? {}), coachReply: input.coachReply }
+    : input.metadataJson;
+
   return prisma.dailySessionEvent.create({
     data: {
       userId: input.userId,
@@ -90,9 +95,46 @@ export async function logCoachEvent(input: LogCoachEventInput) {
         detectedIntent: input.detectedIntent,
         traderState: input.traderState,
       }),
-      metadataJson: input.metadataJson,
+      metadataJson,
     },
   });
+}
+
+export type CoachingExchange = {
+  userMessage: string;
+  coachReply: string;
+  traderState: string;
+  createdAt: Date;
+};
+
+export async function getRecentCoachingExchanges(
+  userId: string,
+  limit = 3,
+): Promise<CoachingExchange[]> {
+  const events = await prisma.dailySessionEvent.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: limit * 3,
+    select: { message: true, metadataJson: true, traderState: true, createdAt: true },
+  });
+
+  const result: CoachingExchange[] = [];
+  for (const event of events) {
+    const meta = event.metadataJson as Record<string, unknown> | null;
+    const reply = typeof meta?.coachReply === "string" && meta.coachReply.length > 0
+      ? meta.coachReply
+      : null;
+    if (!reply) continue;
+    result.push({
+      userMessage: event.message,
+      coachReply: reply,
+      traderState: String(event.traderState ?? "NONE"),
+      createdAt: event.createdAt,
+    });
+    if (result.length >= limit) break;
+  }
+
+  return result.reverse(); // oldest-first for prompt ordering
 }
 
 export async function getTodaySessionEvents(

@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+import type { CoachingExchange } from "@/lib/session-log";
+
+export type { CoachingExchange };
+
 const LANGUAGE_NAMES: Record<string, string> = {
   he: "Hebrew",
   en: "English",
@@ -47,7 +51,7 @@ export type VoiceWriterInput = {
   responseStyle: string | null;
   preferredAddress: string | null;
   recentMessages: Array<{ message: string; traderState: string }>;
-  // New coaching profile fields
+  recentCoachingExchanges: CoachingExchange[];
   reminderAnchors: string[];
   disciplineBreakPattern: string | null;
   whatHelpsRefocus: string | null;
@@ -500,9 +504,26 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
       const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";
       lines.push(`- ${msg.message}${stateLabel}`);
     }
+    lines.push("");
   }
 
-  lines.push("");
+  if (input.recentCoachingExchanges.length > 0) {
+    lines.push("RECENT CONVERSATION HISTORY (oldest first):");
+    for (const exchange of input.recentCoachingExchanges) {
+      lines.push(`  Trader: ${exchange.userMessage}`);
+      lines.push(`  Coach:  ${exchange.coachReply}`);
+    }
+    lines.push("");
+    lines.push("ANTI-REPETITION RULES (read the history above before writing):");
+    lines.push("- Do NOT reuse the same opening word, phrase, or sentence structure as any recent coach reply.");
+    lines.push("- Do NOT repeat the same metaphor, analogy, or emotional framing used recently.");
+    lines.push("- If the last reply used a question, lead with a statement this time. If it used a statement, consider a question.");
+    lines.push("- If the last reply was a hard stop, allow more space this time. If it was spacious, be more direct.");
+    lines.push("- Vary sentence rhythm naturally. Same coaching identity — different expression.");
+    lines.push("- The goal is not novelty. The goal is to not sound templated.");
+    lines.push("");
+  }
+
   lines.push(`LANGUAGE REMINDER: Write ONLY in ${langName}. Context above may be in English — translate and express everything in ${langName}.`);
 
   return lines.join("\n");
@@ -516,6 +537,7 @@ export async function generateVoiceReply(input: VoiceWriterInput): Promise<strin
       {
         model: "claude-haiku-4-5",
         max_tokens: 120,
+        temperature: 0.7,
         system: [
           {
             type: "text",

@@ -32,7 +32,7 @@ import {
   buildViolationFeed,
 } from "@/lib/rule-engine";
 import type { ManualEventSignals, ViolationFeed } from "@/lib/rule-engine";
-import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
+import { getRecentCoachingExchanges, getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
@@ -393,12 +393,13 @@ export async function POST(request: Request) {
       (matchedAction !== null &&
         (EMOTIONAL_ACTION_IDS.has(matchedAction.id) || STRUCTURED_COACHING_ACTION_IDS.has(matchedAction.id))));
 
-  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext] = await Promise.all([
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, sessionContext, recentCoachingExchanges] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
     getTodayManualEvents(connection.user.id),
     mightUseAI ? getRecentSessionContext(connection.user.id) : Promise.resolve(null),
+    mightUseAI ? getRecentCoachingExchanges(connection.user.id, 3) : Promise.resolve([]),
   ]);
 
   const todaySessionState = deriveTodaySessionState(guardian, {
@@ -521,6 +522,7 @@ export async function POST(request: Request) {
       manualEventSignals.consecutiveLosses,
     ),
     conversationMode,
+    recentCoachingExchanges,
   };
 
   const useAI = shouldUseAICoach({
@@ -567,6 +569,7 @@ export async function POST(request: Request) {
     coachMode: useAI ? "AI_COACH" : "RULE_BASED",
     traderState: loggedTraderState,
     cooldownActive: flags.cooldownActive,
+    coachReply: replyText,
     metadataJson: {
       aiReplyGenerated: aiReply !== null,
       stateSnapshot: flags.currentState,

@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ManualEventSignals } from "@/lib/rule-engine";
 import { getToneVoiceGuidance, normalizeToneId } from "@/lib/coaching-tones";
 import { generateVoiceReply } from "@/lib/voice-writer";
-import type { CoachingIntent, PersonalCue, VoiceWriterInput } from "@/lib/voice-writer";
+import type { CoachingExchange, CoachingIntent, PersonalCue, VoiceWriterInput } from "@/lib/voice-writer";
 
 const LANGUAGE_NAMES: Record<string, string> = {
   he: "Hebrew",
@@ -128,6 +128,7 @@ export type AICoachInput = {
   todayPnL: number;
   consecutiveLosses: number;
   conversationMode: ConversationMode;
+  recentCoachingExchanges: CoachingExchange[];
 };
 
 // Coaching voice is in voice-writer.ts. Dead code below removed.
@@ -692,6 +693,7 @@ function buildVoiceWriterInputFromCoachInput(input: AICoachInput): VoiceWriterIn
     responseStyle: input.responseStyle,
     preferredAddress: input.preferredAddress,
     recentMessages: input.recentMessages,
+    recentCoachingExchanges: input.recentCoachingExchanges,
     reminderAnchors: input.reminderAnchors,
     disciplineBreakPattern: input.disciplineBreakPattern,
     whatHelpsRefocus: input.whatHelpsRefocus,

@@ -78,6 +78,7 @@ async function sendCoachingPush(
     responseStyle: user.mentalProfile?.responseStyle ?? null,
     preferredAddress: user.mentalProfile?.preferredAddress ?? null,
     recentMessages: [],
+    recentCoachingExchanges: [],
     reminderAnchors: user.mentalProfile?.reminderAnchors ?? [],
     disciplineBreakPattern: user.mentalProfile?.disciplineBreakPattern ?? null,
     whatHelpsRefocus: user.mentalProfile?.whatHelpsRefocus ?? null,
