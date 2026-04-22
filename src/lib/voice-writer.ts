@@ -69,24 +69,24 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Confirm the lockout matter-of-factly. One sentence. No drama, no softening, no false encouragement.",
   },
   stop_fomo: {
-    situation: "The trader is feeling FOMO — watching a move without them, wanting to jump in without a setup.",
-    goal: "Acknowledge the feeling is real. One thought: this isn't their setup, and the next real opportunity will come.",
+    situation: "FOMO — trader watching a move without them, wants to chase without a setup.",
+    goal: "Acknowledge the pull, redirect to waiting. Two short lines — aim for this register: 'הסטאפ לא היה שם. הבא יבוא.' — adapt to the moment, don't copy.",
   },
   stop_revenge: {
-    situation: "The trader took a loss and wants to trade immediately to recover it.",
-    goal: "Acknowledge the urge. One thought: acting on this impulse now deepens the loss — it doesn't fix it.",
+    situation: "Revenge impulse — trader wants to trade immediately after a loss.",
+    goal: "Name the pull, name what protects them. Two short lines — aim for this register: 'לא מחזירים מכאן. רק מעמיקים.' — adapt to the moment, don't copy.",
   },
   ground_tilt: {
-    situation: "The trader is overwhelmed or spiraling — flooded, can't think clearly.",
-    goal: "Acknowledge briefly. One grounding thought or small anchor. Stay steady — not alarmed.",
+    situation: "Tilt / overwhelm — trader flooded, not thinking clearly.",
+    goal: "Meet them, one steadying thought. One or two short lines — aim for this register: 'קודם מורידים רעש. אחר כך חושבים.' — adapt to the moment, don't copy.",
   },
   acknowledge_loss: {
-    situation: "The trader just took a loss.",
-    goal: "Meet them where they are. Acknowledge it happened. Give them space — not another redirect.",
+    situation: "Fresh loss — immediate, raw.",
+    goal: "Acknowledge simply. Give space. One or two short lines — aim for this register: 'קרה. זה לא חייב להפוך ליום שבור.' — adapt to the moment, don't copy.",
   },
   acknowledge_multiple_losses: {
-    situation: "The trader has taken multiple consecutive losses.",
-    goal: "Honor the weight. One thought: protecting what's left is the right move right now.",
+    situation: "Multiple consecutive losses — cumulative weight.",
+    goal: "Honor the weight, name the protection. Two short lines — aim for this register: 'כאב. עכשיו שומרים שלא יתווסף.' — adapt to the moment, don't copy.",
   },
   forward_anchor: {
     situation: "The trader is calm or recovering — ready to think about what's next.",
@@ -109,8 +109,8 @@ const INTENT_DESCRIPTIONS: Record<CoachingIntent, { situation: string; goal: str
     goal: "Name the limit plainly. One sentence. Stop there.",
   },
   cooldown_active: {
-    situation: "The trader is in a required cooldown — their own rule to step away from the screen.",
-    goal: "Hold the pause warmly. This is the rule they set for exactly this kind of moment.",
+    situation: "Required cooldown — trader's own rule to step away.",
+    goal: "Confirm the pause warmly. One or two short lines — aim for this register: 'עוצרים כאן. זה הכלל שכתבת לעצמך.' — adapt to the moment, don't copy.",
   },
   news_warning: {
     situation: "An economic news event is approaching — the pre-news warning window is active.",

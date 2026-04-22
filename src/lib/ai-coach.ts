@@ -760,6 +760,68 @@ export function shouldUseAICoach(params: {
   return false;
 }
 
+function buildDirectFactualReply(input: AICoachInput): string | null {
+  const intent = deriveCoachingIntent(input);
+  if (intent !== "rule_limits_summary") return null;
+
+  const isRemaining = input.actionId === "remaining";
+
+  if (input.language === "he") {
+    const parts: string[] = [];
+
+    if (isRemaining) {
+      if (input.maxDailyLoss != null) {
+        const used = Math.abs(Math.min(input.todayPnL, 0));
+        const remaining = Math.max(0, input.maxDailyLoss - used);
+        if (used > 0) {
+          parts.push(`נשאר לך ${remaining.toFixed(0)}$ להפסד יומי.`);
+        } else {
+          parts.push(`לא הפסדת עדיין. יש לך ${input.maxDailyLoss}$ מלאים.`);
+        }
+      }
+      if (input.maxTradesPerDay != null) {
+        parts.push(`עסקאות: ${input.todayTradesCount} מתוך ${input.maxTradesPerDay}.`);
+      }
+      if (input.stopAfterLosses != null && input.consecutiveLosses > 0) {
+        parts.push(`הפסדות ברצף: ${input.consecutiveLosses} מתוך ${input.stopAfterLosses}.`);
+      }
+    } else {
+      if (input.maxDailyLoss != null) parts.push(`גבול הפסד יומי: ${input.maxDailyLoss}$.`);
+      if (input.maxTradesPerDay != null) parts.push(`מקסימום עסקאות: ${input.maxTradesPerDay}.`);
+      if (input.stopAfterLosses != null) parts.push(`עצירה אחרי ${input.stopAfterLosses} הפסדות ברצף.`);
+    }
+
+    return parts.length > 0 ? parts.join(" ") : "לא הוגדרו גבולות.";
+  }
+
+  if (input.language === "en") {
+    const parts: string[] = [];
+
+    if (isRemaining) {
+      if (input.maxDailyLoss != null) {
+        const used = Math.abs(Math.min(input.todayPnL, 0));
+        const remaining = Math.max(0, input.maxDailyLoss - used);
+        parts.push(used > 0 ? `$${remaining.toFixed(0)} left on daily loss.` : `Full $${input.maxDailyLoss} available — no losses yet.`);
+      }
+      if (input.maxTradesPerDay != null) {
+        parts.push(`Trades: ${input.todayTradesCount} of ${input.maxTradesPerDay}.`);
+      }
+      if (input.stopAfterLosses != null && input.consecutiveLosses > 0) {
+        parts.push(`Consecutive losses: ${input.consecutiveLosses} of ${input.stopAfterLosses}.`);
+      }
+    } else {
+      if (input.maxDailyLoss != null) parts.push(`Daily loss limit: $${input.maxDailyLoss}.`);
+      if (input.maxTradesPerDay != null) parts.push(`Max trades: ${input.maxTradesPerDay}.`);
+      if (input.stopAfterLosses != null) parts.push(`Stop after ${input.stopAfterLosses} consecutive losses.`);
+    }
+
+    return parts.length > 0 ? parts.join(" ") : "No limits configured.";
+  }
+
+  // Other languages: fall through to AI
+  return null;
+}
+
 export async function generateAICoachReply(
   input: AICoachInput,
 ): Promise<string | null> {
@@ -768,6 +830,12 @@ export async function generateAICoachReply(
   // Coaching mode → dedicated voice writer (brain/voice split)
   if (input.conversationMode === "coaching") {
     return generateVoiceReply(buildVoiceWriterInputFromCoachInput(input));
+  }
+
+  // Meta mode (rule-limits / remaining) → bypass AI; format directly in TypeScript
+  if (input.conversationMode === "meta") {
+    const direct = buildDirectFactualReply(input);
+    if (direct) return direct;
   }
 
   const client = new Anthropic();
