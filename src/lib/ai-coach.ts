@@ -665,7 +665,9 @@ function shouldAskQuestion(intent: CoachingIntent, responseStyle: string | null)
   if (responseStyle === "Reflective questions") return true;
   if (responseStyle === "One-line prompts") return false;
   const askIntents = new Set<CoachingIntent>([
-    "surface_purpose", "acknowledge_loss", "morning_anchor", "general_coaching", "forward_anchor",
+    "surface_purpose", "acknowledge_loss", "acknowledge_multiple_losses",
+    "stop_fomo", "ground_tilt",
+    "morning_anchor", "general_coaching", "forward_anchor",
     "pre_session_checkin",  // ends with intention-setting question
     "end_of_day_review",    // structured review always asks questions
   ]);
