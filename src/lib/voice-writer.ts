@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import type { CoachingExchange } from "@/lib/session-log";
+import {
+  buildCoachingStateBlock,
+  type ShortTermCoachingState,
+} from "@/lib/coaching-state";
 
 export type { CoachingExchange };
 
@@ -52,6 +56,7 @@ export type VoiceWriterInput = {
   preferredAddress: string | null;
   recentMessages: Array<{ message: string; traderState: string }>;
   recentCoachingExchanges: CoachingExchange[];
+  shortTermCoachingState?: ShortTermCoachingState | null;
   reminderAnchors: string[];
   disciplineBreakPattern: string | null;
   whatHelpsRefocus: string | null;
@@ -498,32 +503,51 @@ function buildVoiceWriterPrompt(input: VoiceWriterInput): string {
     lines.push("");
   }
 
+  // Coaching state block — live episode/arc/move facts, injected before exchanges
+  if (input.shortTermCoachingState) {
+    const stateBlock = buildCoachingStateBlock(input.shortTermCoachingState);
+    if (stateBlock.length > 0) lines.push(...stateBlock);
+  }
+
   if (input.recentCoachingExchanges.length > 0) {
     lines.push("YOUR RECENT EXCHANGES WITH THIS TRADER (oldest first):");
     for (const exchange of input.recentCoachingExchanges) {
       const stateLabel = exchange.traderState !== "NONE" ? ` [${exchange.traderState}]` : "";
+      const moveLabel = exchange.coachingMove ? ` (${exchange.coachingMove})` : "";
       lines.push(`  Trader${stateLabel}: ${exchange.userMessage}`);
-      lines.push(`  You:    ${exchange.coachReply}`);
+      lines.push(`  You${moveLabel}:    ${exchange.coachReply}`);
       lines.push("");
     }
-    lines.push("COACHING CONTINUITY — read the history before writing:");
-    lines.push("You are continuing a conversation. Not starting from zero.");
+    lines.push("COACHING CONTINUITY — read the state and history above before writing:");
+    lines.push("You are inside a live emotional sequence. You are not starting from zero.");
     lines.push("");
     lines.push("ANTI-REPETITION:");
     lines.push("- Do NOT open with the same first word or phrase used in any reply above.");
     lines.push("- Do NOT repeat the same emotional framing, metaphor, or image.");
-    lines.push("- Do NOT repeat the same coaching move — if you said 'step away' or 'breathe', that move is spent. Find a different angle.");
+    lines.push("- Do NOT repeat the same coaching move — if you used grounding, interrupt, or step-away, that move is spent unless the arc has clearly shifted.");
     lines.push("- If the last reply ended with a question, lead with a statement. If it ended with a statement, consider a question.");
     lines.push("");
     lines.push("EMOTIONAL CONTINUITY:");
     lines.push("- You already engaged this emotional moment. Do not re-explain or re-diagnose it.");
-    lines.push("- If the trader's state hasn't changed since the last exchange, they need a different approach — not the same coaching direction again.");
-    lines.push("- If they appear to be de-escalating, acknowledge forward movement — don't re-escalate.");
-    lines.push("- If you already gave a grounding instruction and they're still here, it didn't land. Try something different.");
-    lines.push("- Build on the last moment instead of restarting from the top.");
+    lines.push("- Build on the last moment — do not restart from the top of the emotional situation.");
+    lines.push("- If the trader is de-escalating, match that — reduce intensity, move forward.");
+    lines.push("- If the trader is still escalating and you already used grounding, try a reframe or a direct question instead.");
+    lines.push("- If the same distress pattern is repeating, change your approach — not just your words.");
     lines.push("");
+    // Arc-specific continuation instruction derived from live state
+    const arc = input.shortTermCoachingState?.arc;
+    if (arc === "escalating") {
+      lines.push("ARC NOTE: Trader is escalating. Avoid abstract reflection or open questions — keep it grounded and direct.");
+      lines.push("");
+    } else if (arc === "stabilizing") {
+      lines.push("ARC NOTE: Trader is stabilizing. Reduce emotional intensity. Help them move forward, not backward.");
+      lines.push("");
+    } else if (arc === "unresolved") {
+      lines.push("ARC NOTE: Same distress is unresolved. What you said before did not move it — try a completely different angle.");
+      lines.push("");
+    }
   } else if (input.recentMessages.length > 0) {
-    // Fallback when no full exchanges available yet — user messages only
+    // Fallback when no full exchanges stored yet — user messages only
     lines.push("Recent session (do not repeat what was already addressed):");
     for (const msg of input.recentMessages) {
       const stateLabel = msg.traderState && msg.traderState !== "NONE" ? ` [${msg.traderState}]` : "";

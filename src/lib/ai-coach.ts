@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import type { ManualEventSignals } from "@/lib/rule-engine";
 import { getToneVoiceGuidance, normalizeToneId } from "@/lib/coaching-tones";
+import { deriveShortTermCoachingState } from "@/lib/coaching-state";
 import { generateVoiceReply } from "@/lib/voice-writer";
 import type { CoachingExchange, CoachingIntent, PersonalCue, VoiceWriterInput } from "@/lib/voice-writer";
 
@@ -538,7 +539,7 @@ function buildSystemPrompt(input: AICoachInput): string {
 
 // ─── Brain helpers — decide intent/cues before writing ──────────────────────
 
-function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
+export function deriveCoachingIntent(input: AICoachInput): CoachingIntent {
   // Explicit structured action IDs override state-derived intents
   if (input.actionId === "check-in") return "pre_session_checkin";
   if (input.actionId === "day-summary") return "end_of_day_review";
@@ -694,6 +695,7 @@ function buildVoiceWriterInputFromCoachInput(input: AICoachInput): VoiceWriterIn
     preferredAddress: input.preferredAddress,
     recentMessages: input.recentMessages,
     recentCoachingExchanges: input.recentCoachingExchanges,
+    shortTermCoachingState: deriveShortTermCoachingState(input.recentCoachingExchanges),
     reminderAnchors: input.reminderAnchors,
     disciplineBreakPattern: input.disciplineBreakPattern,
     whatHelpsRefocus: input.whatHelpsRefocus,

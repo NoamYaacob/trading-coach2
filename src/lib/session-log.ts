@@ -13,6 +13,7 @@ type LogCoachEventInput = {
   traderState: TraderCurrentState;
   cooldownActive: boolean;
   coachReply?: string;
+  coachingMove?: string;
   metadataJson?: Prisma.InputJsonValue;
 };
 
@@ -78,9 +79,15 @@ function inferEventType(input: {
 }
 
 export async function logCoachEvent(input: LogCoachEventInput) {
-  const metadataJson = input.coachReply
-    ? { ...(input.metadataJson as Record<string, unknown> ?? {}), coachReply: input.coachReply }
-    : input.metadataJson;
+  const base = (input.metadataJson as Record<string, unknown> | undefined) ?? {};
+  const metadataJson =
+    input.coachReply || input.coachingMove
+      ? {
+          ...base,
+          ...(input.coachReply ? { coachReply: input.coachReply } : {}),
+          ...(input.coachingMove ? { coachingMove: input.coachingMove } : {}),
+        }
+      : input.metadataJson;
 
   return prisma.dailySessionEvent.create({
     data: {
@@ -103,6 +110,7 @@ export async function logCoachEvent(input: LogCoachEventInput) {
 export type CoachingExchange = {
   userMessage: string;
   coachReply: string;
+  coachingMove?: string;
   traderState: string;
   createdAt: Date;
 };
@@ -128,9 +136,11 @@ export async function getRecentCoachingExchanges(
     if (reply.length < 20) continue;
     if (event.message === lastUserMessage) continue;
     lastUserMessage = event.message;
+    const coachingMove = typeof meta?.coachingMove === "string" ? meta.coachingMove : undefined;
     result.push({
       userMessage: event.message,
       coachReply: reply,
+      coachingMove,
       traderState: String(event.traderState ?? "NONE"),
       createdAt: event.createdAt,
     });

@@ -8,7 +8,9 @@ import {
   STRUCTURED_COACHING_ACTION_IDS,
   shouldUseAICoach,
   detectConversationMode,
+  deriveCoachingIntent,
 } from "@/lib/ai-coach";
+import { mapIntentToMove } from "@/lib/coaching-state";
 import { filterActionableInterventions } from "@/lib/intervention-engine";
 import type { InterventionEvent } from "@/lib/intervention-engine";
 import type { CoachIntent } from "@/lib/coach";
@@ -534,6 +536,9 @@ export async function POST(request: Request) {
   });
 
   const aiReply = useAI ? await generateAICoachReply(aiInput) : null;
+  const coachingMove = useAI
+    ? mapIntentToMove(deriveCoachingIntent(aiInput))
+    : undefined;
 
   // Fallback priority: quick-action locale reply → state-derived reply → session-state reply → generic
   const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
@@ -570,6 +575,7 @@ export async function POST(request: Request) {
     traderState: loggedTraderState,
     cooldownActive: flags.cooldownActive,
     coachReply: replyText,
+    coachingMove,
     metadataJson: {
       aiReplyGenerated: aiReply !== null,
       stateSnapshot: flags.currentState,
