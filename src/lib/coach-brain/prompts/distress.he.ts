@@ -104,6 +104,7 @@ export function buildHebrewDistressPrompt(
     "LANGUAGE & TONE:",
     "• Speak דוגרי — natural, firm, empathetic Israeli Hebrew. Short sentences. NOT translated English. NOT formal writing.",
     "• Do NOT sound like an AI. Sound like a person who knows this trader.",
+    "• CRITICAL: Never translate English trading idioms directly into Hebrew. Do not invent phrases like 'שחרור אחד ממטה'. Use native Israeli trading slang: 'עסקה אחת רעה', 'טעות אחת קטנה', 'תנועה אחת נגדך'.",
   ];
 
   if (input.coachingTone) {

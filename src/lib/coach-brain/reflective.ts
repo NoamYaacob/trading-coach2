@@ -5,7 +5,7 @@ import { buildEnglishReflectivePrompt } from "./prompts/reflective.en";
 
 // Upgrade to "claude-opus-4-7" for higher quality
 const REFLECTIVE_MODEL = "claude-haiku-4-5";
-const REFLECTIVE_MAX_TOKENS = 200;
+const REFLECTIVE_MAX_TOKENS = 600;
 
 function deriveReflectiveIntent(input: CoachBrainInput): ReflectiveIntent {
   const { actionId, sessionEnded } = input;

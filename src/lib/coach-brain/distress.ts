@@ -5,7 +5,7 @@ import { buildEnglishDistressPrompt } from "./prompts/distress.en";
 
 // Upgrade to "claude-opus-4-7" for higher quality
 const DISTRESS_MODEL = "claude-haiku-4-5";
-const DISTRESS_MAX_TOKENS = 150;
+const DISTRESS_MAX_TOKENS = 600;
 
 function deriveDistressIntent(input: CoachBrainInput): DistressIntent {
   const { actionId, traderState, guardianLocked, cooldownActive, hasBlockingViolation } = input;

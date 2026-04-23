@@ -104,6 +104,7 @@ export function buildEnglishDistressPrompt(
     "LANGUAGE & TONE:",
     "• Direct, firm, empathetic. Short sentences. NOT formal writing. NOT corporate.",
     "• Do NOT sound like an AI. Sound like a person who knows this trader.",
+    "• Use natural trading vocabulary. Do not invent literal translations of English idioms.",
   ];
 
   if (input.coachingTone) {

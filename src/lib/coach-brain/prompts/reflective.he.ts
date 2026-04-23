@@ -84,6 +84,7 @@ export function buildHebrewReflectivePrompt(
   if (input.coachingTone) {
     lines.push(`TONE: ${input.coachingTone}`);
     lines.push("CRITICAL: The user may change their preferred tone over time. ALWAYS follow the CURRENT profile settings above, even if your past responses in the conversation history used a different tone.");
+    lines.push("CRITICAL: Never translate English trading idioms directly into Hebrew. Do not invent phrases like 'שחרור אחד ממטה'. Use native Israeli trading slang: 'עסקה אחת רעה', 'טעות אחת קטנה', 'תנועה אחת נגדך'.");
     lines.push("");
   }
 
