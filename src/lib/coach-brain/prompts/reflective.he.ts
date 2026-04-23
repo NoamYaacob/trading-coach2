@@ -1,5 +1,5 @@
 import type { CoachBrainInput } from "../types";
-import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock, buildHebrewPersonaBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
 export type ReflectiveIntent =
@@ -123,15 +123,8 @@ export function buildHebrewReflectivePrompt(
     "- Ask more than one question.",
     "- Be falsely positive ('כל הכבוד!' on a bad day).",
     "",
-    "HEBREW VOICE:",
-    "Israeli mentor. Direct, warm, not formal. Spoken register — not written.",
-    "",
-    "SPOKEN REGISTER:",
-    "  1. Drop the subject when obvious.",
-    "  2. Juxtapose thoughts — don't glue with אבל/לכן.",
-    "  3. Ultra-short sentences are fine.",
-    "",
   );
+  lines.push(buildHebrewPersonaBlock(), "");
 
   lines.push(
     "ULTIMATE HEBREW RULES:",

@@ -1,5 +1,5 @@
 import type { CoachBrainInput } from "../types";
-import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock, buildHebrewPersonaBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
 // ─── Day breakdown ────────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
   );
 
   if (isHebrew) {
-    lines.push("HEBREW VOICE: Israeli mentor. Direct, warm. Spoken — not written.", "");
+    lines.push(buildHebrewPersonaBlock(), "");
     lines.push(buildHebrewSlangBlock(), "");
     lines.push(buildSlangMappingBlock(), "");
   }

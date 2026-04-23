@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CoachBrainInput, CoachBrainOutput } from "./types";
-import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./prompts/hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock, buildHebrewPersonaBlock } from "./prompts/hebrew-slang";
 import { buildSlangMappingBlock } from "./prompts/slang-mapping";
 
 // Upgrade to "claude-opus-4-7" for higher quality
@@ -97,17 +97,7 @@ function buildFreeTextPrompt(input: CoachBrainInput): string {
 
   // Hebrew spoken register
   if (input.language === "he") {
-    lines.push(
-      "HEBREW VOICE:",
-      "Israeli mentor. Spoken, not written. Short. Direct.",
-      "",
-      "SPOKEN REGISTER:",
-      "  1. Drop the subject when obvious.",
-      "  2. Juxtapose — no אבל/לכן.",
-      "  3. Don't explain the mechanism. State the consequence.",
-      "  4. Ultra-short is fine.",
-      "",
-    );
+    lines.push(buildHebrewPersonaBlock(), "");
     lines.push(
       "ULTIMATE HEBREW RULES:",
       "",

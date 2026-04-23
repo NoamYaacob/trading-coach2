@@ -1,5 +1,5 @@
 import type { CoachBrainInput } from "../types";
-import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock, buildHebrewPersonaBlock, buildDistress3StepBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
 export type DistressIntent =
@@ -175,17 +175,8 @@ export function buildHebrewDistressPrompt(
     "",
     `GOAL: ${goal}`,
     "",
-    "VOICE STANDARD: Steady, grounded mentor. On their side — not disappointed in them, not alarmed for them.",
-    "",
-    // ── Coaching move ─────────────────────────────────────────────────────────
-    "ONE COACHING MOVE — pick exactly one:",
-    "  CONTAIN: Brief acknowledgment + one stabilizing thought. Lower the temperature.",
-    "  REFRAME: Name what's actually happening (calmly) + redirect to what can still be protected.",
-    "  ANCHOR: Surface their motivation or a personal anchor. Ground them in something real.",
-    "  QUESTION: One sharp Socratic question that snaps them out of the pattern.",
-    "Do not combine moves. One is enough.",
-    "",
   );
+  lines.push(buildDistress3StepBlock(), "");
 
   // ── Constraint ────────────────────────────────────────────────────────────
   const constraint =
@@ -249,17 +240,8 @@ export function buildHebrewDistressPrompt(
     "- Ask more than one question.",
     '- Open with "As your coach", "I understand that", "It sounds like".',
     "",
-    "HEBREW COACHING VOICE:",
-    "Israeli trading mentor. Spoken, not written. Short. Direct.",
-    "",
-    "SPOKEN REGISTER — five rules:",
-    "  1. Drop the subject when obvious. ('לא מחזירים.' not 'אנחנו לא מחזירים.')",
-    "  2. Juxtapose thoughts — don't glue with אבל/לכן. ('קרה. לא חייב להפוך ליום שבור.')",
-    "  3. Don't explain the mechanism. State the consequence. ('רק מעמיקים.' not 'כי לא ניתן לשחזר ממצב לחץ.')",
-    "  4. Ultra-short is fine. 'קורה.' is a complete reply. 'עוצרים.' is a complete reply.",
-    "  5. Don't validate the move — just make it. ('עוצרים.' not 'עוצרים. זה בדיוק מה שצריך.')",
-    "",
   );
+  lines.push(buildHebrewPersonaBlock(), "");
 
   // ── Examples (style-aware) ────────────────────────────────────────────────
   if (isBullets) {
