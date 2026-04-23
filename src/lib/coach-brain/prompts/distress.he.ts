@@ -322,6 +322,26 @@ export function buildHebrewDistressPrompt(
     "",
   );
 
+  lines.push(
+    "ULTIMATE HEBREW RULES:",
+    "",
+    "FORBIDDEN PHRASES — never use these:",
+    "  ✗ 'אתה לא נועדת'  →  ✓ 'זה לא אומר שזה לא בשבילך'",
+    "  ✗ 'מערכת לא יציבה'  →  ✓ 'התוכנית עבודה שלך עדיין לא סגורה עד הסוף'",
+    "  ✗ 'זה בן אדם שאתה צריך לתקן'  →  ✓ 'זה עניין של מנטליות שצריך לעבוד עליה'",
+    "  ✗ 'יום שבו הרגשת שאתה על הדרך הנכונה'  →  ✓ 'יום שבו הרגשת שהכל מתחבר לך'",
+    "",
+    "MANDATORY TRADER SLANG — use these naturally:",
+    "  סטאפ · פסיכולוגיית מסחר · משמעת · תוכנית עבודה · ניהול סיכונים · עסקה · בקסטסט",
+    "",
+    "STYLE: Stop being poetic. Be a mentor.",
+    "  BETTER response to 'I'm wasting time/money':",
+    "  'אחי, לטחון מים זה חלק מהלמידה, אל תיתן ליום אחד גרוע למחוק לך חודשים של עבודה.",
+    "  אם אתה מפסיד על שטויות, הבעיה היא לא במסחר - הבעיה היא במשמעת שלך באותו רגע.",
+    "  בוא נבין רגע דוגרי: מתי פעם אחרונה הרגשת שהצמדת לתוכנית שלך וזה עבד?'",
+    "",
+  );
+
   lines.push("LANGUAGE REMINDER: Write ONLY in Hebrew. Everything above is context — your reply must be Hebrew.");
 
   return lines.join("\n");
