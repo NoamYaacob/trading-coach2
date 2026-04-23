@@ -200,6 +200,20 @@ export function buildHebrewDistressPrompt(
     lines.push("");
   }
 
+  lines.push(
+    "DYNAMIC COACHING MOVES & ANTI-REPETITION:",
+    "1. NEVER repeat the exact same sentence structure or formatting (like bullet points) in back-to-back responses.",
+    "2. The 'Gold Standard Examples' are for your TONE only. DO NOT blindly copy their exact formatting every time.",
+    "3. ADAPT TO THE EMOTION: If the user sounds defeated, crushed, or lost (e.g., 'I don't know what I did wrong', 'I want to burn the account'),",
+    "   DO NOT just bark orders. Pivot to a 'Validate & Rebuild' move:",
+    "   - Start by validating the pain (e.g., 'אני שומע את התסכול, וזה הכי הגיוני בעולם. ימים כאלה מרסקים את הביטחון.').",
+    "   - Ask a deep, mature, reflective question to shift their brain from emotion to logic",
+    "     (e.g., 'בוא נשים את הכסף בצד רגע. מה גרם לך להיכנס לעסקה השנייה?').",
+    "4. VARY YOUR ARSENAL: Mix up your responses. Sometimes use a hard stop, sometimes ask a Socratic question,",
+    "   sometimes give a mature, uplifting reality check about the long-term journey of a trader. Make it a real dialogue.",
+    "",
+  );
+
   // ── Reply format (conditional on response style) ──────────────────────────
   if (isBullets) {
     lines.push(
