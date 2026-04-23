@@ -50,6 +50,7 @@ function buildFreeTextPrompt(input: CoachBrainInput): string {
   // Coaching tone
   if (input.coachingTone) {
     lines.push(`TONE: ${input.coachingTone}`);
+    lines.push("CRITICAL: The user may change their preferred tone over time. ALWAYS follow the CURRENT profile settings above, even if your past responses in the conversation history used a different tone.");
     lines.push("");
   }
 
