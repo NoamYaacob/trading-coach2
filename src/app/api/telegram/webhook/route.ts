@@ -483,6 +483,9 @@ export async function POST(request: Request) {
     },
     coachingTone: connection.user.mentalProfile?.coachingTone ?? null,
     preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
+    responseStyle: connection.user.mentalProfile?.responseStyle ?? null,
+    tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
+    tiltTrigger: connection.user.mentalProfile?.tiltTrigger ?? null,
     reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
     recentContext: recentCoachingExchanges.slice(-2).map((e) => ({
       userMessage: e.userMessage,

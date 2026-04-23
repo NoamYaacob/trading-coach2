@@ -33,6 +33,9 @@ export type CoachBrainInput = {
   usage: TraderUsage;
   coachingTone: string | null;
   preferredAddress: string | null;
+  responseStyle: string | null;
+  tradingWhy: string | null;
+  tiltTrigger: string | null;
   reminderAnchors: string[];
   /** At most 2 most-recent exchanges, for anti-repetition only */
   recentContext: RecentExchange[];
