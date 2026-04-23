@@ -52,28 +52,41 @@ function buildEodBlock(input: CoachBrainInput): string[] {
   const lossUsed = Math.max(0, -usage.todayPnL);
   const remaining = Math.max(0, rules.maxDailyLoss - lossUsed);
   const pctUsed = lossUsed > 0 ? Math.round((lossUsed / rules.maxDailyLoss) * 100) : 0;
+  const tiltTriggerHit =
+    rules.stopAfterLosses != null && usage.consecutiveLosses >= rules.stopAfterLosses;
+  const dailyLimitHit = lossUsed >= rules.maxDailyLoss;
 
-  const lines: string[] = ["TRADER'S ACCOUNT STATUS TODAY (real numbers — use them when tilting):"];
+  const lines: string[] = ["TRADER'S ACCOUNT STATUS TODAY:"];
 
-  if (rules.accountSize) {
-    const eodPctOfAccount = ((rules.maxDailyLoss / rules.accountSize) * 100).toFixed(1);
-    lines.push(`  Account size: $${rules.accountSize.toFixed(0)}`);
-    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)} (${eodPctOfAccount}% of account)`);
+  if (tiltTriggerHit) {
+    lines.push(`  ⛔ HARD STOP: Tilt trigger reached — ${usage.consecutiveLosses} consecutive losses (limit: ${rules.stopAfterLosses}).`);
+    lines.push("  The session is OVER.");
+    lines.push("  DO NOT mention how much money remains in the daily buffer. Mentioning it gives the trader an excuse to keep trading. Just enforce the stop.");
+    if (lossUsed > 0) lines.push(`  Lost today: $${lossUsed.toFixed(0)}`);
+  } else if (dailyLimitHit) {
+    lines.push(`  ⛔ HARD STOP: Daily loss limit of $${rules.maxDailyLoss.toFixed(0)} reached. Session is over.`);
+    lines.push("  DO NOT mention remaining buffer — it is $0. Enforce the stop.");
+    lines.push(`  Lost today: $${lossUsed.toFixed(0)}`);
   } else {
-    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)}`);
-  }
-
-  if (lossUsed > 0) {
-    lines.push(`  Lost today: $${lossUsed.toFixed(0)} — ${pctUsed}% of EOD limit consumed`);
-    lines.push(`  Remaining buffer: $${remaining.toFixed(0)}`);
-    if (pctUsed >= 75) {
-      lines.push(`  ⚠ CRITICAL: ${pctUsed}% of the EOD limit is already gone. $${remaining.toFixed(0)} left. One more bad trade could blow the day — or the account.`);
+    if (rules.accountSize) {
+      const eodPctOfAccount = ((rules.maxDailyLoss / rules.accountSize) * 100).toFixed(1);
+      lines.push(`  Account size: $${rules.accountSize.toFixed(0)}`);
+      lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)} (${eodPctOfAccount}% of account)`);
+    } else {
+      lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)}`);
     }
-  } else {
-    lines.push("  No losses yet today. Full buffer intact.");
+    if (lossUsed > 0) {
+      lines.push(`  Lost today: $${lossUsed.toFixed(0)} — ${pctUsed}% of EOD limit consumed`);
+      lines.push(`  Remaining buffer: $${remaining.toFixed(0)}`);
+      if (pctUsed >= 75) {
+        lines.push(`  ⚠ CRITICAL: ${pctUsed}% of the EOD limit is already gone. $${remaining.toFixed(0)} left. One more bad trade could blow the day — or the account.`);
+      }
+    } else {
+      lines.push("  No losses yet today. Full buffer intact.");
+    }
+    lines.push("Use these numbers to make the reality concrete when the trader is tilting. Don't recite them — land the one number that matters most right now.");
   }
 
-  lines.push("Use these numbers to make the reality concrete when the trader is tilting. Don't recite them — land the one number that matters most right now.");
   return lines;
 }
 
@@ -98,7 +111,10 @@ export function buildEnglishDistressPrompt(
     "3. This trader uses Prop Firm accounts. EOD (End of Day) Drawdown rules apply.",
     "   IGNORE any reference to legacy trailing drawdown. The only limit that matters today is the EOD daily loss limit.",
     "4. If the trader is tilting near or at their EOD limit — state the reality plainly. No softening.",
-    "5. Write ONLY in English.",
+    "5. HARD STOP RULE: If a ⛔ HARD STOP appears in the account status above, the session is OVER.",
+    "   DO NOT mention how much money remains in the daily buffer — it gives the trader an excuse to keep trading.",
+    "   Just enforce the stop. Name the trigger. That's it.",
+    "6. Write ONLY in English.",
     "",
     // ── Language & tone ───────────────────────────────────────────────────────
     "LANGUAGE & TONE:",
@@ -222,12 +238,12 @@ export function buildEnglishDistressPrompt(
   if (isBullets) {
     lines.push(
       "GOLD STANDARD EXAMPLES (bullets format — right tone, don't copy the words):",
-      "  Revenge/Tilt after losses:",
-      "    'Stop everything.",
-      "    • You've taken [N] losses in a row — that's exactly your tilt trigger.",
-      "    • You're running on \"I have to win it back\", not a plan.",
-      "    • Remember why you trade: [motivation]. One emotional moment can destroy months of discipline.",
-      "    Step back. Close the screen.'",
+      "  Tilt trigger hit — [N]+ consecutive losses (DO NOT mention remaining buffer here):",
+      "    'Stop — take a breath.",
+      "    • [N] losses back to back — that's exactly your trigger.",
+      "    • You're not trading from a plan right now. You're chasing.",
+      "    • Remember why you trade: [motivation]. One spiral can undo months of discipline.",
+      "    Close the screen. Day's done.'",
       "",
       "  FOMO / near daily limit:",
       "    'Step away from the chart.",
@@ -265,7 +281,7 @@ export function buildEnglishDistressPrompt(
 
   lines.push(
     "SOCRATIC QUESTIONS — when a question is the right move (one only):",
-    '  "How much buffer do you have left on your EOD limit?"',
+    '  "How much buffer do you have left on your EOD limit?" — ONLY if NO hard stop has been triggered. If tilt trigger is hit, do NOT ask this.',
     '  "What\'s the safest move right now?"',
     '  "What protects you more — a break, or one more decision?"',
     '  "If you looked back at this moment tomorrow, what would you want to have done?"',

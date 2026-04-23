@@ -52,28 +52,41 @@ function buildEodBlock(input: CoachBrainInput): string[] {
   const lossUsed = Math.max(0, -usage.todayPnL);
   const remaining = Math.max(0, rules.maxDailyLoss - lossUsed);
   const pctUsed = lossUsed > 0 ? Math.round((lossUsed / rules.maxDailyLoss) * 100) : 0;
+  const tiltTriggerHit =
+    rules.stopAfterLosses != null && usage.consecutiveLosses >= rules.stopAfterLosses;
+  const dailyLimitHit = lossUsed >= rules.maxDailyLoss;
 
-  const lines: string[] = ["TRADER'S ACCOUNT STATUS TODAY (real numbers — use them when tilting):"];
+  const lines: string[] = ["TRADER'S ACCOUNT STATUS TODAY:"];
 
-  if (rules.accountSize) {
-    const eodPctOfAccount = ((rules.maxDailyLoss / rules.accountSize) * 100).toFixed(1);
-    lines.push(`  Account size: $${rules.accountSize.toFixed(0)}`);
-    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)} (${eodPctOfAccount}% of account)`);
+  if (tiltTriggerHit) {
+    lines.push(`  ⛔ HARD STOP: Tilt trigger reached — ${usage.consecutiveLosses} consecutive losses (limit: ${rules.stopAfterLosses}).`);
+    lines.push("  The session is OVER.");
+    lines.push("  DO NOT mention how much money remains in the daily buffer. Mentioning it gives the trader an excuse to keep trading. Just enforce the stop.");
+    if (lossUsed > 0) lines.push(`  Lost today: $${lossUsed.toFixed(0)}`);
+  } else if (dailyLimitHit) {
+    lines.push(`  ⛔ HARD STOP: Daily loss limit of $${rules.maxDailyLoss.toFixed(0)} reached. Session is over.`);
+    lines.push("  DO NOT mention remaining buffer — it is $0. Enforce the stop.");
+    lines.push(`  Lost today: $${lossUsed.toFixed(0)}`);
   } else {
-    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)}`);
-  }
-
-  if (lossUsed > 0) {
-    lines.push(`  Lost today: $${lossUsed.toFixed(0)} — ${pctUsed}% of EOD limit consumed`);
-    lines.push(`  Remaining buffer: $${remaining.toFixed(0)}`);
-    if (pctUsed >= 75) {
-      lines.push(`  ⚠ CRITICAL: ${pctUsed}% of the EOD limit is already gone. $${remaining.toFixed(0)} left. One more bad trade could blow the day — or the account.`);
+    if (rules.accountSize) {
+      const eodPctOfAccount = ((rules.maxDailyLoss / rules.accountSize) * 100).toFixed(1);
+      lines.push(`  Account size: $${rules.accountSize.toFixed(0)}`);
+      lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)} (${eodPctOfAccount}% of account)`);
+    } else {
+      lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)}`);
     }
-  } else {
-    lines.push("  No losses yet today. Full buffer intact.");
+    if (lossUsed > 0) {
+      lines.push(`  Lost today: $${lossUsed.toFixed(0)} — ${pctUsed}% of EOD limit consumed`);
+      lines.push(`  Remaining buffer: $${remaining.toFixed(0)}`);
+      if (pctUsed >= 75) {
+        lines.push(`  ⚠ CRITICAL: ${pctUsed}% of the EOD limit is already gone. $${remaining.toFixed(0)} left. One more bad trade could blow the day — or the account.`);
+      }
+    } else {
+      lines.push("  No losses yet today. Full buffer intact.");
+    }
+    lines.push("Use these numbers to make the reality concrete when the trader is tilting. Don't recite them — land the one number that matters most right now.");
   }
 
-  lines.push("Use these numbers to make the reality concrete when the trader is tilting. Don't recite them — land the one number that matters most right now.");
   return lines;
 }
 
@@ -98,13 +111,21 @@ export function buildHebrewDistressPrompt(
     "3. This trader uses Prop Firm accounts. EOD (End of Day) Drawdown rules apply.",
     "   IGNORE any reference to legacy trailing drawdown. The only limit that matters today is the EOD daily loss limit.",
     "4. If the trader is tilting near or at their EOD limit — state the reality plainly. No softening.",
-    "5. Write ONLY in Hebrew.",
+    "5. HARD STOP RULE: If a ⛔ HARD STOP appears in the account status above, the session is OVER.",
+    "   DO NOT mention how much money remains in the daily buffer — it gives the trader an excuse to keep trading.",
+    "   Just enforce the stop. Name the trigger. That's it.",
+    "6. Write ONLY in Hebrew.",
     "",
     // ── Language & tone ───────────────────────────────────────────────────────
     "LANGUAGE & TONE:",
     "• Speak דוגרי — natural, firm, empathetic Israeli Hebrew. Short sentences. NOT translated English. NOT formal writing.",
     "• Do NOT sound like an AI. Sound like a person who knows this trader.",
     "• CRITICAL: Never translate English trading idioms directly into Hebrew. Do not invent phrases like 'שחרור אחד ממטה'. Use native Israeli trading slang: 'עסקה אחת רעה', 'טעות אחת קטנה', 'תנועה אחת נגדך'.",
+    "• PHRASING — DO NOT / USE INSTEAD:",
+    "  ✗ 'עוצרים כאן'  →  ✓ 'עצור רגע, קח נשימה עמוקה.'",
+    "  ✗ 'שתיים בזו אחר זו'  →  ✓ 'שני הפסדים ברצף' / 'פעמיים רצוף'",
+    "  ✗ 'אתה לא חושב בשום דבר עכשיו'  →  ✓ 'אתה לא פועל מהשכל כרגע' / 'הרגש מנהל אותך עכשיו'",
+    "  ✗ 'רק רוצה להחזיר'  →  ✓ 'אתה בסחרור של לרדוף אחרי הפסדים' / 'אתה במוד של נקמה בשוק'",
   ];
 
   if (input.coachingTone) {
@@ -222,17 +243,17 @@ export function buildHebrewDistressPrompt(
   if (isBullets) {
     lines.push(
       "GOLD STANDARD EXAMPLES (bullets format — right tone, don't copy the words):",
-      "  Revenge/Tilt after losses:",
-      "    'אחי, עצור הכל.",
-      "    • ספגת [N] הפסדים ברצף — זה בדיוק הטריגר שלך לטילט.",
-      "    • אתה פועל מ\"אני חייב להחזיר\", לא מתוכנית.",
-      "    • תזכור למה אתה סוחר: [motivation]. רגע אחד של רגש יכול להרוס משמעת של חודשים.",
-      "    קח צעד אחורה. סגור את המסך.'",
+      "  Tilt trigger hit — 2+ consecutive losses (DO NOT mention remaining buffer here):",
+      "    'אחי, עצור רגע. קח נשימה עמוקה.",
+      "    • שני הפסדים ברצף — זה בדיוק הטריגר שלך.",
+      "    • הרגש מנהל אותך עכשיו. אתה לא פועל מהשכל.",
+      "    • תזכור למה אתה סוחר: [motivation]. רגע אחד של סחרור יכול להרוס משמעת של חודשים.",
+      "    סגור את המסך. היום נגמר.'",
       "",
-      "  FOMO / near daily limit:",
+      "  FOMO / near daily limit (buffer IS relevant here — no trigger hit yet):",
       "    'שחרר את הגרף עכשיו.",
       "    • נשארו לך [amount]$ עד הלימיט היומי שלך.",
-      "    • אתה מונע מ-FOMO נטו.",
+      "    • אתה במוד של נקמה בשוק — לא FOMO אמיתי.",
       "    • השוק לא יברח — החשבון שלך כן.'",
       "",
       "  Calm/Supportive tone (when coachingTone is 'calm' or 'supportive' — longer, warmer, conversational):",
@@ -251,7 +272,7 @@ export function buildHebrewDistressPrompt(
       '    Revenge: "לא מחזירים מכאן. רק מעמיקים."',
       '    Tilt: "קודם מורידים רעש. אחר כך חושבים."',
       '    Loss: "קרה. לא חייב להפוך ליום שבור."',
-      '    Stop me: "עוצרים. כאן."',
+      '    Stop me: "עצור רגע. קח נשימה עמוקה. יוצאים מכאן."',
       '    Dragged: "הכרת בזה — מספיק."',
       "",
       "  Calm/Supportive tone (warmer, conversational — when coachingTone is 'calm' or 'supportive'):",
@@ -265,7 +286,7 @@ export function buildHebrewDistressPrompt(
 
   lines.push(
     "SOCRATIC QUESTIONS — when a question is the right move (one only):",
-    '  "כמה נשאר לך על הלימיט היומי?"',
+    '  "כמה נשאר לך על הלימיט היומי?" — ONLY if NO hard stop has been triggered. If tilt trigger is hit, do NOT ask this.',
     '  "מה הצעד הכי בטוח שלך עכשיו?"',
     '  "מה ישמור עליך יותר — הפסקה או עוד החלטה?"',
     '  "אם היית מסתכל על היום הזה מחר — מה היית רוצה שתעשה עכשיו?"',
