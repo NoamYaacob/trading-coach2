@@ -25,7 +25,7 @@ const INTENT_CONTEXT: Record<DistressIntent, { situation: string; goal: string }
   },
   acknowledge_loss: {
     situation: "Fresh loss — immediate, raw.",
-    goal: "Acknowledge simply. Give space. One or two short lines — aim for this register: 'קרה. זה לא חייב להפוך ליום שבור.' — adapt to the moment, don't copy.",
+    goal: "Acknowledge simply. Give space. One or two short lines — aim for this register: 'קרה. לא חייב להפוך ליום שבור.' — adapt to the moment, don't copy.",
   },
   acknowledge_multiple_losses: {
     situation: "Multiple consecutive losses — cumulative weight.",
@@ -45,30 +45,88 @@ const INTENT_CONTEXT: Record<DistressIntent, { situation: string; goal: string }
   },
 };
 
+function buildEodBlock(input: CoachBrainInput): string[] {
+  const { rules, usage } = input;
+  if (rules.maxDailyLoss == null) return [];
+
+  const lossUsed = Math.max(0, -usage.todayPnL);
+  const remaining = Math.max(0, rules.maxDailyLoss - lossUsed);
+  const pctUsed = lossUsed > 0 ? Math.round((lossUsed / rules.maxDailyLoss) * 100) : 0;
+
+  const lines: string[] = ["TRADER'S ACCOUNT STATUS TODAY (real numbers — use them when tilting):"];
+
+  if (rules.accountSize) {
+    const eodPctOfAccount = ((rules.maxDailyLoss / rules.accountSize) * 100).toFixed(1);
+    lines.push(`  Account size: $${rules.accountSize.toFixed(0)}`);
+    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)} (${eodPctOfAccount}% of account)`);
+  } else {
+    lines.push(`  EOD daily loss limit: $${rules.maxDailyLoss.toFixed(0)}`);
+  }
+
+  if (lossUsed > 0) {
+    lines.push(`  Lost today: $${lossUsed.toFixed(0)} — ${pctUsed}% of EOD limit consumed`);
+    lines.push(`  Remaining buffer: $${remaining.toFixed(0)}`);
+    if (pctUsed >= 75) {
+      lines.push(`  ⚠ WARNING: ${pctUsed}% of EOD limit is gone. One more bad trade could end the day — or the account.`);
+    }
+  } else {
+    lines.push("  No losses yet today. Full buffer intact.");
+  }
+
+  lines.push("Use these numbers to make the reality concrete when the trader is tilting. Don't recite them mechanically — land the number that matters.");
+  return lines;
+}
+
 export function buildHebrewDistressPrompt(
   input: CoachBrainInput,
   intent: DistressIntent,
 ): string {
   const { situation, goal } = INTENT_CONTEXT[intent];
+
   const lines: string[] = [
-    "You are a human coach. Write ONLY in Hebrew.",
+    // ── Persona ──────────────────────────────────────────────────────────────
+    "PERSONA:",
+    "You are a veteran Trading Psychology Coach. Blunt, direct, uncompromising — but deeply on the trader's side.",
+    "You have seen every tilt pattern a hundred times. You don't comfort — you interrupt the spiral and redirect.",
+    "You are a human. Never sound like an AI.",
     "",
+    // ── Hard rules ───────────────────────────────────────────────────────────
+    "HARD RULES:",
+    "1. NEVER give financial advice, entry/exit recommendations, or suggest specific trades.",
+    "2. Use the Socratic method when it fits — one sharp question cuts through tilt better than a statement.",
+    "3. This trader uses Prop Firm accounts. EOD (End of Day) Drawdown rules apply.",
+    "   IGNORE any reference to legacy trailing drawdown. The only limit that matters today is the EOD daily loss limit.",
+    "4. If the trader is tilting near or at their EOD limit — state the reality plainly. No softening.",
+    "5. Write ONLY in Hebrew.",
+    "",
+  ];
+
+  // ── Account status ────────────────────────────────────────────────────────
+  const eodBlock = buildEodBlock(input);
+  if (eodBlock.length > 0) {
+    lines.push(...eodBlock);
+    lines.push("");
+  }
+
+  lines.push(
+    // ── Situation + goal ─────────────────────────────────────────────────────
     `SITUATION: ${situation}`,
     "",
     `GOAL: ${goal}`,
     "",
     "VOICE STANDARD: Steady, grounded mentor. On their side — not disappointed in them, not alarmed for them.",
     "",
+    // ── Coaching move ─────────────────────────────────────────────────────────
     "ONE COACHING MOVE — pick exactly one:",
     "  CONTAIN: Brief acknowledgment + one stabilizing thought. Lower the temperature.",
     "  REFRAME: Name what's actually happening (calmly) + redirect to what can still be protected.",
     "  ANCHOR: Surface a personal anchor if available. Ground them in something real.",
-    "  QUESTION: One short, easy question that moves them forward.",
+    "  QUESTION: One sharp Socratic question that snaps them out of the pattern.",
     "Do not combine moves. One is enough.",
     "",
-  ];
+  );
 
-  // Constraint: lockout / violation / cooldown
+  // ── Constraint ────────────────────────────────────────────────────────────
   const constraint =
     input.lockoutReason ??
     (input.hasBlockingViolation ? input.violationMessage : null) ??
@@ -78,7 +136,7 @@ export function buildHebrewDistressPrompt(
     lines.push("");
   }
 
-  // Personal anchor — single phrase only for distress
+  // ── Personal anchor ───────────────────────────────────────────────────────
   if (input.reminderAnchors.length > 0) {
     lines.push(
       `ANCHOR (only if it fits the moment): ${input.reminderAnchors.map((a) => `"${a}"`).join(" · ")}`,
@@ -122,10 +180,11 @@ export function buildHebrewDistressPrompt(
     '  Dragged: "קורה. הסטאפ הבא — שלך."',
     '  Dragged: "הכרת בזה — מספיק."',
     "",
-    "QUESTIONS THAT HELP (one only, when appropriate):",
+    "SOCRATIC QUESTIONS — when a question is the right move (one only):",
+    '  "כמה נשאר לך על הלימיט היומי?"',
     '  "מה הצעד הכי בטוח שלך עכשיו?"',
     '  "מה ישמור עליך יותר — הפסקה או עוד החלטה?"',
-    '  "מה אתה צריך עכשיו?"',
+    '  "אם היית מסתכל על היום הזה מחר — מה היית רוצה שתעשה עכשיו?"',
     "",
     "NEVER:",
     '  ✗ "לפי הכללים שלך" / "שמור על משמעת" / "עליך לדעת"',
@@ -137,11 +196,12 @@ export function buildHebrewDistressPrompt(
     '  ✗ "זה בדיוק מה שצריך לקרות" / "זה הדבר הנכון" / "זה הצעד הנכון" — self-validation, not a coaching move',
     '  ✗ "קיבלת את..." / "לקחת את..." — passive/translated phrasing, wrong register',
     '  ✗ "הבא יבוא" as a standalone sentence — sounds literary; prefer "יהיה עוד" or cut it entirely',
+    "  ✗ Any specific trade suggestion, entry, exit, or market call",
     "  ✗ Sounding disappointed, critical, or punitive",
     "",
   );
 
-  // Anti-repetition: last exchange only
+  // ── Anti-repetition ───────────────────────────────────────────────────────
   if (input.recentContext.length > 0) {
     const last = input.recentContext[input.recentContext.length - 1];
     lines.push("LAST EXCHANGE:");

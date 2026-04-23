@@ -5,6 +5,7 @@ export type { CoachingMove };
 export type CoachMode = "factual" | "distress" | "reflective" | "free_text";
 
 export type TraderRules = {
+  accountSize: number | null;
   maxDailyLoss: number | null;
   maxTradesPerDay: number | null;
   stopAfterLosses: number | null;

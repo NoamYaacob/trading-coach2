@@ -464,6 +464,9 @@ export async function POST(request: Request) {
     actionId: matchedAction?.id ?? null,
     traderState: isCoachingMode ? String(flags.currentState) : "NONE",
     rules: {
+      accountSize: connection.user.riskRules?.accountSize
+        ? parseFloat(String(connection.user.riskRules.accountSize))
+        : null,
       maxDailyLoss: connection.user.riskRules?.maxDailyLoss
         ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
         : null,
