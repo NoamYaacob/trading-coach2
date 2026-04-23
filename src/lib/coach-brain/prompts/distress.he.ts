@@ -1,4 +1,5 @@
 import type { CoachBrainInput } from "../types";
+import { buildHebrewSlangBlock } from "./hebrew-slang";
 
 export type DistressIntent =
   | "stop_fomo"
@@ -342,6 +343,8 @@ export function buildHebrewDistressPrompt(
     "",
   );
 
+  lines.push(buildHebrewSlangBlock());
+  lines.push("");
   lines.push("LANGUAGE REMINDER: Write ONLY in Hebrew. Everything above is context — your reply must be Hebrew.");
 
   return lines.join("\n");

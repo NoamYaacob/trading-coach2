@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CoachBrainInput, CoachBrainOutput } from "./types";
+import { buildHebrewSlangBlock } from "./prompts/hebrew-slang";
 
 // Upgrade to "claude-opus-4-7" for higher quality
 const FREE_TEXT_MODEL = "claude-haiku-4-5";
@@ -118,6 +119,8 @@ function buildFreeTextPrompt(input: CoachBrainInput): string {
       "  בוא נבין רגע דוגרי: מתי פעם אחרונה הרגשת שהצמדת לתוכנית שלך וזה עבד?'",
       "",
     );
+    lines.push(buildHebrewSlangBlock());
+    lines.push("");
   }
 
   lines.push(
