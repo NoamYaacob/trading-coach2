@@ -58,31 +58,31 @@ const PHRASE_MAPPINGS: PhraseMap[] = [
     natural: "שברת את הכללים שלך / יצאת מהפלאן",
   },
 
-  // Gender-neutral Hebrew — common empathy/instruction phrases that turn robotic in neutral register
+  // Gender-neutral Hebrew — use 'we' or punchy impersonal slang, never stiff infinitives
   {
     robotic: "זה נשמע קשה",
-    natural: "מצב קשוח. / זה מתסכל.",
-    notes: "The passive-empathy form sounds like a translated chatbot. Use the blunt Israeli version.",
+    natural: "יום קשוח. / זה מתסכל.",
+    notes: "Name the situation bluntly — don't mirror it back passively.",
   },
   {
     robotic: "ביום בו מותר לך X",
-    natural: "כשהמקסימום המותר הוא X / כשהלימיט הוא X",
-    notes: "Clunky permit-frame — replace with a plain limit statement.",
+    natural: "כשהלימיט הוא X / הלימיט היומי שלנו הוא X",
+    notes: "Replace the clunky permit-frame with a plain 'we' or impersonal limit statement.",
   },
   {
-    robotic: "כדאי לסגור את המסך, חשוב לזכור את זה",
-    natural: "הגיע הזמן לסגור את המסך. / לסגור את הפלטפורמה עכשיו.",
-    notes: "Hedged 'כדאי / חשוב ש' sounds hesitant. Use a direct infinitive command.",
+    robotic: "כדאי לסגור את המסך, חשוב לזכור",
+    natural: "זמן לסגור את הבאסטה ולהתנתק. / סוגרים עכשיו.",
+    notes: "Hedged 'כדאי / חשוב ש' sounds like a FAQ. Use punchy impersonal slang.",
   },
   {
     robotic: "אני שומע את הקושי",
-    natural: "זה יום קשוח.",
-    notes: "First-person empathy phrasing sounds AI-generic in Hebrew. Name the situation directly.",
+    natural: "יום קשוח. / שברנו היום, קורה.",
+    notes: "Drop the AI-empathy mirror. Name it directly or use 'we' to stay with them.",
   },
   {
     robotic: "מה אתה צריך לעשות",
-    natural: "מה הצעד הבא עכשיו?",
-    notes: "Gendered directive — replace with a direct, gender-neutral question.",
+    natural: "מה אנחנו עושים עכשיו? / מה הצעד הבא?",
+    notes: "Gendered directive → 'we' question or neutral short question.",
   },
 ];
 
