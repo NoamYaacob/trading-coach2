@@ -7,6 +7,9 @@ const SIGN_OFF_PHRASES = new Set([
   "לילה",
   "לילה אחי",
   "לילה חבר",
+  "יאללה לילה",
+  "נו לילה",
+  "אוקי לילה",
   "אני הולך לישון",
   "הולך לישון",
 
@@ -19,11 +22,17 @@ const SIGN_OFF_PHRASES = new Set([
   "פורש",
   "סוגר להיום",
   "סגרתי להיום",
+  "זהו להיום",
+  "זהו",
+  "מסיים",
+  "אוקי סיימתי",
+  "יאללה סיימתי",
 
   // Hebrew — farewell
   "ביי",
   "שב שיר",
   "להתראות",
+  "יאללה ביי",
 
   // English — night / sleep
   "good night",
@@ -34,6 +43,9 @@ const SIGN_OFF_PHRASES = new Set([
   "done for today",
   "done trading",
   "done for the day",
+  "that's it for today",
+  "that's a wrap",
+  "enough for today",
   "calling it",
   "calling it a day",
   "signing off",

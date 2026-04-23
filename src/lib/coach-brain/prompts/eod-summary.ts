@@ -2,103 +2,226 @@ import type { CoachBrainInput } from "../types";
 import { buildHebrewSlangBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
-type DayQuality = "disciplined" | "rough" | "neutral" | "no_trades";
+// ─── Day breakdown ────────────────────────────────────────────────────────────
 
-function assessDayQuality(input: CoachBrainInput): DayQuality {
+type DayGrade = "disciplined" | "rough" | "mixed" | "no_trades";
+
+type DayBreakdown = {
+  grade: DayGrade;
+  lossUsed: number;
+  lossUsedPct: number;
+  tiltTriggered: boolean;
+  dailyLimitHit: boolean;
+  maxTradesHit: boolean;
+  wasLocked: boolean;
+};
+
+function breakdownDay(input: CoachBrainInput): DayBreakdown {
   const { usage, rules } = input;
-
-  if (usage.todayTradesCount === 0 && usage.todayPnL === 0) return "no_trades";
+  const lossUsed = Math.max(0, -usage.todayPnL);
+  const lossUsedPct =
+    rules.maxDailyLoss && lossUsed > 0
+      ? Math.round((lossUsed / rules.maxDailyLoss) * 100)
+      : 0;
 
   const tiltTriggered =
-    rules.stopAfterLosses != null && usage.consecutiveLosses >= rules.stopAfterLosses;
-  const limitReached =
-    rules.maxDailyLoss != null && -usage.todayPnL >= rules.maxDailyLoss;
-  const isRed = usage.todayPnL < 0;
-  const isGreen = usage.todayPnL > 0;
+    (rules.stopAfterLosses != null && usage.consecutiveLosses >= rules.stopAfterLosses) ||
+    input.lockoutReason === "CONSECUTIVE_LOSSES";
 
-  if (tiltTriggered || limitReached || isRed) return "rough";
-  if (isGreen) return "disciplined";
-  return "neutral";
+  const dailyLimitHit =
+    (rules.maxDailyLoss != null && lossUsed >= rules.maxDailyLoss) ||
+    input.lockoutReason === "MAX_DAILY_LOSS";
+
+  const maxTradesHit =
+    (rules.maxTradesPerDay != null && usage.todayTradesCount >= rules.maxTradesPerDay) ||
+    input.lockoutReason === "MAX_TRADES_PER_DAY";
+
+  const wasLocked = input.guardianLocked || input.lockoutReason != null;
+
+  if (usage.todayTradesCount === 0 && usage.todayPnL === 0) {
+    return {
+      grade: "no_trades",
+      lossUsed, lossUsedPct, tiltTriggered, dailyLimitHit, maxTradesHit, wasLocked,
+    };
+  }
+
+  const anyRuleBroken = tiltTriggered || dailyLimitHit || maxTradesHit;
+  const isGreen = usage.todayPnL > 0;
+  const isRed = usage.todayPnL < 0;
+
+  let grade: DayGrade;
+  if (!anyRuleBroken && isGreen) {
+    grade = "disciplined";
+  } else if (anyRuleBroken || (isRed && lossUsedPct >= 75)) {
+    grade = "rough";
+  } else {
+    grade = "mixed";
+  }
+
+  return { grade, lossUsed, lossUsedPct, tiltTriggered, dailyLimitHit, maxTradesHit, wasLocked };
 }
 
-function buildStatsBlock(input: CoachBrainInput): string[] {
-  const { usage, rules } = input;
-  const lines: string[] = ["TODAY'S SESSION:"];
+// ─── Hard data block ──────────────────────────────────────────────────────────
 
-  if (usage.todayPnL !== 0) {
-    lines.push(
-      `  P&L: ${usage.todayPnL > 0 ? "+" : ""}${usage.todayPnL.toFixed(0)}$`,
-    );
+function buildHardDataBlock(input: CoachBrainInput, bd: DayBreakdown): string[] {
+  const { usage, rules } = input;
+  const lines: string[] = ["HARD DATA — ground the 3-part summary in these facts:"];
+
+  if (usage.todayTradesCount === 0 && usage.todayPnL === 0) {
+    lines.push("  No trades today.");
+    return lines;
   }
+
+  if (usage.todayPnL > 0) {
+    lines.push(`  P&L: +$${usage.todayPnL.toFixed(0)}  ✓ green`);
+  } else if (usage.todayPnL < 0) {
+    lines.push(`  P&L: -$${Math.abs(usage.todayPnL).toFixed(0)}  ✗ red`);
+  } else {
+    lines.push("  P&L: $0 (breakeven)");
+  }
+
   if (usage.todayTradesCount > 0) {
+    const cap = rules.maxTradesPerDay ? ` / ${rules.maxTradesPerDay} limit` : "";
+    const flag = bd.maxTradesHit ? " ⚠ LIMIT HIT" : "";
+    lines.push(`  Trades: ${usage.todayTradesCount}${cap}${flag}`);
+  }
+
+  if (rules.maxDailyLoss && bd.lossUsed > 0) {
+    const flag = bd.dailyLimitHit
+      ? " ⚠ LIMIT HIT"
+      : bd.lossUsedPct >= 75
+        ? " ⚠ CLOSE TO LIMIT"
+        : "";
     lines.push(
-      `  Trades: ${usage.todayTradesCount}${rules.maxTradesPerDay ? ` of ${rules.maxTradesPerDay}` : ""}`,
+      `  Daily loss: $${bd.lossUsed.toFixed(0)} of $${rules.maxDailyLoss.toFixed(0)} (${bd.lossUsedPct}%)${flag}`,
     );
   }
+
   if (usage.consecutiveLosses > 0) {
-    lines.push(`  Consecutive losses: ${usage.consecutiveLosses}`);
+    const cap = rules.stopAfterLosses ? ` / ${rules.stopAfterLosses} limit` : "";
+    const flag = bd.tiltTriggered ? " ⚠ TILT TRIGGER HIT" : "";
+    lines.push(`  Consecutive losses: ${usage.consecutiveLosses}${cap}${flag}`);
+  }
+
+  if (bd.wasLocked && input.lockoutReason) {
+    lines.push(
+      `  Guardian lock: YES — ${input.lockoutReason.replace(/_/g, " ").toLowerCase()}`,
+    );
+  }
+
+  if (input.violationMessage && !bd.wasLocked) {
+    lines.push(`  Active violation: ${input.violationMessage}`);
+  }
+
+  lines.push(`  Day grade: ${bd.grade.toUpperCase()}`);
+
+  return lines;
+}
+
+// ─── Mental grade instructions ────────────────────────────────────────────────
+
+function buildMentalGradeBlock(input: CoachBrainInput, bd: DayBreakdown): string[] {
+  const lines: string[] = [
+    "PART 2 — THE MENTAL GRADE (2-3 sentences):",
+    "  Reflect on their discipline today. Base it on the hard data above and the chat history.",
+  ];
+
+  if (bd.grade === "disciplined") {
+    lines.push(
+      "  They had a disciplined session. Validate their control — specifically.",
+      "  Name WHAT they did right: stayed within limits, followed the plan, respected their rules.",
+      "  Not a generic 'great job' — name the actual behavior. Warm but grounded.",
+    );
+  } else if (bd.grade === "rough") {
+    lines.push("  They had a rough session. Name exactly what happened, without lecturing:");
+    if (bd.tiltTriggered) {
+      const triggerDetail = input.tiltTrigger
+        ? ` (their known trigger: "${input.tiltTrigger}")`
+        : "";
+      lines.push(
+        `  → Tilt trigger hit: ${input.usage.consecutiveLosses} consecutive losses${triggerDetail}.`,
+      );
+    }
+    if (bd.dailyLimitHit) {
+      lines.push(`  → Daily loss limit reached ($${bd.lossUsed.toFixed(0)}).`);
+    }
+    if (bd.maxTradesHit) {
+      lines.push(`  → Trade count limit hit (${input.usage.todayTradesCount} trades).`);
+    }
+    lines.push(
+      "  One sentence: what happened factually.",
+      "  One sentence: what they can take from it. Don't soften — don't dramatize.",
+    );
+  } else if (bd.grade === "mixed") {
+    lines.push(
+      "  Mixed session. One honest observation — no praise, no blame.",
+      "  If they took losses but stayed within limits: acknowledge the discipline.",
+      "  If they came close to a limit: note it plainly.",
+    );
+  } else {
+    lines.push(
+      "  No trades today. A pass day — valid decision.",
+      "  Acknowledge it in one sentence and move on.",
+    );
   }
 
   return lines;
 }
 
-function buildDayTypeBlock(quality: DayQuality, isHebrew: boolean): string[] {
-  switch (quality) {
-    case "disciplined":
-      return [
-        "DAY TYPE: DISCIPLINED / GREEN",
-        "The trader had a positive day. Validate their control and professionalism — not just the P&L.",
-        "One grounded observation about what they did well. No over-celebrating.",
-        "End with a clean sign-off.",
-      ];
-    case "rough":
-      return [
-        "DAY TYPE: ROUGH / RED",
-        "The trader had a hard session. Acknowledge the pain briefly — then move forward.",
-        "DO NOT dwell on the numbers. Frame it as one data point in a long journey.",
-        "If their motivation ('tradingWhy') is available — remind them of it concretely. Make it personal.",
-        "Keep it grounded. No poetry. No philosophical statements. No false positivity.",
-        "End with a sign-off that closes the day cleanly.",
-      ];
-    case "neutral":
-      return [
-        "DAY TYPE: NEUTRAL / FLAT",
-        "A mixed or breakeven day. One honest observation — not praise, not criticism.",
-        "End with a clean sign-off.",
-      ];
-    case "no_trades":
-      return [
-        "DAY TYPE: NO TRADES TODAY",
-        "The trader didn't trade today — that's fine. Acknowledge it briefly.",
-        isHebrew
-          ? "A short, warm sign-off. Nothing more needed."
-          : "A short, warm sign-off. Nothing more needed.",
-      ];
+// ─── Big picture instructions ─────────────────────────────────────────────────
+
+function buildBigPictureBlock(input: CoachBrainInput, bd: DayBreakdown): string[] {
+  const lines: string[] = ["PART 3 — THE BIG PICTURE (1-2 sentences):"];
+
+  if (input.tradingWhy) {
+    if (bd.grade === "disciplined") {
+      lines.push(
+        `  Reinforce the link to why they trade: "${input.tradingWhy}".`,
+        "  This kind of disciplined day is exactly what builds toward that goal. Say it concretely.",
+      );
+    } else if (bd.grade === "rough") {
+      lines.push(
+        `  Remind them of why they trade: "${input.tradingWhy}". Make it personal, not generic.`,
+        "  One bad day is one data point — the goal doesn't disappear. Frame it, don't preach it.",
+      );
+    } else {
+      lines.push(
+        `  Connect briefly to their motivation: "${input.tradingWhy}".`,
+        "  Keep it real — not a pep talk. One grounding sentence.",
+      );
+    }
+  } else {
+    lines.push(
+      "  One grounding forward-looking thought.",
+      "  Concrete. Not 'you've got this'. Something real a mentor would say.",
+    );
   }
+
+  return lines;
 }
+
+// ─── Main prompt builder ──────────────────────────────────────────────────────
 
 export function buildEodSummaryPrompt(input: CoachBrainInput): string {
   const isHebrew = input.language === "he";
   const langName = isHebrew ? "Hebrew" : "English";
-  const signOff = isHebrew ? "לך לנוח, מחר יום חדש." : "Go rest. Tomorrow's a fresh start.";
-  const quality = assessDayQuality(input);
+  const signOffOptions = isHebrew
+    ? '"לך לנוח, מחר יום חדש." or "לילה טוב אחי."'
+    : '"Go rest. Tomorrow\'s a fresh start." or "Good night."';
+
+  const bd = breakdownDay(input);
   const lines: string[] = [];
 
   lines.push(
     "PERSONA:",
-    "You are a veteran Trading Psychology Coach closing out the day with your trader.",
-    "You know their full session. Be real — not a motivational poster, not a therapist.",
-    "You are a human. Never sound like an AI.",
+    "Veteran Trading Psychology Coach. End-of-day wrap-up with your trader.",
+    "You've seen their whole session and chat history. Be real, grounded, and human.",
+    "Not a motivational poster. Not a bank statement. A mentor who tells the truth.",
     "",
   );
 
-  // Session stats
-  const statsBlock = buildStatsBlock(input);
-  if (statsBlock.length > 1) {
-    lines.push(...statsBlock, "");
-  }
+  lines.push(...buildHardDataBlock(input, bd), "");
 
-  // Trader profile
   if (input.tradingWhy || input.tiltTrigger) {
     lines.push("TRADER PROFILE:");
     if (input.tradingWhy) lines.push(`  Why they trade: "${input.tradingWhy}"`);
@@ -106,30 +229,41 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
     lines.push("");
   }
 
-  // Day quality
-  lines.push(...buildDayTypeBlock(quality, isHebrew), "");
-
-  // Coaching tone
   if (input.coachingTone) {
     lines.push(
       `TONE: ${input.coachingTone}`,
-      "CRITICAL: Follow the CURRENT profile tone. Do not revert to previous tone.",
+      "CRITICAL: Always follow the CURRENT profile tone.",
       "",
     );
   }
 
   lines.push(
-    "RESPONSE FORMAT:",
-    "- 2-4 sentences. Prose — no bullet points, no lists.",
-    "- One honest observation or reframe.",
-    `- ALWAYS end the response with exactly: "${signOff}"`,
+    "YOUR TASK — write one flowing message with 3 parts (no headers, no bullets in the reply):",
+    "",
+    "PART 1 — THE NUMBERS (1-2 sentences, casual):",
+    "  State the hard facts in plain, natural language. NOT a bank statement.",
+    isHebrew
+      ? '  Example: "סיימת עם 4 עסקאות היום, יצא +$120." or "שלושה הפסדים ברצף, -$200 על היום."'
+      : '  Example: "Four trades today, ended +$120." or "Three losses back to back, -$200."',
+    "",
+    ...buildMentalGradeBlock(input, bd),
+    "",
+    ...buildBigPictureBlock(input, bd),
+    "",
+    `SIGN-OFF — close with exactly one of: ${signOffOptions}`,
+    "",
+    "FORMAT:",
+    "- Flowing prose. The 3 parts blend naturally — do NOT write headers like 'Part 1' or 'The Numbers'.",
+    "- Under 120 words total.",
     "",
     "NEVER:",
-    "- Recite the numbers back at them verbatim.",
-    "- Be falsely positive on a red day.",
-    "- Sound like a motivational poster or a fortune cookie.",
+    "- Recite the raw numbers robotically like a statement.",
+    isHebrew
+      ? '- Say "כל הכבוד!" on a rough day.'
+      : '- Say "Great job!" on a rough day.',
+    "- Sound like a motivational poster or a translated fortune cookie.",
     '- Open with "As your coach", "I understand", "It sounds like".',
-    "- End with anything other than the required sign-off line.",
+    "- End with anything other than the required sign-off.",
     "",
   );
 
@@ -139,7 +273,7 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
     lines.push(buildSlangMappingBlock(), "");
   }
 
-  lines.push(`LANGUAGE REMINDER: Write ONLY in ${langName}. Your reply must be ${langName}.`);
+  lines.push(`LANGUAGE REMINDER: Write ONLY in ${langName}.`);
 
   return lines.join("\n");
 }
