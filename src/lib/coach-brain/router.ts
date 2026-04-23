@@ -9,7 +9,7 @@ const DISTRESS_ACTIONS = new Set([
   "stop-me",
 ]);
 
-const REFLECTIVE_ACTIONS = new Set(["day-summary", "check-in", "back-in-control"]);
+const REFLECTIVE_ACTIONS = new Set(["day-summary", "check-in", "back-in-control", "eod-summary"]);
 
 /** Deterministic, no model calls. */
 export function routeToMode(input: CoachBrainInput): CoachMode {

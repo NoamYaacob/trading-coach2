@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai-coach";
 import { generateCoachReply } from "@/lib/coach-brain";
 import type { CoachBrainInput } from "@/lib/coach-brain";
+import { isSignOffMessage } from "@/lib/coach-brain/sign-off-detector";
 import { filterActionableInterventions } from "@/lib/intervention-engine";
 import type { InterventionEvent } from "@/lib/intervention-engine";
 import type { CoachIntent } from "@/lib/coach";
@@ -387,6 +388,7 @@ export async function POST(request: Request) {
   const flags = deriveShortLivedCoachingFlags(activeTraderState);
 
   const isFreeText = effectiveText.length > 0 && matchedAction === null && !effectiveText.startsWith("/");
+  const isSignOff = isFreeText && isSignOffMessage(effectiveText);
   const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, recentCoachingExchanges] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
@@ -461,7 +463,7 @@ export async function POST(request: Request) {
     userId: connection.user.id,
     message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
     language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
-    actionId: matchedAction?.id ?? null,
+    actionId: isSignOff ? "eod-summary" : (matchedAction?.id ?? null),
     traderState: isCoachingMode ? String(flags.currentState) : "NONE",
     rules: {
       accountSize: connection.user.riskRules?.accountSize

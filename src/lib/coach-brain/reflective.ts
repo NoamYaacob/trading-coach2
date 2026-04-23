@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { CoachBrainInput, CoachBrainOutput } from "./types";
 import { buildHebrewReflectivePrompt, type ReflectiveIntent } from "./prompts/reflective.he";
 import { buildEnglishReflectivePrompt } from "./prompts/reflective.en";
+import { buildEodSummaryPrompt } from "./prompts/eod-summary";
 
 // Upgrade to "claude-opus-4-7" for higher quality
 const REFLECTIVE_MODEL = "claude-haiku-4-5";
@@ -25,6 +26,7 @@ function deriveReflectiveIntent(input: CoachBrainInput): ReflectiveIntent {
 }
 
 function buildReflectivePrompt(input: CoachBrainInput): string {
+  if (input.actionId === "eod-summary") return buildEodSummaryPrompt(input);
   const intent = deriveReflectiveIntent(input);
   return input.language === "he"
     ? buildHebrewReflectivePrompt(input, intent)
