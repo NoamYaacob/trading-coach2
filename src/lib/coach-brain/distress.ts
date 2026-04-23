@@ -58,20 +58,23 @@ function intentToMove(intent: DistressIntent): CoachingMove {
   }
 }
 
+function buildDistressPrompt(input: CoachBrainInput): string {
+  const intent = deriveDistressIntent(input);
+  return input.language === "he"
+    ? buildHebrewDistressPrompt(input, intent)
+    : buildEnglishDistressPrompt(input, intent);
+}
+
 export async function generateDistressReply(input: CoachBrainInput): Promise<CoachBrainOutput> {
   const intent = deriveDistressIntent(input);
   const coachingMove = intentToMove(intent);
-
-  const prompt =
-    input.language === "he"
-      ? buildHebrewDistressPrompt(input, intent)
-      : buildEnglishDistressPrompt(input, intent);
 
   const client = new Anthropic();
   const response = await client.messages.create({
     model: DISTRESS_MODEL,
     max_tokens: DISTRESS_MAX_TOKENS,
-    messages: [{ role: "user", content: prompt }],
+    system: buildDistressPrompt(input),
+    messages: [{ role: "user", content: input.message }],
   });
 
   const reply =

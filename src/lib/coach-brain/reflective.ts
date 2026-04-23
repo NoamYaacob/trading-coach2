@@ -24,19 +24,20 @@ function deriveReflectiveIntent(input: CoachBrainInput): ReflectiveIntent {
   return "general_reflective";
 }
 
-export async function generateReflectiveReply(input: CoachBrainInput): Promise<CoachBrainOutput> {
+function buildReflectivePrompt(input: CoachBrainInput): string {
   const intent = deriveReflectiveIntent(input);
+  return input.language === "he"
+    ? buildHebrewReflectivePrompt(input, intent)
+    : buildEnglishReflectivePrompt(input, intent);
+}
 
-  const prompt =
-    input.language === "he"
-      ? buildHebrewReflectivePrompt(input, intent)
-      : buildEnglishReflectivePrompt(input, intent);
-
+export async function generateReflectiveReply(input: CoachBrainInput): Promise<CoachBrainOutput> {
   const client = new Anthropic();
   const response = await client.messages.create({
     model: REFLECTIVE_MODEL,
     max_tokens: REFLECTIVE_MAX_TOKENS,
-    messages: [{ role: "user", content: prompt }],
+    system: buildReflectivePrompt(input),
+    messages: [{ role: "user", content: input.message }],
   });
 
   const reply =
