@@ -147,9 +147,14 @@ export function buildGenderNeutralBlock(): string[] {
   return [
     "• CRITICAL GENDER RULE: You MUST use gender-neutral Hebrew at all times.",
     "  DO NOT use 'אתה' / 'את' or any gendered verb conjugation as a form of address.",
-    "  INSTEAD use: infinitives (שם הפועל), passive voice, or impersonal constructions.",
+    "  INSTEAD use: direct infinitives (שם הפועל) and impersonal statements.",
     "  ✗ BAD:  'מה אתה צריך לעשות' · 'אני שומע אותך' · 'את יכולה לעשות את זה'",
-    "  ✓ GOOD: 'מה צריך לעשות' · 'זה נשמע קשה' · 'כדאי לסגור את המסך' · 'חשוב לזכור'",
+    "  ✓ GOOD: 'מה הצעד הבא עכשיו?' · 'זה יום קשוח.' · 'לסגור את הפלטפורמה עכשיו.' · 'זה מתסכל.'",
+    "• STRICT REGISTER RULE: Gender-neutral Hebrew must NOT sound passive, hesitant, or robotic.",
+    "  FORBIDDEN hedges: 'כדאי ש...' / 'חשוב ש...' / 'אולי כדאי' — these sound like a translated FAQ.",
+    "  USE INSTEAD: sharp direct infinitives that land like commands.",
+    "  ✗ ROBOTIC: 'כדאי לסגור את המסך, חשוב לזכור את זה'",
+    "  ✓ SHARP:   'לסגור את המסך עכשיו.' / 'הגיע הזמן לנתק.'",
   ];
 }
 

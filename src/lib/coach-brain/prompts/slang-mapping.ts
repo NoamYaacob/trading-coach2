@@ -57,6 +57,33 @@ const PHRASE_MAPPINGS: PhraseMap[] = [
     robotic: "חריגה מהכללים",
     natural: "שברת את הכללים שלך / יצאת מהפלאן",
   },
+
+  // Gender-neutral Hebrew — common empathy/instruction phrases that turn robotic in neutral register
+  {
+    robotic: "זה נשמע קשה",
+    natural: "מצב קשוח. / זה מתסכל.",
+    notes: "The passive-empathy form sounds like a translated chatbot. Use the blunt Israeli version.",
+  },
+  {
+    robotic: "ביום בו מותר לך X",
+    natural: "כשהמקסימום המותר הוא X / כשהלימיט הוא X",
+    notes: "Clunky permit-frame — replace with a plain limit statement.",
+  },
+  {
+    robotic: "כדאי לסגור את המסך, חשוב לזכור את זה",
+    natural: "הגיע הזמן לסגור את המסך. / לסגור את הפלטפורמה עכשיו.",
+    notes: "Hedged 'כדאי / חשוב ש' sounds hesitant. Use a direct infinitive command.",
+  },
+  {
+    robotic: "אני שומע את הקושי",
+    natural: "זה יום קשוח.",
+    notes: "First-person empathy phrasing sounds AI-generic in Hebrew. Name the situation directly.",
+  },
+  {
+    robotic: "מה אתה צריך לעשות",
+    natural: "מה הצעד הבא עכשיו?",
+    notes: "Gendered directive — replace with a direct, gender-neutral question.",
+  },
 ];
 
 function formatMappings(): string[] {
