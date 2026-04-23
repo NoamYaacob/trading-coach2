@@ -139,6 +139,20 @@ function formatEntries(entries: SlangEntry[]): string[] {
   });
 }
 
+/**
+ * Injects gender-neutral Hebrew rules when preferredAddress === "Neutral".
+ * Call this immediately after the preferredAddress line in any Hebrew LANGUAGE & TONE block.
+ */
+export function buildGenderNeutralBlock(): string[] {
+  return [
+    "• CRITICAL GENDER RULE: You MUST use gender-neutral Hebrew at all times.",
+    "  DO NOT use 'אתה' / 'את' or any gendered verb conjugation as a form of address.",
+    "  INSTEAD use: infinitives (שם הפועל), passive voice, or impersonal constructions.",
+    "  ✗ BAD:  'מה אתה צריך לעשות' · 'אני שומע אותך' · 'את יכולה לעשות את זה'",
+    "  ✓ GOOD: 'מה צריך לעשות' · 'זה נשמע קשה' · 'כדאי לסגור את המסך' · 'חשוב לזכור'",
+  ];
+}
+
 export function buildHebrewSlangBlock(): string {
   return [
     "HEBREW LINGUISTIC BIBLE — use ONLY these phrases for Hebrew slang and flavor:",

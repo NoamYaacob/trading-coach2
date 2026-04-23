@@ -1,5 +1,5 @@
 import type { CoachBrainInput } from "../types";
-import { buildHebrewSlangBlock } from "./hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
 export type DistressIntent =
@@ -136,6 +136,9 @@ export function buildHebrewDistressPrompt(
   lines.push("• CRITICAL: The user may change their preferred tone over time. ALWAYS follow the CURRENT profile settings above, even if your past responses in the conversation history used a different tone.");
   if (input.preferredAddress) {
     lines.push(`• Address them as: "${input.preferredAddress}"`);
+    if (input.preferredAddress === "Neutral") {
+      lines.push(...buildGenderNeutralBlock());
+    }
   }
   if (input.responseStyle) {
     lines.push(`• Response style: ${input.responseStyle}`);

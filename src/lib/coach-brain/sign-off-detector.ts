@@ -64,7 +64,21 @@ function normalize(text: string): string {
     .replace(/[״׳.!?,؟،]+$/u, ""); // strip trailing punctuation (incl. Hebrew)
 }
 
+/** Exact match — handles pure sign-off messages (e.g. "לילה טוב"). */
 export function isSignOffMessage(text: string): boolean {
   const n = normalize(text);
   return SIGN_OFF_PHRASES.has(n);
+}
+
+/**
+ * Handles multi-sentence messages that END with a sign-off phrase
+ * (e.g. "סיימתי להיום, עשיתי 6 עסקאות... לילה טוב").
+ * Takes priority over simple free-text routing so the EOD pipeline runs.
+ */
+export function endsWithSignOff(text: string): boolean {
+  const n = normalize(text);
+  for (const phrase of SIGN_OFF_PHRASES) {
+    if (n.endsWith(phrase)) return true;
+  }
+  return false;
 }

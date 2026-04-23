@@ -1,5 +1,5 @@
 import type { CoachBrainInput } from "../types";
-import { buildHebrewSlangBlock } from "./hebrew-slang";
+import { buildHebrewSlangBlock, buildGenderNeutralBlock } from "./hebrew-slang";
 import { buildSlangMappingBlock } from "./slang-mapping";
 
 // ─── Day breakdown ────────────────────────────────────────────────────────────
@@ -381,6 +381,9 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
   );
   if (input.preferredAddress) {
     lines.push(`• Address them as: "${input.preferredAddress}"`);
+    if (isHebrew && input.preferredAddress === "Neutral") {
+      lines.push(...buildGenderNeutralBlock());
+    }
   }
   if (input.responseStyle) {
     lines.push(`• Response style: ${input.responseStyle}`);
