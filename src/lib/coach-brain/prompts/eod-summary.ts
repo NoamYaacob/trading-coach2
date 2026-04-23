@@ -208,6 +208,7 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
   const signOffOptions = isHebrew
     ? '"לך לנוח, מחר יום חדש." or "לילה טוב אחי."'
     : '"Go rest. Tomorrow\'s a fresh start." or "Good night."';
+  const isBullets = input.responseStyle === "Short bullets";
 
   const bd = breakdownDay(input);
   const lines: string[] = [];
@@ -229,10 +230,27 @@ export function buildEodSummaryPrompt(input: CoachBrainInput): string {
     lines.push("");
   }
 
+  lines.push("LANGUAGE & TONE:");
   if (input.coachingTone) {
+    lines.push(`• Coaching tone: ${input.coachingTone}`);
+  }
+  lines.push(
+    "• CRITICAL: The user may change their preferred tone over time. ALWAYS follow the CURRENT profile settings above, even if your past responses in the conversation history used a different tone.",
+  );
+  if (input.preferredAddress) {
+    lines.push(`• Address them as: "${input.preferredAddress}"`);
+  }
+  if (input.responseStyle) {
+    lines.push(`• Response style: ${input.responseStyle}`);
+    if (isBullets) {
+      lines.push("  → For Short bullets: open with one sharp line, then 2-3 punchy bullet points (•), close with one forward-looking line.");
+    }
+  }
+  lines.push("");
+
+  if (input.reminderAnchors.length > 0) {
     lines.push(
-      `TONE: ${input.coachingTone}`,
-      "CRITICAL: Always follow the CURRENT profile tone.",
+      `PERSONAL ANCHORS (echo once if it fits naturally): ${input.reminderAnchors.map((a) => `"${a}"`).join(" · ")}`,
       "",
     );
   }
