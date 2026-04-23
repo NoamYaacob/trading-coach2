@@ -1,5 +1,6 @@
 import type { CoachBrainInput } from "../types";
 import { buildHebrewSlangBlock } from "./hebrew-slang";
+import { buildSlangMappingBlock } from "./slang-mapping";
 
 export type ReflectiveIntent =
   | "day_summary"
@@ -146,6 +147,8 @@ export function buildHebrewReflectivePrompt(
   );
 
   lines.push(buildHebrewSlangBlock());
+  lines.push("");
+  lines.push(buildSlangMappingBlock());
   lines.push("");
   lines.push("LANGUAGE REMINDER: Write ONLY in Hebrew. Everything above is context — your reply must be Hebrew.");
 
