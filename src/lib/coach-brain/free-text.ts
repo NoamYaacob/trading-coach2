@@ -82,18 +82,6 @@ function buildFreeTextPrompt(input: CoachBrainInput): string {
     );
   }
 
-  // Recent context for anti-repetition
-  if (input.recentContext.length > 0) {
-    lines.push("RECENT EXCHANGES (oldest first — do not repeat what was already addressed):");
-    for (const ex of input.recentContext) {
-      lines.push(`  Trader: ${ex.userMessage}`);
-      lines.push(`  You:    ${ex.coachReply}`);
-      lines.push("");
-    }
-    lines.push("ANTI-REPETITION: Don't open with the same first word. Don't repeat the same emotional frame or coaching move.");
-    lines.push("");
-  }
-
   lines.push(
     `LANGUAGE REMINDER: Write ONLY in ${langName}. Context above may be in English — your reply must be in ${langName}.`,
   );
@@ -102,12 +90,19 @@ function buildFreeTextPrompt(input: CoachBrainInput): string {
 }
 
 export async function generateFreeTextReply(input: CoachBrainInput): Promise<CoachBrainOutput> {
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const ex of input.recentContext) {
+    messages.push({ role: "user", content: ex.userMessage });
+    messages.push({ role: "assistant", content: ex.coachReply });
+  }
+  messages.push({ role: "user", content: input.message });
+
   const client = new Anthropic();
   const response = await client.messages.create({
     model: FREE_TEXT_MODEL,
     max_tokens: FREE_TEXT_MAX_TOKENS,
     system: buildFreeTextPrompt(input),
-    messages: [{ role: "user", content: input.message }],
+    messages,
   });
 
   const reply =

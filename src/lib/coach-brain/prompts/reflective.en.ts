@@ -108,16 +108,6 @@ export function buildEnglishReflectivePrompt(
     "",
   );
 
-  // Anti-repetition
-  if (input.recentContext.length > 0) {
-    const last = input.recentContext[input.recentContext.length - 1];
-    lines.push("LAST EXCHANGE:");
-    lines.push(`  Trader: ${last.userMessage}`);
-    lines.push(`  You: ${last.coachReply}`);
-    lines.push("Don't repeat the same opening word or framing as above.");
-    lines.push("");
-  }
-
   lines.push("LANGUAGE REMINDER: Write ONLY in English. Everything above is context — your reply must be English.");
 
   return lines.join("\n");

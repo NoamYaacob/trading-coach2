@@ -69,12 +69,19 @@ export async function generateDistressReply(input: CoachBrainInput): Promise<Coa
   const intent = deriveDistressIntent(input);
   const coachingMove = intentToMove(intent);
 
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const ex of input.recentContext) {
+    messages.push({ role: "user", content: ex.userMessage });
+    messages.push({ role: "assistant", content: ex.coachReply });
+  }
+  messages.push({ role: "user", content: input.message });
+
   const client = new Anthropic();
   const response = await client.messages.create({
     model: DISTRESS_MODEL,
     max_tokens: DISTRESS_MAX_TOKENS,
     system: buildDistressPrompt(input),
-    messages: [{ role: "user", content: input.message }],
+    messages,
   });
 
   const reply =

@@ -32,12 +32,19 @@ function buildReflectivePrompt(input: CoachBrainInput): string {
 }
 
 export async function generateReflectiveReply(input: CoachBrainInput): Promise<CoachBrainOutput> {
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const ex of input.recentContext) {
+    messages.push({ role: "user", content: ex.userMessage });
+    messages.push({ role: "assistant", content: ex.coachReply });
+  }
+  messages.push({ role: "user", content: input.message });
+
   const client = new Anthropic();
   const response = await client.messages.create({
     model: REFLECTIVE_MODEL,
     max_tokens: REFLECTIVE_MAX_TOKENS,
     system: buildReflectivePrompt(input),
-    messages: [{ role: "user", content: input.message }],
+    messages,
   });
 
   const reply =
