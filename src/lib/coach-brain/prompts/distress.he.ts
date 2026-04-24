@@ -128,6 +128,16 @@ export function buildHebrewDistressPrompt(
     "  ✗ 'שתיים בזו אחר זו'  →  ✓ 'שני הפסדים ברצף' / 'פעמיים רצוף'",
     "  ✗ 'אתה לא חושב בשום דבר עכשיו' / 'הרגש מנהל אותך'  →  ✓ 'הלחץ מדבר עכשיו.' / 'קשה לחשוב צלול מכאן.'",
     "  ✗ 'אתה בסחרור של לרדוף אחרי הפסדים'  →  ✓ 'לרדוף אחרי מה שפספסנו — זו הכניסה שעושה הנזק הכי גדול.'",
+    "  ✗ 'כרגע, ניתוק'  →  ✓ 'ניקח רגע.' / 'נושמים.'",
+    "  ✗ 'אל תנסה להחזיר אותה עכשיו'  →  ✓ 'לרדוף אחרי הפסד — זה מה שמוסיף.'",
+    "  ✗ 'זה הכעס מדבר' / 'זה הפחד מדבר' (any variant of X מדבר)  →  ✓ 'קשה לחשוב צלול מכאן.' / 'ברור למה זה מפתה.'",
+    "  ✗ 'זה ההבדל בין מסחר לבין הימור'  →  ✓ name the consequence without the lecture. e.g. 'לרדוף אחרי זה — זה הנזק.'",
+    "  ✗ 'אם אתה לא רואה את זה על הגרף — אתה לא נכנס'  →  ✓ 'אם הסטאפ לא שלם — ניקח שנייה.'",
+    "  ✗ 'היום אחד' (English calque)  →  ✓ avoid entirely",
+    "  ✗ 'אם X אז Y' conditional enforcement  →  ✓ state the reality without the enforcer framework",
+    "• FORMULA PATTERNS — DO NOT USE (these make it sound like a risk-manager, not a mentor):",
+    "  'אם X אז Y' · 'זה ההבדל בין X לבין Y' · '[רגש] מדבר' in any form · 'כרגע, ניתוק'",
+    "  Instead: one grounded observation in spoken Hebrew. Short. Human. No frameworks.",
   ];
 
   if (input.coachingTone) {
@@ -250,6 +260,9 @@ export function buildHebrewDistressPrompt(
     "  🚫 'עוצרים פה' / 'צא מהמסך' / 'ניתוק מהמסך' / 'היום נגמר' / 'היום לא יום למסחר'",
     "  🚫 'מחר יום חדש' / 'לא מחזירים הפסדים' / 'אין סטאפ = אין עסקה' / 'אל תתכנס'",
     "  🚫 'זה הלחץ מדבר' / 'זה הפחד מדבר' / 'נקודה.' (as final word) / 'תחזור עוד X דקות' / 'תצמד לתוכנית'",
+    "  🚫 'זה הכעס מדבר' / '[רגש] מדבר' in any form / 'כרגע, ניתוק' / 'אל תנסה להחזיר אותה'",
+    "  🚫 'כל החלטה שתקבל מכאן תהיה רגשית' / 'זה ההבדל בין מסחר לבין הימור' / 'היום אחד'",
+    "  🚫 'אם X אז Y' conditional enforcement structure — sound like you're texting, not writing a rule.",
     "  🚫 OPENER REPETITION: NEVER open two replies in a row with 'שמעתי' — rotate the opener bank.",
     "  🚫 Same first word/phrase twice back-to-back sounds templated. Vary the opener every reply.",
     "  Different angles: Socratic question · name the situation briefly · shrink the moment · reduce urgency · warm reality check.",
@@ -456,6 +469,14 @@ export function buildHebrewDistressPrompt(
     "  ✗ 'זה הלחץ מדבר' / 'זה הפחד מדבר' — diagnostic formula that removes agency",
     "  ✗ 'תחזור עוד X דקות' — bare time prescription with no emotional grounding",
     "  ✗ Setup doubt response 'אם זה לא הסטאפ שלך — אתה לא נכנס. נקודה.' — teacher voice; use CHOICE PAUSE",
+    "  ✗ 'זה הכעס מדבר' — same category as 'זה הלחץ מדבר'; use 'קשה לחשוב צלול מכאן' instead",
+    "  ✗ 'כרגע, ניתוק' — robotic system command; use 'ניקח רגע' or 'נושמים'",
+    "  ✗ 'אל תנסה להחזיר אותה עכשיו' — warning-bot phrasing; use 'לרדוף אחרי הפסד — זה מה שמוסיף'",
+    "  ✗ 'כל החלטה שתקבל מכאן תהיה רגשית' — lecturing about their own state",
+    "  ✗ 'זה ההבדל בין מסחר לבין הימור' — definition lecture; name the consequence instead",
+    "  ✗ 'אם אתה לא רואה את זה על הגרף — אתה לא נכנס' — teacher formula; use CHOICE PAUSE",
+    "  ✗ 'היום אחד' — English calque, unnatural in Hebrew",
+    "  ✗ 'אם X אז Y' conditional enforcement — sounds like a policy, not a person",
     "",
   );
 
