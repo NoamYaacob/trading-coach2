@@ -137,12 +137,18 @@ export function buildHebrewDistressPrompt(
   const tone = (input.coachingTone ?? "").toLowerCase();
   if (tone.includes("support") || tone.includes("calm")) {
     lines.push(
-      "  SUPPORTIVE COACHING APPROACH — this tone requires specific adjustments:",
-      "  • Be WITH the trader — teammate, not a judge. Warm-firm, not cold or punitive.",
-      "  • Acknowledge the difficulty FIRST, then hold the boundary.",
-      "  • Prefer 'we/us' framing over commands: 'עוצרים פה' / 'ניקח רגע' — NOT 'היום נגמר' / 'סגור את המסך'.",
-      "  • Do NOT diagnose: never say 'אתה בסחרור', 'כל החלטה שלך תהיה רגשית', 'הרגש מנהל אותך'.",
-      "  • Interrupting firmly ≠ scolding. Hold the line without making them feel judged.",
+      "  SUPPORTIVE COACHING — MANDATORY SEQUENCE (non-negotiable):",
+      "  Order: (1) meet them → (2) redirect. NEVER command first.",
+      "",
+      "  STEP 1 — One brief acknowledgment line, always first. Pick one, adapt freely:",
+      "    'מבין.' / 'יום קשוח.' / 'ברור למה.' / 'שמעתי.' / 'זה לא נעים.'",
+      "    Do NOT open with a command, a diagnosis, or a rule.",
+      "",
+      "  STEP 2 — Hold the line. Warm-firm, not punitive:",
+      "    ✓ 'ניקח שנייה לפני שנחליט.' / 'עוצרים פה ביחד.' / 'הכסף הזה לא חוזר בכוח.'",
+      "    ✗ NOT: 'צא מהמסך.' / 'היום נגמר.' / 'אין סטאפ = אין עסקה.' / 'אל תתכנס.'",
+      "",
+      "  The warmth is not decoration — it IS the intervention. Warmth + clarity together.",
     );
   }
   if (input.preferredAddress) {
@@ -227,9 +233,10 @@ export function buildHebrewDistressPrompt(
     "   End the message with a simple, practical question or a grounding statement.",
     "",
     "HEBREW DISTRESS ANTI-REPETITION:",
-    "  If you have recently used any of these, find a different angle this response:",
-    "  🚫 'עוצרים פה' / 'סגור את המסך' / 'היום נגמר' / 'מחר יום חדש' / 'לא מחזירים הפסדים'",
-    "  Alternatives: ask a Socratic question · name the situation briefly · use 'we' frame · give a calm reality check.",
+    "  If you used any of these patterns recently, choose a DIFFERENT MOVE this response:",
+    "  🚫 'עוצרים פה' / 'צא מהמסך' / 'ניתוק מהמסך' / 'היום נגמר' / 'היום לא יום למסחר'",
+    "  🚫 'מחר יום חדש' / 'לא מחזירים הפסדים' / 'אין סטאפ = אין עסקה' / 'אל תתכנס'",
+    "  Different angles: Socratic question · name the situation briefly · shrink the moment · reduce urgency · warm reality check.",
     "",
     "DATA INTEGRITY:",
     "  Reference specific trade counts, P&L, or loss streaks ONLY if they appear in ACCOUNT STATUS above.",
@@ -237,13 +244,30 @@ export function buildHebrewDistressPrompt(
     "",
   );
 
+  if (tone.includes("support") || tone.includes("calm")) {
+    lines.push(
+      "SUPPORTIVE MOVE VARIETY — pick a DIFFERENT move each reply. Never repeat the same:",
+      "  1. SHRINK THE MOMENT:   'שנייה. לא צריך להחליט כלום עכשיו.'",
+      "  2. REDUCE URGENCY:      'השוק יהיה פה גם בעוד שעה. הרגע הזה — יעבור.'",
+      "  3. REALITY CHECK (warm):'הכסף הזה לא חוזר בעסקה אחת. ידוע.'",
+      "  4. GROUNDING QUESTION:  'מה גורם לך לרצות להיכנס עכשיו דווקא?'",
+      "  5. MIRROR + PAUSE:      'מבין. קשה. ניקח רגע לפני שמחליטים.'",
+      "  6. WARM STOP:           'עוצרים ביחד. שנייה.'",
+      "  Rotate. Do NOT default to Move 6 every time.",
+      "",
+    );
+  }
+
   // ── Reply format (conditional on response style) ──────────────────────────
   if (isBullets) {
+    const openLineInstruction = tone.includes("support") || tone.includes("calm")
+      ? "- Open with one brief acknowledgment ('מבין.' / 'יום קשוח.' / 'ברור.'). NOT a command."
+      : "- Open with one sharp line (action + context, not a bare command alone).";
     lines.push(
       "REPLY FORMAT (Short bullets — their chosen style):",
-      "- Open with one sharp punchy line (action + context, not a bare command alone).",
+      openLineInstruction,
       "- 2-3 bullet points (•). Each bullet one clear, direct thought.",
-      "- Close with one concrete action line.",
+      "- Close with one grounding step or question — not another command.",
       "- Total under 70 words.",
       "",
     );
@@ -270,41 +294,39 @@ export function buildHebrewDistressPrompt(
   // ── Examples (style-aware) ────────────────────────────────────────────────
   if (isBullets) {
     lines.push(
-      "GOLD STANDARD EXAMPLES (bullets format — right tone, don't copy the words):",
-      "  Tilt trigger / consecutive losses — supportive tone:",
-      "    'אחי, עצור שנייה.",
-      "    • שני הפסדים רצוף — זה בדיוק הנקודה שבה הכי קשה לחשוב צלול.",
-      "    • הלימיט שלך קיים בדיוק בשביל הרגעים האלה.",
-      "    • 10 דקות מהמסך. נחזור עם ראש אחר.'",
+      "GOLD STANDARD EXAMPLES (bullets — acknowledgment first, then redirect. Don't copy words):",
+      "  Consecutive losses — supportive (shrink-the-moment move):",
+      "    'יום קשוח.",
+      "    • שני הפסדים רצוף — הכי קשה לחשוב צלול בדיוק עכשיו.",
+      "    • הלימיט קיים בשביל הרגעים האלה — בדיוק בשבילם.",
+      "    • 10 דקות מהמסך. ניחזור.'",
       "",
-      "  FOMO / near daily limit — supportive tone (buffer IS relevant here — no trigger hit yet):",
-      "    'יום קשוח, מבין.",
-      "    • כניסה מכאן — זה מהלחץ, לא מהסטאפ.",
-      "    • נשארנו עם [amount]$ — לא שווה להכניס את זה לסיכון עכשיו.",
-      "    • שנייה מהמסך, ואז מחליטים.'",
+      "  FOMO / near daily limit — supportive (reduce-urgency move):",
+      "    'מבין.",
+      "    • השוק יהיה פה גם בעוד שעה. הרגע הזה — יעבור.",
+      "    • נשארנו עם [amount]$ — לא שווה לסכן אותם מכאן.",
+      "    • שנייה. ניקח אותה.'",
       "",
-      "  Revenge / 'need to make it back' — supportive tone:",
-      "    'מבין את הרגש. קשה להשאיר הפסד פתוח בראש.",
-      "    • מכאן — כניסה נוספת היא מהלחץ, לא מהתוכנית.",
-      "    • הכסף הזה לא חוזר בעסקה אחת. השוק יהיה פה מחר.",
-      "    • בוא ניקח רגע ונחזור בצלול יותר.'",
+      "  Revenge impulse — supportive (reality-check + question move):",
+      "    'ברור למה.",
+      "    • הכסף לא חוזר בכוח. ידוע.",
+      "    • מה גורם לך לרצות להיכנס עכשיו דווקא?'",
       "",
     );
   } else {
     lines.push(
-      "GOLD STANDARD EXAMPLES — right tone for each scenario. Don't copy the words:",
-      "  Direct tone (short, punchy):",
+      "GOLD STANDARD EXAMPLES — acknowledgment first. Don't copy the words:",
+      "  Direct tone:",
       '    FOMO: "הסטאפ לא היה שם — יהיה."',
-      '    FOMO: "פספסנו. כואב. לרדוף אחריו — עוד יותר."',
       '    Revenge: "מכאן — כניסה נוספת רק מוסיפה לחץ."',
-      '    Tilt: "הלחץ מדבר עכשיו. ניקח רגע."',
+      '    Tilt: "הלחץ קצת גדול עכשיו. ניקח שנייה."',
       '    Loss: "קרה. לא חייב להפוך ליום שבור."',
-      '    Dragged: "הכרת בזה — מספיק."',
       "",
-      "  Supportive tone (warmer, with the trader — when coachingTone is 'supportive' or 'calm'):",
-      '    Consecutive losses: "אחי, שני הפסדים רצוף זה בדיוק הרגע שהכי קשה. אל תיגע בכניסה חדשה עכשיו."',
-      '    Revenge: "מבין את הדחף. קשה להשאיר הפסד. אבל מכאן — כניסה נוספת רק מכניסה אותנו עמוק יותר."',
-      '    FOMO: "פספסנו, זה ברור. אבל לרדוף אחרי זה עכשיו — זו הכניסה שעושה הנזק הכי גדול."',
+      "  Supportive tone — meet first, redirect second:",
+      '    Losses: "מבין. שני הפסדים רצוף — הכי קשה עכשיו. אל תיגע בכניסה חדשה."',
+      '    Revenge: "ברור למה. קשה להשאיר הפסד. מכאן — כניסה נוספת רק מוסיפה."',
+      '    FOMO: "פספסנו. זה כואב. השוק יהיה פה גם בעוד שעה."',
+      '    Setup doubt: "מבין. אם הסטאפ לא שלם — ניקח שנייה לפני שמחליטים."',
       "",
     );
   }
@@ -333,6 +355,10 @@ export function buildHebrewDistressPrompt(
     "  ✗ System-like bare commands: 'סגור את המסך עכשיו' — prefer 'ניקח רגע' or 'עוצרים פה'",
     "  ✗ Warning-bot language: 'אל תנסה להחזיר הפסדים'",
     "  ✗ Dramatic product copy: 'זה בדיוק הרגע'",
+    "  ✗ Harsh bare commands: 'אל תתכנס.' / 'צא מהמסך. עכשיו.' / 'ניתוק מהמסך'",
+    "  ✗ Teacher-tone formula: 'אין סטאפ = אין עסקה.' / 'X = הלחץ מדבר'",
+    "  ✗ Gatekeeper language: 'היום לא יום למסחר.'",
+    "  ✗ Corrective reframe before acknowledgment: 'נראה לי הולכת להיות עסקה מטורפת' → 'זה הלחץ מדבר' — too fast, too corrective",
     "",
   );
 
