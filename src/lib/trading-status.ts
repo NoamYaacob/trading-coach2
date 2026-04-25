@@ -83,7 +83,7 @@ export function getTradingPermission(input: TradingPermissionInput): TradingPerm
   const preNewsBlocked = violationFeed.blockedViolations.some(
     v => v.ruleId === "no_trade_before_major_news",
   );
-  const marketClosed = !marketStatus.isOpen;
+  const marketClosed = !marketStatus.marketOpen;
 
   // Remaining capacity (always computed regardless of block state — useful for UI)
   const remainingTrades =

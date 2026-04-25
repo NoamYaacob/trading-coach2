@@ -1,5 +1,6 @@
 import type { CoachBrainInput } from "./types";
 import type { MarketStatus } from "@/lib/market-hours";
+import { formatMarketTimeForUser } from "@/lib/market-hours";
 import type { TradingPermission } from "@/lib/trading-status";
 
 /** Formats factual rule/usage data directly in TypeScript. No model call. */
@@ -81,11 +82,8 @@ function buildEnglishFactual(
 }
 
 // ─── Market-hours reply ───────────────────────────────────────────────────────
-
-const HEBREW_WEEKDAYS: Record<string, string> = {
-  Sunday: "ראשון", Monday: "שני", Tuesday: "שלישי",
-  Wednesday: "רביעי", Thursday: "חמישי", Friday: "שישי", Saturday: "שבת",
-};
+// Formatting is delegated to formatMarketTimeForUser() in market-hours.ts so
+// the same logic is reusable by website UI without pulling in coach-brain.
 
 const MARKET_NAME_HE: Record<string, string> = {
   FUTURES: "פיוצ'רס", US_EQUITIES: "שוק המניות", FOREX: "פורקס", CRYPTO: "קריפטו",
@@ -95,67 +93,45 @@ const MARKET_NAME_EN: Record<string, string> = {
   FUTURES: "Futures", US_EQUITIES: "Equities", FOREX: "Forex", CRYPTO: "Crypto",
 };
 
-function getZonedDisplay(date: Date, tz: string) {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    hour: "2-digit", minute: "2-digit",
-    weekday: "long",
-    hour12: false,
-  });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(date).filter(p => p.type !== "literal").map(p => [p.type, p.value]),
-  );
-  return {
-    weekday: parts.weekday,
-    timeStr: `${String(Number(parts.hour) % 24).padStart(2, "0")}:${parts.minute}`,
-  };
-}
-
-function formatTimeHe(date: Date, tz: string, now: Date): string {
-  const { weekday, timeStr } = getZonedDisplay(date, tz);
-  const diffH = (date.getTime() - now.getTime()) / 3_600_000;
-  if (diffH < 12) return `ב-${timeStr}`;
-  return `ביום ${HEBREW_WEEKDAYS[weekday] ?? weekday} ב-${timeStr}`;
-}
-
-function formatTimeEn(date: Date, tz: string, now: Date): string {
-  const { weekday, timeStr } = getZonedDisplay(date, tz);
-  const diffH = (date.getTime() - now.getTime()) / 3_600_000;
-  if (diffH < 12) return `at ${timeStr}`;
-  return `on ${weekday} at ${timeStr}`;
-}
-
 function buildMarketHoursHebrewReply(status: MarketStatus): string {
   const now = new Date();
-  const tz = status.userTimezone;
+  const { userTimezone: tz } = status;
   const name = MARKET_NAME_HE[status.marketType] ?? "השוק";
 
-  if (status.isOpen) {
+  if (status.marketOpen) {
     const parts = [`${name} פתוח.`];
     if (status.sessionName) parts.push(`${status.sessionName}.`);
-    if (status.nextClose) parts.push(`נסגר ${formatTimeHe(status.nextClose, tz, now)}.`);
+    if (status.nextCloseAtUtc) {
+      parts.push(`סגירה אצלך: ${formatMarketTimeForUser(status.nextCloseAtUtc, tz, "he", now)}.`);
+    }
     return parts.join(" ");
   }
 
   const parts = [`${name} סגור.`];
-  if (status.nextOpen) parts.push(`נפתח ${formatTimeHe(status.nextOpen, tz, now)}.`);
+  if (status.nextOpenAtUtc) {
+    parts.push(`הפתיחה הבאה אצלך: ${formatMarketTimeForUser(status.nextOpenAtUtc, tz, "he", now)}.`);
+  }
   return parts.join(" ");
 }
 
 function buildMarketHoursEnglishReply(status: MarketStatus): string {
   const now = new Date();
-  const tz = status.userTimezone;
+  const { userTimezone: tz } = status;
   const name = MARKET_NAME_EN[status.marketType] ?? "Market";
 
-  if (status.isOpen) {
+  if (status.marketOpen) {
     const parts = [`${name} is open.`];
     if (status.sessionName) parts.push(`Session: ${status.sessionName}.`);
-    if (status.nextClose) parts.push(`Closes ${formatTimeEn(status.nextClose, tz, now)}.`);
+    if (status.nextCloseAtUtc) {
+      parts.push(`Closes ${formatMarketTimeForUser(status.nextCloseAtUtc, tz, "en", now)}.`);
+    }
     return parts.join(" ");
   }
 
   const parts = [`${name} is closed.`];
-  if (status.nextOpen) parts.push(`Opens ${formatTimeEn(status.nextOpen, tz, now)}.`);
+  if (status.nextOpenAtUtc) {
+    parts.push(`Next open: ${formatMarketTimeForUser(status.nextOpenAtUtc, tz, "en", now)}.`);
+  }
   return parts.join(" ");
 }
 

@@ -4,21 +4,31 @@
 export type MarketType = "FUTURES" | "US_EQUITIES" | "FOREX" | "CRYPTO";
 
 export type MarketStatus = {
-  isOpen: boolean;
+  /** True when the exchange is currently within trading hours. */
+  marketOpen: boolean;
   marketType: MarketType;
   /** Short label for the active session, e.g. "גלובקס", "NYSE / NASDAQ". null when closed. */
   sessionName: string | null;
-  /** UTC Date when market will next open. null when already open. */
-  nextOpen: Date | null;
-  /** UTC Date when market will next close. null when already closed or crypto. */
-  nextClose: Date | null;
-  /** Resolved IANA tz for display formatting (the user's local timezone). */
+  /** UTC timestamp of the next market open. null when the market is already open. */
+  nextOpenAtUtc: Date | null;
+  /** UTC timestamp of the next market close. null when the market is already closed or 24/7. */
+  nextCloseAtUtc: Date | null;
+  /** Resolved IANA timezone used for display formatting — always the user's local timezone. */
   userTimezone: string;
-  /** Calendar/exchange authority for this market type. */
+  /** Calendar / exchange authority for this market type (informational). */
   sourceExchange: string;
 };
 
-// ─── Private timezone helpers ─────────────────────────────────────────────────
+// ─── Timezone fallback ────────────────────────────────────────────────────────
+
+/**
+ * Default timezone used when the user has no timezone stored or the stored value
+ * is not a valid IANA identifier. All displayed times will be in UTC.
+ * In practice this is rare — onboarding always collects a timezone.
+ */
+export const FALLBACK_TIMEZONE = "UTC";
+
+// ─── Private exchange-timezone helpers ───────────────────────────────────────
 
 const WEEKDAY_ORDER = [
   "Sunday", "Monday", "Tuesday", "Wednesday",
@@ -95,7 +105,9 @@ function dayIndex(weekday: string): number {
 
 const FUTURES_TZ = "America/Chicago";
 
-function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
+type MarketCore = Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange">;
+
+function getFuturesStatus(now: Date): MarketCore {
   const ct = getZonedParts(now, FUTURES_TZ);
   const dayIdx = dayIndex(ct.weekday);
   const mins = ct.hour * 60 + ct.minute;
@@ -106,18 +118,18 @@ function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTim
   if (dayIdx === 6) {
     const sun = addDays(ct, 1);
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FUTURES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FUTURES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
   // Sunday before 17:00 CT: not open yet
   if (dayIdx === 0 && mins < OPEN) {
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(ct.year, ct.month, ct.day, 17, 0, FUTURES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(ct.year, ct.month, ct.day, 17, 0, FUTURES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
@@ -125,9 +137,9 @@ function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTim
   if (dayIdx === 5 && mins >= CLOSE) {
     const sun = addDays(ct, 2); // Fri + 2 = Sun
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FUTURES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FUTURES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
@@ -135,28 +147,27 @@ function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTim
   // (Friday >= 16:00 is already caught above, so this only fires Mon–Thu in practice)
   if (dayIdx !== 0 && mins >= CLOSE && mins < OPEN) {
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(ct.year, ct.month, ct.day, 17, 0, FUTURES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(ct.year, ct.month, ct.day, 17, 0, FUTURES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
   // Open — compute next close
-  let nextClose: Date;
+  let nextCloseAtUtc: Date;
   if (dayIdx === 5) {
     // Friday before 16:00: closes today
-    nextClose = zonedToUtc(ct.year, ct.month, ct.day, 16, 0, FUTURES_TZ);
+    nextCloseAtUtc = zonedToUtc(ct.year, ct.month, ct.day, 16, 0, FUTURES_TZ);
   } else if (dayIdx === 0 || mins >= OPEN) {
     // Sunday after 17:00, or Mon–Thu after 17:00 (post-break new session)
-    // → next close is tomorrow 16:00 CT
     const tomorrow = addDays(ct, 1);
-    nextClose = zonedToUtc(tomorrow.year, tomorrow.month, tomorrow.day, 16, 0, FUTURES_TZ);
+    nextCloseAtUtc = zonedToUtc(tomorrow.year, tomorrow.month, tomorrow.day, 16, 0, FUTURES_TZ);
   } else {
-    // Mon–Thu before 16:00: closes today at 16:00
-    nextClose = zonedToUtc(ct.year, ct.month, ct.day, 16, 0, FUTURES_TZ);
+    // Mon–Thu before 16:00
+    nextCloseAtUtc = zonedToUtc(ct.year, ct.month, ct.day, 16, 0, FUTURES_TZ);
   }
 
-  return { isOpen: true, sessionName: "גלובקס", nextOpen: null, nextClose };
+  return { marketOpen: true, sessionName: "גלובקס", nextOpenAtUtc: null, nextCloseAtUtc };
 }
 
 // ─── US Equities (NYSE / NASDAQ) ──────────────────────────────────────────────
@@ -171,7 +182,7 @@ function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTim
 
 const EQUITIES_TZ = "America/New_York";
 
-function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
+function getEquitiesStatus(now: Date): MarketCore {
   const et = getZonedParts(now, EQUITIES_TZ);
   const dayIdx = dayIndex(et.weekday);
   const mins = et.hour * 60 + et.minute;
@@ -186,63 +197,62 @@ function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTi
     const daysToMon = dayIdx === 6 ? 2 : 1;
     const mon = addDays(et, daysToMon);
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(mon.year, mon.month, mon.day, 4, 0, EQUITIES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(mon.year, mon.month, mon.day, 4, 0, EQUITIES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
   // Before pre-market (midnight–04:00)
   if (mins < PRE_START) {
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(et.year, et.month, et.day, 4, 0, EQUITIES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(et.year, et.month, et.day, 4, 0, EQUITIES_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
   // Pre-market
   if (mins < REG_START) {
     return {
-      isOpen: true, sessionName: "פרי-מרקט",
-      nextOpen: null,
-      nextClose: zonedToUtc(et.year, et.month, et.day, 9, 30, EQUITIES_TZ),
+      marketOpen: true, sessionName: "פרי-מרקט",
+      nextOpenAtUtc: null,
+      nextCloseAtUtc: zonedToUtc(et.year, et.month, et.day, 9, 30, EQUITIES_TZ),
     };
   }
 
   // Regular hours
   if (mins < REG_CLOSE) {
     return {
-      isOpen: true, sessionName: "NYSE / NASDAQ",
-      nextOpen: null,
-      nextClose: zonedToUtc(et.year, et.month, et.day, 16, 0, EQUITIES_TZ),
+      marketOpen: true, sessionName: "NYSE / NASDAQ",
+      nextOpenAtUtc: null,
+      nextCloseAtUtc: zonedToUtc(et.year, et.month, et.day, 16, 0, EQUITIES_TZ),
     };
   }
 
   // After-hours
   if (mins < AH_END) {
     return {
-      isOpen: true, sessionName: "אפטר-האוורס",
-      nextOpen: null,
-      nextClose: zonedToUtc(et.year, et.month, et.day, 20, 0, EQUITIES_TZ),
+      marketOpen: true, sessionName: "אפטר-האוורס",
+      nextOpenAtUtc: null,
+      nextCloseAtUtc: zonedToUtc(et.year, et.month, et.day, 20, 0, EQUITIES_TZ),
     };
   }
 
   // After 20:00 ET — next session: pre-market next trading day
   if (dayIdx === 5) {
-    // Friday after-hours → next Monday 04:00
     const mon = addDays(et, 3);
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(mon.year, mon.month, mon.day, 4, 0, EQUITIES_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(mon.year, mon.month, mon.day, 4, 0, EQUITIES_TZ),
+      nextCloseAtUtc: null,
     };
   }
   const tomorrow = addDays(et, 1);
   return {
-    isOpen: false, sessionName: null,
-    nextOpen: zonedToUtc(tomorrow.year, tomorrow.month, tomorrow.day, 4, 0, EQUITIES_TZ),
-    nextClose: null,
+    marketOpen: false, sessionName: null,
+    nextOpenAtUtc: zonedToUtc(tomorrow.year, tomorrow.month, tomorrow.day, 4, 0, EQUITIES_TZ),
+    nextCloseAtUtc: null,
   };
 }
 
@@ -255,67 +265,61 @@ function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTi
 
 const FOREX_TZ = "America/New_York";
 
-function getForexStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
+function getForexStatus(now: Date): MarketCore {
   const et = getZonedParts(now, FOREX_TZ);
   const dayIdx = dayIndex(et.weekday);
   const mins = et.hour * 60 + et.minute;
   const FOREX_BOUNDARY = 17 * 60; // 17:00 ET open/close boundary
 
-  // Saturday: fully closed
   if (dayIdx === 6) {
     const sun = addDays(et, 1);
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FOREX_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FOREX_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
-  // Sunday before 17:00 ET: closed
   if (dayIdx === 0 && mins < FOREX_BOUNDARY) {
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(et.year, et.month, et.day, 17, 0, FOREX_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(et.year, et.month, et.day, 17, 0, FOREX_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
-  // Friday at/after 17:00 ET: weekend close
   if (dayIdx === 5 && mins >= FOREX_BOUNDARY) {
     const sun = addDays(et, 2);
     return {
-      isOpen: false, sessionName: null,
-      nextOpen: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FOREX_TZ),
-      nextClose: null,
+      marketOpen: false, sessionName: null,
+      nextOpenAtUtc: zonedToUtc(sun.year, sun.month, sun.day, 17, 0, FOREX_TZ),
+      nextCloseAtUtc: null,
     };
   }
 
-  // Open — derive session label from UTC hour
   const utcHour = now.getUTCHours();
   let sessionName: string;
-  if (utcHour >= 22 || utcHour < 7)        sessionName = "סשן אסיה";
-  else if (utcHour < 12)                    sessionName = "סשן לונדון";
-  else if (utcHour < 17)                    sessionName = "סשן NY";
-  else                                      sessionName = "פורקס";
+  if (utcHour >= 22 || utcHour < 7)   sessionName = "סשן אסיה";
+  else if (utcHour < 12)              sessionName = "סשן לונדון";
+  else if (utcHour < 17)              sessionName = "סשן NY";
+  else                                sessionName = "פורקס";
 
-  // nextClose = Friday 17:00 ET
   const daysToFri = (5 - dayIdx + 7) % 7;
-  let nextClose: Date;
+  let nextCloseAtUtc: Date;
   if (daysToFri === 0 && mins < FOREX_BOUNDARY) {
-    nextClose = zonedToUtc(et.year, et.month, et.day, 17, 0, FOREX_TZ);
+    nextCloseAtUtc = zonedToUtc(et.year, et.month, et.day, 17, 0, FOREX_TZ);
   } else {
-    const effectiveDays = daysToFri === 0 ? 7 : daysToFri;
-    const fri = addDays(et, effectiveDays);
-    nextClose = zonedToUtc(fri.year, fri.month, fri.day, 17, 0, FOREX_TZ);
+    const fri = addDays(et, daysToFri === 0 ? 7 : daysToFri);
+    nextCloseAtUtc = zonedToUtc(fri.year, fri.month, fri.day, 17, 0, FOREX_TZ);
   }
 
-  return { isOpen: true, sessionName, nextOpen: null, nextClose };
+  return { marketOpen: true, sessionName, nextOpenAtUtc: null, nextCloseAtUtc };
 }
 
 // ─── Crypto ───────────────────────────────────────────────────────────────────
 
-function getCryptoStatus(): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
-  return { isOpen: true, sessionName: "24/7", nextOpen: null, nextClose: null };
+function getCryptoStatus(): MarketCore {
+  return { marketOpen: true, sessionName: "24/7", nextOpenAtUtc: null, nextCloseAtUtc: null };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -324,10 +328,10 @@ function getCryptoStatus(): Omit<MarketStatus, "marketType" | "userTimezone" | "
 export function normalizeMarketType(primaryMarket: string | null | undefined): MarketType {
   if (!primaryMarket) return "FUTURES";
   const s = primaryMarket.toLowerCase().replace(/[\s_]/g, "");
-  if (s.includes("future"))                 return "FUTURES";
-  if (s.includes("equit") || s.includes("stock")) return "US_EQUITIES";
-  if (s.includes("forex") || s.includes("fx"))    return "FOREX";
-  if (s.includes("crypto") || s.includes("coin")) return "CRYPTO";
+  if (s.includes("future"))                          return "FUTURES";
+  if (s.includes("equit") || s.includes("stock"))   return "US_EQUITIES";
+  if (s.includes("forex") || s.includes("fx"))      return "FOREX";
+  if (s.includes("crypto") || s.includes("coin"))   return "CRYPTO";
   return "FUTURES";
 }
 
@@ -341,8 +345,13 @@ function isValidTimeZone(tz: string | null | undefined): boolean {
 
 /**
  * Returns the current market status for the given asset class and user timezone.
- * All times in nextOpen/nextClose are UTC Date objects;
- * use the userTimezone field when displaying to the user.
+ *
+ * nextOpenAtUtc / nextCloseAtUtc are plain UTC Date objects — use
+ * formatMarketTimeForUser() to render them in the user's local timezone.
+ *
+ * userTimezone fallback: if the stored value is missing or invalid, falls back
+ * to FALLBACK_TIMEZONE ("UTC"). All displayed times will then be in UTC, which
+ * is unintuitive but safe. In practice, onboarding always captures a timezone.
  */
 export function getMarketStatus(
   primaryMarket: string | null,
@@ -350,10 +359,9 @@ export function getMarketStatus(
   now: Date = new Date(),
 ): MarketStatus {
   const marketType = normalizeMarketType(primaryMarket);
-  const resolvedTz = isValidTimeZone(userTimezone) ? userTimezone! : "UTC";
+  const resolvedTz = isValidTimeZone(userTimezone) ? userTimezone! : FALLBACK_TIMEZONE;
 
-  type Core = Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange">;
-  let core: Core;
+  let core: MarketCore;
   let sourceExchange: string;
   switch (marketType) {
     case "FUTURES":
@@ -375,6 +383,63 @@ export function getMarketStatus(
   }
 
   return { ...core, marketType, userTimezone: resolvedTz, sourceExchange };
+}
+
+// ─── Display formatter ────────────────────────────────────────────────────────
+
+const HEBREW_WEEKDAYS: Record<string, string> = {
+  Sunday: "ראשון", Monday: "שני", Tuesday: "שלישי",
+  Wednesday: "רביעי", Thursday: "חמישי", Friday: "שישי", Saturday: "שבת",
+};
+
+function getDisplayParts(date: Date, timeZone: string): { weekday: string; timeStr: string } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour: "2-digit", minute: "2-digit",
+    weekday: "long",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(date).filter(p => p.type !== "literal").map(p => [p.type, p.value]),
+  );
+  return {
+    weekday: parts.weekday,
+    timeStr: `${String(Number(parts.hour) % 24).padStart(2, "0")}:${parts.minute}`,
+  };
+}
+
+/**
+ * Format a UTC market timestamp for display in the user's local timezone.
+ *
+ * Returns:
+ *   Hebrew:  "ב-HH:MM"                       (within 12 h)
+ *            "יום Weekday ב-HH:MM"            (further away)
+ *   English: "at HH:MM"                       (within 12 h)
+ *            "Weekday at HH:MM"               (further away)
+ *
+ * Fallback: if userTimezone is invalid, FALLBACK_TIMEZONE ("UTC") is used and
+ * all times are displayed in UTC. The reply will still be correct — just not
+ * localized to the trader's clock.
+ *
+ * Consumers: Telegram coach (factual.ts), website market-status widgets.
+ */
+export function formatMarketTimeForUser(
+  timestamp: Date,
+  userTimezone: string,
+  locale: string,
+  now: Date = new Date(),
+): string {
+  const safeTz = isValidTimeZone(userTimezone) ? userTimezone : FALLBACK_TIMEZONE;
+  const { weekday, timeStr } = getDisplayParts(timestamp, safeTz);
+  const diffH = (timestamp.getTime() - now.getTime()) / 3_600_000;
+
+  if (locale === "he") {
+    if (diffH < 12) return `ב-${timeStr}`;
+    return `יום ${HEBREW_WEEKDAYS[weekday] ?? weekday} ב-${timeStr}`;
+  }
+
+  if (diffH < 12) return `at ${timeStr}`;
+  return `${weekday} at ${timeStr}`;
 }
 
 // ─── Intent detection ─────────────────────────────────────────────────────────
