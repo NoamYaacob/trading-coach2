@@ -1,4 +1,5 @@
 import type { CoachBrainInput, CoachMode } from "./types";
+import { isMarketHoursQuestion } from "@/lib/market-hours";
 
 const DISTRESS_ACTIONS = new Set([
   "fomo",
@@ -34,6 +35,9 @@ export function routeToMode(input: CoachBrainInput): CoachMode {
     state.includes("just_took_loss")
   )
     return "distress";
+
+  // Market-hours factual question — always code-only, no model
+  if (isMarketHoursQuestion(input.message)) return "market_hours";
 
   // Explicit reflective actions
   if (actionId && REFLECTIVE_ACTIONS.has(actionId)) return "reflective";

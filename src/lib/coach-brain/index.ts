@@ -1,6 +1,6 @@
 import type { CoachBrainInput, CoachBrainOutput } from "./types";
 import { routeToMode } from "./router";
-import { buildFactualReply } from "./factual";
+import { buildFactualReply, buildMarketHoursReply } from "./factual";
 import { generateDistressReply } from "./distress";
 import { generateReflectiveReply } from "./reflective";
 import { generateFreeTextReply } from "./free-text";
@@ -19,6 +19,17 @@ export async function generateCoachReply(input: CoachBrainInput): Promise<CoachB
       output = {
         reply,
         mode: "factual",
+        language: input.language,
+        source: "code",
+        coachingMove: "rule_reminder",
+      };
+      break;
+    }
+    case "market_hours": {
+      const reply = buildMarketHoursReply(input);
+      output = {
+        reply,
+        mode: "market_hours",
         language: input.language,
         source: "code",
         coachingMove: "rule_reminder",

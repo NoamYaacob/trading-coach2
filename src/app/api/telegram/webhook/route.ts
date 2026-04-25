@@ -47,6 +47,7 @@ import {
   getCurrentTraderState,
   setCurrentTraderState,
 } from "@/lib/trader-state";
+import { getMarketStatus } from "@/lib/market-hours";
 
 type TelegramWebhookPayload = {
   message?: {
@@ -88,6 +89,7 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
               id: true,
               primaryMarket: true,
               tradingStyle: true,
+              timezone: true,
             },
           },
           riskRules: {
@@ -463,6 +465,11 @@ export async function POST(request: Request) {
       violationFeed.hasBlockingViolation ||
       flags.cooldownActive);
 
+  const marketStatus = getMarketStatus(
+    connection.user.traderProfile?.primaryMarket ?? null,
+    connection.user.traderProfile?.timezone ?? null,
+  );
+
   const coachBrainInput: CoachBrainInput = {
     userId: connection.user.id,
     message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
@@ -505,6 +512,7 @@ export async function POST(request: Request) {
     sessionStarted: todaySessionState.sessionStarted,
     sessionEnded: todaySessionState.sessionEnded,
     alertContext: interventionAlertContext,
+    marketStatus,
   };
 
   const brainOutput = useAI ? await generateCoachReply(coachBrainInput) : null;

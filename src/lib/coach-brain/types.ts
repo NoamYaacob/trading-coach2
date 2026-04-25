@@ -1,8 +1,9 @@
 import type { CoachingMove } from "@/lib/coaching-state";
+import type { MarketStatus } from "@/lib/market-hours";
 
 export type { CoachingMove };
 
-export type CoachMode = "factual" | "distress" | "reflective" | "free_text";
+export type CoachMode = "factual" | "distress" | "reflective" | "free_text" | "market_hours";
 
 export type TraderRules = {
   accountSize: number | null;
@@ -48,6 +49,8 @@ export type CoachBrainInput = {
   sessionEnded: boolean;
   /** Broker / rule-engine alert injected for free-text coaching only */
   alertContext: string | null;
+  /** Pre-computed market open/close status for the user's primary market. */
+  marketStatus: MarketStatus | null;
 };
 
 export type CoachBrainOutput = {
