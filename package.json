@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "start:railway": "prisma db push && next start",
+    "start:railway": "prisma db push && next start -p ${PORT:-3000}",
     "lint": "eslint",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
