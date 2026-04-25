@@ -1,5 +1,6 @@
 import type { CoachBrainInput } from "./types";
 import type { MarketStatus } from "@/lib/market-hours";
+import type { TradingPermission } from "@/lib/trading-status";
 
 /** Formats factual rule/usage data directly in TypeScript. No model call. */
 export function buildFactualReply(input: CoachBrainInput): string {
@@ -165,4 +166,125 @@ export function buildMarketHoursReply(input: CoachBrainInput): string {
   }
   if (input.language === "he") return buildMarketHoursHebrewReply(input.marketStatus);
   return buildMarketHoursEnglishReply(input.marketStatus);
+}
+
+// ─── Trading-status reply ─────────────────────────────────────────────────────
+
+function buildTradingStatusHebrewReply(
+  perm: TradingPermission,
+  input: CoachBrainInput,
+): string {
+  if (!perm.allowedToTrade) {
+    switch (perm.blockReason) {
+      case "market_closed":
+        // Redirect to market-hours handler; this path shouldn't fire in practice
+        // because market_hours routing takes priority, but handle defensively.
+        return input.marketStatus
+          ? buildMarketHoursHebrewReply(input.marketStatus)
+          : "השוק סגור עכשיו.";
+
+      case "daily_loss_limit":
+        return "הגעת לסטופ היומי. המסחר להיום נעצר.";
+
+      case "max_trades": {
+        const limit = input.rules.maxTradesPerDay;
+        return limit !== null
+          ? `הגעת ל-${limit} עסקאות היום. לא פותחים עוד עסקה.`
+          : "הגעת למגבלת העסקאות היומית. לא פותחים עוד עסקה.";
+      }
+
+      case "consecutive_losses": {
+        const limit = input.rules.stopAfterLosses;
+        return limit !== null
+          ? `${limit} הפסדות ברצף — הגעת לגבול. עוצרים להיום.`
+          : "הגעת למגבלת ההפסדות ברצף. עוצרים להיום.";
+      }
+
+      case "session_ended":
+        return "הסשן היומי נסגר. מחכים למחר.";
+
+      case "guardian_locked":
+        return "חשבון ננעל. המסחר מושעה.";
+
+      case "pre_news_block":
+        return "מסחר חסום לפני אירוע מאקרו.";
+
+      default:
+        return "מסחר מעוצר כרגע.";
+    }
+  }
+
+  // Allowed — give compact status
+  const parts: string[] = ["אפשר לסחור."];
+  if (perm.remainingTrades !== null) {
+    parts.push(`נשאר ${perm.remainingTrades} עסקאות.`);
+  }
+  if (perm.remainingDailyLossBudget !== null) {
+    parts.push(`${perm.remainingDailyLossBudget.toFixed(0)}$ להפסד יומי.`);
+  }
+  return parts.join(" ");
+}
+
+function buildTradingStatusEnglishReply(
+  perm: TradingPermission,
+  input: CoachBrainInput,
+): string {
+  if (!perm.allowedToTrade) {
+    switch (perm.blockReason) {
+      case "market_closed":
+        return input.marketStatus
+          ? buildMarketHoursEnglishReply(input.marketStatus)
+          : "Market is closed right now.";
+
+      case "daily_loss_limit":
+        return "Daily loss limit reached. Trading is stopped for today.";
+
+      case "max_trades": {
+        const limit = input.rules.maxTradesPerDay;
+        return limit !== null
+          ? `${limit} trades reached for today. No more entries.`
+          : "Daily trade limit reached. No more entries.";
+      }
+
+      case "consecutive_losses": {
+        const limit = input.rules.stopAfterLosses;
+        return limit !== null
+          ? `${limit} consecutive losses — limit reached. Stop now.`
+          : "Consecutive loss limit reached. Stop now.";
+      }
+
+      case "session_ended":
+        return "Today's session has ended. Wait for tomorrow.";
+
+      case "guardian_locked":
+        return "Account locked. Trading is suspended.";
+
+      case "pre_news_block":
+        return "Trading blocked — major economic event.";
+
+      default:
+        return "Trading is stopped right now.";
+    }
+  }
+
+  const parts: string[] = ["You can trade."];
+  if (perm.remainingTrades !== null) {
+    parts.push(`${perm.remainingTrades} trades remaining.`);
+  }
+  if (perm.remainingDailyLossBudget !== null) {
+    parts.push(`$${perm.remainingDailyLossBudget.toFixed(0)} loss budget left.`);
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Formats trading permission status directly in TypeScript. No model call.
+ * Answers "can I trade?" with either a clear block reason or remaining capacity.
+ */
+export function buildTradingStatusReply(input: CoachBrainInput): string {
+  if (!input.tradingPermission) {
+    return input.language === "he" ? "אין מידע על מצב המסחר." : "No trading status data available.";
+  }
+  if (input.language === "he") return buildTradingStatusHebrewReply(input.tradingPermission, input);
+  return buildTradingStatusEnglishReply(input.tradingPermission, input);
 }

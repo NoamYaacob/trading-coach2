@@ -1,5 +1,6 @@
 import type { CoachBrainInput, CoachMode } from "./types";
 import { isMarketHoursQuestion } from "@/lib/market-hours";
+import { isTradingStatusQuestion } from "@/lib/trading-status";
 
 const DISTRESS_ACTIONS = new Set([
   "fomo",
@@ -20,6 +21,12 @@ export function routeToMode(input: CoachBrainInput): CoachMode {
   // Factual: always code-only, never model
   if (actionId === "rule-limits" || actionId === "remaining") return "factual";
 
+  // Explicit status questions get factual answers even when safety overrides are active.
+  // A user asking "is the market open?" or "can I trade?" deserves a direct answer,
+  // not emotional coaching that may contradict the rule state.
+  if (isMarketHoursQuestion(input.message)) return "market_hours";
+  if (isTradingStatusQuestion(input.message)) return "trading_status";
+
   // Safety overrides: lockout, violation, cooldown → distress
   if (input.guardianLocked || input.hasBlockingViolation || input.cooldownActive) return "distress";
 
@@ -35,9 +42,6 @@ export function routeToMode(input: CoachBrainInput): CoachMode {
     state.includes("just_took_loss")
   )
     return "distress";
-
-  // Market-hours factual question — always code-only, no model
-  if (isMarketHoursQuestion(input.message)) return "market_hours";
 
   // Explicit reflective actions
   if (actionId && REFLECTIVE_ACTIONS.has(actionId)) return "reflective";

@@ -48,6 +48,7 @@ import {
   setCurrentTraderState,
 } from "@/lib/trader-state";
 import { getMarketStatus } from "@/lib/market-hours";
+import { getTradingPermission } from "@/lib/trading-status";
 
 type TelegramWebhookPayload = {
   message?: {
@@ -470,6 +471,24 @@ export async function POST(request: Request) {
     connection.user.traderProfile?.timezone ?? null,
   );
 
+  const tradingPermission = getTradingPermission({
+    marketStatus,
+    violationFeed,
+    guardianLocked: guardian.evaluation.lockoutActive,
+    sessionEnded: todaySessionState.sessionEnded,
+    maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
+    todayTradesCount: guardian.evaluation.todayTradesCount,
+    maxDailyLoss: connection.user.riskRules?.maxDailyLoss
+      ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
+      : null,
+    todayPnL: guardian.evaluation.todayPnL,
+    stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
+    consecutiveLosses: Math.max(
+      guardian.evaluation.consecutiveLosses,
+      manualEventSignals.consecutiveLosses,
+    ),
+  });
+
   const coachBrainInput: CoachBrainInput = {
     userId: connection.user.id,
     message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
@@ -513,6 +532,7 @@ export async function POST(request: Request) {
     sessionEnded: todaySessionState.sessionEnded,
     alertContext: interventionAlertContext,
     marketStatus,
+    tradingPermission,
   };
 
   const brainOutput = useAI ? await generateCoachReply(coachBrainInput) : null;

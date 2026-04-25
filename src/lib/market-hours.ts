@@ -14,6 +14,8 @@ export type MarketStatus = {
   nextClose: Date | null;
   /** Resolved IANA tz for display formatting (the user's local timezone). */
   userTimezone: string;
+  /** Calendar/exchange authority for this market type. */
+  sourceExchange: string;
 };
 
 // ─── Private timezone helpers ─────────────────────────────────────────────────
@@ -93,7 +95,7 @@ function dayIndex(weekday: string): number {
 
 const FUTURES_TZ = "America/Chicago";
 
-function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone"> {
+function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
   const ct = getZonedParts(now, FUTURES_TZ);
   const dayIdx = dayIndex(ct.weekday);
   const mins = ct.hour * 60 + ct.minute;
@@ -169,7 +171,7 @@ function getFuturesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTim
 
 const EQUITIES_TZ = "America/New_York";
 
-function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone"> {
+function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
   const et = getZonedParts(now, EQUITIES_TZ);
   const dayIdx = dayIndex(et.weekday);
   const mins = et.hour * 60 + et.minute;
@@ -253,7 +255,7 @@ function getEquitiesStatus(now: Date): Omit<MarketStatus, "marketType" | "userTi
 
 const FOREX_TZ = "America/New_York";
 
-function getForexStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone"> {
+function getForexStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
   const et = getZonedParts(now, FOREX_TZ);
   const dayIdx = dayIndex(et.weekday);
   const mins = et.hour * 60 + et.minute;
@@ -312,7 +314,7 @@ function getForexStatus(now: Date): Omit<MarketStatus, "marketType" | "userTimez
 
 // ─── Crypto ───────────────────────────────────────────────────────────────────
 
-function getCryptoStatus(): Omit<MarketStatus, "marketType" | "userTimezone"> {
+function getCryptoStatus(): Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange"> {
   return { isOpen: true, sessionName: "24/7", nextOpen: null, nextClose: null };
 }
 
@@ -350,16 +352,29 @@ export function getMarketStatus(
   const marketType = normalizeMarketType(primaryMarket);
   const resolvedTz = isValidTimeZone(userTimezone) ? userTimezone! : "UTC";
 
-  type Core = Omit<MarketStatus, "marketType" | "userTimezone">;
+  type Core = Omit<MarketStatus, "marketType" | "userTimezone" | "sourceExchange">;
   let core: Core;
+  let sourceExchange: string;
   switch (marketType) {
-    case "FUTURES":     core = getFuturesStatus(now);  break;
-    case "US_EQUITIES": core = getEquitiesStatus(now); break;
-    case "FOREX":       core = getForexStatus(now);    break;
-    case "CRYPTO":      core = getCryptoStatus();      break;
+    case "FUTURES":
+      core = getFuturesStatus(now);
+      sourceExchange = "CME Globex";
+      break;
+    case "US_EQUITIES":
+      core = getEquitiesStatus(now);
+      sourceExchange = "NYSE / NASDAQ";
+      break;
+    case "FOREX":
+      core = getForexStatus(now);
+      sourceExchange = "FX Spot Market";
+      break;
+    case "CRYPTO":
+      core = getCryptoStatus();
+      sourceExchange = "Crypto Exchange";
+      break;
   }
 
-  return { ...core, marketType, userTimezone: resolvedTz };
+  return { ...core, marketType, userTimezone: resolvedTz, sourceExchange };
 }
 
 // ─── Intent detection ─────────────────────────────────────────────────────────
