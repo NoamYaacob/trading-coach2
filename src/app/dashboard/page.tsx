@@ -161,6 +161,7 @@ export default async function DashboardPage() {
     trialEndsAt: user.trialEndsAt,
     onboardingComplete,
     telegramConnected,
+    email: currentUser.email,
   });
 
   const telegramBotUsername =

@@ -80,6 +80,7 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
       user: {
         select: {
           id: true,
+          email: true,
           subscriptionStatus: true,
           trialEndsAt: true,
           traderProfile: {
@@ -143,6 +144,7 @@ async function connectTelegramAccount(params: {
       user: {
         select: {
           id: true,
+          email: true,
           subscriptionStatus: true,
           trialEndsAt: true,
           traderProfile: {
@@ -195,6 +197,7 @@ async function connectTelegramAccount(params: {
     trialEndsAt: linkToken.user.trialEndsAt,
     onboardingComplete: Boolean(linkToken.user.traderProfile),
     telegramConnected: true,
+    email: linkToken.user.email,
   });
 
   const connectLocale = getLocale(linkToken.user.coachingPreferences?.preferredLanguage);
@@ -328,6 +331,7 @@ export async function POST(request: Request) {
     trialEndsAt: connection.user.trialEndsAt,
     onboardingComplete: Boolean(connection.user.traderProfile),
     telegramConnected: true,
+    email: connection.user.email,
   });
 
   if (!connection.user.traderProfile) {

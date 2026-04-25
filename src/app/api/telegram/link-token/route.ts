@@ -16,6 +16,7 @@ export async function POST() {
     where: { id: currentUser.id },
     select: {
       id: true,
+      email: true,
       subscriptionStatus: true,
       trialEndsAt: true,
     },
@@ -25,7 +26,7 @@ export async function POST() {
     return NextResponse.json({ error: "user not found" }, { status: 404 });
   }
 
-  if (!hasBotAccess(user.subscriptionStatus, user.trialEndsAt)) {
+  if (!hasBotAccess(user.subscriptionStatus, user.trialEndsAt, user.email)) {
     return NextResponse.json(
       { error: "bot access is only available for active trial or subscription" },
       { status: 403 },
