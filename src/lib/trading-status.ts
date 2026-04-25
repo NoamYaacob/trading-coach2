@@ -126,19 +126,23 @@ export function getTradingPermission(input: TradingPermissionInput): TradingPerm
 // ─── Intent detection ─────────────────────────────────────────────────────────
 
 const PATTERNS_HE = [
+  "יכול לסחור",
+  "יכול להיכנס",
   "אפשר לסחור",
+  "אפשר להיכנס",
   "אפשר לפתוח",
   "האם אני יכול לסחור",
   "האם אפשר לסחור",
+  "מותר לסחור",
+  "מותר לי",
   "האם אני חייב לעצור",
   "האם הגעתי לסטופ",
   "הגעתי לסטופ",
   "האם עצרתי",
-  "עדיין אפשר לסחור",
-  "עדיין אפשר",
   "כבר עצרתי",
   "האם פגעתי בגבול",
-  "מותר לסחור",
+  "עדיין אפשר לסחור",
+  "עדיין אפשר",
   "יש לי עסקאות",
   "נשאר לי",
 ];
@@ -146,15 +150,18 @@ const PATTERNS_HE = [
 const PATTERNS_EN = [
   "can i trade",
   "can i open",
-  "am i allowed to trade",
+  "can i enter",
+  "can i take another",
+  "am i allowed",
   "am i stopped",
+  "am i blocked",
+  "am i done for the day",
   "did i hit my limit",
   "have i reached my limit",
-  "am i done for the day",
-  "can i open another",
-  "am i blocked",
   "how many trades left",
   "trading allowed",
+  "is trading open",
+  "trading now",
 ];
 
 /** True when the user is explicitly asking about their trading permission / status. */

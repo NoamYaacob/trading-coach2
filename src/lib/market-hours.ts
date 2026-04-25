@@ -467,7 +467,6 @@ const PATTERNS_HE = [
   "השוק סגור",
   "שוק פתוח",
   "שוק סגור",
-  "אפשר לסחור",
   "מתי נפתח",
   "מתי סוגר",
   "מתי פותח",
@@ -486,13 +485,10 @@ const PATTERNS_EN = [
   "market open",
   "market closed",
   "is the market",
-  "can i trade",
-  "is trading open",
   "when does it open",
   "market hours",
   "futures open",
   "futures closed",
-  "trading now",
 ];
 
 /** True when the message is asking about current market open/close status. */
