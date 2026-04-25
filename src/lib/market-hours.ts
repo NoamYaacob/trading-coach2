@@ -167,7 +167,7 @@ function getFuturesStatus(now: Date): MarketCore {
     nextCloseAtUtc = zonedToUtc(ct.year, ct.month, ct.day, 16, 0, FUTURES_TZ);
   }
 
-  return { marketOpen: true, sessionName: "גלובקס", nextOpenAtUtc: null, nextCloseAtUtc };
+  return { marketOpen: true, sessionName: "Globex", nextOpenAtUtc: null, nextCloseAtUtc };
 }
 
 // ─── US Equities (NYSE / NASDAQ) ──────────────────────────────────────────────
@@ -215,7 +215,7 @@ function getEquitiesStatus(now: Date): MarketCore {
   // Pre-market
   if (mins < REG_START) {
     return {
-      marketOpen: true, sessionName: "פרי-מרקט",
+      marketOpen: true, sessionName: "Pre-Market",
       nextOpenAtUtc: null,
       nextCloseAtUtc: zonedToUtc(et.year, et.month, et.day, 9, 30, EQUITIES_TZ),
     };
@@ -233,7 +233,7 @@ function getEquitiesStatus(now: Date): MarketCore {
   // After-hours
   if (mins < AH_END) {
     return {
-      marketOpen: true, sessionName: "אפטר-האוורס",
+      marketOpen: true, sessionName: "After-Hours",
       nextOpenAtUtc: null,
       nextCloseAtUtc: zonedToUtc(et.year, et.month, et.day, 20, 0, EQUITIES_TZ),
     };
@@ -299,10 +299,10 @@ function getForexStatus(now: Date): MarketCore {
 
   const utcHour = now.getUTCHours();
   let sessionName: string;
-  if (utcHour >= 22 || utcHour < 7)   sessionName = "סשן אסיה";
-  else if (utcHour < 12)              sessionName = "סשן לונדון";
-  else if (utcHour < 17)              sessionName = "סשן NY";
-  else                                sessionName = "פורקס";
+  if (utcHour >= 22 || utcHour < 7)   sessionName = "Asia";
+  else if (utcHour < 12)              sessionName = "London";
+  else if (utcHour < 17)              sessionName = "NY";
+  else                                sessionName = "Forex";
 
   const daysToFri = (5 - dayIdx + 7) % 7;
   let nextCloseAtUtc: Date;
@@ -387,9 +387,32 @@ export function getMarketStatus(
 
 // ─── Display formatter ────────────────────────────────────────────────────────
 
-const HEBREW_WEEKDAYS: Record<string, string> = {
-  Sunday: "ראשון", Monday: "שני", Tuesday: "שלישי",
-  Wednesday: "רביעי", Thursday: "חמישי", Friday: "שישי", Saturday: "שבת",
+const LOCALE_BCP47: Record<string, string> = {
+  he: "he-IL", en: "en-US", es: "es-ES", fr: "fr-FR",
+  de: "de-DE", ru: "ru-RU", ar: "ar-SA",
+};
+
+// 2024-01-07 is a known Sunday — used to derive locale weekday names by offset.
+const KNOWN_SUNDAY = new Date("2024-01-07T12:00:00Z");
+
+function getLocalizedWeekday(englishWeekday: string, locale: string): string {
+  const bcp47 = LOCALE_BCP47[locale] ?? "en-US";
+  const dayIdx = WEEKDAY_ORDER.indexOf(englishWeekday as (typeof WEEKDAY_ORDER)[number]);
+  if (dayIdx < 0) return englishWeekday;
+  const d = new Date(KNOWN_SUNDAY.getTime() + dayIdx * 86_400_000);
+  return new Intl.DateTimeFormat(bcp47, { weekday: "long" }).format(d);
+}
+
+type TimePattern = { soon: (t: string) => string; future: (wd: string, t: string) => string };
+
+const TIME_PATTERNS: Record<string, TimePattern> = {
+  he: { soon: t => `ב-${t}`,          future: (wd, t) => `יום ${wd} ב-${t}` },
+  en: { soon: t => `at ${t}`,         future: (wd, t) => `${wd} at ${t}` },
+  es: { soon: t => `a las ${t}`,      future: (wd, t) => `${wd} a las ${t}` },
+  fr: { soon: t => `à ${t}`,          future: (wd, t) => `${wd} à ${t}` },
+  de: { soon: t => `um ${t}`,         future: (wd, t) => `${wd} um ${t}` },
+  ru: { soon: t => `в ${t}`,          future: (wd, t) => `${wd} в ${t}` },
+  ar: { soon: t => `الساعة ${t}`,    future: (wd, t) => `${wd} الساعة ${t}` },
 };
 
 function getDisplayParts(date: Date, timeZone: string): { weekday: string; timeStr: string } {
@@ -411,11 +434,9 @@ function getDisplayParts(date: Date, timeZone: string): { weekday: string; timeS
 /**
  * Format a UTC market timestamp for display in the user's local timezone.
  *
- * Returns:
- *   Hebrew:  "ב-HH:MM"                       (within 12 h)
- *            "יום Weekday ב-HH:MM"            (further away)
- *   English: "at HH:MM"                       (within 12 h)
- *            "Weekday at HH:MM"               (further away)
+ * Returns a locale-aware time string:
+ *   - "within 12h" form: "at 16:00" / "ב-16:00" / "à 16:00" etc.
+ *   - "future" form: "Friday at 16:00" / "יום שישי ב-16:00" etc.
  *
  * Fallback: if userTimezone is invalid, FALLBACK_TIMEZONE ("UTC") is used and
  * all times are displayed in UTC. The reply will still be correct — just not
@@ -432,14 +453,10 @@ export function formatMarketTimeForUser(
   const safeTz = isValidTimeZone(userTimezone) ? userTimezone : FALLBACK_TIMEZONE;
   const { weekday, timeStr } = getDisplayParts(timestamp, safeTz);
   const diffH = (timestamp.getTime() - now.getTime()) / 3_600_000;
+  const pattern = TIME_PATTERNS[locale] ?? TIME_PATTERNS.en;
 
-  if (locale === "he") {
-    if (diffH < 12) return `ב-${timeStr}`;
-    return `יום ${HEBREW_WEEKDAYS[weekday] ?? weekday} ב-${timeStr}`;
-  }
-
-  if (diffH < 12) return `at ${timeStr}`;
-  return `${weekday} at ${timeStr}`;
+  if (diffH < 12) return pattern.soon(timeStr);
+  return pattern.future(getLocalizedWeekday(weekday, locale), timeStr);
 }
 
 // ─── Intent detection ─────────────────────────────────────────────────────────

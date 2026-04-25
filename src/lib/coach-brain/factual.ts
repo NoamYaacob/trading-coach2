@@ -1,25 +1,25 @@
 import type { CoachBrainInput } from "./types";
-import type { MarketStatus } from "@/lib/market-hours";
+import { getLocale } from "@/lib/i18n";
 import { formatMarketTimeForUser } from "@/lib/market-hours";
-import type { TradingPermission } from "@/lib/trading-status";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function t(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? `{${key}}`));
+}
+
+function formatAmount(amount: number, language: string): string {
+  const n = Math.round(amount).toString();
+  return language === "he" ? `${n}$` : `$${n}`;
+}
+
+// ─── Factual rule/usage reply ─────────────────────────────────────────────────
 
 /** Formats factual rule/usage data directly in TypeScript. No model call. */
 export function buildFactualReply(input: CoachBrainInput): string {
   const { actionId, rules, usage, language } = input;
+  const f = getLocale(language).factual;
   const isRemaining = actionId === "remaining";
-
-  if (language === "he") return buildHebrewFactual(rules, usage, isRemaining);
-  if (language === "en") return buildEnglishFactual(rules, usage, isRemaining);
-
-  // Fallback: English for unsupported languages
-  return buildEnglishFactual(rules, usage, isRemaining);
-}
-
-function buildHebrewFactual(
-  rules: CoachBrainInput["rules"],
-  usage: CoachBrainInput["usage"],
-  isRemaining: boolean,
-): string {
   const parts: string[] = [];
 
   if (isRemaining) {
@@ -28,239 +28,115 @@ function buildHebrewFactual(
       const remaining = Math.max(0, rules.maxDailyLoss - used);
       parts.push(
         used > 0
-          ? `נשאר לך ${remaining.toFixed(0)}$ להפסד יומי.`
-          : `לא הפסדת עדיין. יש לך ${rules.maxDailyLoss}$ מלאים.`,
+          ? t(f.lossRemainingUsed, { amount: formatAmount(remaining, language) })
+          : t(f.lossRemainingFull, { amount: formatAmount(rules.maxDailyLoss, language) }),
       );
     }
     if (rules.maxTradesPerDay != null) {
-      parts.push(`עסקאות: ${usage.todayTradesCount} מתוך ${rules.maxTradesPerDay}.`);
+      parts.push(t(f.tradesCountLine, { count: usage.todayTradesCount, limit: rules.maxTradesPerDay }));
     }
     if (rules.stopAfterLosses != null && usage.consecutiveLosses > 0) {
-      parts.push(`הפסדות ברצף: ${usage.consecutiveLosses} מתוך ${rules.stopAfterLosses}.`);
+      parts.push(t(f.consecutiveLossesLine, { count: usage.consecutiveLosses, limit: rules.stopAfterLosses }));
     }
   } else {
-    if (rules.maxDailyLoss != null) parts.push(`גבול הפסד יומי: ${rules.maxDailyLoss}$.`);
-    if (rules.maxTradesPerDay != null) parts.push(`מקסימום עסקאות: ${rules.maxTradesPerDay}.`);
-    if (rules.stopAfterLosses != null)
-      parts.push(`עצירה אחרי ${rules.stopAfterLosses} הפסדות ברצף.`);
-  }
-
-  return parts.length > 0 ? parts.join(" ") : "לא הוגדרו גבולות.";
-}
-
-function buildEnglishFactual(
-  rules: CoachBrainInput["rules"],
-  usage: CoachBrainInput["usage"],
-  isRemaining: boolean,
-): string {
-  const parts: string[] = [];
-
-  if (isRemaining) {
     if (rules.maxDailyLoss != null) {
-      const used = Math.abs(Math.min(usage.todayPnL, 0));
-      const remaining = Math.max(0, rules.maxDailyLoss - used);
-      parts.push(
-        used > 0
-          ? `$${remaining.toFixed(0)} remaining on daily loss limit.`
-          : `Full $${rules.maxDailyLoss} available — no losses yet.`,
-      );
+      parts.push(t(f.dailyLossLimitLine, { amount: formatAmount(rules.maxDailyLoss, language) }));
     }
     if (rules.maxTradesPerDay != null) {
-      parts.push(`Trades: ${usage.todayTradesCount} of ${rules.maxTradesPerDay}.`);
+      parts.push(t(f.maxTradesLine, { limit: rules.maxTradesPerDay }));
     }
-    if (rules.stopAfterLosses != null && usage.consecutiveLosses > 0) {
-      parts.push(`Consecutive losses: ${usage.consecutiveLosses} of ${rules.stopAfterLosses}.`);
+    if (rules.stopAfterLosses != null) {
+      parts.push(t(f.stopAfterLossesLine, { limit: rules.stopAfterLosses }));
     }
-  } else {
-    if (rules.maxDailyLoss != null) parts.push(`Daily loss limit: $${rules.maxDailyLoss}.`);
-    if (rules.maxTradesPerDay != null) parts.push(`Max trades: ${rules.maxTradesPerDay}.`);
-    if (rules.stopAfterLosses != null)
-      parts.push(`Stop after ${rules.stopAfterLosses} consecutive losses.`);
   }
 
-  return parts.length > 0 ? parts.join(" ") : "No limits configured.";
+  return parts.length > 0 ? parts.join(" ") : f.noLimitsConfigured;
 }
 
 // ─── Market-hours reply ───────────────────────────────────────────────────────
-// Formatting is delegated to formatMarketTimeForUser() in market-hours.ts so
-// the same logic is reusable by website UI without pulling in coach-brain.
-
-const MARKET_NAME_HE: Record<string, string> = {
-  FUTURES: "פיוצ'רס", US_EQUITIES: "שוק המניות", FOREX: "פורקס", CRYPTO: "קריפטו",
-};
-
-const MARKET_NAME_EN: Record<string, string> = {
-  FUTURES: "Futures", US_EQUITIES: "Equities", FOREX: "Forex", CRYPTO: "Crypto",
-};
-
-function buildMarketHoursHebrewReply(status: MarketStatus): string {
-  const now = new Date();
-  const { userTimezone: tz } = status;
-  const name = MARKET_NAME_HE[status.marketType] ?? "השוק";
-
-  if (status.marketOpen) {
-    const parts = [`${name} פתוח.`];
-    if (status.sessionName) parts.push(`${status.sessionName}.`);
-    if (status.nextCloseAtUtc) {
-      parts.push(`סגירה אצלך: ${formatMarketTimeForUser(status.nextCloseAtUtc, tz, "he", now)}.`);
-    }
-    return parts.join(" ");
-  }
-
-  const parts = [`${name} סגור.`];
-  if (status.nextOpenAtUtc) {
-    parts.push(`הפתיחה הבאה אצלך: ${formatMarketTimeForUser(status.nextOpenAtUtc, tz, "he", now)}.`);
-  }
-  return parts.join(" ");
-}
-
-function buildMarketHoursEnglishReply(status: MarketStatus): string {
-  const now = new Date();
-  const { userTimezone: tz } = status;
-  const name = MARKET_NAME_EN[status.marketType] ?? "Market";
-
-  if (status.marketOpen) {
-    const parts = [`${name} is open.`];
-    if (status.sessionName) parts.push(`Session: ${status.sessionName}.`);
-    if (status.nextCloseAtUtc) {
-      parts.push(`Closes ${formatMarketTimeForUser(status.nextCloseAtUtc, tz, "en", now)}.`);
-    }
-    return parts.join(" ");
-  }
-
-  const parts = [`${name} is closed.`];
-  if (status.nextOpenAtUtc) {
-    parts.push(`Next open: ${formatMarketTimeForUser(status.nextOpenAtUtc, tz, "en", now)}.`);
-  }
-  return parts.join(" ");
-}
 
 /** Formats market open/close status directly in TypeScript. No model call. */
 export function buildMarketHoursReply(input: CoachBrainInput): string {
-  if (!input.marketStatus) {
-    return input.language === "he" ? "אין מידע על שעות מסחר." : "No market hours data available.";
+  const { language } = input;
+  const f = getLocale(language).factual;
+
+  if (!input.marketStatus) return f.noMarketData;
+
+  const status = input.marketStatus;
+  const now = new Date();
+  const name = f.markets[status.marketType] ?? status.marketType;
+  const session = status.sessionName ? (f.sessions[status.sessionName] ?? status.sessionName) : null;
+  const tz = status.userTimezone;
+
+  if (status.marketOpen) {
+    if (status.nextCloseAtUtc) {
+      const time = formatMarketTimeForUser(status.nextCloseAtUtc, tz, language, now);
+      if (session) return t(f.marketOpenSession, { name, session, time });
+      return t(f.marketOpen, { name, time });
+    }
+    // No close time (e.g. crypto 24/7)
+    return t(f.marketOpenNoClose, { name });
   }
-  if (input.language === "he") return buildMarketHoursHebrewReply(input.marketStatus);
-  return buildMarketHoursEnglishReply(input.marketStatus);
+
+  if (status.nextOpenAtUtc) {
+    const time = formatMarketTimeForUser(status.nextOpenAtUtc, tz, language, now);
+    return t(f.marketClosedNextOpen, { name, time });
+  }
+  return t(f.marketClosed, { name });
 }
 
 // ─── Trading-status reply ─────────────────────────────────────────────────────
-
-function buildTradingStatusHebrewReply(
-  perm: TradingPermission,
-  input: CoachBrainInput,
-): string {
-  if (!perm.allowedToTrade) {
-    switch (perm.blockReason) {
-      case "market_closed":
-        // Redirect to market-hours handler; this path shouldn't fire in practice
-        // because market_hours routing takes priority, but handle defensively.
-        return input.marketStatus
-          ? buildMarketHoursHebrewReply(input.marketStatus)
-          : "השוק סגור עכשיו.";
-
-      case "daily_loss_limit":
-        return "הגעת לסטופ היומי. המסחר להיום נעצר.";
-
-      case "max_trades": {
-        const limit = input.rules.maxTradesPerDay;
-        return limit !== null
-          ? `הגעת ל-${limit} עסקאות היום. לא פותחים עוד עסקה.`
-          : "הגעת למגבלת העסקאות היומית. לא פותחים עוד עסקה.";
-      }
-
-      case "consecutive_losses": {
-        const limit = input.rules.stopAfterLosses;
-        return limit !== null
-          ? `${limit} הפסדות ברצף — הגעת לגבול. עוצרים להיום.`
-          : "הגעת למגבלת ההפסדות ברצף. עוצרים להיום.";
-      }
-
-      case "session_ended":
-        return "הסשן היומי נסגר. מחכים למחר.";
-
-      case "guardian_locked":
-        return "חשבון ננעל. המסחר מושעה.";
-
-      case "pre_news_block":
-        return "מסחר חסום לפני אירוע מאקרו.";
-
-      default:
-        return "מסחר מעוצר כרגע.";
-    }
-  }
-
-  // Allowed — give compact status
-  const parts: string[] = ["אפשר לסחור."];
-  if (perm.remainingTrades !== null) {
-    parts.push(`נשאר ${perm.remainingTrades} עסקאות.`);
-  }
-  if (perm.remainingDailyLossBudget !== null) {
-    parts.push(`${perm.remainingDailyLossBudget.toFixed(0)}$ להפסד יומי.`);
-  }
-  return parts.join(" ");
-}
-
-function buildTradingStatusEnglishReply(
-  perm: TradingPermission,
-  input: CoachBrainInput,
-): string {
-  if (!perm.allowedToTrade) {
-    switch (perm.blockReason) {
-      case "market_closed":
-        return input.marketStatus
-          ? buildMarketHoursEnglishReply(input.marketStatus)
-          : "Market is closed right now.";
-
-      case "daily_loss_limit":
-        return "Daily loss limit reached. Trading is stopped for today.";
-
-      case "max_trades": {
-        const limit = input.rules.maxTradesPerDay;
-        return limit !== null
-          ? `${limit} trades reached for today. No more entries.`
-          : "Daily trade limit reached. No more entries.";
-      }
-
-      case "consecutive_losses": {
-        const limit = input.rules.stopAfterLosses;
-        return limit !== null
-          ? `${limit} consecutive losses — limit reached. Stop now.`
-          : "Consecutive loss limit reached. Stop now.";
-      }
-
-      case "session_ended":
-        return "Today's session has ended. Wait for tomorrow.";
-
-      case "guardian_locked":
-        return "Account locked. Trading is suspended.";
-
-      case "pre_news_block":
-        return "Trading blocked — major economic event.";
-
-      default:
-        return "Trading is stopped right now.";
-    }
-  }
-
-  const parts: string[] = ["You can trade."];
-  if (perm.remainingTrades !== null) {
-    parts.push(`${perm.remainingTrades} trades remaining.`);
-  }
-  if (perm.remainingDailyLossBudget !== null) {
-    parts.push(`$${perm.remainingDailyLossBudget.toFixed(0)} loss budget left.`);
-  }
-  return parts.join(" ");
-}
 
 /**
  * Formats trading permission status directly in TypeScript. No model call.
  * Answers "can I trade?" with either a clear block reason or remaining capacity.
  */
 export function buildTradingStatusReply(input: CoachBrainInput): string {
-  if (!input.tradingPermission) {
-    return input.language === "he" ? "אין מידע על מצב המסחר." : "No trading status data available.";
+  const { language } = input;
+  const f = getLocale(language).factual;
+
+  if (!input.tradingPermission) return f.noTradingData;
+
+  const perm = input.tradingPermission;
+
+  if (!perm.allowedToTrade) {
+    switch (perm.blockReason) {
+      case "market_closed":
+        return buildMarketHoursReply(input);
+
+      case "daily_loss_limit":
+        return f.dailyLossLimitHit;
+
+      case "max_trades": {
+        const limit = input.rules.maxTradesPerDay;
+        return limit !== null ? t(f.maxTradesHit, { limit }) : f.maxTradesHitGeneric;
+      }
+
+      case "consecutive_losses": {
+        const limit = input.rules.stopAfterLosses;
+        return limit !== null ? t(f.consecutiveLossesHit, { limit }) : f.consecutiveLossesHitGeneric;
+      }
+
+      case "session_ended":
+        return f.sessionEnded;
+
+      case "guardian_locked":
+        return f.guardianLocked;
+
+      case "pre_news_block":
+        return f.preNewsBlock;
+
+      default:
+        return f.tradingBlocked;
+    }
   }
-  if (input.language === "he") return buildTradingStatusHebrewReply(input.tradingPermission, input);
-  return buildTradingStatusEnglishReply(input.tradingPermission, input);
+
+  const parts: string[] = [f.tradingAllowed];
+  if (perm.remainingTrades !== null) {
+    parts.push(t(f.tradesRemaining, { count: perm.remainingTrades }));
+  }
+  if (perm.remainingDailyLossBudget !== null) {
+    parts.push(t(f.lossBudgetRemaining, { amount: formatAmount(perm.remainingDailyLossBudget, language) }));
+  }
+  return parts.join(" ");
 }
