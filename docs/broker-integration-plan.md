@@ -133,37 +133,84 @@ other decoded length is rejected with `KEY_LENGTH`.
 
 **Connection lifecycle:**
 
-| Status                     | Meaning                                                         |
-|----------------------------|-----------------------------------------------------------------|
-| `not_connected`            | No OAuth attempt yet                                            |
-| `connected_readonly`       | OAuth done, tokens encrypted in storage. Read pipeline not yet wired. |
-| `connected_live`           | Reserved for after the first successful broker read             |
-| `expired`                  | Token expired and refresh failed (future)                       |
-| `connection_error`         | Reserved for adapter-level failures (future)                    |
+| Status               | Meaning                                                              |
+|----------------------|----------------------------------------------------------------------|
+| `not_connected`      | No OAuth attempt yet                                                 |
+| `connected_readonly` | OAuth done, tokens encrypted. Read pipeline active (unverified endpoints). |
+| `connected_live`     | Reserved for after first verified successful broker read             |
+| `expired`            | Token expired and refresh failed; user must re-authorize             |
+| `connection_error`   | Reserved for adapter-level failures (future)                         |
 
 **What is implemented:**
 
 - AES-256-GCM encrypt + decrypt in `token-crypto.ts`
 - Key validation (presence, base64, 32-byte length)
 - Versioned payload format with auth tag
-- Callback encrypts and persists `access_token` + `refresh_token`
+- OAuth callback encrypts and persists `access_token` + `refresh_token`
 - `tokenExpiresAt` set when Tradovate returns `expires_in`
 - `getTradovateTokensForAccount(accountId, userId)` — server-only
-  loader with ownership + platform checks; never returns to client code
-- 15 unit tests covering round trip, wrong key, tampered ciphertext,
-  malformed payload, missing key, invalid key length, and serialise/parse
+  loader with ownership + platform checks
+- `TradovateClient` in `tradovate-client.ts` — server-only read client:
+  - On-demand token refresh (5-minute pre-expiry buffer)
+  - Marks account `expired` when refresh fails or 401 is received
+  - Methods: `getAccounts`, `getCashBalanceSnapshot`, `getPositions`,
+    `getOrders`, `getFills`, `resolveContracts`, `toAccountSnapshot`,
+    `toPositions`, `toOrders`, `toExecutions`, `probeConnection`
+  - Never logs token values; error messages reference codes only
+- `GET /api/brokers/tradovate/snapshot?accountId=<id>` — internal test
+  route; auth + ownership required; returns normalised read-only data
+- Account card shows `connected_readonly` badge, `lastSyncAt`, and
+  "Test read-only connection" CTA linking to the snapshot route
+- 15 token-crypto unit tests + 13 mapping / error-class unit tests
 
-**Limitations / not implemented:**
+**⚠ Endpoint verification status:**
 
+All Tradovate REST API paths in `tradovate-client.ts` are based on
+Tradovate's publicly documented API v1 but have **not been verified
+against a real account**. Do not flip capabilities to `available` in
+`TradovateAdapter` until each method is tested end-to-end with real
+credentials. See the verification checklist at the top of this file.
+
+**Destructive actions are completely disabled.** `cancelAllOrders`,
+`flattenAllPositions`, `activateLockout`, and `deactivateLockout` all
+throw `NotImplementedError`. No path through the codebase calls these
+methods. They will not be enabled until:
+1. Each Tradovate endpoint is verified against a real account.
+2. An explicit user opt-in is wired in Rules → On-breach actions.
+3. An audit log entry is written before each action fires.
+
+**Limitations / not yet implemented:**
+
+- **Endpoint verification**: every API path must be confirmed with a
+  real Tradovate account before flipping capabilities to `available`.
 - **Key rotation**: today the runtime accepts only the single configured
-  key. Rotation will require a `keys` array, the payload's `v` field
-  bumped, and a one-time re-encrypt migration. Out of scope until the
-  read pipeline ships.
-- **Refresh job**: tokens are never refreshed yet. When `tokenExpiresAt`
-  passes, the read pipeline (when built) must mint a new access token
-  via the refresh token before each broker call.
-- **Audit logging**: encrypt / decrypt operations are not logged
-  individually. Failures log only the `code` field, never the value.
+  key. Rotation requires a `keys` array, payload `v` bumped, and a
+  one-time re-encrypt migration.
+- **Risk state from broker data**: `computeBrokerRiskState` still throws
+  `NotImplementedError`. Dashboard / Guardian continue to evaluate from
+  manual journal entries until Phase 3 ships.
+- **Audit logging**: encrypt / decrypt and API call operations are not
+  logged individually. Failures log only the error `code`, never values.
+
+### Testing the read pipeline
+
+Once you have a real Tradovate account connected (OAuth complete,
+`connectionStatus = "connected_readonly"`):
+
+1. Open the Accounts page — you should see the **Read-only connected**
+   badge on the account card.
+2. Click **"Test read-only connection ↗"** — opens
+   `GET /api/brokers/tradovate/snapshot?accountId=<id>` in a new tab.
+3. Inspect the JSON response:
+   - `ok: true` means all reads succeeded.
+   - `snapshot.balance` should match your Tradovate account balance.
+   - `positions` and `orders` should reflect open positions / orders.
+   - If any key shows `{ "error": "..." }`, the endpoint needs verification.
+4. If you get `ok: false` with `error: "API_ERROR"` or `PARSE_ERROR`,
+   the endpoint path / request shape needs correction in `tradovate-client.ts`.
+5. Once all five reads (`accounts`, `balance`, `positions`, `orders`,
+   `fills`) return correct data, flip the read capabilities to
+   `available` in `TradovateAdapter` and advance to Phase 2.
 
 ### Open operational questions
 

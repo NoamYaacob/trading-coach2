@@ -26,6 +26,12 @@ const CONNECTION_STATUS_STYLE: Record<
     badgeText: "text-emerald-700",
     dot: "bg-emerald-500",
   },
+  connected_readonly: {
+    label: "Read-only connected",
+    badge: "bg-sky-100",
+    badgeText: "text-sky-700",
+    dot: "bg-sky-500",
+  },
   pending_webhook: {
     label: "Pending sync",
     badge: "bg-amber-100",
@@ -37,6 +43,12 @@ const CONNECTION_STATUS_STYLE: Record<
     badge: "bg-stone-100",
     badgeText: "text-stone-600",
     dot: "bg-stone-400",
+  },
+  expired: {
+    label: "Token expired",
+    badge: "bg-orange-100",
+    badgeText: "text-orange-700",
+    dot: "bg-orange-500",
   },
   connection_error: {
     label: "Connection error",
@@ -242,21 +254,56 @@ export function AccountCard({
               <span className={`h-1.5 w-1.5 rounded-full ${connStatus.dot} ${account.connectionStatus === "pending_webhook" ? "animate-pulse" : ""}`} />
               {connStatus.label}
             </span>
-            {account.connectionStatus !== "connected_live" && account.platform === "tradovate" && (
+            {account.platform === "tradovate" &&
+            account.connectionStatus !== "connected_live" && (
               <Link
-                href={`/accounts/${account.id}/edit`}
+                href={
+                  account.connectionStatus === "connected_readonly" ||
+                  account.connectionStatus === "expired"
+                    ? `/accounts/connect/tradovate`
+                    : `/accounts/${account.id}/edit`
+                }
                 className="text-xs text-stone-500 underline-offset-2 hover:underline"
               >
                 {account.connectionStatus === "not_connected"
                   ? "Connect Tradovate"
-                  : account.connectionStatus === "connection_error"
-                    ? "Reconnect Tradovate"
-                    : !hasAnyRule
-                      ? "Configure rules"
-                      : "Manage connection"}
+                  : account.connectionStatus === "connection_error" ||
+                      account.connectionStatus === "expired"
+                    ? "Re-authorize Tradovate"
+                    : account.connectionStatus === "connected_readonly"
+                      ? "Re-authorize"
+                      : !hasAnyRule
+                        ? "Configure rules"
+                        : "Manage connection"}
               </Link>
             )}
           </div>
+          {account.connectionStatus === "connected_readonly" && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p className="text-xs text-sky-700">
+                OAuth connected — read pipeline active. Broker-level enforcement
+                is not yet enabled.
+              </p>
+              {account.lastSyncAt && (
+                <p className="text-xs text-stone-400">
+                  Last sync {shortDate(account.lastSyncAt)}
+                </p>
+              )}
+              <a
+                href={`/api/brokers/tradovate/snapshot?accountId=${account.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-sky-600 underline-offset-2 hover:underline"
+              >
+                Test read-only connection ↗
+              </a>
+            </div>
+          )}
+          {account.connectionStatus === "expired" && (
+            <p className="text-xs text-orange-700">
+              Access token expired — re-authorize to restore the read connection.
+            </p>
+          )}
           {account.connectionStatus === "pending_webhook" && (
             <p className="text-xs text-amber-700">
               Waiting for first broker event — ensure your Tradovate webhook is configured.
@@ -510,6 +557,11 @@ export function AccountCard({
           {account.connectionStatus === "connected_live" && account.connectedAt && (
             <p className="text-xs text-stone-400">
               Live since {shortDate(account.connectedAt)}
+            </p>
+          )}
+          {account.connectionStatus === "connected_readonly" && account.connectedAt && (
+            <p className="text-xs text-stone-400">
+              Connected {shortDate(account.connectedAt)}
             </p>
           )}
         </div>
