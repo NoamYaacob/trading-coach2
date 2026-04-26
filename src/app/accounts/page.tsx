@@ -60,14 +60,60 @@ export default async function AccountsPage() {
 
   const hasTradovate = accounts.some((a) => a.platform === "tradovate");
 
-  const capabilityTable = [
-    { capability: "Read balance & equity", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Read open positions", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Read open orders", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Read P&L (live fills)", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Cancel open orders", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Flatten positions (kill switch)", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
-    { capability: "Broker-level lockout", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+  const capabilityTable: {
+    capability: string;
+    tradovate: { label: string; available: boolean };
+    tradingview: { label: string; available: boolean };
+    manual: { label: string; available: boolean };
+  }[] = [
+    {
+      capability: "Read balance & equity",
+      tradovate: { label: "Available", available: true },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
+    {
+      capability: "Read open positions",
+      tradovate: { label: "Available", available: true },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
+    {
+      capability: "Read P&L (live fills)",
+      tradovate: { label: "Available", available: true },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
+    {
+      capability: "App-level session lockout",
+      tradovate: { label: "Available", available: true },
+      tradingview: { label: "Available", available: true },
+      manual: { label: "Available", available: true },
+    },
+    {
+      capability: "Telegram enforcement alerts",
+      tradovate: { label: "Available", available: true },
+      tradingview: { label: "Available", available: true },
+      manual: { label: "Available", available: true },
+    },
+    {
+      capability: "Cancel open orders at broker",
+      tradovate: { label: "Coming soon", available: false },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
+    {
+      capability: "Auto-flatten positions (kill switch)",
+      tradovate: { label: "Coming soon", available: false },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
+    {
+      capability: "Broker-level order blocking",
+      tradovate: { label: "Coming soon", available: false },
+      tradingview: { label: "Coming soon", available: false },
+      manual: { label: "Not available", available: false },
+    },
   ];
 
   return (
@@ -143,7 +189,7 @@ export default async function AccountsPage() {
         {/* Broker capability table */}
         <SectionCard
           title="Broker capabilities"
-          description="What Guardrail can do depends on which broker is connected and which API permissions are granted."
+          description="What Guardrail can currently do depends on which broker is connected. Broker-level order blocking and auto-flatten are not yet implemented."
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -160,21 +206,28 @@ export default async function AccountsPage() {
                   <tr key={row.capability}>
                     <td className="py-3 pr-6 font-medium text-stone-800">{row.capability}</td>
                     <td className="py-3 pr-6">
-                      <span className={`text-xs font-semibold ${row.tradovate === "Available" ? "text-emerald-700" : "text-stone-400"}`}>
-                        {row.tradovate}
+                      <span className={`text-xs font-semibold ${row.tradovate.available ? "text-emerald-700" : "text-stone-400"}`}>
+                        {row.tradovate.label}
                       </span>
                     </td>
                     <td className="py-3 pr-6">
-                      <span className="text-xs font-semibold text-stone-400">{row.tradingview}</span>
+                      <span className={`text-xs font-semibold ${row.tradingview.available ? "text-emerald-700" : "text-stone-400"}`}>
+                        {row.tradingview.label}
+                      </span>
                     </td>
                     <td className="py-3">
-                      <span className="text-xs font-semibold text-stone-400">{row.manual}</span>
+                      <span className={`text-xs font-semibold ${row.manual.available ? "text-emerald-700" : "text-stone-400"}`}>
+                        {row.manual.label}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="mt-4 text-xs text-stone-400">
+            Current enforcement is app-level only: Guardrail locks the session internally and sends Telegram alerts. Live orders at the broker are not cancelled or blocked — that requires a future integration phase.
+          </p>
         </SectionCard>
       </div>
     </AppShell>

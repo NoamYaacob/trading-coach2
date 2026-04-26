@@ -241,9 +241,9 @@ export function TodaySessionPanel({
                 ? "Session is closed for this Guardian day. Review what happened and wait for the next reset window."
                 : isSessionActive
                 ? telegramAccess.dashboardState === "connected"
-                  ? "Your session started on the dashboard. Continue live coaching in Telegram."
+                  ? "Session active. Guardian is monitoring your limits and will alert you via Telegram if a rule is hit."
                   : telegramAccess.dashboardState === "not_connected"
-                    ? "Your session is active. Connect Telegram now so coaching can continue in the bot."
+                    ? "Session active. Connect Telegram to receive Guardian lockout alerts and enforcement notifications."
                     : sessionState.nextStep
                 : sessionState.nextStep}
             </p>
@@ -279,18 +279,18 @@ export function TodaySessionPanel({
                 href={telegramBotLink ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                Open Telegram coach
+                Open Telegram alerts
               </a>
             ) : canConnectTelegram ? (
               <button
                 type="button"
                 onClick={handleConnectTelegram}
                 disabled={isConnectingTelegram}
-                className="mt-4 inline-flex rounded-full bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-400"
+                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
-                {isConnectingTelegram ? "Connecting Telegram..." : "Connect Telegram"}
+                {isConnectingTelegram ? "Connecting..." : "Connect Telegram alerts"}
               </button>
             ) : (
               <Link

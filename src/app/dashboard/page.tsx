@@ -35,7 +35,6 @@ import {
   buildViolationActivityItems,
 } from "@/lib/today-activity";
 import { RuleNoticeList } from "@/components/ui/rule-notice-card";
-import { deriveShortLivedCoachingFlags } from "@/lib/trader-state";
 import {
   getSelectedEconomicCalendarSnapshot,
   getCurrentPreNewsPolicy,
@@ -52,22 +51,7 @@ export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
 };
 
-function formatDate(value: Date | null, timeZone: string) {
-  if (!value) {
-    return "Not set";
-  }
 
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
-}
-
-
-function humanizeTraderState(value: string) {
-  return value.replaceAll("_", " ").toLowerCase();
-}
 
 export default async function DashboardPage() {
   const currentUser = await getCurrentUser();
@@ -91,16 +75,6 @@ export default async function DashboardPage() {
           connectedAt: true,
         },
       },
-      traderState: {
-        select: {
-          currentState: true,
-          stateNotes: true,
-          recentLossStreak: true,
-          needsCooldown: true,
-          cooldownUntil: true,
-          lastStateAt: true,
-        },
-      },
       coachingPreferences: true,
     },
   });
@@ -116,7 +90,6 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
-  const liveStateFlags = deriveShortLivedCoachingFlags(user.traderState);
   const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart, liveEnforcement] =
     await Promise.all([
       getTodaySessionSummary(currentUser.id),
@@ -266,6 +239,24 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-10">
+        {/* Enforcement mode banner — only shown in manual mode */}
+        {!liveEnforcement && (
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
+            <div>
+              <p className="font-semibold text-amber-900">Manual mode · App-level enforcement only</p>
+              <p className="mt-0.5 text-stone-700">
+                Guardrail tracks and warns based on what you log. No broker is connected — live fills are not monitored and positions cannot be automatically flattened.
+              </p>
+            </div>
+            <a
+              href="/accounts"
+              className="shrink-0 rounded-full border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+            >
+              Connect broker →
+            </a>
+          </div>
+        )}
+
         {/* Session status — live enforcement panel when live account connected, manual otherwise */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
@@ -334,66 +325,41 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        {/* Tools & context */}
+        {/* Session tools */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Tools &amp; context
+            Session tools
           </p>
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Log a trade — most actionable, always first */}
+            {/* Log a trade */}
             <SectionCard
               title="Log a trade"
-              description="Record a trade or session event — feeds Today activity and the post-session review."
+              description="Record a trade or session event — feeds today's activity and the post-session review."
             >
               <ManualEventForm />
-            </SectionCard>
-
-            {/* Trader context — mental state signals used by the coaching flow */}
-            <SectionCard
-              title="Trader context"
-              description="Short-term mental state signals used by the coaching flow."
-            >
-              <div className="text-sm text-stone-700">
-                {user.traderState?.currentState && user.traderState.currentState !== "NONE" ? (
-                  <p className="font-medium text-stone-950">
-                    {humanizeTraderState(user.traderState.currentState)}
-                  </p>
-                ) : null}
-                <p className={user.traderState?.currentState && user.traderState.currentState !== "NONE" ? "mt-1 text-stone-500" : "text-stone-500"}>
-                  {user.traderState?.stateNotes ?? "No active mental state flagged right now."}
-                </p>
-                {liveStateFlags.cooldownActive ? (
-                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                      Cooldown active
-                    </p>
-                    <p className="mt-1 text-xs text-stone-500">
-                      Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
             </SectionCard>
 
             {/* Setup status — only when something still needs doing */}
             {(!onboardingComplete || !telegramConnected) ? (
               <SectionCard
                 title="Setup status"
-                description="Complete setup to unlock the full coaching session flow."
+                description="Complete these steps to enable Guardian enforcement."
               >
                 <dl className="divide-y divide-stone-100 text-sm">
                   {!onboardingComplete ? (
                     <div className="py-3">
-                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Onboarding</dt>
-                      <dd className="mt-1.5 font-medium text-stone-950">Not complete yet.</dd>
-                      <p className="mt-1 text-stone-500">Finish onboarding to unlock the session flow.</p>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Guardian rules</dt>
+                      <dd className="mt-1.5 font-medium text-stone-950">Not configured.</dd>
+                      <p className="mt-1 text-stone-500">
+                        <a href="/onboarding" className="font-medium text-stone-950 underline-offset-2 hover:underline">Complete onboarding</a> to set your daily limits and enable enforcement.
+                      </p>
                     </div>
                   ) : null}
                   {!telegramConnected ? (
                     <div className="py-3">
-                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Telegram coach</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Telegram alerts</dt>
                       <dd className="mt-1.5 font-medium text-stone-950">Not connected.</dd>
-                      <p className="mt-1 text-stone-500">Connect Telegram to continue the session in the coach bot.</p>
+                      <p className="mt-1 text-stone-500">Connect Telegram to receive Guardian lockout alerts and enforcement notifications.</p>
                     </div>
                   ) : null}
                 </dl>

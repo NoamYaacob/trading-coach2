@@ -24,10 +24,10 @@ const pillars = [
       "When Guardian triggers, trading is blocked for the day. There is no override. The decision was made before the pressure hit.",
   },
   {
-    label: "Live coaching",
-    title: "Telegram live coach",
+    label: "Alerts",
+    title: "Telegram enforcement alerts",
     detail:
-      "The bot reads your live session state, Guardian status, and loss streak before every reply. Coaching is grounded in where you actually are.",
+      "Lockout messages, pre-news warnings, and status replies delivered via Telegram. The bot reads your live Guardian state — alerts are grounded in actual session data.",
   },
   {
     label: "Risk awareness",
@@ -62,8 +62,8 @@ const steps = [
   },
   {
     n: "03",
-    title: "Trade with the bot",
-    detail: "Check in, report states, and get replies that know your actual session position.",
+    title: "Trade — Guardian watches",
+    detail: "Guardian evaluates every fill and P&L update in real time. Warnings fire before limits are hit.",
   },
   {
     n: "04",
@@ -100,9 +100,9 @@ const activityPreview = [
 const includedFeatures = [
   "Guardian session control — max trades, max loss, consecutive loss stop",
   "Real-time Guardian lockout enforcement — no overrides",
-  "Telegram live coach with session-state awareness",
+  "Telegram enforcement alerts with live session context (optional)",
   "Economic calendar with news-aware risk policies",
-  "Today Activity live timeline",
+  "Today activity live timeline",
   "Post-session review with structured takeaways",
   "Manual trade logging — wins, losses, P&L, rule breaches",
 ];
@@ -549,21 +549,22 @@ export default async function Home() {
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-                Telegram coaching
+                Optional · Telegram alerts
               </p>
               <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-                A coach that knows where you actually are.
+                Enforcement alerts delivered to Telegram.
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                Not a generic chatbot. The Telegram coach reads your live Guardian status,
-                session state, loss streak, and pre-news policy before every reply.
+                When a Guardian rule is triggered, you receive a Telegram message with the
+                reason, rule that fired, and your reset window. The bot also knows your live
+                session state when you ask status questions.
               </p>
               <ul className="mt-6 grid gap-3">
                 {[
-                  "When you're locked out, it confirms the close and gives reset timing.",
-                  "When you're in a pre-news window, it flags the risk before you enter.",
-                  "When you've reset, it confirms you're actually ready to resume.",
-                  "Check-ins, loss reports, and day summary — all grounded in live state.",
+                  "Lockout confirmed the moment a limit is crossed — not a minute later.",
+                  "Pre-news window flagged before you enter, based on your news policy.",
+                  "Reset confirmation when you're actually ready to resume.",
+                  "Status questions answered with live rule and session state.",
                 ].map((point) => (
                   <li key={point} className="flex items-start gap-3 text-sm leading-6 text-stone-700">
                     <span className="mt-1 shrink-0 font-bold text-amber-600">→</span>

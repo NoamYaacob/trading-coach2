@@ -39,8 +39,8 @@ export default async function AlertsPage() {
       statusCls: telegramReady ? "text-emerald-700" : "text-amber-700",
       badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
       detail: telegramReady
-        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian events, lockout messages, and Telegram coaching are active.`
-        : "Connect Telegram to receive Guardian alerts and lockout notifications directly in Telegram.",
+        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian lockout alerts and enforcement notifications are active.`
+        : "Connect Telegram to receive Guardian lockout alerts and enforcement notifications.",
       enabled: telegramReady,
       action: telegramReady ? null : { href: "/onboarding", label: "Connect Telegram" },
     },
@@ -91,7 +91,7 @@ export default async function AlertsPage() {
     <AppShell
       eyebrow="Alerts"
       title="Notification channels."
-      description="Choose where Guardrail sends alerts. In-app alerts are always on. Telegram is the primary enforcement channel — connect it to receive Guardian lockout messages."
+      description="Choose where Guardrail sends alerts. In-app alerts are always on. Telegram is optional — connect it to receive Guardian lockout messages directly in the app."
     >
       <div className="grid gap-6">
 

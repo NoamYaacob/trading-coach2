@@ -53,10 +53,10 @@ export default async function RulesPage() {
       description="Define the hard limits that Guardrail enforces every session. Rules are evaluated on every trade event — the session locks automatically when a limit is crossed."
       actions={
         <Link
-          href="/onboarding"
+          href="/guardian"
           className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          Edit rules
+          Edit in Guardian
         </Link>
       }
     >
@@ -80,25 +80,23 @@ export default async function RulesPage() {
                 trading voluntarily — or connect a broker for automatic enforcement.
               </p>
             </div>
-            <div className={`rounded-2xl border px-5 py-4 ${hasBroker ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-stone-50 opacity-60"}`}>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 opacity-60">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Broker-level lockout
+                Broker-level order blocking
               </p>
-              <p className={`mt-1 text-sm font-medium ${hasBroker ? "text-emerald-800" : "text-stone-500"}`}>
-                {hasBroker ? "Active" : "Requires broker connection"}
+              <p className="mt-1 text-sm font-medium text-stone-500">
+                Coming soon
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                When a limit is crossed, Guardrail cancels open orders and flattens positions
-                automatically via your connected broker.
+                Auto-cancellation of open orders and position flattening via broker API. Not yet
+                implemented — enforcement is currently app-level only.
               </p>
-              {!hasBroker && (
-                <Link
-                  href="/accounts"
-                  className="mt-3 inline-block text-xs font-medium text-stone-950 underline-offset-2 hover:underline"
-                >
-                  Connect a broker →
-                </Link>
-              )}
+              <Link
+                href="/accounts"
+                className="mt-3 inline-block text-xs font-medium text-stone-700 underline-offset-2 hover:underline"
+              >
+                View broker capabilities →
+              </Link>
             </div>
           </div>
         </SectionCard>
@@ -172,17 +170,16 @@ export default async function RulesPage() {
                 You receive the reason, rule that triggered, and your reset window.
               </p>
             </div>
-            <div className={`rounded-2xl px-5 py-4 ${hasBroker ? "bg-stone-50" : "border border-dashed border-stone-200 bg-white"}`}>
+            <div className="rounded-2xl border border-dashed border-stone-200 bg-white px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
                 Kill switch
               </p>
-              <p className={`mt-2 text-sm font-medium ${hasBroker ? "text-stone-950" : "text-stone-400"}`}>
-                {hasBroker ? "Auto-flatten active" : "Not available"}
+              <p className="mt-2 text-sm font-medium text-stone-400">
+                Coming soon
               </p>
               <p className="mt-1 text-sm text-stone-600">
-                {hasBroker
-                  ? "Open orders cancelled and positions flattened via broker API."
-                  : "Connect a broker to enable automatic position flattening."}
+                Automatic order cancellation and position flattening via broker API. Not yet
+                implemented — session lock is app-level only.
               </p>
             </div>
           </div>
