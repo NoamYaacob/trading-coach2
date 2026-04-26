@@ -59,30 +59,78 @@ following with Tradovate's API documentation and a sandbox account:
 
 ---
 
-## OAuth flow requirements
+## Required environment variables
 
-Standard authorization code flow:
+The OAuth flow refuses to start unless ALL three required keys are
+present. This is the gate that prevents a "fake connected" state where
+OAuth completes but we have no way to securely persist the tokens.
+
+| Var                                | Required | Purpose                                                                                       |
+|------------------------------------|----------|-----------------------------------------------------------------------------------------------|
+| `TRADOVATE_CLIENT_ID`              | ✓        | OAuth client id from the Tradovate partner portal                                             |
+| `TRADOVATE_CLIENT_SECRET`          | ✓        | OAuth client secret used in token exchange                                                    |
+| `TRADOVATE_TOKEN_ENCRYPTION_KEY`   | ✓        | 32+ char secret for encrypting access/refresh tokens at rest. Generate with `openssl rand -hex 32` |
+| `TRADOVATE_REDIRECT_URI`           |          | Optional override; routes derive it from the request origin otherwise                         |
+| `TRADOVATE_AUTH_URL_LIVE`          |          | Override Tradovate live authorize URL                                                         |
+| `TRADOVATE_AUTH_URL_DEMO`          |          | Override Tradovate demo authorize URL                                                         |
+| `TRADOVATE_TOKEN_URL_LIVE`         |          | Override Tradovate live token endpoint                                                        |
+| `TRADOVATE_TOKEN_URL_DEMO`         |          | Override Tradovate demo token endpoint                                                        |
+| `TRADOVATE_API_BASE_URL_LIVE`      |          | Override Tradovate live REST API base                                                         |
+| `TRADOVATE_API_BASE_URL_DEMO`      |          | Override Tradovate demo REST API base                                                         |
+
+`src/lib/brokers/tradovate-env.ts` resolves all of the above and
+returns either `{ state: "ready", config }` or
+`{ state: "not_configured", missing }`.
+
+## OAuth flow
+
+Standard authorization code flow, gated by env-var presence:
 
 ```
 User clicks "Connect Tradovate"
-  -> /api/auth/tradovate/connect (already exists as a stub)
-     - Generate state, store with userId
-     - Redirect to Tradovate authorize URL with redirect_uri + state
+  -> GET /api/auth/tradovate/connect
+     - getTradovateConfig() must return state="ready" or we 503
+     - Generate nonce, persist as httpOnly cookie
+     - Redirect to authUrl[env] with client_id, redirect_uri, scope=read, state
+
 Tradovate redirects back
-  -> /api/auth/tradovate/callback (already exists as a stub)
-     - Verify state
-     - Exchange code for access/refresh tokens
-     - Persist tokens (encrypted at rest) keyed by ConnectedAccount.id
-     - Mark ConnectedAccount.connectionStatus = "connected_live"
+  -> GET /api/auth/tradovate/callback
+     - Verify state cookie + nonce  (CSRF)
+     - Re-validate getTradovateConfig() (env may have changed)
+     - POST to tokenUrl[env] with the auth code
+     - On success:
+       - Read tokenData.access_token / refresh_token / account_id / expires_in
+       - DO NOT persist raw tokens — encryption layer not yet shipped
+       - Upsert ConnectedAccount with:
+           connectionStatus = "oauth_pending_storage"
+           errorMessage     = "OAuth verified. Read pipeline is not yet
+                               enabled — token storage encryption is pending."
+     - Redirect to /accounts/connect/tradovate?oauth=verified&account=<id>
 ```
 
-**Open questions before we ship:**
+### Token storage requirement
 
-- Where do refresh tokens get refreshed? (cron, on-demand, both?)
-- Where do we store secrets? (env vars for app, KMS or pgcrypto for
-  per-user tokens at rest)
+`accessTokenEncrypted`, `refreshTokenEncrypted`, `tokenExpiresAt` are
+nullable columns on `ConnectedAccount` reserved for the future. Today's
+callback writes them as `null`. Plaintext token persistence is forbidden.
+
+Implementation plan when we ship the read pipeline:
+
+1. Build a small encryption module using Node's `crypto.createCipheriv`
+   (AES-256-GCM) keyed by `TRADOVATE_TOKEN_ENCRYPTION_KEY`.
+2. Encrypt access + refresh tokens in the callback before writing.
+3. Add a refresher job (cron) that reads encrypted tokens, refreshes,
+   re-encrypts, and updates `tokenExpiresAt`.
+4. Flip `connectionStatus` from `oauth_pending_storage` to
+   `connected_live` only after the first successful read.
+
+### Open operational questions
+
+- Where do refresh tokens get refreshed? (cron, on-demand, both)
+- Where do we store the encryption key? (env var for app; consider KMS
+  in production)
 - What happens on token expiry mid-session? (retry once, then mark
-  the connection `expired` and surface in UI)
+  connection `expired` and surface in UI)
 
 ---
 

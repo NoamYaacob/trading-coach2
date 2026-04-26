@@ -5,14 +5,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
-
-// Tradovate OAuth authorization endpoints.
-// Live: https://live.tradovate.com/oauth/authorize
-// Demo: https://demo.tradovate.com/oauth/authorize
-const TRADOVATE_AUTH_URL = {
-  live: "https://live.tradovate.com/oauth/authorize",
-  demo: "https://demo.tradovate.com/oauth/authorize",
-};
+import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -22,23 +15,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const clientId = process.env.TRADOVATE_CLIENT_ID;
+  const status = getTradovateConfig();
 
-  if (!clientId) {
-    // OAuth not configured — caller should surface the manual setup path instead.
+  // Until ALL required env vars are present (including the token-encryption
+  // key), do not start OAuth. Otherwise a successful authorization at
+  // Tradovate would leave us with tokens we cannot store securely — that
+  // is exactly the kind of "fake connected" state we promised never to
+  // ship.
+  if (status.state !== "ready") {
     return NextResponse.json(
-      { error: "oauth_not_configured" },
+      {
+        error: "oauth_not_configured",
+        missing: status.missing,
+      },
       { status: 503 },
     );
   }
 
-  const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
-  // Derive the callback URL from the incoming request — no env var needed and
-  // it's guaranteed to match the origin Railway routes traffic to.
-  const redirectUri = new URL("/api/auth/tradovate/callback", request.url).toString();
+  const { config } = status;
 
-  // State encodes enough context to resume after the callback without a DB round-trip,
-  // plus a random nonce for CSRF protection.
+  const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
+  // Prefer the explicit override; otherwise derive the redirect from the
+  // incoming request URL so it matches whatever origin Railway routes here.
+  const redirectUri =
+    config.redirectUriOverride ??
+    new URL("/api/auth/tradovate/callback", request.url).toString();
+
+  // State encodes enough context to resume after the callback without a DB
+  // round-trip plus a random nonce for CSRF.
   const nonce = randomBytes(16).toString("hex");
   const statePayload = {
     nonce,
@@ -58,13 +62,16 @@ export async function GET(request: NextRequest) {
   });
 
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: config.clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: "trading",
+    // Request only the read-only scope. Destructive actions (cancel,
+    // flatten, lockout) require separate scopes that we will not request
+    // until the broker integration plan reaches the relevant phase.
+    scope: "read",
     state,
   });
 
-  const authUrl = `${TRADOVATE_AUTH_URL[env]}?${params.toString()}`;
+  const authUrl = `${config.authUrl[env]}?${params.toString()}`;
   return NextResponse.redirect(authUrl);
 }

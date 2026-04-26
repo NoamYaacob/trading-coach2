@@ -327,10 +327,23 @@ model ConnectedAccount {
   currency          String           @default("USD")
   isActive          Boolean          @default(true)
   // Broker connection lifecycle — updated by API on create/edit, by webhook on first event.
-  // Values: not_connected | pending_webhook | connected_live | connection_error
+  // Values: not_connected | pending_webhook | oauth_pending_storage | connected_live | connection_error | expired
   connectionStatus  String           @default("not_connected")
   brokerUserId      String?          // broker-side user ID (populated by future OAuth)
   connectedAt       DateTime?        // when the connection became live (first event received)
+  // ── Token storage placeholders ─────────────────────────────────────────
+  // Empty until Tradovate OAuth + token encryption layer ships. See
+  // src/lib/brokers/tradovate-env.ts and docs/broker-integration-plan.md.
+  // Tokens MUST be encrypted at rest before any value is written here.
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  // Snapshot of the broker's reported capabilities at connect time.
+  capabilitiesJson      Json?
+  // Last successful read from the broker (account snapshot, executions, etc).
+  lastSyncAt            DateTime?
+  // Surfaced in the UI when the connection is degraded or errored.
+  errorMessage          String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
