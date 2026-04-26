@@ -116,8 +116,8 @@ export default async function JournalPage() {
   return (
     <AppShell
       eyebrow="Journal"
-      title="Trade log."
-      description="Manual Mode evaluates risk state from this journal. Every trade you log counts toward today's P&L, trade count, and loss streak."
+      title="Manual trade log."
+      description="Use this while broker data is unavailable. Entries here power the same risk engine that broker events will use later."
     >
       <div className="grid gap-6">
 
@@ -137,9 +137,9 @@ export default async function JournalPage() {
           </div>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-            <p className="font-medium text-amber-900">Manual Mode · Journal feeds risk evaluation</p>
+            <p className="font-medium text-amber-900">Manual fallback · Journal feeds risk evaluation</p>
             <p className="mt-0.5 text-stone-700">
-              Guardrail evaluates rules from the trades you log here. P&L, trade count, loss streak, and risk-per-trade all reference this journal.{" "}
+              P&L, trade count, and loss streak are calculated from entries here until a broker connection is verified.{" "}
               <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
                 Connect a broker →
               </a>

@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 
 const BULLETS = [
   "Define your daily limits once",
-  "Read live fills directly from your broker",
-  "Lock the session the moment a rule is hit",
+  "Prepare for read-only broker verification",
+  "Lock the Guardrail session when limits are breached",
   "Optional Telegram alerts when limits trigger",
 ];
 
@@ -64,7 +64,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
               from becoming a bad day.
             </h2>
             <p className="mt-4 text-[15px] leading-7 text-stone-400">
-              Broker-connected risk enforcement. Your rules, watched live, locked when limits are hit.
+              Risk enforcement for active traders. Define your rules, track the session, and move to broker-connected enforcement as integrations are verified.
             </p>
 
             <ul className="mt-8 grid gap-3.5">

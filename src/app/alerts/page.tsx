@@ -106,7 +106,7 @@ export default async function AlertsPage() {
     <AppShell
       eyebrow="Alerts"
       title="Notification channels."
-      description="Where Guardrail sends alerts when rules trigger. In-app alerts are always on; Telegram is optional."
+      description="Where Guardrail sends alerts when rules trigger. Alerts mirror Guardrail state changes — they do not represent broker-level actions. In-app alerts are always on; Telegram is optional."
       actions={
         !telegramReady ? (
           <a

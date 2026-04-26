@@ -190,7 +190,7 @@ export default async function GuardianPage() {
   const styles = permissionStyles(permission);
 
   const headline = guardianOff
-    ? "Guardian is off — no rules are enforcing."
+    ? "Guardian is off. Rules are saved, but session enforcement is paused."
     : isLocked
       ? "Trading is locked for today."
       : hasWarnings
@@ -198,7 +198,7 @@ export default async function GuardianPage() {
         : "Trading is open. All limits clear.";
 
   const detail = guardianOff
-    ? "Turn Guardian back on to resume rule enforcement."
+    ? "Enable Guardian in Rules to start evaluating the session against your configured limits."
     : isLocked
       ? !hasBroker && manualLocked
         ? manualRisk.lastBreach?.detail ?? "A daily limit was reached based on your journal entries."
@@ -238,15 +238,15 @@ export default async function GuardianPage() {
   const breachActions: Array<{ label: string; available: boolean; on: boolean }> = [
     { label: "Warn (in-app + Telegram)", available: true, on: riskRules?.onBreachWarn ?? true },
     { label: "Lock trading for the day (app-level)", available: true, on: riskRules?.onBreachAppLock ?? true },
-    { label: "Cancel open orders (broker)", available: false, on: riskRules?.onBreachCancelOrders ?? false },
-    { label: "Flatten positions (kill switch)", available: false, on: riskRules?.onBreachFlatten ?? false },
+    { label: "Cancel broker orders", available: false, on: riskRules?.onBreachCancelOrders ?? false },
+    { label: "Flatten broker positions", available: false, on: riskRules?.onBreachFlatten ?? false },
   ];
 
   return (
     <AppShell
       eyebrow="Guardian · Enforcement"
       title="Trading permission."
-      description="The current permission state, active rules, and what happens on breach. Edit limits in Rules."
+      description="See whether the session is Allowed, Warning, or Locked, and which rule caused it."
       actions={
         <Link
           href="/rules"

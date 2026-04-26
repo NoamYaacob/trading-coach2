@@ -115,6 +115,26 @@ export default async function AccountsPage() {
       }
     >
       <div className="grid gap-6">
+
+        {/* Readiness strip */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Available</p>
+            <p className="mt-1 text-sm font-medium text-stone-950">Manual fallback</p>
+            <p className="mt-0.5 text-xs text-stone-600">Journal-driven risk state, app-level lock.</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Pending API access</p>
+            <p className="mt-1 text-sm font-medium text-stone-950">Tradovate OAuth</p>
+            <p className="mt-0.5 text-xs text-stone-600">Read-only, built and waiting on endpoint verification.</p>
+          </div>
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Disabled until verified</p>
+            <p className="mt-1 text-sm font-medium text-stone-950">Broker enforcement</p>
+            <p className="mt-0.5 text-xs text-stone-600">Cancel, flatten, lockout — ships after live verification.</p>
+          </div>
+        </div>
+
         {accounts.length === 0 ? (
           <SectionCard title="No brokers connected">
             <div className="grid gap-6 sm:grid-cols-2">
@@ -170,49 +190,53 @@ export default async function AccountsPage() {
         {/* Broker capability table — driven by the broker registry. */}
         <SectionCard
           title="Broker capabilities"
-          description="What each broker can do today. Statuses are sourced from the broker adapter registry — they update automatically as integrations land."
+          description="What each broker can do today."
         >
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  <th className="pb-3 pr-6">Capability</th>
-                  {adapters.map((a) => (
-                    <th key={a.provider} className="pb-3 pr-6">
-                      {a.displayName}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {capabilityKeys.map((key) => {
-                  // All adapters expose the same key set, so use the first
-                  // adapter's label as the row label.
-                  const label = adapters[0].getCapabilities()[key].label;
-                  return (
-                    <tr key={key}>
-                      <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
-                      {adapters.map((a) => {
-                        const cap = a.getCapabilities()[key];
-                        return (
-                          <td key={a.provider} className="py-3 pr-6">
-                            <span
-                              className={`text-xs font-semibold ${statusClass(cap.status)}`}
-                              title={cap.note ?? undefined}
-                            >
-                              {statusLabel(cap.status)}
-                            </span>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <details className="group">
+            <summary className="cursor-pointer list-none text-xs font-medium text-stone-500 hover:text-stone-950">
+              <span className="group-open:hidden">Show capability matrix ↓</span>
+              <span className="hidden group-open:inline">Hide capability matrix ↑</span>
+            </summary>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                    <th className="pb-3 pr-6">Capability</th>
+                    {adapters.map((a) => (
+                      <th key={a.provider} className="pb-3 pr-6">
+                        {a.displayName}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {capabilityKeys.map((key) => {
+                    const label = adapters[0].getCapabilities()[key].label;
+                    return (
+                      <tr key={key}>
+                        <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
+                        {adapters.map((a) => {
+                          const cap = a.getCapabilities()[key];
+                          return (
+                            <td key={a.provider} className="py-3 pr-6">
+                              <span
+                                className={`text-xs font-semibold ${statusClass(cap.status)}`}
+                                title={cap.note ?? undefined}
+                              >
+                                {statusLabel(cap.status)}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
           <p className="mt-4 text-xs text-stone-400">
-            Current enforcement is app-level only. Guardrail locks the session inside the app and (optionally) mirrors state changes to Telegram. Cancelling, flattening, or blocking orders at the broker requires verified API support and explicit user opt-in — not enabled today.
+            Cancelling, flattening, or blocking orders at the broker requires verified API support and explicit user opt-in — not enabled today.
           </p>
         </SectionCard>
 

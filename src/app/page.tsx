@@ -5,9 +5,9 @@ import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Guardrail — Broker-Connected Risk Enforcement",
+  title: "Guardrail — Risk Enforcement for Serious Traders",
   description:
-    "Define your trading rules before the session. Monitor risk in real time. Lock yourself out when rules are breached. Manual Mode today; broker enforcement when your broker connects.",
+    "Guardrail turns your risk rules into a live session state: Allowed, Warning, or Locked. Manual Mode today; broker-connected enforcement as integrations are verified.",
 };
 
 const pillars = [
@@ -143,12 +143,20 @@ export default async function Home() {
   const user = await getCurrentUser();
 
   const heroActions = user ? (
-    <Link
-      href="/dashboard"
-      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-    >
-      Go to dashboard
-    </Link>
+    <>
+      <Link
+        href="/dashboard"
+        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      >
+        Go to dashboard
+      </Link>
+      <Link
+        href="/rules"
+        className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+      >
+        Set rules
+      </Link>
+    </>
   ) : (
     <>
       <Link
@@ -168,9 +176,9 @@ export default async function Home() {
 
   return (
     <AppShell
-      eyebrow="Guardrail · Risk Enforcement Infrastructure"
-      title="Risk enforcement infrastructure for serious traders."
-      description="Define your rules cold. Watch risk state update as trades land. Lock yourself out the moment a rule is breached. Built around broker connectivity — Manual Mode is available now, broker-connected enforcement is being prepared per-broker."
+      eyebrow="Guardrail · Risk Enforcement"
+      title="Protect your trading day from rule-breaking."
+      description="Guardrail turns your risk rules into a live session state: Allowed, Warning, or Locked. Manual Mode is available now; broker-connected enforcement is being prepared and verified per broker."
       actions={heroActions}
     >
       <div className="grid gap-16">
@@ -182,10 +190,10 @@ export default async function Home() {
               How it works
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-              Prepare your rules now. Connect the broker layer when verified.
+              Rules defined before the session. Evaluated as trades land.
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
-              The intended workflow: rules defined ahead of time, evaluated as trades land, app-level lockout the moment a limit is breached. Manual Mode is available today as the fallback. Read-only broker connection is being prepared; enforcement actions only ship after verified broker support.
+              Log trades in Manual Mode now, or connect a verified broker when it&rsquo;s ready. Either way, the same engine evaluates your rules and transitions the session to Safe, Warning, or Locked.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -357,7 +365,7 @@ export default async function Home() {
               Discipline breaks when it matters most.
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
-              Most traders don't lose from bad strategy. They lose from psychology — in the
+              Most traders don&rsquo;t lose from bad strategy. They lose from psychology — in the
               moments after a loss, under FOMO pressure, or after a small winning streak turns
               them overconfident.
             </p>
@@ -380,11 +388,11 @@ export default async function Home() {
                 02
               </p>
               <h3 className="mt-4 text-xl font-semibold tracking-[-0.03em] leading-7 text-stone-950">
-                Journals review what happened. They don't stop it.
+                Journals review what happened. They don&rsquo;t stop it.
               </h3>
               <p className="mt-3 text-sm leading-6 text-stone-700">
-                Post-trade journaling is valuable. But it's always too late. You need something
-                watching the session live — not analyzing the damage after it's done.
+                Post-trade journaling is valuable. But it&rsquo;s always too late. You need something
+                watching the session live — not analyzing the damage after it&rsquo;s done.
               </p>
             </div>
             <div className="rounded-[1.75rem] border border-stone-200 bg-white p-7">
@@ -442,7 +450,7 @@ export default async function Home() {
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
               One dashboard. Session status, Guardian state, rule notices, economic events, and
-              today's activity — visible at a glance, before and during the session.
+              today&rsquo;s activity — visible at a glance, before and during the session.
             </p>
           </div>
 
@@ -453,7 +461,7 @@ export default async function Home() {
                   Control Center
                 </p>
                 <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-stone-950">
-                  Today's trading session.
+                  Today&rsquo;s trading session.
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">

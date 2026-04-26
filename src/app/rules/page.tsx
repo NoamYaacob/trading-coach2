@@ -89,7 +89,7 @@ export default async function RulesPage() {
 
         {/* Edit form */}
         <SectionCard
-          title="Rule configuration"
+          title="Session rulebook"
           description="All fields are optional. Empty values mean no enforcement for that rule."
         >
           <RulesForm initial={initial} hasBroker={hasBroker} />

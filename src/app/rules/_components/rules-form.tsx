@@ -203,7 +203,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
 
       {/* ── On-breach actions ───────────────────────────────────────────── */}
       <fieldset className="grid gap-4">
-        <legend className="text-sm font-semibold text-stone-950">On breach — what happens when a limit is hit</legend>
+        <legend className="text-sm font-semibold text-stone-950">On breach</legend>
         <p className="text-xs text-stone-500">
           {hasBroker
             ? "Broker connection detected. Order/position actions will activate when broker enforcement ships."
@@ -228,14 +228,14 @@ export function RulesForm({ initial, hasBroker }: Props) {
             checked={values.onBreachCancelOrders}
             onChange={(v) => update("onBreachCancelOrders", v)}
             available={false}
-            label="Cancel open orders at broker"
+            label="Cancel broker orders"
             description="Auto-cancel working orders via broker API."
           />
           <BreachOption
             checked={values.onBreachFlatten}
             onChange={(v) => update("onBreachFlatten", v)}
             available={false}
-            label="Flatten open positions (kill switch)"
+            label="Flatten broker positions"
             description="Auto-close all open positions via broker API."
           />
         </div>

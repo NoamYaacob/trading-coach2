@@ -272,7 +272,7 @@ export default async function DashboardPage() {
     <AppShell
       eyebrow="Dashboard"
       title="Today's session."
-      description="Trading permission, risk budget, and Guardrail state at a glance. Manual Mode locks the session inside the app; broker-level order blocking ships per-broker after verified support."
+      description="Your trading permission, risk budget, and session state in one view."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -285,9 +285,9 @@ export default async function DashboardPage() {
         {!liveEnforcement && (
           <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
             <div>
-              <p className="font-semibold text-amber-900">Manual Mode · App-level enforcement only</p>
+              <p className="font-semibold text-amber-900">Manual fallback active</p>
               <p className="mt-0.5 text-stone-700">
-                Guardrail evaluates risk from the trades you log. No broker is connected, so order events are not received and positions cannot be flattened automatically.
+                Risk is calculated from journal entries. Broker-side actions require verified broker support.
               </p>
             </div>
             <a

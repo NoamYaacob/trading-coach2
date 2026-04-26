@@ -73,7 +73,7 @@ function ConfirmDialog({
           className="mt-3 text-sm leading-6 text-stone-600"
         >
           This permanently deletes your account and all associated data —
-          trade history, rules, journal entries, and connected accounts.
+          trading history, rules, journal entries, alert settings, and connected accounts.
           This action cannot be undone.
         </p>
 
@@ -144,7 +144,7 @@ export function DeleteAccount() {
       <div className="grid gap-4">
         <p className="text-sm leading-6 text-stone-600">
           This permanently deletes your account and all associated data — trading
-          history, rules, coaching profile, and connected accounts. This action
+          history, rules, journal entries, alert settings, and connected accounts. This action
           cannot be undone.
         </p>
 
