@@ -115,26 +115,31 @@ export default async function JournalPage() {
 
   return (
     <AppShell
-      eyebrow="Trade Journal"
-      title="Your trade log."
-      description="Manual mode reads risk state from this journal. Every trade you log here counts toward today's P&L, trade count, and loss streak."
+      eyebrow="Journal"
+      title="Trade log."
+      description="Manual Mode evaluates risk state from this journal. Every trade you log counts toward today's P&L, trade count, and loss streak."
     >
       <div className="grid gap-6">
 
         {/* Mode banner */}
         {hasBroker ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm">
-            <p className="font-medium text-emerald-900">Broker sync active</p>
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm">
+            <p className="font-medium text-sky-900">Broker connected · Journal still feeds risk evaluation</p>
             <p className="mt-0.5 text-stone-700">
-              Manual entries are merged with broker-imported trades into the same log.
+              Risk state continues to evaluate from the journal until your broker connection is verified.{" "}
+              <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                Verify connection →
+              </a>
+            </p>
+            <p className="mt-2 text-xs text-stone-500">
+              Trading day: <span className="font-medium text-stone-700">{window.label}</span>
             </p>
           </div>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-            <p className="font-medium text-amber-900">Manual mode · Journal feeds enforcement</p>
+            <p className="font-medium text-amber-900">Manual Mode · Journal feeds risk evaluation</p>
             <p className="mt-0.5 text-stone-700">
-              Guardian only sees trades you log here. Trade count, P&L, loss streak, and risk-per-trade
-              rules all evaluate against this journal.{" "}
+              Guardrail evaluates rules from the trades you log here. P&L, trade count, loss streak, and risk-per-trade all reference this journal.{" "}
               <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
                 Connect a broker →
               </a>

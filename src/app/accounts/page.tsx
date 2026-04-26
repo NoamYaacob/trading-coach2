@@ -102,9 +102,9 @@ export default async function AccountsPage() {
 
   return (
     <AppShell
-      eyebrow="Broker Connections"
-      title="Connected accounts."
-      description="Connect a broker so Guardrail reads fills and P&L directly from your account. Rules then evaluate against live data instead of manual entries. Broker-level order blocking is on the roadmap."
+      eyebrow="Accounts"
+      title="Broker connections."
+      description="Read-only Tradovate OAuth is being prepared. Once a broker connection is verified, risk state switches from Manual Mode to broker-driven evaluation. Broker-side enforcement actions ship per-broker only after verified support."
       actions={
         <Link
           href="/accounts/connect/tradovate"
@@ -120,7 +120,7 @@ export default async function AccountsPage() {
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="grid gap-3">
                 <p className="text-sm text-stone-600">
-                  Connect your Tradovate account so Guardrail reads fills and P&L in real time. Rules then evaluate against live broker data — no manual logging needed. The session locks at the app level when a rule is crossed.
+                  Connect your Tradovate account read-only. Once the connection is verified, risk state evaluates against broker reads instead of manual journal entries. The session locks at the app level when a rule is breached.
                 </p>
                 <div>
                   <Link
@@ -136,8 +136,7 @@ export default async function AccountsPage() {
                   Without a broker
                 </p>
                 <p className="text-stone-700">
-                  Manual mode tracks and warns only. Guardrail enforces rules based on what you
-                  log manually — no automatic position flattening or kill switch.
+                  Manual Mode is the source of truth. Guardrail evaluates rules from journal entries and locks the session at the app level — no broker-side cancellation or flattening.
                 </p>
               </div>
             </div>
@@ -213,7 +212,7 @@ export default async function AccountsPage() {
             </table>
           </div>
           <p className="mt-4 text-xs text-stone-400">
-            Current enforcement is app-level only: Guardrail locks the session internally and sends Telegram alerts. Live orders at the broker are not cancelled or blocked — that requires a future integration phase.
+            Current enforcement is app-level only. Guardrail locks the session inside the app and (optionally) mirrors state changes to Telegram. Cancelling, flattening, or blocking orders at the broker requires verified API support and explicit user opt-in — not enabled today.
           </p>
         </SectionCard>
 

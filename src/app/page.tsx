@@ -37,15 +37,15 @@ const pillars = [
   },
   {
     label: "Read-only first",
-    title: "Broker connection — read-only Tradovate (in verification)",
+    title: "Tradovate connection — read-only, in preparation",
     detail:
-      "OAuth and encrypted token storage are built. The read pipeline is implemented but pending end-to-end verification against the live Tradovate API. Risk state stays Manual-Mode-driven until verified.",
+      "OAuth and AES-256-GCM token storage are built. The read pipeline is implemented and waiting on endpoint verification before risk state can switch to broker-driven evaluation.",
   },
   {
     label: "Honest about scope",
-    title: "Broker-side actions stay off until proven",
+    title: "Enforcement actions only after verified support",
     detail:
-      "Cancel orders, flatten positions, and broker-level lockout are NOT implemented today. They will only ship after live-broker verification, an audit log path, and explicit user opt-in.",
+      "Cancel orders, flatten positions, and broker-level lockout are not enabled. They ship per-broker only after live verification, explicit user opt-in, and an audit-log path.",
   },
 ];
 
@@ -57,23 +57,23 @@ const steps = [
   },
   {
     n: "02",
-    title: "Choose your data source",
-    detail: "Manual Mode (journal-driven) is available today. Connect Tradovate read-only to verify the broker pipeline once API access is live.",
+    title: "Pick a source",
+    detail: "Manual Mode is the current source. Tradovate read-only OAuth is being prepared and will become the source once verified.",
   },
   {
     n: "03",
-    title: "Trade — risk state updates live",
-    detail: "Each trade or fill updates the Safe / Warning / Locked verdict against the rules you set.",
+    title: "Risk state, evaluated live",
+    detail: "Each trade updates the Safe / Warning / Locked verdict against the rules you set.",
   },
   {
     n: "04",
-    title: "Hit a rule, hit the lock",
-    detail: "Guardian transitions to Locked at the app level. The dashboard explains which rule fired and when the reset window opens.",
+    title: "Lock the session",
+    detail: "Guardrail moves to Locked at the app level the moment a rule is breached. The dashboard shows the reason and reset window.",
   },
   {
     n: "05",
     title: "Close with a review",
-    detail: "Daily summary of P&L, trade count, breaches, and the takeaway you want to carry into tomorrow.",
+    detail: "Daily summary of P&L, trade count, breaches, and the one takeaway to carry into tomorrow.",
   },
 ];
 
@@ -98,14 +98,14 @@ const activityPreview = [
 ];
 
 const includedFeatures = [
-  "Pre-session rules editor — max trades, max loss, consecutive-loss stop, session hours",
-  "Real-time risk state — Safe / Warning / Locked verdict on every trade",
-  "App-level lockout when rules are breached (no broker-side blocking yet)",
+  "Pre-session rules editor — max loss, max trades, consecutive-loss stop, session hours",
+  "Risk state evaluated as trades land — Safe / Warning / Locked verdict",
+  "App-level lockout the moment a rule is breached",
   "Manual Mode trade entry with auto-calc P&L, risk, and R-multiple",
-  "Trading-day window with timezone + overnight session support",
-  "Tradovate OAuth (read-only) with AES-256-GCM encrypted token storage",
-  "Read-only verification page — every Tradovate read endpoint with pass/fail",
-  "Optional Telegram alerts for Guardian state and lockout messages",
+  "Trading-day window with timezone and overnight session support",
+  "Tradovate OAuth (read-only), AES-256-GCM encrypted token storage",
+  "Connection verification page — every Tradovate read endpoint, pass / fail",
+  "Optional Telegram alerts for Guardrail state changes",
 ];
 
 const faqs = [
@@ -168,9 +168,9 @@ export default async function Home() {
 
   return (
     <AppShell
-      eyebrow="Guardrail · Broker-Connected Risk Enforcement"
-      title="Your rules. Set before the session. Held during it."
-      description="Define your trading rules ahead of time. Watch risk state update in real time. Lock yourself out when rules are breached. Manual Mode works today; broker-driven enforcement turns on once your Tradovate connection is verified. We don't promise broker-side blocking until it's proven against the live API."
+      eyebrow="Guardrail · Risk Enforcement Infrastructure"
+      title="Risk enforcement infrastructure for serious traders."
+      description="Define your rules cold. Watch risk state update as trades land. Lock yourself out the moment a rule is breached. Built around broker connectivity — Manual Mode is available now, broker-connected enforcement is being prepared per-broker."
       actions={heroActions}
     >
       <div className="grid gap-16">
@@ -182,10 +182,10 @@ export default async function Home() {
               How it works
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-              Define rules cold. Get held to them when it&rsquo;s hot.
+              Prepare your rules now. Connect the broker layer when verified.
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
-              You set rules before the session. Guardrail evaluates them as trades land — Manual Mode today (journal-driven), broker-driven once your Tradovate connection is verified. App-level lockout is the surface; broker-side actions stay off until proven.
+              The intended workflow: rules defined ahead of time, evaluated as trades land, app-level lockout the moment a limit is breached. Manual Mode is available today as the fallback. Read-only broker connection is being prepared; enforcement actions only ship after verified broker support.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -201,29 +201,29 @@ export default async function Home() {
             <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
               <p className="font-mono text-2xl font-bold text-stone-200">02</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Pick your data source
+                Choose your source
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Manual Mode (journal) is the source of truth today. Tradovate read-only OAuth is built and waiting on endpoint verification — once verified, broker data drives risk state automatically.
+                Manual Mode is the current source of truth — log each trade and the engine evaluates your rules against it. Tradovate read-only OAuth is being prepared and will become the source once verified.
               </p>
               <p className="mt-3 text-xs font-medium text-sky-700">Tradovate-first · read-only first</p>
             </div>
             <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6">
               <p className="font-mono text-2xl font-bold text-amber-200">03</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Monitor risk in real time
+                Risk state, evaluated live
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-700">
-                Each trade or fill updates the verdict — Safe, Warning, or Locked. Approaching-limit warnings fire before a breach. Optional Telegram alerts mirror state changes.
+                Each trade updates a Safe / Warning / Locked verdict against the rules you set. Approaching-limit warnings fire before a breach. Optional Telegram mirrors state changes.
               </p>
             </div>
             <div className="rounded-[1.75rem] border border-red-200 bg-red-50 p-6">
               <p className="font-mono text-2xl font-bold text-red-200">04</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Lock yourself out at the app
+                Lock the session at the app
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-700">
-                When a rule is crossed, Guardrail transitions to Locked. The dashboard banner shows the breach reason and reset window. Broker-side cancel / flatten / lockout are not enabled — they ship per-broker only after live verification.
+                When a rule is breached, Guardrail moves to Locked and shows the reason and reset window. Designed to extend to broker-side cancel / flatten / lockout once each capability is verified per broker.
               </p>
             </div>
           </div>
@@ -236,14 +236,17 @@ export default async function Home() {
               In practice
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-              What a protected session actually looks like.
+              How a protected session reads.
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
-              This is a realistic sequence. Rules were set before the session. Nothing below required manual input.
+              An illustrative sequence. Rules are configured in advance. Once your broker connection is verified, the same sequence runs automatically; until then, trades are logged in Manual Mode and evaluated identically.
             </p>
           </div>
 
           <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-8 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.14)]">
+            <p className="mb-6 inline-flex rounded-full bg-stone-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              Illustrative — Manual Mode flow shown
+            </p>
             <div className="grid gap-0">
 
               {/* Event 1 */}
@@ -257,7 +260,7 @@ export default async function Home() {
                 <div className="pb-6 pt-1 min-w-0">
                   <div className="flex items-baseline gap-3">
                     <p className="font-mono text-xs text-stone-400 shrink-0">9:04 AM</p>
-                    <p className="text-sm font-medium text-stone-950">Trade closed · −$180</p>
+                    <p className="text-sm font-medium text-stone-950">Trade logged · −$180</p>
                   </div>
                   <p className="mt-1 text-sm text-stone-500">First loss of the session. Consecutive loss count: 1 of 3. P&L: −$180 of −$500 limit.</p>
                 </div>
@@ -563,7 +566,7 @@ export default async function Home() {
                 Enforcement alerts delivered to Telegram.
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                When Guardrail transitions to a new state — warning, locked, reset — you can have it mirror that to Telegram. The bot also knows your active rule and session state when you ask status questions. Optional surface; Manual Mode and the dashboard work without it.
+                Mirror Guardrail state changes to Telegram when you want them out of the dashboard and into your phone. Optional — Manual Mode and the dashboard work without it.
               </p>
               <ul className="mt-6 grid gap-3">
                 {[
@@ -706,7 +709,7 @@ export default async function Home() {
                 Your next session, under real protection.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Set your rules in the editor. Use Manual Mode today, or connect Tradovate read-only and watch the verification page light up. When a rule is breached, Guardrail locks itself at the app level — no broker-side actions until they&rsquo;re verified.
+                Configure your rules. Run today&rsquo;s session in Manual Mode. When your Tradovate connection is verified, broker-driven evaluation comes online — designed to enforce your rules when broker connectivity is enabled.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

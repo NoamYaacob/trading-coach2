@@ -63,9 +63,9 @@ export default async function RulesPage() {
 
   return (
     <AppShell
-      eyebrow="Risk Rules"
-      title="Edit your protection rules."
-      description="Define the limits Guardrail enforces. Rules are evaluated on every trade event the system sees. Changes save immediately and apply to the next event."
+      eyebrow="Rules"
+      title="Trading rules."
+      description="Define the limits Guardrail evaluates against. Rules are checked on every trade event. Changes save immediately and apply to the next event."
       actions={
         <Link
           href="/guardian"
@@ -80,10 +80,10 @@ export default async function RulesPage() {
         {/* Mode banner */}
         <div className={`rounded-2xl border px-5 py-4 text-sm ${hasBroker ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
           <p className={`font-semibold ${hasBroker ? "text-emerald-900" : "text-amber-900"}`}>
-            {hasBroker ? "Broker connected · App-level enforcement" : "Manual mode · App-level enforcement only"}
+            {hasBroker ? "Broker connected · App-level enforcement" : "Manual Mode · App-level enforcement"}
           </p>
           <p className="mt-0.5 text-stone-700">
-            Manual mode helps you follow your rules inside this app — Guardrail tracks, warns, and locks the session. Broker-level enforcement (cancel orders, flatten positions) requires a future broker integration phase.
+            Guardrail evaluates these rules on every trade event and locks the session inside the app when a rule is breached. Broker-side cancel / flatten / lockout require verified broker support — not enabled today.
           </p>
         </div>
 
