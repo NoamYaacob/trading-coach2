@@ -165,9 +165,9 @@ export default async function GuardianPage() {
 
   return (
     <AppShell
-      eyebrow="Trading Guardian"
-      title="Know if today is open, why it closed, and what happens next."
-      description="Guardian keeps the day clear: open, closed, or waiting for the next reset window."
+      eyebrow="Guardian · Enforcement"
+      title="Risk enforcement status."
+      description="Guardian enforces your rules on every trade event. When a limit is crossed, the session locks — automatically, with no override path."
     >
       <div className="grid gap-6">
         {liveEnforcement ? (

@@ -60,11 +60,21 @@ export default async function AccountsPage() {
 
   const hasTradovate = accounts.some((a) => a.platform === "tradovate");
 
+  const capabilityTable = [
+    { capability: "Read balance & equity", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Read open positions", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Read open orders", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Read P&L (live fills)", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Cancel open orders", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Flatten positions (kill switch)", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+    { capability: "Broker-level lockout", tradovate: "Available", tradingview: "Coming soon", manual: "Not available" },
+  ];
+
   return (
     <AppShell
       eyebrow="Broker Connections"
-      title="Connected brokers"
-      description="Guardrail watches your live accounts and enforces your protection rules in real time."
+      title="Connected accounts."
+      description="Connect a broker to enable live enforcement. Guardrail reads fills and P&L directly from your account and enforces your rules automatically — no manual input required."
       actions={
         <Link
           href="/accounts/connect/tradovate"
@@ -80,8 +90,9 @@ export default async function AccountsPage() {
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="grid gap-3">
                 <p className="text-sm text-stone-600">
-                  Connect your Tradovate account to start live protection. Guardrail receives your
-                  trade events and enforces your rules automatically via Telegram.
+                  Connect your Tradovate account to enable live enforcement. Guardrail receives
+                  fills and P&L updates in real time and locks the session the moment a rule is
+                  crossed. No manual logging required.
                 </p>
                 <div>
                   <Link
@@ -92,15 +103,14 @@ export default async function AccountsPage() {
                   </Link>
                 </div>
               </div>
-              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  How it works
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  Without a broker
                 </p>
-                <ol className="grid gap-2 text-stone-600">
-                  <li>1. Authorize Tradovate — one click to connect</li>
-                  <li>2. Set your protection rules — daily loss, trade limits</li>
-                  <li>3. Go live — Guardrail enforces rules on every trade</li>
-                </ol>
+                <p className="text-stone-700">
+                  Manual mode tracks and warns only. Guardrail enforces rules based on what you
+                  log manually — no automatic position flattening or kill switch.
+                </p>
               </div>
             </div>
           </SectionCard>
@@ -129,6 +139,43 @@ export default async function AccountsPage() {
             )}
           </>
         )}
+
+        {/* Broker capability table */}
+        <SectionCard
+          title="Broker capabilities"
+          description="What Guardrail can do depends on which broker is connected and which API permissions are granted."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  <th className="pb-3 pr-6">Capability</th>
+                  <th className="pb-3 pr-6">Tradovate</th>
+                  <th className="pb-3 pr-6">TradingView</th>
+                  <th className="pb-3">Manual</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {capabilityTable.map((row) => (
+                  <tr key={row.capability}>
+                    <td className="py-3 pr-6 font-medium text-stone-800">{row.capability}</td>
+                    <td className="py-3 pr-6">
+                      <span className={`text-xs font-semibold ${row.tradovate === "Available" ? "text-emerald-700" : "text-stone-400"}`}>
+                        {row.tradovate}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-6">
+                      <span className="text-xs font-semibold text-stone-400">{row.tradingview}</span>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-xs font-semibold text-stone-400">{row.manual}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
       </div>
     </AppShell>
   );

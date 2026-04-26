@@ -255,9 +255,9 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      eyebrow="Control Center"
-      title="Today’s trading session."
-      description="Monitor your session in real time, log activity, and let Guardrail enforce your rules automatically."
+      eyebrow="Risk Command Center"
+      title="Today’s session."
+      description="Live session status, risk budget, and Guardian enforcement state. When a limit is hit, the session locks automatically."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
