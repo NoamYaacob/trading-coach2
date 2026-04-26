@@ -14,6 +14,8 @@ import {
   deriveTodaySessionState,
 } from "@/lib/guardian";
 import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
+import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
+import { computeManualRiskState, getTodayRange } from "@/lib/manual-risk-state";
 import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
@@ -77,6 +79,7 @@ export default async function GuardianPage() {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect("/login");
 
+  const { start: startToday, end: endToday } = getTodayRange();
   const [
     guardian,
     user,
@@ -85,6 +88,7 @@ export default async function GuardianPage() {
     liveEnforcement,
     riskRules,
     brokerCount,
+    todayManualTrades,
   ] = await Promise.all([
     getGuardianSnapshot(currentUser.id),
     prisma.user.findUnique({
@@ -99,7 +103,12 @@ export default async function GuardianPage() {
     getLiveEnforcementState(currentUser.id),
     prisma.riskRules.findUnique({ where: { userId: currentUser.id } }),
     prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
+    prisma.manualTradeEntry.findMany({
+      where: { userId: currentUser.id, tradedAt: { gte: startToday, lt: endToday } },
+      orderBy: { tradedAt: "asc" },
+    }),
   ]);
+  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
 
   const cookieStore = await cookies();
   const displayTimeZone = resolveDisplayTimeZone({
@@ -146,13 +155,18 @@ export default async function GuardianPage() {
 
   const hasBroker = brokerCount > 0;
   const guardianOff = !guardian.evaluation.guardianActive;
+  // Manual-mode breach state contributes to the Guardian permission verdict.
+  const manualLocked = manualRisk.permission === "LOCKED";
+  const manualWarning = manualRisk.permission === "WARNING";
   const isLocked =
     guardian.evaluation.lockoutActive ||
-    liveEnforcement?.riskState === "STOPPED";
+    liveEnforcement?.riskState === "STOPPED" ||
+    (!hasBroker && manualLocked);
   const hasWarnings =
     violationFeed.warningViolations.length > 0 ||
     (liveEnforcement &&
-      ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier));
+      ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier)) ||
+    (!hasBroker && manualWarning);
 
   const permission: Permission = guardianOff
     ? "GUARDIAN_OFF"
@@ -175,7 +189,9 @@ export default async function GuardianPage() {
   const detail = guardianOff
     ? "Turn Guardian back on to resume rule enforcement."
     : isLocked
-      ? guardian.evaluation.primaryReasonLabel
+      ? !hasBroker && manualLocked
+        ? manualRisk.lastBreach?.detail ?? "A daily limit was reached based on your journal entries."
+        : guardian.evaluation.primaryReasonLabel
       : hasWarnings
         ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
         : "No rule limits have been hit. Guardian is monitoring every trade event.";
@@ -231,52 +247,60 @@ export default async function GuardianPage() {
     >
       <div className="grid gap-6">
 
-        {/* ── Permission hero — answers Safe / Warning / Locked ─────────── */}
-        <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${styles.chip}`}>
-              {styles.label}
-            </span>
-            <span className="text-xs text-stone-500">
-              {hasBroker ? "Broker connected · App-level enforcement" : "Manual mode · App-level enforcement"}
-            </span>
-          </div>
-          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detail}</p>
-
-          {triggeredLabels.length > 0 && (
-            <div className="mt-5 grid gap-1 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm">
-              <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${styles.accent}`}>
-                Triggered
-              </p>
-              <ul className="grid gap-0.5 text-stone-800">
-                {triggeredLabels.map((label) => (
-                  <li key={label}>• {label}</li>
-                ))}
-              </ul>
+        {/* ── Permission hero ─────────────────────────────────────────────── */}
+        {!hasBroker && !guardianOff ? (
+          <ManualRiskPanel
+            state={manualRisk}
+            hasRules={Boolean(riskRules)}
+            hideEditRulesCta
+          />
+        ) : (
+          <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${styles.chip}`}>
+                {styles.label}
+              </span>
+              <span className="text-xs text-stone-500">
+                {hasBroker ? "Broker connected · App-level enforcement" : "Manual mode · App-level enforcement"}
+              </span>
             </div>
-          )}
-        </section>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detail}</p>
+
+            {triggeredLabels.length > 0 && (
+              <div className="mt-5 grid gap-1 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm">
+                <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${styles.accent}`}>
+                  Triggered
+                </p>
+                <ul className="grid gap-0.5 text-stone-800">
+                  {triggeredLabels.map((label) => (
+                    <li key={label}>• {label}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* ── Rule progress today ─────────────────────────────────────────── */}
         <SectionCard
           title="Rule progress today"
-          description="Live numbers vs. configured limits."
+          description={hasBroker ? "Live numbers vs. configured limits." : "Calculated from journal entries dated today."}
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <ProgressTile
               label="P&L today"
-              value={`$${guardian.evaluation.todayPnL}`}
+              value={hasBroker ? `$${guardian.evaluation.todayPnL}` : `${manualRisk.todayPnL >= 0 ? "+" : "−"}$${Math.abs(manualRisk.todayPnL).toFixed(2)}`}
               limit={maxDailyLoss != null ? `Limit: −$${maxDailyLoss}` : "No limit set"}
             />
             <ProgressTile
               label="Trades"
-              value={String(guardian.evaluation.todayTradesCount)}
+              value={String(hasBroker ? guardian.evaluation.todayTradesCount : manualRisk.todayTradesCount)}
               limit={maxTradesPerDay != null ? `${maxTradesPerDay} max` : "No limit set"}
             />
             <ProgressTile
               label="Loss streak"
-              value={String(guardian.evaluation.consecutiveLosses)}
+              value={String(hasBroker ? guardian.evaluation.consecutiveLosses : manualRisk.consecutiveLosses)}
               limit={stopAfterLosses != null ? `Stop after ${stopAfterLosses}` : "No limit set"}
             />
           </div>
@@ -300,6 +324,42 @@ export default async function GuardianPage() {
                   <p className="mt-0.5 text-stone-700">{v.message}</p>
                 </li>
               ))}
+            </ul>
+          </SectionCard>
+        )}
+
+        {/* ── Recent manual breaches ──────────────────────────────────────── */}
+        {todayManualTrades.some((t) => t.ruleBreached) && (
+          <SectionCard
+            title="Recent manual breaches"
+            description="Trades you marked as rule breaches in today's journal."
+          >
+            <ul className="grid gap-2">
+              {todayManualTrades
+                .filter((t) => t.ruleBreached)
+                .slice(-5)
+                .reverse()
+                .map((t) => (
+                  <li
+                    key={t.id}
+                    className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-stone-800"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="font-medium text-red-900">
+                        {t.symbol} · {t.direction}
+                      </p>
+                      <p className="font-mono text-xs text-stone-500">
+                        {new Intl.DateTimeFormat("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }).format(t.tradedAt)}
+                      </p>
+                    </div>
+                    {t.breachReason && (
+                      <p className="mt-1 text-stone-700">{t.breachReason}</p>
+                    )}
+                  </li>
+                ))}
             </ul>
           </SectionCard>
         )}

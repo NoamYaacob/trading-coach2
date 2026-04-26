@@ -22,6 +22,8 @@ import {
 } from "@/lib/guardian";
 import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
 import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
+import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
+import { computeManualRiskState, getTodayRange } from "@/lib/manual-risk-state";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
 import {
@@ -90,16 +92,31 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
-  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart, liveEnforcement, brokerCount] =
-    await Promise.all([
-      getTodaySessionSummary(currentUser.id),
-      getTodaySessionEvents(currentUser.id, undefined, "asc"),
-      getGuardianSnapshot(currentUser.id),
-      getTodayGuardianSessionStart(currentUser.id),
-      getLiveEnforcementState(currentUser.id),
-      prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
-    ]);
+  const { start: startToday, end: endToday } = getTodayRange();
+  const [
+    todaySessionSummary,
+    todaySessionEvents,
+    guardian,
+    todayGuardianSessionStart,
+    liveEnforcement,
+    brokerCount,
+    riskRules,
+    todayManualTrades,
+  ] = await Promise.all([
+    getTodaySessionSummary(currentUser.id),
+    getTodaySessionEvents(currentUser.id, undefined, "asc"),
+    getGuardianSnapshot(currentUser.id),
+    getTodayGuardianSessionStart(currentUser.id),
+    getLiveEnforcementState(currentUser.id),
+    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
+    prisma.riskRules.findUnique({ where: { userId: currentUser.id } }),
+    prisma.manualTradeEntry.findMany({
+      where: { userId: currentUser.id, tradedAt: { gte: startToday, lt: endToday } },
+      orderBy: { tradedAt: "asc" },
+    }),
+  ]);
   const hasBroker = brokerCount > 0;
+  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
     0,
@@ -147,16 +164,26 @@ export default async function DashboardPage() {
   const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const manualTradeCount =
     manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount;
+  // Canonical manual-mode numbers come from the journal. Fall back to session-event
+  // signals only when journal is empty.
+  const journalDrivenTradeCount = manualRisk.todayTradesCount;
+  const journalDrivenPnL = manualRisk.todayPnL;
+  const journalDrivenLossStreak = manualRisk.consecutiveLosses;
   const todaySessionStateForPanel: TodaySessionState = {
     ...todaySessionState,
-    todayTradesCount: Math.max(todaySessionState.todayTradesCount, manualTradeCount),
+    todayTradesCount: Math.max(
+      todaySessionState.todayTradesCount,
+      journalDrivenTradeCount > 0 ? journalDrivenTradeCount : manualTradeCount,
+    ),
     todayPnL:
-      manualEventSignals.netPnL !== null
-        ? Math.min(todaySessionState.todayPnL, manualEventSignals.netPnL)
-        : todaySessionState.todayPnL,
+      journalDrivenTradeCount > 0
+        ? journalDrivenPnL
+        : manualEventSignals.netPnL !== null
+          ? Math.min(todaySessionState.todayPnL, manualEventSignals.netPnL)
+          : todaySessionState.todayPnL,
     consecutiveLosses: Math.max(
       todaySessionState.consecutiveLosses,
-      manualEventSignals.consecutiveLosses,
+      journalDrivenLossStreak > 0 ? journalDrivenLossStreak : manualEventSignals.consecutiveLosses,
     ),
   };
   const violationFeed = buildViolationFeed(
@@ -262,7 +289,7 @@ export default async function DashboardPage() {
         {/* Session status — live enforcement panel when live account connected, manual otherwise */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Session status
+            Trading permission
           </p>
           {showPremarketReadiness ? (
             <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
@@ -271,6 +298,7 @@ export default async function DashboardPage() {
             <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
           ) : (
             <>
+              <ManualRiskPanel state={manualRisk} hasRules={Boolean(riskRules)} />
               <TodaySessionPanel
                 sessionState={todaySessionStateForPanel}
                 additionalTriggeredRulesCount={guardianAdditionalRulesCount}

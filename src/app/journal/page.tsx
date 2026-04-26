@@ -5,6 +5,11 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+  computeManualRiskState,
+  getTodayRange,
+} from "@/lib/manual-risk-state";
+import { TradeEntryForm } from "./_components/trade-entry-form";
 
 export const metadata: Metadata = {
   title: "Journal — Guardrail",
@@ -23,7 +28,10 @@ function toNum(val: DecimalLike): number | null {
 function fmt(val: DecimalLike): string {
   const n = toNum(val);
   if (n === null) return "—";
-  return `${n >= 0 ? "" : "−"}${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${n >= 0 ? "" : "−"}${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function fmtPnl(val: DecimalLike): { text: string; cls: string } {
@@ -40,46 +48,75 @@ function fmtR(val: DecimalLike): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}R`;
 }
 
+function fmtMoney(n: number): string {
+  return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default async function JournalPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const hasBroker = await prisma.connectedAccount
-    .count({ where: { userId: user.id, isActive: true } })
-    .then((c) => c > 0);
+  const { start: startToday, end: endToday } = getTodayRange();
 
-  const entries = await prisma.manualTradeEntry.findMany({
-    where: { userId: user.id },
-    orderBy: { tradedAt: "desc" },
-    take: 100,
-  });
+  const [hasBroker, allEntries, todayEntries, riskRules] = await Promise.all([
+    prisma.connectedAccount
+      .count({ where: { userId: user.id, isActive: true } })
+      .then((c) => c > 0),
+    prisma.manualTradeEntry.findMany({
+      where: { userId: user.id },
+      orderBy: { tradedAt: "desc" },
+      take: 100,
+    }),
+    prisma.manualTradeEntry.findMany({
+      where: { userId: user.id, tradedAt: { gte: startToday, lt: endToday } },
+      orderBy: { tradedAt: "asc" },
+    }),
+    prisma.riskRules.findUnique({ where: { userId: user.id } }),
+  ]);
+
+  const risk = computeManualRiskState({ rules: riskRules, todayTrades: todayEntries });
+
+  const summaryTiles: Array<{ label: string; value: string; cls?: string }> = [
+    {
+      label: "Today's P&L",
+      value: fmtMoney(risk.todayPnL),
+      cls:
+        risk.todayPnL > 0
+          ? "text-emerald-700"
+          : risk.todayPnL < 0
+            ? "text-red-700"
+            : "text-stone-950",
+    },
+    { label: "Trades today", value: String(risk.todayTradesCount) },
+    { label: "Wins", value: String(risk.winCount), cls: "text-emerald-700" },
+    { label: "Losses", value: String(risk.lossCount), cls: "text-red-700" },
+    { label: "Loss streak", value: String(risk.consecutiveLosses) },
+    { label: "Largest loss", value: risk.largestLoss > 0 ? `−$${risk.largestLoss.toFixed(2)}` : "—" },
+    { label: "Rule breaches today", value: String(risk.ruleBreachesToday) },
+  ];
 
   return (
     <AppShell
       eyebrow="Trade Journal"
       title="Your trade log."
-      description={
-        hasBroker
-          ? "Trades from your connected broker appear here automatically. You can also add manual entries."
-          : "Log trades manually to track your rule compliance, R-multiple, and session performance."
-      }
+      description="Manual mode reads risk state from this journal. Every trade you log here counts toward today's P&L, trade count, and loss streak."
     >
       <div className="grid gap-6">
 
-        {/* Broker sync notice */}
+        {/* Mode banner */}
         {hasBroker ? (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm">
             <p className="font-medium text-emerald-900">Broker sync active</p>
             <p className="mt-0.5 text-stone-700">
-              Trades are imported automatically from your connected account. Manual entries are
-              merged into the same log.
+              Manual entries are merged with broker-imported trades into the same log.
             </p>
           </div>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
             <p className="font-medium text-amber-900">Manual mode · Journal feeds enforcement</p>
             <p className="mt-0.5 text-stone-700">
-              No broker connected — Guardian only sees trades you log here. Trade count, P&L, and loss streak rules all evaluate against this journal until a broker is connected.{" "}
+              Guardian only sees trades you log here. Trade count, P&L, loss streak, and risk-per-trade
+              rules all evaluate against this journal.{" "}
               <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
                 Connect a broker →
               </a>
@@ -87,30 +124,46 @@ export default async function JournalPage() {
           </div>
         )}
 
-        {/* Trade log */}
+        {/* Today summary */}
+        <SectionCard
+          title="Today"
+          description="Calculated from journal entries dated today."
+        >
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            {summaryTiles.map((t) => (
+              <div key={t.label} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  {t.label}
+                </p>
+                <p className={`mt-1.5 text-lg font-semibold tabular-nums ${t.cls ?? "text-stone-950"}`}>
+                  {t.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        {/* Add trade — real form */}
+        <SectionCard
+          title="Add trade"
+          description="Log a trade manually. P&L, risk, and R-multiple auto-calculate when entry / exit / stop / quantity are filled in — you can override any field."
+        >
+          <TradeEntryForm />
+        </SectionCard>
+
+        {/* Trade history */}
         <SectionCard
           title="Trade history"
-          description="All trades, newest first."
+          description={
+            allEntries.length > 0
+              ? `${allEntries.length} trade${allEntries.length === 1 ? "" : "s"} logged. Newest first.`
+              : "All trades, newest first."
+          }
         >
-          {entries.length === 0 ? (
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="grid gap-3">
-                <p className="text-sm text-stone-600">
-                  No trades logged yet. Use the form below to add your first trade, or connect a
-                  broker for automatic import.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  What gets tracked
-                </p>
-                <ul className="grid gap-1.5 text-stone-600">
-                  <li>Symbol, direction, entry/exit prices</li>
-                  <li>P&amp;L and R-multiple</li>
-                  <li>Strategy tag</li>
-                  <li>Rule breach flag</li>
-                </ul>
-              </div>
+          {allEntries.length === 0 ? (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+              <p className="font-medium text-stone-800">No trades logged yet</p>
+              <p className="mt-1">Use the form above to add your first trade.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -122,14 +175,16 @@ export default async function JournalPage() {
                     <th className="pb-3 pr-4">Dir</th>
                     <th className="pb-3 pr-4">Entry</th>
                     <th className="pb-3 pr-4">Exit</th>
-                    <th className="pb-3 pr-4">P&amp;L</th>
+                    <th className="pb-3 pr-4">Qty</th>
+                    <th className="pb-3 pr-4">P&L</th>
+                    <th className="pb-3 pr-4">Risk</th>
                     <th className="pb-3 pr-4">R</th>
                     <th className="pb-3 pr-4">Strategy</th>
                     <th className="pb-3">Breach</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {entries.map((e) => {
+                  {allEntries.map((e) => {
                     const pnl = fmtPnl(e.pnl);
                     return (
                       <tr key={e.id} className="text-stone-700">
@@ -155,12 +210,17 @@ export default async function JournalPage() {
                         </td>
                         <td className="py-3 pr-4 font-mono">{fmt(e.entryPrice)}</td>
                         <td className="py-3 pr-4 font-mono">{fmt(e.exitPrice)}</td>
+                        <td className="py-3 pr-4 font-mono">{fmt(e.quantity)}</td>
                         <td className={`py-3 pr-4 font-mono ${pnl.cls}`}>{pnl.text}</td>
+                        <td className="py-3 pr-4 font-mono text-stone-500">{fmt(e.riskAmount)}</td>
                         <td className="py-3 pr-4 font-mono text-stone-500">{fmtR(e.rMultiple)}</td>
                         <td className="py-3 pr-4 text-stone-500">{e.strategy ?? "—"}</td>
                         <td className="py-3">
                           {e.ruleBreached ? (
-                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                            <span
+                              className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+                              title={e.breachReason ?? undefined}
+                            >
                               Yes
                             </span>
                           ) : (
@@ -176,21 +236,15 @@ export default async function JournalPage() {
           )}
         </SectionCard>
 
-        {/* Add trade — placeholder until full form ships */}
-        <SectionCard
-          title="Add trade · Coming soon"
-          description="Detailed trade entry (entry/exit, R-multiple, strategy tag, breach flag) is in progress."
-        >
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-            <p>
-              Until the full form ships, you can log basic session events (trade opened/closed, win, loss, P&L update) from the{" "}
-              <a href="/dashboard" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                Dashboard
-              </a>
-              . Those events feed Guardian's rule evaluation in manual mode.
+        {/* Lock note */}
+        {risk.permission === "LOCKED" && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm">
+            <p className="font-medium text-red-900">Manual Mode lock active</p>
+            <p className="mt-0.5 text-stone-700">
+              {risk.lastBreach?.detail ?? "A daily limit was reached."} You can still log trades here for record keeping. Manual Mode lock applies inside Guardrail only — broker-level blocking requires a supported broker connection.
             </p>
           </div>
-        </SectionCard>
+        )}
 
       </div>
     </AppShell>

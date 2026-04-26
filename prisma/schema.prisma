@@ -437,9 +437,11 @@ model ManualTradeEntry {
   targetPrice  Decimal? @db.Decimal(12, 4)
   quantity     Decimal? @db.Decimal(10, 4)
   pnl          Decimal? @db.Decimal(10, 2)
+  riskAmount   Decimal? @db.Decimal(10, 2)
   rMultiple    Decimal? @db.Decimal(6, 2)
   strategy     String?
   ruleBreached Boolean  @default(false)
+  breachReason String?
   notes        String?
   tradedAt     DateTime
   createdAt    DateTime @default(now())
