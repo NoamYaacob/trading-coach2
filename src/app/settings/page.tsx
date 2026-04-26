@@ -100,8 +100,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         {/* Telegram */}
         <SectionCard
-          title="Telegram"
-          description="Guardrail sends coaching messages and trade alerts via Telegram."
+          title="Telegram alerts"
+          description="Optional. Receive Guardian lockout messages and enforcement notifications in Telegram."
         >
           {telegramConnection ? (
             <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
@@ -119,11 +119,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <div className="text-sm">
                 <p className="font-medium text-stone-700">Not connected</p>
                 <p className="text-stone-500">
-                  Go to{" "}
-                  <a href="/onboarding" className="underline underline-offset-2 hover:text-stone-700">
-                    onboarding
+                  Connect from the{" "}
+                  <a href="/alerts" className="font-medium text-stone-950 underline underline-offset-2 hover:text-stone-700">
+                    Alerts
                   </a>{" "}
-                  to connect Telegram.
+                  page.
                 </p>
               </div>
             </div>

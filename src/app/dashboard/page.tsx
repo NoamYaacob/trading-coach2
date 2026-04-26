@@ -90,14 +90,16 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
-  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart, liveEnforcement] =
+  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart, liveEnforcement, brokerCount] =
     await Promise.all([
       getTodaySessionSummary(currentUser.id),
       getTodaySessionEvents(currentUser.id, undefined, "asc"),
       getGuardianSnapshot(currentUser.id),
       getTodayGuardianSessionStart(currentUser.id),
       getLiveEnforcementState(currentUser.id),
+      prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
     ]);
+  const hasBroker = brokerCount > 0;
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
     0,
@@ -230,7 +232,7 @@ export default async function DashboardPage() {
     <AppShell
       eyebrow="Risk Command Center"
       title="Today’s session."
-      description="Live session status, risk budget, and Guardian enforcement state. When a limit is hit, the session locks automatically."
+      description="Trading permission, risk budget, and Guardian enforcement state. Manual mode locks the session inside the app; broker-level order blocking is on the roadmap."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -346,11 +348,19 @@ export default async function DashboardPage() {
               title="Add trade"
               description="Log a trade or session event."
             />
-            <QuickAction
-              href="/accounts"
-              title="Connect broker"
-              description="Enable live enforcement."
-            />
+            {hasBroker ? (
+              <QuickAction
+                href="/accounts"
+                title="Manage accounts"
+                description="Broker connections and capabilities."
+              />
+            ) : (
+              <QuickAction
+                href="/accounts"
+                title="Connect broker"
+                description="Read live fills from your account."
+              />
+            )}
           </div>
 
           {/* Setup nudge — only when something still needs doing */}

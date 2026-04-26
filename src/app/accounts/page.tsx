@@ -120,7 +120,7 @@ export default async function AccountsPage() {
     <AppShell
       eyebrow="Broker Connections"
       title="Connected accounts."
-      description="Connect a broker to enable live enforcement. Guardrail reads fills and P&L directly from your account and enforces your rules automatically — no manual input required."
+      description="Connect a broker so Guardrail reads fills and P&L directly from your account. Rules then evaluate against live data instead of manual entries. Broker-level order blocking is on the roadmap."
       actions={
         <Link
           href="/accounts/connect/tradovate"
@@ -136,9 +136,7 @@ export default async function AccountsPage() {
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="grid gap-3">
                 <p className="text-sm text-stone-600">
-                  Connect your Tradovate account to enable live enforcement. Guardrail receives
-                  fills and P&L updates in real time and locks the session the moment a rule is
-                  crossed. No manual logging required.
+                  Connect your Tradovate account so Guardrail reads fills and P&L in real time. Rules then evaluate against live broker data — no manual logging needed. The session locks at the app level when a rule is crossed.
                 </p>
                 <div>
                   <Link

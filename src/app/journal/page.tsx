@@ -77,13 +77,12 @@ export default async function JournalPage() {
           </div>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-            <p className="font-medium text-amber-900">Manual mode</p>
+            <p className="font-medium text-amber-900">Manual mode · Journal feeds enforcement</p>
             <p className="mt-0.5 text-stone-700">
-              No broker connected — trades are tracked manually. Connect a broker on the{" "}
+              No broker connected — Guardian only sees trades you log here. Trade count, P&L, and loss streak rules all evaluate against this journal until a broker is connected.{" "}
               <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                Accounts
-              </a>{" "}
-              page for automatic trade import.
+                Connect a broker →
+              </a>
             </p>
           </div>
         )}
@@ -177,16 +176,18 @@ export default async function JournalPage() {
           )}
         </SectionCard>
 
-        {/* Add trade — placeholder form */}
+        {/* Add trade — placeholder until full form ships */}
         <SectionCard
-          title="Add trade"
-          description="Log a trade manually. All fields except symbol, direction, and date are optional."
+          title="Add trade · Coming soon"
+          description="Detailed trade entry (entry/exit, R-multiple, strategy tag, breach flag) is in progress."
         >
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-            <p className="font-medium text-stone-800">Manual entry coming soon</p>
-            <p className="mt-1">
-              The add-trade form is in progress. For now, trades from a connected broker are
-              imported automatically. Check back shortly for the manual entry UI.
+            <p>
+              Until the full form ships, you can log basic session events (trade opened/closed, win, loss, P&L update) from the{" "}
+              <a href="/dashboard" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                Dashboard
+              </a>
+              . Those events feed Guardian's rule evaluation in manual mode.
             </p>
           </div>
         </SectionCard>

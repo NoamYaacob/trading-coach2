@@ -14,11 +14,20 @@ export default async function AlertsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [alertPrefs, telegramConnection] = await Promise.all([
-    prisma.alertPreferences.findUnique({ where: { userId: user.id } }),
+  const [telegramConnection, riskRules] = await Promise.all([
     prisma.telegramConnection.findUnique({
       where: { userId: user.id },
       select: { telegramUsername: true, telegramChatId: true },
+    }),
+    prisma.riskRules.findUnique({
+      where: { userId: user.id },
+      select: {
+        maxDailyLoss: true,
+        maxTradesPerDay: true,
+        stopAfterLosses: true,
+        dailyProfitTarget: true,
+        newsLockoutEnabled: true,
+      },
     }),
   ]);
 
@@ -58,32 +67,38 @@ export default async function AlertsPage() {
     {
       label: "Daily loss limit reached",
       description: "Fires when your daily P&L crosses the loss limit. Session is marked stopped.",
-      active: true,
+      active: riskRules?.maxDailyLoss != null,
+      requires: "Daily loss limit",
     },
     {
       label: "Max trades reached",
       description: "Fires when you've hit your maximum trades-per-day limit.",
-      active: true,
+      active: riskRules?.maxTradesPerDay != null,
+      requires: "Max trades per day",
     },
     {
       label: "Consecutive losses",
       description: "Fires after the configured number of back-to-back losses.",
-      active: true,
+      active: riskRules?.stopAfterLosses != null,
+      requires: "Stop after losses",
     },
     {
       label: "Daily profit target hit",
       description: "Fires when your session P&L reaches the configured profit target.",
-      active: alertPrefs?.onProfitTarget ?? false,
+      active: riskRules?.dailyProfitTarget != null,
+      requires: "Daily profit target",
     },
     {
       label: "Approaching loss limit (80%)",
       description: "Early warning when P&L reaches 80% of the daily loss limit.",
-      active: true,
+      active: riskRules?.maxDailyLoss != null,
+      requires: "Daily loss limit",
     },
     {
       label: "Pre-news window",
       description: "Fires before high-impact economic events based on your news policy.",
-      active: true,
+      active: riskRules?.newsLockoutEnabled ?? false,
+      requires: "News lockout",
     },
   ];
 
@@ -91,14 +106,24 @@ export default async function AlertsPage() {
     <AppShell
       eyebrow="Alerts"
       title="Notification channels."
-      description="Choose where Guardrail sends alerts. In-app alerts are always on. Telegram is optional — connect it to receive Guardian lockout messages directly in the app."
+      description="Where Guardrail sends alerts when rules trigger. In-app alerts are always on; Telegram is optional."
+      actions={
+        !telegramReady ? (
+          <a
+            href="/onboarding"
+            className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Connect Telegram
+          </a>
+        ) : null
+      }
     >
       <div className="grid gap-6">
 
         {/* Channel status */}
         <SectionCard
           title="Channels"
-          description="Alert delivery channels and their current status."
+          description="Where alerts are delivered."
         >
           <div className="grid gap-4 sm:grid-cols-3">
             {channels.map((ch) => (
@@ -129,7 +154,7 @@ export default async function AlertsPage() {
         {/* Alert triggers */}
         <SectionCard
           title="Alert triggers"
-          description="Events that generate alerts. Core enforcement triggers are always active."
+          description="Each trigger is active only when its rule is configured. Edit rules to change which alerts fire."
         >
           <div className="divide-y divide-stone-100">
             {triggers.map((t) => (
@@ -137,6 +162,12 @@ export default async function AlertsPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-stone-950">{t.label}</p>
                   <p className="mt-0.5 text-sm text-stone-500">{t.description}</p>
+                  {!t.active && (
+                    <p className="mt-1 text-xs text-stone-400">
+                      Inactive — set <span className="font-medium text-stone-600">{t.requires}</span> in{" "}
+                      <a href="/rules" className="font-medium text-stone-700 underline-offset-2 hover:underline">Rules</a> to enable.
+                    </p>
+                  )}
                 </div>
                 <span
                   className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -151,8 +182,7 @@ export default async function AlertsPage() {
             ))}
           </div>
           <p className="mt-4 text-xs text-stone-400">
-            Granular trigger configuration is coming in a future update. Core enforcement events
-            cannot be disabled — they are the enforcement mechanism.
+            Per-channel routing for individual triggers is coming in a future update.
           </p>
         </SectionCard>
 
