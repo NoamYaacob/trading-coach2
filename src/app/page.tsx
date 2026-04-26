@@ -5,75 +5,75 @@ import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Guardrail — Broker-Connected Trading Guardian",
+  title: "Guardrail — Broker-Connected Risk Enforcement",
   description:
-    "Guardrail connects to your broker account, watches fills and P&L in real time, and enforces your rules automatically — warning through Telegram and locking the account when limits are hit.",
+    "Define your trading rules before the session. Monitor risk in real time. Lock yourself out when rules are breached. Manual Mode today; broker enforcement when your broker connects.",
 };
 
 const pillars = [
   {
-    label: "Core system",
-    title: "Guardian session control",
+    label: "Step 1",
+    title: "Define your rules before the session",
     detail:
-      "Define your daily limits once — max trades, max loss, consecutive losses. Guardian enforces them automatically. When a limit is crossed, the session closes.",
+      "Max trades, max daily loss, consecutive-loss stop, allowed hours. You configure them when you're calm — Guardrail evaluates them when you're not.",
   },
   {
-    label: "Enforcement",
-    title: "Real-time lockout",
+    label: "Step 2",
+    title: "Monitor risk in real time",
     detail:
-      "When Guardian triggers, trading is blocked for the day. There is no override. The decision was made before the pressure hit.",
+      "The dashboard shows trade count, loss budget, loss streak, and a Safe / Warning / Locked verdict from your active rules. Updates as your journal or broker data changes.",
   },
   {
-    label: "Alerts",
-    title: "Telegram enforcement alerts",
+    label: "Step 3",
+    title: "Lock yourself out when rules are breached",
     detail:
-      "Lockout messages, pre-news warnings, and status replies delivered via Telegram. The bot reads your live Guardian state — alerts are grounded in actual session data.",
+      "When a rule is crossed, Guardian transitions to Locked at the app level. Manual Mode shows a clear lockout banner and surfaces the breach reason. No hidden state.",
   },
   {
-    label: "Risk awareness",
-    title: "News-aware protection",
+    label: "Manual Mode",
+    title: "Available today, no broker required",
     detail:
-      "High-impact economic events are detected automatically. Depending on your policy, the system applies soft caution or a hard trading block before the window.",
+      "Log trades in the journal. Guardrail derives risk state from your entries and applies the same evaluation as the broker pipeline will. Manual Mode does not block trades at the broker.",
   },
   {
-    label: "Session record",
-    title: "Today activity",
+    label: "Read-only first",
+    title: "Broker connection — read-only Tradovate (in verification)",
     detail:
-      "Every meaningful session event is captured in a live timeline: state changes, Guardian triggers, manual trades, and session milestones — in order.",
+      "OAuth and encrypted token storage are built. The read pipeline is implemented but pending end-to-end verification against the live Tradovate API. Risk state stays Manual-Mode-driven until verified.",
   },
   {
-    label: "Post-trade",
-    title: "Post-session review",
+    label: "Honest about scope",
+    title: "Broker-side actions stay off until proven",
     detail:
-      "When the session closes, you get a structured review: the day's sequence, key moments, takeaways, and reset guidance for tomorrow.",
+      "Cancel orders, flatten positions, and broker-level lockout are NOT implemented today. They will only ship after live-broker verification, an audit log path, and explicit user opt-in.",
   },
 ];
 
 const steps = [
   {
     n: "01",
-    title: "Configure Guardian",
-    detail: "Set your daily limits once: max loss, max trades, and consecutive loss stop.",
+    title: "Set your rules",
+    detail: "Max loss, max trades, consecutive-loss stop, session hours. Configured once before the day starts.",
   },
   {
     n: "02",
-    title: "Open the session",
-    detail: "Confirm readiness, review today's limits, and start the day from the dashboard.",
+    title: "Choose your data source",
+    detail: "Manual Mode (journal-driven) is available today. Connect Tradovate read-only to verify the broker pipeline once API access is live.",
   },
   {
     n: "03",
-    title: "Trade — Guardian watches",
-    detail: "Guardian evaluates every fill and P&L update in real time. Warnings fire before limits are hit.",
+    title: "Trade — risk state updates live",
+    detail: "Each trade or fill updates the Safe / Warning / Locked verdict against the rules you set.",
   },
   {
     n: "04",
-    title: "Let Guardian enforce",
-    detail: "When limits are hit, the session closes automatically. No willpower required.",
+    title: "Hit a rule, hit the lock",
+    detail: "Guardian transitions to Locked at the app level. The dashboard explains which rule fired and when the reset window opens.",
   },
   {
     n: "05",
     title: "Close with a review",
-    detail: "Get the day's sequence, key moments, and one takeaway to carry into tomorrow.",
+    detail: "Daily summary of P&L, trade count, breaches, and the takeaway you want to carry into tomorrow.",
   },
 ];
 
@@ -98,39 +98,44 @@ const activityPreview = [
 ];
 
 const includedFeatures = [
-  "Guardian session control — max trades, max loss, consecutive loss stop",
-  "Real-time Guardian lockout enforcement — no overrides",
-  "Telegram enforcement alerts with live session context (optional)",
-  "Economic calendar with news-aware risk policies",
-  "Today activity live timeline",
-  "Post-session review with structured takeaways",
-  "Manual trade logging — wins, losses, P&L, rule breaches",
+  "Pre-session rules editor — max trades, max loss, consecutive-loss stop, session hours",
+  "Real-time risk state — Safe / Warning / Locked verdict on every trade",
+  "App-level lockout when rules are breached (no broker-side blocking yet)",
+  "Manual Mode trade entry with auto-calc P&L, risk, and R-multiple",
+  "Trading-day window with timezone + overnight session support",
+  "Tradovate OAuth (read-only) with AES-256-GCM encrypted token storage",
+  "Read-only verification page — every Tradovate read endpoint with pass/fail",
+  "Optional Telegram alerts for Guardian state and lockout messages",
 ];
 
 const faqs = [
   {
-    q: "Is this a trading journal?",
-    a: "No. A journal reviews what happened. Guardrail controls the session while it is happening — watching fills, enforcing rules, and locking the account automatically. Post-session review is one component. The live enforcement layer is the core.",
+    q: "Does Guardrail block my trades at the broker?",
+    a: "Not today. Lockout is an in-app state — Guardrail transitions to Locked, surfaces the breach in Manual Mode, and (optionally) sends a Telegram alert. Cancelling orders or flattening positions at the broker is not implemented. We will only ship those after end-to-end verification against the live broker API and explicit user opt-in.",
+  },
+  {
+    q: "What is Manual Mode?",
+    a: "Manual Mode is the canonical risk-state engine: you log each trade in the journal, and Guardrail derives Safe / Warning / Locked from your rules and today's entries. It works without any broker connection. The lock applies inside Guardrail only — it does not prevent orders at your broker.",
   },
   {
     q: "Which brokers are supported?",
-    a: "Tradovate is the first supported broker. The architecture is built around direct broker connectivity — live fills, P&L updates, and order events flow in automatically. Additional broker connections are in progress. During the rollout, a manual entry path is also available.",
+    a: "Tradovate is the first integration. OAuth, encrypted token storage, and the read-only client are built. The endpoint shapes are based on Tradovate's documented API but are pending verification against a real account. Risk evaluation continues to use Manual Mode until each Tradovate read endpoint is verified end-to-end.",
   },
   {
     q: "How does Telegram fit in?",
-    a: "Telegram is the intervention surface, not the whole product. The guardian engine watches your account and makes enforcement decisions automatically. Telegram is where you receive warnings, lockout messages, and reset confirmations — grounded in your actual live session state.",
+    a: "Telegram is an optional alert surface. When configured, Guardrail sends Guardian state changes and lockout messages to your Telegram. Manual Mode and the dashboard work fully without Telegram.",
   },
   {
-    q: "What happens during a Guardian lockout?",
-    a: "The account is marked stopped the moment a limit is crossed — daily loss, max trades, or consecutive losses. You receive a Telegram message with the reason and reset timing. There is no override path. The decision was made before the session started.",
+    q: "What happens during a lockout?",
+    a: "Guardrail transitions to a Locked verdict in the app, the dashboard banner explains which rule fired, and (if Telegram is connected) you receive a message. The reset window opens at the start of the next trading day according to your configured session. No broker-side action is taken.",
   },
   {
     q: "Who is this for?",
-    a: "Active intraday traders — primarily futures traders on funded or evaluation accounts — who trade by defined rules and need those rules enforced in real time, not reviewed after the damage is done.",
+    a: "Active intraday traders — primarily futures traders on funded or evaluation accounts — who define their rules ahead of time and want a system that holds them to those rules in real time. Pre-API-access today, broker-driven once your broker connection is verified.",
   },
   {
-    q: "Do I need to log trades manually?",
-    a: "Not if your broker is connected. When live broker sync is active, Guardrail receives fills and P&L updates automatically — nothing to log. A manual entry path exists as a fallback during the broker rollout period.",
+    q: "When will broker-level enforcement ship?",
+    a: "Cancel orders, flatten positions, and broker-level lockout will be enabled per-broker only after each capability is verified against the live API. Each will require explicit user opt-in in Rules → On-breach actions and an audit log entry per invocation. We don't promise a date — we promise we won't ship them until they actually work.",
   },
 ];
 
@@ -163,62 +168,62 @@ export default async function Home() {
 
   return (
     <AppShell
-      eyebrow="Guardrail · Broker-Connected Trading Guardian"
-      title="Your broker account, watched in real time."
-      description="Guardrail connects to your trading account, reads every fill and P&L update live, and enforces your rules automatically. When a limit is hit, the account locks. When you're approaching the edge, it warns you through Telegram — before the damage is done."
+      eyebrow="Guardrail · Broker-Connected Risk Enforcement"
+      title="Your rules. Set before the session. Held during it."
+      description="Define your trading rules ahead of time. Watch risk state update in real time. Lock yourself out when rules are breached. Manual Mode works today; broker-driven enforcement turns on once your Tradovate connection is verified. We don't promise broker-side blocking until it's proven against the live API."
       actions={heroActions}
     >
       <div className="grid gap-16">
 
-        {/* ── Broker-connected flow ────────────────────────────────────────── */}
+        {/* ── How it works ─────────────────────────────────────────────────── */}
         <section>
           <div className="mb-8 max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
               How it works
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-              Guardrail watches your live account.
+              Define rules cold. Get held to them when it&rsquo;s hot.
             </h2>
             <p className="mt-3 text-base leading-7 text-stone-600">
-              The system is built around direct broker connectivity. Connect your account, set your rules once, and Guardrail runs the protection loop automatically — no manual input required during the session.
+              You set rules before the session. Guardrail evaluates them as trades land — Manual Mode today (journal-driven), broker-driven once your Tradovate connection is verified. App-level lockout is the surface; broker-side actions stay off until proven.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[1.75rem] bg-stone-950 p-6 text-stone-50">
               <p className="font-mono text-2xl font-bold text-stone-700">01</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] leading-6">
-                Connect your broker account
+                Set your rules
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                Link your Tradovate account once. Guardrail receives live fill data, P&L updates, and order events directly from your broker. No manual logging.
+                Max daily loss, max trades, consecutive-loss stop, allowed session hours. Configured in the Rules editor when you&rsquo;re calm — locked in before the session opens.
               </p>
-              <p className="mt-3 text-xs font-medium text-amber-500">Tradovate-first · more brokers in progress</p>
             </div>
             <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
               <p className="font-mono text-2xl font-bold text-stone-200">02</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Set your rules once
+                Pick your data source
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Define your daily loss limit, max trades, consecutive loss stop, and allowed trading hours. Guardrail enforces them on every event — you don't touch the rules again.
+                Manual Mode (journal) is the source of truth today. Tradovate read-only OAuth is built and waiting on endpoint verification — once verified, broker data drives risk state automatically.
               </p>
+              <p className="mt-3 text-xs font-medium text-sky-700">Tradovate-first · read-only first</p>
             </div>
             <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6">
               <p className="font-mono text-2xl font-bold text-amber-200">03</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Guardian watches every fill
+                Monitor risk in real time
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-700">
-                Every trade close, P&L update, and loss streak is evaluated in real time. When you're approaching a limit, Guardian fires a warning through Telegram before the breach.
+                Each trade or fill updates the verdict — Safe, Warning, or Locked. Approaching-limit warnings fire before a breach. Optional Telegram alerts mirror state changes.
               </p>
             </div>
             <div className="rounded-[1.75rem] border border-red-200 bg-red-50 p-6">
               <p className="font-mono text-2xl font-bold text-red-200">04</p>
               <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
-                Hard lock when limits are hit
+                Lock yourself out at the app
               </h3>
               <p className="mt-2 text-sm leading-6 text-stone-700">
-                When a rule is crossed — daily loss, trade count, loss streak — the account is marked stopped. No override. You get a Telegram message with the reason and reset timing.
+                When a rule is crossed, Guardrail transitions to Locked. The dashboard banner shows the breach reason and reset window. Broker-side cancel / flatten / lockout are not enabled — they ship per-broker only after live verification.
               </p>
             </div>
           </div>
@@ -309,7 +314,7 @@ export default async function Home() {
                     <p className="font-mono text-xs text-stone-400 shrink-0">9:28 AM</p>
                     <p className="text-sm font-medium text-red-800">Trade closed · −$110 · Daily loss limit reached</p>
                   </div>
-                  <p className="mt-1 text-sm text-stone-500">P&L crossed −$500. Guardian immediately marks the account stopped. No further trades process.</p>
+                  <p className="mt-1 text-sm text-stone-500">P&L crossed −$500. Guardrail transitions the session to Locked at the app level.</p>
                 </div>
               </div>
 
@@ -323,12 +328,15 @@ export default async function Home() {
                 <div className="pb-2 pt-1 min-w-0">
                   <div className="flex items-baseline gap-3">
                     <p className="font-mono text-xs text-stone-400 shrink-0">9:28 AM</p>
-                    <p className="text-sm font-medium text-red-800">Account locked · session closed</p>
+                    <p className="text-sm font-medium text-red-800">App-level lockout · dashboard banner shown</p>
                   </div>
                   <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-stone-800">
-                    <p className="mb-1 text-xs font-semibold text-red-700">Guardrail · Telegram</p>
-                    Daily loss limit reached (−$520 / −$500). Session is closed for today. No more trades. Reset window opens tomorrow at market open.
+                    <p className="mb-1 text-xs font-semibold text-red-700">Guardrail · Telegram (optional)</p>
+                    Daily loss limit reached (−$520 / −$500). Guardrail is Locked for the rest of the session. Reset opens tomorrow at the start of your trading day.
                   </div>
+                  <p className="mt-2 text-xs text-stone-500">
+                    App-level lockout only. Cancelling or flattening at the broker is not enabled — that requires verified broker support and explicit user opt-in.
+                  </p>
                 </div>
               </div>
 
@@ -555,16 +563,14 @@ export default async function Home() {
                 Enforcement alerts delivered to Telegram.
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                When a Guardian rule is triggered, you receive a Telegram message with the
-                reason, rule that fired, and your reset window. The bot also knows your live
-                session state when you ask status questions.
+                When Guardrail transitions to a new state — warning, locked, reset — you can have it mirror that to Telegram. The bot also knows your active rule and session state when you ask status questions. Optional surface; Manual Mode and the dashboard work without it.
               </p>
               <ul className="mt-6 grid gap-3">
                 {[
-                  "Lockout confirmed the moment a limit is crossed — not a minute later.",
+                  "App-level lockout confirmed the moment a rule is breached.",
                   "Pre-news window flagged before you enter, based on your news policy.",
-                  "Reset confirmation when you're actually ready to resume.",
-                  "Status questions answered with live rule and session state.",
+                  "Reset confirmation when the next trading day opens.",
+                  "Status questions answered with live rule state.",
                 ].map((point) => (
                   <li key={point} className="flex items-start gap-3 text-sm leading-6 text-stone-700">
                     <span className="mt-1 shrink-0 font-bold text-amber-600">→</span>
@@ -614,7 +620,7 @@ export default async function Home() {
                 Start your free trial.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Full access during your trial. Connect your account, configure your protection rules, link Telegram, and run your first protected session. No credit card required.
+                Full access during your trial. Configure your rules, run your first session in Manual Mode, optionally connect Tradovate read-only, and link Telegram. No credit card required.
               </p>
               <div className="mt-8 flex items-baseline gap-2">
                 <span className="text-5xl font-bold tracking-[-0.04em] text-stone-950">$49</span>
@@ -700,7 +706,7 @@ export default async function Home() {
                 Your next session, under real protection.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Connect your broker account, set your daily rules, link Telegram, and let Guardrail watch the session. When limits are hit, the account locks — automatically, before you override yourself.
+                Set your rules in the editor. Use Manual Mode today, or connect Tradovate read-only and watch the verification page light up. When a rule is breached, Guardrail locks itself at the app level — no broker-side actions until they&rsquo;re verified.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

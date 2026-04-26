@@ -95,10 +95,10 @@ export default async function OnboardingPage() {
             Getting started
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
-            Set up your risk profile
+            Set up your risk profile and trading rules
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            Define your trading style and risk limits so Guardrail knows what to enforce. Takes about 3 minutes.
+            Define the rules you want held — max daily loss, max trades, consecutive-loss stop, session hours — and the enforcement style you prefer when a rule is breached. About 3 minutes.
           </p>
         </div>
 

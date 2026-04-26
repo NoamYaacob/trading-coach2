@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
+import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getVisibleAdapters } from "@/lib/brokers/registry";
@@ -214,6 +215,15 @@ export default async function AccountsPage() {
           <p className="mt-4 text-xs text-stone-400">
             Current enforcement is app-level only: Guardrail locks the session internally and sends Telegram alerts. Live orders at the broker are not cancelled or blocked — that requires a future integration phase.
           </p>
+        </SectionCard>
+
+        {/* Current product status — honest snapshot of what's available, prepared,
+            pending API access, and disabled. Pulls real config state. */}
+        <SectionCard
+          title="Current product status"
+          description="What's available today, what's prepared, and what's gated on real Tradovate API access. Updates automatically from server configuration."
+        >
+          <ProductStatusPanel />
         </SectionCard>
       </div>
     </AppShell>

@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
+import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 
 import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
@@ -98,10 +99,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           />
         </SectionCard>
 
+        {/* Product status (compact) */}
+        <SectionCard
+          title="Product status"
+          description="What's available, prepared, and pending API access. Full details on the Accounts page."
+        >
+          <ProductStatusPanel variant="compact" />
+        </SectionCard>
+
         {/* Telegram */}
         <SectionCard
           title="Telegram alerts"
-          description="Optional. Receive Guardian lockout messages and enforcement notifications in Telegram."
+          description="Optional. Receive Guardian state and lockout messages in Telegram."
         >
           {telegramConnection ? (
             <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">

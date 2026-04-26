@@ -1012,10 +1012,10 @@ function NumericPresetFieldControl({
 
 const STEP_TITLES = [
   "Trader identity",
-  "Discipline profile",
+  "Risk profile",
   "Motivation",
-  "Protection rules",
-  "Advanced & coaching",
+  "Trading rules",
+  "Enforcement preferences",
 ] as const;
 
 type OnboardingFormProps = {
@@ -1328,11 +1328,12 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </svg>
         </div>
         <h2 className="text-xl font-semibold text-stone-950">
-          Your coaching profile is ready
+          Your risk profile is ready
         </h2>
         <p className="mt-2 text-sm leading-6 text-stone-500">
-          You can now connect Telegram and start using Guardrail with your
-          personalized rules, coaching style, and protection settings.
+          Your trading rules and enforcement preferences are saved.
+          Optionally connect Telegram for state alerts, then head to the
+          dashboard to start your first session.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           {!telegramLink ? (
@@ -1470,7 +1471,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </div>
         )}
 
-        {/* Step 2: Discipline profile */}
+        {/* Step 2: Risk profile */}
         {currentStep === 1 && (
           <div className="space-y-4">
             <ChipGroup
@@ -1550,7 +1551,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </div>
         )}
 
-        {/* Step 4: Protection rules */}
+        {/* Step 4: Trading rules */}
         {currentStep === 3 && (
           <div className="space-y-4">
             <NumericPresetFieldControl
@@ -1620,7 +1621,7 @@ export function OnboardingForm({ userEmail, savedData }: OnboardingFormProps) {
           </div>
         )}
 
-        {/* Step 5: Advanced & coaching */}
+        {/* Step 5: Enforcement preferences */}
         {currentStep === 4 && (
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
