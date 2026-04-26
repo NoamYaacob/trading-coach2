@@ -1,27 +1,32 @@
 /**
  * GET /api/brokers/tradovate/snapshot?accountId=<id>
  *
- * Internal developer route — tests the Tradovate read pipeline end-to-end
- * for a connected account. NOT intended as a production data endpoint.
+ * Verification endpoint — runs every read against the Tradovate API and
+ * returns a structured pass/fail report. Used by the verification page
+ * (/accounts/tradovate/verify) and available as JSON for tooling.
  *
- * Security:
- *  - Requires an authenticated session (redirects to /login if missing).
- *  - The account must belong to the requesting user (ownership enforced by
- *    TradovateClient → getTradovateTokensForAccount).
- *  - Tokens are NEVER returned. Only normalised broker-layer data is included.
+ * Response shape (see VerificationReport in tradovate-verification.ts):
+ *   {
+ *     ok: boolean,
+ *     connectionStatus: "connected" | "expired" | "error" | "disconnected",
+ *     tokenStatus: "valid" | "expired" | "no_refresh" | "load_failed" | "config_missing" | "unknown",
+ *     checks: Array<{ name, label, status: "pass"|"fail"|"skip", message, durationMs, errorCode? }>,
+ *     snapshot: { account, positions, orders, executions },
+ *     warnings: string[],
+ *     lastSyncAt: ISOString | null,
+ *   }
  *
- * Response shape:
- *  { ok: true, accountId, snapshot, positions, orders, executions, connectionStatus }
- *  or
- *  { ok: false, error: <code>, message: <string> }
+ * Auth + ownership are enforced. Tokens and raw upstream payloads are
+ * NEVER returned. An endpoint failure does NOT abort the rest of the
+ * checks — token / auth failure short-circuits the remaining endpoints.
  */
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { TradovateClient, TradovateClientError } from "@/lib/brokers/tradovate-client";
 import { prisma } from "@/lib/db";
+import { runTradovateVerification } from "@/lib/brokers/tradovate-verification";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -37,12 +42,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Ownership pre-check: confirm the account exists and belongs to this user
-  // before we even try to load tokens (belt-and-suspenders on top of the
-  // ownership check inside TradovateClient).
+  // Ownership pre-check.
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
-    select: { userId: true, platform: true, connectionStatus: true },
+    select: { userId: true, platform: true },
   });
 
   if (!account) {
@@ -64,53 +67,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const client = new TradovateClient(accountId, user.id);
-
-  try {
-    await client.initialize();
-  } catch (err) {
-    const code = err instanceof TradovateClientError ? err.code : "UNKNOWN";
-    const message =
-      err instanceof TradovateClientError ? err.message : "Unexpected error during initialization.";
-    return NextResponse.json(
-      { ok: false, error: code, message },
-      { status: err instanceof TradovateClientError && err.statusCode ? err.statusCode : 502 },
-    );
-  }
-
-  // Run all reads in parallel; catch errors per-call so partial results are
-  // still returned for debugging.
-  const [snapshotResult, positionsResult, ordersResult, executionsResult] =
-    await Promise.allSettled([
-      client.toAccountSnapshot(),
-      client.toPositions(),
-      client.toOrders(),
-      client.toExecutions(),
-    ]);
-
-  // Record the sync time regardless of partial failures.
-  await prisma.connectedAccount.update({
-    where: { id: accountId },
-    data: { lastSyncAt: new Date() },
-  });
-
-  function settle<T>(r: PromiseSettledResult<T>): T | { error: string } {
-    if (r.status === "fulfilled") return r.value;
-    const err = r.reason as Error;
-    return {
-      error:
-        err instanceof TradovateClientError
-          ? `${err.code}: ${err.message}`
-          : err.message ?? "Unknown error",
-    };
-  }
-
-  return NextResponse.json({
-    ok: true,
-    accountId,
-    snapshot: settle(snapshotResult),
-    positions: settle(positionsResult),
-    orders: settle(ordersResult),
-    executions: settle(executionsResult),
-  });
+  const report = await runTradovateVerification(accountId, user.id);
+  return NextResponse.json(report);
 }

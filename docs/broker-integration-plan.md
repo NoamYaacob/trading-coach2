@@ -192,25 +192,99 @@ methods. They will not be enabled until:
 - **Audit logging**: encrypt / decrypt and API call operations are not
   logged individually. Failures log only the error `code`, never values.
 
-### Testing the read pipeline
+### Verification page (read-only)
 
-Once you have a real Tradovate account connected (OAuth complete,
-`connectionStatus = "connected_readonly"`):
+Path: **`/accounts/tradovate/verify?accountId=<id>`**
 
-1. Open the Accounts page — you should see the **Read-only connected**
-   badge on the account card.
-2. Click **"Test read-only connection ↗"** — opens
-   `GET /api/brokers/tradovate/snapshot?accountId=<id>` in a new tab.
-3. Inspect the JSON response:
-   - `ok: true` means all reads succeeded.
-   - `snapshot.balance` should match your Tradovate account balance.
-   - `positions` and `orders` should reflect open positions / orders.
-   - If any key shows `{ "error": "..." }`, the endpoint needs verification.
-4. If you get `ok: false` with `error: "API_ERROR"` or `PARSE_ERROR`,
-   the endpoint path / request shape needs correction in `tradovate-client.ts`.
-5. Once all five reads (`accounts`, `balance`, `positions`, `orders`,
-   `fills`) return correct data, flip the read capabilities to
-   `available` in `TradovateAdapter` and advance to Phase 2.
+This is the canonical entry point for verifying a Tradovate read-only
+connection. The Accounts page links here from the **"Verify read-only
+connection ↗"** CTA on every `connected_readonly` card. The page is
+authenticated and ownership-checked: it redirects non-owners back to
+`/accounts` and 404s on missing accounts.
+
+**What it does:**
+
+1. Loads stored encrypted tokens via `getTradovateTokensForAccount` and
+   refreshes them on demand if within the 5-minute pre-expiry buffer.
+2. Runs every Tradovate read endpoint (`account/list`,
+   `cashBalance/getCashBalanceSnapshot`, `position/list`, `order/list`,
+   `fill/list`, `contract/items`) in parallel where independent.
+3. Renders a structured report:
+   - Summary banner (all green / token issue / partial failure).
+   - Status row: connection, token, last sync.
+   - Per-endpoint check list with pass / fail / skip and duration.
+   - Warnings (e.g. contract resolution silently fell back to numeric IDs).
+   - Collapsible **Developer details** with timings, error codes, and a
+     link to the JSON endpoint. No token values or raw upstream payloads.
+
+**Status transitions made by the verification flow:**
+
+| Outcome                                | DB side-effect                                            |
+|----------------------------------------|-----------------------------------------------------------|
+| Token load OK + at least one endpoint  | `lastSyncAt` set to now; status unchanged                 |
+| `externalAccountId` newly resolved     | Persisted on `ConnectedAccount`                           |
+| Token refresh succeeds                 | Re-encrypted access/refresh stored; `errorMessage` cleared |
+| Token refresh fails / 401 from API     | `connectionStatus = "expired"`; `errorMessage` populated  |
+| Token expired with no refresh token    | `connectionStatus = "expired"` (re-authorize required)    |
+
+### Snapshot route
+
+`GET /api/brokers/tradovate/snapshot?accountId=<id>` returns the same
+report as JSON. Auth + ownership are enforced. Response shape:
+
+```json
+{
+  "ok": true,
+  "connectionStatus": "connected" | "expired" | "error" | "disconnected",
+  "tokenStatus": "valid" | "expired" | "no_refresh" | "load_failed" | "config_missing" | "unknown",
+  "checks": [
+    { "name": "tokens", "label": "Token load and refresh", "status": "pass", "message": "...", "durationMs": 12 },
+    { "name": "account_discovery", "label": "Account discovery", "status": "fail", "message": "...", "errorCode": "API_ERROR", "durationMs": 312 }
+  ],
+  "snapshot": {
+    "account": { "balance": ..., "todayPnL": ..., ... } | null,
+    "positions": [...] | null,
+    "orders": [...] | null,
+    "executions": [...] | null
+  },
+  "warnings": ["..."],
+  "lastSyncAt": "2026-04-26T..." | null
+}
+```
+
+**Partial-failure behavior:**
+
+- A failing endpoint does **not** abort the rest of the checks.
+- Token / auth failure (`tokens` check fails) short-circuits the run:
+  every other check is marked `skip`. This is the only short-circuit.
+- The `snapshot.<key>` is `null` when the corresponding check failed,
+  populated when it passed.
+- `ok` is `true` only when every non-skipped check is `pass`. A skip is
+  acceptable (e.g. contract resolution skipped when there are no
+  contracts to resolve).
+- Tokens and raw upstream payloads are NEVER returned, regardless of the
+  `ok` value.
+
+### Promoting endpoints to "verified"
+
+Endpoints in `tradovate-client.ts` remain **unverified** until tested
+against a real Tradovate account. To promote:
+
+1. Connect a real Tradovate account (Live or Demo).
+2. Open `/accounts/tradovate/verify?accountId=<id>`.
+3. Confirm every check passes and the `snapshot` values match what you
+   see in Tradovate's official UI (balance, open positions, fills).
+4. Cross-check each endpoint shape against Tradovate's official API
+   documentation. Update the field names in `tradovate-client.ts` if
+   the documented shape differs from what the code expects.
+5. Flip the corresponding `requires_oauth` capability statuses to
+   `available` in `tradovate-adapter.ts` (one capability at a time —
+   verify the UI still renders correctly after each flip).
+6. Repeat for both Live and Demo environments.
+
+**Until the above is done, broker data is NOT used for risk
+evaluation** — Dashboard and Guardian continue to evaluate from manual
+journal entries.
 
 ### Open operational questions
 

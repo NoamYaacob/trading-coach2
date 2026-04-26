@@ -289,14 +289,12 @@ export function AccountCard({
                   Last sync {shortDate(account.lastSyncAt)}
                 </p>
               )}
-              <a
-                href={`/api/brokers/tradovate/snapshot?accountId=${account.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href={`/accounts/tradovate/verify?accountId=${account.id}`}
                 className="text-xs text-sky-600 underline-offset-2 hover:underline"
               >
-                Test read-only connection ↗
-              </a>
+                Verify read-only connection ↗
+              </Link>
             </div>
           )}
           {account.connectionStatus === "expired" && (
