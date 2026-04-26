@@ -19,6 +19,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_not_configured: "Tradovate OAuth is not fully configured on this server.",
   token_exchange_failed: "Tradovate rejected the authorization code. Please try again.",
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
+  token_storage_failed: "OAuth completed but token storage failed on this server. Please try again or contact support.",
   csrf_mismatch: "Authorization session expired or was tampered with. Please try again.",
   invalid_state: "Invalid authorization state. Please start the connection again.",
   missing_params: "Authorization response was incomplete. Please try again.",
@@ -82,9 +83,9 @@ export default async function ConnectTradovatePage({
         )}
         {params.oauth === "verified" && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm">
-            <p className="font-medium text-emerald-900">OAuth verified</p>
+            <p className="font-medium text-emerald-900">Tradovate connected (read-only)</p>
             <p className="mt-0.5 text-stone-700">
-              Tradovate accepted the authorization. The read pipeline is not yet enabled — token storage encryption is pending. Manual Mode remains active until the read pipeline ships.
+              OAuth completed and tokens are encrypted in storage. The read pipeline (account / positions / orders / executions) is not yet implemented — Dashboard and Guardian continue to evaluate from your Manual Mode journal until it ships.
             </p>
           </div>
         )}

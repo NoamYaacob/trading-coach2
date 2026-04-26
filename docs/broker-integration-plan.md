@@ -108,21 +108,62 @@ Tradovate redirects back
      - Redirect to /accounts/connect/tradovate?oauth=verified&account=<id>
 ```
 
-### Token storage requirement
+### Token storage (implemented)
 
-`accessTokenEncrypted`, `refreshTokenEncrypted`, `tokenExpiresAt` are
-nullable columns on `ConnectedAccount` reserved for the future. Today's
-callback writes them as `null`. Plaintext token persistence is forbidden.
+Tokens are encrypted with **AES-256-GCM** keyed by
+`TRADOVATE_TOKEN_ENCRYPTION_KEY`. The encryption module
+(`src/lib/security/token-crypto.ts`) is the only path through which
+tokens reach the database.
 
-Implementation plan when we ship the read pipeline:
+**Key format:** base64-encoded 32-byte key (44 chars with `=` padding,
+or 43 chars unpadded). Generate with `openssl rand -base64 32`. Any
+other decoded length is rejected with `KEY_LENGTH`.
 
-1. Build a small encryption module using Node's `crypto.createCipheriv`
-   (AES-256-GCM) keyed by `TRADOVATE_TOKEN_ENCRYPTION_KEY`.
-2. Encrypt access + refresh tokens in the callback before writing.
-3. Add a refresher job (cron) that reads encrypted tokens, refreshes,
-   re-encrypts, and updates `tokenExpiresAt`.
-4. Flip `connectionStatus` from `oauth_pending_storage` to
-   `connected_live` only after the first successful read.
+**Stored payload format** (JSON-serialised in the
+`accessTokenEncrypted` / `refreshTokenEncrypted` TEXT columns):
+
+```json
+{ "v": 1, "iv": "<base64 12 B>", "ct": "<base64>", "tag": "<base64 16 B>" }
+```
+
+- `v`   — payload version (1 today; bumped if the format changes)
+- `iv`  — fresh random GCM nonce per encryption
+- `ct`  — ciphertext
+- `tag` — GCM auth tag (any tampering causes `DECRYPT_FAILED`)
+
+**Connection lifecycle:**
+
+| Status                     | Meaning                                                         |
+|----------------------------|-----------------------------------------------------------------|
+| `not_connected`            | No OAuth attempt yet                                            |
+| `connected_readonly`       | OAuth done, tokens encrypted in storage. Read pipeline not yet wired. |
+| `connected_live`           | Reserved for after the first successful broker read             |
+| `expired`                  | Token expired and refresh failed (future)                       |
+| `connection_error`         | Reserved for adapter-level failures (future)                    |
+
+**What is implemented:**
+
+- AES-256-GCM encrypt + decrypt in `token-crypto.ts`
+- Key validation (presence, base64, 32-byte length)
+- Versioned payload format with auth tag
+- Callback encrypts and persists `access_token` + `refresh_token`
+- `tokenExpiresAt` set when Tradovate returns `expires_in`
+- `getTradovateTokensForAccount(accountId, userId)` — server-only
+  loader with ownership + platform checks; never returns to client code
+- 15 unit tests covering round trip, wrong key, tampered ciphertext,
+  malformed payload, missing key, invalid key length, and serialise/parse
+
+**Limitations / not implemented:**
+
+- **Key rotation**: today the runtime accepts only the single configured
+  key. Rotation will require a `keys` array, the payload's `v` field
+  bumped, and a one-time re-encrypt migration. Out of scope until the
+  read pipeline ships.
+- **Refresh job**: tokens are never refreshed yet. When `tokenExpiresAt`
+  passes, the read pipeline (when built) must mint a new access token
+  via the refresh token before each broker call.
+- **Audit logging**: encrypt / decrypt operations are not logged
+  individually. Failures log only the `code` field, never the value.
 
 ### Open operational questions
 

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -104,14 +105,36 @@ export async function GET(request: NextRequest) {
     return backToConnectPage(request, "token_exchange_error");
   }
 
-  // ── Persist the connection (without raw tokens) ────────────────────────
-  // We deliberately do NOT write tokenData.access_token or refresh_token to
-  // the database. Plaintext token persistence is forbidden until the
-  // encryption layer ships. Instead we record:
-  //   - externalAccountId (safe to store)
-  //   - connectionStatus = "oauth_pending_storage"
-  //   - errorMessage explaining why this connection cannot read API data
-  //     yet, so the UI surfaces it clearly.
+  // ── Encrypt tokens before persisting ───────────────────────────────────
+  // Plaintext tokens MUST never reach the database. encryptAndSerialize
+  // returns a JSON-serialised AES-256-GCM payload safe to store in TEXT.
+  // The encryption module also re-validates the master key — if it has
+  // gone missing between the connect step and now, this throws and we
+  // bail out without writing anything.
+  let accessTokenEncrypted: string;
+  let refreshTokenEncrypted: string | null = null;
+  let tokenExpiresAt: Date | null = null;
+
+  try {
+    accessTokenEncrypted = encryptAndSerialize(tokenData.access_token);
+    if (tokenData.refresh_token) {
+      refreshTokenEncrypted = encryptAndSerialize(tokenData.refresh_token);
+    }
+    if (
+      typeof tokenData.expires_in === "number" &&
+      Number.isFinite(tokenData.expires_in) &&
+      tokenData.expires_in > 0
+    ) {
+      tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    }
+  } catch (err) {
+    // Log the error code only; never log the token plaintext.
+    const code = err instanceof TokenCryptoError ? err.code : "unknown";
+    console.error(`[tradovate/callback] token encryption failed: ${code}`);
+    return backToConnectPage(request, "token_storage_failed");
+  }
+
+  // ── Persist the connection ─────────────────────────────────────────────
   const externalAccountId = tokenData.account_id ? String(tokenData.account_id) : null;
 
   const existing = externalAccountId
@@ -127,13 +150,16 @@ export async function GET(request: NextRequest) {
 
   const connectionFields = {
     isActive: true,
-    connectionStatus: "oauth_pending_storage",
-    connectedAt: null,
-    errorMessage:
-      "OAuth verified. Read pipeline is not yet enabled — token storage encryption is pending.",
-    accessTokenEncrypted: null,
-    refreshTokenEncrypted: null,
-    tokenExpiresAt: null,
+    // OAuth completed and tokens are encrypted in storage. The read
+    // pipeline (account / positions / orders / executions) is NOT yet
+    // implemented — flipping to "connected_live" is reserved for after
+    // the first successful broker read.
+    connectionStatus: "connected_readonly",
+    connectedAt: new Date(),
+    errorMessage: null,
+    accessTokenEncrypted,
+    refreshTokenEncrypted,
+    tokenExpiresAt,
     lastSyncAt: null,
   };
 
