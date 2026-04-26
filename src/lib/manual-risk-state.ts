@@ -314,19 +314,6 @@ export function computeManualRiskState(input: {
   };
 }
 
-// ─── Date helpers ────────────────────────────────────────────────────────
-
-/**
- * Returns [startOfTodayUTC, startOfTomorrowUTC) for filtering "today's" trades
- * in the user's display timezone. Caller passes the timezone offset.
- *
- * For now we use server-local "today". Timezone-aware bucketing can be added
- * when we expose user timezone preferences to this layer.
- */
-export function getTodayRange(now: Date = new Date()): { start: Date; end: Date } {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
-}
+// Trading-day window calculation lives in @/lib/trading-day. Manual risk state
+// is a pure function — callers pass the today's trades they queried using the
+// trading-day window.

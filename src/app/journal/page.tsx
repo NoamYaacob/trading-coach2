@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import {
-  computeManualRiskState,
-  getTodayRange,
-} from "@/lib/manual-risk-state";
+import { computeManualRiskState } from "@/lib/manual-risk-state";
+import { getTradingDayWindow } from "@/lib/trading-day";
+import { DISPLAY_TIME_ZONE_COOKIE, resolveDisplayTimeZone } from "@/lib/timezone";
 import { TradeEntryForm } from "./_components/trade-entry-form";
 
 export const metadata: Metadata = {
@@ -56,22 +56,40 @@ export default async function JournalPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { start: startToday, end: endToday } = getTodayRange();
-
-  const [hasBroker, allEntries, todayEntries, riskRules] = await Promise.all([
+  // Resolve the user's display timezone first so the trading-day window is
+  // bucketed correctly. We need traderProfile.timezone before we know which
+  // window to query against.
+  const [profile, riskRules, hasBroker] = await Promise.all([
+    prisma.traderProfile.findUnique({
+      where: { userId: user.id },
+      select: { timezone: true },
+    }),
+    prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount
       .count({ where: { userId: user.id, isActive: true } })
       .then((c) => c > 0),
+  ]);
+  const cookieStore = await cookies();
+  const tz = resolveDisplayTimeZone({
+    onboardingTimeZone: profile?.timezone,
+    browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
+  });
+  const window = getTradingDayWindow({
+    timezone: tz,
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+  });
+
+  const [allEntries, todayEntries] = await Promise.all([
     prisma.manualTradeEntry.findMany({
       where: { userId: user.id },
       orderBy: { tradedAt: "desc" },
       take: 100,
     }),
     prisma.manualTradeEntry.findMany({
-      where: { userId: user.id, tradedAt: { gte: startToday, lt: endToday } },
+      where: { userId: user.id, tradedAt: { gte: window.start, lt: window.end } },
       orderBy: { tradedAt: "asc" },
     }),
-    prisma.riskRules.findUnique({ where: { userId: user.id } }),
   ]);
 
   const risk = computeManualRiskState({ rules: riskRules, todayTrades: todayEntries });
@@ -120,6 +138,9 @@ export default async function JournalPage() {
               <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
                 Connect a broker →
               </a>
+            </p>
+            <p className="mt-2 text-xs text-stone-500">
+              Trading day: <span className="font-medium text-stone-700">{window.label}</span>
             </p>
           </div>
         )}

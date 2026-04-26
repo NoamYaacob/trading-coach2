@@ -15,7 +15,8 @@ import {
 } from "@/lib/guardian";
 import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
 import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
-import { computeManualRiskState, getTodayRange } from "@/lib/manual-risk-state";
+import { computeManualRiskState } from "@/lib/manual-risk-state";
+import { getTradingDayWindow } from "@/lib/trading-day";
 import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
@@ -79,18 +80,9 @@ export default async function GuardianPage() {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect("/login");
 
-  const { start: startToday, end: endToday } = getTodayRange();
-  const [
-    guardian,
-    user,
-    todayGuardianSessionStart,
-    todaySessionEvents,
-    liveEnforcement,
-    riskRules,
-    brokerCount,
-    todayManualTrades,
-  ] = await Promise.all([
-    getGuardianSnapshot(currentUser.id),
+  // Resolve user + risk rules first so we can compute the trading-day window
+  // before fetching today's manual trades.
+  const [user, riskRules] = await Promise.all([
     prisma.user.findUnique({
       where: { id: currentUser.id },
       select: {
@@ -98,23 +90,42 @@ export default async function GuardianPage() {
         coachingPreferences: true,
       },
     }),
-    getTodayGuardianSessionStart(currentUser.id),
-    getTodaySessionEvents(currentUser.id, undefined, "asc"),
-    getLiveEnforcementState(currentUser.id),
     prisma.riskRules.findUnique({ where: { userId: currentUser.id } }),
-    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
-    prisma.manualTradeEntry.findMany({
-      where: { userId: currentUser.id, tradedAt: { gte: startToday, lt: endToday } },
-      orderBy: { tradedAt: "asc" },
-    }),
   ]);
-  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
-
   const cookieStore = await cookies();
   const displayTimeZone = resolveDisplayTimeZone({
     onboardingTimeZone: user?.traderProfile?.timezone,
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
+  const tradingDay = getTradingDayWindow({
+    timezone: displayTimeZone,
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+  });
+
+  const [
+    guardian,
+    todayGuardianSessionStart,
+    todaySessionEvents,
+    liveEnforcement,
+    brokerCount,
+    todayManualTrades,
+  ] = await Promise.all([
+    getGuardianSnapshot(currentUser.id),
+    getTodayGuardianSessionStart(currentUser.id),
+    getTodaySessionEvents(currentUser.id, undefined, "asc"),
+    getLiveEnforcementState(currentUser.id),
+    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
+    prisma.manualTradeEntry.findMany({
+      where: {
+        userId: currentUser.id,
+        tradedAt: { gte: tradingDay.start, lt: tradingDay.end },
+      },
+      orderBy: { tradedAt: "asc" },
+    }),
+  ]);
+  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
+
   const economicCalendarSelection = getEconomicCalendarSelection(user?.coachingPreferences);
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
     user?.coachingPreferences,
@@ -216,8 +227,8 @@ export default async function GuardianPage() {
   if (riskRules?.allowedSymbols) activeRules.push({ label: "Allowed symbols", value: riskRules.allowedSymbols });
   if (riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null) {
     activeRules.push({
-      label: "Session hours (UTC)",
-      value: `${riskRules.sessionStartHour}:00 – ${riskRules.sessionEndHour}:00`,
+      label: "Session hours",
+      value: `${riskRules.sessionStartHour}:00 – ${riskRules.sessionEndHour}:00 ${displayTimeZone}`,
     });
   }
   if (riskRules?.tradingDays) activeRules.push({ label: "Trading days", value: riskRules.tradingDays });
@@ -253,6 +264,7 @@ export default async function GuardianPage() {
             state={manualRisk}
             hasRules={Boolean(riskRules)}
             hideEditRulesCta
+            tradingDayLabel={tradingDay.label}
           />
         ) : (
           <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>

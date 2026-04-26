@@ -158,11 +158,11 @@ export function RulesForm({ initial, hasBroker }: Props) {
       <fieldset className="grid gap-4">
         <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Session start (UTC hour, 0–23)">
-            <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="13" integer />
+          <Field label="Session start (hour, 0–23)" hint="In your local timezone. Use 22 with end = 5 for an overnight session.">
+            <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end (UTC hour, 0–23)">
-            <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="20" integer />
+          <Field label="Session end (hour, 0–23)" hint="If end ≤ start, the session is treated as overnight.">
+            <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
         <div>

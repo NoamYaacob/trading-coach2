@@ -7,6 +7,8 @@ type Props = {
   hasRules: boolean;
   /** When true, hide the "Edit rules" CTA (e.g. on Guardian which has its own). */
   hideEditRulesCta?: boolean;
+  /** Optional human-readable trading-day window label. */
+  tradingDayLabel?: string;
 };
 
 function styles(permission: ManualRiskState["permission"]) {
@@ -82,7 +84,7 @@ function detailFor(state: ManualRiskState, hasRules: boolean): string {
   return "No rule limits hit yet today. Manual Mode evaluates trades as you log them.";
 }
 
-export function ManualRiskPanel({ state, hasRules, hideEditRulesCta }: Props) {
+export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayLabel }: Props) {
   const s = styles(state.permission);
 
   const tiles = [
@@ -191,6 +193,12 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta }: Props) {
           </Link>
         )}
       </div>
+
+      {tradingDayLabel && (
+        <p className="mt-2 text-xs text-stone-500">
+          Trading day: <span className="font-medium text-stone-700">{tradingDayLabel}</span>
+        </p>
+      )}
 
       {state.permission === "LOCKED" && (
         <p className="mt-3 text-xs text-stone-500">

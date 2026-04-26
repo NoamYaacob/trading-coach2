@@ -23,7 +23,8 @@ import {
 import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
 import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
 import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
-import { computeManualRiskState, getTodayRange } from "@/lib/manual-risk-state";
+import { computeManualRiskState } from "@/lib/manual-risk-state";
+import { getTradingDayWindow } from "@/lib/trading-day";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
 import {
@@ -92,7 +93,18 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
-  const { start: startToday, end: endToday } = getTodayRange();
+
+  // Fetch RiskRules first (1 round-trip) so we can compute the user's
+  // trading-day window before querying today's trades. Everything else
+  // is parallel.
+  const riskRules = await prisma.riskRules.findUnique({
+    where: { userId: currentUser.id },
+  });
+  const tradingDay = getTradingDayWindow({
+    timezone: displayTimeZone,
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+  });
   const [
     todaySessionSummary,
     todaySessionEvents,
@@ -100,7 +112,6 @@ export default async function DashboardPage() {
     todayGuardianSessionStart,
     liveEnforcement,
     brokerCount,
-    riskRules,
     todayManualTrades,
   ] = await Promise.all([
     getTodaySessionSummary(currentUser.id),
@@ -109,9 +120,11 @@ export default async function DashboardPage() {
     getTodayGuardianSessionStart(currentUser.id),
     getLiveEnforcementState(currentUser.id),
     prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
-    prisma.riskRules.findUnique({ where: { userId: currentUser.id } }),
     prisma.manualTradeEntry.findMany({
-      where: { userId: currentUser.id, tradedAt: { gte: startToday, lt: endToday } },
+      where: {
+        userId: currentUser.id,
+        tradedAt: { gte: tradingDay.start, lt: tradingDay.end },
+      },
       orderBy: { tradedAt: "asc" },
     }),
   ]);
@@ -298,7 +311,11 @@ export default async function DashboardPage() {
             <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
           ) : (
             <>
-              <ManualRiskPanel state={manualRisk} hasRules={Boolean(riskRules)} />
+              <ManualRiskPanel
+                state={manualRisk}
+                hasRules={Boolean(riskRules)}
+                tradingDayLabel={tradingDay.label}
+              />
               <TodaySessionPanel
                 sessionState={todaySessionStateForPanel}
                 additionalTriggeredRulesCount={guardianAdditionalRulesCount}

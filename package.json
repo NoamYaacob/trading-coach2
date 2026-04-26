@@ -11,6 +11,7 @@
     "start": "next start",
     "start:railway": "prisma migrate deploy && next start -p ${PORT:-3000}",
     "lint": "eslint",
+    "test:unit": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate deploy"
