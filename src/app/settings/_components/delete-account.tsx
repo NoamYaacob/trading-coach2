@@ -73,7 +73,7 @@ function ConfirmDialog({
           className="mt-3 text-sm leading-6 text-stone-600"
         >
           This permanently deletes your account and all associated data —
-          trading history, rules, coaching profile, and connected accounts.
+          trade history, rules, journal entries, and connected accounts.
           This action cannot be undone.
         </p>
 

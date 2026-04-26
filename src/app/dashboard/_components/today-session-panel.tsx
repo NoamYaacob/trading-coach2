@@ -374,7 +374,7 @@ export function TodaySessionPanel({
                     Finish onboarding
                   </p>
                   <p className="mt-2 text-sm text-stone-600">
-                    Add your trading profile, rules, and coaching preferences first.
+                    Set your trading profile and risk rules so Guardian knows what to enforce.
                   </p>
                 </>
               ) : (

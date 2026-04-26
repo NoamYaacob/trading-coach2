@@ -2,10 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const BULLETS = [
-  "Build account-specific risk guardrails",
-  "Catch tilt, overtrading, and impulsive behavior",
-  "Turn your trading rules into daily structure",
-  "Stay consistent across volatile sessions",
+  "Define your daily limits once",
+  "Read live fills directly from your broker",
+  "Lock the session the moment a rule is hit",
+  "Optional Telegram alerts when limits trigger",
 ];
 
 export function AuthLayout({ children }: { children: ReactNode }) {
@@ -56,15 +56,15 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           {/* Middle: value proposition */}
           <div className="max-w-[360px]">
             <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.32em] text-stone-500">
-              Trading Coach
+              Risk enforcement for traders
             </p>
             <h2 className="text-4xl font-semibold leading-[1.1] tracking-[-0.04em] text-stone-50 xl:text-[2.75rem]">
-              Build discipline.
+              Stop one bad trade
               <br />
-              Protect your edge.
+              from becoming a bad day.
             </h2>
             <p className="mt-4 text-[15px] leading-7 text-stone-400">
-              Guardrails, coaching, and execution support for serious traders.
+              Broker-connected risk enforcement. Your rules, watched live, locked when limits are hit.
             </p>
 
             <ul className="mt-8 grid gap-3.5">

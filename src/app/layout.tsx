@@ -16,11 +16,11 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Trading Coach",
-    template: "%s | Trading Coach",
+    default: "Guardrail",
+    template: "%s | Guardrail",
   },
   description:
-    "Mental coaching infrastructure for traders: onboarding, access control, and Telegram bot foundations.",
+    "Broker-connected trading risk enforcement. Define your rules, watch your account live, and lock the session when limits are hit.",
 };
 
 export default function RootLayout({
