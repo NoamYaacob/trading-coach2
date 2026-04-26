@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { computeManualRiskState } from "@/lib/manual-risk-state";
 import { getTradingDayWindow } from "@/lib/trading-day";
 import { DISPLAY_TIME_ZONE_COOKIE, resolveDisplayTimeZone } from "@/lib/timezone";
+import { NextActionBanner } from "@/components/ui/next-action-banner";
 import { TradeEntryForm } from "./_components/trade-entry-form";
 
 export const metadata: Metadata = {
@@ -150,6 +151,15 @@ export default async function JournalPage() {
           </div>
         )}
 
+        {/* No-rules warning */}
+        {!riskRules && (
+          <NextActionBanner
+            variant="warning"
+            message="No risk rules configured — risk state cannot be evaluated."
+            cta={{ label: "Set rules", href: "/rules" }}
+          />
+        )}
+
         {/* Today summary */}
         <SectionCard
           title="Today"
@@ -173,6 +183,20 @@ export default async function JournalPage() {
             ))}
           </div>
         </SectionCard>
+
+        {/* Locked warning — shown before the form so user sees it before logging */}
+        {risk.permission === "LOCKED" && (
+          <NextActionBanner
+            variant="locked"
+            message={
+              <>
+                <span className="font-semibold">Session locked.</span>{" "}
+                {risk.lastBreach?.detail ?? "A daily limit was reached."} Stop trading until the session resets.
+              </>
+            }
+            cta={{ label: "View Guardian", href: "/guardian" }}
+          />
+        )}
 
         {/* Add trade — real form */}
         <SectionCard
@@ -268,12 +292,12 @@ export default async function JournalPage() {
           )}
         </SectionCard>
 
-        {/* Lock note */}
+        {/* Lock note — shown below history as a reminder */}
         {risk.permission === "LOCKED" && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm">
-            <p className="font-medium text-red-900">Manual Mode lock active</p>
+            <p className="font-medium text-red-900">Session locked</p>
             <p className="mt-0.5 text-stone-700">
-              {risk.lastBreach?.detail ?? "A daily limit was reached."} You can still log trades here for record keeping. Manual Mode lock applies inside Guardrail only — broker-level blocking requires a supported broker connection.
+              You can still log trades here for record keeping. App-level lock only — broker-level blocking requires a verified broker connection.
             </p>
           </div>
         )}

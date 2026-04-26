@@ -162,7 +162,7 @@ export function CoachingProfileForm({ initial }: Props) {
       <div className="grid gap-5 rounded-[1.35rem] border border-stone-200 bg-stone-50 p-5">
         <div>
           <p className={SECTION_TITLE}>Emotional profile</p>
-          <p className={SECTION_DESC}>Your patterns — so the coach can name them accurately.</p>
+          <p className={SECTION_DESC}>Your patterns — used to personalize bot alerts and breach messages.</p>
         </div>
 
         <label className="grid gap-2">
@@ -220,7 +220,7 @@ export function CoachingProfileForm({ initial }: Props) {
       <div className="grid gap-5 rounded-[1.35rem] border border-stone-200 bg-stone-50 p-5">
         <div>
           <p className={SECTION_TITLE}>Coaching style</p>
-          <p className={SECTION_DESC}>How you want the coach to talk to you.</p>
+          <p className={SECTION_DESC}>How you want the bot to communicate with you.</p>
         </div>
 
         <div className="grid gap-2">
@@ -257,7 +257,7 @@ export function CoachingProfileForm({ initial }: Props) {
         <div>
           <p className={SECTION_TITLE}>Personal anchors</p>
           <p className={SECTION_DESC}>
-            Short phrases the coach can echo back to you in key moments.
+            Short phrases the bot can include in alert messages.
           </p>
         </div>
 
@@ -270,7 +270,7 @@ export function CoachingProfileForm({ initial }: Props) {
             onChange={(e) => setReminderAnchorsRaw(e.target.value)}
             placeholder="Slow is smooth, Stay in your lane, One trade at a time..."
           />
-          <p className={FIELD_HINT}>Comma-separated. These can appear verbatim in coaching replies.</p>
+          <p className={FIELD_HINT}>Comma-separated. These can appear verbatim in bot messages.</p>
         </label>
       </div>
 
@@ -339,7 +339,7 @@ export function CoachingProfileForm({ initial }: Props) {
           disabled={isSaving}
           className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
         >
-          {isSaving ? "Saving…" : "Save coaching profile"}
+          {isSaving ? "Saving…" : "Save bot profile"}
         </button>
         {saved && <p className="text-xs text-emerald-600">Saved.</p>}
         {error && <p className="text-xs text-red-600">{error}</p>}

@@ -476,7 +476,7 @@ export default async function GuardianPage() {
             ))}
           </div>
           <p className="mt-4 text-xs text-stone-400">
-            Manual mode helps you follow your rules inside this app — Guardrail tracks, warns, and locks the session. Broker-level enforcement (cancel orders, flatten positions) requires a future broker integration phase.
+            Guardrail tracks limits, warns, and locks the session at the app level. Broker-level enforcement (cancel orders, flatten positions) requires verified broker support — not enabled today.
           </p>
         </SectionCard>
 

@@ -409,7 +409,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* Setup nudge — only when something still needs doing */}
-          {(!onboardingComplete || !telegramConnected) ? (
+          {(!onboardingComplete || !telegramConnected || (onboardingComplete && !riskRules)) ? (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Setup</p>
               <ul className="mt-2 grid gap-1 text-sm text-stone-700">
@@ -419,6 +419,14 @@ export default async function DashboardPage() {
                       Complete onboarding →
                     </a>{" "}
                     Set your daily limits and enable Guardian enforcement.
+                  </li>
+                )}
+                {onboardingComplete && !riskRules && (
+                  <li>
+                    <a href="/rules" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                      Set your trading rules →
+                    </a>{" "}
+                    Guardian needs rules to evaluate risk and enforce limits.
                   </li>
                 )}
                 {!telegramConnected && (

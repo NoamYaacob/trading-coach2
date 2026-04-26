@@ -9,7 +9,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { CoachingProfileForm } from "./_components/coaching-profile-form";
 
 export const metadata: Metadata = {
-  title: "Coaching — Guardrail",
+  title: "Telegram Bot — Guardrail",
 };
 
 export default async function CoachingPage() {
@@ -40,13 +40,13 @@ export default async function CoachingPage() {
 
   return (
     <AppShell
-      eyebrow="Coaching"
-      title="Coaching profile"
-      description="Tell the coach about yourself. The more honest you are, the more useful it gets."
+      eyebrow="Alerts · Telegram bot"
+      title="Telegram bot profile."
+      description="Optional. Customize how the Telegram bot communicates with you. These settings shape bot messaging only — they have no effect on Guardian rule enforcement or risk state."
     >
       <SectionCard
-        title="Your coaching profile"
-        description="Used by the Telegram coach to personalize responses and interventions."
+        title="Bot profile"
+        description="The bot uses this to personalize alert tone and context. Guardian enforces your rules regardless of what is set here."
       >
         <CoachingProfileForm initial={initial} />
       </SectionCard>
