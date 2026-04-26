@@ -6,7 +6,32 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getVisibleAdapters } from "@/lib/brokers/registry";
+import type {
+  BrokerCapabilityKey,
+  BrokerCapabilityStatus,
+} from "@/lib/brokers/types";
 import { AccountCard } from "./_components/account-card";
+
+function statusLabel(status: BrokerCapabilityStatus): string {
+  switch (status) {
+    case "available":      return "Available";
+    case "requires_oauth": return "OAuth required";
+    case "coming_soon":    return "Coming soon";
+    case "unknown":        return "To be verified";
+    case "not_supported":  return "Not available";
+  }
+}
+
+function statusClass(status: BrokerCapabilityStatus): string {
+  switch (status) {
+    case "available":      return "text-emerald-700";
+    case "requires_oauth": return "text-amber-700";
+    case "coming_soon":    return "text-stone-500";
+    case "unknown":        return "text-stone-500";
+    case "not_supported":  return "text-stone-400";
+  }
+}
 
 export const metadata: Metadata = {
   title: "Broker Connections",
@@ -60,60 +85,18 @@ export default async function AccountsPage() {
 
   const hasTradovate = accounts.some((a) => a.platform === "tradovate");
 
-  const capabilityTable: {
-    capability: string;
-    tradovate: { label: string; available: boolean };
-    tradingview: { label: string; available: boolean };
-    manual: { label: string; available: boolean };
-  }[] = [
-    {
-      capability: "Read balance & equity",
-      tradovate: { label: "Available", available: true },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
-    {
-      capability: "Read open positions",
-      tradovate: { label: "Available", available: true },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
-    {
-      capability: "Read P&L (live fills)",
-      tradovate: { label: "Available", available: true },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
-    {
-      capability: "App-level session lockout",
-      tradovate: { label: "Available", available: true },
-      tradingview: { label: "Available", available: true },
-      manual: { label: "Available", available: true },
-    },
-    {
-      capability: "Telegram enforcement alerts",
-      tradovate: { label: "Available", available: true },
-      tradingview: { label: "Available", available: true },
-      manual: { label: "Available", available: true },
-    },
-    {
-      capability: "Cancel open orders at broker",
-      tradovate: { label: "Coming soon", available: false },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
-    {
-      capability: "Auto-flatten positions (kill switch)",
-      tradovate: { label: "Coming soon", available: false },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
-    {
-      capability: "Broker-level order blocking",
-      tradovate: { label: "Coming soon", available: false },
-      tradingview: { label: "Coming soon", available: false },
-      manual: { label: "Not available", available: false },
-    },
+  const adapters = getVisibleAdapters();
+  const capabilityKeys: BrokerCapabilityKey[] = [
+    "readAccount",
+    "readBalance",
+    "readPositions",
+    "readOrders",
+    "readPnL",
+    "readExecutions",
+    "cancelOrders",
+    "flattenPositions",
+    "brokerLevelLockout",
+    "placeOrderBlock",
   ];
 
   return (
@@ -184,42 +167,47 @@ export default async function AccountsPage() {
           </>
         )}
 
-        {/* Broker capability table */}
+        {/* Broker capability table — driven by the broker registry. */}
         <SectionCard
           title="Broker capabilities"
-          description="What Guardrail can currently do depends on which broker is connected. Broker-level order blocking and auto-flatten are not yet implemented."
+          description="What each broker can do today. Statuses are sourced from the broker adapter registry — they update automatically as integrations land."
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
                   <th className="pb-3 pr-6">Capability</th>
-                  <th className="pb-3 pr-6">Tradovate</th>
-                  <th className="pb-3 pr-6">TradingView</th>
-                  <th className="pb-3">Manual</th>
+                  {adapters.map((a) => (
+                    <th key={a.provider} className="pb-3 pr-6">
+                      {a.displayName}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {capabilityTable.map((row) => (
-                  <tr key={row.capability}>
-                    <td className="py-3 pr-6 font-medium text-stone-800">{row.capability}</td>
-                    <td className="py-3 pr-6">
-                      <span className={`text-xs font-semibold ${row.tradovate.available ? "text-emerald-700" : "text-stone-400"}`}>
-                        {row.tradovate.label}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-6">
-                      <span className={`text-xs font-semibold ${row.tradingview.available ? "text-emerald-700" : "text-stone-400"}`}>
-                        {row.tradingview.label}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className={`text-xs font-semibold ${row.manual.available ? "text-emerald-700" : "text-stone-400"}`}>
-                        {row.manual.label}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {capabilityKeys.map((key) => {
+                  // All adapters expose the same key set, so use the first
+                  // adapter's label as the row label.
+                  const label = adapters[0].getCapabilities()[key].label;
+                  return (
+                    <tr key={key}>
+                      <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
+                      {adapters.map((a) => {
+                        const cap = a.getCapabilities()[key];
+                        return (
+                          <td key={a.provider} className="py-3 pr-6">
+                            <span
+                              className={`text-xs font-semibold ${statusClass(cap.status)}`}
+                              title={cap.note ?? undefined}
+                            >
+                              {statusLabel(cap.status)}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
