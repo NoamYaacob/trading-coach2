@@ -41,6 +41,8 @@ export default async function AlertsPage() {
       badgeCls: "bg-emerald-100 text-emerald-800",
       detail: "Alert banners on the Dashboard and Guardian pages. Always active — no configuration needed.",
       enabled: true,
+      accent: false,
+      action: null as { href: string; label: string } | null,
     },
     {
       label: "Telegram",
@@ -48,9 +50,10 @@ export default async function AlertsPage() {
       statusCls: telegramReady ? "text-emerald-700" : "text-amber-700",
       badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
       detail: telegramReady
-        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian lockout alerts and enforcement notifications are active.`
-        : "Connect Telegram to receive Guardian lockout alerts and enforcement notifications.",
+        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian lockout alerts and state-change notifications are active.`
+        : "Connect Telegram to receive Guardian lockout alerts and state-change notifications.",
       enabled: telegramReady,
+      accent: telegramReady,
       action: telegramReady ? null : { href: "/onboarding", label: "Connect Telegram" },
     },
     {
@@ -60,6 +63,8 @@ export default async function AlertsPage() {
       badgeCls: "bg-stone-100 text-stone-500",
       detail: "Email alerts for lockout events and daily summaries. Not yet available.",
       enabled: false,
+      accent: false,
+      action: null as { href: string; label: string } | null,
     },
   ];
 
@@ -129,7 +134,13 @@ export default async function AlertsPage() {
             {channels.map((ch) => (
               <div
                 key={ch.label}
-                className={`rounded-2xl border px-5 py-4 ${ch.enabled ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-70"}`}
+                className={`rounded-2xl border px-5 py-4 ${
+                  ch.accent
+                    ? "border-emerald-200 bg-emerald-50"
+                    : ch.enabled
+                      ? "border-stone-200 bg-white"
+                      : "border-stone-200 bg-stone-50 opacity-70"
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold text-stone-950">{ch.label}</p>
@@ -154,7 +165,15 @@ export default async function AlertsPage() {
         {/* Alert triggers */}
         <SectionCard
           title="Alert triggers"
-          description="Each trigger is active only when its rule is configured. Edit rules to change which alerts fire."
+          description="Each trigger is active only when its rule is configured."
+          actions={
+            <a
+              href="/rules"
+              className="text-xs font-medium text-stone-500 underline-offset-2 transition hover:text-stone-950 hover:underline"
+            >
+              Edit rules →
+            </a>
+          }
         >
           <div className="divide-y divide-stone-100">
             {triggers.map((t) => (

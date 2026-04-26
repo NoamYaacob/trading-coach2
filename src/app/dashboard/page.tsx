@@ -437,6 +437,11 @@ export default async function DashboardPage() {
           <SectionCard
             title="Log a trade or event"
             description="Quick manual entry — feeds today's activity and the post-session review."
+            actions={
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                Manual fallback
+              </span>
+            }
           >
             <ManualEventForm />
           </SectionCard>
@@ -458,11 +463,11 @@ function QuickAction({
   return (
     <a
       href={href}
-      className="group rounded-2xl border border-stone-200 bg-white px-5 py-4 transition hover:border-stone-950 hover:shadow-[0_8px_24px_-12px_rgba(28,25,23,0.18)]"
+      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)]"
     >
       <p className="text-sm font-semibold text-stone-950">{title}</p>
-      <p className="mt-1 text-xs text-stone-500">{description}</p>
-      <p className="mt-3 text-xs font-medium text-stone-400 group-hover:text-stone-700">→</p>
+      <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
+      <p className="mt-4 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700">→</p>
     </a>
   );
 }

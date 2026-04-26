@@ -154,6 +154,11 @@ export default async function JournalPage() {
         <SectionCard
           title="Today"
           description="Calculated from journal entries dated today."
+          actions={
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+              Manual fallback
+            </span>
+          }
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             {summaryTiles.map((t) => (
@@ -187,9 +192,10 @@ export default async function JournalPage() {
           }
         >
           {allEntries.length === 0 ? (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-              <p className="font-medium text-stone-800">No trades logged yet</p>
-              <p className="mt-1">Use the form above to add your first trade.</p>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-6 py-8 text-center">
+              <p className="text-base font-semibold text-stone-800">No trades logged yet</p>
+              <p className="mt-2 text-sm text-stone-600">Log your first trade above to see risk state update in real time.</p>
+              <p className="mt-3 text-xs text-stone-400">Each trade counts toward today&rsquo;s P&amp;L, trade count, and loss streak.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

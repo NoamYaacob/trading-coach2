@@ -125,7 +125,7 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${s.chip}`}>
           {s.label}
         </span>
-        <span className="text-xs text-stone-500">Manual Mode · App-level enforcement</span>
+        <span className="text-xs text-stone-500">Manual fallback · App-level only</span>
       </div>
 
       <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
@@ -178,11 +178,11 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
       {/* Footer note + CTAs */}
       <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/60 pt-4 text-xs text-stone-500">
         <span>
-          Manual Mode calculates risk from trades logged in{" "}
+          Trades logged in{" "}
           <Link href="/journal" className="font-medium text-stone-700 underline-offset-2 hover:underline">
             Journal
-          </Link>
-          .
+          </Link>{" "}
+          are the source of truth for this session.
         </span>
         {!hideEditRulesCta && (
           <Link
@@ -202,7 +202,7 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
 
       {state.permission === "LOCKED" && (
         <p className="mt-3 text-xs text-stone-500">
-          Manual Mode lock applies inside Guardrail only. Broker-level blocking requires a supported broker connection.
+          Lock applies inside Guardrail only — broker-side blocking requires a supported connection.
         </p>
       )}
     </section>

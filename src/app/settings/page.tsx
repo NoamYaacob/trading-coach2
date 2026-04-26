@@ -140,17 +140,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </SectionCard>
 
         {/* Danger zone */}
-        <SectionCard
-          title="Danger zone"
-          description="Irreversible actions that affect your entire account."
-        >
+        <section className="rounded-[1.75rem] border border-red-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]">
+          <div className="mb-5 flex items-start gap-3">
+            <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-red-100 flex items-center justify-center">
+              <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-red-900">Danger zone</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">Irreversible actions that affect your entire account.</p>
+            </div>
+          </div>
           <div className="rounded-xl border border-red-100 bg-red-50/50 p-5">
             <h3 className="text-sm font-semibold text-red-900">Delete account</h3>
             <div className="mt-3">
               <DeleteAccount />
             </div>
           </div>
-        </SectionCard>
+        </section>
       </div>
     </AppShell>
   );

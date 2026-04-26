@@ -103,10 +103,10 @@ export function RulesForm({ initial, hasBroker }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-8">
+    <form onSubmit={handleSubmit} className="grid gap-5">
 
       {/* ── Risk budget ─────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Account &amp; risk budget</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
@@ -125,7 +125,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Trade limits ────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Trade limits</legend>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Max trades per day">
@@ -141,7 +141,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Symbols ─────────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Allowed symbols</legend>
         <Field label="Symbols" hint="Comma-separated. Leave blank to allow any symbol.">
           <input
@@ -155,7 +155,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Session start (hour, 0–23)" hint="In your local timezone. Use 22 with end = 5 for an overnight session.">
@@ -202,7 +202,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── On-breach actions ───────────────────────────────────────────── */}
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">On breach</legend>
         <p className="text-xs text-stone-500">
           {hasBroker
