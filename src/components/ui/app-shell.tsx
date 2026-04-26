@@ -32,6 +32,9 @@ export async function AppShell({
         <nav className="flex items-center gap-2 text-sm text-stone-600">
           {user ? (
             <>
+              <Link href="/dashboard" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
+                Dashboard
+              </Link>
               <Link href="/guardian" className="rounded-full px-4 py-2 transition hover:text-stone-950">
                 Guardian
               </Link>
@@ -49,9 +52,6 @@ export async function AppShell({
               </Link>
               <Link href="/settings" className="rounded-full px-4 py-2 transition hover:text-stone-950">
                 Settings
-              </Link>
-              <Link href="/dashboard" className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 transition hover:bg-stone-800">
-                Dashboard
               </Link>
               <LogoutButton />
             </>

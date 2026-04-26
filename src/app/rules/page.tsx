@@ -6,200 +6,94 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 
 export const metadata: Metadata = {
   title: "Rules — Guardrail",
 };
 
-function ruleRow(label: string, value: string | null, placeholder = "Not set") {
-  return { label, value: value ?? placeholder };
+function decToString(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object" && v !== null && "toString" in v) {
+    return (v as { toString: () => string }).toString();
+  }
+  return String(v);
+}
+
+function intToString(v: number | null | undefined): string {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+function parseTradingDays(v: string | null | undefined): string[] {
+  if (!v) return [];
+  return v
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter((s) => s.length > 0);
 }
 
 export default async function RulesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, connectedAccounts] = await Promise.all([
+  const [riskRules, brokerCount] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
-    prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true },
-      select: { id: true, platform: true, label: true },
-    }),
+    prisma.connectedAccount.count({ where: { userId: user.id, isActive: true } }),
   ]);
+  const hasBroker = brokerCount > 0;
 
-  const hasBroker = connectedAccounts.length > 0;
-
-  const riskRows = [
-    ruleRow("Account size", riskRules?.accountSize ? `$${riskRules.accountSize}` : null),
-    ruleRow(
-      "Daily loss limit",
-      riskRules?.maxDailyLoss ? `$${riskRules.maxDailyLoss}` : null,
-    ),
-    ruleRow(
-      "Max risk per trade",
-      riskRules?.maxRiskPerTrade ? `$${riskRules.maxRiskPerTrade}` : null,
-    ),
-    ruleRow("Max trades per day", riskRules?.maxTradesPerDay?.toString() ?? null),
-    ruleRow(
-      "Stop after consecutive losses",
-      riskRules?.stopAfterLosses?.toString() ?? null,
-    ),
-  ];
+  const initial: RulesFormValues = {
+    accountSize: decToString(riskRules?.accountSize),
+    maxDailyLoss: decToString(riskRules?.maxDailyLoss),
+    dailyProfitTarget: decToString(riskRules?.dailyProfitTarget),
+    maxRiskPerTrade: decToString(riskRules?.maxRiskPerTrade ?? riskRules?.riskPerTrade),
+    maxTradesPerDay: intToString(riskRules?.maxTradesPerDay),
+    stopAfterLosses: intToString(riskRules?.stopAfterLosses),
+    maxContracts: intToString(riskRules?.maxContracts),
+    allowedSymbols: riskRules?.allowedSymbols ?? "",
+    sessionStartHour: intToString(riskRules?.sessionStartHour),
+    sessionEndHour: intToString(riskRules?.sessionEndHour),
+    tradingDays: parseTradingDays(riskRules?.tradingDays),
+    newsLockoutEnabled: riskRules?.newsLockoutEnabled ?? false,
+    onBreachWarn: riskRules?.onBreachWarn ?? true,
+    onBreachAppLock: riskRules?.onBreachAppLock ?? true,
+    onBreachCancelOrders: riskRules?.onBreachCancelOrders ?? false,
+    onBreachFlatten: riskRules?.onBreachFlatten ?? false,
+  };
 
   return (
     <AppShell
       eyebrow="Risk Rules"
-      title="Your protection rules."
-      description="Define the hard limits that Guardrail enforces every session. Rules are evaluated on every trade event — the session locks automatically when a limit is crossed."
+      title="Edit your protection rules."
+      description="Define the limits Guardrail enforces. Rules are evaluated on every trade event the system sees. Changes save immediately and apply to the next event."
       actions={
         <Link
           href="/guardian"
-          className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
-          Edit in Guardian
+          View enforcement status
         </Link>
       }
     >
       <div className="grid gap-6">
 
-        {/* Enforcement mode */}
-        <SectionCard
-          title="Enforcement mode"
-          description="How Guardrail responds when a rule is crossed."
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className={`rounded-2xl border px-5 py-4 ${hasBroker ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-stone-50"}`}>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                App-level lockout
-              </p>
-              <p className={`mt-1 text-sm font-medium ${hasBroker ? "text-emerald-800" : "text-stone-700"}`}>
-                {hasBroker ? "Active" : "Active (manual mode)"}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                Guardrail marks the session stopped and warns you through Telegram. You stop
-                trading voluntarily — or connect a broker for automatic enforcement.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 opacity-60">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Broker-level order blocking
-              </p>
-              <p className="mt-1 text-sm font-medium text-stone-500">
-                Coming soon
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                Auto-cancellation of open orders and position flattening via broker API. Not yet
-                implemented — enforcement is currently app-level only.
-              </p>
-              <Link
-                href="/accounts"
-                className="mt-3 inline-block text-xs font-medium text-stone-700 underline-offset-2 hover:underline"
-              >
-                View broker capabilities →
-              </Link>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* Risk limits */}
-        <SectionCard
-          title="Risk limits"
-          description="Numeric thresholds evaluated on every trade event."
-        >
-          {riskRules ? (
-            <div className="divide-y divide-stone-100">
-              {riskRows.map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between py-3 text-sm"
-                >
-                  <span className="text-stone-600">{label}</span>
-                  <span
-                    className={
-                      value === "Not set"
-                        ? "text-stone-400"
-                        : "font-medium text-stone-950"
-                    }
-                  >
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-              <p className="text-sm text-stone-600">
-                No rules configured.{" "}
-                <Link
-                  href="/onboarding"
-                  className="font-medium text-stone-950 underline-offset-2 hover:underline"
-                >
-                  Complete onboarding
-                </Link>{" "}
-                to set your daily limits.
-              </p>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* On-breach behaviour */}
-        <SectionCard
-          title="On breach"
-          description="What happens the moment a rule is crossed."
-        >
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl bg-stone-50 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Session status
-              </p>
-              <p className="mt-2 text-sm font-medium text-stone-950">
-                Locked
-              </p>
-              <p className="mt-1 text-sm text-stone-600">
-                The session is marked stopped. No new trades are counted toward limits.
-              </p>
-            </div>
-            <div className="rounded-2xl bg-stone-50 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Telegram alert
-              </p>
-              <p className="mt-2 text-sm font-medium text-stone-950">
-                Sent immediately
-              </p>
-              <p className="mt-1 text-sm text-stone-600">
-                You receive the reason, rule that triggered, and your reset window.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-dashed border-stone-200 bg-white px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Kill switch
-              </p>
-              <p className="mt-2 text-sm font-medium text-stone-400">
-                Coming soon
-              </p>
-              <p className="mt-1 text-sm text-stone-600">
-                Automatic order cancellation and position flattening via broker API. Not yet
-                implemented — session lock is app-level only.
-              </p>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* Rule protection notice */}
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-          <p className="font-medium text-amber-900">Rule change protection</p>
-          <p className="mt-1 text-stone-700">
-            Rule changes during an active session are intentionally limited. To prevent mid-session
-            edits under pressure, use{" "}
-            <Link
-              href="/guardian"
-              className="font-medium text-stone-950 underline-offset-2 hover:underline"
-            >
-              Guardian
-            </Link>{" "}
-            to manage your session state before editing limits.
+        {/* Mode banner */}
+        <div className={`rounded-2xl border px-5 py-4 text-sm ${hasBroker ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+          <p className={`font-semibold ${hasBroker ? "text-emerald-900" : "text-amber-900"}`}>
+            {hasBroker ? "Broker connected · App-level enforcement" : "Manual mode · App-level enforcement only"}
+          </p>
+          <p className="mt-0.5 text-stone-700">
+            Manual mode helps you follow your rules inside this app — Guardrail tracks, warns, and locks the session. Broker-level enforcement (cancel orders, flatten positions) requires a future broker integration phase.
           </p>
         </div>
+
+        {/* Edit form */}
+        <SectionCard
+          title="Rule configuration"
+          description="All fields are optional. Empty values mean no enforcement for that rule."
+        >
+          <RulesForm initial={initial} hasBroker={hasBroker} />
+        </SectionCard>
 
       </div>
     </AppShell>

@@ -325,49 +325,89 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        {/* Session tools */}
+        {/* Quick actions */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Session tools
+            Quick actions
           </p>
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Log a trade */}
-            <SectionCard
-              title="Log a trade"
-              description="Record a trade or session event — feeds today's activity and the post-session review."
-            >
-              <ManualEventForm />
-            </SectionCard>
-
-            {/* Setup status — only when something still needs doing */}
-            {(!onboardingComplete || !telegramConnected) ? (
-              <SectionCard
-                title="Setup status"
-                description="Complete these steps to enable Guardian enforcement."
-              >
-                <dl className="divide-y divide-stone-100 text-sm">
-                  {!onboardingComplete ? (
-                    <div className="py-3">
-                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Guardian rules</dt>
-                      <dd className="mt-1.5 font-medium text-stone-950">Not configured.</dd>
-                      <p className="mt-1 text-stone-500">
-                        <a href="/onboarding" className="font-medium text-stone-950 underline-offset-2 hover:underline">Complete onboarding</a> to set your daily limits and enable enforcement.
-                      </p>
-                    </div>
-                  ) : null}
-                  {!telegramConnected ? (
-                    <div className="py-3">
-                      <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Telegram alerts</dt>
-                      <dd className="mt-1.5 font-medium text-stone-950">Not connected.</dd>
-                      <p className="mt-1 text-stone-500">Connect Telegram to receive Guardian lockout alerts and enforcement notifications.</p>
-                    </div>
-                  ) : null}
-                </dl>
-              </SectionCard>
-            ) : null}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <QuickAction
+              href="/guardian"
+              title="Open Guardian"
+              description="Permission status and active rules."
+            />
+            <QuickAction
+              href="/rules"
+              title="Edit rules"
+              description="Configure limits and on-breach actions."
+            />
+            <QuickAction
+              href="/journal"
+              title="Add trade"
+              description="Log a trade or session event."
+            />
+            <QuickAction
+              href="/accounts"
+              title="Connect broker"
+              description="Enable live enforcement."
+            />
           </div>
+
+          {/* Setup nudge — only when something still needs doing */}
+          {(!onboardingComplete || !telegramConnected) ? (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Setup</p>
+              <ul className="mt-2 grid gap-1 text-sm text-stone-700">
+                {!onboardingComplete && (
+                  <li>
+                    <a href="/onboarding" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                      Complete onboarding →
+                    </a>{" "}
+                    Set your daily limits and enable Guardian enforcement.
+                  </li>
+                )}
+                {!telegramConnected && (
+                  <li>
+                    <a href="/alerts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                      Connect Telegram →
+                    </a>{" "}
+                    Receive Guardian lockout alerts and enforcement notifications.
+                  </li>
+                )}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Inline manual entry — kept compact */}
+          <SectionCard
+            title="Log a trade or event"
+            description="Quick manual entry — feeds today's activity and the post-session review."
+          >
+            <ManualEventForm />
+          </SectionCard>
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function QuickAction({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="group rounded-2xl border border-stone-200 bg-white px-5 py-4 transition hover:border-stone-950 hover:shadow-[0_8px_24px_-12px_rgba(28,25,23,0.18)]"
+    >
+      <p className="text-sm font-semibold text-stone-950">{title}</p>
+      <p className="mt-1 text-xs text-stone-500">{description}</p>
+      <p className="mt-3 text-xs font-medium text-stone-400 group-hover:text-stone-700">→</p>
+    </a>
   );
 }

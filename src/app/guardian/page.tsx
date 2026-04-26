@@ -1,33 +1,28 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { GuardianControls } from "@/app/guardian/_components/guardian-controls";
 import { RecentSessionEvents } from "@/app/guardian/_components/recent-session-events";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getGuardianSnapshot, getTodayGuardianSessionStart, deriveTodaySessionState } from "@/lib/guardian";
-import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
-import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
 import {
-  buildBrokerIntegrationSnapshot,
-  derivePlatformConnectionProgression,
-} from "@/lib/platform-integration";
-import { humanizePlannedCapabilities } from "@/lib/platform-integration-plans";
+  getGuardianSnapshot,
+  getTodayGuardianSessionStart,
+  deriveTodaySessionState,
+} from "@/lib/guardian";
+import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
 import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
-import { RuleNoticeList } from "@/components/ui/rule-notice-card";
 import { getTodaySessionEvents } from "@/lib/session-log";
 import {
   getSelectedEconomicCalendarSnapshot,
-  getNextHighImpactEconomicEvent,
   getCurrentPreNewsPolicy,
-  buildEconomicCalendarVisibility,
   getEconomicCalendarSelection,
 } from "@/lib/economic-calendar";
 import {
@@ -40,27 +35,47 @@ import {
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
-  title: "Trading Guardian",
+  title: "Guardian — Guardrail",
 };
 
-function formatGuardianDate(value: Date | null, timeZone: string) {
-  if (!value) {
-    return "Not scheduled";
-  }
+type Permission = "SAFE" | "WARNING" | "LOCKED" | "GUARDIAN_OFF";
 
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
+function permissionStyles(p: Permission) {
+  switch (p) {
+    case "LOCKED":
+      return {
+        shell: "border-red-300 bg-red-50",
+        chip: "bg-red-600 text-white",
+        accent: "text-red-700",
+        label: "Locked",
+      };
+    case "WARNING":
+      return {
+        shell: "border-amber-300 bg-amber-50",
+        chip: "bg-amber-500 text-white",
+        accent: "text-amber-700",
+        label: "Warning",
+      };
+    case "GUARDIAN_OFF":
+      return {
+        shell: "border-stone-300 bg-stone-50",
+        chip: "bg-stone-600 text-white",
+        accent: "text-stone-700",
+        label: "Guardian off",
+      };
+    default:
+      return {
+        shell: "border-emerald-200 bg-emerald-50",
+        chip: "bg-emerald-600 text-white",
+        accent: "text-emerald-700",
+        label: "Safe",
+      };
+  }
 }
 
 export default async function GuardianPage() {
   const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    redirect("/login");
-  }
+  if (!currentUser) redirect("/login");
 
   const [
     guardian,
@@ -68,6 +83,8 @@ export default async function GuardianPage() {
     todayGuardianSessionStart,
     todaySessionEvents,
     liveEnforcement,
+    riskRules,
+    brokerCount,
   ] = await Promise.all([
     getGuardianSnapshot(currentUser.id),
     prisma.user.findUnique({
@@ -80,56 +97,22 @@ export default async function GuardianPage() {
     getTodayGuardianSessionStart(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getLiveEnforcementState(currentUser.id),
+    prisma.riskRules.findUnique({ where: { userId: currentUser.id } }),
+    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
   ]);
+
   const cookieStore = await cookies();
   const displayTimeZone = resolveDisplayTimeZone({
     onboardingTimeZone: user?.traderProfile?.timezone,
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
-  const economicCalendarSelection = getEconomicCalendarSelection(
-    user?.coachingPreferences,
-  );
+  const economicCalendarSelection = getEconomicCalendarSelection(user?.coachingPreferences);
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
     user?.coachingPreferences,
   );
-  const onboardingComplete = Boolean(user?.traderProfile);
-  const nextHighImpactEconomicEvent = getNextHighImpactEconomicEvent(
-    economicCalendarSnapshot,
-  );
+  void economicCalendarSelection;
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
-  const economicCalendarVisibility = buildEconomicCalendarVisibility({
-    snapshot: economicCalendarSnapshot,
-    policyStatus: economicCalendarPolicy,
-    nextHighImpactEvent: nextHighImpactEconomicEvent,
-    timeZone: displayTimeZone,
-    scenario: economicCalendarSelection.stubScenario,
-  });
-  const additionalTriggeredRuleLabels = guardian.evaluation.triggeredRuleLabels.slice(1);
-  const recentSessionEvents = getRecentTodayActivityItems(
-    buildTodayActivityTimeline({
-      sessionStart: todayGuardianSessionStart,
-      guardian,
-      sessionEvents: todaySessionEvents,
-    }),
-    5,
-  );
-  const brokerIntegration = buildBrokerIntegrationSnapshot({
-    guardian,
-    recentSessionEvents: todaySessionEvents.map((event) => ({
-      message: event.message,
-      detectedIntent: event.detectedIntent,
-      traderState: event.traderState,
-      createdAt: event.createdAt,
-    })),
-  });
-  const connectionProgression = derivePlatformConnectionProgression({
-    guardian,
-    brokerIntegration,
-  });
-  const plannedCapabilities = brokerIntegration.integrationPlan
-    ? humanizePlannedCapabilities(brokerIntegration.integrationPlan.plannedCapabilities)
-    : [];
-
+  const onboardingComplete = Boolean(user?.traderProfile);
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete,
     sessionStart: todayGuardianSessionStart,
@@ -151,372 +134,262 @@ export default async function GuardianPage() {
       manualSignals: manualEventSignals,
     }),
   );
-  const guardianNotices = [
-    ...violationFeed.warningViolations.filter(
-      (v) =>
-        v.ruleId !== "guardian_disabled" &&
-        v.ruleId !== "no_trade_before_major_news" &&
-        v.ruleId !== "session_not_started",
-    ),
-    ...violationFeed.triggeredViolations.filter(
-      (v) => v.ruleId === "manual_rule_breach",
-    ),
+
+  const recentSessionEvents = getRecentTodayActivityItems(
+    buildTodayActivityTimeline({
+      sessionStart: todayGuardianSessionStart,
+      guardian,
+      sessionEvents: todaySessionEvents,
+    }),
+    5,
+  );
+
+  const hasBroker = brokerCount > 0;
+  const guardianOff = !guardian.evaluation.guardianActive;
+  const isLocked =
+    guardian.evaluation.lockoutActive ||
+    liveEnforcement?.riskState === "STOPPED";
+  const hasWarnings =
+    violationFeed.warningViolations.length > 0 ||
+    (liveEnforcement &&
+      ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier));
+
+  const permission: Permission = guardianOff
+    ? "GUARDIAN_OFF"
+    : isLocked
+      ? "LOCKED"
+      : hasWarnings
+        ? "WARNING"
+        : "SAFE";
+
+  const styles = permissionStyles(permission);
+
+  const headline = guardianOff
+    ? "Guardian is off — no rules are enforcing."
+    : isLocked
+      ? "Trading is locked for today."
+      : hasWarnings
+        ? "Trading is open — limits are close."
+        : "Trading is open. All limits clear.";
+
+  const detail = guardianOff
+    ? "Turn Guardian back on to resume rule enforcement."
+    : isLocked
+      ? guardian.evaluation.primaryReasonLabel
+      : hasWarnings
+        ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
+        : "No rule limits have been hit. Guardian is monitoring every trade event.";
+
+  const triggeredLabels = guardian.evaluation.triggeredRuleLabels;
+
+  // Active rules summary derived from RiskRules (preferred) with GuardianProfile fallback.
+  const activeRules: Array<{ label: string; value: string }> = [];
+  const maxDailyLoss = riskRules?.maxDailyLoss ?? guardian.profile.maxDailyLoss;
+  const maxTradesPerDay = riskRules?.maxTradesPerDay ?? guardian.profile.maxTradesPerDay;
+  const stopAfterLosses =
+    riskRules?.stopAfterLosses ?? guardian.profile.stopAfterConsecutiveLosses;
+  const dailyProfitTarget =
+    riskRules?.dailyProfitTarget ?? guardian.profile.dailyProfitTarget;
+
+  if (maxDailyLoss != null) activeRules.push({ label: "Daily loss limit", value: `$${maxDailyLoss}` });
+  if (dailyProfitTarget != null) activeRules.push({ label: "Daily profit target", value: `$${dailyProfitTarget}` });
+  if (riskRules?.maxRiskPerTrade != null) activeRules.push({ label: "Max risk per trade", value: `$${riskRules.maxRiskPerTrade}` });
+  if (maxTradesPerDay != null) activeRules.push({ label: "Max trades per day", value: String(maxTradesPerDay) });
+  if (stopAfterLosses != null) activeRules.push({ label: "Stop after losses", value: String(stopAfterLosses) });
+  if (riskRules?.maxContracts != null) activeRules.push({ label: "Max contracts", value: String(riskRules.maxContracts) });
+  if (riskRules?.allowedSymbols) activeRules.push({ label: "Allowed symbols", value: riskRules.allowedSymbols });
+  if (riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null) {
+    activeRules.push({
+      label: "Session hours (UTC)",
+      value: `${riskRules.sessionStartHour}:00 – ${riskRules.sessionEndHour}:00`,
+    });
+  }
+  if (riskRules?.tradingDays) activeRules.push({ label: "Trading days", value: riskRules.tradingDays });
+  if (riskRules?.newsLockoutEnabled) activeRules.push({ label: "News lockout", value: "Enabled" });
+
+  // On-breach actions configured by the user
+  const breachActions: Array<{ label: string; available: boolean; on: boolean }> = [
+    { label: "Warn (in-app + Telegram)", available: true, on: riskRules?.onBreachWarn ?? true },
+    { label: "Lock trading for the day (app-level)", available: true, on: riskRules?.onBreachAppLock ?? true },
+    { label: "Cancel open orders (broker)", available: false, on: riskRules?.onBreachCancelOrders ?? false },
+    { label: "Flatten positions (kill switch)", available: false, on: riskRules?.onBreachFlatten ?? false },
   ];
 
   return (
     <AppShell
       eyebrow="Guardian · Enforcement"
-      title="Risk enforcement status."
-      description="Guardian enforces your rules on every trade event. When a limit is crossed, the session locks — automatically, with no override path."
+      title="Trading permission."
+      description="The current permission state, active rules, and what happens on breach. Edit limits in Rules."
+      actions={
+        <Link
+          href="/rules"
+          className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          Edit rules
+        </Link>
+      }
     >
       <div className="grid gap-6">
-        {liveEnforcement ? (
-          /* ── LIVE ENFORCEMENT PATH ─────────────────────────────────────── */
-          <>
-            {/* Primary state hero — live enforcement drives everything */}
-            <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
 
-            {/* Recent broker events */}
-            <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
+        {/* ── Permission hero — answers Safe / Warning / Locked ─────────── */}
+        <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${styles.chip}`}>
+              {styles.label}
+            </span>
+            <span className="text-xs text-stone-500">
+              {hasBroker ? "Broker connected · App-level enforcement" : "Manual mode · App-level enforcement"}
+            </span>
+          </div>
+          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detail}</p>
 
-            {/* Active rules on the live account — managed from the Accounts page */}
-            <SectionCard
-              title="Active rules"
-              description={`Rules enforced by Guardrail on ${liveEnforcement.accountLabel}. Manage limits from the Accounts page.`}
-            >
-              <div className="grid gap-4">
-                {(liveEnforcement.rules.maxDailyLoss !== null ||
-                  liveEnforcement.rules.maxTradesPerDay !== null ||
-                  liveEnforcement.rules.stopAfterLosses !== null ||
-                  liveEnforcement.rules.riskPerTrade !== null ||
-                  liveEnforcement.rules.allowedStartHour !== null) ? (
-                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-stone-700">
-                    {liveEnforcement.rules.maxDailyLoss !== null && (
-                      <span>Max daily loss: {liveEnforcement.rules.maxDailyLoss.toFixed(2)}</span>
-                    )}
-                    {liveEnforcement.rules.maxTradesPerDay !== null && (
-                      <span>Max trades / day: {liveEnforcement.rules.maxTradesPerDay}</span>
-                    )}
-                    {liveEnforcement.rules.stopAfterLosses !== null && (
-                      <span>Stop after losses: {liveEnforcement.rules.stopAfterLosses}</span>
-                    )}
-                    {liveEnforcement.rules.riskPerTrade !== null && (
-                      <span>Risk / trade: {liveEnforcement.rules.riskPerTrade.toFixed(2)}</span>
-                    )}
-                    {liveEnforcement.rules.allowedStartHour !== null &&
-                     liveEnforcement.rules.allowedEndHour !== null && (
-                      <span>
-                        Hours: {liveEnforcement.rules.allowedStartHour}:00–
-                        {liveEnforcement.rules.allowedEndHour}:00 UTC
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-stone-500">
-                    No limits configured yet. Add rules in the{" "}
-                    <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                      Accounts
-                    </a>{" "}
-                    page.
-                  </p>
-                )}
-                <p className="text-xs text-stone-400">
-                  Guardrail enforces these limits internally. Broker-level order blocking is not yet
-                  available — see enforcement scope in the panel above.
-                </p>
-              </div>
-            </SectionCard>
-          </>
-        ) : (
-          /* ── MANUAL / DEMO FALLBACK PATH ───────────────────────────────── */
-          <>
-            {/* Current state hero — manual guardian */}
-            <section
-              className={`rounded-[1.9rem] border px-6 py-6 shadow-[0_24px_80px_-50px_rgba(28,25,23,0.45)] ${
-                !guardian.evaluation.guardianActive
-                  ? "border-amber-200 bg-amber-50"
-                  : guardian.evaluation.lockoutActive
-                    ? "border-red-300 bg-red-100"
-                    : "border-emerald-200 bg-emerald-50"
-              }`}
-            >
-              <p
-                className={`text-xs font-semibold uppercase tracking-[0.22em] ${
-                  !guardian.evaluation.guardianActive
-                    ? "text-amber-700"
-                    : guardian.evaluation.lockoutActive
-                      ? "text-red-700"
-                      : "text-emerald-700"
-                }`}
-              >
-                Current state
+          {triggeredLabels.length > 0 && (
+            <div className="mt-5 grid gap-1 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm">
+              <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${styles.accent}`}>
+                Triggered
               </p>
-              <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">
-                {!guardian.evaluation.guardianActive
-                  ? "Guardian is off — rules are not enforcing."
-                  : guardian.evaluation.lockoutActive
-                    ? "Trading is closed for today."
-                    : onboardingComplete
-                      ? "Trading is open right now."
-                      : "Complete onboarding to enable today’s session."}
-              </p>
-              <p className="mt-3 text-sm text-stone-800">
-                {!guardian.evaluation.guardianActive
-                  ? "Turn Guardian back on before relying on session boundaries."
-                  : guardian.evaluation.lockoutActive
-                    ? guardian.evaluation.primaryReasonLabel
-                    : onboardingComplete
-                      ? "Guardian is active. No rule limits have been hit."
-                      : "Finish onboarding to set your trading profile and rules."}
-              </p>
-              <div className="mt-4 grid gap-2 rounded-2xl border border-white/70 bg-white/55 px-4 py-3 text-sm text-stone-700">
-                <p className="font-medium text-stone-950">
-                  {economicCalendarVisibility.providerLabel}
-                </p>
-                <p>{economicCalendarVisibility.sourceLabel}</p>
-                {economicCalendarVisibility.scenarioLabel ? (
-                  <p>
-                    {economicCalendarVisibility.scenarioLabel}.{" "}
-                    {economicCalendarVisibility.scenarioDescription}
-                  </p>
-                ) : null}
-                <p>
-                  {economicCalendarVisibility.stateLabel}.{" "}
-                  {economicCalendarVisibility.detail}
-                </p>
-              </div>
-            </section>
+              <ul className="grid gap-0.5 text-stone-800">
+                {triggeredLabels.map((label) => (
+                  <li key={label}>• {label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
 
-            <RuleNoticeList notices={guardianNotices} />
+        {/* ── Rule progress today ─────────────────────────────────────────── */}
+        <SectionCard
+          title="Rule progress today"
+          description="Live numbers vs. configured limits."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ProgressTile
+              label="P&L today"
+              value={`$${guardian.evaluation.todayPnL}`}
+              limit={maxDailyLoss != null ? `Limit: −$${maxDailyLoss}` : "No limit set"}
+            />
+            <ProgressTile
+              label="Trades"
+              value={String(guardian.evaluation.todayTradesCount)}
+              limit={maxTradesPerDay != null ? `${maxTradesPerDay} max` : "No limit set"}
+            />
+            <ProgressTile
+              label="Loss streak"
+              value={String(guardian.evaluation.consecutiveLosses)}
+              limit={stopAfterLosses != null ? `Stop after ${stopAfterLosses}` : "No limit set"}
+            />
+          </div>
+        </SectionCard>
 
-            <SectionCard
-              title={
-                guardian.evaluation.lockoutActive
-                  ? "Why trading is closed"
-                  : !guardian.evaluation.guardianActive
-                    ? "Enforcement is paused"
-                    : "Active session boundaries"
-              }
-              description={
-                guardian.evaluation.lockoutActive
-                  ? "The rule that closed the day, what else hit, and the next move from here."
-                  : !guardian.evaluation.guardianActive
-                    ? "Guardian is off, so none of your limits are running. Turn it back on to resume enforcement."
-                    : "What is keeping this session open right now."
-              }
-            >
-              <div
-                className={`rounded-[1.5rem] border px-5 py-5 ${
-                  guardian.evaluation.lockoutActive
-                    ? "border-red-200 bg-red-50 text-red-900"
-                    : !guardian.evaluation.guardianActive
-                      ? "border-amber-200 bg-amber-50 text-amber-900"
-                      : "border-stone-200 bg-stone-50 text-stone-800"
-                }`}
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                  {guardian.evaluation.lockoutActive ? "Why it happened" : "Current read"}
-                </p>
-                <p className="mt-2 text-lg font-semibold">
-                  {guardian.evaluation.primaryReasonLabel}
-                </p>
-
-                {additionalTriggeredRuleLabels.length ? (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                      Also hit
-                    </p>
-                    <ul className="mt-2 grid gap-1 text-sm">
-                      {additionalTriggeredRuleLabels.map((ruleLabel) => (
-                        <li key={ruleLabel}>• {ruleLabel}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                <div className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                    What to do now
+        {/* ── Warnings (if any) ───────────────────────────────────────────── */}
+        {violationFeed.warningViolations.length > 0 && (
+          <SectionCard
+            title="Active warnings"
+            description="Rules approaching their thresholds."
+          >
+            <ul className="grid gap-2">
+              {violationFeed.warningViolations.map((v) => (
+                <li
+                  key={v.ruleId + v.message}
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-800"
+                >
+                  <p className="font-medium text-amber-900">
+                    {v.ruleId.replaceAll("_", " ")}
                   </p>
-                  <ul className="mt-2 grid gap-1 text-sm">
-                    {(guardian.evaluation.actionGuidance.length > 0
-                      ? guardian.evaluation.actionGuidance
-                      : !guardian.evaluation.guardianActive
-                        ? ["Turn Guardian back on to resume enforcement."]
-                        : ["Nothing to do — stay disciplined."]
-                    ).map((actionText) => (
-                      <li key={actionText}>• {actionText}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {guardian.profile.resetMode === "MANUAL" ? (
-                  <div className="mt-4 grid gap-1 text-sm">
-                    <p>Manual reset is required before the day can reopen.</p>
-                    <p>
-                      {guardian.evaluation.resetAllowedNow
-                        ? "Reset is available now."
-                        : "Reset is not available yet."}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Today snapshot"
-              description="Live numbers for today’s session."
-            >
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Today session
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {todayGuardianSessionStart?.endedAt
-                      ? "Ended"
-                      : todayGuardianSessionStart
-                        ? "Active"
-                        : "Not started"}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    {todayGuardianSessionStart?.endedAt
-                      ? `Ended ${formatGuardianDate(todayGuardianSessionStart.endedAt, displayTimeZone)}`
-                      : todayGuardianSessionStart
-                        ? `Started ${formatGuardianDate(todayGuardianSessionStart.startedAt, displayTimeZone)}`
-                        : "No session opened for today yet."}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Connection
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {connectionProgression.label}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    {brokerIntegration.account.adapterDisplay.label} · {brokerIntegration.account.platformName}
-                  </p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    {connectionProgression.nextStep}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Today activity
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {guardian.evaluation.todayTradesCount} trades
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    P&amp;L {guardian.evaluation.todayPnL} · Losses in a row{" "}
-                    {guardian.evaluation.consecutiveLosses}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Next reset
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {guardian.profile.resetMode === "DAILY"
-                      ? formatGuardianDate(
-                          guardian.evaluation.nextAllowedResetAt,
-                          displayTimeZone,
-                        )
-                      : "Manual reset required"}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    {guardian.evaluation.resetModeLabel}
-                  </p>
-                </div>
-              </div>
-            </SectionCard>
-
-            <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
-
-            <SectionCard
-              title="Settings"
-              description="Rule limits and reset schedule."
-            >
-              <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                <GuardianControls
-                  initialProfile={{
-                    guardianEnabled: guardian.profile.guardianEnabled,
-                    adapterKey:
-                      guardian.profile.adapterKey === "tradovate_stub"
-                        ? "tradovate_stub"
-                        : "mock",
-                    platformName: guardian.profile.platformName ?? "Mock Platform",
-                    connectionStatus: guardian.profile.connectionStatus,
-                    maxTradesPerDay: guardian.profile.maxTradesPerDay,
-                    maxDailyLoss: guardian.profile.maxDailyLoss
-                      ? Number(guardian.profile.maxDailyLoss.toString())
-                      : null,
-                    stopAfterConsecutiveLosses:
-                      guardian.profile.stopAfterConsecutiveLosses,
-                    dailyProfitTarget: guardian.profile.dailyProfitTarget
-                      ? Number(guardian.profile.dailyProfitTarget.toString())
-                      : null,
-                    copyTradeMode: guardian.profile.copyTradeMode,
-                    resetMode: guardian.profile.resetMode,
-                    dailyResetHour: guardian.profile.dailyResetHour,
-                    dailyResetTimezone: guardian.profile.dailyResetTimezone,
-                  }}
-                  initialStatus={{
-                    todayTradesCount: guardian.status.todayTradesCount,
-                    todayPnL: Number(guardian.status.todayPnL.toString()),
-                    consecutiveLosses: guardian.status.consecutiveLosses,
-                    currentLockoutActive: guardian.status.currentLockoutActive,
-                    nextAllowedResetAt: guardian.evaluation.nextAllowedResetAt
-                      ? formatGuardianDate(
-                          guardian.evaluation.nextAllowedResetAt,
-                          displayTimeZone,
-                        )
-                      : null,
-                    lastResetAt: guardian.evaluation.lastResetAt
-                      ? formatGuardianDate(
-                          guardian.evaluation.lastResetAt,
-                          displayTimeZone,
-                        )
-                      : null,
-                  }}
-                />
-
-                <div className="grid gap-4">
-                  <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                      Active limits
-                    </p>
-                    {guardian.evaluation.activeRules.length > 0 ? (
-                      <ul className="mt-3 grid gap-2 text-sm text-stone-700">
-                        {guardian.evaluation.activeRules.map((rule) => (
-                          <li key={rule} className="flex items-start gap-2">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" />
-                            {rule}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-3 text-sm text-stone-500">No limits set yet — add them in the rules form.</p>
-                    )}
-                  </div>
-
-                  <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-700">
-                    <p className="font-medium text-stone-950">Reset timing</p>
-                    <p className="mt-2">
-                      Checks run in{" "}
-                      <span className="font-medium">{guardian.evaluation.resetTimezone}</span>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-          </>
+                  <p className="mt-0.5 text-stone-700">{v.message}</p>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
         )}
+
+        {/* ── Active rules ────────────────────────────────────────────────── */}
+        <SectionCard
+          title="Active rules"
+          description="The limits Guardrail is currently enforcing. Edit in the Rules page."
+        >
+          {activeRules.length > 0 ? (
+            <div className="divide-y divide-stone-100">
+              {activeRules.map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between py-3 text-sm">
+                  <span className="text-stone-600">{label}</span>
+                  <span className="font-medium text-stone-950">{value}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-stone-500">
+              No rules configured yet.{" "}
+              <Link href="/rules" className="font-medium text-stone-950 underline-offset-2 hover:underline">
+                Set your protection rules →
+              </Link>
+            </p>
+          )}
+        </SectionCard>
+
+        {/* ── On-breach behaviour ─────────────────────────────────────────── */}
+        <SectionCard
+          title="On breach"
+          description="What Guardrail does when a rule is crossed."
+        >
+          <div className="grid gap-2">
+            {breachActions.map(({ label, available, on }) => (
+              <div
+                key={label}
+                className={`flex items-start justify-between gap-4 rounded-xl border px-4 py-3 ${
+                  available ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-70"
+                }`}
+              >
+                <div>
+                  <p className="text-sm font-medium text-stone-950">{label}</p>
+                  {!available && (
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      Requires broker integration. Not yet implemented.
+                    </p>
+                  )}
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    !available
+                      ? "bg-stone-200 text-stone-600"
+                      : on
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-stone-100 text-stone-500"
+                  }`}
+                >
+                  {!available ? "Coming soon" : on ? "On" : "Off"}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-stone-400">
+            Manual mode helps you follow your rules inside this app — Guardrail tracks, warns, and locks the session. Broker-level enforcement (cancel orders, flatten positions) requires a future broker integration phase.
+          </p>
+        </SectionCard>
+
+        {/* ── Recent breaches / session events ────────────────────────────── */}
+        <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
+
       </div>
     </AppShell>
+  );
+}
+
+function ProgressTile({
+  label,
+  value,
+  limit,
+}: {
+  label: string;
+  value: string;
+  limit: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-stone-950 tabular-nums">{value}</p>
+      <p className="mt-1 text-sm text-stone-500">{limit}</p>
+    </div>
   );
 }
