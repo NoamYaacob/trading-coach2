@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -28,6 +29,11 @@ export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     return backToConnectPage(request, "unauthenticated");
+  }
+
+  const callbackLimit = checkRateLimit(`tradovate_callback:${currentUser.id}`, 10, 3_600_000);
+  if (!callbackLimit.ok) {
+    return backToConnectPage(request, "too_many_requests");
   }
 
   const { searchParams } = request.nextUrl;

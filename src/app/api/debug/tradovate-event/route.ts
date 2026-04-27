@@ -19,6 +19,10 @@ type DebugTradovateEventRequest = {
 };
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const body = (await request.json()) as DebugTradovateEventRequest;
 
   if (!body.email || !body.externalAccountId || !body.type || !body.data) {

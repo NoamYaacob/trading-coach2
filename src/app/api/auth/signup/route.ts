@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createSession, hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTrialDates } from "@/lib/trial";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
 type SignupRequest = {
   email?: string;
@@ -11,6 +12,15 @@ type SignupRequest = {
 };
 
 export async function POST(request: Request) {
+  const ip = getRequestIp(request);
+  const limit = checkRateLimit(`signup:hr:${ip}`, 3, 3_600_000);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   const body = (await request.json()) as SignupRequest;
   const email = body.email?.trim().toLowerCase();
   const password = body.password?.trim();

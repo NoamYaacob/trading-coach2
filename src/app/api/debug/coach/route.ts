@@ -18,6 +18,10 @@ type DebugCoachRequest = {
 };
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const body = (await request.json()) as DebugCoachRequest;
   const email = body.email?.trim().toLowerCase();
   const message = body.message?.trim();

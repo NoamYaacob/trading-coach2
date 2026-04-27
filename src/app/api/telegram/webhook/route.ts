@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { TraderCurrentState } from "@prisma/client";
 
 import {
@@ -290,7 +291,26 @@ function deriveLogIntent(actionId: string | null, rawText: string): CoachIntent 
   return "generic_coaching";
 }
 
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
 export async function POST(request: Request) {
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
+    if (!timingSafeStringEqual(provided, webhookSecret)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail closed: reject all webhook requests in production when the secret
+    // is not configured. Set TELEGRAM_WEBHOOK_SECRET and pass the same value
+    // to Telegram's setWebhook call to enable the webhook.
+    return NextResponse.json({ error: "webhook_not_configured" }, { status: 403 });
+  }
+
   const payload = (await request.json()) as TelegramWebhookPayload;
   const rawText = payload.message?.text?.trim() ?? "";
   const startMatch = rawText.match(/^\/start\s+(\S+)/);

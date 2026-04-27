@@ -5,14 +5,14 @@ other broker) accounts. This is the companion to `pre-api-readiness.md`
 — that file tracks broker-feature readiness; this one tracks security
 posture.
 
-## Status snapshot (audit date: 2026-04-27)
+## Status snapshot (last updated: 2026-04-27)
 
 Audit performed on branch `claude/rule-engine-violation-feed-ioIBS`
 covering: auth/session, ConnectedAccount tokens, Tradovate OAuth, route
 ownership, journal/rules validation, logging, env var safety, rate
 limiting, and copy consistency.
 
-### Resolved this audit
+### Resolved — initial audit (2026-04-27)
 
 - **OAuth callback session binding** — the callback now verifies
   `state.userId === session.userId` in addition to the CSRF nonce.
@@ -32,6 +32,34 @@ limiting, and copy consistency.
   finiteness and reasonable magnitudes; string fields capped.
 - **Telegram link tokens** — issuing a new link token now invalidates
   any previously issued, still-unused tokens for the same user.
+
+### Resolved — priority security pass (2026-04-27)
+
+- **Rate limiting** — `src/lib/rate-limit.ts` implements an in-memory
+  sliding-window limiter (not suitable for multi-instance; see §1 for
+  Redis upgrade path). Applied to: `POST /api/auth/login` (5/min/IP,
+  20/hr/IP), `POST /api/auth/signup` (3/hr/IP),
+  `GET /api/auth/tradovate/connect` (5/hr/user),
+  `GET /api/auth/tradovate/callback` (10/hr/user),
+  `POST /api/telegram/link-token` (5/hr/user),
+  `POST /api/journal` (60/min/user), `POST /api/rules` (30/min/user).
+  All return 429 with `Retry-After`.
+- **Telegram webhook secret** — `POST /api/telegram/webhook` now
+  verifies the `X-Telegram-Bot-Api-Secret-Token` header using a
+  timing-safe SHA-256 comparison against `TELEGRAM_WEBHOOK_SECRET`.
+  In production with no secret configured, the route fails closed
+  (returns 403). In development the check is skipped if the env var
+  is absent.
+- **Security headers** — added via `next.config.ts` `headers()`:
+  `Content-Security-Policy` (default-src 'self', frame-ancestors 'none'),
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy` (camera/mic/geo off),
+  `Strict-Transport-Security` (production only, 2-year max-age).
+- **Debug/dev routes** — `GET /api/dev/coach-eval` and
+  `GET /api/dev/coach-eval` already had guards; added 404-in-production
+  guard to `POST /api/debug/coach` and `POST /api/debug/tradovate-event`
+  which were previously unguarded.
 
 ### Confirmed in-spec (no change needed)
 
@@ -62,49 +90,41 @@ limiting, and copy consistency.
 These are the items that should be addressed before real users connect
 broker accounts. Severity reflects the risk if shipped as-is.
 
-### 1. Rate limiting on auth + sensitive routes (HIGH)
+### 1. Rate limiting — upgrade to Redis for multi-instance deploys (MEDIUM)
 
-- `/api/auth/login` has no per-IP throttle — vulnerable to credential
-  stuffing.
-- `/api/auth/signup` returns 409 for known emails — useful enumeration
-  with no rate cap.
-- `/api/auth/tradovate/connect` and `/callback` have no per-user cap.
-- `/api/journal`, `/api/rules`, `/api/guardian/status`,
-  `/api/session/manual-event` have no per-user write rate limit.
-- `/api/telegram/link-token` has no per-user cap (an attacker with a
-  hijacked session could spam token generation).
+**Partially resolved.** The routes listed below are now rate-limited via
+`src/lib/rate-limit.ts`. The current implementation is an **in-memory
+sliding-window limiter** — each process has its own store. On
+single-instance Railway deploys this is sufficient.
 
-**Recommended approach.** Add a small Redis-backed token bucket (or
-Upstash) middleware and apply it per-route:
+| Route                                 | Limit              | Status  |
+|---------------------------------------|--------------------|---------|
+| `POST /api/auth/login`                | 5/min/IP, 20/hr/IP | ✅ done |
+| `POST /api/auth/signup`               | 3/hr/IP            | ✅ done |
+| `GET  /api/auth/tradovate/connect`    | 5/hr/user          | ✅ done |
+| `GET  /api/auth/tradovate/callback`   | 10/hr/user         | ✅ done |
+| `POST /api/telegram/link-token`       | 5/hr/user          | ✅ done |
+| `POST /api/journal`                   | 60/min/user        | ✅ done |
+| `POST /api/rules`                     | 30/min/user        | ✅ done |
+| `POST /api/session/manual-event`      | 60/min/user        | open    |
+| `POST /api/guardian/status`           | 60/min/user        | open    |
 
-| Route                                 | Limit                |
-|---------------------------------------|----------------------|
-| `POST /api/auth/login`                | 5/min/IP, 20/hr/IP   |
-| `POST /api/auth/signup`               | 3/hr/IP              |
-| `GET  /api/auth/tradovate/connect`    | 5/hr/user            |
-| `GET  /api/auth/tradovate/callback`   | 10/hr/user           |
-| `POST /api/telegram/link-token`       | 5/hr/user            |
-| `POST /api/journal`                   | 60/min/user          |
-| `POST /api/rules`                     | 30/min/user          |
-| `POST /api/session/manual-event`      | 60/min/user          |
-| `POST /api/guardian/status`           | 60/min/user          |
+**Remaining:** Before scaling to multiple instances, replace
+`checkRateLimit` in `src/lib/rate-limit.ts` with a Redis/Upstash adapter
+behind the same interface. `/api/session/manual-event` and
+`/api/guardian/status` are lower-priority (session writes) but should
+be capped before launch.
 
-If Redis is not available, accept a coarser in-memory limiter for
-single-instance deploys but keep a Redis adapter behind a feature
-flag for horizontal scale.
+### 2. Webhook authentication (partially resolved)
 
-### 2. Webhook authentication (HIGH)
-
-- `/api/telegram/webhook` accepts any POST. Anyone with the URL can
-  inject "messages" from a connected user and trigger AI-coach calls
-  (cost) or alter trader-state writes.
-  - **Fix:** require `X-Telegram-Bot-Api-Secret-Token` header to
-    equal `process.env.TELEGRAM_WEBHOOK_SECRET`. Set the same secret
-    via Telegram's `setWebhook` call. The env validator already warns
-    when this var is missing.
-- `/api/tradovate/webhook` is currently unimplemented. When wired,
-  require Tradovate's signature scheme (TBD with provider) before
-  acting on any payload.
+- **Telegram webhook — ✅ resolved.** `/api/telegram/webhook` now
+  requires `X-Telegram-Bot-Api-Secret-Token` to match
+  `TELEGRAM_WEBHOOK_SECRET`. Comparison is timing-safe (SHA-256).
+  Production fails closed when the env var is absent. Set the same
+  secret on Telegram's `setWebhook` call before going live.
+- **Tradovate webhook — open.** `/api/tradovate/webhook` is currently
+  unimplemented. When wired, require Tradovate's signature scheme (TBD
+  with provider) before acting on any payload.
 
 ### 3. Stripe webhook signature verification (MEDIUM)
 
@@ -147,16 +167,16 @@ ship, every invocation must:
 This is already in `pre-api-readiness.md` — restated here so it is on
 the security checklist as well.
 
-### 7. CSP / frame protection (LOW)
+### 7. CSP / frame protection — ✅ resolved
 
-No `Content-Security-Policy` or `X-Frame-Options` header was observed.
-Add at minimum:
+Security headers are set globally via `next.config.ts` `headers()`:
+`Content-Security-Policy` (default-src 'self', frame-ancestors 'none'),
+`X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`X-Content-Type-Options: nosniff`, `Permissions-Policy`,
+`Strict-Transport-Security` (production only, 2-year max-age).
 
-- `Content-Security-Policy: default-src 'self'; ...` (tune for the
-  Tailwind/Next runtime).
-- `X-Frame-Options: DENY` (or CSP `frame-ancestors 'none'`).
-- `Referrer-Policy: strict-origin-when-cross-origin`.
-- `X-Content-Type-Options: nosniff`.
+`'unsafe-inline'` is required for Next.js App Router RSC hydration
+scripts and Tailwind v4 inline styles. `'unsafe-eval'` is excluded.
 
 ### 8. Generic-error vs enumeration trade-off (LOW)
 
@@ -168,11 +188,12 @@ enumeration. Decision needed pre-launch:
 - Switch to "If this email is new, you'll receive a confirmation
   link" (privacy-friendly, requires email flow).
 
-### 9. Debug routes guard (LOW)
+### 9. Debug routes guard — ✅ resolved
 
-Routes under `/api/debug/*` and `/api/dev/*` should be gated by
-`NODE_ENV !== "production"` or a feature flag. Audit each route and
-return 404 in production if not explicitly enabled.
+All routes under `/api/debug/*` and `/api/dev/*` now return 404 in
+production: `debug/coach`, `debug/tradovate-event` (guards added),
+`debug/fire-test-event` and `dev/coach-eval` (guards were already
+present).
 
 ### 10. IP/UA pinning (consider, not required)
 
@@ -186,18 +207,21 @@ networks; weigh carefully.
 
 A minimum-viable checklist:
 
-1. Rate limiting on `/api/auth/login`, `/api/auth/signup`,
+1. ✅ Rate limiting on `/api/auth/login`, `/api/auth/signup`,
    `/api/auth/tradovate/connect`, `/api/auth/tradovate/callback`,
-   `/api/telegram/link-token`. (See §1.)
-2. Telegram webhook secret (`TELEGRAM_WEBHOOK_SECRET`) wired and
-   enforced. (See §2.)
+   `/api/telegram/link-token`, `/api/journal`, `/api/rules`. (See §1.)
+   **Remaining:** `/api/session/manual-event`, `/api/guardian/status`;
+   Redis upgrade for multi-instance scale.
+2. ✅ Telegram webhook secret (`TELEGRAM_WEBHOOK_SECRET`) wired and
+   enforced. (See §2.) **Remaining:** must set `setWebhook` with the
+   same secret before going live.
 3. Stripe webhook signature verification confirmed. (See §3.)
 4. Session rotation on password change. (See §4.)
-5. CSP / frame headers added. (See §7.)
-6. Debug/dev routes confirmed disabled in production. (See §9.)
+5. ✅ CSP / frame headers added. (See §7.)
+6. ✅ Debug/dev routes confirmed disabled in production. (See §9.)
 7. Re-run the audit against the current branch before flipping any
    capability from `requires_oauth` / `coming_soon` to `available`
    in the broker registry.
 
-Items 5, 6, 8, and 10 from the open-gaps list are recommended but not
+Items 8 and 10 from the open-gaps list are recommended but not
 strictly blocking.

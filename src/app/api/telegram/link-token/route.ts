@@ -4,12 +4,21 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { hasBotAccess } from "@/lib/subscription";
 import { generateTelegramLinkToken } from "@/lib/telegram";
+import { checkRateLimit } from "@/lib/rate-limit";
 
-export async function POST() {
+export async function POST(request: Request) {
   const currentUser = await getCurrentUser();
 
   if (!currentUser) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const linkTokenLimit = checkRateLimit(`telegram_link_token:${currentUser.id}`, 5, 3_600_000);
+  if (!linkTokenLimit.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(linkTokenLimit.retryAfterSeconds) } },
+    );
   }
 
   const user = await prisma.user.findUnique({

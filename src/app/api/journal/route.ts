@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type JournalPayload = {
   symbol?: string;
@@ -49,6 +50,14 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const journalLimit = checkRateLimit(`journal:${user.id}`, 60, 60_000);
+  if (!journalLimit.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(journalLimit.retryAfterSeconds) } },
+    );
   }
 
   let body: JournalPayload;

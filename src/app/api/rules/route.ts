@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type RulesPayload = {
   accountSize?: number | null;
@@ -38,6 +39,14 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const rulesLimit = checkRateLimit(`rules:${user.id}`, 30, 60_000);
+  if (!rulesLimit.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(rulesLimit.retryAfterSeconds) } },
+    );
   }
 
   const body = (await request.json()) as RulesPayload;

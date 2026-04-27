@@ -8,6 +8,7 @@ import {
   encodeOAuthState,
   generateOAuthNonce,
 } from "@/lib/brokers/tradovate-oauth-state";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -15,6 +16,14 @@ export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const connectLimit = checkRateLimit(`tradovate_connect:${currentUser.id}`, 5, 3_600_000);
+  if (!connectLimit.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(connectLimit.retryAfterSeconds) } },
+    );
   }
 
   const status = getTradovateConfig();
