@@ -8,6 +8,7 @@ import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getVisibleAdapters } from "@/lib/brokers/registry";
+import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import type {
   BrokerCapabilityKey,
   BrokerCapabilityStatus,
@@ -35,7 +36,7 @@ function statusClass(status: BrokerCapabilityStatus): string {
 }
 
 export const metadata: Metadata = {
-  title: "Broker Connections",
+  title: "Accounts — Guardrail",
 };
 
 export default async function AccountsPage() {
@@ -85,6 +86,7 @@ export default async function AccountsPage() {
   }
 
   const hasTradovate = accounts.some((a) => a.platform === "tradovate");
+  const tradovateConfigured = getTradovateConfig().state === "ready";
 
   const adapters = getVisibleAdapters();
   const capabilityKeys: BrokerCapabilityKey[] = [
@@ -103,13 +105,17 @@ export default async function AccountsPage() {
   const ctaHref = hasTradovate
     ? "/accounts/tradovate/verify"
     : "/accounts/connect/tradovate";
-  const ctaLabel = hasTradovate ? "Verify connection" : "Prepare Tradovate connection";
+  const ctaLabel = hasTradovate
+    ? "Verify connection"
+    : tradovateConfigured
+      ? "Connect Tradovate"
+      : "Prepare Tradovate connection";
 
   return (
     <AppShell
       eyebrow="Accounts"
-      title="How do I connect my broker?"
-      description="Connect Tradovate for live risk enforcement. The manual journal is available for testing before your broker is connected."
+      title="Connect your broker."
+      description="Link Tradovate so Guardrail can verify your account and prepare live risk checks."
       actions={
         <Link
           href={ctaHref}
@@ -125,8 +131,8 @@ export default async function AccountsPage() {
         <div className="grid gap-3 sm:grid-cols-3">
           <StatusTile
             tone="neutral"
-            label="Manual journal"
-            value="Demo only"
+            label="Setup mode"
+            value="Before broker connection"
           />
           <StatusTile
             tone="pending"
@@ -135,24 +141,27 @@ export default async function AccountsPage() {
           />
           <StatusTile
             tone="neutral"
-            label="Broker enforcement"
-            value="Pending verification"
+            label="Broker risk checks"
+            value="Connection not verified yet"
           />
         </div>
 
         {accounts.length === 0 ? (
-          <SectionCard title="No brokers connected">
+          <SectionCard title="No broker connected yet">
             <p className="text-sm text-stone-600">
-              Connect Tradovate to start live risk enforcement against your real trades.
+              Connect Tradovate to move from setup mode into broker-connected protection.
             </p>
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link
                 href="/accounts/connect/tradovate"
                 className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                Prepare Tradovate connection
+                Connect Tradovate
               </Link>
             </div>
+            <p className="mt-4 text-xs text-stone-500">
+              You can set rules before connecting, but live broker-based checks require a verified connection.
+            </p>
           </SectionCard>
         ) : (
           <>
@@ -167,12 +176,12 @@ export default async function AccountsPage() {
             {!hasTradovate && (
               <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
                 <p className="text-sm text-stone-600">
-                  Add a Tradovate account for live protection.{" "}
+                  Add Tradovate for live broker-based risk checks.{" "}
                   <Link
                     href="/accounts/connect/tradovate"
                     className="font-medium text-stone-950 underline-offset-2 hover:underline"
                   >
-                    Prepare Tradovate connection
+                    Connect Tradovate
                   </Link>
                 </p>
               </div>
@@ -183,7 +192,7 @@ export default async function AccountsPage() {
         {/* Advanced — capabilities + product status, hidden by default */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-            View technical capabilities
+            Technical details
             <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
           </summary>
           <div className="mt-5 grid gap-6">

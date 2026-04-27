@@ -45,7 +45,7 @@ const CONNECTION_STATUS_STYLE: Record<
     dot: "bg-stone-400",
   },
   expired: {
-    label: "Token expired",
+    label: "Connection expired",
     badge: "bg-orange-100",
     badgeText: "text-orange-700",
     dot: "bg-orange-500",
@@ -281,8 +281,7 @@ export function AccountCard({
           {account.connectionStatus === "connected_readonly" && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="text-xs text-sky-700">
-                OAuth connected — read pipeline active. Broker-level enforcement
-                is not yet enabled.
+                Read-only connected — live broker-based risk checks are not yet active.
               </p>
               {account.lastSyncAt && (
                 <p className="text-xs text-stone-400">
@@ -299,17 +298,17 @@ export function AccountCard({
           )}
           {account.connectionStatus === "expired" && (
             <p className="text-xs text-orange-700">
-              Access token expired — re-authorize to restore the read connection.
+              Connection expired — reconnect to restore live data.
             </p>
           )}
           {account.connectionStatus === "pending_webhook" && (
             <p className="text-xs text-amber-700">
-              Waiting for first broker event — ensure your Tradovate webhook is configured.
+              Waiting for your first trade from Tradovate.
             </p>
           )}
           {account.connectionStatus === "connection_error" && (
             <p className="text-xs text-red-700">
-              Events have stopped arriving from Tradovate — check your webhook configuration.
+              No recent activity from Tradovate — check your broker connection.
             </p>
           )}
         </div>
