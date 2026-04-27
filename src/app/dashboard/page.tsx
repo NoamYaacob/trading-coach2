@@ -438,7 +438,7 @@ function GuardianPausedPanel() {
       </p>
       <div className="mt-5">
         <a
-          href="/guardian"
+          href="/rules#guardian-toggle"
           className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
           Enable Guardian

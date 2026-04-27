@@ -311,10 +311,10 @@ export default async function GuardianPage() {
             {guardianOff && (
               <div className="mt-5">
                 <Link
-                  href="/rules"
+                  href="/rules#guardian-toggle"
                   className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
-                  Enable Guardian →
+                  Enable Guardian
                 </Link>
               </div>
             )}

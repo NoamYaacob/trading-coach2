@@ -6,7 +6,9 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getGuardianSnapshot } from "@/lib/guardian";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
+import { GuardianToggle } from "./_components/guardian-toggle";
 
 export const metadata: Metadata = {
   title: "Rules — Guardrail",
@@ -36,9 +38,10 @@ export default async function RulesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, brokerCount] = await Promise.all([
+  const [riskRules, brokerCount, guardian] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount.count({ where: { userId: user.id, isActive: true } }),
+    getGuardianSnapshot(user.id),
   ]);
   const hasBroker = brokerCount > 0;
 
@@ -80,6 +83,9 @@ export default async function RulesPage() {
           title="Session rulebook"
           description={hasBroker ? "Broker connected." : "Manual fallback."}
         >
+          <div id="guardian-toggle" className="mb-5">
+            <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
+          </div>
           <RulesForm initial={initial} hasBroker={hasBroker} />
         </SectionCard>
       </div>
