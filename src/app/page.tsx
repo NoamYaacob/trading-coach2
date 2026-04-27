@@ -46,32 +46,26 @@ const faqs = [
   {
     q: "What if I haven't connected a broker yet?",
     a: "You can start without one. Log each trade in the journal and the same engine evaluates Allowed / Warning / Locked. The lock applies inside the app — you can connect a broker any time.",
-    open: true,
   },
   {
     q: "Does Guardrail block my trades at the broker?",
     a: "Not today. The session locks inside the app — you see a lockout banner and (optionally) a Telegram alert. Broker order cancel/flatten requires verified broker support, which we ship per broker only after live verification.",
-    open: false,
   },
   {
     q: "Which brokers are supported?",
     a: "Tradovate is the first integration. Read-only connection is being prepared and will activate once verified against your account.",
-    open: false,
   },
   {
     q: "How does Telegram fit in?",
     a: "Telegram is an optional alert channel. When connected, Guardrail sends session state changes and lockout messages to your Telegram. Everything works without it.",
-    open: false,
   },
   {
     q: "What happens during a lockout?",
     a: "The session moves to Locked, a banner explains which rule fired, and the reset window opens at the start of the next trading day.",
-    open: false,
   },
   {
     q: "Who is this for?",
     a: "Active intraday traders — primarily futures traders on funded or evaluation accounts — who want a system that holds them to their own rules.",
-    open: false,
   },
 ];
 
@@ -88,7 +82,7 @@ export default async function Home() {
       </Link>
       <Link
         href="/rules"
-        className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
       >
         Set rules
       </Link>
@@ -103,7 +97,7 @@ export default async function Home() {
       </Link>
       <Link
         href="/login"
-        className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
       >
         Log in
       </Link>
@@ -117,7 +111,7 @@ export default async function Home() {
       description="Live session status — Allowed, Warning, or Locked — so one bad trade doesn't become a bad day."
       actions={heroActions}
     >
-      <div className="grid gap-20">
+      <div className="grid gap-16">
 
         {/* ── How it works — 3 steps with status tags ──────────────────── */}
         <section>
@@ -241,7 +235,7 @@ export default async function Home() {
                     </Link>
                     <Link
                       href="/login"
-                      className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                      className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
                     >
                       Log in
                     </Link>
@@ -280,12 +274,11 @@ export default async function Home() {
             {faqs.map((faq) => (
               <details
                 key={faq.q}
-                open={faq.open}
-                className="group rounded-2xl border border-stone-200 bg-white/90 px-6 py-4"
+                className="group rounded-2xl border border-stone-200 bg-white/90 px-6 py-4 transition-colors hover:bg-stone-50/60"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold tracking-[-0.02em] text-stone-950">
                   {faq.q}
-                  <span className="shrink-0 text-stone-400 transition-transform group-open:rotate-45">+</span>
+                  <span className="shrink-0 text-stone-500 transition-transform group-open:rotate-45">+</span>
                 </summary>
                 <p className="mt-3 text-sm leading-6 text-stone-600">{faq.a}</p>
               </details>
@@ -322,7 +315,7 @@ export default async function Home() {
                   </Link>
                   <Link
                     href="/login"
-                    className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                    className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
                   >
                     Log in
                   </Link>
