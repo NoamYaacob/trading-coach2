@@ -139,11 +139,11 @@ export default async function ConnectTradovatePage({
 
         {/* Connection action */}
         <SectionCard
-          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection not configured yet"}
+          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection not ready yet"}
           description={
             isConfigured
               ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
-              : "The server is missing one or more environment variables needed to authorize the connection."
+              : "Tradovate authorization isn't available on this server yet. Contact support or your administrator to complete setup."
           }
         >
           {isConfigured ? (
@@ -163,45 +163,50 @@ export default async function ConnectTradovatePage({
                 </a>
               </div>
               <p className="text-xs text-stone-500">
-                Manual Mode stays active in the background — your existing journal entries and rule
-                evaluation continue to work after authorizing.
+                Your rules and journal entries remain active — the dashboard continues to evaluate
+                from your manual journal until broker reads activate.
               </p>
             </div>
           ) : (
             <div className="grid gap-3">
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-700">
-                <p className="font-medium text-amber-900">Setup needed on the server</p>
+                <p className="font-medium text-amber-900">Setup required before connecting</p>
                 <p className="mt-1">
-                  Set the following environment variables before users can connect Tradovate:
+                  Tradovate authorization isn&apos;t configured on this server yet.
                 </p>
-                <ul className="mt-2 grid gap-1 font-mono text-xs">
-                  {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
-                    const missing = status.state === "not_configured" && status.missing.includes(key);
-                    return (
-                      <li
-                        key={key}
-                        className={missing ? "text-red-700" : "text-stone-500"}
-                      >
-                        {missing ? "✗" : "✓"} {key}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <p className="mt-3 text-xs text-stone-600">
-                  See <code className="font-mono">.env.example</code> and{" "}
-                  <code className="font-mono">docs/broker-integration-plan.md</code>.
-                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-stone-500 hover:text-stone-700">
+                    Configuration details (for administrators)
+                  </summary>
+                  <ul className="mt-2 grid gap-1 font-mono text-xs">
+                    {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
+                      const missing = status.state === "not_configured" && status.missing.includes(key);
+                      return (
+                        <li
+                          key={key}
+                          className={missing ? "text-red-700" : "text-stone-500"}
+                        >
+                          {missing ? "✗" : "✓"} {key}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mt-3 text-xs text-stone-600">
+                    See <code className="font-mono">.env.example</code> and{" "}
+                    <code className="font-mono">docs/broker-integration-plan.md</code>.
+                  </p>
+                </details>
               </div>
               <button
                 type="button"
                 disabled
                 className="inline-flex w-fit cursor-not-allowed items-center justify-center rounded-full bg-stone-200 px-6 py-3 text-sm font-medium text-stone-500"
-                title="Tradovate OAuth is not configured yet"
+                title="Tradovate connection is not configured yet"
               >
-                Connect Tradovate when configured
+                Connect Tradovate when ready
               </button>
               <p className="text-xs text-stone-500">
-                Manual Mode is fully functional today. Connect a broker later when the server is configured.
+                Your rules and setup mode remain active. Connect a broker later once the server is ready.
               </p>
             </div>
           )}
@@ -215,7 +220,7 @@ export default async function ConnectTradovatePage({
 function labelStatus(status: string): string {
   switch (status) {
     case "available":      return "Available";
-    case "requires_oauth": return "After OAuth (read pipeline pending)";
+    case "requires_oauth": return "Pending verification";
     case "coming_soon":    return "Coming soon";
     case "unknown":        return "To be verified";
     case "not_supported":  return "Not supported";

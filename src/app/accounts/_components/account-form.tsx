@@ -365,11 +365,12 @@ export function AccountForm(props: Props) {
       </div>
 
       {isTradovate && (
-        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-5">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-            Webhook setup
-          </p>
-          <ol className="grid gap-5">
+        <details className="group rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+            Tradovate event routing setup
+            <span className="font-normal normal-case tracking-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <ol className="mt-5 grid gap-5">
             <li className="flex gap-3 text-sm text-stone-700">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
                 1
@@ -386,7 +387,7 @@ export function AccountForm(props: Props) {
               </span>
               <span className="grid gap-1.5">
                 <span>
-                  Configure Tradovate to POST events to your app&apos;s webhook endpoint:
+                  Configure Tradovate to send events to this endpoint:
                 </span>
                 <code className="block rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-mono text-stone-800">
                   https://your-app-url/api/tradovate/webhook
@@ -399,15 +400,14 @@ export function AccountForm(props: Props) {
               </span>
               <span className="grid gap-1.5">
                 <span>
-                  Include the following header on every request:
+                  Include this header on every request:
                 </span>
                 <code className="block rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-mono text-stone-800">
-                  x-tradovate-secret: [TRADOVATE_WEBHOOK_SECRET]
+                  x-tradovate-secret: [your-webhook-secret]
                 </code>
                 <span className="text-xs text-stone-500">
-                  Set{" "}
-                  <code className="font-mono">TRADOVATE_WEBHOOK_SECRET</code> as an environment
-                  variable on your server. Keep it secret.
+                  Use the webhook secret configured on this server. Ask your administrator for
+                  the correct value.
                 </span>
               </span>
             </li>
@@ -422,7 +422,7 @@ export function AccountForm(props: Props) {
               </span>
             </li>
           </ol>
-        </div>
+        </details>
       )}
     </form>
   );
