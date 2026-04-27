@@ -110,9 +110,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
   return (
     <form onSubmit={handleSubmit} className="grid gap-5">
 
-      {/* ── Risk budget ─────────────────────────────────────────────────── */}
+      {/* ── Money limits ────────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <legend className="text-sm font-semibold text-stone-950">Risk budget</legend>
+        <legend className="text-sm font-semibold text-stone-950">Money limits</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
@@ -129,9 +129,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
         </div>
       </fieldset>
 
-      {/* ── Trade limits ────────────────────────────────────────────────── */}
+      {/* ── Trading limits ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <legend className="text-sm font-semibold text-stone-950">Trade limits</legend>
+        <legend className="text-sm font-semibold text-stone-950">Trading limits</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Max trades per day">
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
@@ -145,6 +145,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
       {/* ── Trading window ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
+        <p className="-mt-2 text-xs text-stone-500">
+          Only monitor sessions during these days and hours.
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Session start (hour, 0–23)">
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
@@ -185,14 +188,14 @@ export function RulesForm({ initial, hasBroker }: Props) {
             checked={values.onBreachWarn}
             onChange={(v) => update("onBreachWarn", v)}
             available
-            label="Warn"
+            label="Send warning"
             description="In-app banner and Telegram (if connected)."
           />
           <BreachOption
             checked={values.onBreachAppLock}
             onChange={(v) => update("onBreachAppLock", v)}
             available
-            label="Lock the session"
+            label="Lock session for the day"
             description="Mark the session stopped in Guardrail."
           />
         </div>
@@ -265,6 +268,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
         >
           {saving ? "Saving..." : "Save rules"}
         </button>
+        <span className="text-xs text-stone-500">
+          Changes apply to the next trade you log.
+        </span>
         {savedAt && (
           <span className="text-xs text-emerald-700">Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</span>
         )}

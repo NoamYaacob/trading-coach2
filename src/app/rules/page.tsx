@@ -67,8 +67,8 @@ export default async function RulesPage() {
   return (
     <AppShell
       eyebrow="Rules"
-      title="What rules do I want Guardrail to follow?"
-      description="Set the limits Guardrail evaluates against. Empty values mean no enforcement for that rule."
+      title="Set your trading rules."
+      description="Choose the limits Guardrail should monitor during each session."
       actions={
         <Link
           href="/guardian"
@@ -80,8 +80,8 @@ export default async function RulesPage() {
     >
       <div className="grid gap-6">
         <SectionCard
-          title="Session rulebook"
-          description={hasBroker ? "Broker connected." : "Manual fallback."}
+          title="Your rules"
+          description="These limits decide when your session is Allowed, Warning, or Locked."
         >
           <div id="guardian-toggle" className="mb-5">
             <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />

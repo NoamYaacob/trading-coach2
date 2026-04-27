@@ -36,7 +36,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
           ✓
         </span>
         <span className="text-sm font-semibold text-emerald-900">Protection active</span>
-        <span className="text-xs text-emerald-800/80">Monitoring this session.</span>
+        <span className="text-xs text-emerald-800/80">Guardrail is monitoring this session.</span>
       </div>
     );
   }
