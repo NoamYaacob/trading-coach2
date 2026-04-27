@@ -346,11 +346,19 @@ export default async function DashboardPage() {
               title="Set rules"
               description="Edit limits and breach actions."
             />
-            <QuickAction
-              href="/guardian"
-              title="View status"
-              description="Why you're Allowed, Warning, or Locked."
-            />
+            {todaySessionState.kind === "GUARDIAN_DISABLED" ? (
+              <QuickAction
+                href="/rules#guardian-toggle"
+                title="Enable protection"
+                description="Start monitoring this session."
+              />
+            ) : (
+              <QuickAction
+                href="/guardian"
+                title="View protection"
+                description="Why you're Allowed, Warning, or Locked."
+              />
+            )}
             <QuickAction
               href="/accounts"
               title={hasBroker ? "Manage accounts" : "Connect broker"}
@@ -431,17 +439,17 @@ function GuardianPausedPanel() {
         Paused
       </span>
       <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-        Guardian is paused.
+        Protection is paused.
       </h2>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
-        Your rules are saved, but Guardian is not monitoring this session.
+        Your rules are saved, but Guardrail is not monitoring this session.
       </p>
       <div className="mt-5">
         <a
           href="/rules#guardian-toggle"
           className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          Enable Guardian
+          Enable protection
         </a>
       </div>
     </section>

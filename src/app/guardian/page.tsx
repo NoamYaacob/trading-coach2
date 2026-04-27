@@ -209,30 +209,10 @@ export default async function GuardianPage() {
 
   const triggeredLabels = guardian.evaluation.triggeredRuleLabels;
 
-  // Active rules summary derived from RiskRules (preferred) with GuardianProfile fallback.
-  const activeRules: Array<{ label: string; value: string }> = [];
   const maxDailyLoss = riskRules?.maxDailyLoss ?? guardian.profile.maxDailyLoss;
   const maxTradesPerDay = riskRules?.maxTradesPerDay ?? guardian.profile.maxTradesPerDay;
   const stopAfterLosses =
     riskRules?.stopAfterLosses ?? guardian.profile.stopAfterConsecutiveLosses;
-  const dailyProfitTarget =
-    riskRules?.dailyProfitTarget ?? guardian.profile.dailyProfitTarget;
-
-  if (maxDailyLoss != null) activeRules.push({ label: "Daily loss limit", value: `$${maxDailyLoss}` });
-  if (dailyProfitTarget != null) activeRules.push({ label: "Daily profit target", value: `$${dailyProfitTarget}` });
-  if (riskRules?.maxRiskPerTrade != null) activeRules.push({ label: "Max risk per trade", value: `$${riskRules.maxRiskPerTrade}` });
-  if (maxTradesPerDay != null) activeRules.push({ label: "Max trades per day", value: String(maxTradesPerDay) });
-  if (stopAfterLosses != null) activeRules.push({ label: "Stop after losses", value: String(stopAfterLosses) });
-  if (riskRules?.maxContracts != null) activeRules.push({ label: "Max contracts", value: String(riskRules.maxContracts) });
-  if (riskRules?.allowedSymbols) activeRules.push({ label: "Allowed symbols", value: riskRules.allowedSymbols });
-  if (riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null) {
-    activeRules.push({
-      label: "Session hours",
-      value: `${riskRules.sessionStartHour}:00 – ${riskRules.sessionEndHour}:00 ${displayTimeZone}`,
-    });
-  }
-  if (riskRules?.tradingDays) activeRules.push({ label: "Trading days", value: riskRules.tradingDays });
-  if (riskRules?.newsLockoutEnabled) activeRules.push({ label: "News lockout", value: "Enabled" });
 
   // On-breach actions configured by the user
   const breachActions: Array<{ label: string; available: boolean; on: boolean }> = [
@@ -312,9 +292,9 @@ export default async function GuardianPage() {
               <div className="mt-5">
                 <Link
                   href="/rules#guardian-toggle"
-                  className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="inline-flex rounded-full border border-stone-400 bg-white px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
                 >
-                  Enable Guardian
+                  Enable protection →
                 </Link>
               </div>
             )}
@@ -416,29 +396,8 @@ export default async function GuardianPage() {
           </SectionCard>
         )}
 
-        {/* ── Active rules ────────────────────────────────────────────────── */}
-        <SectionCard
-          title="Active rules"
-          description="The limits Guardrail is currently enforcing. Edit in the Rules page."
-        >
-          {activeRules.length > 0 ? (
-            <div className="divide-y divide-stone-100">
-              {activeRules.map(({ label, value }) => (
-                <div key={label} className="flex items-center justify-between py-3 text-sm">
-                  <span className="text-stone-600">{label}</span>
-                  <span className="font-medium text-stone-950">{value}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-stone-500">
-              No rules configured yet.{" "}
-              <Link href="/rules" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                Set your protection rules →
-              </Link>
-            </p>
-          )}
-        </SectionCard>
+        {/* ── Recent breaches / session events ────────────────────────────── */}
+        <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
 
         {/* ── How enforcement works (collapsible details) ─────────────────── */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
@@ -476,9 +435,6 @@ export default async function GuardianPage() {
             </p>
           </div>
         </details>
-
-        {/* ── Recent breaches / session events ────────────────────────────── */}
-        <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
 
       </div>
     </AppShell>
