@@ -69,17 +69,17 @@ function buildItems(opts: {
   return [
     {
       key: "manual",
-      title: "Manual Mode",
+      title: "Manual journal (demo / pre-connection)",
       status: "ready",
       detail:
-        "Journal-driven risk state. Define your rules, log trades, and Guardrail evaluates Safe / Warning / Locked from the journal. Available today; does not block trades at the broker.",
+        "Journal-driven risk evaluation for testing before a broker is connected. Define rules, log trades manually, and Guardrail evaluates Allowed / Warning / Locked. Does not block trades at the broker — demo and fallback only.",
     },
     {
       key: "telegram",
       title: "Telegram alerts",
       status: "optional",
       detail:
-        "Connect Telegram to receive Guardian state and lockout messages. Optional — Manual Mode and the dashboard work without it.",
+        "Connect Telegram to receive Guardian state and lockout messages. Optional — the dashboard works without it.",
     },
     {
       key: "encryption",
@@ -95,7 +95,7 @@ function buildItems(opts: {
       status: oauthConfigured ? "prepared" : "pending",
       detail: oauthConfigured
         ? "OAuth credentials configured. Read scope only — does not request order-write permissions. Connection lifecycle: not_connected → connected_readonly → expired."
-        : `Missing env vars: ${missingKeys.join(", ")}. The connect flow displays a "not configured" state and Manual Mode remains the only path until set.`,
+        : `Missing env vars: ${missingKeys.join(", ")}. The connect flow is unavailable until these are set. Manual journal (demo mode) is the fallback in the meantime.`,
     },
     {
       key: "endpoints",

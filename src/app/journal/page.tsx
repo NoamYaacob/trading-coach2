@@ -118,7 +118,7 @@ export default async function JournalPage() {
     <AppShell
       eyebrow="Journal"
       title="What happened today?"
-      description="Trade log and today's session summary."
+      description="Manual trade log — demo and pre-connection testing. Connect Tradovate for automatic trade tracking."
     >
       <div className="grid gap-6">
 
@@ -263,13 +263,14 @@ export default async function JournalPage() {
         {/* Mode footer — small, single line */}
         <p className="text-xs text-stone-500">
           {hasBroker
-            ? "Risk state evaluates from the journal until your broker connection is verified."
-            : "Risk state evaluates from journal entries. "}
-          {hasBroker ? null : (
-            <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
-              Connect a broker →
-            </a>
-          )}
+            ? "Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified."
+            : <>
+                Demo mode — risk state is evaluated from manual entries, not live broker data.{" "}
+                <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+                  Connect Tradovate for live enforcement →
+                </a>
+              </>
+          }
         </p>
 
       </div>

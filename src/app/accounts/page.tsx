@@ -109,7 +109,7 @@ export default async function AccountsPage() {
     <AppShell
       eyebrow="Accounts"
       title="How do I connect my broker?"
-      description="Connect your broker for live risk evaluation. Manual fallback works without one."
+      description="Connect Tradovate for live risk enforcement. The manual journal is available for testing before your broker is connected."
       actions={
         <Link
           href={ctaHref}
@@ -124,9 +124,9 @@ export default async function AccountsPage() {
         {/* Compact status row */}
         <div className="grid gap-3 sm:grid-cols-3">
           <StatusTile
-            tone="ok"
-            label="Manual fallback"
-            value="Available"
+            tone="neutral"
+            label="Manual journal"
+            value="Demo only"
           />
           <StatusTile
             tone="pending"
@@ -143,7 +143,7 @@ export default async function AccountsPage() {
         {accounts.length === 0 ? (
           <SectionCard title="No brokers connected">
             <p className="text-sm text-stone-600">
-              Connect Tradovate to switch from manual fallback to broker-based risk evaluation.
+              Connect Tradovate to start live risk enforcement against your real trades.
             </p>
             <div className="mt-4">
               <Link

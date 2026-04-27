@@ -21,7 +21,7 @@ embed it). Keep both in sync.
 
 If any required Tradovate var is missing, `getTradovateConfig()` returns
 `{ state: "not_configured", missing }` and the connect flow refuses to
-start. Manual Mode remains the fallback.
+start. The manual journal (demo mode) is the fallback in the meantime.
 
 ## OAuth credentials
 
@@ -96,21 +96,29 @@ broker provider. There is no code path that calls them.
    orders for account X?").
 5. Rollback / reset path.
 
-## Manual Mode — what works today
+## Manual journal — demo and pre-connection fallback only
+
+**Product decision:** Guardrail is a broker-connected risk enforcement
+product. The manual journal is a demo and testing path for users who
+have not yet connected their broker. It is not a supported product path
+in itself and should not be positioned as one in the UI or marketing.
+
+What the manual journal provides:
 
 - Risk rules editor (`/rules`) — edits `RiskRules` and mirrors session
   fields into `GuardianProfile`.
 - Trade entry form (`/journal`) — auto-calc P&L, risk, R-multiple.
 - `computeManualRiskState({ rules, todayTrades })` — pure function,
-  drives Dashboard + Guardian permission state.
+  drives Dashboard + Guardian permission state when no broker connected.
 - Trading-day window with timezone + session hours support.
-- Journal-derived "Safe / Warning / Locked" verdict.
+- Journal-derived "Allowed / Warning / Locked" verdict.
 
-What Manual Mode does NOT do:
+What the manual journal does NOT do (and will never do):
 
 - Prevent orders at the broker. Lockout is an in-app state only.
 - Receive automatic fills. Each trade must be logged manually.
 - Pull P&L from the broker. P&L is computed from logged entries.
+- Replace broker-connected enforcement as a product direction.
 
 ## Telegram alerts — optional
 
@@ -124,13 +132,18 @@ What Manual Mode does NOT do:
 - Do not flip `TradovateAdapter` capability statuses to `available`.
 - Do not call `cancelAllOrders` / `flattenAllPositions` / lockout
   methods anywhere — they exist only as `NotImplementedError` throws.
-- Do not promise broker-level enforcement on the landing page or
-  marketing copy. Use "app-level" or "Manual Mode" framing.
+- Do not promise *verified* broker-level enforcement before endpoints
+  are confirmed against a real account. State clearly that enforcement
+  is pending API verification — but keep the product positioned as
+  broker-connected enforcement, not as a manual-journal product.
 - Do not synthesise broker data when the API is unavailable. The
-  honest UX is "Manual Mode is the source of truth until your broker
-  is connected and verified".
+  honest UX is "broker connection is pending" — not "manual journal
+  is your primary path".
 - Do not add account types beyond Tradovate / Manual until the read
   pipeline ships for the first broker.
+- Do not build no-API workflows, checklist-based manual broker setup,
+  or "confirm broker settings manually" paths. The product requires
+  broker API for the full value proposition.
 
 ## When real API access arrives
 

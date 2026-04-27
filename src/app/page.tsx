@@ -37,15 +37,15 @@ const steps = [
 const includedFeatures = [
   "Pre-session rules — daily loss, trade count, loss-streak stop, session hours",
   "Live session status — Allowed, Warning, or Locked",
-  "Manual trade journal — log trades and risk state updates instantly",
+  "Tradovate broker connection — live risk evaluation from real trades",
+  "Manual journal — test Guardrail before your broker is connected",
   "Optional Telegram alerts when a limit triggers",
-  "Broker connection — verify your Tradovate account when ready",
 ];
 
 const faqs = [
   {
     q: "What if I haven't connected a broker yet?",
-    a: "You can start without one. Log each trade in the journal and the same engine evaluates Allowed / Warning / Locked. The lock applies inside the app — you can connect a broker any time.",
+    a: "The manual journal lets you test Guardrail before your broker is connected — log trades and the same rule engine evaluates Allowed / Warning / Locked. Live enforcement against real trades requires a Tradovate connection, which is the core product path.",
   },
   {
     q: "Does Guardrail block my trades at the broker?",
