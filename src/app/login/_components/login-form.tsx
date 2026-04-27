@@ -157,7 +157,15 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
         </label>
 
         <div className="grid gap-2">
-          <span className={LABEL}>Password</span>
+          <div className="flex items-center justify-between">
+            <span className={LABEL}>Password</span>
+            <Link
+              href="/forgot-password"
+              className="text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}

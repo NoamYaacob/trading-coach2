@@ -56,6 +56,63 @@ export async function clearSession() {
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
+// ── Password reset tokens ──────────────────────────────────────────────────
+
+const RESET_TOKEN_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+
+export function hashResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function createPasswordResetToken(
+  userId: string,
+  requestedIp?: string,
+  userAgent?: string,
+): Promise<string> {
+  // Invalidate any existing unused tokens for this user
+  await prisma.passwordResetToken.updateMany({
+    where: { userId, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = hashResetToken(token);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MS);
+
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+      requestedIp: requestedIp ?? null,
+      userAgent: userAgent ?? null,
+    },
+  });
+
+  return token;
+}
+
+type ValidTokenResult =
+  | { valid: true; userId: string; tokenId: string }
+  | { valid: false };
+
+export async function validatePasswordResetToken(
+  token: string,
+): Promise<ValidTokenResult> {
+  const tokenHash = hashResetToken(token);
+
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash },
+    select: { id: true, userId: true, expiresAt: true, usedAt: true },
+  });
+
+  if (!record) return { valid: false };
+  if (record.usedAt !== null) return { valid: false };
+  if (record.expiresAt < new Date()) return { valid: false };
+
+  return { valid: true, userId: record.userId, tokenId: record.id };
+}
+
 export async function getCurrentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;

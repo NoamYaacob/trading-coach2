@@ -77,6 +77,7 @@ model User {
   oauthConnections   OAuthConnection[]
   manualTradeEntries ManualTradeEntry[]
   alertPreferences   AlertPreferences?
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Session {
@@ -115,6 +116,21 @@ model TelegramLinkToken {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  requestedIp String?
+  userAgent   String?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
 }
 
 model TraderProfile {
