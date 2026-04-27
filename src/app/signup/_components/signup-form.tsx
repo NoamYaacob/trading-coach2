@@ -270,12 +270,28 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
         </button>
 
         <p className="text-center text-xs text-stone-400">
-          Trial access starts now. Billing can be added later from your account.
+          Start your trial now. You&apos;ll add billing before your paid plan begins.
+        </p>
+
+        <p className="text-center text-xs text-stone-400">
+          By creating an account, you agree to the{" "}
+          <Link href="/terms" className="underline underline-offset-2 hover:text-stone-600">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-stone-600">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </form>
 
+      <p className="mt-5 text-center text-xs text-stone-400">
+        Next: set your first rules and prepare your broker connection.
+      </p>
+
       {/* Switch link */}
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-3 text-center text-sm text-stone-500">
         Already using Guardrail?{" "}
         <Link
           href="/login"
