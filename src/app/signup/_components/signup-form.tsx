@@ -107,6 +107,9 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
       const result = (await response.json()) as { error?: string; redirectTo?: string };
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error("Too many signup attempts. Please wait an hour and try again.");
+        }
         throw new Error(result.error ?? "Unable to create account.");
       }
 

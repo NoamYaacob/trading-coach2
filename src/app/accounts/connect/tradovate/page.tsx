@@ -21,8 +21,11 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
   token_storage_failed: "OAuth completed but token storage failed on this server. Please try again or contact support.",
   csrf_mismatch: "Authorization session expired or was tampered with. Please try again.",
+  session_mismatch: "Authorization session did not match. Please log in and start the connection again.",
   invalid_state: "Invalid authorization state. Please start the connection again.",
   missing_params: "Authorization response was incomplete. Please try again.",
+  unauthenticated: "Your session expired during authorization. Please log in and try again.",
+  too_many_requests: "Too many authorization attempts. Please wait an hour and try again.",
   access_denied: "You declined to authorize Guardrail.",
 };
 

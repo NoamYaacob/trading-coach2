@@ -42,6 +42,9 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       const result = (await response.json()) as { error?: string; redirectTo?: string };
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error("Too many login attempts. Please wait a minute and try again.");
+        }
         throw new Error(result.error ?? "Unable to log in.");
       }
 

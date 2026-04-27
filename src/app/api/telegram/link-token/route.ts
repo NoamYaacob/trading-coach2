@@ -6,7 +6,7 @@ import { hasBotAccess } from "@/lib/subscription";
 import { generateTelegramLinkToken } from "@/lib/telegram";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-export async function POST(request: Request) {
+export async function POST() {
   const currentUser = await getCurrentUser();
 
   if (!currentUser) {

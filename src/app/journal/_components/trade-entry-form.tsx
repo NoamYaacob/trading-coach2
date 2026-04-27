@@ -149,7 +149,12 @@ export function TradeEntryForm() {
         body: JSON.stringify(payload),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to save trade.");
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error("Saving too quickly. Please wait a moment and try again.");
+        }
+        throw new Error(data.error ?? "Failed to save trade.");
+      }
       setSuccess(true);
       setValues({ ...INITIAL, tradedAt: nowLocalIsoMinute() });
       router.refresh();
