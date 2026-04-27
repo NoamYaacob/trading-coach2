@@ -64,7 +64,7 @@ function permissionStyles(p: Permission) {
         shell: "border-stone-300 bg-stone-50",
         chip: "bg-stone-600 text-white",
         accent: "text-stone-700",
-        label: "Guardian off",
+        label: "Paused",
       };
     default:
       return {
@@ -190,7 +190,7 @@ export default async function GuardianPage() {
   const styles = permissionStyles(permission);
 
   const headline = guardianOff
-    ? "Guardian is off. Rules are saved, but session enforcement is paused."
+    ? "Guardian is paused."
     : isLocked
       ? "Trading is locked for today."
       : hasWarnings
@@ -198,7 +198,7 @@ export default async function GuardianPage() {
         : "Trading is open. All limits clear.";
 
   const detail = guardianOff
-    ? "Enable Guardian in Rules to start evaluating the session against your configured limits."
+    ? "Your rules are saved, but Guardian is not actively monitoring the session."
     : isLocked
       ? !hasBroker && manualLocked
         ? manualRisk.lastBreach?.detail ?? "A daily limit was reached based on your journal entries."
@@ -245,8 +245,8 @@ export default async function GuardianPage() {
   return (
     <AppShell
       eyebrow="Guardian · Enforcement"
-      title="Trading permission."
-      description="See whether the session is Allowed, Warning, or Locked, and which rule caused it."
+      title="Why am I allowed, warned, or locked?"
+      description="Your current trading permission and the rule that caused it."
       actions={
         <Link
           href="/rules"
@@ -267,13 +267,13 @@ export default async function GuardianPage() {
             />
             <span className="font-medium text-stone-600">Guardian</span>
             <span className={guardianOff ? "text-stone-400" : "text-emerald-700 font-semibold"}>
-              {guardianOff ? "Off" : "On"}
+              {guardianOff ? "Paused" : "On"}
             </span>
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
-            <span className="font-medium text-stone-600">Mode</span>
-            <span className="text-stone-700">{hasBroker ? "Broker connected" : "Manual fallback"}</span>
+            <span className="font-medium text-stone-600">Source</span>
+            <span className="text-stone-700">{hasBroker ? "Broker connection" : "Manual fallback"}</span>
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
@@ -302,7 +302,7 @@ export default async function GuardianPage() {
                 {styles.label}
               </span>
               <span className="text-xs text-stone-500">
-                {hasBroker ? "Broker connected · App-level enforcement" : "Manual fallback · App-level only"}
+                {hasBroker ? "Broker connected" : "Manual fallback"}
               </span>
             </div>
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
@@ -314,7 +314,7 @@ export default async function GuardianPage() {
                   href="/rules"
                   className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
-                  Enable Guardian in Rules →
+                  Enable Guardian →
                 </Link>
               </div>
             )}
@@ -440,12 +440,16 @@ export default async function GuardianPage() {
           )}
         </SectionCard>
 
-        {/* ── On-breach behaviour ─────────────────────────────────────────── */}
-        <SectionCard
-          title="On breach"
-          description="What Guardrail does when a rule is crossed."
-        >
-          <div className="grid gap-2">
+        {/* ── How enforcement works (collapsible details) ─────────────────── */}
+        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+            How enforcement works
+            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-5 grid gap-3">
+            <p className="text-sm text-stone-600">
+              When a rule is crossed, Guardrail does the following:
+            </p>
             {breachActions.map(({ label, available, on }) => (
               <div
                 key={label}
@@ -453,14 +457,7 @@ export default async function GuardianPage() {
                   available ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-70"
                 }`}
               >
-                <div>
-                  <p className="text-sm font-medium text-stone-950">{label}</p>
-                  {!available && (
-                    <p className="mt-0.5 text-xs text-stone-500">
-                      Requires broker integration. Not yet implemented.
-                    </p>
-                  )}
-                </div>
+                <p className="text-sm font-medium text-stone-950">{label}</p>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     !available
@@ -470,15 +467,15 @@ export default async function GuardianPage() {
                         : "bg-stone-100 text-stone-500"
                   }`}
                 >
-                  {!available ? "Coming soon" : on ? "On" : "Off"}
+                  {!available ? "Pending broker" : on ? "On" : "Off"}
                 </span>
               </div>
             ))}
+            <p className="mt-1 text-xs text-stone-500">
+              Broker order cancel/flatten requires a verified broker connection.
+            </p>
           </div>
-          <p className="mt-4 text-xs text-stone-400">
-            Guardrail tracks limits, warns, and locks the session at the app level. Broker-level enforcement (cancel orders, flatten positions) requires verified broker support — not enabled today.
-          </p>
-        </SectionCard>
+        </details>
 
         {/* ── Recent breaches / session events ────────────────────────────── */}
         <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />

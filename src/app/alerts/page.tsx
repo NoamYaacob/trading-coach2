@@ -110,8 +110,8 @@ export default async function AlertsPage() {
   return (
     <AppShell
       eyebrow="Alerts"
-      title="Notification channels."
-      description="Where Guardrail sends alerts when rules trigger. Alerts mirror Guardrail state changes — they do not represent broker-level actions. In-app alerts are always on; Telegram is optional."
+      title="How will I be notified?"
+      description="Where Guardrail sends alerts when rules trigger."
       actions={
         !telegramReady ? (
           <a
@@ -126,15 +126,12 @@ export default async function AlertsPage() {
       <div className="grid gap-6">
 
         {/* Channel status */}
-        <SectionCard
-          title="Channels"
-          description="Where alerts are delivered."
-        >
-          <div className="grid gap-4 sm:grid-cols-3">
+        <SectionCard title="Channels">
+          <div className="grid gap-3 sm:grid-cols-3">
             {channels.map((ch) => (
               <div
                 key={ch.label}
-                className={`rounded-2xl border px-5 py-4 ${
+                className={`rounded-2xl border px-4 py-3 ${
                   ch.accent
                     ? "border-emerald-200 bg-emerald-50"
                     : ch.enabled
@@ -142,17 +139,16 @@ export default async function AlertsPage() {
                       : "border-stone-200 bg-stone-50 opacity-70"
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-stone-950">{ch.label}</p>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${ch.badgeCls}`}>
                     {ch.status}
                   </span>
                 </div>
-                <p className="mt-2 text-sm leading-5 text-stone-600">{ch.detail}</p>
                 {ch.action && (
                   <a
                     href={ch.action.href}
-                    className="mt-3 inline-block text-xs font-medium text-stone-950 underline-offset-2 hover:underline"
+                    className="mt-2 inline-block text-xs font-medium text-stone-950 underline-offset-2 hover:underline"
                   >
                     {ch.action.label} →
                   </a>
@@ -162,34 +158,25 @@ export default async function AlertsPage() {
           </div>
         </SectionCard>
 
-        {/* Alert triggers */}
+        {/* Alert triggers — compact list, details collapsed */}
         <SectionCard
-          title="Alert triggers"
-          description="Each trigger is active only when its rule is configured."
+          title="Triggers"
+          description="Active when the matching rule is configured."
           actions={
             <a
               href="/rules"
               className="text-xs font-medium text-stone-500 underline-offset-2 transition hover:text-stone-950 hover:underline"
             >
-              Edit rules →
+              Set rules →
             </a>
           }
         >
           <div className="divide-y divide-stone-100">
             {triggers.map((t) => (
-              <div key={t.label} className="flex items-start justify-between gap-4 py-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-stone-950">{t.label}</p>
-                  <p className="mt-0.5 text-sm text-stone-500">{t.description}</p>
-                  {!t.active && (
-                    <p className="mt-1 text-xs text-stone-400">
-                      Inactive — set <span className="font-medium text-stone-600">{t.requires}</span> in{" "}
-                      <a href="/rules" className="font-medium text-stone-700 underline-offset-2 hover:underline">Rules</a> to enable.
-                    </p>
-                  )}
-                </div>
+              <div key={t.label} className="flex items-center justify-between gap-4 py-2.5">
+                <p className="text-sm font-medium text-stone-950">{t.label}</p>
                 <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     t.active
                       ? "bg-emerald-100 text-emerald-800"
                       : "bg-stone-100 text-stone-500"
@@ -200,9 +187,26 @@ export default async function AlertsPage() {
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs text-stone-400">
-            Per-channel routing for individual triggers is coming in a future update.
-          </p>
+          <details className="group mt-4 border-t border-stone-100 pt-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+              Details
+              <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <div className="mt-4 grid gap-3">
+              {triggers.map((t) => (
+                <div key={t.label} className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm">
+                  <p className="font-medium text-stone-950">{t.label}</p>
+                  <p className="mt-1 text-stone-600">{t.description}</p>
+                  {!t.active && (
+                    <p className="mt-1 text-xs text-stone-500">
+                      Set <span className="font-medium">{t.requires}</span> in{" "}
+                      <a href="/rules" className="font-medium text-stone-700 underline-offset-2 hover:underline">Rules</a> to enable.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
         </SectionCard>
 
       </div>

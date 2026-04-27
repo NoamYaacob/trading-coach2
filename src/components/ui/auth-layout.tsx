@@ -2,10 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const BULLETS = [
-  "Define your daily limits once",
-  "Prepare for read-only broker verification",
-  "Lock the Guardrail session when limits are breached",
-  "Optional Telegram alerts when limits trigger",
+  "Define your risk limits",
+  "Track session status",
+  "Prepare for broker-connected enforcement",
 ];
 
 export function AuthLayout({ children }: { children: ReactNode }) {
@@ -55,17 +54,11 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 
           {/* Middle: value proposition */}
           <div className="max-w-[360px]">
-            <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.32em] text-stone-500">
-              Risk enforcement for traders
-            </p>
             <h2 className="text-4xl font-semibold leading-[1.1] tracking-[-0.04em] text-stone-50 xl:text-[2.75rem]">
-              Stop one bad trade
+              Build rules before the session.
               <br />
-              from becoming a bad day.
+              Follow them during it.
             </h2>
-            <p className="mt-4 text-[15px] leading-7 text-stone-400">
-              Risk enforcement for active traders. Define your rules, track the session, and move to broker-connected enforcement as integrations are verified.
-            </p>
 
             <ul className="mt-8 grid gap-3.5">
               {BULLETS.map((b) => (

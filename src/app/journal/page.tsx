@@ -117,39 +117,10 @@ export default async function JournalPage() {
   return (
     <AppShell
       eyebrow="Journal"
-      title="Manual trade log."
-      description="Use this while broker data is unavailable. Entries here power the same risk engine that broker events will use later."
+      title="What happened today?"
+      description="Trade log and today's session summary."
     >
       <div className="grid gap-6">
-
-        {/* Mode banner */}
-        {hasBroker ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm">
-            <p className="font-medium text-sky-900">Broker connected · Journal still feeds risk evaluation</p>
-            <p className="mt-0.5 text-stone-700">
-              Risk state continues to evaluate from the journal until your broker connection is verified.{" "}
-              <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                Verify connection →
-              </a>
-            </p>
-            <p className="mt-2 text-xs text-stone-500">
-              Trading day: <span className="font-medium text-stone-700">{window.label}</span>
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-            <p className="font-medium text-amber-900">Manual fallback · Journal feeds risk evaluation</p>
-            <p className="mt-0.5 text-stone-700">
-              P&L, trade count, and loss streak are calculated from entries here until a broker connection is verified.{" "}
-              <a href="/accounts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                Connect a broker →
-              </a>
-            </p>
-            <p className="mt-2 text-xs text-stone-500">
-              Trading day: <span className="font-medium text-stone-700">{window.label}</span>
-            </p>
-          </div>
-        )}
 
         {/* No-rules warning */}
         {!riskRules && (
@@ -160,15 +131,24 @@ export default async function JournalPage() {
           />
         )}
 
+        {/* Locked warning */}
+        {risk.permission === "LOCKED" && (
+          <NextActionBanner
+            variant="locked"
+            message={
+              <>
+                <span className="font-semibold">Session locked.</span>{" "}
+                {risk.lastBreach?.detail ?? "A daily limit was reached."} Stop trading until the session resets.
+              </>
+            }
+            cta={{ label: "View status", href: "/guardian" }}
+          />
+        )}
+
         {/* Today summary */}
         <SectionCard
           title="Today"
-          description="Calculated from journal entries dated today."
-          actions={
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
-              Manual fallback
-            </span>
-          }
+          description={`Trading day: ${window.label}.`}
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             {summaryTiles.map((t) => (
@@ -184,42 +164,19 @@ export default async function JournalPage() {
           </div>
         </SectionCard>
 
-        {/* Locked warning — shown before the form so user sees it before logging */}
-        {risk.permission === "LOCKED" && (
-          <NextActionBanner
-            variant="locked"
-            message={
-              <>
-                <span className="font-semibold">Session locked.</span>{" "}
-                {risk.lastBreach?.detail ?? "A daily limit was reached."} Stop trading until the session resets.
-              </>
-            }
-            cta={{ label: "View Guardian", href: "/guardian" }}
-          />
-        )}
-
-        {/* Add trade — real form */}
-        <SectionCard
-          title="Add trade"
-          description="Log a trade manually. P&L, risk, and R-multiple auto-calculate when entry / exit / stop / quantity are filled in — you can override any field."
-        >
-          <TradeEntryForm />
-        </SectionCard>
-
         {/* Trade history */}
         <SectionCard
           title="Trade history"
           description={
             allEntries.length > 0
               ? `${allEntries.length} trade${allEntries.length === 1 ? "" : "s"} logged. Newest first.`
-              : "All trades, newest first."
+              : "No trades logged for this session."
           }
         >
           {allEntries.length === 0 ? (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-6 py-8 text-center">
-              <p className="text-base font-semibold text-stone-800">No trades logged yet</p>
-              <p className="mt-2 text-sm text-stone-600">Log your first trade above to see risk state update in real time.</p>
-              <p className="mt-3 text-xs text-stone-400">Each trade counts toward today&rsquo;s P&amp;L, trade count, and loss streak.</p>
+              <p className="text-base font-semibold text-stone-800">No trades logged for this session</p>
+              <p className="mt-2 text-sm text-stone-600">Add a manual trade below to track risk state.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -292,15 +249,28 @@ export default async function JournalPage() {
           )}
         </SectionCard>
 
-        {/* Lock note — shown below history as a reminder */}
-        {risk.permission === "LOCKED" && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm">
-            <p className="font-medium text-red-900">Session locked</p>
-            <p className="mt-0.5 text-stone-700">
-              You can still log trades here for record keeping. App-level lock only — broker-level blocking requires a verified broker connection.
-            </p>
+        {/* Add manual trade — collapsed by default */}
+        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+            Add manual trade
+            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-5">
+            <TradeEntryForm />
           </div>
-        )}
+        </details>
+
+        {/* Mode footer — small, single line */}
+        <p className="text-xs text-stone-500">
+          {hasBroker
+            ? "Risk state evaluates from the journal until your broker connection is verified."
+            : "Risk state evaluates from journal entries. "}
+          {hasBroker ? null : (
+            <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+              Connect a broker →
+            </a>
+          )}
+        </p>
 
       </div>
     </AppShell>

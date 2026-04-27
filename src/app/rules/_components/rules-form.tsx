@@ -112,7 +112,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
 
       {/* ── Risk budget ─────────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <legend className="text-sm font-semibold text-stone-950">Account &amp; risk budget</legend>
+        <legend className="text-sm font-semibold text-stone-950">Risk budget</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
@@ -120,7 +120,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
           <Field label="Daily loss limit ($)">
             <NumberInput value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
-          <Field label="Daily profit target ($)" hint="Optional. Locks the session when reached.">
+          <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
           <Field label="Max risk per trade ($)">
@@ -132,41 +132,24 @@ export function RulesForm({ initial, hasBroker }: Props) {
       {/* ── Trade limits ────────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Trade limits</legend>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Max trades per day">
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
           <Field label="Stop after consecutive losses">
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
-          <Field label="Max contracts / position size">
-            <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-          </Field>
         </div>
-      </fieldset>
-
-      {/* ── Symbols ─────────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <legend className="text-sm font-semibold text-stone-950">Allowed symbols</legend>
-        <Field label="Symbols" hint="Comma-separated. Leave blank to allow any symbol.">
-          <input
-            type="text"
-            value={values.allowedSymbols}
-            onChange={(e) => update("allowedSymbols", e.target.value)}
-            placeholder="ES, NQ, MES, MNQ"
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-          />
-        </Field>
       </fieldset>
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Session start (hour, 0–23)" hint="In your local timezone. Use 22 with end = 5 for an overnight session.">
+          <Field label="Session start (hour, 0–23)">
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end (hour, 0–23)" hint="If end ≤ start, the session is treated as overnight.">
+          <Field label="Session end (hour, 0–23)">
             <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
@@ -192,59 +175,86 @@ export function RulesForm({ initial, hasBroker }: Props) {
             })}
           </div>
         </div>
-        <label className="flex items-start gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={values.newsLockoutEnabled}
-            onChange={(e) => update("newsLockoutEnabled", e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
-          />
-          <span>
-            <span className="font-medium text-stone-950">News lockout</span>
-            <span className="block text-stone-500">Block trading around high-impact economic events (uses your news policy).</span>
-          </span>
-        </label>
       </fieldset>
 
-      {/* ── On-breach actions ───────────────────────────────────────────── */}
+      {/* ── Breach actions — main two ────────────────────────────────────── */}
       <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <legend className="text-sm font-semibold text-stone-950">On breach</legend>
-        <p className="text-xs text-stone-500">
-          {hasBroker
-            ? "Broker connection detected. Order/position actions will activate when broker enforcement ships."
-            : "Manual mode: only Warn and App-level lock are available. Connect a broker to access order and position actions when they ship."}
-        </p>
+        <legend className="text-sm font-semibold text-stone-950">When a rule is broken</legend>
         <div className="grid gap-3">
           <BreachOption
             checked={values.onBreachWarn}
             onChange={(v) => update("onBreachWarn", v)}
             available
-            label="Warn only"
-            description="Send a warning via in-app banner and Telegram (if connected). No further action."
+            label="Warn"
+            description="In-app banner and Telegram (if connected)."
           />
           <BreachOption
             checked={values.onBreachAppLock}
             onChange={(v) => update("onBreachAppLock", v)}
             available
-            label="Lock trading for the day (app-level)"
-            description="Mark the session stopped in Guardrail. New trades you log are flagged as breaches. Does not block orders at the broker."
-          />
-          <BreachOption
-            checked={values.onBreachCancelOrders}
-            onChange={(v) => update("onBreachCancelOrders", v)}
-            available={false}
-            label="Cancel broker orders"
-            description="Auto-cancel working orders via broker API."
-          />
-          <BreachOption
-            checked={values.onBreachFlatten}
-            onChange={(v) => update("onBreachFlatten", v)}
-            available={false}
-            label="Flatten broker positions"
-            description="Auto-close all open positions via broker API."
+            label="Lock the session"
+            description="Mark the session stopped in Guardrail."
           />
         </div>
       </fieldset>
+
+      {/* ── Advanced settings — hidden by default ────────────────────────── */}
+      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+          Advanced
+          <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div className="mt-5 grid gap-5">
+          <Field label="Allowed symbols" hint="Comma-separated. Blank allows any symbol.">
+            <input
+              type="text"
+              value={values.allowedSymbols}
+              onChange={(e) => update("allowedSymbols", e.target.value)}
+              placeholder="ES, NQ, MES, MNQ"
+              className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
+            />
+          </Field>
+          <Field label="Max contracts / position size">
+            <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+          </Field>
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={values.newsLockoutEnabled}
+              onChange={(e) => update("newsLockoutEnabled", e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
+            />
+            <span>
+              <span className="font-medium text-stone-950">News lockout</span>
+              <span className="block text-stone-500">Block trading around high-impact economic events.</span>
+            </span>
+          </label>
+          <div className="grid gap-2">
+            <p className="text-sm font-medium text-stone-950">Broker actions</p>
+            <p className="text-xs text-stone-500">
+              {hasBroker
+                ? "Activate once broker support is verified."
+                : "Connect a broker to access these."}
+            </p>
+            <div className="grid gap-3">
+              <BreachOption
+                checked={values.onBreachCancelOrders}
+                onChange={(v) => update("onBreachCancelOrders", v)}
+                available={false}
+                label="Cancel broker orders"
+                description="Auto-cancel working orders."
+              />
+              <BreachOption
+                checked={values.onBreachFlatten}
+                onChange={(v) => update("onBreachFlatten", v)}
+                available={false}
+                label="Flatten broker positions"
+                description="Auto-close all open positions."
+              />
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* ── Submit ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-6">

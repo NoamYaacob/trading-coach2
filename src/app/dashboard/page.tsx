@@ -268,10 +268,13 @@ export default async function DashboardPage() {
       ? "The live sequence of what has happened so far."
       : "What has happened so far today.";
 
+  const setupNeeded =
+    !onboardingComplete || (onboardingComplete && !riskRules);
+
   return (
     <AppShell
       eyebrow="Dashboard"
-      title="Today's session."
+      title="Can I trade right now?"
       description="Your trading permission, risk budget, and session state in one view."
       actions={
         <DashboardActions
@@ -280,26 +283,28 @@ export default async function DashboardPage() {
         />
       }
     >
-      <div className="grid gap-10">
-        {/* Enforcement mode banner — only shown in manual mode */}
-        {!liveEnforcement && (
-          <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-            <div>
-              <p className="font-semibold text-amber-900">Manual fallback active</p>
-              <p className="mt-0.5 text-stone-700">
-                Risk is calculated from journal entries. Broker-side actions require verified broker support.
-              </p>
-            </div>
+      <div className="grid gap-8">
+        {/* Setup needed — single prominent card when rules/onboarding incomplete */}
+        {setupNeeded && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+              Setup needed
+            </p>
+            <p className="mt-1 text-sm font-medium text-stone-900">
+              {!onboardingComplete
+                ? "Finish onboarding to enable Guardian."
+                : "Set your trading rules so Guardian can evaluate the session."}
+            </p>
             <a
-              href="/accounts"
-              className="shrink-0 rounded-full border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+              href={!onboardingComplete ? "/onboarding" : "/rules"}
+              className="mt-3 inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
             >
-              Connect broker →
+              {!onboardingComplete ? "Continue onboarding →" : "Set rules →"}
             </a>
           </div>
         )}
 
-        {/* Session status — live enforcement panel when live account connected, manual otherwise */}
+        {/* Trading permission — primary hero */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Trading permission
@@ -328,21 +333,31 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* Risk environment */}
+        {/* Quick actions — 3 max */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Risk environment
+            Quick actions
           </p>
-          <EconomicEventsPanel
-            events={economicCalendarSnapshot.events}
-            providerLabel={economicCalendarVisibility.providerLabel}
-            sourceLabel={economicCalendarVisibility.sourceLabel}
-            scenarioLabel={economicCalendarVisibility.scenarioLabel}
-            timeZone={displayTimeZone}
-          />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <QuickAction
+              href="/rules"
+              title="Set rules"
+              description="Edit limits and breach actions."
+            />
+            <QuickAction
+              href="/guardian"
+              title="View status"
+              description="Why you're Allowed, Warning, or Locked."
+            />
+            <QuickAction
+              href="/accounts"
+              title={hasBroker ? "Manage accounts" : "Connect broker"}
+              description={hasBroker ? "Broker connections." : "Prepare your Tradovate connection."}
+            />
+          </div>
         </div>
 
-        {/* Session record — only shown once the session has started or there is activity */}
+        {/* Session record — only shown once there is activity */}
         {(mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded) ? (
           <div className="grid gap-4">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
@@ -372,88 +387,36 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        {/* Quick actions */}
-        <div className="grid gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Quick actions
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <QuickAction
-              href="/guardian"
-              title="Open Guardian"
-              description="Permission status and active rules."
+        {/* Details — economic events + manual entry, hidden by default */}
+        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+            Details
+            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-5 grid gap-6">
+            <EconomicEventsPanel
+              events={economicCalendarSnapshot.events}
+              providerLabel={economicCalendarVisibility.providerLabel}
+              sourceLabel={economicCalendarVisibility.sourceLabel}
+              scenarioLabel={economicCalendarVisibility.scenarioLabel}
+              timeZone={displayTimeZone}
             />
-            <QuickAction
-              href="/rules"
-              title="Edit rules"
-              description="Configure limits and on-breach actions."
-            />
-            <QuickAction
-              href="/journal"
-              title="Add trade"
-              description="Log a trade or session event."
-            />
-            {hasBroker ? (
-              <QuickAction
-                href="/accounts"
-                title="Manage accounts"
-                description="Broker connections and capabilities."
-              />
-            ) : (
-              <QuickAction
-                href="/accounts"
-                title="Connect broker"
-                description="Tradovate read-only OAuth (in preparation)."
-              />
+            <SectionCard
+              title="Log a trade or event"
+              description="Quick manual entry — feeds today's activity."
+            >
+              <ManualEventForm />
+            </SectionCard>
+            {!telegramConnected && (
+              <p className="text-xs text-stone-500">
+                <a href="/alerts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+                  Connect Telegram
+                </a>{" "}
+                to receive lockout and warning alerts on your phone.
+              </p>
             )}
           </div>
-
-          {/* Setup nudge — only when something still needs doing */}
-          {(!onboardingComplete || !telegramConnected || (onboardingComplete && !riskRules)) ? (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Setup</p>
-              <ul className="mt-2 grid gap-1 text-sm text-stone-700">
-                {!onboardingComplete && (
-                  <li>
-                    <a href="/onboarding" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                      Complete onboarding →
-                    </a>{" "}
-                    Set your daily limits and enable Guardian enforcement.
-                  </li>
-                )}
-                {onboardingComplete && !riskRules && (
-                  <li>
-                    <a href="/rules" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                      Set your trading rules →
-                    </a>{" "}
-                    Guardian needs rules to evaluate risk and enforce limits.
-                  </li>
-                )}
-                {!telegramConnected && (
-                  <li>
-                    <a href="/alerts" className="font-medium text-stone-950 underline-offset-2 hover:underline">
-                      Connect Telegram →
-                    </a>{" "}
-                    Receive Guardian lockout alerts and enforcement notifications.
-                  </li>
-                )}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Inline manual entry — kept compact */}
-          <SectionCard
-            title="Log a trade or event"
-            description="Quick manual entry — feeds today's activity and the post-session review."
-            actions={
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
-                Manual fallback
-              </span>
-            }
-          >
-            <ManualEventForm />
-          </SectionCard>
-        </div>
+        </details>
       </div>
     </AppShell>
   );

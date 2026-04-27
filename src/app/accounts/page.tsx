@@ -17,7 +17,7 @@ import { AccountCard } from "./_components/account-card";
 function statusLabel(status: BrokerCapabilityStatus): string {
   switch (status) {
     case "available":      return "Available";
-    case "requires_oauth": return "OAuth required";
+    case "requires_oauth": return "Setup needed";
     case "coming_soon":    return "Coming soon";
     case "unknown":        return "To be verified";
     case "not_supported":  return "Not available";
@@ -100,65 +100,58 @@ export default async function AccountsPage() {
     "placeOrderBlock",
   ];
 
+  const ctaHref = hasTradovate
+    ? "/accounts/tradovate/verify"
+    : "/accounts/connect/tradovate";
+  const ctaLabel = hasTradovate ? "Verify connection" : "Prepare Tradovate connection";
+
   return (
     <AppShell
       eyebrow="Accounts"
-      title="Broker connections."
-      description="Read-only Tradovate OAuth is being prepared. Once a broker connection is verified, risk state switches from Manual Mode to broker-driven evaluation. Broker-side enforcement actions ship per-broker only after verified support."
+      title="How do I connect my broker?"
+      description="Connect your broker for live risk evaluation. Manual fallback works without one."
       actions={
         <Link
-          href="/accounts/connect/tradovate"
+          href={ctaHref}
           className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          Connect Tradovate
+          {ctaLabel}
         </Link>
       }
     >
       <div className="grid gap-6">
 
-        {/* Readiness strip */}
+        {/* Compact status row */}
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Available</p>
-            <p className="mt-1 text-sm font-medium text-stone-950">Manual fallback</p>
-            <p className="mt-0.5 text-xs text-stone-600">Journal-driven risk state, app-level lock.</p>
-          </div>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Pending API access</p>
-            <p className="mt-1 text-sm font-medium text-stone-950">Tradovate OAuth</p>
-            <p className="mt-0.5 text-xs text-stone-600">Read-only, built and waiting on endpoint verification.</p>
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Disabled until verified</p>
-            <p className="mt-1 text-sm font-medium text-stone-950">Broker enforcement</p>
-            <p className="mt-0.5 text-xs text-stone-600">Cancel, flatten, lockout — ships after live verification.</p>
-          </div>
+          <StatusTile
+            tone="ok"
+            label="Manual fallback"
+            value="Available"
+          />
+          <StatusTile
+            tone="pending"
+            label="Tradovate"
+            value="Setup needed"
+          />
+          <StatusTile
+            tone="neutral"
+            label="Broker enforcement"
+            value="Pending verification"
+          />
         </div>
 
         {accounts.length === 0 ? (
           <SectionCard title="No brokers connected">
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="grid gap-3">
-                <p className="text-sm text-stone-600">
-                  Connect your Tradovate account read-only. Once the connection is verified, risk state evaluates against broker reads instead of manual journal entries. The session locks at the app level when a rule is breached.
-                </p>
-                <div>
-                  <Link
-                    href="/accounts/connect/tradovate"
-                    className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-                  >
-                    Connect Tradovate
-                  </Link>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                  Without a broker
-                </p>
-                <p className="text-stone-700">
-                  Manual Mode is the source of truth. Guardrail evaluates rules from journal entries and locks the session at the app level — no broker-side cancellation or flattening.
-                </p>
-              </div>
+            <p className="text-sm text-stone-600">
+              Connect Tradovate to switch from manual fallback to broker-based risk evaluation.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/accounts/connect/tradovate"
+                className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              >
+                Prepare Tradovate connection
+              </Link>
             </div>
           </SectionCard>
         ) : (
@@ -179,7 +172,7 @@ export default async function AccountsPage() {
                     href="/accounts/connect/tradovate"
                     className="font-medium text-stone-950 underline-offset-2 hover:underline"
                   >
-                    Connect Tradovate
+                    Prepare Tradovate connection
                   </Link>
                 </p>
               </div>
@@ -187,68 +180,92 @@ export default async function AccountsPage() {
           </>
         )}
 
-        {/* Broker capability table — driven by the broker registry. */}
-        <SectionCard
-          title="Broker capabilities"
-          description="What each broker can do today."
-        >
-          <details className="group">
-            <summary className="cursor-pointer list-none text-xs font-medium text-stone-500 hover:text-stone-950">
-              <span className="group-open:hidden">Show capability matrix ↓</span>
-              <span className="hidden group-open:inline">Hide capability matrix ↑</span>
-            </summary>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    <th className="pb-3 pr-6">Capability</th>
-                    {adapters.map((a) => (
-                      <th key={a.provider} className="pb-3 pr-6">
-                        {a.displayName}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {capabilityKeys.map((key) => {
-                    const label = adapters[0].getCapabilities()[key].label;
-                    return (
-                      <tr key={key}>
-                        <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
-                        {adapters.map((a) => {
-                          const cap = a.getCapabilities()[key];
-                          return (
-                            <td key={a.provider} className="py-3 pr-6">
-                              <span
-                                className={`text-xs font-semibold ${statusClass(cap.status)}`}
-                                title={cap.note ?? undefined}
-                              >
-                                {statusLabel(cap.status)}
-                              </span>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {/* Advanced — capabilities + product status, hidden by default */}
+        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+            View technical capabilities
+            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-5 grid gap-6">
+            <div>
+              <p className="text-sm font-medium text-stone-950">Broker capabilities</p>
+              <p className="mt-1 text-xs text-stone-500">What each broker can do today.</p>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                      <th className="pb-3 pr-6">Capability</th>
+                      {adapters.map((a) => (
+                        <th key={a.provider} className="pb-3 pr-6">
+                          {a.displayName}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {capabilityKeys.map((key) => {
+                      const label = adapters[0].getCapabilities()[key].label;
+                      return (
+                        <tr key={key}>
+                          <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
+                          {adapters.map((a) => {
+                            const cap = a.getCapabilities()[key];
+                            return (
+                              <td key={a.provider} className="py-3 pr-6">
+                                <span
+                                  className={`text-xs font-semibold ${statusClass(cap.status)}`}
+                                  title={cap.note ?? undefined}
+                                >
+                                  {statusLabel(cap.status)}
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </details>
-          <p className="mt-4 text-xs text-stone-400">
-            Cancelling, flattening, or blocking orders at the broker requires verified API support and explicit user opt-in — not enabled today.
-          </p>
-        </SectionCard>
-
-        {/* Current product status — honest snapshot of what's available, prepared,
-            pending API access, and disabled. Pulls real config state. */}
-        <SectionCard
-          title="Current product status"
-          description="What's available today, what's prepared, and what's gated on real Tradovate API access. Updates automatically from server configuration."
-        >
-          <ProductStatusPanel />
-        </SectionCard>
+            <div>
+              <p className="text-sm font-medium text-stone-950">Product status</p>
+              <div className="mt-3">
+                <ProductStatusPanel variant="compact" />
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </AppShell>
+  );
+}
+
+function StatusTile({
+  tone,
+  label,
+  value,
+}: {
+  tone: "ok" | "pending" | "neutral";
+  label: string;
+  value: string;
+}) {
+  const cls =
+    tone === "ok"
+      ? "border-emerald-200 bg-emerald-50"
+      : tone === "pending"
+        ? "border-amber-200 bg-amber-50"
+        : "border-stone-200 bg-stone-50";
+  const valueCls =
+    tone === "ok"
+      ? "text-emerald-800"
+      : tone === "pending"
+        ? "text-amber-800"
+        : "text-stone-700";
+  return (
+    <div className={`rounded-2xl border px-4 py-3 ${cls}`}>
+      <p className="text-xs font-medium text-stone-600">{label}</p>
+      <p className={`mt-1 text-sm font-semibold ${valueCls}`}>{value}</p>
+    </div>
   );
 }

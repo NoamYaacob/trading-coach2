@@ -64,37 +64,24 @@ export default async function RulesPage() {
   return (
     <AppShell
       eyebrow="Rules"
-      title="Trading rules."
-      description="Define the limits Guardrail evaluates against. Rules are checked on every trade event. Changes save immediately and apply to the next event."
+      title="What rules do I want Guardrail to follow?"
+      description="Set the limits Guardrail evaluates against. Empty values mean no enforcement for that rule."
       actions={
         <Link
           href="/guardian"
           className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
-          View enforcement status
+          View status
         </Link>
       }
     >
       <div className="grid gap-6">
-
-        {/* Mode banner */}
-        <div className={`rounded-2xl border px-5 py-4 text-sm ${hasBroker ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-          <p className={`font-semibold ${hasBroker ? "text-emerald-900" : "text-amber-900"}`}>
-            {hasBroker ? "Broker connected · App-level enforcement" : "Manual Mode · App-level enforcement"}
-          </p>
-          <p className="mt-0.5 text-stone-700">
-            Guardrail evaluates these rules on every trade event and locks the session inside the app when a rule is breached. Broker-side cancel / flatten / lockout require verified broker support — not enabled today.
-          </p>
-        </div>
-
-        {/* Edit form */}
         <SectionCard
           title="Session rulebook"
-          description="All fields are optional. Empty values mean no enforcement for that rule."
+          description={hasBroker ? "Broker connected." : "Manual fallback."}
         >
           <RulesForm initial={initial} hasBroker={hasBroker} />
         </SectionCard>
-
       </div>
     </AppShell>
   );

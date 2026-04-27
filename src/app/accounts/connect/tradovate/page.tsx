@@ -88,7 +88,7 @@ export default async function ConnectTradovatePage({
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm">
             <p className="font-medium text-emerald-900">Tradovate connected (read-only)</p>
             <p className="mt-0.5 text-stone-700">
-              OAuth completed and tokens are encrypted in storage. The read pipeline (account / positions / orders / executions) is not yet implemented — Dashboard and Guardian continue to evaluate from your Manual Mode journal until it ships.
+              Connection authorized. The Dashboard and Guardian continue to evaluate from your manual journal until broker reads activate.
             </p>
           </div>
         )}
@@ -133,17 +133,17 @@ export default async function ConnectTradovatePage({
             </div>
           </div>
           <p className="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-600">
-            Broker-side enforcement actions (cancel orders, flatten positions, broker-level lockout) require separate verification against the live API and explicit user opt-in. They will not be enabled by connecting today.
+            Broker order actions (cancel, flatten, lockout) require verified broker support and explicit opt-in. They will not be enabled by connecting today.
           </p>
         </SectionCard>
 
         {/* Connection action */}
         <SectionCard
-          title={isConfigured ? "Authorize with Tradovate" : "Tradovate OAuth is not configured yet"}
+          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection not configured yet"}
           description={
             isConfigured
-              ? "You will be redirected to Tradovate to authorize Guardrail. We request the read scope only."
-              : "The server is missing one or more environment variables needed to complete OAuth securely."
+              ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
+              : "The server is missing one or more environment variables needed to authorize the connection."
           }
         >
           {isConfigured ? (
