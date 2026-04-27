@@ -107,8 +107,14 @@ export default async function Home() {
   return (
     <AppShell
       eyebrow="Guardrail"
-      title="Set your rules before the session. Stop when they break."
-      description="Live session status — Allowed, Warning, or Locked — so one bad trade doesn't become a bad day."
+      title={
+        <>
+          Set your rules.
+          <br />
+          Stop when they break.
+        </>
+      }
+      description="Live session status for disciplined traders — Allowed, Warning, or Locked."
       actions={heroActions}
     >
       <div className="grid gap-16">

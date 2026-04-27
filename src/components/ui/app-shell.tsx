@@ -6,7 +6,7 @@ import { TopNav } from "./top-nav";
 
 type AppShellProps = {
   eyebrow: string;
-  title: string;
+  title: ReactNode;
   description: string;
   note?: string;
   children?: ReactNode;
