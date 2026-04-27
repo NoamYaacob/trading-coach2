@@ -163,7 +163,7 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleType: "guardian_disabled",
       status: "warning",
       reason: "Guardian is not enabled for this session.",
-      message: "Guardian is off — risk rules are not enforcing this session.",
+      message: "Guardian is paused — rules are saved, but not monitoring this session.",
       severity: "medium",
       timestamp: now,
       recommendedAction: "Enable Guardian before trading.",

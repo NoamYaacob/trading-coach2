@@ -310,8 +310,8 @@ export function buildViolationActivityItems(
       items.push({
         id: `violation-guardian-disabled`,
         occurredAt: at,
-        title: "Guardian is off",
-        detail: "Risk rules are not enforcing this session.",
+        title: "Guardian paused",
+        detail: "Rules are saved, but not monitoring this session.",
         badge: "Warning",
         tone: "warning",
       });
