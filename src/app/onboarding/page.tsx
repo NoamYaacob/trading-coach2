@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   title: "Get started — Guardrail",
 };
 
+type StepStatus = "done" | "next" | "pending";
+
+const STATUS_PILL: Record<StepStatus, { pill: string; label: string }> = {
+  done: { pill: "bg-emerald-100 text-emerald-700", label: "Done" },
+  next: { pill: "bg-stone-950 text-stone-50", label: "Next" },
+  pending: { pill: "bg-stone-100 text-stone-400", label: "Pending" },
+};
+
 export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -26,18 +34,6 @@ export default async function OnboardingPage() {
   const hasRules = riskRules !== null;
   const isProtectionActive = Boolean(guardianProfile?.guardianEnabled);
   const hasBroker = brokerCount > 0;
-  const allDone = hasRules && isProtectionActive && hasBroker;
-
-  let primaryHref: string;
-  if (!hasRules) {
-    primaryHref = "/rules";
-  } else if (!isProtectionActive) {
-    primaryHref = "/rules#guardian-toggle";
-  } else if (!hasBroker) {
-    primaryHref = "/accounts";
-  } else {
-    primaryHref = "/dashboard";
-  }
 
   const steps: Array<{
     title: string;
@@ -63,11 +59,27 @@ export default async function OnboardingPage() {
     {
       title: "Connect Tradovate",
       description: "Verify your broker connection for live broker-based risk checks.",
-      cta: "Connect broker",
+      cta: "Connect Tradovate",
       href: "/accounts",
       done: hasBroker,
     },
   ];
+
+  const nextIndex = steps.findIndex((s) => !s.done);
+  const allDone = nextIndex === -1;
+
+  const primaryHref = allDone
+    ? "/dashboard"
+    : steps[nextIndex].href;
+  const primaryCta = allDone
+    ? "Go to dashboard"
+    : steps[nextIndex].cta;
+
+  function getStatus(i: number): StepStatus {
+    if (steps[i].done) return "done";
+    if (i === nextIndex) return "next";
+    return "pending";
+  }
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -95,49 +107,79 @@ export default async function OnboardingPage() {
         </div>
 
         <div className="grid gap-3">
-          {steps.map((step, i) => (
-            <div
-              key={step.title}
-              className="flex items-start gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-4"
-            >
+          {steps.map((step, i) => {
+            const status = getStatus(i);
+            const { pill, label } = STATUS_PILL[status];
+            const isNext = status === "next";
+            const isDone = status === "done";
+
+            return (
               <div
-                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                  step.done
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-stone-100 text-stone-500"
+                key={step.title}
+                className={`flex items-start gap-4 rounded-2xl px-5 py-4 ${
+                  isNext
+                    ? "border-2 border-stone-950 bg-white"
+                    : isDone
+                      ? "border border-stone-200 bg-white opacity-60"
+                      : "border border-stone-200 bg-stone-50"
                 }`}
               >
-                {step.done ? "✓" : i + 1}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-sm font-semibold ${
-                    step.done ? "text-stone-400 line-through" : "text-stone-950"
+                {/* Step indicator */}
+                <div
+                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    isDone
+                      ? "bg-emerald-100 text-emerald-700"
+                      : isNext
+                        ? "bg-stone-950 text-stone-50"
+                        : "bg-stone-200 text-stone-400"
                   }`}
                 >
-                  {step.title}
-                </p>
-                <p className="mt-0.5 text-xs leading-5 text-stone-500">{step.description}</p>
-              </div>
-              {!step.done && (
-                <Link
-                  href={step.href}
-                  className="shrink-0 self-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                  {isDone ? "✓" : i + 1}
+                </div>
+
+                {/* Text */}
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`text-sm font-semibold ${
+                      isDone
+                        ? "text-stone-400 line-through"
+                        : isNext
+                          ? "text-stone-950"
+                          : "text-stone-400"
+                    }`}
+                  >
+                    {step.title}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-xs leading-5 ${
+                      isNext ? "text-stone-500" : "text-stone-400"
+                    }`}
+                  >
+                    {step.description}
+                  </p>
+                </div>
+
+                {/* Status pill */}
+                <span
+                  className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${pill}`}
                 >
-                  {step.cta}
-                </Link>
-              )}
-            </div>
-          ))}
+                  {label}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="mt-8 text-center">
+        <div className="mt-8 flex flex-col items-center gap-3">
           <Link
             href={primaryHref}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-auto sm:px-8"
           >
-            {allDone ? "Go to dashboard" : "Get started"}
+            {primaryCta}
           </Link>
+          <p className="text-xs text-stone-400">
+            Complete these steps once. After that, Guardrail opens on your dashboard.
+          </p>
         </div>
       </main>
     </div>
