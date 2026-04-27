@@ -106,7 +106,7 @@ export default async function Home() {
 
   return (
     <AppShell
-      eyebrow="Guardrail"
+      eyebrow="For futures & intraday traders"
       title={
         <>
           Set your rules.
