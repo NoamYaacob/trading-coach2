@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 
 const BULLETS = [
   "Define your risk limits",
-  "Track session status",
-  "Prepare for broker-connected enforcement",
+  "Track today's protection state",
+  "Connect your broker when ready",
 ];
 
 export function AuthLayout({ children }: { children: ReactNode }) {

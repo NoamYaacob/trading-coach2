@@ -7,6 +7,9 @@ import { useState } from "react";
 const INPUT =
   "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
 
+const INPUT_PW =
+  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 pl-3.5 pr-10 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+
 const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
 
 function GoogleLogo() {
@@ -20,12 +23,46 @@ function GoogleLogo() {
   );
 }
 
+function EyeToggle({
+  visible,
+  onToggle,
+  label,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-stone-600"
+    >
+      {visible ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+          <line x1="1" y1="1" x2="23" y2="23" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function LoginForm({ oauthError }: { oauthError?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const formValid = email.trim() !== "" && password !== "";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,10 +106,10 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
     <div>
       {/* Heading */}
       <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
-        Welcome back
+        Log in to Guardrail
       </h1>
       <p className="mt-2.5 text-sm leading-6 text-stone-500">
-        Log in to manage your accounts, rules, and protection status.
+        Continue to your trading dashboard, rules, and broker connection.
       </p>
 
       {resolvedOauthError && (
@@ -119,18 +156,25 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
           />
         </label>
 
-        <label className="grid gap-2">
+        <div className="grid gap-2">
           <span className={LABEL}>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={INPUT}
-            placeholder="Your password"
-            autoComplete="current-password"
-            required
-          />
-        </label>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={INPUT_PW}
+              placeholder="Your password"
+              autoComplete="current-password"
+              required
+            />
+            <EyeToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+              label={showPassword ? "Hide password" : "Show password"}
+            />
+          </div>
+        </div>
 
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -140,21 +184,25 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={!formValid || isSubmitting}
           className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
         >
           {isSubmitting ? "Logging in…" : "Log in"}
         </button>
+
+        <p className="text-center text-xs text-stone-400">
+          Your rules and broker connection stay tied to your account.
+        </p>
       </form>
 
       {/* Switch link */}
       <p className="mt-6 text-center text-sm text-stone-500">
-        No account yet?{" "}
+        New to Guardrail?{" "}
         <Link
           href="/signup"
           className="font-medium text-stone-950 underline-offset-2 hover:underline"
         >
-          Create one
+          Create an account
         </Link>
       </p>
     </div>

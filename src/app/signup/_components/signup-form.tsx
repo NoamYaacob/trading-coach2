@@ -134,10 +134,10 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
     <div>
       {/* Heading */}
       <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
-        Create your account
+        Start your Guardrail trial
       </h1>
       <p className="mt-2.5 text-sm leading-6 text-stone-500">
-        Set up your trading protection in minutes.
+        Create your account, set your rules, and prepare your broker connection.
       </p>
 
       {resolvedOauthError && (
@@ -268,11 +268,15 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
         >
           {isSubmitting ? "Creating account…" : "Create account"}
         </button>
+
+        <p className="text-center text-xs text-stone-400">
+          Trial access starts now. Billing can be added later from your account.
+        </p>
       </form>
 
       {/* Switch link */}
       <p className="mt-6 text-center text-sm text-stone-500">
-        Already have an account?{" "}
+        Already using Guardrail?{" "}
         <Link
           href="/login"
           className="font-medium text-stone-950 underline-offset-2 hover:underline"
