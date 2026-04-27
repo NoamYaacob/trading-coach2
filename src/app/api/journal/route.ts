@@ -23,17 +23,26 @@ type JournalPayload = {
 
 const ALLOWED_DIRECTIONS = new Set(["LONG", "SHORT"]);
 
+const MAX_SYMBOL_LEN = 32;
+const MAX_STRATEGY_LEN = 64;
+const MAX_NOTES_LEN = 4000;
+const MAX_BREACH_REASON_LEN = 500;
+
 function toDecimal(v: number | null | undefined): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
   return Number.isFinite(v) ? v.toString() : null;
 }
 
-function nullableString(v: string | null | undefined): string | null | undefined {
+function nullableString(
+  v: string | null | undefined,
+  maxLen: number,
+): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
   const t = v.trim();
-  return t.length === 0 ? null : t;
+  if (t.length === 0) return null;
+  return t.slice(0, maxLen);
 }
 
 export async function POST(request: Request) {
@@ -50,10 +59,17 @@ export async function POST(request: Request) {
   }
 
   // Required fields
-  const symbol = body.symbol?.trim();
-  if (!symbol) {
+  const symbolRaw = body.symbol?.trim();
+  if (!symbolRaw) {
     return NextResponse.json({ error: "Symbol is required." }, { status: 400 });
   }
+  if (symbolRaw.length > MAX_SYMBOL_LEN) {
+    return NextResponse.json(
+      { error: `Symbol must be ${MAX_SYMBOL_LEN} characters or fewer.` },
+      { status: 400 },
+    );
+  }
+  const symbol = symbolRaw;
 
   const direction = body.direction?.toUpperCase();
   if (!direction || !ALLOWED_DIRECTIONS.has(direction)) {
@@ -63,13 +79,24 @@ export async function POST(request: Request) {
     );
   }
 
-  // tradedAt: required, must be a valid date string
+  // tradedAt: required, must be a valid date string within a sane range.
   if (!body.tradedAt) {
     return NextResponse.json({ error: "Trade date/time is required." }, { status: 400 });
   }
   const tradedAt = new Date(body.tradedAt);
   if (Number.isNaN(tradedAt.getTime())) {
     return NextResponse.json({ error: "Invalid trade date/time." }, { status: 400 });
+  }
+  // Reject obviously bogus dates — anything more than 24h in the future
+  // or more than 5 years in the past is a sign of bad input.
+  const now = Date.now();
+  const fiveYearsMs = 5 * 365 * 24 * 60 * 60 * 1000;
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  if (tradedAt.getTime() > now + oneDayMs || tradedAt.getTime() < now - fiveYearsMs) {
+    return NextResponse.json(
+      { error: "Trade date/time is outside the allowed range." },
+      { status: 400 },
+    );
   }
 
   // Numeric validation: any provided numeric must be finite.
@@ -114,10 +141,10 @@ export async function POST(request: Request) {
         pnl: toDecimal(body.pnl),
         riskAmount: toDecimal(body.riskAmount),
         rMultiple: toDecimal(body.rMultiple),
-        strategy: nullableString(body.strategy),
-        notes: nullableString(body.notes),
+        strategy: nullableString(body.strategy, MAX_STRATEGY_LEN),
+        notes: nullableString(body.notes, MAX_NOTES_LEN),
         ruleBreached: body.ruleBreached ?? false,
-        breachReason: nullableString(body.breachReason),
+        breachReason: nullableString(body.breachReason, MAX_BREACH_REASON_LEN),
       },
       select: { id: true },
     });

@@ -1,11 +1,13 @@
-import { randomBytes } from "node:crypto";
-
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import {
+  encodeOAuthState,
+  generateOAuthNonce,
+} from "@/lib/brokers/tradovate-oauth-state";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -43,13 +45,12 @@ export async function GET(request: NextRequest) {
 
   // State encodes enough context to resume after the callback without a DB
   // round-trip plus a random nonce for CSRF.
-  const nonce = randomBytes(16).toString("hex");
-  const statePayload = {
+  const nonce = generateOAuthNonce();
+  const state = encodeOAuthState({
     nonce,
     userId: currentUser.id,
     env,
-  };
-  const state = Buffer.from(JSON.stringify(statePayload)).toString("base64url");
+  });
 
   // Persist nonce in an httpOnly cookie so the callback can verify CSRF.
   const cookieStore = await cookies();

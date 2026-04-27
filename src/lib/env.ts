@@ -15,7 +15,10 @@ type EnvReport = {
 };
 
 export function validateEnv(): EnvReport {
-  const required = ["DATABASE_URL", "TELEGRAM_BOT_TOKEN"];
+  // Only DATABASE_URL is required for the app to boot. Telegram and
+  // Tradovate are optional surfaces — their absence degrades features
+  // but does not block startup. See docs/pre-api-readiness.md.
+  const required = ["DATABASE_URL"];
   const missing = required.filter((name) => !process.env[name]);
 
   const warnings: string[] = [];
@@ -23,6 +26,19 @@ export function validateEnv(): EnvReport {
   if (process.env.NODE_ENV !== "production") {
     warnings.push(
       "NODE_ENV is not 'production' — session cookies will not be marked Secure",
+    );
+  }
+
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    warnings.push(
+      "TELEGRAM_BOT_TOKEN is not set — Telegram alerts will be disabled",
+    );
+  }
+
+  if (process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_WEBHOOK_SECRET) {
+    warnings.push(
+      "TELEGRAM_WEBHOOK_SECRET is not set — webhook calls cannot be authenticated. " +
+        "Set the secret in Telegram (setWebhook secret_token) and in this env to enable.",
     );
   }
 

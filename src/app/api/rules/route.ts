@@ -42,6 +42,69 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as RulesPayload;
 
+  // Numeric bounds — reject NaN/Infinity and absurd magnitudes that
+  // would corrupt downstream rendering or storage. The DB schema uses
+  // Decimal/Int but does not constrain magnitude on its own.
+  const moneyFields = [
+    "accountSize",
+    "maxDailyLoss",
+    "dailyProfitTarget",
+    "maxRiskPerTrade",
+  ] as const;
+  for (const f of moneyFields) {
+    const v = body[f];
+    if (v != null) {
+      if (!Number.isFinite(v)) {
+        return NextResponse.json({ error: `Invalid number for ${f}.` }, { status: 400 });
+      }
+      if (v < 0 || v > 1_000_000_000) {
+        return NextResponse.json(
+          { error: `${f} must be between 0 and 1,000,000,000.` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  const intFields = [
+    { key: "maxTradesPerDay" as const, max: 10_000 },
+    { key: "stopAfterLosses" as const, max: 10_000 },
+    { key: "maxContracts" as const, max: 100_000 },
+  ];
+  for (const { key, max } of intFields) {
+    const v = body[key];
+    if (v != null) {
+      if (!Number.isFinite(v) || v < 0 || v > max) {
+        return NextResponse.json(
+          { error: `${key} must be between 0 and ${max}.` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  for (const key of ["sessionStartHour", "sessionEndHour"] as const) {
+    const v = body[key];
+    if (v != null) {
+      if (!Number.isFinite(v) || v < 0 || v > 23) {
+        return NextResponse.json(
+          { error: `${key} must be between 0 and 23.` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  if (body.allowedSymbols != null && body.allowedSymbols.length > 1000) {
+    return NextResponse.json(
+      { error: "allowedSymbols list is too long." },
+      { status: 400 },
+    );
+  }
+  if (body.tradingDays != null && body.tradingDays.length > 200) {
+    return NextResponse.json(
+      { error: "tradingDays value is too long." },
+      { status: 400 },
+    );
+  }
+
   // Cross-field validation
   if (
     body.maxTradesPerDay != null &&

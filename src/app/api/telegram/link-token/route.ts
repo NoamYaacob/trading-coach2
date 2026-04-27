@@ -39,17 +39,26 @@ export async function POST() {
     process.env.TELEGRAM_BOT_USERNAME ??
     process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
 
-  const linkToken = await prisma.telegramLinkToken.create({
-    data: {
-      userId: user.id,
-      token,
-      expiresAt,
-    },
-    select: {
-      token: true,
-      expiresAt: true,
-    },
-  });
+  // Invalidate any previously issued, still-unused tokens for this
+  // user. Generating a new link token is a "redo" intent — old tokens
+  // should not remain redeemable.
+  const [, linkToken] = await prisma.$transaction([
+    prisma.telegramLinkToken.updateMany({
+      where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { expiresAt: new Date() },
+    }),
+    prisma.telegramLinkToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+      select: {
+        token: true,
+        expiresAt: true,
+      },
+    }),
+  ]);
 
   const cleanUsername = botUsername?.replace(/^@/, "");
 

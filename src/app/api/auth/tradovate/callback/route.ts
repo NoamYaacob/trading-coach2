@@ -2,17 +2,13 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
-
-type StatePayload = {
-  nonce: string;
-  userId: string;
-  env: "live" | "demo";
-};
 
 function backToConnectPage(request: NextRequest, error: string) {
   return NextResponse.redirect(
@@ -24,6 +20,16 @@ function backToConnectPage(request: NextRequest, error: string) {
 }
 
 export async function GET(request: NextRequest) {
+  // The callback must run inside the same authenticated session that
+  // initiated the OAuth flow. Without this, an attacker could craft a
+  // state with another user's id and have tokens stored against the
+  // wrong account — the CSRF nonce alone does not bind tokens to the
+  // session that started the flow.
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    return backToConnectPage(request, "unauthenticated");
+  }
+
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -36,22 +42,23 @@ export async function GET(request: NextRequest) {
     return backToConnectPage(request, "missing_params");
   }
 
-  // Decode and validate state.
-  let payload: StatePayload;
-  try {
-    payload = JSON.parse(Buffer.from(state, "base64url").toString()) as StatePayload;
-  } catch {
-    return backToConnectPage(request, "invalid_state");
-  }
-
-  // CSRF check: nonce must match the cookie set in the connect route.
+  // CSRF check + session binding live in one helper. The state is
+  // base64-encoded but not signed, so a tampered userId would still
+  // pass the nonce check — `validateOAuthState` also requires that
+  // `state.userId === session.userId`.
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   cookieStore.delete(OAUTH_STATE_COOKIE);
 
-  if (!storedNonce || storedNonce !== payload.nonce) {
-    return backToConnectPage(request, "csrf_mismatch");
+  const validation = validateOAuthState({
+    rawState: state,
+    cookieNonce: storedNonce,
+    sessionUserId: currentUser.id,
+  });
+  if (!validation.ok) {
+    return backToConnectPage(request, validation.reason);
   }
+  const payload = validation.state!;
 
   // Re-validate config — env may have changed between connect and callback,
   // and we never want to accept tokens we cannot store securely.
@@ -94,14 +101,22 @@ export async function GET(request: NextRequest) {
     });
 
     if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      console.error("[tradovate/callback] token exchange failed:", errText);
+      // Log status only — the response body can echo back partial
+      // tokens or sensitive diagnostics from the IdP. Read it to
+      // drain the stream but do not write it to logs.
+      await tokenRes.text().catch(() => "");
+      console.error(
+        `[tradovate/callback] token exchange failed: HTTP ${tokenRes.status}`,
+      );
       return backToConnectPage(request, "token_exchange_failed");
     }
 
     tokenData = (await tokenRes.json()) as typeof tokenData;
   } catch (err) {
-    console.error("[tradovate/callback] token exchange error:", err);
+    // Log error name only; never log the error object (may contain
+    // request body / response text from fetch).
+    const name = err instanceof Error ? err.name : "unknown";
+    console.error(`[tradovate/callback] token exchange error: ${name}`);
     return backToConnectPage(request, "token_exchange_error");
   }
 
