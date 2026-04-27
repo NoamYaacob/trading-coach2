@@ -216,8 +216,8 @@ export default async function GuardianPage() {
 
   // On-breach actions configured by the user
   const breachActions: Array<{ label: string; available: boolean; on: boolean }> = [
-    { label: "Warn (in-app + Telegram)", available: true, on: riskRules?.onBreachWarn ?? true },
-    { label: "Lock trading for the day (app-level)", available: true, on: riskRules?.onBreachAppLock ?? true },
+    { label: "Send warning", available: true, on: riskRules?.onBreachWarn ?? true },
+    { label: "Lock session for the day", available: true, on: riskRules?.onBreachAppLock ?? true },
     { label: "Cancel broker orders", available: false, on: riskRules?.onBreachCancelOrders ?? false },
     { label: "Flatten broker positions", available: false, on: riskRules?.onBreachFlatten ?? false },
   ];
