@@ -314,6 +314,8 @@ export default async function DashboardPage() {
           ) : null}
           {liveEnforcement ? (
             <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
+          ) : todaySessionState.kind === "GUARDIAN_DISABLED" ? (
+            <GuardianPausedPanel />
           ) : (
             <>
               <ManualRiskPanel
@@ -419,6 +421,30 @@ export default async function DashboardPage() {
         </details>
       </div>
     </AppShell>
+  );
+}
+
+function GuardianPausedPanel() {
+  return (
+    <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
+      <span className="inline-flex rounded-full bg-stone-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white">
+        Paused
+      </span>
+      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+        Guardian is paused.
+      </h2>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+        Your rules are saved, but Guardian is not monitoring this session.
+      </p>
+      <div className="mt-5">
+        <a
+          href="/guardian"
+          className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          Enable Guardian
+        </a>
+      </div>
+    </section>
   );
 }
 

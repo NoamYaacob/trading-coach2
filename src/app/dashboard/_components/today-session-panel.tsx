@@ -217,7 +217,7 @@ export function TodaySessionPanel({
 
   return (
     <section
-      className={`rounded-[2rem] border px-6 py-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] ${styles.shell}`}
+      className={`rounded-[2rem] border px-6 py-5 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] ${styles.shell}`}
     >
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
         <div>

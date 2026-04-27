@@ -120,7 +120,7 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
   ];
 
   return (
-    <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${s.shell}`}>
+    <section className={`rounded-[2rem] border px-6 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${s.shell}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${s.chip}`}>
           {s.label}

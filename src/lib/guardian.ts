@@ -703,10 +703,10 @@ export function deriveTodaySessionState(
   if (!evaluation.guardianActive) {
     return {
       kind: "GUARDIAN_DISABLED",
-      statusLabel: "Guardian off",
-      headline: "Guardian is disabled.",
-      detail: "Protection rules are not enforcing today’s session.",
-      nextStep: "Turn Guardian back on before relying on the session boundaries.",
+      statusLabel: "Paused",
+      headline: "Guardian is paused.",
+      detail: "Your rules are saved, but Guardian is not monitoring this session.",
+      nextStep: "Enable Guardian to start monitoring this session.",
       primaryReasonLabel: null,
       nextResetAt: evaluation.nextAllowedResetAt,
       resetMode: evaluation.resetMode,
@@ -892,9 +892,9 @@ export function derivePremarketReadiness(
       };
     case "GUARDIAN_DISABLED":
       return {
-        status: "Guardian off",
-        headline: "Guardian is not enforcing the day.",
-        detail: "Turn Guardian back on before relying on session boundaries.",
+        status: "Paused",
+        headline: "Guardian is paused.",
+        detail: "Your rules are saved, but Guardian is not monitoring this session.",
         actionLabel: "Enable Guardian",
         actionHref: "/guardian",
         tone: "warning",
