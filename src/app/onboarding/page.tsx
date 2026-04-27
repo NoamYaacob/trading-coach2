@@ -6,76 +6,68 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { LogoutButton } from "@/components/ui/logout-button";
 
-import { OnboardingForm } from "./_components/onboarding-form";
-import type { SavedOnboardingData } from "./_components/onboarding-form";
-
 export const metadata: Metadata = {
-  title: "Set up your profile — Guardrail",
+  title: "Get started — Guardrail",
 };
 
 export default async function OnboardingPage() {
   const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  const [traderProfile, riskRules, mentalProfile, coachingPreferences] = await Promise.all([
-    prisma.traderProfile.findUnique({ where: { userId: user.id } }),
+  const [riskRules, guardianProfile, brokerCount] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
-    prisma.mentalProfile.findUnique({ where: { userId: user.id } }),
-    prisma.coachingPreferences.findUnique({ where: { userId: user.id } }),
+    prisma.guardianProfile.findUnique({
+      where: { userId: user.id },
+      select: { guardianEnabled: true },
+    }),
+    prisma.connectedAccount.count({ where: { userId: user.id, isActive: true } }),
   ]);
 
-  const savedData: SavedOnboardingData = {
-    traderProfile: traderProfile
-      ? {
-          primaryMarket: traderProfile.primaryMarket,
-          tradingStyle: traderProfile.tradingStyle,
-          experienceYears: traderProfile.experienceYears,
-          tradingDays: traderProfile.tradingDays,
-          tradingSession: traderProfile.tradingSession,
-          timezone: traderProfile.timezone,
-        }
-      : null,
-    riskRules: riskRules
-      ? {
-          accountSize: riskRules.accountSize?.toString() ?? null,
-          maxDailyLoss: riskRules.maxDailyLoss?.toString() ?? null,
-          riskPerTrade: riskRules.riskPerTrade?.toString() ?? null,
-          maxTradesPerDay: riskRules.maxTradesPerDay,
-          stopAfterLosses: riskRules.stopAfterLosses,
-        }
-      : null,
-    mentalProfile: mentalProfile
-      ? {
-          primaryChallenge: mentalProfile.primaryChallenge,
-          tiltTrigger: mentalProfile.tiltTrigger,
-          tiltThought: mentalProfile.tiltThought,
-          coachingTone: mentalProfile.coachingTone,
-          interruptionStyle: mentalProfile.interruptionStyle,
-          responseStyle: mentalProfile.responseStyle,
-          tradingWhy: mentalProfile.tradingWhy,
-          tradingGoal: mentalProfile.tradingGoal,
-          groundingReminder: mentalProfile.groundingReminder,
-          preferredAddress: mentalProfile.preferredAddress,
-        }
-      : null,
-    coachingPreferences: coachingPreferences
-      ? {
-          premarketCheckinEnabled: coachingPreferences.premarketCheckinEnabled,
-          postmarketReviewEnabled: coachingPreferences.postmarketReviewEnabled,
-          checkinFormat: coachingPreferences.checkinFormat,
-          reviewFocus: coachingPreferences.reviewFocus,
-          newsAlertsEnabled: coachingPreferences.newsAlertsEnabled,
-          preNewsMinutes: coachingPreferences.preNewsMinutes,
-          highImpactOnly: coachingPreferences.highImpactOnly,
-          economicCalendarProviderKey: coachingPreferences.economicCalendarProviderKey,
-          economicCalendarStubScenario: coachingPreferences.economicCalendarStubScenario,
-          preferredLanguage: coachingPreferences.preferredLanguage,
-        }
-      : null,
-  };
+  const hasRules = riskRules !== null;
+  const isProtectionActive = Boolean(guardianProfile?.guardianEnabled);
+  const hasBroker = brokerCount > 0;
+  const allDone = hasRules && isProtectionActive && hasBroker;
+
+  let primaryHref: string;
+  if (!hasRules) {
+    primaryHref = "/rules";
+  } else if (!isProtectionActive) {
+    primaryHref = "/rules#guardian-toggle";
+  } else if (!hasBroker) {
+    primaryHref = "/accounts";
+  } else {
+    primaryHref = "/dashboard";
+  }
+
+  const steps: Array<{
+    title: string;
+    description: string;
+    cta: string;
+    href: string;
+    done: boolean;
+  }> = [
+    {
+      title: "Set your first rules",
+      description: "Choose daily loss, max trades, and loss-streak limits.",
+      cta: "Set rules",
+      href: "/rules",
+      done: hasRules,
+    },
+    {
+      title: "Enable protection",
+      description: "Start monitoring your session against your saved rules.",
+      cta: "Enable protection",
+      href: "/rules#guardian-toggle",
+      done: isProtectionActive,
+    },
+    {
+      title: "Connect Tradovate",
+      description: "Verify your broker connection for live broker-based risk checks.",
+      cta: "Connect broker",
+      href: "/accounts",
+      done: hasBroker,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -89,20 +81,64 @@ export default async function OnboardingPage() {
         <LogoutButton />
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6 sm:py-16">
         <div className="mb-8">
           <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-amber-600">
             Getting started
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
-            Set up your risk profile and trading rules
+            Set up your first trading session.
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            Define the rules you want held — max daily loss, max trades, consecutive-loss stop, session hours — and the enforcement style you prefer when a rule is breached. About 3 minutes.
+            Start with your rules. Then turn on protection and connect Tradovate when you&apos;re ready.
           </p>
         </div>
 
-        <OnboardingForm userEmail={user.email} savedData={savedData} />
+        <div className="grid gap-3">
+          {steps.map((step, i) => (
+            <div
+              key={step.title}
+              className="flex items-start gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-4"
+            >
+              <div
+                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  step.done
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                {step.done ? "✓" : i + 1}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-sm font-semibold ${
+                    step.done ? "text-stone-400 line-through" : "text-stone-950"
+                  }`}
+                >
+                  {step.title}
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-stone-500">{step.description}</p>
+              </div>
+              {!step.done && (
+                <Link
+                  href={step.href}
+                  className="shrink-0 self-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                >
+                  {step.cta}
+                </Link>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <Link
+            href={primaryHref}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            {allDone ? "Go to dashboard" : "Get started"}
+          </Link>
+        </div>
       </main>
     </div>
   );
