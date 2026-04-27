@@ -311,7 +311,7 @@ export function buildViolationActivityItems(
         id: `violation-guardian-disabled`,
         occurredAt: at,
         title: "Guardian paused",
-        detail: "Rules are saved, but not monitoring this session.",
+        detail: "Protection is paused. Enable it to start monitoring.",
         badge: "Warning",
         tone: "warning",
       });

@@ -348,9 +348,9 @@ export default async function DashboardPage() {
             />
             {todaySessionState.kind === "GUARDIAN_DISABLED" ? (
               <QuickAction
-                href="/rules#guardian-toggle"
-                title="Enable protection"
-                description="Start monitoring this session."
+                href="/guardian"
+                title="View status"
+                description="See why protection is paused."
               />
             ) : (
               <QuickAction
@@ -397,10 +397,10 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        {/* Details — economic events + manual entry, hidden by default */}
+        {/* Session details — economic events + manual entry, hidden by default */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-            Details
+            Session details
             <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
           </summary>
           <div className="mt-5 grid gap-6">
@@ -434,17 +434,17 @@ export default async function DashboardPage() {
 
 function GuardianPausedPanel() {
   return (
-    <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
+    <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-4 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
       <span className="inline-flex rounded-full bg-stone-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white">
         Paused
       </span>
-      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+      <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
         Protection is paused.
       </h2>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
-        Your rules are saved, but Guardrail is not monitoring this session.
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+        Your rules are saved. Enable protection before the session starts.
       </p>
-      <div className="mt-5">
+      <div className="mt-4">
         <a
           href="/rules#guardian-toggle"
           className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"

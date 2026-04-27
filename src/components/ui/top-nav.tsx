@@ -17,8 +17,13 @@ import { LogoutButton } from "./logout-button";
  *                                 like the user is already inside an app
  *                                 page).
  *  - Authenticated, in the app → 3 primary pills (Dashboard, Rules,
- *                                 Accounts) + "More" dropdown that holds
- *                                 the secondary pages.
+ *                                 Accounts) + "More" dropdown for secondary
+ *                                 pages.
+ *
+ * The More button and its dropdown live OUTSIDE the overflow-x-auto primary
+ * pill container. overflow-x:auto causes overflow-y to become non-visible,
+ * which clips absolutely-positioned children. Keeping More as a sibling div
+ * (no overflow set) lets the dropdown escape freely.
  */
 
 type AppNavItem = {
@@ -43,8 +48,6 @@ const MORE_NAV: AppNavItem[] = [
 
 /**
  * Routes where we show marketing-style nav even when authenticated.
- * Adding more routes here (e.g. /about, /pricing) will treat them the
- * same as the landing page.
  */
 const MARKETING_ROUTES = new Set<string>(["/"]);
 
@@ -98,9 +101,7 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
     );
   }
 
-  // Authenticated but on the landing page → marketing-style nav, no app
-  // pills. Otherwise the landing page looks like the user is already inside
-  // an app page and the active state misleads.
+  // Authenticated but on the landing page → marketing-style nav, no app pills.
   if (onMarketingRoute) {
     return (
       <nav className="flex items-center gap-1 text-sm">
@@ -125,24 +126,30 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
 
   return (
     <nav
-      className="-mx-2 flex max-w-full items-center gap-0.5 overflow-x-auto px-2 text-sm scrollbar-none sm:gap-1"
+      className="flex max-w-full items-center text-sm"
       aria-label="Primary"
     >
-      {PRIMARY_NAV.map((item) => {
-        const active = isActive(pathname, item);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={`${pillBase} ${active ? pillActive : pillIdle}`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+      {/* Primary pills — scrollable on narrow screens. No overflow here to
+          avoid clipping the More dropdown, which is a sibling. */}
+      <div className="-mx-2 flex min-w-0 items-center gap-0.5 overflow-x-auto px-2 scrollbar-none sm:gap-1">
+        {PRIMARY_NAV.map((item) => {
+          const active = isActive(pathname, item);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={`${pillBase} ${active ? pillActive : pillIdle}`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
 
-      <div className="relative" ref={moreRef}>
+      {/* More button + dropdown — sibling to the scroll container so the
+          dropdown is never clipped by overflow:auto. */}
+      <div className="relative ml-0.5 shrink-0 sm:ml-1" ref={moreRef}>
         <button
           type="button"
           onClick={() => setMoreOpen((v) => !v)}
@@ -158,10 +165,11 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
             ▾
           </span>
         </button>
+
         {moreOpen && (
           <div
             role="menu"
-            className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.22)]"
+            className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.28)]"
           >
             {MORE_NAV.map((item) => {
               const active = isActive(pathname, item);
@@ -174,8 +182,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                   onClick={() => setMoreOpen(false)}
                   className={
                     active
-                      ? "block bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950"
-                      : "block px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
+                      ? "block bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-950"
+                      : "block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
                   }
                 >
                   {item.label}
@@ -186,7 +194,7 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
         )}
       </div>
 
-      <span className="mx-1 h-5 w-px bg-stone-200/80" aria-hidden />
+      <span className="mx-1 h-5 w-px shrink-0 bg-stone-200/80" aria-hidden />
       <LogoutButton />
     </nav>
   );
