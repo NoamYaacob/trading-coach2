@@ -7,22 +7,28 @@ import { getCurrentUser } from "@/lib/auth";
 export const metadata: Metadata = {
   title: "Guardrail — Trading rules that hold under pressure",
   description:
-    "Build your rules before the session. Guardrail helps you stick to them during it.",
+    "Set your rules before the session. Guardrail enforces them when discipline fades.",
 };
 
 const steps = [
   {
     n: "01",
+    tag: "Premarket",
+    tagCls: "bg-stone-100 text-stone-600",
     title: "Set your rules",
-    detail: "Daily loss, max trades, consecutive-loss stop, session hours.",
+    detail: "Daily loss, max trades, loss-streak stop, session hours.",
   },
   {
     n: "02",
-    title: "Track the session",
+    tag: "Live",
+    tagCls: "bg-emerald-100 text-emerald-700",
+    title: "Track live status",
     detail: "Allowed, Warning, or Locked — evaluated as trades land.",
   },
   {
     n: "03",
+    tag: "Locked",
+    tagCls: "bg-red-100 text-red-700",
     title: "Stop when limits hit",
     detail: "The session locks the moment a rule is breached.",
   },
@@ -38,28 +44,34 @@ const includedFeatures = [
 
 const faqs = [
   {
-    q: "Does Guardrail block my trades at the broker?",
-    a: "Not today. The session locks inside the app — you see a lockout banner and (optionally) a Telegram alert. Cancelling orders or flattening positions at the broker requires verified broker support, which we ship per broker only after live verification.",
+    q: "What if I haven't connected a broker yet?",
+    a: "You can start without one. Log each trade in the journal and the same engine evaluates Allowed / Warning / Locked. The lock applies inside the app — you can connect a broker any time.",
+    open: true,
   },
   {
-    q: "What if I haven't connected a broker yet?",
-    a: "You can use Guardrail's manual fallback. Log each trade in the journal and the same engine evaluates Allowed / Warning / Locked. The lock applies inside the app — it does not prevent orders at your broker.",
+    q: "Does Guardrail block my trades at the broker?",
+    a: "Not today. The session locks inside the app — you see a lockout banner and (optionally) a Telegram alert. Broker order cancel/flatten requires verified broker support, which we ship per broker only after live verification.",
+    open: false,
   },
   {
     q: "Which brokers are supported?",
     a: "Tradovate is the first integration. Read-only connection is being prepared and will activate once verified against your account.",
+    open: false,
   },
   {
     q: "How does Telegram fit in?",
     a: "Telegram is an optional alert channel. When connected, Guardrail sends session state changes and lockout messages to your Telegram. Everything works without it.",
+    open: false,
   },
   {
     q: "What happens during a lockout?",
     a: "The session moves to Locked, a banner explains which rule fired, and the reset window opens at the start of the next trading day.",
+    open: false,
   },
   {
     q: "Who is this for?",
     a: "Active intraday traders — primarily futures traders on funded or evaluation accounts — who want a system that holds them to their own rules.",
+    open: false,
   },
 ];
 
@@ -101,13 +113,13 @@ export default async function Home() {
   return (
     <AppShell
       eyebrow="Guardrail"
-      title="Build your rules before the session. Follow them during it."
-      description="Guardrail turns your trading rules into live session status — Allowed, Warning, or Locked — so one bad trade doesn't become a bad day."
+      title="Set your rules before the session. Stop when they break."
+      description="Live session status — Allowed, Warning, or Locked — so one bad trade doesn't become a bad day."
       actions={heroActions}
     >
-      <div className="grid gap-16">
+      <div className="grid gap-20">
 
-        {/* ── How it works — 3 simple steps ─────────────────────────────── */}
+        {/* ── How it works — 3 steps with status tags ──────────────────── */}
         <section>
           <div className="mb-8 max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
@@ -123,7 +135,14 @@ export default async function Home() {
                 key={step.n}
                 className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]"
               >
-                <p className="font-mono text-2xl font-bold text-stone-200">{step.n}</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-2xl font-bold text-stone-200">{step.n}</p>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${step.tagCls}`}
+                  >
+                    {step.tag}
+                  </span>
+                </div>
                 <h3 className="mt-4 text-base font-semibold tracking-[-0.02em] text-stone-950 leading-6">
                   {step.title}
                 </h3>
@@ -133,55 +152,61 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* ── Product preview — control center ───────────────────────────── */}
+        {/* ── Live session preview ──────────────────────────────────────── */}
         <section>
-          <div className="mb-8 max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              Product
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-              One view of your trading day.
-            </h2>
-            <p className="mt-3 text-base leading-7 text-stone-600">
-              Trading permission, today&rsquo;s P&amp;L, trades remaining, and risk budget — at a glance.
-            </p>
-          </div>
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+            Live session preview
+          </p>
 
-          <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-8 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.2)]">
-            <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-6 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.18)] sm:p-8">
+            {/* Top row — timestamp + status pill */}
+            <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-                  Today
+                <p className="font-mono text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Today · 11:42 AM
                 </p>
-                <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-stone-950">
-                  Trading is open.
+                <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-950">
+                  Trading is open — limits are close.
                 </p>
               </div>
-              <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                Allowed
+              <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                Warning
               </span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-4">
-              <Tile label="Trades today" value="2" sub="of 5" />
-              <Tile label="P&L today" value="−$120" sub="Limit: −$500" tone="loss" />
+            {/* Tiles */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Tile label="Trades" value="2 / 5" sub="3 remaining" />
+              <Tile label="P&L today" value="−$120" sub="Limit −$500" tone="warning" />
               <Tile label="Loss streak" value="1" sub="Stop after 3" />
-              <Tile label="Status" value="Allowed" sub="All limits clear" tone="ok" />
             </div>
 
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                Warning
-              </p>
-              <p className="mt-1 text-sm font-medium text-stone-900">
-                Approaching the daily loss limit. Consider stopping early.
-              </p>
+            {/* Lifecycle indicator */}
+            <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
+              <StatusChip label="Allowed" tone="muted" />
+              <span className="text-stone-300" aria-hidden>›</span>
+              <StatusChip label="Warning" tone="active" />
+              <span className="text-stone-300" aria-hidden>›</span>
+              <StatusChip label="Locked" tone="muted" />
             </div>
+
+            {/* Inline note */}
+            <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-800">
+              <span className="font-medium text-amber-900">Approaching daily loss limit.</span>{" "}
+              Consider stopping early.
+            </p>
           </div>
         </section>
 
-        {/* ── Pricing ────────────────────────────────────────────────────── */}
+        {/* ── Value sentence + Pricing ──────────────────────────────────── */}
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-8 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-10">
+          <p className="mb-8 max-w-2xl text-base leading-7 text-stone-600">
+            <span className="font-semibold text-stone-950">
+              Built for active intraday traders
+            </span>{" "}
+            who need hard limits, not more willpower.
+          </p>
+
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
@@ -255,6 +280,7 @@ export default async function Home() {
             {faqs.map((faq) => (
               <details
                 key={faq.q}
+                open={faq.open}
                 className="group rounded-2xl border border-stone-200 bg-white/90 px-6 py-4"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold tracking-[-0.02em] text-stone-950">
@@ -320,15 +346,31 @@ function Tile({
   label: string;
   value: string;
   sub: string;
-  tone?: "neutral" | "ok" | "loss";
+  tone?: "neutral" | "warning";
 }) {
-  const valueCls =
-    tone === "loss" ? "text-red-700" : tone === "ok" ? "text-stone-950" : "text-stone-950";
+  const valueCls = tone === "warning" ? "text-amber-700" : "text-stone-950";
   return (
     <div className="rounded-2xl bg-stone-50 px-4 py-4">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${valueCls}`}>{value}</p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${valueCls}`}>{value}</p>
       <p className="mt-1 text-xs text-stone-500">{sub}</p>
     </div>
+  );
+}
+
+function StatusChip({ label, tone }: { label: string; tone: "muted" | "active" }) {
+  const cls =
+    tone === "active"
+      ? "border-amber-300 bg-amber-100 text-amber-800"
+      : "border-stone-200 bg-stone-50 text-stone-400";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${cls}`}
+    >
+      {tone === "active" && (
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+      )}
+      {label}
+    </span>
   );
 }
