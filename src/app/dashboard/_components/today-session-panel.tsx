@@ -122,7 +122,7 @@ export function TodaySessionPanel({
             ? { label: "Start session with caution", href: "/guardian" }
             : { label: "Start session", href: "/guardian" }
         : sessionState.kind === "GUARDIAN_DISABLED"
-          ? { label: "Enable Guardian", href: "/guardian" }
+          ? { label: "Enable protection", href: "/rules#guardian-toggle" }
           : { label: "Open Guardian", href: "/guardian" };
   const resetText =
     sessionState.resetMode === "DAILY"
