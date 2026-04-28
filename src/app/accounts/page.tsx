@@ -197,44 +197,79 @@ export default async function AccountsPage() {
           </summary>
           <div className="mt-5 grid gap-6">
             <div>
-              <p className="text-sm font-medium text-stone-950">Broker capabilities</p>
-              <p className="mt-1 text-xs text-stone-500">What each broker can do today.</p>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                      <th className="pb-3 pr-6">Capability</th>
-                      {adapters.map((a) => (
-                        <th key={a.provider} className="pb-3 pr-6">
-                          {a.displayName}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {capabilityKeys.map((key) => {
-                      const label = adapters[0].getCapabilities()[key].label;
-                      return (
-                        <tr key={key}>
-                          <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
-                          {adapters.map((a) => {
-                            const cap = a.getCapabilities()[key];
-                            return (
-                              <td key={a.provider} className="py-3 pr-6">
-                                <span
-                                  className={`text-xs font-semibold ${statusClass(cap.status)}`}
-                                  title={cap.note ?? undefined}
-                                >
-                                  {statusLabel(cap.status)}
-                                </span>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* Mobile: simplified user-facing summary */}
+              <div className="md:hidden">
+                <p className="text-sm font-medium text-stone-950">What requires a connection</p>
+                <p className="mt-1 text-xs text-stone-500">Features available before and after linking Tradovate.</p>
+                <div className="mt-3 grid gap-2">
+                  <MobileCapabilityRow
+                    label="Account access"
+                    status="Setup needed"
+                    note="Connect Tradovate so Guardrail can read account status."
+                    tone="pending"
+                  />
+                  <MobileCapabilityRow
+                    label="Live account data"
+                    status="Setup needed"
+                    note="Balance, positions, orders, fills, and live P&L require a verified connection."
+                    tone="pending"
+                  />
+                  <MobileCapabilityRow
+                    label="Broker risk checks"
+                    status="Not verified yet"
+                    note="Live broker-based checks will be available after connection verification."
+                    tone="neutral"
+                  />
+                  <MobileCapabilityRow
+                    label="Order blocking"
+                    status="Coming later"
+                    note="Broker-side cancel, flatten, and lockout actions are not active yet."
+                    tone="neutral"
+                  />
+                </div>
+              </div>
+
+              {/* Desktop: full capability matrix table */}
+              <div className="hidden md:block">
+                <p className="text-sm font-medium text-stone-950">Broker capabilities</p>
+                <p className="mt-1 text-xs text-stone-500">What each broker can do today.</p>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        <th className="pb-3 pr-6">Capability</th>
+                        {adapters.map((a) => (
+                          <th key={a.provider} className="pb-3 pr-6">
+                            {a.displayName}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {capabilityKeys.map((key) => {
+                        const label = adapters[0].getCapabilities()[key].label;
+                        return (
+                          <tr key={key}>
+                            <td className="py-3 pr-6 font-medium text-stone-800">{label}</td>
+                            {adapters.map((a) => {
+                              const cap = a.getCapabilities()[key];
+                              return (
+                                <td key={a.provider} className="py-3 pr-6">
+                                  <span
+                                    className={`text-xs font-semibold ${statusClass(cap.status)}`}
+                                    title={cap.note ?? undefined}
+                                  >
+                                    {statusLabel(cap.status)}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
             <div>
@@ -247,6 +282,36 @@ export default async function AccountsPage() {
         </details>
       </div>
     </AppShell>
+  );
+}
+
+function MobileCapabilityRow({
+  label,
+  status,
+  note,
+  tone = "pending",
+}: {
+  label: string;
+  status: string;
+  note: string;
+  tone?: "pending" | "neutral";
+}) {
+  const pillCls =
+    tone === "pending"
+      ? "bg-amber-100 text-amber-700"
+      : "bg-stone-100 text-stone-600";
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-stone-950">{label}</p>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${pillCls}`}
+        >
+          {status}
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs leading-5 text-stone-600">{note}</p>
+    </div>
   );
 }
 

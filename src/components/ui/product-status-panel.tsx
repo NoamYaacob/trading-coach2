@@ -55,6 +55,7 @@ const STATUS_STYLE: Record<
 type Item = {
   key: string;
   title: string;
+  mobileTitle?: string;
   status: ItemStatus;
   detail: string;
 };
@@ -70,6 +71,7 @@ function buildItems(opts: {
     {
       key: "manual",
       title: "Manual journal (demo / pre-connection)",
+      mobileTitle: "Manual journal",
       status: "ready",
       detail:
         "Journal-driven risk evaluation for testing before a broker is connected. Define rules, log trades manually, and Guardrail evaluates Allowed / Warning / Locked. Does not block trades at the broker — demo and fallback only.",
@@ -84,6 +86,7 @@ function buildItems(opts: {
     {
       key: "encryption",
       title: "Token encryption (AES-256-GCM)",
+      mobileTitle: "Security setup",
       status: encryptionConfigured ? "ready" : "pending",
       detail: encryptionConfigured
         ? "Encryption key configured. Tokens are encrypted at rest before any DB write."
@@ -92,6 +95,7 @@ function buildItems(opts: {
     {
       key: "oauth",
       title: "Tradovate OAuth (read-only)",
+      mobileTitle: "Tradovate connection",
       status: oauthConfigured ? "prepared" : "pending",
       detail: oauthConfigured
         ? "OAuth credentials configured. Read scope only — does not request order-write permissions. Connection lifecycle: not_connected → connected_readonly → expired."
@@ -100,6 +104,7 @@ function buildItems(opts: {
     {
       key: "endpoints",
       title: "Tradovate read endpoints",
+      mobileTitle: "Live broker data",
       status: "pending",
       detail:
         "Client implemented for account discovery, balance, positions, orders, fills, and contract resolution — but endpoint shapes are unverified against a real Tradovate account. The verification page (Accounts → Verify read-only connection) confirms each endpoint when API access is available.",
@@ -107,6 +112,7 @@ function buildItems(opts: {
     {
       key: "risk_state",
       title: "Broker-driven risk state",
+      mobileTitle: "Broker risk checks",
       status: "pending",
       detail:
         "Dashboard and Guardian evaluate from the manual journal today. They will switch to broker-driven evaluation only after the read endpoints are verified.",
@@ -157,7 +163,14 @@ export function ProductStatusPanel({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
-                <p className="text-sm font-medium text-stone-950">{item.title}</p>
+                <p className="text-sm font-medium text-stone-950">
+                  {item.mobileTitle ? (
+                    <>
+                      <span className="md:hidden">{item.mobileTitle}</span>
+                      <span className="hidden md:inline">{item.title}</span>
+                    </>
+                  ) : item.title}
+                </p>
               </div>
               {variant === "full" && (
                 <p className="mt-1 text-xs leading-5 text-stone-600">
