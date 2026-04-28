@@ -108,12 +108,12 @@ export function RulesForm({ initial, hasBroker }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-5">
+    <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
 
       {/* ── Money limits ────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">Money limits</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
           </Field>
@@ -130,9 +130,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Trading limits ──────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">Trading limits</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           <Field label="Max trades per day">
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
@@ -143,12 +143,12 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
-      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
         <p className="-mt-2 text-xs text-stone-500">
           Only monitor sessions during these days and hours.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           <Field label="Session start (hour, 0–23)">
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
@@ -181,9 +181,9 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Breach actions — main two ────────────────────────────────────── */}
-      <fieldset className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">When a rule is broken</legend>
-        <div className="grid gap-3">
+        <div className="grid gap-2 sm:gap-3">
           <BreachOption
             checked={values.onBreachWarn}
             onChange={(v) => update("onBreachWarn", v)}
@@ -202,12 +202,12 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </fieldset>
 
       {/* ── Advanced settings — hidden by default ────────────────────────── */}
-      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
           Advanced
           <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
         </summary>
-        <div className="mt-5 grid gap-5">
+        <div className="mt-3 grid gap-4 sm:mt-5 sm:gap-5">
           <Field label="Allowed symbols" hint="Comma-separated. Blank allows any symbol.">
             <input
               type="text"
@@ -239,7 +239,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
                 ? "Activate once broker support is verified."
                 : "Connect a broker to access these."}
             </p>
-            <div className="grid gap-3">
+            <div className="grid gap-2 sm:gap-3">
               <BreachOption
                 checked={values.onBreachCancelOrders}
                 onChange={(v) => update("onBreachCancelOrders", v)}
@@ -260,7 +260,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
       </details>
 
       {/* ── Submit ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-6">
+      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <button
           type="submit"
           disabled={saving}
@@ -337,7 +337,7 @@ function BreachOption({
 }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+      className={`flex items-start gap-3 rounded-xl border px-4 py-2.5 sm:py-3 ${
         available
           ? "border-stone-200 bg-white"
           : "border-stone-200 bg-stone-50 opacity-70"

@@ -31,12 +31,14 @@ export function GuardianToggle({ initialEnabled }: Props) {
 
   if (enabled) {
     return (
-      <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold text-white" aria-hidden>
+      <div className="flex items-start gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold text-white" aria-hidden>
           ✓
         </span>
-        <span className="text-sm font-semibold text-emerald-900">Protection active</span>
-        <span className="text-xs text-emerald-800/80">Guardrail is monitoring this session.</span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-emerald-900">Protection active</p>
+          <p className="mt-0.5 text-xs text-emerald-800/80">Guardrail is monitoring this session.</p>
+        </div>
       </div>
     );
   }
