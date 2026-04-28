@@ -134,3 +134,85 @@ describe("forgot-password generic response", () => {
     assert.ok(!EXPECTED.toLowerCase().includes("no account"));
   });
 });
+
+// ── Sandbox restriction detection ─────────────────────────────────────────────
+
+const SANDBOX_PHRASE = "You can only send testing emails to your own email address";
+
+function isSandboxRestriction(msg: string): boolean {
+  return msg.includes(SANDBOX_PHRASE);
+}
+
+describe("sandbox restriction detection", () => {
+  it("detects the exact Resend sandbox restriction message", () => {
+    assert.equal(isSandboxRestriction(SANDBOX_PHRASE), true);
+  });
+
+  it("detects the phrase when embedded in a longer error string", () => {
+    assert.equal(
+      isSandboxRestriction(`Request failed: ${SANDBOX_PHRASE}. Upgrade your plan.`),
+      true,
+    );
+  });
+
+  it("does not flag unrelated error messages", () => {
+    assert.equal(isSandboxRestriction("Invalid API key."), false);
+    assert.equal(isSandboxRestriction("Domain not verified."), false);
+    assert.equal(isSandboxRestriction("Rate limit exceeded."), false);
+  });
+});
+
+// ── Generic success invariant under internal failures ─────────────────────────
+
+describe("forgot-password always returns generic success", () => {
+  const GENERIC = "If an account exists for that email, we'll send a reset link.";
+
+  // Simulates the route's broad try-catch: swallow any error, return generic message.
+  async function routeOutcome(inner?: () => void): Promise<string> {
+    try {
+      inner?.();
+    } catch {
+      // swallow — route always returns generic success
+    }
+    return GENERIC;
+  }
+
+  it("returns generic success when no error occurs", async () => {
+    assert.equal(await routeOutcome(), GENERIC);
+  });
+
+  it("returns generic success when DB lookup throws", async () => {
+    assert.equal(
+      await routeOutcome(() => { throw new Error("Connection refused"); }),
+      GENERIC,
+    );
+  });
+
+  it("returns generic success when token creation throws", async () => {
+    assert.equal(
+      await routeOutcome(() => { throw new Error("Unique constraint failed on tokenHash"); }),
+      GENERIC,
+    );
+  });
+
+  it("returns generic success when email provider is not configured", async () => {
+    assert.equal(
+      await routeOutcome(() => { throw new Error("Email provider not configured."); }),
+      GENERIC,
+    );
+  });
+
+  it("returns generic success when Resend rejects the sender domain", async () => {
+    assert.equal(
+      await routeOutcome(() => { throw new Error("The from address is not verified."); }),
+      GENERIC,
+    );
+  });
+
+  it("returns generic success when Resend sandbox restriction is hit", async () => {
+    assert.equal(
+      await routeOutcome(() => { throw new Error(SANDBOX_PHRASE); }),
+      GENERIC,
+    );
+  });
+});

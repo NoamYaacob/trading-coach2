@@ -2,6 +2,16 @@ import { Resend } from "resend";
 
 const EXPIRY_MINUTES = 30;
 
+const SANDBOX_RESTRICTION_PHRASE =
+  "You can only send testing emails to your own email address";
+
+export class EmailNotSentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmailNotSentError";
+  }
+}
+
 function getClient(): Resend | null {
   const key = process.env.RESEND_API_KEY;
   if (!key) return null;
@@ -25,7 +35,6 @@ export async function sendPasswordResetEmail(opts: {
   token: string;
 }): Promise<void> {
   const client = getClient();
-  const resetUrl = `${appUrl()}/reset-password?token=${opts.token}`;
 
   if (!client) {
     if (process.env.NODE_ENV !== "production") {
@@ -35,8 +44,10 @@ export async function sendPasswordResetEmail(opts: {
     } else {
       console.error("[email] RESEND_API_KEY not configured — password reset email not sent.");
     }
-    return;
+    throw new EmailNotSentError("Email provider not configured.");
   }
+
+  const resetUrl = `${appUrl()}/reset-password?token=${opts.token}`;
 
   const result = await client.emails.send({
     from: fromAddress(),
@@ -47,7 +58,15 @@ export async function sendPasswordResetEmail(opts: {
   });
 
   if (result.error) {
-    console.error("[email] Failed to send password reset email:", result.error.message);
+    if (result.error.message?.includes(SANDBOX_RESTRICTION_PHRASE)) {
+      console.error(
+        "[email] Resend sandbox restriction: you can only send test emails to your own email address." +
+          " Verify your sender domain or add the recipient as an authorized tester in Resend.",
+      );
+    } else {
+      console.error("[email] Failed to send password reset email:", result.error.message);
+    }
+    throw new EmailNotSentError(result.error.message ?? "Unknown email provider error.");
   }
 }
 
