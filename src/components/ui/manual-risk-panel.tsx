@@ -120,7 +120,7 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
   ];
 
   return (
-    <section className={`rounded-[2rem] border px-6 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${s.shell}`}>
+    <section className={`w-full min-w-0 rounded-[2rem] border px-4 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] sm:px-6 ${s.shell}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${s.chip}`}>
           {s.label}
@@ -128,7 +128,7 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
         <span className="text-xs text-stone-500">Manual fallback · App-level only</span>
       </div>
 
-      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+      <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
         {headlineFor(state, hasRules)}
       </h2>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detailFor(state, hasRules)}</p>

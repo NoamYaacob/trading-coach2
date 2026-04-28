@@ -31,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${ibmPlexMono.variable} h-full overflow-x-hidden antialiased`}
     >
       <body className="min-h-full overflow-x-hidden bg-canvas text-ink">
         <BrowserTimeZoneSync />

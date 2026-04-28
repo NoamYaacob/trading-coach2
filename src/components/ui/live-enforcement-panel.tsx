@@ -98,7 +98,7 @@ export function LiveEnforcementPanel({ state }: Props) {
 
   return (
     <section
-      className={`rounded-[2rem] border px-6 py-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] ${colors.shell}`}
+      className={`w-full min-w-0 rounded-[2rem] border px-4 py-5 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] sm:px-6 sm:py-6 ${colors.shell}`}
     >
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
         {/* Left column: headline + intervention context + what next */}
@@ -112,7 +112,7 @@ export function LiveEnforcementPanel({ state }: Props) {
             <span className="text-xs text-stone-500">{state.accountLabel}</span>
           </div>
 
-          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
             {msg.headline}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-700">

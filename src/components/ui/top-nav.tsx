@@ -126,12 +126,11 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
 
   return (
     <nav
-      className="flex max-w-full items-center text-sm"
+      className="flex min-w-0 max-w-full items-center text-sm"
       aria-label="Primary"
     >
-      {/* Primary pills — scrollable on narrow screens. No overflow here to
-          avoid clipping the More dropdown, which is a sibling. */}
-      <div className="-mx-2 flex min-w-0 items-center gap-0.5 overflow-x-auto px-2 scrollbar-none sm:gap-1">
+      {/* Primary pills — scrollable on narrow screens. */}
+      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto scrollbar-none sm:gap-1">
         {PRIMARY_NAV.map((item) => {
           const active = isActive(pathname, item);
           return (
