@@ -102,6 +102,16 @@ export default async function GuardianPage() {
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+  const shortTradingDay = (() => {
+    const fmt = (d: Date) =>
+      new Intl.DateTimeFormat("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: displayTimeZone,
+      }).format(d);
+    return `Today · ${fmt(tradingDay.start)}–${fmt(tradingDay.end)}`;
+  })();
 
   const [
     guardian,
@@ -239,7 +249,28 @@ export default async function GuardianPage() {
       <div className="grid gap-6">
 
         {/* ── Compact status summary strip ────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-stone-200 bg-white/90 px-5 py-3 text-xs shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]">
+        {/* Mobile: 2-row compact */}
+        <div className="rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)] md:hidden">
+          <div className="flex items-center justify-between text-xs">
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${guardianOff ? "bg-stone-400" : "bg-emerald-500"}`}
+                aria-hidden="true"
+              />
+              <span className="font-medium text-stone-600">Guardian</span>
+              <span className={guardianOff ? "text-stone-400" : "text-emerald-700 font-semibold"}>
+                {guardianOff ? "Paused" : "On"}
+              </span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="font-medium text-stone-600">Permission</span>
+              <span className={`font-semibold ${styles.accent}`}>{styles.label}</span>
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-stone-500">{shortTradingDay}</p>
+        </div>
+        {/* Desktop: full pill strip */}
+        <div className="hidden md:flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-stone-200 bg-white/90 px-5 py-3 text-xs shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]">
           <span className="flex items-center gap-2">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${guardianOff ? "bg-stone-400" : "bg-emerald-500"}`}
@@ -260,7 +291,7 @@ export default async function GuardianPage() {
             <span className="font-medium text-stone-600">Permission</span>
             <span className={`font-semibold ${styles.accent}`}>{styles.label}</span>
           </span>
-          <span className="hidden h-3 w-px bg-stone-200 sm:block" aria-hidden="true" />
+          <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
             <span className="font-medium text-stone-600">Trading day</span>
             <span className="text-stone-700">{tradingDay.label}</span>
@@ -274,6 +305,7 @@ export default async function GuardianPage() {
             hasRules={Boolean(riskRules)}
             hideEditRulesCta
             tradingDayLabel={tradingDay.label}
+            tradingDayLabelShort={shortTradingDay}
           />
         ) : (
           <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
@@ -282,7 +314,12 @@ export default async function GuardianPage() {
                 {styles.label}
               </span>
               <span className="text-xs text-stone-500">
-                {hasBroker ? "Broker connected" : "Manual fallback"}
+                {hasBroker ? "Broker connected" : (
+                  <>
+                    <span className="md:hidden">Manual journal</span>
+                    <span className="hidden md:inline">Manual fallback</span>
+                  </>
+                )}
               </span>
             </div>
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
@@ -451,10 +488,10 @@ function ProgressTile({
   limit: string;
 }) {
   return (
-    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-3 sm:px-4 sm:py-4">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-stone-950 tabular-nums">{value}</p>
-      <p className="mt-1 text-sm text-stone-500">{limit}</p>
+      <p className="mt-1.5 text-lg font-semibold text-stone-950 tabular-nums sm:mt-2">{value}</p>
+      <p className="mt-0.5 text-sm text-stone-500 sm:mt-1">{limit}</p>
     </div>
   );
 }

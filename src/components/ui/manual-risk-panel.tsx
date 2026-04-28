@@ -7,8 +7,10 @@ type Props = {
   hasRules: boolean;
   /** When true, hide the "Edit rules" CTA (e.g. on Guardian which has its own). */
   hideEditRulesCta?: boolean;
-  /** Optional human-readable trading-day window label. */
+  /** Optional human-readable trading-day window label (full, shown on desktop). */
   tradingDayLabel?: string;
+  /** Short version of the trading-day label shown on mobile (e.g. "Today · 09:00–18:00"). */
+  tradingDayLabelShort?: string;
 };
 
 function styles(permission: ManualRiskState["permission"]) {
@@ -84,7 +86,7 @@ function detailFor(state: ManualRiskState, hasRules: boolean): string {
   return "No rule limits hit yet today. Manual Mode evaluates trades as you log them.";
 }
 
-export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayLabel }: Props) {
+export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayLabel, tradingDayLabelShort }: Props) {
   const s = styles(state.permission);
 
   const tiles = [
@@ -120,25 +122,35 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
   ];
 
   return (
-    <section className={`w-full min-w-0 rounded-[2rem] border px-4 py-5 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] sm:px-6 ${s.shell}`}>
+    <section className={`w-full min-w-0 rounded-[2rem] border px-3 py-4 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] sm:px-6 sm:py-5 ${s.shell}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${s.chip}`}>
           {s.label}
         </span>
-        <span className="text-xs text-stone-500">Manual fallback · App-level only</span>
+        <span className="text-xs text-stone-500">
+          <span className="md:hidden">Manual journal</span>
+          <span className="hidden md:inline">Manual fallback · App-level only</span>
+        </span>
       </div>
 
       <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
         {headlineFor(state, hasRules)}
       </h2>
-      <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detailFor(state, hasRules)}</p>
+      <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">
+        {state.permission === "SAFE" && hasRules ? (
+          <>
+            <span className="md:hidden">Trades are checked from journal entries.</span>
+            <span className="hidden md:inline">{detailFor(state, hasRules)}</span>
+          </>
+        ) : detailFor(state, hasRules)}
+      </p>
 
       {/* Tiles */}
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-2 sm:mt-5 sm:gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+          <div key={t.label} className="rounded-2xl border border-white/70 bg-white/80 px-3 py-2.5 sm:px-4 sm:py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">{t.label}</p>
-            <p className={`mt-1.5 text-lg font-semibold tabular-nums ${t.cls ?? "text-stone-950"}`}>
+            <p className={`mt-1 text-lg font-semibold tabular-nums sm:mt-1.5 ${t.cls ?? "text-stone-950"}`}>
               {t.value}
             </p>
           </div>
@@ -196,7 +208,15 @@ export function ManualRiskPanel({ state, hasRules, hideEditRulesCta, tradingDayL
 
       {tradingDayLabel && (
         <p className="mt-2 text-xs text-stone-500">
-          Trading day: <span className="font-medium text-stone-700">{tradingDayLabel}</span>
+          Trading day:{" "}
+          {tradingDayLabelShort ? (
+            <>
+              <span className="md:hidden font-medium text-stone-700">{tradingDayLabelShort}</span>
+              <span className="hidden md:inline font-medium text-stone-700">{tradingDayLabel}</span>
+            </>
+          ) : (
+            <span className="font-medium text-stone-700">{tradingDayLabel}</span>
+          )}
         </p>
       )}
 
