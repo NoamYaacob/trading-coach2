@@ -21,7 +21,7 @@ const EVENT_TYPES = [
 
 const PNL_RELEVANT = new Set(["win", "loss", "pnl_update"]);
 
-export function ManualEventForm() {
+export function ManualEventForm({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const [eventType, setEventType] = useState<string>("trade_opened");
   const [note, setNote] = useState("");
@@ -77,7 +77,7 @@ export function ManualEventForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4">
+    <form onSubmit={handleSubmit} className={`grid ${compact ? "gap-3 sm:gap-4" : "gap-4"}`}>
       <div className="grid gap-2">
         <label className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
           Event type

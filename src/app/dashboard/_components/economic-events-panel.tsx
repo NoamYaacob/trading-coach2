@@ -19,6 +19,12 @@ function formatEventTime(value: Date, timeZone: string) {
   }).format(value);
 }
 
+function formatEventTimeMobile(value: Date, timeZone: string): string {
+  const date = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone }).format(value);
+  return `${date} · ${time}`;
+}
+
 function getImpactStyles(impact: EconomicEvent["impact"]) {
   switch (impact) {
     case "high":
@@ -57,23 +63,27 @@ export function EconomicEventsPanel({
 
   return (
     <SectionCard
+      compact
       title="Economic events"
       description="Upcoming calendar context that may affect session start, risk, or execution pace."
     >
-      <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+      {/* Desktop: full provider info block */}
+      <div className="mb-4 hidden rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700 sm:block">
         <p className="font-medium text-stone-950">{providerLabel}</p>
         <p className="mt-1 text-stone-600">
           {scenarioLabel ? `${scenarioLabel}. ` : ""}
           {sourceLabel}
         </p>
       </div>
+      {/* Mobile: muted one-liner */}
+      <p className="mb-3 text-xs text-stone-400 sm:hidden">{providerLabel}</p>
 
       {visibleEvents.length ? (
-        <div className="grid gap-3">
+        <div className="grid gap-2 sm:gap-3">
           {visibleEvents.map((event) => (
             <div
               key={event.id}
-              className="rounded-[1.35rem] border border-stone-200 bg-white px-4 py-4"
+              className="rounded-[1.35rem] border border-stone-200 bg-white px-3 py-3 sm:px-4 sm:py-4"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold text-stone-950">{event.title}</p>
@@ -88,7 +98,12 @@ export function EconomicEventsPanel({
                   {getStateLabel(event.state)}
                 </span>
               </div>
-              <p className="mt-2 text-sm text-stone-600">
+              {/* Mobile: short timestamp without timezone */}
+              <p className="mt-2 text-sm text-stone-600 sm:hidden">
+                {formatEventTimeMobile(event.startTime, timeZone)}
+              </p>
+              {/* Desktop: full timestamp with timezone */}
+              <p className="mt-2 hidden text-sm text-stone-600 sm:block">
                 {formatEventTime(event.startTime, timeZone)} {timeZone}
               </p>
               <p className="mt-2 text-sm text-stone-600">

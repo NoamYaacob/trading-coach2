@@ -27,6 +27,15 @@ type TodaySessionPanelProps = {
   };
 };
 
+function fmtShortTime(value: Date | null, timeZone: string): string {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(value);
+}
+
 function fmtMoney(n: number): string {
   return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -232,7 +241,7 @@ export function TodaySessionPanel({
 
   return (
     <section
-      className={`w-full min-w-0 rounded-[2rem] border px-4 py-5 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] sm:px-6 ${styles.shell}`}
+      className={`w-full min-w-0 rounded-[2rem] border px-4 py-4 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] sm:px-6 sm:py-5 ${styles.shell}`}
     >
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
         <div>
@@ -244,10 +253,20 @@ export function TodaySessionPanel({
           <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
             {sessionState.headline}
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-700">
+          {/* Desktop: full detail text */}
+          <p className={`mt-3 max-w-2xl text-sm leading-6 text-stone-700${isSessionEnded && sessionState.sessionStartedAt ? " hidden md:block" : ""}`}>
             {sessionState.detail}
           </p>
-          <div className="mt-5 rounded-[1.4rem] border border-white/70 bg-white/80 px-4 py-4">
+          {/* Mobile: short session timestamps when session has ended */}
+          {isSessionEnded && sessionState.sessionStartedAt ? (
+            <p className="mt-3 text-sm leading-6 text-stone-700 md:hidden">
+              Started {fmtShortTime(sessionState.sessionStartedAt, displayTimeZone)}
+              {sessionState.sessionEndedAt
+                ? ` · Ended ${fmtShortTime(sessionState.sessionEndedAt, displayTimeZone)}`
+                : ""}
+            </p>
+          ) : null}
+          <div className="mt-4 rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 sm:mt-5 sm:px-4 sm:py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               What to do next
             </p>
@@ -312,7 +331,12 @@ export function TodaySessionPanel({
                 href={cta.href}
                 className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                {cta.label}
+                {isSessionEnded ? (
+                  <>
+                    <span className="md:hidden">Review status</span>
+                    <span className="hidden md:inline">{cta.label}</span>
+                  </>
+                ) : cta.label}
               </Link>
             )}
             {startError ? (

@@ -420,10 +420,11 @@ export default async function DashboardPage() {
               timeZone={displayTimeZone}
             />
             <SectionCard
+              compact
               title="Log a trade or event"
               description="Quick manual entry — feeds today's activity."
             >
-              <ManualEventForm />
+              <ManualEventForm compact />
             </SectionCard>
             {!telegramConnected && (
               <p className="text-xs text-stone-500">
@@ -476,7 +477,7 @@ function QuickAction({
   return (
     <a
       href={href}
-      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 p-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
+      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 px-3 py-2.5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
     >
       <p className="text-sm font-semibold text-stone-950">{title}</p>
       <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
