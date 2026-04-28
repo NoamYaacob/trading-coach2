@@ -117,15 +117,15 @@ export default async function Home() {
       description="Live session status for disciplined traders — Allowed, Warning, or Locked."
       actions={heroActions}
     >
-      <div className="grid gap-16">
+      <div className="grid gap-10 lg:gap-16">
 
         {/* ── How it works — 3 steps with status tags ──────────────────── */}
         <section>
-          <div className="mb-8 max-w-2xl">
+          <div className="mb-5 max-w-2xl sm:mb-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
               How it works
             </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
               Three steps. One operating loop.
             </h2>
           </div>
@@ -158,7 +158,7 @@ export default async function Home() {
             Live session preview
           </p>
 
-          <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-6 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.18)] sm:p-8">
+          <div className="rounded-[2rem] border border-stone-200/80 bg-white/95 p-4 shadow-[0_40px_100px_-40px_rgba(28,25,23,0.18)] sm:p-6 lg:p-8">
             {/* Top row — timestamp + status pill */}
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -199,7 +199,7 @@ export default async function Home() {
         </section>
 
         {/* ── Value sentence + Pricing ──────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-8 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-10">
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8 lg:p-10">
           <p className="mb-8 max-w-2xl text-base leading-7 text-stone-600">
             <span className="font-semibold text-stone-950">
               Built for active intraday traders
@@ -212,18 +212,18 @@ export default async function Home() {
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
                 Pricing
               </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
                 Start your free trial.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
                 Full access during your trial. Configure your rules, run your first session, and link Telegram. No credit card required.
               </p>
-              <div className="mt-8 flex items-baseline gap-2">
-                <span className="text-5xl font-bold tracking-[-0.04em] text-stone-950">$49</span>
+              <div className="mt-6 flex items-baseline gap-2 sm:mt-8">
+                <span className="text-4xl font-bold tracking-[-0.04em] text-stone-950 sm:text-5xl">$49</span>
                 <span className="text-base text-stone-500">/ month</span>
               </div>
               <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-6 flex flex-col items-start gap-3 sm:mt-8 sm:flex-row sm:flex-wrap">
                 {user ? (
                   <Link
                     href="/dashboard"
@@ -268,11 +268,11 @@ export default async function Home() {
 
         {/* ── FAQ ────────────────────────────────────────────────────────── */}
         <section>
-          <div className="mb-8">
+          <div className="mb-5 sm:mb-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
               FAQ
             </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+            <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
               Common questions.
             </h2>
           </div>
@@ -293,17 +293,17 @@ export default async function Home() {
         </section>
 
         {/* ── Final CTA ──────────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-8 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-10">
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <h2 className="text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
                 Your next session, under real protection.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
                 Configure your rules. Run today&rsquo;s session. Stay within your limits.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
               {user ? (
                 <Link
                   href="/dashboard"

@@ -12,7 +12,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       {/* ── Form column ──────────────────────────────────────────── */}
       <div className="flex w-full flex-col bg-white lg:max-w-[480px] xl:max-w-[520px]">
-        <div className="flex h-full flex-col px-8 py-10 sm:px-12">
+        <div className="flex h-full flex-col px-6 py-8 sm:px-10 lg:px-12">
           {/* Brand mark */}
           <Link
             href="/"
@@ -24,7 +24,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </Link>
 
           {/* Form slot — vertically centered */}
-          <div className="my-auto py-14">
+          <div className="my-auto py-8 sm:py-14">
             {children}
           </div>
 

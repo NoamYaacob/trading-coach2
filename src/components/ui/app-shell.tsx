@@ -25,7 +25,7 @@ export async function AppShell({
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(113,63,18,0.12),_transparent_32%),linear-gradient(180deg,_#f8f5ef_0%,_#f4efe6_100%)] text-stone-950">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-5 lg:px-10">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-5 lg:px-10">
         <Link
           href="/"
           className="shrink-0 text-sm font-bold uppercase tracking-[0.32em] text-stone-900 transition-opacity hover:opacity-80"
@@ -35,14 +35,14 @@ export async function AppShell({
         <TopNav authenticated={Boolean(user)} />
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 pb-0 lg:px-10">
-        <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-6 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 pb-0 sm:px-6 lg:px-10">
+        <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-4 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
                 {eyebrow}
               </p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-4xl">
+              <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl lg:text-4xl">
                 {title}
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600 sm:text-base">
@@ -52,7 +52,7 @@ export async function AppShell({
                 <p className="mt-3 text-xs leading-5 text-stone-500">{note}</p>
               )}
             </div>
-            {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+            {actions ? <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">{actions}</div> : null}
           </div>
         </section>
 

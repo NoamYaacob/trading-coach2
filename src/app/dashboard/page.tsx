@@ -438,7 +438,7 @@ function GuardianPausedPanel() {
       <span className="inline-flex rounded-full bg-stone-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white">
         Paused
       </span>
-      <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+      <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
         Protection is paused.
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">

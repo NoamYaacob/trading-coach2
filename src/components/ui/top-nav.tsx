@@ -84,16 +84,16 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
   // Anonymous → marketing nav, on every route.
   if (!authenticated) {
     return (
-      <nav className="flex items-center gap-1 text-sm">
+      <nav className="flex items-center gap-1">
         <Link
           href="/login"
-          className="rounded-full px-3.5 py-2 text-stone-600 transition-colors hover:text-stone-950 sm:px-4"
+          className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs text-stone-600 transition-colors hover:text-stone-950 sm:px-3.5 sm:py-2 sm:text-sm"
         >
           Log in
         </Link>
         <Link
           href="/signup"
-          className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-5"
+          className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
         >
           Sign up
         </Link>
@@ -104,11 +104,11 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
   // Authenticated but on the landing page → marketing-style nav, no app pills.
   if (onMarketingRoute) {
     return (
-      <nav className="flex items-center gap-1 text-sm">
+      <nav className="flex items-center gap-1">
         <LogoutButton />
         <Link
           href="/dashboard"
-          className="rounded-full bg-stone-950 px-4 py-2 font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-5"
+          className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
         >
           Go to dashboard
         </Link>
