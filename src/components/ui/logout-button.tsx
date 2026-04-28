@@ -1,9 +1,24 @@
 "use client";
 
-export function LogoutButton() {
+type LogoutButtonProps = {
+  variant?: "pill" | "menu";
+};
+
+export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/";
+  }
+
+  if (variant === "menu") {
+    return (
+      <button
+        onClick={handleLogout}
+        className="block w-full px-4 py-2.5 text-left text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
+      >
+        Log out
+      </button>
+    );
   }
 
   return (
