@@ -65,6 +65,11 @@ export default function PrivacyPage() {
           We use Stripe for billing, Anthropic for AI-assisted features, and (optionally) Google for sign-in and Telegram for alerts. Each processor receives only the data necessary for that function, under their respective privacy terms.
         </p>
 
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Cookies</h2>
+        <p className="mt-3">
+          Guardrail uses essential cookies to keep you signed in, protect your account, and operate the service. We do not use advertising cookies unless clearly stated.
+        </p>
+
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Your rights</h2>
         <p className="mt-3">
           You can export your data, delete your account, and revoke broker connections at any time from the Settings page. Account deletion removes your stored profile, journal entries, and connection records.

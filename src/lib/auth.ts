@@ -6,7 +6,9 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 
 const SESSION_COOKIE_NAME = "trading-coach-session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+// TODO(future): "Log out from all devices" — expose prisma.session.deleteMany({ where: { userId } })
+//               as an authenticated API route so users can invalidate all their own sessions.
 
 function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
