@@ -18,7 +18,7 @@ export type ItemStatus = "ready" | "prepared" | "pending" | "disabled" | "option
 
 const STATUS_STYLE: Record<
   ItemStatus,
-  { label: string; pill: string; pillText: string; dot: string }
+  { label: string; mobileLabel?: string; pill: string; pillText: string; dot: string }
 > = {
   ready: {
     label: "Available",
@@ -34,6 +34,7 @@ const STATUS_STYLE: Record<
   },
   pending: {
     label: "Pending API access",
+    mobileLabel: "Setup needed",
     pill: "bg-amber-100",
     pillText: "text-amber-700",
     dot: "bg-amber-500",
@@ -86,7 +87,7 @@ function buildItems(opts: {
     {
       key: "encryption",
       title: "Token encryption (AES-256-GCM)",
-      mobileTitle: "Security setup",
+      mobileTitle: "Secure connection",
       status: encryptionConfigured ? "ready" : "pending",
       detail: encryptionConfigured
         ? "Encryption key configured. Tokens are encrypted at rest before any DB write."
@@ -181,7 +182,12 @@ export function ProductStatusPanel({
             <span
               className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${style.pill} ${style.pillText}`}
             >
-              {style.label}
+              {style.mobileLabel ? (
+                <>
+                  <span className="md:hidden">{style.mobileLabel}</span>
+                  <span className="hidden md:inline">{style.label}</span>
+                </>
+              ) : style.label}
             </span>
           </div>
         );
