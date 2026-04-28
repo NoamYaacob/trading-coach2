@@ -51,6 +51,9 @@ const INITIAL: FormState = {
   breachReason: "",
 };
 
+const INPUT_CLS =
+  "w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none";
+
 export function TradeEntryForm() {
   const router = useRouter();
   const [values, setValues] = useState<FormState>(INITIAL);
@@ -58,7 +61,6 @@ export function TradeEntryForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Derived auto-calc suggestions — only used when user hasn't typed an override.
   const computed = useMemo(() => {
     const entry = num(values.entryPrice);
     const exit = num(values.exitPrice);
@@ -115,7 +117,6 @@ export function TradeEntryForm() {
       return;
     }
 
-    // Use computed values when the user left fields blank.
     const effectivePnl = num(values.pnl) ?? computed.suggestedPnl;
     const effectiveRisk = num(values.riskAmount) ?? computed.suggestedRisk;
     const effectiveR =
@@ -165,18 +166,32 @@ export function TradeEntryForm() {
     }
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="grid gap-6">
+  const pnlHint =
+    computed.suggestedPnl !== null && values.pnl === ""
+      ? `Auto: ${computed.suggestedPnl.toFixed(2)}`
+      : undefined;
+  const riskHint =
+    computed.suggestedRisk !== null && values.riskAmount === ""
+      ? `Auto: ${computed.suggestedRisk.toFixed(2)}`
+      : undefined;
+  const rHint =
+    computed.suggestedR !== null && values.rMultiple === ""
+      ? `Auto: ${computed.suggestedR.toFixed(2)}R`
+      : undefined;
 
-      {/* Top: when, what, direction */}
-      <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+  return (
+    <form onSubmit={handleSubmit} className="grid gap-4 sm:gap-6">
+
+      {/* Row 1: date/time + symbol + direction — same on all screen sizes */}
+      <div className="grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1fr_auto]">
         <Field label="Trade date / time" required>
           <input
             type="datetime-local"
+            dir="ltr"
             required
             value={values.tradedAt}
             onChange={(e) => update("tradedAt", e.target.value)}
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
+            className={INPUT_CLS}
           />
         </Field>
         <Field label="Symbol" required>
@@ -186,7 +201,7 @@ export function TradeEntryForm() {
             value={values.symbol}
             onChange={(e) => update("symbol", e.target.value.toUpperCase())}
             placeholder="ES, NQ, MES..."
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm uppercase focus:border-stone-950 focus:outline-none"
+            className={`${INPUT_CLS} uppercase`}
           />
         </Field>
         <Field label="Direction">
@@ -217,110 +232,188 @@ export function TradeEntryForm() {
         </Field>
       </div>
 
-      {/* Prices */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Entry price">
-          <NumberInput value={values.entryPrice} onChange={(v) => update("entryPrice", v)} />
-        </Field>
-        <Field label="Exit price">
-          <NumberInput value={values.exitPrice} onChange={(v) => update("exitPrice", v)} />
-        </Field>
-        <Field label="Stop price">
-          <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
-        </Field>
-        <Field label="Target price (optional)">
-          <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
-        </Field>
-      </div>
+      {/* ── Mobile layout ────────────────────────────────────────────────── */}
 
-      {/* Size + outcome */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Mobile required: quantity + P&L */}
+      <div className="grid grid-cols-2 gap-3 md:hidden">
         <Field label="Quantity / contracts">
           <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
         </Field>
-        <Field
-          label="P&L ($)"
-          hint={
-            computed.suggestedPnl !== null && values.pnl === ""
-              ? `Auto: ${computed.suggestedPnl.toFixed(2)}`
-              : undefined
-          }
-        >
+        <Field label="P&L ($)" hint={pnlHint}>
           <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
         </Field>
-        <Field
-          label="Risk amount ($)"
-          hint={
-            computed.suggestedRisk !== null && values.riskAmount === ""
-              ? `Auto: ${computed.suggestedRisk.toFixed(2)}`
-              : undefined
-          }
-        >
-          <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
-        </Field>
-        <Field
-          label="R-multiple"
-          hint={
-            computed.suggestedR !== null && values.rMultiple === ""
-              ? `Auto: ${computed.suggestedR.toFixed(2)}R`
-              : undefined
-          }
-        >
-          <NumberInput value={values.rMultiple} onChange={(v) => update("rMultiple", v)} />
-        </Field>
       </div>
 
-      {/* Strategy + notes */}
-      <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
-        <Field label="Strategy (optional)">
-          <input
-            type="text"
-            value={values.strategy}
-            onChange={(e) => update("strategy", e.target.value)}
-            placeholder="Breakout, mean-reversion..."
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-          />
-        </Field>
-        <Field label="Notes (optional)">
-          <input
-            type="text"
-            value={values.notes}
-            onChange={(e) => update("notes", e.target.value)}
-            placeholder="What worked, what didn't..."
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-          />
-        </Field>
-      </div>
+      {/* Mobile optional: collapsible More trade details */}
+      <details className="group rounded-2xl border border-stone-100 bg-stone-50/60 px-4 py-3 md:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-stone-700">
+          More trade details
+          <span className="text-xs text-stone-400 transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div className="mt-4 grid gap-4">
 
-      {/* Rule breach */}
-      <div className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
-        <label className="flex items-start gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={values.ruleBreached}
-            onChange={(e) => update("ruleBreached", e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
-          />
-          <span>
-            <span className="font-medium text-stone-950">Rule breach</span>
-            <span className="block text-stone-500">
-              Tag this trade as a rule breach (over-size, over-trading, off-strategy, etc.).
+          {/* Prices 2×2 */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Entry price">
+              <NumberInput value={values.entryPrice} onChange={(v) => update("entryPrice", v)} />
+            </Field>
+            <Field label="Exit price">
+              <NumberInput value={values.exitPrice} onChange={(v) => update("exitPrice", v)} />
+            </Field>
+            <Field label="Stop price">
+              <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
+            </Field>
+            <Field label="Target price">
+              <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
+            </Field>
+          </div>
+
+          {/* Risk + R */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Risk ($)" hint={riskHint}>
+              <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
+            </Field>
+            <Field label="R-multiple" hint={rHint}>
+              <NumberInput value={values.rMultiple} onChange={(v) => update("rMultiple", v)} />
+            </Field>
+          </div>
+
+          {/* Strategy + notes */}
+          <Field label="Strategy">
+            <input
+              type="text"
+              value={values.strategy}
+              onChange={(e) => update("strategy", e.target.value)}
+              placeholder="Breakout, mean-reversion..."
+              className={INPUT_CLS}
+            />
+          </Field>
+          <Field label="Notes">
+            <input
+              type="text"
+              value={values.notes}
+              onChange={(e) => update("notes", e.target.value)}
+              placeholder="What worked, what didn't..."
+              className={INPUT_CLS}
+            />
+          </Field>
+
+          {/* Rule breach */}
+          <div className="grid gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={values.ruleBreached}
+                onChange={(e) => update("ruleBreached", e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
+              />
+              <span>
+                <span className="font-medium text-stone-950">Rule breach</span>
+                <span className="block text-stone-500">Tag this trade as a rule breach.</span>
+              </span>
+            </label>
+            {values.ruleBreached && (
+              <input
+                type="text"
+                value={values.breachReason}
+                onChange={(e) => update("breachReason", e.target.value)}
+                placeholder="What rule did this trade break?"
+                className={INPUT_CLS}
+              />
+            )}
+          </div>
+
+        </div>
+      </details>
+
+      {/* ── Desktop layout (original, unchanged) ─────────────────────────── */}
+      <div className="hidden md:grid gap-6">
+
+        {/* Prices */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Entry price">
+            <NumberInput value={values.entryPrice} onChange={(v) => update("entryPrice", v)} />
+          </Field>
+          <Field label="Exit price">
+            <NumberInput value={values.exitPrice} onChange={(v) => update("exitPrice", v)} />
+          </Field>
+          <Field label="Stop price">
+            <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
+          </Field>
+          <Field label="Target price (optional)">
+            <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
+          </Field>
+        </div>
+
+        {/* Size + outcome */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Quantity / contracts">
+            <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
+          </Field>
+          <Field label="P&L ($)" hint={pnlHint}>
+            <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
+          </Field>
+          <Field label="Risk amount ($)" hint={riskHint}>
+            <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
+          </Field>
+          <Field label="R-multiple" hint={rHint}>
+            <NumberInput value={values.rMultiple} onChange={(v) => update("rMultiple", v)} />
+          </Field>
+        </div>
+
+        {/* Strategy + notes */}
+        <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
+          <Field label="Strategy (optional)">
+            <input
+              type="text"
+              value={values.strategy}
+              onChange={(e) => update("strategy", e.target.value)}
+              placeholder="Breakout, mean-reversion..."
+              className={INPUT_CLS}
+            />
+          </Field>
+          <Field label="Notes (optional)">
+            <input
+              type="text"
+              value={values.notes}
+              onChange={(e) => update("notes", e.target.value)}
+              placeholder="What worked, what didn't..."
+              className={INPUT_CLS}
+            />
+          </Field>
+        </div>
+
+        {/* Rule breach */}
+        <div className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={values.ruleBreached}
+              onChange={(e) => update("ruleBreached", e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
+            />
+            <span>
+              <span className="font-medium text-stone-950">Rule breach</span>
+              <span className="block text-stone-500">
+                Tag this trade as a rule breach (over-size, over-trading, off-strategy, etc.).
+              </span>
             </span>
-          </span>
-        </label>
-        {values.ruleBreached && (
-          <input
-            type="text"
-            value={values.breachReason}
-            onChange={(e) => update("breachReason", e.target.value)}
-            placeholder="What rule did this trade break?"
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-          />
-        )}
+          </label>
+          {values.ruleBreached && (
+            <input
+              type="text"
+              value={values.breachReason}
+              onChange={(e) => update("breachReason", e.target.value)}
+              placeholder="What rule did this trade break?"
+              className={INPUT_CLS}
+            />
+          )}
+        </div>
+
       </div>
 
       {/* Submit */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-5">
+      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-5">
         <button
           type="submit"
           disabled={saving}

@@ -80,6 +80,16 @@ export default async function JournalPage() {
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+  const shortWindow = (() => {
+    const fmtHM = (d: Date) =>
+      new Intl.DateTimeFormat("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: tz,
+      }).format(d);
+    return `${fmtHM(window.start)}–${fmtHM(window.end)}`;
+  })();
 
   const [allEntries, todayEntries] = await Promise.all([
     prisma.manualTradeEntry.findMany({
@@ -148,15 +158,20 @@ export default async function JournalPage() {
         {/* Today summary */}
         <SectionCard
           title="Today"
-          description={`Trading day: ${window.label}.`}
+          description={
+            <>
+              <span className="md:hidden">Today · {shortWindow}</span>
+              <span className="hidden md:inline">Trading day: {window.label}.</span>
+            </>
+          }
         >
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             {summaryTiles.map((t) => (
-              <div key={t.label} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+              <div key={t.label} className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2.5 sm:px-4 sm:py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                   {t.label}
                 </p>
-                <p className={`mt-1.5 text-lg font-semibold tabular-nums ${t.cls ?? "text-stone-950"}`}>
+                <p className={`mt-1 text-base font-semibold tabular-nums sm:mt-1.5 sm:text-lg ${t.cls ?? "text-stone-950"}`}>
                   {t.value}
                 </p>
               </div>
@@ -262,15 +277,27 @@ export default async function JournalPage() {
 
         {/* Mode footer — small, single line */}
         <p className="text-xs text-stone-500">
-          {hasBroker
-            ? "Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified."
-            : <>
+          {hasBroker ? (
+            <>
+              <span className="md:hidden">Manual journal is used until Tradovate is connected.</span>
+              <span className="hidden md:inline">Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified.</span>
+            </>
+          ) : (
+            <>
+              <span className="md:hidden">
+                Manual journal is used until Tradovate is connected.{" "}
+                <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+                  Connect →
+                </a>
+              </span>
+              <span className="hidden md:inline">
                 Demo mode — risk state is evaluated from manual entries, not live broker data.{" "}
                 <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
                   Connect Tradovate for live enforcement →
                 </a>
-              </>
-          }
+              </span>
+            </>
+          )}
         </p>
 
       </div>
