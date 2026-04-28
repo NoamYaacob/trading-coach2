@@ -18,7 +18,21 @@ type TodaySessionPanelProps = {
   };
   telegramBotLink: string | null;
   displayTimeZone: string;
+  /** Mobile-only compact stats from ManualRiskPanel, shown when that panel is hidden below md. */
+  mobileStats?: {
+    todayPnL: number;
+    todayTradesCount: number;
+    remainingDailyLossBudget: number | null;
+    consecutiveLosses: number;
+  };
 };
+
+function fmtMoney(n: number): string {
+  return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 function formatGuardianDate(value: Date | null, timeZone: string) {
   if (!value) {
@@ -73,6 +87,7 @@ export function TodaySessionPanel({
   telegramAccess,
   telegramBotLink,
   displayTimeZone,
+  mobileStats,
 }: TodaySessionPanelProps) {
   const router = useRouter();
   const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null);
@@ -304,9 +319,39 @@ export function TodaySessionPanel({
               <p className="mt-3 text-sm text-red-700">{startError}</p>
             ) : null}
           </div>
+
+          {/* Mobile compact stats — visible below md when ManualRiskPanel is hidden */}
+          {mobileStats && (
+            <div className="mt-4 grid grid-cols-2 gap-2 md:hidden">
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Today P&amp;L</p>
+                <p className={`mt-1 text-base font-semibold tabular-nums ${mobileStats.todayPnL > 0 ? "text-emerald-700" : mobileStats.todayPnL < 0 ? "text-red-700" : "text-stone-950"}`}>
+                  {fmtMoney(mobileStats.todayPnL)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Trades</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.todayTradesCount}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Budget left</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.remainingDailyLossBudget !== null ? fmtMoney(mobileStats.remainingDailyLossBudget) : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Loss streak</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.consecutiveLosses}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="grid gap-3">
+        <div className="hidden gap-3 md:grid">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">

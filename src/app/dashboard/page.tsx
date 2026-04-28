@@ -318,17 +318,25 @@ export default async function DashboardPage() {
             <GuardianPausedPanel />
           ) : (
             <>
-              <ManualRiskPanel
-                state={manualRisk}
-                hasRules={Boolean(riskRules)}
-                tradingDayLabel={tradingDay.label}
-              />
+              <div className="hidden md:block">
+                <ManualRiskPanel
+                  state={manualRisk}
+                  hasRules={Boolean(riskRules)}
+                  tradingDayLabel={tradingDay.label}
+                />
+              </div>
               <TodaySessionPanel
                 sessionState={todaySessionStateForPanel}
                 additionalTriggeredRulesCount={guardianAdditionalRulesCount}
                 telegramAccess={telegramAccess}
                 telegramBotLink={telegramBotLink}
                 displayTimeZone={displayTimeZone}
+                mobileStats={{
+                  todayPnL: manualRisk.todayPnL,
+                  todayTradesCount: manualRisk.todayTradesCount,
+                  remainingDailyLossBudget: manualRisk.remainingDailyLossBudget,
+                  consecutiveLosses: manualRisk.consecutiveLosses,
+                }}
               />
               <RuleNoticeList notices={dashboardNotices} />
             </>
@@ -468,11 +476,11 @@ function QuickAction({
   return (
     <a
       href={href}
-      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)]"
+      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 p-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
     >
       <p className="text-sm font-semibold text-stone-950">{title}</p>
       <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
-      <p className="mt-4 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700">→</p>
+      <p className="mt-3 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">→</p>
     </a>
   );
 }
