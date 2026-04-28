@@ -171,6 +171,16 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
         <LogoutButton />
       </nav>
 
+      {/* ── Mobile backdrop (below md, when menu open) ───────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: "rgba(28,25,23,0.07)" }}
+          aria-hidden
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* ── Mobile menu button + dropdown (below md) ──────────────── */}
       <div className="relative md:hidden" ref={mobileRef}>
         <button
@@ -205,8 +215,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                   onClick={() => setMobileOpen(false)}
                   className={
                     active
-                      ? "block bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-950"
-                      : "block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
+                      ? "block bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950"
+                      : "block px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
                   }
                 >
                   {item.label}
