@@ -222,6 +222,7 @@ export default async function JournalPage() {
                             day: "numeric",
                             hour: "numeric",
                             minute: "2-digit",
+                            timeZone: tz,
                           }).format(e.tradedAt)}
                         </td>
                         <td className="py-3 pr-4 font-medium text-stone-950">{e.symbol}</td>
