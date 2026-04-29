@@ -59,9 +59,7 @@ export default async function TradingProfilePage({
             {editMode ? "Update your trading profile." : "Tell Guardrail how you trade."}
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            {editMode
-              ? "These details help Guardrail tailor your experience."
-              : "These details help Guardrail set up your first risk workflow."}
+            These details help Guardrail understand your market, session, and risk workflow.
           </p>
         </div>
 
