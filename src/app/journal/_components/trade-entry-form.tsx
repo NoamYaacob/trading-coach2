@@ -3,6 +3,20 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  calculateFuturesPnl,
+  calculateFuturesRisk,
+  getInstrumentSpec,
+  isValidTickPrice,
+  type FuturesSpec,
+} from "@/lib/instruments";
+
+type ValidationWarning = {
+  field: keyof FormState;
+  message: string;
+  severity: "warning" | "error";
+};
+
 type FormState = {
   tradedAt: string;
   symbol: string;
@@ -77,6 +91,10 @@ export function TradeEntryForm() {
   const [success, setSuccess] = useState(false);
 
   const computed = useMemo(() => {
+    const symbolUpper = values.symbol.trim().toUpperCase();
+    const spec = getInstrumentSpec(symbolUpper);
+    const futuresSpec: FuturesSpec | null = spec?.kind === "futures" ? spec : null;
+
     const entry = num(values.entryPrice);
     const exit = num(values.exitPrice);
     const stop = num(values.stopPrice);
@@ -84,15 +102,60 @@ export function TradeEntryForm() {
     const userPnl = num(values.pnl);
     const userRisk = num(values.riskAmount);
 
+    const warnings: ValidationWarning[] = [];
+
+    const specHint = futuresSpec
+      ? `${futuresSpec.name} · $${futuresSpec.pointValue}/pt · ${futuresSpec.tickSize} tick`
+      : undefined;
+
+    if (futuresSpec) {
+      if (entry !== null && !isValidTickPrice(entry, futuresSpec.tickSize)) {
+        warnings.push({ field: "entryPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
+      }
+      if (exit !== null && !isValidTickPrice(exit, futuresSpec.tickSize)) {
+        warnings.push({ field: "exitPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
+      }
+      if (stop !== null && !isValidTickPrice(stop, futuresSpec.tickSize)) {
+        warnings.push({ field: "stopPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
+      }
+      if (qty !== null && !Number.isInteger(qty)) {
+        warnings.push({ field: "quantity", message: "Futures contracts must be whole numbers.", severity: "error" });
+      }
+    }
+
     let suggestedPnl: number | null = null;
     if (entry !== null && exit !== null && qty !== null) {
-      const direction = values.direction === "LONG" ? 1 : -1;
-      suggestedPnl = (exit - entry) * qty * direction;
+      if (futuresSpec) {
+        suggestedPnl = calculateFuturesPnl({ spec: futuresSpec, direction: values.direction, entryPrice: entry, exitPrice: exit, quantity: qty });
+      } else {
+        const sign = values.direction === "LONG" ? 1 : -1;
+        suggestedPnl = (exit - entry) * qty * sign;
+      }
     }
 
     let suggestedRisk: number | null = null;
     if (entry !== null && stop !== null && qty !== null) {
-      suggestedRisk = Math.abs(entry - stop) * qty;
+      if (futuresSpec) {
+        suggestedRisk = calculateFuturesRisk({ spec: futuresSpec, entryPrice: entry, stopPrice: stop, quantity: qty });
+      } else {
+        suggestedRisk = Math.abs(entry - stop) * qty;
+      }
+    }
+
+    if (userPnl !== null && suggestedPnl !== null && Math.abs(userPnl - suggestedPnl) > 0.01) {
+      warnings.push({
+        field: "pnl",
+        message: `Entered $${userPnl.toFixed(2)} differs from calculated $${suggestedPnl.toFixed(2)}.`,
+        severity: "warning",
+      });
+    }
+
+    if (userRisk !== null && suggestedRisk !== null && Math.abs(userRisk - suggestedRisk) > 0.01) {
+      warnings.push({
+        field: "riskAmount",
+        message: `Entered $${userRisk.toFixed(2)} differs from calculated $${suggestedRisk.toFixed(2)}.`,
+        severity: "warning",
+      });
     }
 
     const effectivePnl = userPnl ?? suggestedPnl;
@@ -103,8 +166,11 @@ export function TradeEntryForm() {
       suggestedR = effectivePnl / effectiveRisk;
     }
 
-    return { suggestedPnl, suggestedRisk, suggestedR };
+    const hasBlockingError = warnings.some((w) => w.severity === "error");
+
+    return { suggestedPnl, suggestedRisk, suggestedR, warnings, specHint, hasBlockingError };
   }, [
+    values.symbol,
     values.entryPrice,
     values.exitPrice,
     values.stopPrice,
@@ -181,6 +247,10 @@ export function TradeEntryForm() {
     }
   }
 
+  function fieldWarning(field: keyof FormState): ValidationWarning | undefined {
+    return computed.warnings.find((w) => w.field === field);
+  }
+
   const pnlHint =
     computed.suggestedPnl !== null && values.pnl === ""
       ? `Auto: ${computed.suggestedPnl.toFixed(2)}`
@@ -227,7 +297,7 @@ export function TradeEntryForm() {
             className={`${INPUT_CLS} hidden md:block`}
           />
         </Field>
-        <Field label="Symbol" required>
+        <Field label="Symbol" required hint={computed.specHint}>
           <input
             type="text"
             required
@@ -269,10 +339,10 @@ export function TradeEntryForm() {
 
       {/* Mobile required: quantity + P&L */}
       <div className="grid grid-cols-2 gap-3 md:hidden">
-        <Field label="Quantity / contracts">
+        <Field label="Quantity / contracts" warning={fieldWarning("quantity")}>
           <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
         </Field>
-        <Field label="P&L ($)" hint={pnlHint}>
+        <Field label="P&L ($)" hint={pnlHint} warning={fieldWarning("pnl")}>
           <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
         </Field>
       </div>
@@ -287,13 +357,13 @@ export function TradeEntryForm() {
 
           {/* Prices 2×2 */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Entry price">
+            <Field label="Entry price" warning={fieldWarning("entryPrice")}>
               <NumberInput value={values.entryPrice} onChange={(v) => update("entryPrice", v)} />
             </Field>
-            <Field label="Exit price">
+            <Field label="Exit price" warning={fieldWarning("exitPrice")}>
               <NumberInput value={values.exitPrice} onChange={(v) => update("exitPrice", v)} />
             </Field>
-            <Field label="Stop price">
+            <Field label="Stop price" warning={fieldWarning("stopPrice")}>
               <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
             </Field>
             <Field label="Target price">
@@ -303,7 +373,7 @@ export function TradeEntryForm() {
 
           {/* Risk + R */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Risk ($)" hint={riskHint}>
+            <Field label="Risk ($)" hint={riskHint} warning={fieldWarning("riskAmount")}>
               <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
             </Field>
             <Field label="R-multiple" hint={rHint}>
@@ -364,13 +434,13 @@ export function TradeEntryForm() {
 
         {/* Prices */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Entry price">
+          <Field label="Entry price" warning={fieldWarning("entryPrice")}>
             <NumberInput value={values.entryPrice} onChange={(v) => update("entryPrice", v)} />
           </Field>
-          <Field label="Exit price">
+          <Field label="Exit price" warning={fieldWarning("exitPrice")}>
             <NumberInput value={values.exitPrice} onChange={(v) => update("exitPrice", v)} />
           </Field>
-          <Field label="Stop price">
+          <Field label="Stop price" warning={fieldWarning("stopPrice")}>
             <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
           </Field>
           <Field label="Target price (optional)">
@@ -380,13 +450,13 @@ export function TradeEntryForm() {
 
         {/* Size + outcome */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Quantity / contracts">
+          <Field label="Quantity / contracts" warning={fieldWarning("quantity")}>
             <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
           </Field>
-          <Field label="P&L ($)" hint={pnlHint}>
+          <Field label="P&L ($)" hint={pnlHint} warning={fieldWarning("pnl")}>
             <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
           </Field>
-          <Field label="Risk amount ($)" hint={riskHint}>
+          <Field label="Risk amount ($)" hint={riskHint} warning={fieldWarning("riskAmount")}>
             <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
           </Field>
           <Field label="R-multiple" hint={rHint}>
@@ -449,7 +519,7 @@ export function TradeEntryForm() {
       <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-5">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || computed.hasBlockingError}
           className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
         >
           {saving ? "Saving..." : "Save trade"}
@@ -464,11 +534,13 @@ export function TradeEntryForm() {
 function Field({
   label,
   hint,
+  warning,
   required,
   children,
 }: {
   label: string;
   hint?: string;
+  warning?: ValidationWarning;
   required?: boolean;
   children: React.ReactNode;
 }) {
@@ -479,7 +551,13 @@ function Field({
         {required && <span className="ml-1 text-stone-400">*</span>}
       </span>
       {children}
-      {hint && <span className="text-xs text-stone-400">{hint}</span>}
+      {warning ? (
+        <span className={`text-xs ${warning.severity === "error" ? "text-red-600" : "text-amber-600"}`}>
+          {warning.message}
+        </span>
+      ) : hint ? (
+        <span className="text-xs text-stone-400">{hint}</span>
+      ) : null}
     </label>
   );
 }
