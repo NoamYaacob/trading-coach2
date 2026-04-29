@@ -73,7 +73,7 @@ export default async function ConnectTradovatePage({
         </Link>
       }
     >
-      <div className="grid gap-6">
+      <div className="grid gap-6 -mb-6 sm:mb-0">
 
         {/* OAuth error / verified banners */}
         {params.oauth_error && (
