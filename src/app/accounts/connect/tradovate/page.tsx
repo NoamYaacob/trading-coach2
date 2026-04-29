@@ -65,7 +65,7 @@ export default async function ConnectTradovatePage({
     <AppShell
       eyebrow="Broker Connections"
       title="Connect Tradovate"
-      description="Connect Tradovate when ready. Guardrail starts with read-only account data, so your rules can be checked against live broker activity instead of manual entries."
+      description="Connect Tradovate when ready. Guardrail starts with read-only account data, so your rules can be checked against live broker activity."
       note="Manual mode remains available. You can keep using Guardrail now and connect Tradovate later."
       actions={
         <Link
@@ -139,7 +139,7 @@ export default async function ConnectTradovatePage({
 
         {/* Connection action */}
         <SectionCard
-          title={isConfigured ? "Authorize with Tradovate" : "Tradovate setup is not ready yet"}
+          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection is not available yet"}
           description={
             isConfigured
               ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
@@ -171,7 +171,7 @@ export default async function ConnectTradovatePage({
             <div className="grid gap-4">
               <details className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
                 <summary className="cursor-pointer text-xs font-medium text-stone-500 hover:text-stone-700">
-                  Technical setup
+                  Technical setup details
                 </summary>
                 <ul className="mt-2 grid gap-1 font-mono text-xs">
                   {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
@@ -191,21 +191,16 @@ export default async function ConnectTradovatePage({
                   <code className="font-mono">docs/broker-integration-plan.md</code>.
                 </p>
               </details>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2">
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-fit"
                 >
                   Continue in manual mode
                 </Link>
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex w-fit cursor-not-allowed items-center justify-center rounded-full border border-stone-200 px-6 py-3 text-sm font-medium text-stone-400"
-                  title="Tradovate connection is not configured yet"
-                >
-                  Connect Tradovate when ready
-                </button>
+                <p className="text-xs text-stone-400">
+                  Tradovate connection will be enabled after server setup is complete.
+                </p>
               </div>
             </div>
           )}
