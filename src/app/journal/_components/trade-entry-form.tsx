@@ -33,6 +33,21 @@ function num(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Formats "YYYY-MM-DDTHH:MM" as "Apr 29, 2026 · 8:59 AM" using en-US locale,
+// bypassing the device locale that causes Hebrew/RTL rendering on iOS.
+function formatDateForDisplay(isoStr: string): string {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return isoStr;
+  const datePart = new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  }).format(d);
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric", minute: "2-digit",
+  }).format(d);
+  return `${datePart} · ${timePart}`;
+}
+
 const INITIAL: FormState = {
   tradedAt: nowLocalIsoMinute(),
   symbol: "",
@@ -185,13 +200,30 @@ export function TradeEntryForm() {
       {/* Row 1: date/time + symbol + direction — same on all screen sizes */}
       <div className="grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1fr_auto]">
         <Field label="Trade date / time" required>
+          {/* Mobile: transparent input + en-US overlay to suppress iOS Hebrew rendering */}
+          <div className="relative md:hidden">
+            <input
+              type="datetime-local"
+              dir="ltr"
+              required
+              value={values.tradedAt}
+              onChange={(e) => update("tradedAt", e.target.value)}
+              className={`${INPUT_CLS} text-transparent caret-transparent`}
+            />
+            <div className="pointer-events-none absolute inset-px flex items-center rounded-xl bg-white px-3">
+              <span className="text-sm text-stone-900">
+                {formatDateForDisplay(values.tradedAt)}
+              </span>
+            </div>
+          </div>
+          {/* Desktop: standard datetime-local */}
           <input
             type="datetime-local"
             dir="ltr"
             required
             value={values.tradedAt}
             onChange={(e) => update("tradedAt", e.target.value)}
-            className={INPUT_CLS}
+            className={`${INPUT_CLS} hidden md:block`}
           />
         </Field>
         <Field label="Symbol" required>
