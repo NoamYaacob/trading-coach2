@@ -52,9 +52,9 @@ export default async function OnboardingPage() {
       done: hasRules,
     },
     {
-      title: "Enable protection",
-      description: "Start monitoring your session against your saved rules.",
-      cta: "Enable protection",
+      title: "Turn on Guardian",
+      description: "Activate monitoring so Guardrail checks each session against your saved rules.",
+      cta: "Turn on Guardian",
       href: "/rules#guardian-toggle",
       done: isProtectionActive,
     },
@@ -192,7 +192,7 @@ export default async function OnboardingPage() {
               : !hasRules
                 ? "Set your first rules"
                 : !isProtectionActive
-                  ? "Enable protection"
+                  ? "Turn on Guardian"
                   : "Continue to dashboard"}
           </Link>
           {!hasBroker && (

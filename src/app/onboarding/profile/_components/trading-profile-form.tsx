@@ -134,14 +134,25 @@ export function TradingProfileForm({
   const [session, setSession] = useState<Session | null>(
     editMode ? normalizeToOption(initialSession, SESSIONS) : null,
   );
+  // In edit mode, a saved value that doesn't match any predefined option maps to "Other"
+  // with the raw value surfaced in the custom text input.
+  const normalizedChallenge = editMode ? normalizeToOption(initialChallenge, CHALLENGES) : null;
   const [challenge, setChallenge] = useState<Challenge | null>(
-    editMode ? normalizeToOption(initialChallenge, CHALLENGES) : null,
+    editMode
+      ? (normalizedChallenge ?? (initialChallenge ? ("Other" as Challenge) : null))
+      : null,
+  );
+  const [customChallenge, setCustomChallenge] = useState<string>(
+    editMode && initialChallenge && !normalizeToOption(initialChallenge, CHALLENGES)
+      ? initialChallenge
+      : "",
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const formValid = Boolean(market && style && experience && session);
+  const challengeValid = challenge !== "Other" || customChallenge.trim().length >= 2;
+  const formValid = Boolean(market && style && experience && session) && challengeValid;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -163,7 +174,12 @@ export function TradingProfileForm({
             tradingSession: session,
           },
           ...(challenge
-            ? { mentalProfile: { primaryChallenge: challenge } }
+            ? {
+                mentalProfile: {
+                  primaryChallenge:
+                    challenge === "Other" ? customChallenge.trim() : challenge,
+                },
+              }
             : {}),
         }),
       });
@@ -226,7 +242,11 @@ export function TradingProfileForm({
         </span>
         <select
           value={challenge ?? ""}
-          onChange={(e) => setChallenge((e.target.value as Challenge) || null)}
+          onChange={(e) => {
+            const val = (e.target.value as Challenge) || null;
+            setChallenge(val);
+            if (val !== "Other") setCustomChallenge("");
+          }}
           className={SELECT_CLS}
         >
           <option value="">Select if relevant…</option>
@@ -234,6 +254,18 @@ export function TradingProfileForm({
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+        {challenge === "Other" && (
+          <div className="grid gap-1.5">
+            <span className={LABEL}>Describe your main challenge</span>
+            <input
+              type="text"
+              value={customChallenge}
+              onChange={(e) => setCustomChallenge(e.target.value)}
+              placeholder="Example: hesitation, revenge trading after wins, fear of missing out..."
+              className={SELECT_CLS}
+            />
+          </div>
+        )}
       </div>
 
       {error && (
