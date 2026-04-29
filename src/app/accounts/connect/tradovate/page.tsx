@@ -5,10 +5,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
-import {
-  getTradovateConfig,
-  TRADOVATE_REQUIRED_ENV_KEYS,
-} from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { TradovateAdapter } from "@/lib/brokers/tradovate-adapter";
 
 export const metadata: Metadata = {
@@ -169,28 +166,12 @@ export default async function ConnectTradovatePage({
             </div>
           ) : (
             <div className="grid gap-4">
-              <details className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-                <summary className="cursor-pointer text-xs font-medium text-stone-500 hover:text-stone-700">
-                  Technical setup details
-                </summary>
-                <ul className="mt-2 grid gap-1 font-mono text-xs">
-                  {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
-                    const missing = status.state === "not_configured" && status.missing.includes(key);
-                    return (
-                      <li
-                        key={key}
-                        className={missing ? "text-red-700" : "text-stone-500"}
-                      >
-                        {missing ? "✗" : "✓"} {key}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <p className="mt-3 text-xs text-stone-600">
-                  See <code className="font-mono">.env.example</code> and{" "}
-                  <code className="font-mono">docs/broker-integration-plan.md</code>.
-                </p>
-              </details>
+              <p className="text-sm text-stone-600">
+                Tradovate connection is not enabled on this server yet. Manual mode remains available.
+              </p>
+              <p className="text-xs text-stone-400">
+                Broker connection will be available after setup is completed.
+              </p>
               <div className="flex flex-col gap-2">
                 <Link
                   href="/dashboard"
