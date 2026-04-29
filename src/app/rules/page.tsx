@@ -83,7 +83,7 @@ export default async function RulesPage() {
           title="Your rules"
           description="These limits decide when your session is Allowed, Warning, or Locked."
         >
-          <div id="guardian-toggle" className="mb-5">
+          <div id="guardian-toggle" className="mb-5 scroll-mt-20">
             <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
           </div>
           <RulesForm initial={initial} hasBroker={hasBroker} />
