@@ -140,7 +140,7 @@ export default async function ConnectTradovatePage({
           description={
             isConfigured
               ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
-              : "You can keep using manual mode. Tradovate connection will become available after server setup is complete."
+              : "You can keep using Guardrail in manual mode. Tradovate connection will become available after server setup is complete."
           }
         >
           {isConfigured ? (
@@ -165,25 +165,12 @@ export default async function ConnectTradovatePage({
               </p>
             </div>
           ) : (
-            <div className="grid gap-4">
-              <p className="text-sm text-stone-600">
-                Tradovate connection is not enabled on this server yet. Manual mode remains available.
-              </p>
-              <p className="text-xs text-stone-400">
-                Broker connection will be available after setup is completed.
-              </p>
-              <div className="flex flex-col gap-2">
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-fit"
-                >
-                  Continue in manual mode
-                </Link>
-                <p className="text-xs text-stone-400">
-                  Tradovate connection will be enabled after server setup is complete.
-                </p>
-              </div>
-            </div>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-fit"
+            >
+              Continue in manual mode
+            </Link>
           )}
         </SectionCard>
 
