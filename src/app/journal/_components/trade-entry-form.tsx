@@ -200,23 +200,24 @@ export function TradeEntryForm() {
       {/* Row 1: date/time + symbol + direction — same on all screen sizes */}
       <div className="grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1fr_auto]">
         <Field label="Trade date / time" required>
-          {/* Mobile: transparent input + en-US overlay to suppress iOS Hebrew rendering */}
+          {/* Mobile: display div is the visual base; opacity-0 absolute input sits
+              on top to intercept touches and open the native picker without showing
+              any iOS/Hebrew-locale-formatted text (opacity:0 suppresses all native
+              rendering, unlike color:transparent which iOS bypasses). */}
           <div className="relative md:hidden">
+            <div className={`${INPUT_CLS} select-none`} aria-hidden="true">
+              {formatDateForDisplay(values.tradedAt)}
+            </div>
             <input
               type="datetime-local"
               dir="ltr"
               required
               value={values.tradedAt}
               onChange={(e) => update("tradedAt", e.target.value)}
-              className={`${INPUT_CLS} text-transparent caret-transparent`}
+              className="absolute inset-0 w-full cursor-pointer opacity-0"
             />
-            <div className="pointer-events-none absolute inset-px flex items-center rounded-xl bg-white px-3">
-              <span className="text-sm text-stone-900">
-                {formatDateForDisplay(values.tradedAt)}
-              </span>
-            </div>
           </div>
-          {/* Desktop: standard datetime-local */}
+          {/* Desktop: standard datetime-local, unchanged */}
           <input
             type="datetime-local"
             dir="ltr"
