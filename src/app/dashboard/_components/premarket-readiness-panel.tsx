@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { PremarketReadiness } from "@/lib/guardian";
+import { StartSessionButton } from "./start-session-button";
 
 type PremarketReadinessPanelProps = {
   readiness: PremarketReadiness;
@@ -63,12 +64,16 @@ export function PremarketReadinessPanel({
           ) : null}
         </div>
 
-        <Link
-          href={readiness.actionHref}
-          className="inline-flex w-fit shrink-0 self-start rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-        >
-          {readiness.actionLabel}
-        </Link>
+        {readiness.actionHref === "/dashboard" ? (
+          <StartSessionButton className="inline-flex w-fit shrink-0 self-start rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60" />
+        ) : (
+          <Link
+            href={readiness.actionHref}
+            className="inline-flex w-fit shrink-0 self-start rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            {readiness.actionLabel}
+          </Link>
+        )}
       </div>
     </section>
   );

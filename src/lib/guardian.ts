@@ -834,7 +834,7 @@ export function deriveTodaySessionState(
       ? "Session is closed for today."
       : sessionStart
         ? "Session is active."
-        : "Trading is open.",
+        : "Today is open.",
     detail: sessionEnded
       ? `Started at ${formatResetTimestamp(
           sessionStart!.startedAt,

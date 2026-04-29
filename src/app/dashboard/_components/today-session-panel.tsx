@@ -111,7 +111,6 @@ export function TodaySessionPanel({
   const todayPnL = liveSummary?.todayPnL ?? sessionState.todayPnL;
   const consecutiveLosses = liveSummary?.consecutiveLosses ?? sessionState.consecutiveLosses;
 
-  const [isStartingSession, setIsStartingSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const styles = getPanelStyles(sessionState.kind);
@@ -187,31 +186,6 @@ export function TodaySessionPanel({
     }
   }
 
-  async function handleStartSession() {
-    setIsStartingSession(true);
-    setStartError(null);
-
-    try {
-      const response = await fetch("/api/guardian/start-session", {
-        method: "POST",
-      });
-
-      const result = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(result.error ?? "Unable to start session.");
-      }
-
-      router.refresh();
-    } catch (error) {
-      setStartError(
-        error instanceof Error ? error.message : "Unable to start session.",
-      );
-    } finally {
-      setIsStartingSession(false);
-    }
-  }
-
   async function handleEndSession() {
     setIsEndingSession(true);
     setStartError(null);
@@ -279,24 +253,13 @@ export function TodaySessionPanel({
                     : sessionState.nextStep
                 : sessionState.nextStep}
             </p>
-            {sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted ? (
-              isPreNewsStartBlocked ? (
-                <Link
-                  href={cta.href}
-                  className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700"
-                >
-                  {cta.label}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  disabled={isStartingSession}
-                  className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
-                >
-                  {isStartingSession ? "Starting session..." : cta.label}
-                </button>
-              )
+            {sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted && isPreNewsStartBlocked ? (
+              <Link
+                href={cta.href}
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700"
+              >
+                {cta.label}
+              </Link>
             ) : isSessionActive ? (
               <button
                 type="button"
