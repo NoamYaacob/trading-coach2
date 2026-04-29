@@ -305,6 +305,12 @@ function formatEconomicEventTime(value: Date, timeZone: string) {
   }).format(value)} ${timeZone}`;
 }
 
+export function formatEconomicEventTimeNoTz(value: Date, timeZone: string): string {
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
+}
+
 export function getEconomicCalendarProviderDisplay(
   provider: EconomicCalendarProviderIdentity,
 ) {

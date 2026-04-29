@@ -44,6 +44,7 @@ import {
   getNextHighImpactEconomicEvent,
   buildEconomicCalendarVisibility,
   getEconomicCalendarSelection,
+  formatEconomicEventTimeNoTz,
 } from "@/lib/economic-calendar";
 import {
   DISPLAY_TIME_ZONE_COOKIE,
@@ -139,10 +140,11 @@ export default async function DashboardPage() {
     user.coachingPreferences,
   );
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
+  const nextHighImpactEvent = getNextHighImpactEconomicEvent(economicCalendarSnapshot);
   const economicCalendarVisibility = buildEconomicCalendarVisibility({
     snapshot: economicCalendarSnapshot,
     policyStatus: economicCalendarPolicy,
-    nextHighImpactEvent: getNextHighImpactEconomicEvent(economicCalendarSnapshot),
+    nextHighImpactEvent,
     timeZone: displayTimeZone,
     scenario: economicCalendarSelection.stubScenario,
   });
@@ -155,10 +157,19 @@ export default async function DashboardPage() {
   const premarketReadinessWithEvent = premarketReadiness
     ? {
         ...premarketReadiness,
+        upcomingEvent:
+          nextHighImpactEvent && economicCalendarVisibility.tone !== "clear"
+            ? {
+                eyebrow: economicCalendarVisibility.providerLabel,
+                stateLabel: economicCalendarVisibility.stateLabel,
+                title: nextHighImpactEvent.title,
+                time: formatEconomicEventTimeNoTz(nextHighImpactEvent.startTime, displayTimeZone),
+              }
+            : undefined,
         upcomingEventNote:
-          economicCalendarVisibility.tone === "clear"
+          !nextHighImpactEvent && economicCalendarVisibility.tone === "clear"
             ? `${economicCalendarVisibility.providerLabel}: ${economicCalendarVisibility.stateLabel}.`
-            : `${economicCalendarVisibility.providerLabel}: ${economicCalendarVisibility.stateLabel}. ${economicCalendarVisibility.detail}`,
+            : undefined,
       }
     : null;
   const telegramAccess = evaluateTelegramAccess({

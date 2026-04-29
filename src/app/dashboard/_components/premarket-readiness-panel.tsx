@@ -49,10 +49,16 @@ export function PremarketReadinessPanel({
             {readiness.headline}
           </p>
           <p className="mt-1 text-sm text-stone-700">{readiness.detail}</p>
-          {readiness.upcomingEventNote ? (
-            <p className="mt-3 text-sm text-stone-700">
-              {readiness.upcomingEventNote}
-            </p>
+          {readiness.upcomingEvent ? (
+            <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/60 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                {readiness.upcomingEvent.eyebrow} · {readiness.upcomingEvent.stateLabel}
+              </p>
+              <p className="mt-1 text-sm font-medium text-stone-900">{readiness.upcomingEvent.title}</p>
+              <p className="mt-0.5 text-xs text-stone-500">{readiness.upcomingEvent.time}</p>
+            </div>
+          ) : readiness.upcomingEventNote ? (
+            <p className="mt-3 text-sm text-stone-700">{readiness.upcomingEventNote}</p>
           ) : null}
         </div>
 

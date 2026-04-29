@@ -314,6 +314,12 @@ export type PremarketReadiness = {
   actionHref: string;
   tone: "ready" | "blocked" | "warning" | "setup";
   upcomingEventNote?: string;
+  upcomingEvent?: {
+    eyebrow: string;
+    stateLabel: string;
+    title: string;
+    time: string;
+  };
 };
 
 function evaluateGuardianRules(

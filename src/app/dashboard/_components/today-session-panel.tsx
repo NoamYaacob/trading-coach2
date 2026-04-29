@@ -285,7 +285,7 @@ export function TodaySessionPanel({
               isPreNewsStartBlocked ? (
                 <Link
                   href={cta.href}
-                  className="mt-4 inline-flex h-11 items-center rounded-full bg-amber-600 px-6 text-sm font-medium text-white transition hover:bg-amber-700"
+                  className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-7 py-3 text-base font-medium text-white transition hover:bg-amber-700"
                 >
                   {cta.label}
                 </Link>
@@ -294,7 +294,7 @@ export function TodaySessionPanel({
                   type="button"
                   onClick={handleStartSession}
                   disabled={isStartingSession}
-                  className="mt-4 inline-flex h-11 items-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                  className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
                 >
                   {isStartingSession ? "Starting session..." : cta.label}
                 </button>
@@ -304,7 +304,7 @@ export function TodaySessionPanel({
                 type="button"
                 onClick={handleEndSession}
                 disabled={isEndingSession}
-                className="mt-4 inline-flex h-11 items-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isEndingSession ? "Ending session..." : "End session"}
               </button>
@@ -313,7 +313,7 @@ export function TodaySessionPanel({
                 href={telegramBotLink ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 inline-flex h-11 items-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800"
               >
                 Open Telegram alerts
               </a>
@@ -322,14 +322,14 @@ export function TodaySessionPanel({
                 type="button"
                 onClick={handleConnectTelegram}
                 disabled={isConnectingTelegram}
-                className="mt-4 inline-flex h-11 items-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isConnectingTelegram ? "Connecting..." : "Connect Telegram alerts"}
               </button>
             ) : (
               <Link
                 href={cta.href}
-                className="mt-4 inline-flex h-11 items-center rounded-full bg-stone-950 px-6 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800"
               >
                 {isSessionEnded ? (
                   <>
