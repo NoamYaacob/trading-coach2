@@ -1,4 +1,4 @@
-import { GuardianConnectionStatus, GuardianLockoutReason, GuardianResetMode } from "@prisma/client";
+import { GuardianLockoutReason } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -234,17 +234,10 @@ export async function POST(request: Request) {
             where: { userId: currentUser.id },
             create: {
               userId: currentUser.id,
-              guardianEnabled: true,
-              adapterKey: "mock",
-              platformName: "Mock Platform",
-              connectionStatus: GuardianConnectionStatus.MOCK_CONNECTED,
+              guardianEnabled: false,
               maxTradesPerDay: riskRules.maxTradesPerDay ?? null,
               maxDailyLoss: riskRules.maxDailyLoss ?? null,
               stopAfterConsecutiveLosses: riskRules.stopAfterLosses ?? null,
-              copyTradeMode: false,
-              resetMode: GuardianResetMode.DAILY,
-              dailyResetHour: 9,
-              dailyResetTimezone: "UTC",
             },
             update: {
               maxTradesPerDay: riskRules.maxTradesPerDay ?? null,

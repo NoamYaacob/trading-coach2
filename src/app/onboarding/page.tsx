@@ -22,7 +22,8 @@ export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, guardianProfile, brokerCount] = await Promise.all([
+  const [traderProfile, riskRules, guardianProfile, brokerCount] = await Promise.all([
+    prisma.traderProfile.findUnique({ where: { userId: user.id }, select: { id: true } }),
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.guardianProfile.findUnique({
       where: { userId: user.id },
@@ -31,6 +32,7 @@ export default async function OnboardingPage() {
     prisma.connectedAccount.count({ where: { userId: user.id, isActive: true } }),
   ]);
 
+  const hasProfile = traderProfile !== null;
   const hasRules = riskRules !== null;
   const isProtectionActive = Boolean(guardianProfile?.guardianEnabled);
   const hasBroker = brokerCount > 0;
@@ -174,10 +176,24 @@ export default async function OnboardingPage() {
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <Link
-            href={!hasRules ? "/rules" : !isProtectionActive ? "/rules#guardian-toggle" : "/dashboard"}
+            href={
+              !hasProfile
+                ? "/onboarding/profile"
+                : !hasRules
+                  ? "/rules"
+                  : !isProtectionActive
+                    ? "/rules#guardian-toggle"
+                    : "/dashboard"
+            }
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-auto sm:px-8"
           >
-            {!hasRules ? "Set your first rules" : !isProtectionActive ? "Enable protection" : "Continue to dashboard"}
+            {!hasProfile
+              ? "Complete your trading profile"
+              : !hasRules
+                ? "Set your first rules"
+                : !isProtectionActive
+                  ? "Enable protection"
+                  : "Continue to dashboard"}
           </Link>
           {!hasBroker && (
             <Link

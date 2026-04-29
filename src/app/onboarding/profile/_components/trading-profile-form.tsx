@@ -123,19 +123,19 @@ export function TradingProfileForm({
   const router = useRouter();
 
   const [market, setMarket] = useState<Market | null>(
-    normalizeToOption(initialMarket, MARKETS),
+    editMode ? normalizeToOption(initialMarket, MARKETS) : null,
   );
   const [style, setStyle] = useState<Style | null>(
-    normalizeToOption(initialStyle, STYLES),
+    editMode ? normalizeToOption(initialStyle, STYLES) : null,
   );
   const [experience, setExperience] = useState<ExperienceLabel | null>(
-    yearsToLabel(initialExperienceYears),
+    editMode ? yearsToLabel(initialExperienceYears) : null,
   );
   const [session, setSession] = useState<Session | null>(
-    normalizeToOption(initialSession, SESSIONS),
+    editMode ? normalizeToOption(initialSession, SESSIONS) : null,
   );
   const [challenge, setChallenge] = useState<Challenge | null>(
-    normalizeToOption(initialChallenge, CHALLENGES),
+    editMode ? normalizeToOption(initialChallenge, CHALLENGES) : null,
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,7 +172,6 @@ export function TradingProfileForm({
       if (!res.ok) throw new Error(data.error ?? "Failed to save profile.");
 
       router.push(editMode ? "/settings" : "/onboarding");
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile.");
       setIsSubmitting(false);

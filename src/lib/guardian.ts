@@ -419,7 +419,7 @@ async function ensureGuardianRecordsWithRetries(
         where: { userId },
         create: {
           userId,
-          guardianEnabled: true,
+          guardianEnabled: false,
           adapterKey: "mock",
           platformName: "Mock Platform",
           connectionStatus: GuardianConnectionStatus.MOCK_CONNECTED,
