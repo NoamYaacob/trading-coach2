@@ -24,7 +24,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </Link>
 
           {/* Form slot — vertically centered */}
-          <div className="my-auto py-8 sm:py-14">
+          <div className="my-auto py-5 sm:py-14">
             {children}
           </div>
 
