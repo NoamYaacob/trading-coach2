@@ -105,10 +105,10 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
   return (
     <div>
       {/* Heading */}
-      <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
+      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-[2rem]">
         Log in to Guardrail
       </h1>
-      <p className="mt-2.5 text-sm leading-6 text-stone-500">
+      <p className="mt-2 text-sm leading-6 text-stone-500">
         Continue to your trading dashboard, rules, and broker connection.
       </p>
 
@@ -119,7 +119,7 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       )}
 
       {/* Google */}
-      <div className="mt-6">
+      <div className="mt-4 sm:mt-6">
         <a
           href="/api/auth/google/connect?mode=auth"
           className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-full border border-stone-200 bg-white text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50"
@@ -130,7 +130,7 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       </div>
 
       {/* Divider */}
-      <div className="relative my-6">
+      <div className="relative my-4 sm:my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-stone-200" />
         </div>
@@ -199,7 +199,7 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
         </button>
 
         <p className="text-center text-xs text-stone-400">
-          Your rules and broker connection stay tied to your account.
+          Your rules stay saved to your account.
         </p>
       </form>
 
