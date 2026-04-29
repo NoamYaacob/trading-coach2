@@ -48,11 +48,9 @@ function formatGuardianDate(value: Date | null, timeZone: string) {
     return "Not scheduled";
   }
 
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
 }
 
 function getPanelStyles(kind: TodaySessionState["kind"]) {
