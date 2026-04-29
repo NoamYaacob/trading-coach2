@@ -264,7 +264,7 @@ export function TodaySessionPanel({
                 : ""}
             </p>
           ) : null}
-          <div className="mt-4 rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 sm:mt-5 sm:px-4 sm:py-4">
+          <div className="mt-4 flex flex-col rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 sm:mt-5 sm:px-4 sm:py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               What to do next
             </p>
@@ -283,7 +283,7 @@ export function TodaySessionPanel({
               isPreNewsStartBlocked ? (
                 <Link
                   href={cta.href}
-                  className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-7 py-3 text-base font-medium text-white transition hover:bg-amber-700"
+                  className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700"
                 >
                   {cta.label}
                 </Link>
@@ -292,7 +292,7 @@ export function TodaySessionPanel({
                   type="button"
                   onClick={handleStartSession}
                   disabled={isStartingSession}
-                  className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                  className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
                 >
                   {isStartingSession ? "Starting session..." : cta.label}
                 </button>
@@ -302,7 +302,7 @@ export function TodaySessionPanel({
                 type="button"
                 onClick={handleEndSession}
                 disabled={isEndingSession}
-                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isEndingSession ? "Ending session..." : "End session"}
               </button>
@@ -311,7 +311,7 @@ export function TodaySessionPanel({
                 href={telegramBotLink ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
                 Open Telegram alerts
               </a>
@@ -320,14 +320,14 @@ export function TodaySessionPanel({
                 type="button"
                 onClick={handleConnectTelegram}
                 disabled={isConnectingTelegram}
-                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isConnectingTelegram ? "Connecting..." : "Connect Telegram alerts"}
               </button>
             ) : (
               <Link
                 href={cta.href}
-                className="mt-4 inline-flex w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-7 py-3 text-base font-medium text-stone-50 transition hover:bg-stone-800"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
                 {isSessionEnded ? (
                   <>

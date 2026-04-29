@@ -192,11 +192,9 @@ function calculateNextAllowedResetAt(profile: Pick<
 }
 
 function formatResetTimestamp(value: Date, timeZone: string) {
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
 }
 
 function formatSessionDateKey(value: { year: number; month: number; day: number }) {
@@ -851,10 +849,10 @@ export function deriveTodaySessionState(
           evaluation.resetTimezone,
         )}${sessionStart.source ? ` from ${sessionStart.source}.` : "."}`
       : profile.resetMode === GuardianResetMode.DAILY && evaluation.nextAllowedResetAt
-        ? `Next reset window is ${formatResetTimestamp(
+        ? `Next reset: ${formatResetTimestamp(
             evaluation.nextAllowedResetAt,
             evaluation.resetTimezone,
-          )}.`
+          )}`
         : "Guardian is active and the session is within limits.",
     nextStep: sessionEnded
       ? "The day is wrapped. Review what happened and wait for the next Guardian day before starting again."
