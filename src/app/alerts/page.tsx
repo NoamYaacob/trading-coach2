@@ -71,37 +71,37 @@ export default async function AlertsPage() {
   const triggers = [
     {
       label: "Daily loss limit reached",
-      description: "Fires when your daily P&L crosses the loss limit. Session is marked stopped.",
+      description: "You get an alert when your daily P&L crosses the loss limit. The session is marked stopped.",
       active: riskRules?.maxDailyLoss != null,
       requires: "Daily loss limit",
     },
     {
       label: "Max trades reached",
-      description: "Fires when you've hit your maximum trades-per-day limit.",
+      description: "You get an alert when you hit your maximum trades-per-day limit.",
       active: riskRules?.maxTradesPerDay != null,
       requires: "Max trades per day",
     },
     {
       label: "Consecutive losses",
-      description: "Fires after the configured number of back-to-back losses.",
+      description: "You get an alert after the configured number of back-to-back losses.",
       active: riskRules?.stopAfterLosses != null,
       requires: "Stop after losses",
     },
     {
       label: "Daily profit target hit",
-      description: "Fires when your session P&L reaches the configured profit target.",
+      description: "You get an alert when your session P&L reaches the configured profit target.",
       active: riskRules?.dailyProfitTarget != null,
       requires: "Daily profit target",
     },
     {
       label: "Approaching loss limit (80%)",
-      description: "Early warning when P&L reaches 80% of the daily loss limit.",
+      description: "You get an early warning when P&L reaches 80% of the daily loss limit.",
       active: riskRules?.maxDailyLoss != null,
       requires: "Daily loss limit",
     },
     {
       label: "Pre-news window",
-      description: "Fires before high-impact economic events based on your news policy.",
+      description: "You get an alert before high-impact economic events based on your news policy.",
       active: riskRules?.newsLockoutEnabled ?? false,
       requires: "News lockout",
     },
