@@ -49,7 +49,6 @@ export default async function ConnectTradovatePage({
   const caps = new TradovateAdapter().getCapabilities();
   const willEventuallyDo = [
     caps.readAccount,
-    caps.readBalance,
     caps.readPositions,
     caps.readOrders,
     caps.readPnL,
@@ -66,7 +65,8 @@ export default async function ConnectTradovatePage({
     <AppShell
       eyebrow="Broker Connections"
       title="Connect Tradovate"
-      description="Read-only first. Guardrail will read your account data so risk rules evaluate against live broker numbers instead of manual journal entries. Broker-side actions stay disabled until separately verified."
+      description="Connect Tradovate when ready. Guardrail starts with read-only account data, so your rules can be checked against live broker activity instead of manual entries."
+      note="Manual mode remains available. You can keep using Guardrail now and connect Tradovate later."
       actions={
         <Link
           href="/accounts"
@@ -95,21 +95,21 @@ export default async function ConnectTradovatePage({
 
         {/* What the connection will / will not do */}
         <SectionCard
-          title="What this connection will do"
-          description="Read-only foundation. Listed capabilities become available as each integration phase lands."
+          title="What Guardrail can read"
+          description="After connection, Guardrail can use broker data to evaluate your rules more accurately."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                Will eventually allow
+                Read-only data
               </p>
-              <ul className="mt-2 grid gap-2 text-sm text-stone-700">
+              <ul className="mt-2 grid gap-1.5 text-sm text-stone-700 sm:gap-2">
                 {willEventuallyDo.map((c) => (
                   <li key={c.key} className="flex items-start gap-2">
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                    <span>
-                      {c.label}
-                      <span className="ml-1 text-xs text-stone-400">— {labelStatus(c.status)}</span>
+                    <span className="min-w-0">
+                      <span className="block">{c.label}</span>
+                      <span className="text-[11px] text-stone-400">{labelStatus(c.status)}</span>
                     </span>
                   </li>
                 ))}
@@ -117,15 +117,15 @@ export default async function ConnectTradovatePage({
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Will NOT do yet
+                Not enabled yet
               </p>
-              <ul className="mt-2 grid gap-2 text-sm text-stone-700">
+              <ul className="mt-2 grid gap-1.5 text-sm text-stone-700 sm:gap-2">
                 {willNotDoYet.map((c) => (
                   <li key={c.key} className="flex items-start gap-2">
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
-                    <span>
-                      {c.label}
-                      <span className="ml-1 text-xs text-stone-400">— {labelStatus(c.status)}</span>
+                    <span className="min-w-0">
+                      <span className="block">{c.label}</span>
+                      <span className="text-[11px] text-stone-400">{labelStatus(c.status)}</span>
                     </span>
                   </li>
                 ))}
@@ -133,17 +133,17 @@ export default async function ConnectTradovatePage({
             </div>
           </div>
           <p className="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-600">
-            Broker order actions (cancel, flatten, lockout) require verified broker support and explicit opt-in. They will not be enabled by connecting today.
+            Broker-side actions require separate verification and explicit opt-in. They are not enabled by this connection.
           </p>
         </SectionCard>
 
         {/* Connection action */}
         <SectionCard
-          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection not ready yet"}
+          title={isConfigured ? "Authorize with Tradovate" : "Tradovate setup is not ready yet"}
           description={
             isConfigured
               ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
-              : "Tradovate authorization isn't available on this server yet. Contact support or your administrator to complete setup."
+              : "You can keep using manual mode. Tradovate connection will become available after server setup is complete."
           }
         >
           {isConfigured ? (
@@ -168,46 +168,45 @@ export default async function ConnectTradovatePage({
               </p>
             </div>
           ) : (
-            <div className="grid gap-3">
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-700">
-                <p className="font-medium text-amber-900">Setup required before connecting</p>
-                <p className="mt-1">
-                  Tradovate authorization isn&apos;t configured on this server yet.
+            <div className="grid gap-4">
+              <details className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <summary className="cursor-pointer text-xs font-medium text-stone-500 hover:text-stone-700">
+                  Technical setup
+                </summary>
+                <ul className="mt-2 grid gap-1 font-mono text-xs">
+                  {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
+                    const missing = status.state === "not_configured" && status.missing.includes(key);
+                    return (
+                      <li
+                        key={key}
+                        className={missing ? "text-red-700" : "text-stone-500"}
+                      >
+                        {missing ? "✗" : "✓"} {key}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-3 text-xs text-stone-600">
+                  See <code className="font-mono">.env.example</code> and{" "}
+                  <code className="font-mono">docs/broker-integration-plan.md</code>.
                 </p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-stone-500 hover:text-stone-700">
-                    Configuration details (for administrators)
-                  </summary>
-                  <ul className="mt-2 grid gap-1 font-mono text-xs">
-                    {TRADOVATE_REQUIRED_ENV_KEYS.map((key) => {
-                      const missing = status.state === "not_configured" && status.missing.includes(key);
-                      return (
-                        <li
-                          key={key}
-                          className={missing ? "text-red-700" : "text-stone-500"}
-                        >
-                          {missing ? "✗" : "✓"} {key}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <p className="mt-3 text-xs text-stone-600">
-                    See <code className="font-mono">.env.example</code> and{" "}
-                    <code className="font-mono">docs/broker-integration-plan.md</code>.
-                  </p>
-                </details>
+              </details>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Continue in manual mode
+                </Link>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex w-fit cursor-not-allowed items-center justify-center rounded-full border border-stone-200 px-6 py-3 text-sm font-medium text-stone-400"
+                  title="Tradovate connection is not configured yet"
+                >
+                  Connect Tradovate when ready
+                </button>
               </div>
-              <button
-                type="button"
-                disabled
-                className="inline-flex w-fit cursor-not-allowed items-center justify-center rounded-full bg-stone-200 px-6 py-3 text-sm font-medium text-stone-500"
-                title="Tradovate connection is not configured yet"
-              >
-                Connect Tradovate when ready
-              </button>
-              <p className="text-xs text-stone-500">
-                Your rules and setup mode remain active. Connect a broker later once the server is ready.
-              </p>
             </div>
           )}
         </SectionCard>
@@ -220,9 +219,9 @@ export default async function ConnectTradovatePage({
 function labelStatus(status: string): string {
   switch (status) {
     case "available":      return "Available";
-    case "requires_oauth": return "Pending verification";
+    case "requires_oauth": return "Available after connection";
     case "coming_soon":    return "Coming soon";
-    case "unknown":        return "To be verified";
+    case "unknown":        return "Not enabled";
     case "not_supported":  return "Not supported";
     default:               return status;
   }
