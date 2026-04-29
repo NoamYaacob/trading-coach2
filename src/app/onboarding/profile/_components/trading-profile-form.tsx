@@ -249,8 +249,13 @@ export function TradingProfileForm({
           disabled={!formValid || isSubmitting}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
         >
-          {isSubmitting ? "Saving…" : "Save trading profile"}
+          {isSubmitting ? "Saving…" : editMode ? "Save trading profile" : "Save and continue"}
         </button>
+        {!session && (
+          <p className="text-center text-xs text-stone-400">
+            Choose a trading session to continue.
+          </p>
+        )}
         <p className="text-center text-xs text-stone-400">
           You can edit this later from Settings.
         </p>

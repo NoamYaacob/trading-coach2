@@ -53,15 +53,15 @@ export default async function TradingProfilePage({
       <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6 sm:py-16">
         <div className="mb-8">
           <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-amber-600">
-            {editMode ? "Edit profile" : "Getting started"}
+            {editMode ? "Edit profile" : "Trading profile"}
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
-            {editMode ? "Update your trading profile." : "Tell us about your trading."}
+            {editMode ? "Update your trading profile." : "Tell Guardrail how you trade."}
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
             {editMode
               ? "These details help Guardrail tailor your experience."
-              : "A few quick questions to personalise Guardrail for you."}
+              : "These details help Guardrail set up your first risk workflow."}
           </p>
         </div>
 
