@@ -287,7 +287,7 @@ export function TodaySessionPanel({
               >
                 {isConnectingTelegram ? "Connecting..." : "Connect Telegram alerts"}
               </button>
-            ) : (
+            ) : sessionState.kind !== "READY_TO_TRADE" || sessionState.sessionStarted ? (
               <Link
                 href={cta.href}
                 className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
@@ -299,7 +299,7 @@ export function TodaySessionPanel({
                   </>
                 ) : cta.label}
               </Link>
-            )}
+            ) : null}
             {startError ? (
               <p className="mt-3 text-sm text-red-700">{startError}</p>
             ) : null}

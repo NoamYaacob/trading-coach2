@@ -41,6 +41,10 @@ function humanizeSource(source: string) {
     return "Telegram";
   }
 
+  if (source === "dashboard") {
+    return "the Guardrail dashboard";
+  }
+
   if (source === "debug") {
     return "local debug";
   }

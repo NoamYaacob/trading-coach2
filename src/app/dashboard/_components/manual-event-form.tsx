@@ -14,12 +14,10 @@ const EVENT_TYPES = [
   { value: "trade_closed", label: "Trade closed", hint: "Log when you exit a trade." },
   { value: "win",          label: "Win",          hint: "Mark a profitable trade." },
   { value: "loss",         label: "Loss",         hint: "Mark a losing trade." },
-  { value: "pnl_update",  label: "P&L update",   hint: "Record a P&L change without a specific win or loss." },
-  { value: "rule_breach",  label: "Rule breach",  hint: "Flag if you broke a session rule." },
   { value: "manual_note",  label: "Note",         hint: "Log anything else worth remembering." },
 ] as const;
 
-const PNL_RELEVANT = new Set(["win", "loss", "pnl_update"]);
+const PNL_RELEVANT = new Set(["win", "loss"]);
 
 export function ManualEventForm({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
