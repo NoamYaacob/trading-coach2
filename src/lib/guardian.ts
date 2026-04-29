@@ -680,9 +680,9 @@ export function deriveTodaySessionState(
     return {
       kind: "ONBOARDING_REQUIRED",
       statusLabel: "Onboarding required",
-      headline: "Complete onboarding before starting the day.",
-      detail: "Your trading profile and rules need to be set before the session can open.",
-      nextStep: "Finish onboarding first, then come back here to start clean.",
+      headline: "Finish setup before starting a session.",
+      detail: "Your trading profile and risk rules need to be in place first. Broker connection can be added later.",
+      nextStep: "Complete your trading profile and risk rules, then come back here to start.",
       primaryReasonLabel: null,
       nextResetAt: evaluation.nextAllowedResetAt,
       resetMode: evaluation.resetMode,
@@ -884,9 +884,9 @@ export function derivePremarketReadiness(
     case "ONBOARDING_REQUIRED":
       return {
         status: "Onboarding required",
-        headline: "Complete onboarding before the session can begin.",
-        detail: "Your profile, trading rules, and coaching setup need to be in place first.",
-        actionLabel: "Complete onboarding",
+        headline: "Finish setup before starting a session.",
+        detail: "Your trading profile and risk rules need to be in place first. Broker connection can be added later.",
+        actionLabel: "Continue setup →",
         actionHref: "/onboarding",
         tone: "setup",
       };

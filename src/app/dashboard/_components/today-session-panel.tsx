@@ -138,7 +138,7 @@ export function TodaySessionPanel({
     preNewsPolicyStatus?.policy.mode === "SOFT_CAUTION";
   const cta =
     sessionState.kind === "ONBOARDING_REQUIRED"
-      ? { label: "Complete onboarding", href: "/onboarding" }
+      ? { label: "Continue setup →", href: "/onboarding" }
       : sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted
         ? isPreNewsStartBlocked
           ? { label: "Review status", href: "/guardian" }
@@ -440,10 +440,10 @@ export function TodaySessionPanel({
               {sessionState.kind === "ONBOARDING_REQUIRED" ? (
                 <>
                   <p className="mt-2 text-base font-semibold text-stone-950">
-                    Finish onboarding
+                    Finish setup
                   </p>
                   <p className="mt-2 text-sm text-stone-600">
-                    Set your trading profile and risk rules so Guardian knows what to enforce.
+                    Your trading profile and risk rules need to be in place first.
                   </p>
                 </>
               ) : (

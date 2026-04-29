@@ -66,7 +66,6 @@ export default async function OnboardingPage() {
   ];
 
   const nextIndex = steps.findIndex((s) => !s.done);
-  const allDone = nextIndex === -1;
 
   function getStatus(i: number): StepStatus {
     if (steps[i].done) return "done";
@@ -108,8 +107,9 @@ export default async function OnboardingPage() {
             const isNext = status === "next" && !isOptional;
 
             return (
-              <div
+              <Link
                 key={step.title}
+                href={step.href}
                 className={`flex items-start gap-4 rounded-2xl px-5 py-4 ${
                   isNext
                     ? "border-2 border-stone-950 bg-white"
@@ -167,17 +167,17 @@ export default async function OnboardingPage() {
                     {label}
                   </span>
                 )}
-              </div>
+              </Link>
             );
           })}
         </div>
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <Link
-            href="/dashboard"
+            href={!hasRules ? "/rules" : !isProtectionActive ? "/rules#guardian-toggle" : "/dashboard"}
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-auto sm:px-8"
           >
-            {allDone ? "Go to dashboard" : "Continue to dashboard"}
+            {!hasRules ? "Set your first rules" : !isProtectionActive ? "Enable protection" : "Continue to dashboard"}
           </Link>
           {!hasBroker && (
             <Link
