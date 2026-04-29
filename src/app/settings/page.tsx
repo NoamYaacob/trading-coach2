@@ -41,8 +41,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <AppShell
       eyebrow="Settings"
-      title="What can I manage?"
-      description="Account, sign-in, and connections."
+      title="Manage your account."
+      description="Update sign-in, connected services, and account settings."
     >
       <div className="grid gap-6">
         {/* OAuth error / success banners */}
@@ -80,8 +80,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </div>
             <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
               <dt className="font-medium text-stone-500">Plan</dt>
-              <dd className="capitalize text-stone-950">
-                {user.subscriptionStatus.toLowerCase()}
+              <dd className="text-stone-950">
+                {user.subscriptionStatus === "TRIALING" ? "Trial active" : user.subscriptionStatus.toLowerCase()}
               </dd>
             </div>
           </dl>
@@ -134,7 +134,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
           <details className="group mt-4 rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-              Advanced
+              Product status
               <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
             </summary>
             <div className="mt-4">
