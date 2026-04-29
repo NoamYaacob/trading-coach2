@@ -57,23 +57,16 @@ export default async function OnboardingPage() {
       done: isProtectionActive,
     },
     {
-      title: "Connect Tradovate when ready",
-      description: "Use manual mode now, or connect Tradovate later for broker-based risk checks.",
+      title: "Broker connection",
+      description: "Optional. Connect Tradovate later when broker-based checks are available.",
       cta: "Connect Tradovate",
-      href: "/accounts",
+      href: "/accounts/connect/tradovate",
       done: hasBroker,
     },
   ];
 
   const nextIndex = steps.findIndex((s) => !s.done);
   const allDone = nextIndex === -1;
-
-  const primaryHref = allDone
-    ? "/dashboard"
-    : steps[nextIndex].href;
-  const primaryCta = allDone
-    ? "Go to dashboard"
-    : steps[nextIndex].cta;
 
   function getStatus(i: number): StepStatus {
     if (steps[i].done) return "done";
@@ -110,8 +103,9 @@ export default async function OnboardingPage() {
           {steps.map((step, i) => {
             const status = getStatus(i);
             const { pill, label } = STATUS_PILL[status];
-            const isNext = status === "next";
             const isDone = status === "done";
+            const isOptional = i === 2 && !isDone;
+            const isNext = status === "next" && !isOptional;
 
             return (
               <div
@@ -121,7 +115,9 @@ export default async function OnboardingPage() {
                     ? "border-2 border-stone-950 bg-white"
                     : isDone
                       ? "border border-stone-200 bg-white opacity-60"
-                      : "border border-stone-200 bg-stone-50"
+                      : isOptional
+                        ? "border border-dashed border-stone-200 bg-stone-50/60"
+                        : "border border-stone-200 bg-stone-50"
                 }`}
               >
                 {/* Step indicator */}
@@ -131,7 +127,7 @@ export default async function OnboardingPage() {
                       ? "bg-emerald-100 text-emerald-700"
                       : isNext
                         ? "bg-stone-950 text-stone-50"
-                        : "bg-stone-200 text-stone-400"
+                        : "bg-stone-100 text-stone-400"
                   }`}
                 >
                   {isDone ? "✓" : i + 1}
@@ -160,11 +156,17 @@ export default async function OnboardingPage() {
                 </div>
 
                 {/* Status pill */}
-                <span
-                  className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${pill}`}
-                >
-                  {label}
-                </span>
+                {isOptional ? (
+                  <span className="shrink-0 self-start rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                    Optional
+                  </span>
+                ) : (
+                  <span
+                    className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${pill}`}
+                  >
+                    {label}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -172,21 +174,21 @@ export default async function OnboardingPage() {
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <Link
-            href={primaryHref}
+            href="/dashboard"
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-auto sm:px-8"
           >
-            {primaryCta}
+            {allDone ? "Go to dashboard" : "Continue to dashboard"}
           </Link>
-          {!allDone && (
+          {!hasBroker && (
             <Link
-              href="/dashboard"
+              href="/accounts/connect/tradovate"
               className="text-sm text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
             >
-              Continue to dashboard
+              Connect Tradovate
             </Link>
           )}
           <p className="text-xs text-stone-400">
-            Complete these steps once. After that, Guardrail opens on your dashboard.
+            You can start in manual mode now. Connect Tradovate later when you&apos;re ready.
           </p>
         </div>
       </main>
