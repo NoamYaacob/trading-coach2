@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const MARKETS = ["Futures", "Forex", "Stocks", "Crypto"] as const;
-const STYLES = ["Scalping", "Intraday", "Swing"] as const;
+// "Momentum" added to handle users whose profile was saved with that style.
+const STYLES = ["Scalping", "Intraday", "Swing", "Momentum"] as const;
 const EXPERIENCE_LEVELS = [
   { label: "Beginner", years: 1 },
   { label: "Intermediate", years: 3 },
@@ -35,6 +36,34 @@ type Challenge = (typeof CHALLENGES)[number];
 const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
 const SELECT_CLS =
   "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+
+/**
+ * Normalizes a raw DB string to one of the canonical option values.
+ * Handles: exact match, case-insensitive match, underscore→space (e.g. NY_OPEN → NY Open).
+ */
+function normalizeToOption<T extends string>(
+  raw: string | null | undefined,
+  options: readonly T[],
+): T | null {
+  if (!raw) return null;
+  if (options.includes(raw as T)) return raw as T;
+  const lc = raw.toLowerCase().trim();
+  const ciMatch = options.find((o) => o.toLowerCase() === lc);
+  if (ciMatch) return ciMatch;
+  const deUnderscored = lc.replace(/_/g, " ");
+  return options.find((o) => o.toLowerCase() === deUnderscored) ?? null;
+}
+
+/**
+ * Maps stored experienceYears to the nearest label bucket.
+ * Approximate so edge-case values (0, 2, 5) still resolve.
+ */
+function yearsToLabel(years: number | null | undefined): ExperienceLabel | null {
+  if (years === null || years === undefined) return null;
+  if (years <= 1) return "Beginner";
+  if (years <= 4) return "Intermediate";
+  return "Advanced";
+}
 
 function OptionGrid<T extends string>({
   options,
@@ -93,29 +122,20 @@ export function TradingProfileForm({
 }) {
   const router = useRouter();
 
-  function yearsToLabel(years: number | null | undefined): ExperienceLabel | null {
-    if (years === 1) return "Beginner";
-    if (years === 3) return "Intermediate";
-    if (years === 7) return "Advanced";
-    return null;
-  }
-
   const [market, setMarket] = useState<Market | null>(
-    MARKETS.includes(initialMarket as Market) ? (initialMarket as Market) : null,
+    normalizeToOption(initialMarket, MARKETS),
   );
   const [style, setStyle] = useState<Style | null>(
-    STYLES.includes(initialStyle as Style) ? (initialStyle as Style) : null,
+    normalizeToOption(initialStyle, STYLES),
   );
   const [experience, setExperience] = useState<ExperienceLabel | null>(
     yearsToLabel(initialExperienceYears),
   );
   const [session, setSession] = useState<Session | null>(
-    SESSIONS.includes(initialSession as Session) ? (initialSession as Session) : null,
+    normalizeToOption(initialSession, SESSIONS),
   );
   const [challenge, setChallenge] = useState<Challenge | null>(
-    CHALLENGES.includes(initialChallenge as Challenge)
-      ? (initialChallenge as Challenge)
-      : null,
+    normalizeToOption(initialChallenge, CHALLENGES),
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -170,12 +190,7 @@ export function TradingProfileForm({
       {/* Trading style */}
       <div className="grid gap-2">
         <span className={LABEL}>Trading style</span>
-        <OptionGrid
-          options={STYLES}
-          value={style}
-          onChange={setStyle}
-          cols={3}
-        />
+        <OptionGrid options={STYLES} value={style} onChange={setStyle} cols={4} />
       </div>
 
       {/* Experience level */}
@@ -206,7 +221,10 @@ export function TradingProfileForm({
 
       {/* Main discipline challenge */}
       <div className="grid gap-2">
-        <span className={LABEL}>Main discipline challenge <span className="font-normal normal-case tracking-normal text-stone-400">(optional)</span></span>
+        <span className={LABEL}>
+          Main discipline challenge{" "}
+          <span className="font-normal normal-case tracking-normal text-stone-400">(optional)</span>
+        </span>
         <select
           value={challenge ?? ""}
           onChange={(e) => setChallenge((e.target.value as Challenge) || null)}

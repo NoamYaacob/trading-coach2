@@ -2,6 +2,29 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getCurrentUser } from "@/lib/auth";
+
+function normalizeDisplay(raw: string | null | undefined, canonical: readonly string[]): string | null {
+  if (!raw) return null;
+  const lc = raw.toLowerCase().trim();
+  return (
+    canonical.find((c) => c.toLowerCase() === lc) ??
+    canonical.find((c) => c.toLowerCase() === lc.replace(/_/g, " ")) ??
+    null
+  );
+}
+
+const MARKETS = ["Futures", "Forex", "Stocks", "Crypto"] as const;
+const STYLES = ["Scalping", "Intraday", "Swing", "Momentum"] as const;
+const SESSIONS = ["NY Open", "London Open", "Morning", "Afternoon", "Full Day"] as const;
+
+function humanizeExperience(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const years = parseInt(raw);
+  if (isNaN(years)) return raw;
+  if (years <= 1) return "Beginner";
+  if (years <= 4) return "Intermediate";
+  return "Advanced";
+}
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
@@ -78,28 +101,28 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
             </summary>
             <dl className="mt-5 grid gap-3 text-sm">
-              {traderProfile.primaryMarket && (
+              {normalizeDisplay(traderProfile.primaryMarket, MARKETS) && (
                 <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
                   <dt className="font-medium text-stone-500">Market</dt>
-                  <dd className="text-stone-950">{traderProfile.primaryMarket}</dd>
+                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.primaryMarket, MARKETS)}</dd>
                 </div>
               )}
-              {traderProfile.tradingStyle && (
+              {normalizeDisplay(traderProfile.tradingStyle, STYLES) && (
                 <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
                   <dt className="font-medium text-stone-500">Style</dt>
-                  <dd className="text-stone-950">{traderProfile.tradingStyle}</dd>
+                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.tradingStyle, STYLES)}</dd>
                 </div>
               )}
-              {traderProfile.tradingSession && (
+              {normalizeDisplay(traderProfile.tradingSession, SESSIONS) && (
                 <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
                   <dt className="font-medium text-stone-500">Session</dt>
-                  <dd className="text-stone-950">{traderProfile.tradingSession}</dd>
+                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.tradingSession, SESSIONS)}</dd>
                 </div>
               )}
-              {traderProfile.tradingExperience && (
+              {humanizeExperience(traderProfile.tradingExperience) && (
                 <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
                   <dt className="font-medium text-stone-500">Experience</dt>
-                  <dd className="text-stone-950">{traderProfile.tradingExperience}</dd>
+                  <dd className="text-stone-950">{humanizeExperience(traderProfile.tradingExperience)}</dd>
                 </div>
               )}
             </dl>
