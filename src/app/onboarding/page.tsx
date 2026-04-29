@@ -92,10 +92,10 @@ export default async function OnboardingPage() {
             Getting started
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
-            Set up your first trading session.
+            Finish your Guardrail setup.
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            Start with your rules. Then turn on protection and connect Tradovate when you&apos;re ready.
+            Your trading profile is saved. Set your first rules, turn on protection, and connect Tradovate later when ready.
           </p>
         </div>
 

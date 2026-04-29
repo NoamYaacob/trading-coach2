@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { hasCompletedOnboarding } from "@/lib/onboarding";
+import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getTrialDates } from "@/lib/trial";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { GOOGLE_OAUTH_STATE_COOKIE } from "../connect/route";
@@ -181,6 +181,6 @@ export async function GET(request: NextRequest) {
 
   await createSession(userId);
 
-  const onboardingDone = await hasCompletedOnboarding(userId);
-  return NextResponse.redirect(`${getAppBaseUrl(request)}${onboardingDone ? "/dashboard" : "/onboarding"}`);
+  const redirectPath = await getOnboardingRedirect(userId);
+  return NextResponse.redirect(`${getAppBaseUrl(request)}${redirectPath}`);
 }

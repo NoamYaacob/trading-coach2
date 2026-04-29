@@ -20,7 +20,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams;
 
-  const [dbUser, telegramConnection, googleConnection] = await Promise.all([
+  const [dbUser, telegramConnection, googleConnection, traderProfile] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -32,6 +32,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     prisma.oAuthConnection.findFirst({
       where: { userId: user.id, provider: "google" },
       select: { email: true },
+    }),
+    prisma.traderProfile.findUnique({
+      where: { userId: user.id },
+      select: {
+        primaryMarket: true,
+        tradingStyle: true,
+        tradingSession: true,
+        tradingExperience: true,
+      },
     }),
   ]);
 
@@ -59,6 +68,50 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Google account connected successfully.
           </div>
+        )}
+
+        {/* Trading profile */}
+        {traderProfile && (
+          <details className="group rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.25)]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em] text-stone-950">
+              Trading profile
+              <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <dl className="mt-5 grid gap-3 text-sm">
+              {traderProfile.primaryMarket && (
+                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                  <dt className="font-medium text-stone-500">Market</dt>
+                  <dd className="text-stone-950">{traderProfile.primaryMarket}</dd>
+                </div>
+              )}
+              {traderProfile.tradingStyle && (
+                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                  <dt className="font-medium text-stone-500">Style</dt>
+                  <dd className="text-stone-950">{traderProfile.tradingStyle}</dd>
+                </div>
+              )}
+              {traderProfile.tradingSession && (
+                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                  <dt className="font-medium text-stone-500">Session</dt>
+                  <dd className="text-stone-950">{traderProfile.tradingSession}</dd>
+                </div>
+              )}
+              {traderProfile.tradingExperience && (
+                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                  <dt className="font-medium text-stone-500">Experience</dt>
+                  <dd className="text-stone-950">{traderProfile.tradingExperience}</dd>
+                </div>
+              )}
+            </dl>
+            <div className="mt-4">
+              <a
+                href="/onboarding/profile?edit=1"
+                className="inline-flex h-9 items-center justify-center rounded-full border border-stone-200 px-5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
+              >
+                Edit trading profile
+              </a>
+            </div>
+          </details>
         )}
 
         {/* Account info */}

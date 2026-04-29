@@ -12,3 +12,19 @@ export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
   });
   return profile !== null;
 }
+
+/**
+ * Returns the appropriate post-login redirect:
+ *  - No TraderProfile → /onboarding/profile  (collect trading identity first)
+ *  - Has TraderProfile but no RiskRules → /onboarding  (show setup checklist)
+ *  - Otherwise → /dashboard
+ */
+export async function getOnboardingRedirect(userId: string): Promise<string> {
+  const [profile, rules] = await Promise.all([
+    prisma.traderProfile.findUnique({ where: { userId }, select: { id: true } }),
+    prisma.riskRules.findUnique({ where: { userId }, select: { id: true } }),
+  ]);
+  if (!profile) return "/onboarding/profile";
+  if (!rules) return "/onboarding";
+  return "/dashboard";
+}
