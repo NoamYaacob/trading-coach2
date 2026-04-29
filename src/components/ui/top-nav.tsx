@@ -23,6 +23,7 @@ const MORE_NAV: AppNavItem[] = [
   { href: "/journal", label: "Manual log", match: "exact" },
   { href: "/alerts", label: "Alerts", match: "exact" },
   { href: "/settings", label: "Settings", match: "exact" },
+  { href: "/onboarding", label: "Setup guide", match: "exact" },
 ];
 
 const ALL_NAV: AppNavItem[] = [...PRIMARY_NAV, ...MORE_NAV];

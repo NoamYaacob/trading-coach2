@@ -57,8 +57,8 @@ export default async function OnboardingPage() {
       done: isProtectionActive,
     },
     {
-      title: "Connect Tradovate",
-      description: "Verify your broker connection for live broker-based risk checks.",
+      title: "Connect Tradovate when ready",
+      description: "Use manual mode now, or connect Tradovate later for broker-based risk checks.",
       cta: "Connect Tradovate",
       href: "/accounts",
       done: hasBroker,
@@ -177,6 +177,14 @@ export default async function OnboardingPage() {
           >
             {primaryCta}
           </Link>
+          {!allDone && (
+            <Link
+              href="/dashboard"
+              className="text-sm text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
+            >
+              Continue to dashboard
+            </Link>
+          )}
           <p className="text-xs text-stone-400">
             Complete these steps once. After that, Guardrail opens on your dashboard.
           </p>
