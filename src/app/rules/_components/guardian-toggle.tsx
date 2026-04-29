@@ -62,7 +62,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
             type="button"
             onClick={handleDisable}
             disabled={loading}
-            className="inline-flex shrink-0 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-semibold text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Turning off..." : "Turn off Guardian"}
           </button>
@@ -88,7 +88,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
           type="button"
           onClick={handleEnable}
           disabled={loading}
-          className="inline-flex shrink-0 rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+          className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
         >
           {loading ? "Enabling..." : "Turn on Guardian"}
         </button>
