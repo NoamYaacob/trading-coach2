@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SectionCard } from "@/components/ui/section-card";
 import { TradeEntryForm } from "./trade-entry-form";
@@ -44,6 +44,16 @@ export function JournalClientArea({
 }) {
   const [editingTrade, setEditingTrade] = useState<TradeEntry | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to the form panel whenever a trade is selected for editing.
+  // rAF waits for the browser to paint the newly-opened panel before scrolling.
+  useEffect(() => {
+    if (!editingTrade) return;
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [editingTrade?.id]);
 
   function handleEdit(entry: TradeEntry) {
     setEditingTrade(entry);
@@ -69,7 +79,7 @@ export function JournalClientArea({
       </SectionCard>
 
       {/* Add / Edit trade panel */}
-      <div className="rounded-2xl border border-stone-200 bg-white/90">
+      <div ref={formRef} className="rounded-2xl border border-stone-200 bg-white/90">
         <button
           type="button"
           onClick={() => {

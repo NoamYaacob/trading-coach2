@@ -25,13 +25,13 @@ export type JournalPayload = {
   breachReason?: string | null;
 };
 
-const ALLOWED_DIRECTIONS = new Set(["LONG", "SHORT"]);
-const VALID_PNL_SOURCES = new Set(["calculated", "manual", "override"]);
+export const ALLOWED_DIRECTIONS = new Set(["LONG", "SHORT"]);
+export const VALID_PNL_SOURCES = new Set(["calculated", "manual", "override"]);
 
-const MAX_SYMBOL_LEN = 32;
-const MAX_STRATEGY_LEN = 64;
-const MAX_NOTES_LEN = 4000;
-const MAX_BREACH_REASON_LEN = 500;
+export const MAX_SYMBOL_LEN = 32;
+export const MAX_STRATEGY_LEN = 64;
+export const MAX_NOTES_LEN = 4000;
+export const MAX_BREACH_REASON_LEN = 500;
 
 export function toDecimal(v: number | null | undefined): string | null | undefined {
   if (v === undefined) return undefined;

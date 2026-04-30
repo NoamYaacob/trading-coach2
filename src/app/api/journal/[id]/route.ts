@@ -9,16 +9,24 @@ import {
   toDecimal,
   nullableString,
   validateAndExtractDates,
+  ALLOWED_DIRECTIONS,
+  VALID_PNL_SOURCES,
+  MAX_SYMBOL_LEN,
+  MAX_STRATEGY_LEN,
+  MAX_NOTES_LEN,
+  MAX_BREACH_REASON_LEN,
 } from "../route";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const ALLOWED_DIRECTIONS = new Set(["LONG", "SHORT"]);
-const VALID_PNL_SOURCES = new Set(["calculated", "manual", "override"]);
-const MAX_SYMBOL_LEN = 32;
-const MAX_STRATEGY_LEN = 64;
-const MAX_NOTES_LEN = 4000;
-const MAX_BREACH_REASON_LEN = 500;
+function isPrismaNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "P2025"
+  );
+}
 
 export async function PUT(request: NextRequest, ctx: Ctx) {
   const user = await getCurrentUser();
@@ -33,13 +41,6 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   }
 
   const { id } = await ctx.params;
-
-  const existing = await prisma.manualTradeEntry.findUnique({
-    where: { id },
-    select: { userId: true },
-  });
-  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (existing.userId !== user.id) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let body: JournalPayload;
   try {
@@ -89,7 +90,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
 
   try {
     const updated = await prisma.manualTradeEntry.update({
-      where: { id },
+      where: { id, userId: user.id },
       data: {
         symbol: symbolRaw,
         direction,
@@ -113,7 +114,8 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       select: { id: true },
     });
     return NextResponse.json({ ok: true, id: updated.id });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (isPrismaNotFound(err)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     console.error("[journal/PUT] error:", err);
     return NextResponse.json({ error: "Failed to update trade." }, { status: 500 });
   }
@@ -133,17 +135,11 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
 
   const { id } = await ctx.params;
 
-  const existing = await prisma.manualTradeEntry.findUnique({
-    where: { id },
-    select: { userId: true },
-  });
-  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (existing.userId !== user.id) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
   try {
-    await prisma.manualTradeEntry.delete({ where: { id } });
+    await prisma.manualTradeEntry.delete({ where: { id, userId: user.id } });
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (isPrismaNotFound(err)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     console.error("[journal/DELETE] error:", err);
     return NextResponse.json({ error: "Failed to delete trade." }, { status: 500 });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { TradeEntry } from "./types";
@@ -35,22 +35,30 @@ function fmtDate(isoUtc: string, tz: string): string {
   }).format(new Date(isoUtc));
 }
 
-function PnlSourceBadge({ source }: { source: string | null }) {
-  if (!source) return null;
-  const styles: Record<string, string> = {
-    calculated: "bg-emerald-50 text-emerald-700",
-    manual: "bg-stone-100 text-stone-600",
-    override: "bg-amber-50 text-amber-700",
-  };
-  const labels: Record<string, string> = {
-    calculated: "Auto",
-    manual: "Manual",
-    override: "Override",
-  };
-  const cls = styles[source] ?? "bg-stone-100 text-stone-600";
-  const label = labels[source] ?? source;
+function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>
+    <svg
+      className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  );
+}
+
+function DirectionBadge({ direction }: { direction: string }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+        direction === "LONG" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+      }`}
+    >
+      {direction === "LONG" ? "Long" : "Short"}
+    </span>
   );
 }
 
@@ -61,6 +69,52 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-stone-500">{label}</span>
       <span className="font-mono text-stone-800">{value}</span>
     </div>
+  );
+}
+
+function PnlDetails({ entry }: { entry: TradeEntry }) {
+  const pnl = fmtMoney(entry.pnl);
+  const source = entry.pnlSource;
+
+  if (source === "manual" || source === null) {
+    return (
+      <>
+        <div className="rounded-xl bg-stone-100 px-3 py-2.5 text-xs">
+          <p className="font-medium text-stone-700">Manual net P&L</p>
+          <p className="mt-0.5 text-stone-400">Price-based calculation unavailable</p>
+        </div>
+        <DetailRow label="Net P&L" value={pnl.text} />
+      </>
+    );
+  }
+
+  if (source === "override") {
+    const expectedNet =
+      entry.grossPnl !== null && entry.fees !== null
+        ? entry.grossPnl - entry.fees
+        : null;
+    return (
+      <>
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+          Override — net P&L entered manually
+        </div>
+        <DetailRow label="Gross P&L" value={entry.grossPnl !== null ? fmtMoney(entry.grossPnl).text : "—"} />
+        <DetailRow label="Fees" value={entry.fees !== null ? fmtNum(entry.fees) : "—"} />
+        {expectedNet !== null && (
+          <DetailRow label="Expected net" value={fmtMoney(expectedNet).text} />
+        )}
+        <DetailRow label="Override net P&L" value={pnl.text} />
+      </>
+    );
+  }
+
+  // calculated
+  return (
+    <>
+      <DetailRow label="Gross P&L" value={entry.grossPnl !== null ? fmtMoney(entry.grossPnl).text : "—"} />
+      <DetailRow label="Fees" value={entry.fees !== null ? fmtNum(entry.fees) : "—"} />
+      <DetailRow label="Net P&L" value={pnl.text} />
+    </>
   );
 }
 
@@ -126,25 +180,16 @@ export function TradeHistoryList({
 
           return (
             <div key={e.id} className="py-3">
-              {/* Card header — tap to expand */}
               <button
                 type="button"
                 onClick={() => toggle(e.id)}
                 className="w-full text-left"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-semibold text-stone-950">{e.symbol}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          e.direction === "LONG"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {e.direction === "LONG" ? "Long" : "Short"}
-                      </span>
+                      <DirectionBadge direction={e.direction} />
                       {e.quantity !== null && (
                         <span className="text-xs text-stone-500">
                           {e.quantity} {e.quantity === 1 ? "contract" : "contracts"}
@@ -159,10 +204,9 @@ export function TradeHistoryList({
                     <span className={`font-mono text-sm font-medium ${pnl.cls}`}>
                       {pnl.text}
                     </span>
-                    <span className="text-xs text-stone-300">{isExpanded ? "▲" : "▼"}</span>
+                    <ChevronIcon open={isExpanded} />
                   </div>
                 </div>
-                {/* Second line: risk/R/breach (always visible) */}
                 {(e.riskAmount !== null || e.rMultiple !== null || e.ruleBreached) && !isExpanded && (
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
                     {e.riskAmount !== null && <span>Risk {fmtNum(e.riskAmount)}</span>}
@@ -176,31 +220,32 @@ export function TradeHistoryList({
                 )}
               </button>
 
-              {/* Expanded details */}
               {isExpanded && (
                 <div className="mt-3 grid gap-2 rounded-2xl border border-stone-100 bg-stone-50 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <PnlSourceBadge source={e.pnlSource} />
-                    {e.ruleBreached && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
-                        Rule breach
-                      </span>
-                    )}
-                  </div>
+                  {e.ruleBreached && (
+                    <span className="self-start rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                      Rule breach
+                    </span>
+                  )}
+
                   <DetailRow label="Entry" value={fmtNum(e.entryPrice)} />
                   <DetailRow label="Exit" value={fmtNum(e.exitPrice)} />
                   <DetailRow label="Stop" value={fmtNum(e.stopPrice)} />
                   <DetailRow label="Target" value={fmtNum(e.targetPrice)} />
                   <DetailRow label="Quantity" value={e.quantity !== null ? String(e.quantity) : "—"} />
-                  <DetailRow label="Gross P&L" value={e.grossPnl !== null ? fmtMoney(e.grossPnl).text : "—"} />
-                  <DetailRow label="Fees" value={e.fees !== null ? fmtNum(e.fees) : "—"} />
-                  <DetailRow label="Net P&L" value={pnl.text !== "—" ? pnl.text : "—"} />
+
+                  <div className="my-0.5 border-t border-stone-100" />
+                  <PnlDetails entry={e} />
                   <DetailRow label="Risk" value={fmtNum(e.riskAmount)} />
                   <DetailRow label="R" value={fmtR(e.rMultiple)} />
+
+                  {(e.strategy || e.breachReason || e.notes) && (
+                    <div className="my-0.5 border-t border-stone-100" />
+                  )}
                   {e.strategy && <DetailRow label="Strategy" value={e.strategy} />}
                   {e.breachReason && <DetailRow label="Breach reason" value={e.breachReason} />}
                   {e.notes && (
-                    <div className="mt-1 text-xs text-stone-500">
+                    <div className="text-xs text-stone-500">
                       <span className="font-medium text-stone-600">Notes: </span>{e.notes}
                     </div>
                   )}
@@ -223,21 +268,21 @@ export function TradeHistoryList({
                       >
                         Cancel
                       </button>
-                      {deleteError && <span className="text-xs text-red-600">{deleteError}</span>}
+                      {deleteError && <span className="w-full text-xs text-red-600">{deleteError}</span>}
                     </div>
                   ) : (
                     <div className="mt-2 flex gap-2 border-t border-stone-100 pt-2">
                       <button
                         type="button"
                         onClick={() => onEdit(e)}
-                        className="rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50"
+                        className="rounded-full border border-stone-200 px-4 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmingDelete(e.id)}
-                        className="rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        className="rounded-full border border-red-200 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
                       >
                         Delete
                       </button>
@@ -278,9 +323,8 @@ export function TradeHistoryList({
               const isDeleting = deleting === e.id;
 
               return (
-                <>
+                <Fragment key={e.id}>
                   <tr
-                    key={e.id}
                     className="cursor-pointer text-stone-700 hover:bg-stone-50"
                     onClick={() => toggle(e.id)}
                   >
@@ -289,15 +333,7 @@ export function TradeHistoryList({
                     </td>
                     <td className="py-3 pr-4 font-medium text-stone-950">{e.symbol}</td>
                     <td className="py-3 pr-4">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          e.direction === "LONG"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {e.direction}
-                      </span>
+                      <DirectionBadge direction={e.direction} />
                     </td>
                     <td className="py-3 pr-4 font-mono">{fmtNum(e.entryPrice)}</td>
                     <td className="py-3 pr-4 font-mono">{fmtNum(e.exitPrice)}</td>
@@ -317,7 +353,7 @@ export function TradeHistoryList({
                         <button
                           type="button"
                           onClick={() => onEdit(e)}
-                          className="text-xs text-stone-500 hover:text-stone-950 underline-offset-2 hover:underline"
+                          className="text-xs text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
                         >
                           Edit
                         </button>
@@ -325,7 +361,7 @@ export function TradeHistoryList({
                         <button
                           type="button"
                           onClick={() => setConfirmingDelete(isConfirming ? null : e.id)}
-                          className="text-xs text-red-500 hover:text-red-700 underline-offset-2 hover:underline"
+                          className="text-xs text-red-500 underline-offset-2 hover:text-red-700 hover:underline"
                         >
                           Delete
                         </button>
@@ -333,12 +369,21 @@ export function TradeHistoryList({
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr key={`${e.id}-detail`}>
+                    <tr>
                       <td colSpan={13} className="bg-stone-50 px-3 pb-4 pt-2">
                         <div className="grid grid-cols-2 gap-x-8 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
                           <DetailRow label="Stop" value={fmtNum(e.stopPrice)} />
                           <DetailRow label="Target" value={fmtNum(e.targetPrice)} />
-                          <DetailRow label="P&L source" value={e.pnlSource ?? "—"} />
+                          <div className="text-xs text-stone-500">
+                            Source:{" "}
+                            <span className="font-medium text-stone-700">
+                              {e.pnlSource === "calculated"
+                                ? "Calculated"
+                                : e.pnlSource === "override"
+                                  ? "Override"
+                                  : "Manual"}
+                            </span>
+                          </div>
                           {e.ruleBreached && (
                             <div className="flex items-center gap-1.5 text-xs">
                               <span className="text-stone-500">Rule breach:</span>
@@ -376,7 +421,7 @@ export function TradeHistoryList({
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
