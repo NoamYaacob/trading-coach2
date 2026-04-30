@@ -10,7 +10,8 @@ import { computeManualRiskState } from "@/lib/manual-risk-state";
 import { getTradingDayWindow } from "@/lib/trading-day";
 import { DISPLAY_TIME_ZONE_COOKIE, resolveDisplayTimeZone } from "@/lib/timezone";
 import { NextActionBanner } from "@/components/ui/next-action-banner";
-import { TradeEntryForm } from "./_components/trade-entry-form";
+import { JournalClientArea } from "./_components/journal-client-area";
+import type { TradeEntry } from "./_components/types";
 
 export const metadata: Metadata = {
   title: "Journal — Guardrail",
@@ -26,29 +27,6 @@ function toNum(val: DecimalLike): number | null {
   return null;
 }
 
-function fmt(val: DecimalLike): string {
-  const n = toNum(val);
-  if (n === null) return "—";
-  return `${n >= 0 ? "" : "−"}${Math.abs(n).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function fmtPnl(val: DecimalLike): { text: string; cls: string } {
-  const n = toNum(val);
-  if (n === null) return { text: "—", cls: "text-stone-400" };
-  if (n > 0) return { text: `+$${n.toFixed(2)}`, cls: "text-emerald-700 font-medium" };
-  if (n < 0) return { text: `−$${Math.abs(n).toFixed(2)}`, cls: "text-red-700 font-medium" };
-  return { text: "$0.00", cls: "text-stone-500" };
-}
-
-function fmtR(val: DecimalLike): string {
-  const n = toNum(val);
-  if (n === null) return "—";
-  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}R`;
-}
-
 function fmtMoney(n: number): string {
   return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -57,9 +35,6 @@ export default async function JournalPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // Resolve the user's display timezone first so the trading-day window is
-  // bucketed correctly. We need traderProfile.timezone before we know which
-  // window to query against.
   const [profile, riskRules, hasBroker] = await Promise.all([
     prisma.traderProfile.findUnique({
       where: { userId: user.id },
@@ -104,6 +79,29 @@ export default async function JournalPage() {
   ]);
 
   const risk = computeManualRiskState({ rules: riskRules, todayTrades: todayEntries });
+
+  // Serialize Prisma Decimal + Date values to plain JS types for client components.
+  const serializedEntries: TradeEntry[] = allEntries.map((e) => ({
+    id: e.id,
+    symbol: e.symbol,
+    direction: e.direction,
+    tradedAt: e.tradedAt.toISOString(),
+    entryPrice: toNum(e.entryPrice),
+    exitPrice: toNum(e.exitPrice),
+    stopPrice: toNum(e.stopPrice),
+    targetPrice: toNum(e.targetPrice),
+    quantity: toNum(e.quantity),
+    pnl: toNum(e.pnl),
+    fees: toNum(e.fees),
+    grossPnl: toNum(e.grossPnl),
+    pnlSource: e.pnlSource ?? null,
+    riskAmount: toNum(e.riskAmount),
+    rMultiple: toNum(e.rMultiple),
+    strategy: e.strategy ?? null,
+    notes: e.notes ?? null,
+    ruleBreached: e.ruleBreached,
+    breachReason: e.breachReason ?? null,
+  }));
 
   const summaryTiles: Array<{ label: string; value: string; cls?: string }> = [
     {
@@ -179,167 +177,10 @@ export default async function JournalPage() {
           </div>
         </SectionCard>
 
-        {/* Trade history */}
-        <SectionCard
-          title="Trade history"
-          description={
-            allEntries.length > 0
-              ? `${allEntries.length} trade${allEntries.length === 1 ? "" : "s"} logged. Newest first.`
-              : "No trades logged for this session."
-          }
-        >
-          {allEntries.length === 0 ? (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-6 py-8 text-center">
-              <p className="text-base font-semibold text-stone-800">No trades logged for this session</p>
-              <p className="mt-2 text-sm text-stone-600">Add a manual trade below to track risk state.</p>
-            </div>
-          ) : (
-            <>
-              {/* Mobile: compact cards, no horizontal overflow */}
-              <div className="md:hidden divide-y divide-stone-100">
-                {allEntries.map((e) => {
-                  const pnl = fmtPnl(e.pnl);
-                  const qty = toNum(e.quantity);
-                  const hasDetails = e.riskAmount !== null || e.rMultiple !== null || e.ruleBreached;
-                  return (
-                    <div key={e.id} className="py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-semibold text-stone-950">{e.symbol}</span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                e.direction === "LONG"
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {e.direction === "LONG" ? "Long" : "Short"}
-                            </span>
-                            {qty !== null && (
-                              <span className="text-xs text-stone-500">
-                                {qty} {qty === 1 ? "contract" : "contracts"}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-0.5 font-mono text-xs text-stone-400">
-                            {new Intl.DateTimeFormat("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                              timeZone: tz,
-                            }).format(e.tradedAt)}
-                          </p>
-                        </div>
-                        <span className={`shrink-0 font-mono text-sm font-medium ${pnl.cls}`}>
-                          {pnl.text}
-                        </span>
-                      </div>
-                      {hasDetails && (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
-                          {e.riskAmount !== null && <span>Risk {fmt(e.riskAmount)}</span>}
-                          {e.rMultiple !== null && <span>{fmtR(e.rMultiple)}</span>}
-                          {e.ruleBreached && (
-                            <span
-                              className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700"
-                              title={e.breachReason ?? undefined}
-                            >
-                              Breach
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+        {/* Trade history + Add/Edit form — client area handles interactivity */}
+        <JournalClientArea entries={serializedEntries} tz={tz} />
 
-              {/* Desktop: full table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                      <th className="pb-3 pr-4">Date</th>
-                      <th className="pb-3 pr-4">Symbol</th>
-                      <th className="pb-3 pr-4">Dir</th>
-                      <th className="pb-3 pr-4">Entry</th>
-                      <th className="pb-3 pr-4">Exit</th>
-                      <th className="pb-3 pr-4">Qty</th>
-                      <th className="pb-3 pr-4">Net P&L</th>
-                      <th className="pb-3 pr-4">Risk</th>
-                      <th className="pb-3 pr-4">R</th>
-                      <th className="pb-3 pr-4">Strategy</th>
-                      <th className="pb-3">Breach</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {allEntries.map((e) => {
-                      const pnl = fmtPnl(e.pnl);
-                      return (
-                        <tr key={e.id} className="text-stone-700">
-                          <td className="py-3 pr-4 font-mono text-xs text-stone-400">
-                            {new Intl.DateTimeFormat("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                              timeZone: tz,
-                            }).format(e.tradedAt)}
-                          </td>
-                          <td className="py-3 pr-4 font-medium text-stone-950">{e.symbol}</td>
-                          <td className="py-3 pr-4">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                e.direction === "LONG"
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {e.direction}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 font-mono">{fmt(e.entryPrice)}</td>
-                          <td className="py-3 pr-4 font-mono">{fmt(e.exitPrice)}</td>
-                          <td className="py-3 pr-4 font-mono">{fmt(e.quantity)}</td>
-                          <td className={`py-3 pr-4 font-mono ${pnl.cls}`}>{pnl.text}</td>
-                          <td className="py-3 pr-4 font-mono text-stone-500">{fmt(e.riskAmount)}</td>
-                          <td className="py-3 pr-4 font-mono text-stone-500">{fmtR(e.rMultiple)}</td>
-                          <td className="py-3 pr-4 text-stone-500">{e.strategy ?? "—"}</td>
-                          <td className="py-3">
-                            {e.ruleBreached ? (
-                              <span
-                                className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
-                                title={e.breachReason ?? undefined}
-                              >
-                                Yes
-                              </span>
-                            ) : (
-                              <span className="text-stone-300">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </SectionCard>
-
-        {/* Add manual trade — collapsed by default */}
-        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-            Add manual trade
-            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-          </summary>
-          <div className="mt-5">
-            <TradeEntryForm />
-          </div>
-        </details>
-
-        {/* Mode footer — small, single line */}
+        {/* Mode footer */}
         <p className="text-xs text-stone-500">
           {hasBroker ? (
             <>

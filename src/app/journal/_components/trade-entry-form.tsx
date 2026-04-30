@@ -96,12 +96,24 @@ const INITIAL: FormState = {
 const INPUT_CLS =
   "w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none";
 
-export function TradeEntryForm() {
+export function TradeEntryForm({
+  tradeId,
+  initialValues,
+  onSaved,
+  onCancel,
+}: {
+  tradeId?: string;
+  initialValues?: Partial<FormState>;
+  onSaved?: () => void;
+  onCancel?: () => void;
+} = {}) {
   const router = useRouter();
-  const [values, setValues] = useState<FormState>(INITIAL);
+  const [values, setValues] = useState<FormState>({ ...INITIAL, ...initialValues });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const isEditMode = Boolean(tradeId);
 
   const computed = useMemo(() => {
     const symbolUpper = values.symbol.trim().toUpperCase();
@@ -198,7 +210,7 @@ export function TradeEntryForm() {
       ? "Net P&L can differ from gross P&L only if fees or manual adjustments are entered."
       : undefined;
 
-    return { suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride, feesHint, isFutures: futuresSpec !== null };
+    return { grossPnl, suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride, feesHint, isFutures: futuresSpec !== null };
   }, [
     values.symbol,
     values.entryPrice,
@@ -238,6 +250,13 @@ export function TradeEntryForm() {
         ? effectivePnl / effectiveRisk
         : null);
 
+    const pnlSourceVal: string | null =
+      effectivePnl === null
+        ? null
+        : num(values.netPnl) !== null
+          ? values.overrideCalculated ? "override" : "manual"
+          : "calculated";
+
     const payload = {
       symbol: values.symbol.trim().toUpperCase(),
       direction: values.direction,
@@ -248,6 +267,9 @@ export function TradeEntryForm() {
       targetPrice: num(values.targetPrice),
       quantity: num(values.quantity),
       pnl: effectivePnl,
+      fees: num(values.fees),
+      grossPnl: computed.grossPnl,
+      pnlSource: pnlSourceVal,
       riskAmount: effectiveRisk,
       rMultiple: effectiveR,
       strategy: values.strategy.trim() || null,
@@ -257,8 +279,10 @@ export function TradeEntryForm() {
     };
 
     try {
-      const res = await fetch("/api/journal", {
-        method: "POST",
+      const url = isEditMode ? `/api/journal/${tradeId}` : "/api/journal";
+      const method = isEditMode ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -270,8 +294,13 @@ export function TradeEntryForm() {
         throw new Error(data.error ?? "Failed to save trade.");
       }
       setSuccess(true);
-      setValues({ ...INITIAL, tradedAt: nowLocalIsoMinute() });
-      router.refresh();
+      if (isEditMode) {
+        router.refresh();
+        onSaved?.();
+      } else {
+        setValues({ ...INITIAL, tradedAt: nowLocalIsoMinute() });
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save trade.");
     } finally {
@@ -477,7 +506,7 @@ export function TradeEntryForm() {
         </div>
       </details>
 
-      {/* ── Desktop layout (original, unchanged) ─────────────────────────── */}
+      {/* ── Desktop layout ─────────────────────────────────────────────────── */}
       <div className="hidden md:grid gap-6">
 
         {/* Prices */}
@@ -593,9 +622,18 @@ export function TradeEntryForm() {
           disabled={saving || computed.hasBlockingError}
           className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
         >
-          {saving ? "Saving..." : "Save trade"}
+          {saving ? "Saving..." : isEditMode ? "Update trade" : "Save trade"}
         </button>
-        {success && <span className="text-xs text-emerald-700">Trade saved.</span>}
+        {isEditMode && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50"
+          >
+            Cancel
+          </button>
+        )}
+        {success && <span className="text-xs text-emerald-700">{isEditMode ? "Trade updated." : "Trade saved."}</span>}
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
     </form>

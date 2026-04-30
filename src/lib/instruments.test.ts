@@ -271,6 +271,45 @@ describe("calculateFuturesRisk", () => {
   });
 });
 
+describe("NQ $209 audit trail scenarios", () => {
+  const nq = FUTURES_SPECS["NQ"]!;
+
+  it("NQ gross $215, fees $6 → expected net $209; user enters $209 → no mismatch", () => {
+    // entry 26000, exit 26010.75, qty 1: (26010.75 - 26000) * 20 = 215
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26010.75, quantity: 1 });
+    assert.equal(gross, 215);
+    const expectedNet = gross - 6;
+    assert.equal(expectedNet, 209);
+    assert.ok(Math.abs(209 - expectedNet) <= 0.01);
+  });
+
+  it("gross $400, fees $191 → expected net $209; user enters $209 → no mismatch", () => {
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26020, quantity: 1 });
+    assert.equal(gross, 400);
+    const expectedNet = gross - 191;
+    assert.equal(expectedNet, 209);
+    assert.ok(Math.abs(209 - expectedNet) <= 0.01);
+  });
+
+  it("gross $400, fees $0 → expected net $400; user enters $209 → mismatch |400-209| > 0.01", () => {
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26020, quantity: 1 });
+    assert.equal(gross, 400);
+    const expectedNet = gross - 0;
+    assert.equal(expectedNet, 400);
+    assert.ok(Math.abs(209 - expectedNet) > 0.01);
+  });
+
+  it("manual entry $209 with no prices: no mismatch when grossPnl is null", () => {
+    // When prices are absent, grossPnl stays null → no mismatch check is possible
+    const grossPnl: number | null = null;
+    const suggestedPnl = grossPnl !== null ? grossPnl - 6 : null;
+    assert.equal(suggestedPnl, null);
+    // mismatch condition: futuresSpec && userNetPnl !== null && suggestedPnl !== null
+    // → false (suggestedPnl is null), so no mismatch warning is generated
+    assert.equal(suggestedPnl !== null && Math.abs(209 - suggestedPnl!) > 0.01, false);
+  });
+});
+
 describe("calculateRMultiple", () => {
   it("positive trade: R = pnl / risk", () => {
     const r = calculateRMultiple({ pnl: 400, riskAmount: 200 });
