@@ -46,15 +46,15 @@ export default async function AlertsPage() {
     },
     {
       label: "Telegram",
-      status: telegramReady ? "Connected" : "Not connected",
-      statusCls: telegramReady ? "text-emerald-700" : "text-amber-700",
-      badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
+      status: telegramReady ? "Connected" : "Not set up",
+      statusCls: telegramReady ? "text-emerald-700" : "text-stone-500",
+      badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500",
       detail: telegramReady
         ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian lockout alerts and state-change notifications are active.`
-        : "Connect Telegram to receive Guardian lockout alerts and state-change notifications.",
+        : "Telegram alerts are not connected yet.",
       enabled: telegramReady,
       accent: telegramReady,
-      action: telegramReady ? null : { href: "/settings", label: "Set up in Settings" },
+      action: null as { href: string; label: string } | null,
     },
     {
       label: "Email",
@@ -112,16 +112,7 @@ export default async function AlertsPage() {
       eyebrow="Alerts"
       title="How will I be notified?"
       description="Where Guardrail sends alerts when rules trigger."
-      actions={
-        !telegramReady ? (
-          <a
-            href="/settings"
-            className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-          >
-            Set up in Settings
-          </a>
-        ) : null
-      }
+      actions={null}
     >
       <div className="grid gap-6">
 

@@ -200,11 +200,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <div className="text-sm">
                   <p className="font-medium text-stone-700">Not connected</p>
                   <p className="text-stone-500">
-                    Connect from the{" "}
-                    <a href="/alerts" className="font-medium text-stone-950 underline underline-offset-2 hover:text-stone-700">
-                      Alerts
-                    </a>{" "}
-                    page.
+                    Telegram alerts are not connected yet. Setup is not available in this demo build.
                   </p>
                 </div>
               </div>

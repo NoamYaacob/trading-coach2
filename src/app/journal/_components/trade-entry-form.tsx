@@ -18,6 +18,11 @@ import {
   validateTradeTime,
   type ProductValidation,
 } from "@/lib/product-validation";
+import {
+  validateDirectionPrices,
+  validateUnrealisticPrices,
+  formatPnlBreakdown,
+} from "@/lib/trade-entry-validation";
 
 type ValidationWarning = {
   field: keyof FormState;
@@ -130,6 +135,7 @@ export function TradeEntryForm({
     const entry = num(values.entryPrice);
     const exit = num(values.exitPrice);
     const stop = num(values.stopPrice);
+    const target = num(values.targetPrice);
     const qty = num(values.quantity);
     const userNetPnl = num(values.netPnl);
     const userRisk = num(values.riskAmount);
@@ -189,8 +195,45 @@ export function TradeEntryForm({
       if (stop !== null && !isValidTickPrice(stop, futuresSpec.tickSize)) {
         warnings.push({ field: "stopPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
       }
+      if (target !== null && !isValidTickPrice(target, futuresSpec.tickSize)) {
+        warnings.push({ field: "targetPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
+      }
       if (qty !== null && !isValidFuturesQuantity(qty)) {
         warnings.push({ field: "quantity", message: "Futures contracts must be a positive whole number.", severity: "error" });
+      }
+
+      // Direction-aware stop/target validation — only after tick check so tick
+      // errors show first if both apply.
+      if (entry !== null) {
+        const dirErrors = validateDirectionPrices({
+          direction: values.direction,
+          entryPrice: entry,
+          stopPrice: stop,
+          targetPrice: target,
+        });
+        for (const e of dirErrors) {
+          // Skip if a tick error already exists for this field (shows the more
+          // fundamental error first; hasBlockingError still counts both).
+          if (!warnings.some((w) => w.field === e.field)) {
+            warnings.push(e);
+          }
+        }
+
+        // Unrealistic price guard (>20% from entry) — applied after direction so
+        // the direction error shows first for fields that fail both checks.
+        const unrealisticErrors = validateUnrealisticPrices({
+          entryPrice: entry,
+          prices: [
+            { field: "exitPrice",   value: exit,   label: "Exit price"   },
+            { field: "stopPrice",   value: stop,   label: "Stop price"   },
+            { field: "targetPrice", value: target, label: "Target price" },
+          ],
+        });
+        for (const e of unrealisticErrors) {
+          if (!warnings.some((w) => w.field === e.field)) {
+            warnings.push(e);
+          }
+        }
       }
     }
 
@@ -248,9 +291,18 @@ export function TradeEntryForm({
 
     const hasBlockingError = warnings.some((w) => w.severity === "error");
     const showOverride = pnlMismatch || riskMismatch;
+
     const feesHint = pnlMismatch && fees === 0
       ? "Net P&L can differ from gross P&L only if fees or manual adjustments are entered."
-      : undefined;
+      : futuresSpec !== null && fees === 0
+        ? "Fees are estimated. Edit if your broker or prop firm charges differently."
+        : undefined;
+
+    // Gross/fees/net breakdown shown whenever gross is computable.
+    const calcBreakdown: string | null =
+      grossPnl !== null
+        ? formatPnlBreakdown(grossPnl, fees, grossPnl - fees)
+        : null;
 
     return {
       grossPnl,
@@ -262,6 +314,7 @@ export function TradeEntryForm({
       hasBlockingError,
       showOverride,
       feesHint,
+      calcBreakdown,
       isFutures: futuresSpec !== null,
       programValidations,
       timeValidations,
@@ -271,6 +324,7 @@ export function TradeEntryForm({
     values.entryPrice,
     values.exitPrice,
     values.stopPrice,
+    values.targetPrice,
     values.quantity,
     values.direction,
     values.netPnl,
@@ -492,7 +546,7 @@ export function TradeEntryForm({
             <Field label="Stop price" warning={fieldWarning("stopPrice")}>
               <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
             </Field>
-            <Field label="Target price">
+            <Field label="Target price" warning={fieldWarning("targetPrice")}>
               <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
             </Field>
           </div>
@@ -576,7 +630,7 @@ export function TradeEntryForm({
           <Field label="Stop price" warning={fieldWarning("stopPrice")}>
             <NumberInput value={values.stopPrice} onChange={(v) => update("stopPrice", v)} />
           </Field>
-          <Field label="Target price (optional)">
+          <Field label="Target price (optional)" warning={fieldWarning("targetPrice")}>
             <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
           </Field>
         </div>
@@ -599,6 +653,13 @@ export function TradeEntryForm({
             <NumberInput value={values.rMultiple} onChange={(v) => update("rMultiple", v)} />
           </Field>
         </div>
+
+        {/* P&L breakdown hint — shown when gross P&L is computable */}
+        {computed.calcBreakdown && (
+          <div className="rounded-xl border border-stone-100 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+            {computed.calcBreakdown}
+          </div>
+        )}
 
         {/* Strategy + notes */}
         <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
