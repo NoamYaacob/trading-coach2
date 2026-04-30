@@ -66,14 +66,20 @@ export default async function JournalPage() {
     return `${fmtHM(window.start)}–${fmtHM(window.end)}`;
   })();
 
+  // Cap both queries at the current instant so future-dated rows (which
+  // should not exist after this fix, but may already be in the DB) are
+  // excluded from both the history display and today's metrics.
+  const now = new Date();
+  const effectiveWindowEnd = window.end < now ? window.end : now;
+
   const [allEntries, todayEntries] = await Promise.all([
     prisma.manualTradeEntry.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, tradedAt: { lte: now } },
       orderBy: { tradedAt: "desc" },
       take: 100,
     }),
     prisma.manualTradeEntry.findMany({
-      where: { userId: user.id, tradedAt: { gte: window.start, lt: window.end } },
+      where: { userId: user.id, tradedAt: { gte: window.start, lt: effectiveWindowEnd } },
       orderBy: { tradedAt: "asc" },
     }),
   ]);
@@ -177,8 +183,8 @@ export default async function JournalPage() {
           </div>
         </SectionCard>
 
-        {/* Trade history + Add/Edit form — client area handles interactivity */}
-        <JournalClientArea entries={serializedEntries} tz={tz} />
+        {/* Today's trades + Older trades + Add/Edit form — client area handles interactivity */}
+        <JournalClientArea entries={serializedEntries} tz={tz} windowStartIso={window.start.toISOString()} />
 
         {/* Mode footer */}
         <p className="text-xs text-stone-500">

@@ -59,8 +59,12 @@ export function validateAndExtractDates(tradedAt: string | undefined): {
   if (Number.isNaN(d.getTime())) return { error: "Invalid trade date/time." };
   const now = Date.now();
   const fiveYearsMs = 5 * 365 * 24 * 60 * 60 * 1000;
-  const oneDayMs = 24 * 60 * 60 * 1000;
-  if (d.getTime() > now + oneDayMs || d.getTime() < now - fiveYearsMs) {
+  // Allow 60 s of clock skew; reject anything clearly in the future.
+  const SKEW_TOLERANCE_MS = 60_000;
+  if (d.getTime() > now + SKEW_TOLERANCE_MS) {
+    return { error: "Trade date/time cannot be in the future." };
+  }
+  if (d.getTime() < now - fiveYearsMs) {
     return { error: "Trade date/time is outside the allowed range." };
   }
   return { tradedAt: d };

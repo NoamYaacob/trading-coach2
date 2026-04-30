@@ -153,6 +153,17 @@ export function TradeEntryForm({
       const d = new Date(values.tradedAt);
       return Number.isNaN(d.getTime()) ? null : d;
     })();
+
+    // Block future-dated trades. No tolerance — the user is picking the time
+    // manually via a datetime picker, so any strictly-future value is an error.
+    if (tradedAtDate !== null && tradedAtDate.getTime() > Date.now()) {
+      warnings.push({
+        field: "tradedAt",
+        message: "Trade time cannot be in the future.",
+        severity: "error",
+      });
+    }
+
     const timeValidations: ProductValidation[] = tradedAtDate
       ? validateTradeTime(tradedAtDate, productForTime, profile)
       : [];
@@ -375,7 +386,7 @@ export function TradeEntryForm({
 
       {/* Row 1: date/time + symbol + direction — same on all screen sizes */}
       <div className="grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1fr_auto]">
-        <Field label="Trade date / time" required>
+        <Field label="Trade date / time" required warning={fieldWarning("tradedAt")}>
           {/* Mobile: display div is the visual base; opacity-0 absolute input sits
               on top to intercept touches and open the native picker without showing
               any iOS/Hebrew-locale-formatted text (opacity:0 suppresses all native
