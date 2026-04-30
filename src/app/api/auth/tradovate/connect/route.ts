@@ -48,9 +48,12 @@ export async function GET(request: NextRequest) {
   const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
   // Prefer the explicit override; otherwise derive the redirect from the
   // incoming request URL so it matches whatever origin Railway routes here.
+  // Prefer the explicit override (TRADOVATE_REDIRECT_URI must match what is
+  // registered in the Tradovate OAuth app). Fall back to the canonical
+  // /api/brokers/tradovate/callback route so both paths stay consistent.
   const redirectUri =
     config.redirectUriOverride ??
-    new URL("/api/auth/tradovate/callback", request.url).toString();
+    new URL("/api/brokers/tradovate/callback", request.url).toString();
 
   // State encodes enough context to resume after the callback without a DB
   // round-trip plus a random nonce for CSRF.

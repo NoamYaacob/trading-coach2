@@ -41,6 +41,7 @@ export default async function ConnectTradovatePage({
   const params = await searchParams;
   const status = getTradovateConfig();
   const isConfigured = status.state === "ready";
+  const missingKeys = status.state === "not_configured" ? status.missing : [];
 
   // Capability map for the "what this will / won't do" lists.
   const caps = new TradovateAdapter().getCapabilities();
@@ -135,15 +136,11 @@ export default async function ConnectTradovatePage({
         </SectionCard>
 
         {/* Connection action */}
-        <SectionCard
-          title={isConfigured ? "Authorize with Tradovate" : "Tradovate connection is not available yet"}
-          description={
-            isConfigured
-              ? "You will be redirected to Tradovate to authorize Guardrail. We request read access only."
-              : "You can keep using Guardrail in manual mode. Tradovate connection will become available after server setup is complete."
-          }
-        >
-          {isConfigured ? (
+        {isConfigured ? (
+          <SectionCard
+            title="Authorize with Tradovate"
+            description="You will be redirected to Tradovate to authorize Guardrail. We request read access only."
+          >
             <div className="grid gap-4">
               <div className="flex flex-col gap-3 sm:flex-row">
                 <a
@@ -164,15 +161,36 @@ export default async function ConnectTradovatePage({
                 from your manual journal until broker reads activate.
               </p>
             </div>
-          ) : (
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-fit"
-            >
-              Continue in manual mode
-            </Link>
-          )}
-        </SectionCard>
+          </SectionCard>
+        ) : (
+          <SectionCard
+            title="Server configuration incomplete"
+            description="The following Railway environment variables must be set before the OAuth flow can start. Add them and redeploy."
+          >
+            <div className="grid gap-2">
+              {missingKeys.map((key) => (
+                <div
+                  key={key}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 font-mono text-xs text-amber-900"
+                >
+                  {key}
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-stone-500">
+              Generate <code className="rounded bg-stone-100 px-1 py-0.5">TRADOVATE_TOKEN_ENCRYPTION_KEY</code> with:{" "}
+              <code className="rounded bg-stone-100 px-1 py-0.5">openssl rand -base64 32</code>
+            </p>
+            <div className="mt-5">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              >
+                Continue in manual mode
+              </Link>
+            </div>
+          </SectionCard>
+        )}
 
       </div>
     </AppShell>
