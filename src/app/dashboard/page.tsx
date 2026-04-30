@@ -106,6 +106,8 @@ export default async function DashboardPage() {
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+  const now = new Date();
+  const effectiveManualEnd = tradingDay.end < now ? tradingDay.end : now;
   const [
     todaySessionSummary,
     todaySessionEvents,
@@ -124,7 +126,7 @@ export default async function DashboardPage() {
     prisma.manualTradeEntry.findMany({
       where: {
         userId: currentUser.id,
-        tradedAt: { gte: tradingDay.start, lt: tradingDay.end },
+        tradedAt: { gte: tradingDay.start, lt: effectiveManualEnd },
       },
       orderBy: { tradedAt: "asc" },
     }),

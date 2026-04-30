@@ -157,7 +157,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
               <dt className="font-medium text-stone-500">Plan</dt>
               <dd className="text-stone-950">
-                {user.subscriptionStatus === "TRIALING" ? "Trial active" : user.subscriptionStatus.toLowerCase()}
+                {user.subscriptionStatus === "TRIALING"
+                  ? "Trial active"
+                  : user.subscriptionStatus.charAt(0).toUpperCase() + user.subscriptionStatus.slice(1).toLowerCase()}
               </dd>
             </div>
           </dl>

@@ -26,7 +26,6 @@ import { getTodaySessionEvents } from "@/lib/session-log";
 import {
   getSelectedEconomicCalendarSnapshot,
   getCurrentPreNewsPolicy,
-  getEconomicCalendarSelection,
 } from "@/lib/economic-calendar";
 import {
   buildTodayActivityTimeline,
@@ -102,6 +101,8 @@ export default async function GuardianPage() {
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+  const now = new Date();
+  const effectiveManualEnd = tradingDay.end < now ? tradingDay.end : now;
   const shortTradingDay = (() => {
     const fmt = (d: Date) =>
       new Intl.DateTimeFormat("en-US", {
@@ -129,18 +130,16 @@ export default async function GuardianPage() {
     prisma.manualTradeEntry.findMany({
       where: {
         userId: currentUser.id,
-        tradedAt: { gte: tradingDay.start, lt: tradingDay.end },
+        tradedAt: { gte: tradingDay.start, lt: effectiveManualEnd },
       },
       orderBy: { tradedAt: "asc" },
     }),
   ]);
   const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
 
-  const economicCalendarSelection = getEconomicCalendarSelection(user?.coachingPreferences);
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
     user?.coachingPreferences,
   );
-  void economicCalendarSelection;
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
   const onboardingComplete = Boolean(user?.traderProfile);
   const todaySessionState = deriveTodaySessionState(guardian, {

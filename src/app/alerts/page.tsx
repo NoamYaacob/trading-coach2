@@ -54,7 +54,7 @@ export default async function AlertsPage() {
         : "Connect Telegram to receive Guardian lockout alerts and state-change notifications.",
       enabled: telegramReady,
       accent: telegramReady,
-      action: telegramReady ? null : { href: "/onboarding", label: "Connect Telegram" },
+      action: telegramReady ? null : { href: "/settings", label: "Set up in Settings" },
     },
     {
       label: "Email",
@@ -115,10 +115,10 @@ export default async function AlertsPage() {
       actions={
         !telegramReady ? (
           <a
-            href="/onboarding"
+            href="/settings"
             className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
           >
-            Connect Telegram
+            Set up in Settings
           </a>
         ) : null
       }

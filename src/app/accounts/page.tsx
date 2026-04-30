@@ -90,19 +90,19 @@ export default async function AccountsPage() {
         {/* Compact status row */}
         <div className="grid gap-3 sm:grid-cols-3">
           <StatusTile
-            tone="neutral"
+            tone={hasTradovate ? "ok" : "neutral"}
             label="Setup mode"
-            value="Before broker connection"
+            value={hasTradovate ? "Broker connected" : "Before broker connection"}
           />
           <StatusTile
-            tone="pending"
+            tone={hasTradovate ? "ok" : "pending"}
             label="Tradovate"
-            value="Setup needed"
+            value={hasTradovate ? "Connected" : "Setup needed"}
           />
           <StatusTile
-            tone="neutral"
+            tone={hasTradovate ? "pending" : "neutral"}
             label="Broker risk checks"
-            value="Connection not verified yet"
+            value={hasTradovate ? "Pending verification" : "Connection not verified yet"}
           />
         </div>
 
