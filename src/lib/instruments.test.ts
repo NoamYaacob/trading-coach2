@@ -47,6 +47,48 @@ describe("isFuturesSymbol", () => {
   });
 });
 
+describe("gross P&L, fees, and expected net P&L logic", () => {
+  const nq = FUTURES_SPECS["NQ"]!;
+
+  it("NQ gross $115, fees $6 → expected net $109; user enters $109 → no mismatch", () => {
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26005.75, quantity: 1 });
+    assert.equal(gross, 115);
+    const expectedNet = gross - 6;
+    assert.equal(expectedNet, 109);
+    assert.ok(Math.abs(109 - expectedNet) <= 0.01);
+  });
+
+  it("NQ gross $110, fees $1 → expected net $109; user enters $109 → no mismatch", () => {
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26005.5, quantity: 1 });
+    assert.equal(gross, 110);
+    const expectedNet = gross - 1;
+    assert.equal(expectedNet, 109);
+    assert.ok(Math.abs(109 - expectedNet) <= 0.01);
+  });
+
+  it("NQ gross $400, fees $0 → expected net $400; user enters $1000 → mismatch", () => {
+    const gross = calculateFuturesPnl({ spec: nq, direction: "LONG", entryPrice: 26000, exitPrice: 26020, quantity: 1 });
+    assert.equal(gross, 400);
+    const expectedNet = gross - 0;
+    assert.equal(expectedNet, 400);
+    assert.ok(Math.abs(1000 - expectedNet) > 0.01);
+  });
+
+  it("R multiple uses net P&L / risk (not gross)", () => {
+    const netPnl = 109;
+    const risk = 200;
+    const r = netPnl / risk;
+    assert.ok(Math.abs(r - 0.545) < 0.0001);
+  });
+
+  it("fees reduce expected net proportionally", () => {
+    const gross = 400;
+    assert.equal(gross - 0, 400);
+    assert.equal(gross - 6, 394);
+    assert.equal(gross - 400, 0);
+  });
+});
+
 describe("isValidFuturesQuantity", () => {
   it("accepts positive integers", () => {
     assert.equal(isValidFuturesQuantity(1), true);

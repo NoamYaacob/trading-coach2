@@ -194,74 +194,137 @@ export default async function JournalPage() {
               <p className="mt-2 text-sm text-stone-600">Add a manual trade below to track risk state.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    <th className="pb-3 pr-4">Date</th>
-                    <th className="pb-3 pr-4">Symbol</th>
-                    <th className="pb-3 pr-4">Dir</th>
-                    <th className="pb-3 pr-4">Entry</th>
-                    <th className="pb-3 pr-4">Exit</th>
-                    <th className="pb-3 pr-4">Qty</th>
-                    <th className="pb-3 pr-4">P&L</th>
-                    <th className="pb-3 pr-4">Risk</th>
-                    <th className="pb-3 pr-4">R</th>
-                    <th className="pb-3 pr-4">Strategy</th>
-                    <th className="pb-3">Breach</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {allEntries.map((e) => {
-                    const pnl = fmtPnl(e.pnl);
-                    return (
-                      <tr key={e.id} className="text-stone-700">
-                        <td className="py-3 pr-4 font-mono text-xs text-stone-400">
-                          {new Intl.DateTimeFormat("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            timeZone: tz,
-                          }).format(e.tradedAt)}
-                        </td>
-                        <td className="py-3 pr-4 font-medium text-stone-950">{e.symbol}</td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              e.direction === "LONG"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {e.direction}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4 font-mono">{fmt(e.entryPrice)}</td>
-                        <td className="py-3 pr-4 font-mono">{fmt(e.exitPrice)}</td>
-                        <td className="py-3 pr-4 font-mono">{fmt(e.quantity)}</td>
-                        <td className={`py-3 pr-4 font-mono ${pnl.cls}`}>{pnl.text}</td>
-                        <td className="py-3 pr-4 font-mono text-stone-500">{fmt(e.riskAmount)}</td>
-                        <td className="py-3 pr-4 font-mono text-stone-500">{fmtR(e.rMultiple)}</td>
-                        <td className="py-3 pr-4 text-stone-500">{e.strategy ?? "—"}</td>
-                        <td className="py-3">
-                          {e.ruleBreached ? (
+            <>
+              {/* Mobile: compact cards, no horizontal overflow */}
+              <div className="md:hidden divide-y divide-stone-100">
+                {allEntries.map((e) => {
+                  const pnl = fmtPnl(e.pnl);
+                  const qty = toNum(e.quantity);
+                  const hasDetails = e.riskAmount !== null || e.rMultiple !== null || e.ruleBreached;
+                  return (
+                    <div key={e.id} className="py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-semibold text-stone-950">{e.symbol}</span>
                             <span
-                              className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                e.direction === "LONG"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {e.direction === "LONG" ? "Long" : "Short"}
+                            </span>
+                            {qty !== null && (
+                              <span className="text-xs text-stone-500">
+                                {qty} {qty === 1 ? "contract" : "contracts"}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 font-mono text-xs text-stone-400">
+                            {new Intl.DateTimeFormat("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              timeZone: tz,
+                            }).format(e.tradedAt)}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 font-mono text-sm font-medium ${pnl.cls}`}>
+                          {pnl.text}
+                        </span>
+                      </div>
+                      {hasDetails && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
+                          {e.riskAmount !== null && <span>Risk {fmt(e.riskAmount)}</span>}
+                          {e.rMultiple !== null && <span>{fmtR(e.rMultiple)}</span>}
+                          {e.ruleBreached && (
+                            <span
+                              className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700"
                               title={e.breachReason ?? undefined}
                             >
-                              Yes
+                              Breach
                             </span>
-                          ) : (
-                            <span className="text-stone-300">—</span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: full table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                      <th className="pb-3 pr-4">Date</th>
+                      <th className="pb-3 pr-4">Symbol</th>
+                      <th className="pb-3 pr-4">Dir</th>
+                      <th className="pb-3 pr-4">Entry</th>
+                      <th className="pb-3 pr-4">Exit</th>
+                      <th className="pb-3 pr-4">Qty</th>
+                      <th className="pb-3 pr-4">Net P&L</th>
+                      <th className="pb-3 pr-4">Risk</th>
+                      <th className="pb-3 pr-4">R</th>
+                      <th className="pb-3 pr-4">Strategy</th>
+                      <th className="pb-3">Breach</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {allEntries.map((e) => {
+                      const pnl = fmtPnl(e.pnl);
+                      return (
+                        <tr key={e.id} className="text-stone-700">
+                          <td className="py-3 pr-4 font-mono text-xs text-stone-400">
+                            {new Intl.DateTimeFormat("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              timeZone: tz,
+                            }).format(e.tradedAt)}
+                          </td>
+                          <td className="py-3 pr-4 font-medium text-stone-950">{e.symbol}</td>
+                          <td className="py-3 pr-4">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                e.direction === "LONG"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {e.direction}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 font-mono">{fmt(e.entryPrice)}</td>
+                          <td className="py-3 pr-4 font-mono">{fmt(e.exitPrice)}</td>
+                          <td className="py-3 pr-4 font-mono">{fmt(e.quantity)}</td>
+                          <td className={`py-3 pr-4 font-mono ${pnl.cls}`}>{pnl.text}</td>
+                          <td className="py-3 pr-4 font-mono text-stone-500">{fmt(e.riskAmount)}</td>
+                          <td className="py-3 pr-4 font-mono text-stone-500">{fmtR(e.rMultiple)}</td>
+                          <td className="py-3 pr-4 text-stone-500">{e.strategy ?? "—"}</td>
+                          <td className="py-3">
+                            {e.ruleBreached ? (
+                              <span
+                                className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+                                title={e.breachReason ?? undefined}
+                              >
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="text-stone-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </SectionCard>
 

@@ -27,7 +27,8 @@ type FormState = {
   stopPrice: string;
   targetPrice: string;
   quantity: string;
-  pnl: string;
+  netPnl: string;
+  fees: string;
   riskAmount: string;
   rMultiple: string;
   strategy: string;
@@ -81,7 +82,8 @@ const INITIAL: FormState = {
   stopPrice: "",
   targetPrice: "",
   quantity: "",
-  pnl: "",
+  netPnl: "",
+  fees: "",
   riskAmount: "",
   rMultiple: "",
   strategy: "",
@@ -110,8 +112,9 @@ export function TradeEntryForm() {
     const exit = num(values.exitPrice);
     const stop = num(values.stopPrice);
     const qty = num(values.quantity);
-    const userPnl = num(values.pnl);
+    const userNetPnl = num(values.netPnl);
     const userRisk = num(values.riskAmount);
+    const fees = num(values.fees) ?? 0;
     const overrideCalculated = values.overrideCalculated;
 
     const warnings: ValidationWarning[] = [];
@@ -137,15 +140,19 @@ export function TradeEntryForm() {
       }
     }
 
-    let suggestedPnl: number | null = null;
+    // Gross P&L = raw contract math (always tick-aligned for known futures)
+    let grossPnl: number | null = null;
     if (entry !== null && exit !== null && qty !== null) {
       if (futuresSpec) {
-        suggestedPnl = calculateFuturesPnl({ spec: futuresSpec, direction: values.direction, entryPrice: entry, exitPrice: exit, quantity: qty });
+        grossPnl = calculateFuturesPnl({ spec: futuresSpec, direction: values.direction, entryPrice: entry, exitPrice: exit, quantity: qty });
       } else {
         const sign = values.direction === "LONG" ? 1 : -1;
-        suggestedPnl = (exit - entry) * qty * sign;
+        grossPnl = (exit - entry) * qty * sign;
       }
     }
+
+    // Expected net P&L = gross − fees (fees default to 0 when blank)
+    const suggestedPnl = grossPnl !== null ? grossPnl - fees : null;
 
     let suggestedRisk: number | null = null;
     if (entry !== null && stop !== null && qty !== null) {
@@ -156,13 +163,14 @@ export function TradeEntryForm() {
       }
     }
 
-    const pnlMismatch = futuresSpec !== null && userPnl !== null && suggestedPnl !== null && Math.abs(userPnl - suggestedPnl) > 0.01;
+    const pnlMismatch = futuresSpec !== null && userNetPnl !== null && suggestedPnl !== null && Math.abs(userNetPnl - suggestedPnl) > 0.01;
     const riskMismatch = futuresSpec !== null && userRisk !== null && suggestedRisk !== null && Math.abs(userRisk - suggestedRisk) > 0.01;
 
     if (pnlMismatch) {
+      const feesPart = fees !== 0 ? ` after ${fmtDollar(fees)} fees` : "";
       warnings.push({
-        field: "pnl",
-        message: `Expected P&L from price, direction, and quantity is ${fmtDollar(suggestedPnl!)}. You entered ${fmtDollar(userPnl!)}.`,
+        field: "netPnl",
+        message: `Expected net P&L is ${fmtDollar(suggestedPnl!)}${feesPart}. You entered ${fmtDollar(userNetPnl!)}.`,
         severity: overrideCalculated ? "warning" : "error",
       });
     }
@@ -175,7 +183,8 @@ export function TradeEntryForm() {
       });
     }
 
-    const effectivePnl = userPnl ?? suggestedPnl;
+    // R uses net P&L (after fees) so the trader sees actual return on risk
+    const effectivePnl = userNetPnl ?? suggestedPnl;
     const effectiveRisk = userRisk ?? suggestedRisk;
 
     let suggestedR: number | null = null;
@@ -185,8 +194,11 @@ export function TradeEntryForm() {
 
     const hasBlockingError = warnings.some((w) => w.severity === "error");
     const showOverride = pnlMismatch || riskMismatch;
+    const feesHint = pnlMismatch && fees === 0
+      ? "Net P&L can differ from gross P&L only if fees or manual adjustments are entered."
+      : undefined;
 
-    return { suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride };
+    return { suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride, feesHint, isFutures: futuresSpec !== null };
   }, [
     values.symbol,
     values.entryPrice,
@@ -194,7 +206,8 @@ export function TradeEntryForm() {
     values.stopPrice,
     values.quantity,
     values.direction,
-    values.pnl,
+    values.netPnl,
+    values.fees,
     values.riskAmount,
     values.overrideCalculated,
   ]);
@@ -217,7 +230,7 @@ export function TradeEntryForm() {
       return;
     }
 
-    const effectivePnl = num(values.pnl) ?? computed.suggestedPnl;
+    const effectivePnl = num(values.netPnl) ?? computed.suggestedPnl;
     const effectiveRisk = num(values.riskAmount) ?? computed.suggestedRisk;
     const effectiveR =
       num(values.rMultiple) ??
@@ -271,9 +284,9 @@ export function TradeEntryForm() {
   }
 
   const pnlHint =
-    computed.suggestedPnl !== null && values.pnl === ""
+    computed.suggestedPnl !== null && values.netPnl === ""
       ? `Auto: ${computed.suggestedPnl.toFixed(2)}`
-      : undefined;
+      : "After commissions and fees.";
   const riskHint =
     computed.suggestedRisk !== null && values.riskAmount === ""
       ? `Auto: ${computed.suggestedRisk.toFixed(2)}`
@@ -356,15 +369,24 @@ export function TradeEntryForm() {
 
       {/* ── Mobile layout ────────────────────────────────────────────────── */}
 
-      {/* Mobile required: quantity + P&L */}
+      {/* Mobile required: quantity + net P&L */}
       <div className="grid grid-cols-2 gap-3 md:hidden">
         <Field label="Quantity / contracts" warning={fieldWarning("quantity")}>
           <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
         </Field>
-        <Field label="P&L ($)" hint={pnlHint} warning={fieldWarning("pnl")}>
-          <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
+        <Field label="Net P&L ($)" hint={pnlHint} warning={fieldWarning("netPnl")}>
+          <NumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
         </Field>
       </div>
+
+      {/* Mobile: fees visible immediately for known futures (affects P&L validation) */}
+      {computed.isFutures && (
+        <div className="md:hidden">
+          <Field label="Fees / commissions" hint={computed.feesHint}>
+            <NumberInput value={values.fees} onChange={(v) => update("fees", v)} placeholder="e.g. 6.00" />
+          </Field>
+        </div>
+      )}
 
       {/* Mobile optional: collapsible More trade details */}
       <details className="group rounded-2xl border border-stone-100 bg-stone-50/60 px-4 py-3 md:hidden">
@@ -389,6 +411,13 @@ export function TradeEntryForm() {
               <NumberInput value={values.targetPrice} onChange={(v) => update("targetPrice", v)} />
             </Field>
           </div>
+
+          {/* Fees (in collapsible for non-futures; for futures it's shown above the collapsible) */}
+          {!computed.isFutures && (
+            <Field label="Fees / commissions">
+              <NumberInput value={values.fees} onChange={(v) => update("fees", v)} placeholder="e.g. 6.00" />
+            </Field>
+          )}
 
           {/* Risk + R */}
           <div className="grid grid-cols-2 gap-3">
@@ -468,12 +497,15 @@ export function TradeEntryForm() {
         </div>
 
         {/* Size + outcome */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Field label="Quantity / contracts" warning={fieldWarning("quantity")}>
             <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
           </Field>
-          <Field label="P&L ($)" hint={pnlHint} warning={fieldWarning("pnl")}>
-            <NumberInput value={values.pnl} onChange={(v) => update("pnl", v)} />
+          <Field label="Net P&L ($)" hint={pnlHint} warning={fieldWarning("netPnl")}>
+            <NumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
+          </Field>
+          <Field label="Fees / commissions" hint={computed.feesHint}>
+            <NumberInput value={values.fees} onChange={(v) => update("fees", v)} placeholder="e.g. 6.00" />
           </Field>
           <Field label="Risk amount ($)" hint={riskHint} warning={fieldWarning("riskAmount")}>
             <NumberInput value={values.riskAmount} onChange={(v) => update("riskAmount", v)} />
@@ -604,9 +636,11 @@ function Field({
 function NumberInput({
   value,
   onChange,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <input
@@ -615,6 +649,7 @@ function NumberInput({
       inputMode="decimal"
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
       className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums focus:border-stone-950 focus:outline-none"
     />
   );
