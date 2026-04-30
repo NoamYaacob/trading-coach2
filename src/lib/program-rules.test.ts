@@ -2,8 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  APEX_PROFILE,
   DEFAULT_PROGRAM_PROFILE,
   GENERIC_FUTURES_PROFILE,
+  GENERIC_MANUAL_PROFILE,
+  MFF_PROFILE,
+  PERSONAL_ACCOUNT_PROFILE,
   TOPSTEP_PROFILE,
   formatTimeOfDayCT,
   getEffectiveCutoffCT,
@@ -27,13 +31,13 @@ describe("Topstep profile constants", () => {
     assert.deepEqual(TOPSTEP_PROFILE.sundayOpenCT, { hour: 17, minute: 0 });
   });
 
-  it("disallows forex_spot, stock, and crypto", () => {
-    assert.ok(TOPSTEP_PROFILE.blockedCategories.has("forex_spot"));
+  it("disallows forex, stock, and crypto", () => {
+    assert.ok(TOPSTEP_PROFILE.blockedCategories.has("forex"));
     assert.ok(TOPSTEP_PROFILE.blockedCategories.has("stock"));
     assert.ok(TOPSTEP_PROFILE.blockedCategories.has("crypto"));
   });
 
-  it("noSwing is true; blockingMode is warn (not strict yet)", () => {
+  it("noSwing is true; blockingMode is warn", () => {
     assert.equal(TOPSTEP_PROFILE.noSwing, true);
     assert.equal(TOPSTEP_PROFILE.blockingMode, "warn");
   });
@@ -63,10 +67,40 @@ describe("Generic futures profile", () => {
   });
 });
 
+describe("Generic manual profile", () => {
+  it("has id=generic_manual and no cutoffs", () => {
+    assert.equal(GENERIC_MANUAL_PROFILE.id, "generic_manual");
+    assert.equal(GENERIC_MANUAL_PROFILE.hardCutoffCT, null);
+    assert.equal(GENERIC_MANUAL_PROFILE.blockedCategories.size, 0);
+  });
+});
+
+describe("Placeholder profiles (Apex, MFF, personal)", () => {
+  it("Apex profile has id=apex_style", () => {
+    assert.equal(APEX_PROFILE.id, "apex_style");
+    assert.ok(APEX_PROFILE.blockedCategories.has("forex"));
+  });
+
+  it("MFF profile has id=myfundedfutures_style", () => {
+    assert.equal(MFF_PROFILE.id, "myfundedfutures_style");
+    assert.ok(MFF_PROFILE.blockedCategories.has("crypto"));
+  });
+
+  it("personal account blocks no categories", () => {
+    assert.equal(PERSONAL_ACCOUNT_PROFILE.id, "personal_account");
+    assert.equal(PERSONAL_ACCOUNT_PROFILE.blockedCategories.size, 0);
+    assert.equal(PERSONAL_ACCOUNT_PROFILE.hardCutoffCT, null);
+  });
+});
+
 describe("getProfile", () => {
   it("returns the matching profile by id", () => {
     assert.equal(getProfile("topstep_style").id, "topstep_style");
     assert.equal(getProfile("generic_futures").id, "generic_futures");
+    assert.equal(getProfile("generic_manual").id, "generic_manual");
+    assert.equal(getProfile("apex_style").id, "apex_style");
+    assert.equal(getProfile("myfundedfutures_style").id, "myfundedfutures_style");
+    assert.equal(getProfile("personal_account").id, "personal_account");
   });
 
   it("falls back to default for unknown/null/undefined", () => {

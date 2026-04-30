@@ -10,6 +10,7 @@ import {
   getMarketStateAt,
   getSymbolStatus,
   validateSymbolForProgram,
+  validateTrade,
   validateTradeTime,
 } from "./product-validation.ts";
 import { getProduct } from "./trading-products.ts";
@@ -38,8 +39,8 @@ describe("getSymbolStatus", () => {
     assert.equal(s.kind, "recognized_no_specs");
   });
 
-  it("forex_spot for EURUSD", () => {
-    assert.equal(getSymbolStatus("EURUSD").kind, "forex_spot");
+  it("forex for EURUSD", () => {
+    assert.equal(getSymbolStatus("EURUSD").kind, "forex");
   });
 
   it("stock for AAPL", () => {
@@ -73,7 +74,7 @@ describe("validateSymbolForProgram — Topstep profile", () => {
     assert.equal(w[0]?.level, "hint");
   });
 
-  it("EURUSD returns a forex_spot warning", () => {
+  it("EURUSD returns a forex warning", () => {
     const w = validateSymbolForProgram("EURUSD", TOPSTEP_PROFILE);
     assert.equal(w.length, 1);
     assert.equal(w[0]?.code, "forex_spot_not_supported");
@@ -188,6 +189,61 @@ describe("validateTradeTime — Generic profile (no schedule)", () => {
     assert.equal(validateTradeTime(MON_AFTER_CUTOFF, es, GENERIC_FUTURES_PROFILE).length, 0);
     assert.equal(validateTradeTime(SAT_ANYTIME, es, GENERIC_FUTURES_PROFILE).length, 0);
     assert.equal(validateTradeTime(SUN_BEFORE_OPEN, es, GENERIC_FUTURES_PROFILE).length, 0);
+  });
+});
+
+describe("validateTrade — structured result", () => {
+  it("ES on Topstep during trading hours → clean result", () => {
+    const r = validateTrade("ES", MON_BEFORE_CUTOFF, TOPSTEP_PROFILE);
+    assert.equal(r.normalizedSymbol, "ES");
+    assert.equal(r.instrument?.symbol, "ES");
+    assert.equal(r.assetClass, "futures");
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.warnings.length, 0);
+    assert.equal(r.hints.length, 0);
+  });
+
+  it("6E on Topstep → hint only (no specs)", () => {
+    const r = validateTrade("6e", MON_BEFORE_CUTOFF, TOPSTEP_PROFILE);
+    assert.equal(r.normalizedSymbol, "6E");
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.warnings.length, 0);
+    assert.equal(r.hints.length, 1);
+    assert.equal(r.hints[0]?.code, "specs_not_added");
+  });
+
+  it("EURUSD on Topstep → warning in warnings array", () => {
+    const r = validateTrade("EURUSD", MON_BEFORE_CUTOFF, TOPSTEP_PROFILE);
+    assert.equal(r.assetClass, "forex");
+    assert.equal(r.instrument, null);
+    assert.equal(r.warnings.length, 1);
+    assert.equal(r.warnings[0]?.code, "forex_spot_not_supported");
+  });
+
+  it("ES on Topstep on Saturday → time warning in warnings", () => {
+    const r = validateTrade("ES", SAT_ANYTIME, TOPSTEP_PROFILE);
+    assert.equal(r.warnings.length, 1);
+    assert.equal(r.warnings[0]?.code, "outside_program_hours");
+  });
+
+  it("ES on Topstep after cutoff → time warning", () => {
+    const r = validateTrade("ES", MON_AFTER_CUTOFF, TOPSTEP_PROFILE);
+    assert.equal(r.warnings.length, 1);
+    assert.equal(r.warnings[0]?.code, "after_program_cutoff");
+  });
+
+  it("null tradedAt → no time validations", () => {
+    const r = validateTrade("ES", null, TOPSTEP_PROFILE);
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.warnings.length, 0);
+  });
+
+  it("empty symbol → all arrays empty", () => {
+    const r = validateTrade("", MON_BEFORE_CUTOFF, TOPSTEP_PROFILE);
+    assert.equal(r.normalizedSymbol, "");
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.warnings.length, 0);
+    assert.equal(r.hints.length, 0);
   });
 });
 

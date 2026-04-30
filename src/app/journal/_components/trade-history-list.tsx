@@ -100,7 +100,7 @@ function ProductInfo({ symbol }: { symbol: string }) {
       <span className="text-stone-700 font-medium">{product.name}</span>
       <span className="mx-1.5 text-stone-300">·</span>
       <span>{groupLabel}</span>
-      {product.specStatus === "allowed_unknown_specs" && (
+      {product.specStatus === "recognized_only" && (
         <>
           <span className="mx-1.5 text-stone-300">·</span>
           <span className="text-amber-700">Specs not added yet</span>

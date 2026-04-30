@@ -1,11 +1,11 @@
 // Backend product catalog — extracted structural knowledge from Topstep's
 // allowed-products article. Spec values come from publicly known CME/CBOT/
 // NYMEX/COMEX contracts; products without confirmed specs are marked as
-// `allowed_unknown_specs` rather than guessed.
+// `recognized_only` rather than guessed.
 
-export type ProductCategory = "futures" | "forex_spot" | "stock" | "crypto" | "unknown";
+export type AssetClass = "futures" | "stock" | "forex" | "crypto" | "unknown";
 
-export type Exchange = "CME" | "CBOT" | "NYMEX" | "COMEX";
+export type Exchange = "CME" | "CBOT" | "NYMEX" | "COMEX" | "NASDAQ" | "NYSE" | "spot_fx" | "crypto" | "unknown";
 
 export type ProductGroup =
   | "cme-equity"
@@ -28,11 +28,14 @@ export type TimeOfDayCT = { hour: number; minute: number };
 export type ProductMetadata = {
   symbol: string;
   name: string;
-  category: ProductCategory;
+  assetClass: AssetClass;
   group: ProductGroup;
   exchange: Exchange;
-  specStatus: "known" | "allowed_unknown_specs";
+  /** "known" = verified spec; "recognized_only" = in catalog but specs unconfirmed. */
+  specStatus: "known" | "recognized_only";
   spec?: FuturesContractSpec;
+  /** Standard contract this micro/mini is based on (e.g. MES → "ES"). */
+  microOf?: string;
   /** Daytime close, in Chicago time, when earlier than the program cutoff. */
   earlyCloseCT?: TimeOfDayCT;
   /** Sunday session open, when later than the program-wide Sunday open. */
@@ -58,12 +61,12 @@ const KNOWN_SPECS: Record<string, FuturesContractSpec> = {
   MGC: { pointValue: 10,   tickSize: 0.10, tickValue: 1.00  },
 };
 
-function spec(symbol: string): FuturesContractSpec | undefined {
+function specFor(symbol: string): FuturesContractSpec | undefined {
   return KNOWN_SPECS[symbol];
 }
 
-function known(symbol: string): "known" | "allowed_unknown_specs" {
-  return KNOWN_SPECS[symbol] ? "known" : "allowed_unknown_specs";
+function specStatus(symbol: string): "known" | "recognized_only" {
+  return KNOWN_SPECS[symbol] ? "known" : "recognized_only";
 }
 
 // CBOT grains run Sun 7:00 PM CT → Mon 7:45 AM, then Mon-Fri 8:30 AM-1:20 PM.
@@ -86,11 +89,11 @@ function product(
   return {
     symbol,
     name,
-    category: "futures",
+    assetClass: "futures",
     group,
     exchange,
-    specStatus: known(symbol),
-    spec: spec(symbol),
+    specStatus: specStatus(symbol),
+    spec: specFor(symbol),
     ...extras,
   };
 }
@@ -98,28 +101,28 @@ function product(
 export const PRODUCTS: Record<string, ProductMetadata> = {
   // CME Equity Futures
   ES:  product("ES",  "E-mini S&P 500",            "cme-equity", "CME"),
-  MES: product("MES", "Micro E-mini S&P 500",      "cme-equity", "CME"),
+  MES: product("MES", "Micro E-mini S&P 500",      "cme-equity", "CME", { microOf: "ES"  }),
   NQ:  product("NQ",  "E-mini Nasdaq-100",         "cme-equity", "CME"),
-  MNQ: product("MNQ", "Micro E-mini Nasdaq-100",   "cme-equity", "CME"),
+  MNQ: product("MNQ", "Micro E-mini Nasdaq-100",   "cme-equity", "CME", { microOf: "NQ"  }),
   RTY: product("RTY", "E-mini Russell 2000",       "cme-equity", "CME"),
-  M2K: product("M2K", "Micro E-mini Russell 2000", "cme-equity", "CME"),
+  M2K: product("M2K", "Micro E-mini Russell 2000", "cme-equity", "CME", { microOf: "RTY" }),
   NKD: product("NKD", "Nikkei 225 (USD)",          "cme-equity", "CME"),
   MBT: product("MBT", "Micro Bitcoin",             "cme-equity", "CME"),
   MET: product("MET", "Micro Ether",               "cme-equity", "CME"),
 
   // CME FX Futures
-  "6A": product("6A", "Australian Dollar",  "cme-fx", "CME"),
-  "6B": product("6B", "British Pound",      "cme-fx", "CME"),
-  "6C": product("6C", "Canadian Dollar",    "cme-fx", "CME"),
-  "6E": product("6E", "Euro FX",            "cme-fx", "CME"),
-  "6J": product("6J", "Japanese Yen",       "cme-fx", "CME"),
-  "6S": product("6S", "Swiss Franc",        "cme-fx", "CME"),
-  E7:   product("E7", "E-mini Euro FX",     "cme-fx", "CME"),
-  M6E:  product("M6E", "Micro Euro FX",     "cme-fx", "CME"),
-  M6A:  product("M6A", "Micro AUD/USD",     "cme-fx", "CME"),
-  "6M": product("6M", "Mexican Peso",       "cme-fx", "CME"),
-  "6N": product("6N", "New Zealand Dollar", "cme-fx", "CME"),
-  M6B:  product("M6B", "Micro GBP/USD",     "cme-fx", "CME"),
+  "6A": product("6A",  "Australian Dollar",  "cme-fx", "CME"),
+  "6B": product("6B",  "British Pound",      "cme-fx", "CME"),
+  "6C": product("6C",  "Canadian Dollar",    "cme-fx", "CME"),
+  "6E": product("6E",  "Euro FX",            "cme-fx", "CME"),
+  "6J": product("6J",  "Japanese Yen",       "cme-fx", "CME"),
+  "6S": product("6S",  "Swiss Franc",        "cme-fx", "CME"),
+  E7:   product("E7",  "E-mini Euro FX",     "cme-fx", "CME", { microOf: "6E"  }),
+  M6E:  product("M6E", "Micro Euro FX",      "cme-fx", "CME", { microOf: "6E"  }),
+  M6A:  product("M6A", "Micro AUD/USD",      "cme-fx", "CME", { microOf: "6A"  }),
+  "6M": product("6M",  "Mexican Peso",       "cme-fx", "CME"),
+  "6N": product("6N",  "New Zealand Dollar", "cme-fx", "CME"),
+  M6B:  product("M6B", "Micro GBP/USD",      "cme-fx", "CME", { microOf: "6B"  }),
 
   // CME Agriculture (livestock — short daytime session)
   HE: product("HE", "Lean Hogs",   "cme-ag-livestock", "CME", {
@@ -132,42 +135,42 @@ export const PRODUCTS: Record<string, ProductMetadata> = {
   }),
 
   // NYMEX Energy / Metals
-  CL:  product("CL",  "Crude Oil",            "nymex-energy-metals", "NYMEX"),
-  QM:  product("QM",  "E-mini Crude Oil",     "nymex-energy-metals", "NYMEX"),
-  NG:  product("NG",  "Natural Gas",          "nymex-energy-metals", "NYMEX"),
-  QG:  product("QG",  "E-mini Natural Gas",   "nymex-energy-metals", "NYMEX"),
-  MCL: product("MCL", "Micro Crude Oil",      "nymex-energy-metals", "NYMEX"),
-  RB:  product("RB",  "RBOB Gasoline",        "nymex-energy-metals", "NYMEX"),
-  HO:  product("HO",  "Heating Oil",          "nymex-energy-metals", "NYMEX"),
-  PL:  product("PL",  "Platinum",             "nymex-energy-metals", "NYMEX"),
-  MNG: product("MNG", "Micro Natural Gas",    "nymex-energy-metals", "NYMEX"),
+  CL:  product("CL",  "Crude Oil",          "nymex-energy-metals", "NYMEX"),
+  QM:  product("QM",  "E-mini Crude Oil",   "nymex-energy-metals", "NYMEX", { microOf: "CL"  }),
+  NG:  product("NG",  "Natural Gas",        "nymex-energy-metals", "NYMEX"),
+  QG:  product("QG",  "E-mini Natural Gas", "nymex-energy-metals", "NYMEX", { microOf: "NG"  }),
+  MCL: product("MCL", "Micro Crude Oil",    "nymex-energy-metals", "NYMEX", { microOf: "CL"  }),
+  RB:  product("RB",  "RBOB Gasoline",      "nymex-energy-metals", "NYMEX"),
+  HO:  product("HO",  "Heating Oil",        "nymex-energy-metals", "NYMEX"),
+  PL:  product("PL",  "Platinum",           "nymex-energy-metals", "NYMEX"),
+  MNG: product("MNG", "Micro Natural Gas",  "nymex-energy-metals", "NYMEX", { microOf: "NG"  }),
 
   // CBOT Agriculture (grains — overnight + daytime, daytime closes 1:20 PM CT)
-  ZC: product("ZC", "Corn",     "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
-  ZW: product("ZW", "Wheat",    "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
-  ZS: product("ZS", "Soybeans", "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
+  ZC: product("ZC", "Corn",         "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
+  ZW: product("ZW", "Wheat",        "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
+  ZS: product("ZS", "Soybeans",     "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
   ZM: product("ZM", "Soybean Meal", "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
   ZL: product("ZL", "Soybean Oil",  "cbot-ag", "CBOT", { earlyCloseCT: CBOT_AG_CLOSE, sundayOpenCT: CBOT_AG_SUNDAY_OPEN }),
 
   // CBOT Equity
-  YM:  product("YM",  "E-mini Dow",         "cbot-equity", "CBOT"),
-  MYM: product("MYM", "Micro E-mini Dow",   "cbot-equity", "CBOT"),
+  YM:  product("YM",  "E-mini Dow",       "cbot-equity", "CBOT"),
+  MYM: product("MYM", "Micro E-mini Dow", "cbot-equity", "CBOT", { microOf: "YM" }),
 
   // CBOT Rates
-  ZT: product("ZT", "2-Year T-Note",   "cbot-rates", "CBOT"),
-  ZF: product("ZF", "5-Year T-Note",   "cbot-rates", "CBOT"),
-  ZN: product("ZN", "10-Year T-Note",  "cbot-rates", "CBOT"),
-  TN: product("TN", "Ultra 10-Year",   "cbot-rates", "CBOT"),
-  ZB: product("ZB", "30-Year T-Bond",  "cbot-rates", "CBOT"),
-  UB: product("UB", "Ultra T-Bond",    "cbot-rates", "CBOT"),
+  ZT: product("ZT", "2-Year T-Note",  "cbot-rates", "CBOT"),
+  ZF: product("ZF", "5-Year T-Note",  "cbot-rates", "CBOT"),
+  ZN: product("ZN", "10-Year T-Note", "cbot-rates", "CBOT"),
+  TN: product("TN", "Ultra 10-Year",  "cbot-rates", "CBOT"),
+  ZB: product("ZB", "30-Year T-Bond", "cbot-rates", "CBOT"),
+  UB: product("UB", "Ultra T-Bond",   "cbot-rates", "CBOT"),
 
   // COMEX Metals
-  GC:  product("GC",  "Gold",        "comex-metals", "COMEX"),
-  SI:  product("SI",  "Silver",      "comex-metals", "COMEX"),
-  HG:  product("HG",  "Copper",      "comex-metals", "COMEX"),
-  MGC: product("MGC", "Micro Gold",  "comex-metals", "COMEX"),
-  SIL: product("SIL", "Micro Silver","comex-metals", "COMEX"),
-  MHG: product("MHG", "Micro Copper","comex-metals", "COMEX"),
+  GC:  product("GC",  "Gold",         "comex-metals", "COMEX"),
+  SI:  product("SI",  "Silver",       "comex-metals", "COMEX"),
+  HG:  product("HG",  "Copper",       "comex-metals", "COMEX"),
+  MGC: product("MGC", "Micro Gold",   "comex-metals", "COMEX", { microOf: "GC" }),
+  SIL: product("SIL", "Micro Silver", "comex-metals", "COMEX", { microOf: "SI" }),
+  MHG: product("MHG", "Micro Copper", "comex-metals", "COMEX", { microOf: "HG" }),
 };
 
 // ── Non-futures hints (used to classify common typed symbols) ───────────────
@@ -201,20 +204,20 @@ export function getProduct(rawSymbol: string): ProductMetadata | null {
 }
 
 export function classifySymbol(rawSymbol: string): {
-  category: ProductCategory;
+  assetClass: AssetClass;
   product: ProductMetadata | null;
 } {
   const key = normalizeSymbol(rawSymbol);
-  if (key === "") return { category: "unknown", product: null };
+  if (key === "") return { assetClass: "unknown", product: null };
 
-  const product = PRODUCTS[key];
-  if (product) return { category: product.category, product };
+  const p = PRODUCTS[key];
+  if (p) return { assetClass: p.assetClass, product: p };
 
-  if (FOREX_SPOT_HINTS.has(key)) return { category: "forex_spot", product: null };
-  if (STOCK_HINTS.has(key)) return { category: "stock", product: null };
-  if (CRYPTO_HINTS.has(key)) return { category: "crypto", product: null };
+  if (FOREX_SPOT_HINTS.has(key)) return { assetClass: "forex", product: null };
+  if (STOCK_HINTS.has(key)) return { assetClass: "stock", product: null };
+  if (CRYPTO_HINTS.has(key)) return { assetClass: "crypto", product: null };
 
-  return { category: "unknown", product: null };
+  return { assetClass: "unknown", product: null };
 }
 
 export function listAllowedSymbols(): string[] {

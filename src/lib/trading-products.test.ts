@@ -24,13 +24,13 @@ describe("normalizeSymbol", () => {
 });
 
 describe("getProduct — Topstep-allowed symbols", () => {
-  it("recognizes all CME equity futures from Topstep", () => {
+  it("recognizes all CME equity futures", () => {
     for (const s of ["ES", "MES", "NQ", "MNQ", "RTY", "M2K", "NKD", "MBT", "MET"]) {
       assert.ok(getProduct(s), `expected ${s} to be recognized`);
     }
   });
 
-  it("recognizes all CME FX futures from Topstep", () => {
+  it("recognizes all CME FX futures", () => {
     for (const s of ["6A", "6B", "6C", "6E", "6J", "6S", "E7", "M6E", "M6A", "6M", "6N", "M6B"]) {
       assert.ok(getProduct(s), `expected ${s} to be recognized`);
     }
@@ -71,8 +71,8 @@ describe("getProduct — Topstep-allowed symbols", () => {
   });
 });
 
-describe("getProduct — known specs vs allowed_unknown_specs", () => {
-  it("ES, MES, NQ, MNQ, YM, MYM, RTY, M2K, CL, MCL, GC, MGC have known specs", () => {
+describe("getProduct — specStatus and assetClass", () => {
+  it("ES, MES, NQ, MNQ, YM, MYM, RTY, M2K, CL, MCL, GC, MGC have specStatus=known", () => {
     for (const s of ["ES", "MES", "NQ", "MNQ", "YM", "MYM", "RTY", "M2K", "CL", "MCL", "GC", "MGC"]) {
       const p = getProduct(s)!;
       assert.equal(p.specStatus, "known", `${s} should be known`);
@@ -80,26 +80,69 @@ describe("getProduct — known specs vs allowed_unknown_specs", () => {
     }
   });
 
-  it("CME FX futures are recognized but spec-uncertain", () => {
+  it("CME FX futures are recognized_only (no confirmed specs)", () => {
     for (const s of ["6A", "6E", "M6E", "E7"]) {
       const p = getProduct(s)!;
-      assert.equal(p.specStatus, "allowed_unknown_specs", `${s} should be allowed_unknown_specs`);
+      assert.equal(p.specStatus, "recognized_only", `${s} should be recognized_only`);
       assert.equal(p.spec, undefined, `${s} should not have invented spec`);
     }
   });
 
-  it("CBOT grains are recognized but spec-uncertain", () => {
+  it("CBOT grains are recognized_only (no confirmed specs)", () => {
     const p = getProduct("ZC")!;
-    assert.equal(p.specStatus, "allowed_unknown_specs");
+    assert.equal(p.specStatus, "recognized_only");
     assert.equal(p.spec, undefined);
   });
 
-  it("does not invent point values for uncertain symbols", () => {
+  it("every catalog product has assetClass=futures", () => {
     for (const p of Object.values(PRODUCTS)) {
-      if (p.specStatus === "allowed_unknown_specs") {
-        assert.equal(p.spec, undefined, `${p.symbol} marked unknown should not carry a spec`);
+      assert.equal(p.assetClass, "futures", `${p.symbol} should have assetClass=futures`);
+    }
+  });
+
+  it("does not invent point values for recognized_only symbols", () => {
+    for (const p of Object.values(PRODUCTS)) {
+      if (p.specStatus === "recognized_only") {
+        assert.equal(p.spec, undefined, `${p.symbol} marked recognized_only should not carry a spec`);
       }
     }
+  });
+});
+
+describe("getProduct — micro/mini relationships", () => {
+  it("MES is a micro of ES", () => {
+    assert.equal(getProduct("MES")!.microOf, "ES");
+  });
+
+  it("MNQ is a micro of NQ", () => {
+    assert.equal(getProduct("MNQ")!.microOf, "NQ");
+  });
+
+  it("M2K is a micro of RTY", () => {
+    assert.equal(getProduct("M2K")!.microOf, "RTY");
+  });
+
+  it("MYM is a micro of YM", () => {
+    assert.equal(getProduct("MYM")!.microOf, "YM");
+  });
+
+  it("MCL is a micro of CL", () => {
+    assert.equal(getProduct("MCL")!.microOf, "CL");
+  });
+
+  it("MGC is a micro of GC", () => {
+    assert.equal(getProduct("MGC")!.microOf, "GC");
+  });
+
+  it("M6E is a micro of 6E", () => {
+    assert.equal(getProduct("M6E")!.microOf, "6E");
+  });
+
+  it("standard contracts have no microOf field", () => {
+    assert.equal(getProduct("ES")!.microOf, undefined);
+    assert.equal(getProduct("NQ")!.microOf, undefined);
+    assert.equal(getProduct("CL")!.microOf, undefined);
+    assert.equal(getProduct("GC")!.microOf, undefined);
   });
 });
 
@@ -124,35 +167,35 @@ describe("getProduct — early close metadata", () => {
   });
 });
 
-describe("classifySymbol — non-futures detection", () => {
-  it("classifies common spot forex pairs", () => {
-    assert.equal(classifySymbol("EURUSD").category, "forex_spot");
-    assert.equal(classifySymbol("gbpusd").category, "forex_spot");
-    assert.equal(classifySymbol("USDJPY").category, "forex_spot");
+describe("classifySymbol — assetClass detection", () => {
+  it("classifies common spot forex pairs as forex", () => {
+    assert.equal(classifySymbol("EURUSD").assetClass, "forex");
+    assert.equal(classifySymbol("gbpusd").assetClass, "forex");
+    assert.equal(classifySymbol("USDJPY").assetClass, "forex");
   });
 
   it("classifies common stocks", () => {
-    assert.equal(classifySymbol("AAPL").category, "stock");
-    assert.equal(classifySymbol("tsla").category, "stock");
-    assert.equal(classifySymbol("SPY").category, "stock");
+    assert.equal(classifySymbol("AAPL").assetClass, "stock");
+    assert.equal(classifySymbol("tsla").assetClass, "stock");
+    assert.equal(classifySymbol("SPY").assetClass, "stock");
   });
 
   it("classifies common crypto symbols", () => {
-    assert.equal(classifySymbol("BTC").category, "crypto");
-    assert.equal(classifySymbol("ETH").category, "crypto");
-    assert.equal(classifySymbol("BTCUSD").category, "crypto");
+    assert.equal(classifySymbol("BTC").assetClass, "crypto");
+    assert.equal(classifySymbol("ETH").assetClass, "crypto");
+    assert.equal(classifySymbol("BTCUSD").assetClass, "crypto");
   });
 
-  it("returns futures + product for known catalog entries", () => {
+  it("returns futures assetClass + product for known catalog entries", () => {
     const r = classifySymbol("nq");
-    assert.equal(r.category, "futures");
+    assert.equal(r.assetClass, "futures");
     assert.equal(r.product?.symbol, "NQ");
   });
 
   it("returns unknown for arbitrary unknown strings", () => {
-    assert.equal(classifySymbol("ABCD").category, "unknown");
-    assert.equal(classifySymbol("XYZ").category, "unknown");
-    assert.equal(classifySymbol("").category, "unknown");
+    assert.equal(classifySymbol("ABCD").assetClass, "unknown");
+    assert.equal(classifySymbol("XYZ").assetClass, "unknown");
+    assert.equal(classifySymbol("").assetClass, "unknown");
   });
 });
 

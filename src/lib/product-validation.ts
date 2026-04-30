@@ -3,6 +3,7 @@
 
 import {
   classifySymbol,
+  type AssetClass,
   type ProductMetadata,
 } from "./trading-products.ts";
 import {
@@ -28,23 +29,32 @@ export type MarketState = "open" | "closed" | "paused" | "pre-open" | "unknown";
 export type SymbolStatus =
   | { kind: "recognized_with_specs"; product: ProductMetadata }
   | { kind: "recognized_no_specs"; product: ProductMetadata }
-  | { kind: "forex_spot" }
+  | { kind: "forex" }
   | { kind: "stock" }
   | { kind: "crypto" }
   | { kind: "empty" }
   | { kind: "unknown" };
 
+export type TradeValidationResult = {
+  normalizedSymbol: string;
+  instrument: ProductMetadata | null;
+  assetClass: AssetClass;
+  errors: ProductValidation[];
+  warnings: ProductValidation[];
+  hints: ProductValidation[];
+};
+
 export function getSymbolStatus(rawSymbol: string): SymbolStatus {
   if (!rawSymbol.trim()) return { kind: "empty" };
-  const { category, product } = classifySymbol(rawSymbol);
+  const { assetClass, product } = classifySymbol(rawSymbol);
   if (product) {
     return product.specStatus === "known"
       ? { kind: "recognized_with_specs", product }
       : { kind: "recognized_no_specs", product };
   }
-  if (category === "forex_spot") return { kind: "forex_spot" };
-  if (category === "stock") return { kind: "stock" };
-  if (category === "crypto") return { kind: "crypto" };
+  if (assetClass === "forex") return { kind: "forex" };
+  if (assetClass === "stock") return { kind: "stock" };
+  if (assetClass === "crypto") return { kind: "crypto" };
   return { kind: "unknown" };
 }
 
@@ -79,8 +89,8 @@ export function validateSymbolForProgram(
       return out;
     }
 
-    case "forex_spot": {
-      const blocked = profile.blockedCategories.has("forex_spot");
+    case "forex": {
+      const blocked = profile.blockedCategories.has("forex");
       out.push({
         level: blocked ? (profile.blockingMode === "strict" ? "error" : "warning") : "hint",
         code: "forex_spot_not_supported",
@@ -185,6 +195,35 @@ export function validateTradeTime(
   }
 
   return out;
+}
+
+/**
+ * Unified trade validation — returns a structured result partitioned into
+ * errors, warnings, and hints.  The journal form and history cards should
+ * prefer this over calling validateSymbolForProgram / validateTradeTime
+ * separately.
+ */
+export function validateTrade(
+  rawSymbol: string,
+  tradedAt: Date | null,
+  profile: ProgramProfile,
+): TradeValidationResult {
+  const normalizedSymbol = rawSymbol.trim().toUpperCase();
+  const { assetClass, product } = classifySymbol(normalizedSymbol);
+
+  const allValidations: ProductValidation[] = [
+    ...validateSymbolForProgram(rawSymbol, profile),
+    ...(tradedAt ? validateTradeTime(tradedAt, product, profile) : []),
+  ];
+
+  return {
+    normalizedSymbol,
+    instrument: product,
+    assetClass,
+    errors:   allValidations.filter((v) => v.level === "error"),
+    warnings: allValidations.filter((v) => v.level === "warning"),
+    hints:    allValidations.filter((v) => v.level === "hint"),
+  };
 }
 
 export function getMarketStateAt(

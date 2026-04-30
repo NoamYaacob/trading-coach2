@@ -1,17 +1,22 @@
 // Program/prop-firm profile rules. Models structural constraints (allowed
 // products, hard daily cutoff, no-swing) so multiple firms can be added
-// later. Topstep is the first profile, but no Topstep-specific copy is
-// hard-coded — UI copy lives in product-validation.ts and uses the profile's
-// `displayName`.
+// later. Topstep is the first live profile; Apex, MFF, and personal-account
+// are placeholder stubs for future configuration.
 
 import {
-  type ProductCategory,
+  type AssetClass,
   type ProductMetadata,
   type TimeOfDayCT,
   PRODUCTS,
 } from "./trading-products.ts";
 
-export type ProgramProfileId = "generic_futures" | "topstep_style";
+export type ProgramProfileId =
+  | "generic_manual"
+  | "generic_futures"
+  | "topstep_style"
+  | "apex_style"
+  | "myfundedfutures_style"
+  | "personal_account";
 
 export type ProgramProfile = {
   id: ProgramProfileId;
@@ -24,8 +29,8 @@ export type ProgramProfile = {
   resumeCT: TimeOfDayCT | null;
   /** Sunday session open (in Chicago time). `null` means no Sunday session. */
   sundayOpenCT: TimeOfDayCT | null;
-  /** Categories that are disallowed regardless of symbol coverage. */
-  blockedCategories: Set<ProductCategory>;
+  /** Asset classes that are disallowed regardless of symbol coverage. */
+  blockedCategories: Set<AssetClass>;
   /** Disallow holding positions overnight. */
   noSwing: boolean;
   /** "warn" surfaces issues without blocking save; "strict" can block. */
@@ -43,7 +48,33 @@ export const TOPSTEP_PROFILE: ProgramProfile = {
   hardCutoffCT: { hour: 15, minute: 10 },
   resumeCT: { hour: 17, minute: 0 },
   sundayOpenCT: { hour: 17, minute: 0 },
-  blockedCategories: new Set<ProductCategory>(["forex_spot", "stock", "crypto"]),
+  blockedCategories: new Set<AssetClass>(["forex", "stock", "crypto"]),
+  noSwing: true,
+  blockingMode: "warn",
+};
+
+// Apex Trader Funding — placeholder; constraints not yet modeled in detail.
+export const APEX_PROFILE: ProgramProfile = {
+  id: "apex_style",
+  displayName: "Apex-style",
+  allowedSymbols: new Set(Object.keys(PRODUCTS)),
+  hardCutoffCT: { hour: 15, minute: 10 },
+  resumeCT: { hour: 17, minute: 0 },
+  sundayOpenCT: { hour: 17, minute: 0 },
+  blockedCategories: new Set<AssetClass>(["forex", "stock", "crypto"]),
+  noSwing: true,
+  blockingMode: "warn",
+};
+
+// MyFundedFutures — placeholder; constraints not yet modeled in detail.
+export const MFF_PROFILE: ProgramProfile = {
+  id: "myfundedfutures_style",
+  displayName: "MyFundedFutures-style",
+  allowedSymbols: new Set(Object.keys(PRODUCTS)),
+  hardCutoffCT: { hour: 15, minute: 10 },
+  resumeCT: { hour: 17, minute: 0 },
+  sundayOpenCT: { hour: 17, minute: 0 },
+  blockedCategories: new Set<AssetClass>(["forex", "stock", "crypto"]),
   noSwing: true,
   blockingMode: "warn",
 };
@@ -55,14 +86,44 @@ export const GENERIC_FUTURES_PROFILE: ProgramProfile = {
   hardCutoffCT: null,
   resumeCT: null,
   sundayOpenCT: null,
-  blockedCategories: new Set<ProductCategory>(),
+  blockedCategories: new Set<AssetClass>(),
+  noSwing: false,
+  blockingMode: "warn",
+};
+
+// Generic manual — accepts any symbol, no schedule constraints, no auto-calc.
+export const GENERIC_MANUAL_PROFILE: ProgramProfile = {
+  id: "generic_manual",
+  displayName: "Generic manual",
+  allowedSymbols: null,
+  hardCutoffCT: null,
+  resumeCT: null,
+  sundayOpenCT: null,
+  blockedCategories: new Set<AssetClass>(),
+  noSwing: false,
+  blockingMode: "warn",
+};
+
+// Personal account — no prop-firm constraints, all asset classes allowed.
+export const PERSONAL_ACCOUNT_PROFILE: ProgramProfile = {
+  id: "personal_account",
+  displayName: "Personal account",
+  allowedSymbols: null,
+  hardCutoffCT: null,
+  resumeCT: null,
+  sundayOpenCT: null,
+  blockedCategories: new Set<AssetClass>(),
   noSwing: false,
   blockingMode: "warn",
 };
 
 export const PROFILES: Record<ProgramProfileId, ProgramProfile> = {
+  generic_manual: GENERIC_MANUAL_PROFILE,
   generic_futures: GENERIC_FUTURES_PROFILE,
   topstep_style: TOPSTEP_PROFILE,
+  apex_style: APEX_PROFILE,
+  myfundedfutures_style: MFF_PROFILE,
+  personal_account: PERSONAL_ACCOUNT_PROFILE,
 };
 
 export const DEFAULT_PROGRAM_PROFILE: ProgramProfileId = "generic_futures";
