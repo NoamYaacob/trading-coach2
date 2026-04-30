@@ -22,6 +22,8 @@ import {
   validateDirectionPrices,
   validateUnrealisticPrices,
   formatPnlBreakdown,
+  validateNonNegativeField,
+  toggleSign,
 } from "@/lib/trade-entry-validation";
 
 type ValidationWarning = {
@@ -139,7 +141,8 @@ export function TradeEntryForm({
     const qty = num(values.quantity);
     const userNetPnl = num(values.netPnl);
     const userRisk = num(values.riskAmount);
-    const fees = num(values.fees) ?? 0;
+    const rawFees = num(values.fees);
+    const fees = rawFees ?? 0;
     const overrideCalculated = values.overrideCalculated;
 
     const warnings: ValidationWarning[] = [];
@@ -184,6 +187,12 @@ export function TradeEntryForm({
       const first = programValidations[0];
       return first?.message;
     })();
+
+    // Non-negative enforcement for quantity and fees — applies to all symbols.
+    const qtyNegMsg = validateNonNegativeField(qty, "Quantity");
+    if (qtyNegMsg) warnings.push({ field: "quantity", message: qtyNegMsg, severity: "error" });
+    const feesNegMsg = validateNonNegativeField(rawFees, "Fees");
+    if (feesNegMsg) warnings.push({ field: "fees", message: feesNegMsg, severity: "error" });
 
     if (futuresSpec) {
       if (entry !== null && !isValidTickPrice(entry, futuresSpec.tickSize)) {
@@ -295,7 +304,7 @@ export function TradeEntryForm({
     const feesHint = pnlMismatch && fees === 0
       ? "Net P&L can differ from gross P&L only if fees or manual adjustments are entered."
       : futuresSpec !== null && fees === 0
-        ? "Fees are estimated. Edit if your broker or prop firm charges differently."
+        ? "Fees are optional. Enter your broker or prop-firm commissions if you want net P&L to include them."
         : undefined;
 
     // Gross/fees/net breakdown shown whenever gross is computable.
@@ -514,7 +523,7 @@ export function TradeEntryForm({
           <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
         </Field>
         <Field label="Net P&L ($)" hint={pnlHint} warning={fieldWarning("netPnl")}>
-          <NumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
+          <SignedNumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
         </Field>
       </div>
 
@@ -641,7 +650,7 @@ export function TradeEntryForm({
             <NumberInput value={values.quantity} onChange={(v) => update("quantity", v)} />
           </Field>
           <Field label="Net P&L ($)" hint={pnlHint} warning={fieldWarning("netPnl")}>
-            <NumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
+            <SignedNumberInput value={values.netPnl} onChange={(v) => update("netPnl", v)} />
           </Field>
           <Field label="Fees / commissions" hint={computed.feesHint}>
             <NumberInput value={values.fees} onChange={(v) => update("fees", v)} placeholder="e.g. 6.00" />
@@ -821,6 +830,38 @@ function Field({
         <span className="text-xs text-stone-400">{hint}</span>
       ) : null}
     </label>
+  );
+}
+
+function SignedNumberInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative flex items-stretch">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-stone-200 bg-white py-2 pl-3 pr-9 text-sm tabular-nums focus:border-stone-950 focus:outline-none"
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => onChange(toggleSign(value))}
+        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-xl text-stone-400 transition hover:text-stone-950"
+        aria-label="Toggle sign"
+      >
+        ±
+      </button>
+    </div>
   );
 }
 

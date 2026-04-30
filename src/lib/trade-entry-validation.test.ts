@@ -5,6 +5,9 @@ import {
   validateDirectionPrices,
   validateUnrealisticPrices,
   formatPnlBreakdown,
+  parseNumericInput,
+  validateNonNegativeField,
+  toggleSign,
 } from "./trade-entry-validation.ts";
 import { FUTURES_SPECS, calculateFuturesPnl } from "./instruments.ts";
 
@@ -329,5 +332,101 @@ describe("formatPnlBreakdown", () => {
   it("zero fees still shown", () => {
     const s = formatPnlBreakdown(400, 0, 400);
     assert.ok(s.includes("Fees: $0.00"), `got: ${s}`);
+  });
+});
+
+// ── parseNumericInput ──────────────────────────────────────────────────────────
+
+describe("parseNumericInput", () => {
+  it("parses a negative value", () => {
+    assert.equal(parseNumericInput("-120"), -120);
+  });
+
+  it("parses a negative decimal value", () => {
+    assert.equal(parseNumericInput("-120.50"), -120.5);
+  });
+
+  it("parses a positive value", () => {
+    assert.equal(parseNumericInput("150.25"), 150.25);
+  });
+
+  it("parses zero", () => {
+    assert.equal(parseNumericInput("0"), 0);
+  });
+
+  it("returns null for empty string", () => {
+    assert.equal(parseNumericInput(""), null);
+  });
+
+  it("returns null for lone minus sign (intermediate state)", () => {
+    assert.equal(parseNumericInput("-"), null);
+  });
+
+  it("returns null for non-numeric 'abc'", () => {
+    assert.equal(parseNumericInput("abc"), null);
+  });
+
+  it("returns null for double minus '--120'", () => {
+    assert.equal(parseNumericInput("--120"), null);
+  });
+});
+
+// ── validateNonNegativeField ───────────────────────────────────────────────────
+
+describe("validateNonNegativeField", () => {
+  it("negative quantity is rejected", () => {
+    const msg = validateNonNegativeField(-1, "Quantity");
+    assert.ok(msg !== null);
+    assert.ok(msg!.includes("Quantity"));
+  });
+
+  it("negative fees are rejected", () => {
+    const msg = validateNonNegativeField(-0.01, "Fees");
+    assert.ok(msg !== null);
+    assert.ok(msg!.includes("Fees"));
+  });
+
+  it("zero is accepted", () => {
+    assert.equal(validateNonNegativeField(0, "Quantity"), null);
+  });
+
+  it("positive value is accepted", () => {
+    assert.equal(validateNonNegativeField(5, "Quantity"), null);
+  });
+
+  it("null is accepted (field not yet entered)", () => {
+    assert.equal(validateNonNegativeField(null, "Quantity"), null);
+  });
+});
+
+// ── toggleSign ────────────────────────────────────────────────────────────────
+
+describe("toggleSign", () => {
+  it("empty string becomes '-'", () => {
+    assert.equal(toggleSign(""), "-");
+  });
+
+  it("lone '-' becomes empty string", () => {
+    assert.equal(toggleSign("-"), "");
+  });
+
+  it("positive '120' becomes '-120'", () => {
+    assert.equal(toggleSign("120"), "-120");
+  });
+
+  it("negative '-120' becomes '120'", () => {
+    assert.equal(toggleSign("-120"), "120");
+  });
+
+  it("positive decimal '120.50' becomes '-120.50'", () => {
+    assert.equal(toggleSign("120.50"), "-120.50");
+  });
+
+  it("negative decimal '-120.50' becomes '120.50'", () => {
+    assert.equal(toggleSign("-120.50"), "120.50");
+  });
+
+  it("double toggle returns to original for '250'", () => {
+    assert.equal(toggleSign(toggleSign("250")), "250");
   });
 });

@@ -129,3 +129,40 @@ export const FEE_ESTIMATES = {
     note: "No default set. Populate from verified broker/prop-firm schedule.",
   },
 } as const;
+
+/**
+ * Parses a user-entered numeric string. Returns null for empty or invalid input.
+ * A lone "-" (intermediate state while typing a negative number) returns null.
+ */
+export function parseNumericInput(value: string): number | null {
+  if (value.trim() === "") return null;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Returns an error message string if value is negative, null otherwise.
+ * Used for fields that must be non-negative (quantity, fees).
+ */
+export function validateNonNegativeField(
+  value: number | null,
+  label: string,
+): string | null {
+  if (value !== null && value < 0) {
+    return `${label} cannot be negative.`;
+  }
+  return null;
+}
+
+/**
+ * Toggles the sign of a numeric input string:
+ *   ""     → "-"
+ *   "-"    → ""
+ *   "120"  → "-120"
+ *   "-120" → "120"
+ */
+export function toggleSign(value: string): string {
+  if (value === "-") return "";
+  if (value === "") return "-";
+  return value.startsWith("-") ? value.slice(1) : `-${value}`;
+}
