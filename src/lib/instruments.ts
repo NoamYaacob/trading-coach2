@@ -40,6 +40,10 @@ export function isFuturesSymbol(symbol: string): boolean {
   return symbol.trim().toUpperCase() in FUTURES_SPECS;
 }
 
+export function isValidFuturesQuantity(qty: number): boolean {
+  return Number.isInteger(qty) && qty > 0;
+}
+
 export function isValidTickPrice(price: number, tickSize: number): boolean {
   const rounded = Math.round(price / tickSize) * tickSize;
   return Math.abs(price - rounded) < tickSize * 1e-9;

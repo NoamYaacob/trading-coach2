@@ -8,6 +8,7 @@ import {
   calculateRMultiple,
   getInstrumentSpec,
   isFuturesSymbol,
+  isValidFuturesQuantity,
   isValidTickPrice,
 } from "./instruments.ts";
 
@@ -43,6 +44,38 @@ describe("isFuturesSymbol", () => {
   it("returns false for non-futures symbols", () => {
     assert.equal(isFuturesSymbol("AAPL"), false);
     assert.equal(isFuturesSymbol("BTC"), false);
+  });
+});
+
+describe("isValidFuturesQuantity", () => {
+  it("accepts positive integers", () => {
+    assert.equal(isValidFuturesQuantity(1), true);
+    assert.equal(isValidFuturesQuantity(2), true);
+    assert.equal(isValidFuturesQuantity(10), true);
+  });
+
+  it("rejects zero", () => {
+    assert.equal(isValidFuturesQuantity(0), false);
+  });
+
+  it("rejects negative integers", () => {
+    assert.equal(isValidFuturesQuantity(-1), false);
+    assert.equal(isValidFuturesQuantity(-10), false);
+  });
+
+  it("rejects fractional quantities", () => {
+    assert.equal(isValidFuturesQuantity(1.5), false);
+    assert.equal(isValidFuturesQuantity(0.5), false);
+    assert.equal(isValidFuturesQuantity(-0.5), false);
+  });
+});
+
+describe("getInstrumentSpec — unknown symbol returns null (manual mode)", () => {
+  it("returns null for unrecognized symbols", () => {
+    assert.equal(getInstrumentSpec("ABCD"), null);
+    assert.equal(getInstrumentSpec("AAPL"), null);
+    assert.equal(getInstrumentSpec("BTC"), null);
+    assert.equal(getInstrumentSpec("EURUSD"), null);
   });
 });
 

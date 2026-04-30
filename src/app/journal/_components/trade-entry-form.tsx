@@ -7,6 +7,7 @@ import {
   calculateFuturesPnl,
   calculateFuturesRisk,
   getInstrumentSpec,
+  isValidFuturesQuantity,
   isValidTickPrice,
   type FuturesSpec,
 } from "@/lib/instruments";
@@ -33,7 +34,16 @@ type FormState = {
   notes: string;
   ruleBreached: boolean;
   breachReason: string;
+  overrideCalculated: boolean;
 };
+
+function fmtDollar(n: number): string {
+  const abs = Math.abs(n);
+  const formatted = Number.isInteger(abs)
+    ? abs.toLocaleString("en-US")
+    : abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n < 0 ? `−$${formatted}` : `$${formatted}`;
+}
 
 function nowLocalIsoMinute(): string {
   const d = new Date();
@@ -78,6 +88,7 @@ const INITIAL: FormState = {
   notes: "",
   ruleBreached: false,
   breachReason: "",
+  overrideCalculated: false,
 };
 
 const INPUT_CLS =
@@ -101,12 +112,15 @@ export function TradeEntryForm() {
     const qty = num(values.quantity);
     const userPnl = num(values.pnl);
     const userRisk = num(values.riskAmount);
+    const overrideCalculated = values.overrideCalculated;
 
     const warnings: ValidationWarning[] = [];
 
-    const specHint = futuresSpec
-      ? `${futuresSpec.name} · $${futuresSpec.pointValue}/pt · ${futuresSpec.tickSize} tick`
-      : undefined;
+    const symbolHint = symbolUpper === ""
+      ? undefined
+      : futuresSpec
+        ? `${futuresSpec.name} · $${futuresSpec.pointValue}/pt · ${futuresSpec.tickSize} tick`
+        : "Unknown symbol. P&L, risk, and R will be treated as manual unless contract specs are added.";
 
     if (futuresSpec) {
       if (entry !== null && !isValidTickPrice(entry, futuresSpec.tickSize)) {
@@ -118,8 +132,8 @@ export function TradeEntryForm() {
       if (stop !== null && !isValidTickPrice(stop, futuresSpec.tickSize)) {
         warnings.push({ field: "stopPrice", message: `Must be a multiple of ${futuresSpec.tickSize} (${futuresSpec.symbol} tick).`, severity: "error" });
       }
-      if (qty !== null && !Number.isInteger(qty)) {
-        warnings.push({ field: "quantity", message: "Futures contracts must be whole numbers.", severity: "error" });
+      if (qty !== null && !isValidFuturesQuantity(qty)) {
+        warnings.push({ field: "quantity", message: "Futures contracts must be a positive whole number.", severity: "error" });
       }
     }
 
@@ -142,19 +156,22 @@ export function TradeEntryForm() {
       }
     }
 
-    if (userPnl !== null && suggestedPnl !== null && Math.abs(userPnl - suggestedPnl) > 0.01) {
+    const pnlMismatch = futuresSpec !== null && userPnl !== null && suggestedPnl !== null && Math.abs(userPnl - suggestedPnl) > 0.01;
+    const riskMismatch = futuresSpec !== null && userRisk !== null && suggestedRisk !== null && Math.abs(userRisk - suggestedRisk) > 0.01;
+
+    if (pnlMismatch) {
       warnings.push({
         field: "pnl",
-        message: `Entered $${userPnl.toFixed(2)} differs from calculated $${suggestedPnl.toFixed(2)}.`,
-        severity: "warning",
+        message: `Expected P&L from price, direction, and quantity is ${fmtDollar(suggestedPnl!)}. You entered ${fmtDollar(userPnl!)}.`,
+        severity: overrideCalculated ? "warning" : "error",
       });
     }
 
-    if (userRisk !== null && suggestedRisk !== null && Math.abs(userRisk - suggestedRisk) > 0.01) {
+    if (riskMismatch) {
       warnings.push({
         field: "riskAmount",
-        message: `Entered $${userRisk.toFixed(2)} differs from calculated $${suggestedRisk.toFixed(2)}.`,
-        severity: "warning",
+        message: `Expected risk from entry, stop, and quantity is ${fmtDollar(suggestedRisk!)}. You entered ${fmtDollar(userRisk!)}.`,
+        severity: overrideCalculated ? "warning" : "error",
       });
     }
 
@@ -167,8 +184,9 @@ export function TradeEntryForm() {
     }
 
     const hasBlockingError = warnings.some((w) => w.severity === "error");
+    const showOverride = pnlMismatch || riskMismatch;
 
-    return { suggestedPnl, suggestedRisk, suggestedR, warnings, specHint, hasBlockingError };
+    return { suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride };
   }, [
     values.symbol,
     values.entryPrice,
@@ -178,6 +196,7 @@ export function TradeEntryForm() {
     values.direction,
     values.pnl,
     values.riskAmount,
+    values.overrideCalculated,
   ]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -297,7 +316,7 @@ export function TradeEntryForm() {
             className={`${INPUT_CLS} hidden md:block`}
           />
         </Field>
-        <Field label="Symbol" required hint={computed.specHint}>
+        <Field label="Symbol" required hint={computed.symbolHint}>
           <input
             type="text"
             required
@@ -514,6 +533,26 @@ export function TradeEntryForm() {
         </div>
 
       </div>
+
+      {/* Override calculated values — appears only when a futures mismatch is detected */}
+      {computed.showOverride && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={values.overrideCalculated}
+              onChange={(e) => update("overrideCalculated", e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-950"
+            />
+            <span>
+              <span className="font-medium text-stone-950">Override calculated values</span>
+              <span className="block text-stone-500">
+                Use only if broker fees, commissions, or manual adjustments make the calculated values different.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Submit */}
       <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-5">
