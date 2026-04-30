@@ -11,6 +11,13 @@ import {
   isValidTickPrice,
   type FuturesSpec,
 } from "@/lib/instruments";
+import { getProfile } from "@/lib/program-rules";
+import {
+  getSymbolStatus,
+  validateSymbolForProgram,
+  validateTradeTime,
+  type ProductValidation,
+} from "@/lib/product-validation";
 
 type ValidationWarning = {
   field: keyof FormState;
@@ -131,11 +138,35 @@ export function TradeEntryForm({
 
     const warnings: ValidationWarning[] = [];
 
-    const symbolHint = symbolUpper === ""
-      ? undefined
-      : futuresSpec
-        ? `${futuresSpec.name} · $${futuresSpec.pointValue}/pt · ${futuresSpec.tickSize} tick`
-        : "Unknown symbol. P&L, risk, and R will be treated as manual unless contract specs are added.";
+    // Program-aware product/time validation. Default profile is "generic
+    // futures" until the user picks a prop-firm profile elsewhere.
+    const profile = getProfile(null);
+    const symbolStatus = getSymbolStatus(symbolUpper);
+    const programValidations: ProductValidation[] = symbolUpper === ""
+      ? []
+      : validateSymbolForProgram(symbolUpper, profile);
+    const productForTime = symbolStatus.kind === "recognized_with_specs" || symbolStatus.kind === "recognized_no_specs"
+      ? symbolStatus.product
+      : null;
+    const tradedAtDate = (() => {
+      if (!values.tradedAt) return null;
+      const d = new Date(values.tradedAt);
+      return Number.isNaN(d.getTime()) ? null : d;
+    })();
+    const timeValidations: ProductValidation[] = tradedAtDate
+      ? validateTradeTime(tradedAtDate, productForTime, profile)
+      : [];
+
+    const symbolHint = (() => {
+      if (symbolUpper === "") return undefined;
+      if (symbolStatus.kind === "recognized_with_specs" && futuresSpec) {
+        return `${futuresSpec.name} · $${futuresSpec.pointValue}/pt · ${futuresSpec.tickSize} tick`;
+      }
+      // For other states, fall back to the most relevant program validation
+      // message so we don't double up with the banner.
+      const first = programValidations[0];
+      return first?.message;
+    })();
 
     if (futuresSpec) {
       if (entry !== null && !isValidTickPrice(entry, futuresSpec.tickSize)) {
@@ -210,7 +241,20 @@ export function TradeEntryForm({
       ? "Net P&L can differ from gross P&L only if fees or manual adjustments are entered."
       : undefined;
 
-    return { grossPnl, suggestedPnl, suggestedRisk, suggestedR, warnings, symbolHint, hasBlockingError, showOverride, feesHint, isFutures: futuresSpec !== null };
+    return {
+      grossPnl,
+      suggestedPnl,
+      suggestedRisk,
+      suggestedR,
+      warnings,
+      symbolHint,
+      hasBlockingError,
+      showOverride,
+      feesHint,
+      isFutures: futuresSpec !== null,
+      programValidations,
+      timeValidations,
+    };
   }, [
     values.symbol,
     values.entryPrice,
@@ -222,6 +266,7 @@ export function TradeEntryForm({
     values.fees,
     values.riskAmount,
     values.overrideCalculated,
+    values.tradedAt,
   ]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -595,6 +640,16 @@ export function TradeEntryForm({
 
       </div>
 
+      {/* Program / time advisories — only the program validations not already
+          surfaced as the symbol hint, plus any time-based warnings. */}
+      <ProgramAdvisories
+        programValidations={
+          // The symbol hint already shows the first program validation; skip it.
+          computed.programValidations.slice(computed.symbolHint ? 1 : 0)
+        }
+        timeValidations={computed.timeValidations}
+      />
+
       {/* Override calculated values — appears only when a futures mismatch is detected */}
       {computed.showOverride && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -637,6 +692,32 @@ export function TradeEntryForm({
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
     </form>
+  );
+}
+
+function ProgramAdvisories({
+  programValidations,
+  timeValidations,
+}: {
+  programValidations: ProductValidation[];
+  timeValidations: ProductValidation[];
+}) {
+  const items = [...programValidations, ...timeValidations];
+  if (items.length === 0) return null;
+  const tone = (level: ProductValidation["level"]) =>
+    level === "error"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : level === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-stone-200 bg-stone-50 text-stone-600";
+  return (
+    <div className="grid gap-2">
+      {items.map((v, i) => (
+        <div key={`${v.code}-${i}`} className={`rounded-xl border px-3 py-2 text-xs ${tone(v.level)}`}>
+          {v.message}
+        </div>
+      ))}
+    </div>
   );
 }
 

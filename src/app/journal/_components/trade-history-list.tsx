@@ -3,7 +3,20 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { getProduct } from "@/lib/trading-products";
+
 import type { TradeEntry } from "./types";
+
+const GROUP_LABELS: Record<string, string> = {
+  "cme-equity": "CME Equity",
+  "cme-fx": "CME FX",
+  "cme-ag-livestock": "CME Livestock",
+  "nymex-energy-metals": "NYMEX Energy/Metals",
+  "cbot-ag": "CBOT Grains",
+  "cbot-equity": "CBOT Equity",
+  "cbot-rates": "CBOT Rates",
+  "comex-metals": "COMEX Metals",
+};
 
 function fmtMoney(n: number | null): { text: string; cls: string } {
   if (n === null) return { text: "—", cls: "text-stone-400" };
@@ -72,6 +85,31 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProductInfo({ symbol }: { symbol: string }) {
+  const product = getProduct(symbol);
+  if (!product) {
+    return (
+      <div className="text-xs text-stone-500">
+        Unrecognized product — specs not added yet.
+      </div>
+    );
+  }
+  const groupLabel = GROUP_LABELS[product.group] ?? product.group;
+  return (
+    <div className="text-xs text-stone-500">
+      <span className="text-stone-700 font-medium">{product.name}</span>
+      <span className="mx-1.5 text-stone-300">·</span>
+      <span>{groupLabel}</span>
+      {product.specStatus === "allowed_unknown_specs" && (
+        <>
+          <span className="mx-1.5 text-stone-300">·</span>
+          <span className="text-amber-700">Specs not added yet</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PnlDetails({ entry }: { entry: TradeEntry }) {
   const pnl = fmtMoney(entry.pnl);
   const source = entry.pnlSource;
@@ -136,7 +174,8 @@ export function TradeHistoryList({
   function toggle(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -222,6 +261,7 @@ export function TradeHistoryList({
 
               {isExpanded && (
                 <div className="mt-3 grid gap-2 rounded-2xl border border-stone-100 bg-stone-50 px-4 py-3">
+                  <ProductInfo symbol={e.symbol} />
                   {e.ruleBreached && (
                     <span className="self-start rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
                       Rule breach
@@ -371,6 +411,9 @@ export function TradeHistoryList({
                   {isExpanded && (
                     <tr>
                       <td colSpan={13} className="bg-stone-50 px-3 pb-4 pt-2">
+                        <div className="mb-2">
+                          <ProductInfo symbol={e.symbol} />
+                        </div>
                         <div className="grid grid-cols-2 gap-x-8 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
                           <DetailRow label="Stop" value={fmtNum(e.stopPrice)} />
                           <DetailRow label="Target" value={fmtNum(e.targetPrice)} />
