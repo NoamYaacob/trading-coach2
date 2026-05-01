@@ -52,7 +52,7 @@ import {
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
-  title: "Dashboard — Guardrail",
+  title: "Today — Guardrail",
 };
 
 export default async function DashboardPage() {
@@ -289,11 +289,50 @@ export default async function DashboardPage() {
   const setupNeeded =
     !onboardingComplete || (onboardingComplete && !riskRules);
 
+  const permissionLabel =
+    todaySessionState.kind === "LOCKED_BY_GUARDIAN"
+      ? "Locked"
+      : todaySessionState.kind === "ONBOARDING_REQUIRED"
+        ? "Setup needed"
+        : manualRisk.permission === "WARNING"
+          ? "Warning"
+          : "Allowed";
+  const accountLabel = hasBroker ? "Tradovate" : "No broker connected";
+  const modeLabel = hasBroker ? "Broker-connected read-only" : "Manual Mode";
+  const brokerDataLabel = hasBroker
+    ? liveEnforcement?.connectedAt
+      ? `Last sync ${new Intl.DateTimeFormat("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(liveEnforcement.connectedAt)}`
+      : "Fresh"
+    : "Not connected";
+  const nextAction = setupNeeded
+    ? !onboardingComplete
+      ? "Finish setup to enable trading permission checks."
+      : "Set your Trading Plan to enable permission checks."
+    : hasBroker
+      ? "Review status details before entering your next trade."
+      : "Connect Tradovate or continue in Manual Mode.";
+
   return (
     <AppShell
-      eyebrow="Dashboard"
+      eyebrow="Today · Command Center"
       title="Can I trade right now?"
-      description="Your trading permission, risk budget, and session state in one view."
+      description="See your trading permission, why, your account mode, and the next action in one view."
+      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
+      statusStrip={
+        <section className="rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(28,25,23,0.3)]">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <StatusItem label="Account" value={accountLabel} />
+            <StatusItem label="Mode" value={modeLabel} />
+            <StatusItem label="Permission" value={permissionLabel} />
+            <StatusItem label="Broker data" value={brokerDataLabel} />
+            <StatusItem label="Next action" value={nextAction} />
+          </div>
+        </section>
+      }
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -327,8 +366,8 @@ export default async function DashboardPage() {
               Manual mode
             </p>
             <p className="mt-1 text-sm font-medium text-stone-900">
-              Manual Mode tracks your trades but cannot block orders at your broker. Connect
-              Tradovate to enable broker-based checks.
+	              Manual Mode tracks trades you enter yourself. It cannot block broker orders.
+                Connect Tradovate to evaluate broker data automatically.
             </p>
             <a
               href="/accounts/connect/tradovate"
@@ -384,26 +423,26 @@ export default async function DashboardPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             <QuickAction
               href="/rules"
-              title="Set rules"
+              title="Trading Plan"
               description="Edit limits and breach actions."
             />
             {todaySessionState.kind === "GUARDIAN_DISABLED" ? (
               <QuickAction
                 href="/guardian"
-                title="View status"
+                title="Status details"
                 description="See why protection is paused."
               />
             ) : (
               <QuickAction
                 href="/guardian"
-                title="View protection"
+                title="Status details"
                 description="Why you're Allowed, Warning, or Locked."
               />
             )}
             <QuickAction
               href="/accounts"
-              title={hasBroker ? "Manage accounts" : "Connect broker"}
-              description={hasBroker ? "Broker connections." : "Prepare your Tradovate connection."}
+              title={hasBroker ? "Broker Connections" : "Connect broker"}
+              description={hasBroker ? "Manage broker connections." : "Prepare your Tradovate connection."}
             />
           </div>
         </div>
@@ -521,5 +560,16 @@ function QuickAction({
         →
       </p>
     </a>
+  );
+}
+
+function StatusItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-stone-900">{value}</p>
+    </div>
   );
 }

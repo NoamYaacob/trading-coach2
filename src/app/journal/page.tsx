@@ -14,7 +14,7 @@ import { JournalClientArea } from "./_components/journal-client-area";
 import type { TradeEntry } from "./_components/types";
 
 export const metadata: Metadata = {
-  title: "Journal — Guardrail",
+  title: "Trade Log (Manual Mode) — Guardrail",
 };
 
 type DecimalLike = { toNumber?: () => number } | string | number | null;
@@ -136,9 +136,10 @@ export default async function JournalPage() {
 
   return (
     <AppShell
-      eyebrow="Journal"
-      title="What happened today?"
-      description="Manual trade log — demo and pre-connection testing. Connect Tradovate for automatic trade tracking."
+      eyebrow="Trade Log · Manual Mode"
+      title="Manual trade log."
+      description="Manual Mode tracks trades you enter yourself. It cannot block broker orders."
+      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
     >
       <div className="grid gap-6">
         {!riskRules && (
