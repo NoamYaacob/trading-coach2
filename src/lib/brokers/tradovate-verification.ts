@@ -17,12 +17,15 @@ import { TradovateClientError } from "./tradovate-client-helpers";
 import {
   CHECK_LABELS,
   SKIP_NAMES,
+  categorizeTvAccount,
   describeError,
   hasUnresolvedContracts,
   tokenStatusFromErr,
+  type AccountCategory,
   type CheckName,
   type CheckStatus,
   type TokenStatus,
+  type TvAccountSummary,
 } from "./tradovate-verification-helpers";
 import type {
   BrokerAccountSnapshot,
@@ -32,7 +35,13 @@ import type {
   BrokerPosition,
 } from "./types";
 
-export type { CheckStatus, CheckName, TokenStatus } from "./tradovate-verification-helpers";
+export type {
+  AccountCategory,
+  CheckStatus,
+  CheckName,
+  TokenStatus,
+  TvAccountSummary,
+} from "./tradovate-verification-helpers";
 
 // ── Public report shape ───────────────────────────────────────────────────────
 
@@ -50,6 +59,8 @@ export type VerificationReport = {
   connectionStatus: BrokerConnectionStatus;
   tokenStatus: TokenStatus;
   checks: VerificationCheck[];
+  /** Safe summary of every account returned by account/list. No tokens. */
+  accountList: TvAccountSummary[];
   snapshot: {
     account: BrokerAccountSnapshot | null;
     positions: BrokerPosition[] | null;
@@ -141,6 +152,7 @@ export async function runTradovateVerification(
 ): Promise<VerificationReport> {
   const checks: VerificationCheck[] = [];
   const warnings: string[] = [];
+  const accountList: TvAccountSummary[] = [];
   const snapshot: VerificationReport["snapshot"] = {
     account: null,
     positions: null,
@@ -165,6 +177,7 @@ export async function runTradovateVerification(
       connectionStatus: conn.connectionStatus,
       tokenStatus,
       checks,
+      accountList,
       snapshot,
       warnings,
       lastSyncAt: conn.lastSyncAt,
@@ -179,6 +192,32 @@ export async function runTradovateVerification(
 
   if (accountsResult.ok) {
     const list = accountsResult.value;
+
+    // Map to safe summaries (no tokens, no raw payloads).
+    for (const a of list) {
+      accountList.push({
+        id: a.id,
+        name: a.name,
+        accountType: a.accountType ?? null,
+        status: a.status ?? null,
+        active: a.active,
+        archived: a.archived ?? false,
+        category: categorizeTvAccount({ name: a.name, accountType: a.accountType }),
+      });
+    }
+
+    // Safe server log — counts and categories only, never names or IDs.
+    const categoryCounts = accountList.reduce<Record<AccountCategory, number>>(
+      (acc, s) => { acc[s.category] = (acc[s.category] ?? 0) + 1; return acc; },
+      {} as Record<AccountCategory, number>,
+    );
+    console.info("[tradovate/verify] account/list succeeded", {
+      total: list.length,
+      categoryCounts,
+      hasDemo: categoryCounts.demo > 0,
+      hasSim: categoryCounts.sim > 0,
+    });
+
     const first = list.find((a) => a.active) ?? list[0];
     if (first) {
       tvAccountId = first.id;
@@ -210,6 +249,11 @@ export async function runTradovateVerification(
       });
     }
   } else {
+    console.warn("[tradovate/verify] account/list failed", {
+      error: accountsResult.error instanceof Error
+        ? accountsResult.error.message
+        : "unknown",
+    });
     checks.push(fail("account_discovery", accountsResult.durationMs, accountsResult.error));
   }
 
@@ -357,6 +401,7 @@ export async function runTradovateVerification(
     connectionStatus: conn.connectionStatus,
     tokenStatus: "valid",
     checks,
+    accountList,
     snapshot,
     warnings,
     lastSyncAt: conn.lastSyncAt,

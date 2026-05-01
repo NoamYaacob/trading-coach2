@@ -53,6 +53,10 @@ type TvAccount = {
   userId: number;
   accountType: string;
   active: boolean;
+  // Optional fields Tradovate may include — not guaranteed by the API spec.
+  status?: string;    // e.g. "Active", "Inactive", "Closed"
+  archived?: boolean;
+  nickname?: string;
 };
 
 type TvCashBalanceSnapshot = {

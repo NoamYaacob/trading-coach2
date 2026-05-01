@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import {
   CHECK_LABELS,
   SKIP_NAMES,
+  categorizeTvAccount,
   describeError,
   hasUnresolvedContracts,
   tokenStatusFromErr,
@@ -247,5 +248,69 @@ describe("VerificationReport schema", () => {
   it("does not include token-shaped field names in SKIP_NAMES", () => {
     const all = SKIP_NAMES.join(",");
     assert.equal(/access_?token|refresh_?token|bearer/i.test(all), false);
+  });
+});
+
+// ── categorizeTvAccount ───────────────────────────────────────────────────────
+
+describe("categorizeTvAccount", () => {
+  it("explicit Demo accountType → demo", () => {
+    assert.equal(categorizeTvAccount({ name: "12345", accountType: "Demo" }), "demo");
+  });
+
+  it("accountType case-insensitive Demo → demo", () => {
+    assert.equal(categorizeTvAccount({ name: "12345", accountType: "demo" }), "demo");
+  });
+
+  it("accountType containing Sim → sim", () => {
+    assert.equal(categorizeTvAccount({ name: "12345", accountType: "Simulation" }), "sim");
+  });
+
+  it("name starting with DEMO → demo", () => {
+    assert.equal(categorizeTvAccount({ name: "DEMO123456", accountType: "Customer" }), "demo");
+  });
+
+  it("name containing word demo → demo", () => {
+    assert.equal(categorizeTvAccount({ name: "My Demo Account", accountType: "Customer" }), "demo");
+  });
+
+  it("name starting with SIM → sim", () => {
+    assert.equal(categorizeTvAccount({ name: "SIM99999", accountType: "Customer" }), "sim");
+  });
+
+  it("accountType Customer → live", () => {
+    assert.equal(categorizeTvAccount({ name: "987654", accountType: "Customer" }), "live");
+  });
+
+  it("accountType Funding → live", () => {
+    assert.equal(categorizeTvAccount({ name: "987654", accountType: "Funding" }), "live");
+  });
+
+  it("accountType Corporate → live", () => {
+    assert.equal(categorizeTvAccount({ name: "987654", accountType: "Corporate" }), "live");
+  });
+
+  it("name containing prop → prop", () => {
+    assert.equal(categorizeTvAccount({ name: "Apex Prop", accountType: "Customer" }), "prop");
+  });
+
+  it("name containing apex → prop", () => {
+    assert.equal(categorizeTvAccount({ name: "APEX123", accountType: "Customer" }), "prop");
+  });
+
+  it("name containing topstep → prop", () => {
+    assert.equal(categorizeTvAccount({ name: "TopStep987", accountType: "Customer" }), "prop");
+  });
+
+  it("unrecognised type and plain name → unknown", () => {
+    assert.equal(categorizeTvAccount({ name: "JohnTrader", accountType: "Corporate2" }), "unknown");
+  });
+
+  it("null accountType falls back to name heuristic", () => {
+    assert.equal(categorizeTvAccount({ name: "DEMO456", accountType: null }), "demo");
+  });
+
+  it("missing accountType falls back to name heuristic", () => {
+    assert.equal(categorizeTvAccount({ name: "Live Account" }), "unknown");
   });
 });

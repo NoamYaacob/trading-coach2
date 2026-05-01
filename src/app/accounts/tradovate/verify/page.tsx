@@ -8,8 +8,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   runTradovateVerification,
+  type AccountCategory,
   type CheckStatus,
   type TokenStatus,
+  type TvAccountSummary,
   type VerificationCheck,
   type VerificationReport,
 } from "@/lib/brokers/tradovate-verification";
@@ -67,6 +69,34 @@ function CheckIcon({ status }: { status: CheckStatus }) {
     >
       –
     </span>
+  );
+}
+
+const CATEGORY_LABELS: Record<AccountCategory, { label: string; tone: string }> = {
+  live:    { label: "Live",    tone: "bg-emerald-100 text-emerald-700" },
+  demo:    { label: "Demo",    tone: "bg-sky-100 text-sky-700" },
+  sim:     { label: "Sim",     tone: "bg-sky-100 text-sky-700" },
+  prop:    { label: "Prop",    tone: "bg-purple-100 text-purple-700" },
+  unknown: { label: "Unknown", tone: "bg-stone-100 text-stone-500" },
+};
+
+function AccountRow({ account }: { account: TvAccountSummary }) {
+  const cat = CATEGORY_LABELS[account.category];
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 py-3 text-sm last:border-b-0">
+      <span className="w-20 shrink-0 tabular-nums text-stone-500">{account.id}</span>
+      <span className="flex-1 font-medium text-stone-900">{account.name}</span>
+      <span className="text-stone-500">{account.accountType ?? "—"}</span>
+      <span className="text-stone-500">{account.status ?? (account.active ? "Active" : "Inactive")}</span>
+      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cat.tone}`}>
+        {cat.label}
+      </span>
+      {account.archived && (
+        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-500">
+          Archived
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -243,6 +273,46 @@ export default async function VerifyTradovatePage({
             </div>
           )}
         </SectionCard>
+
+        {/* Account list */}
+        {report.accountList.length > 0 && (() => {
+          const hasSimDemo = report.accountList.some(
+            (a) => a.category === "demo" || a.category === "sim",
+          );
+          return (
+            <>
+              {hasSimDemo ? (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm">
+                  <p className="font-medium text-sky-900">Demo/sim account detected.</p>
+                  <p className="mt-0.5 text-stone-700">
+                    You can use this account for Guardrail testing.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-3 text-sm text-stone-600">
+                  No demo/sim account was detected through this OAuth token.
+                </div>
+              )}
+              <SectionCard
+                title="Accounts visible via this token"
+                description="All accounts returned by account/list. No tokens or secrets shown."
+              >
+                <div className="grid gap-0">
+                  <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                    <span className="w-20 shrink-0">ID</span>
+                    <span className="flex-1">Name</span>
+                    <span>Type</span>
+                    <span>Status</span>
+                    <span>Category</span>
+                  </div>
+                  {report.accountList.map((a) => (
+                    <AccountRow key={a.id} account={a} />
+                  ))}
+                </div>
+              </SectionCard>
+            </>
+          );
+        })()}
 
         {/* Checks */}
         <SectionCard
