@@ -59,11 +59,12 @@ export default async function AccountsPage() {
     if (bucket.length < 10) bucket.push(ev);
   }
 
-  const hasTradovate = accounts.some((a) => a.platform === "tradovate");
+  const tradovateAccount = accounts.find((a) => a.platform === "tradovate");
+  const hasTradovate = Boolean(tradovateAccount);
   const tradovateConfigured = getTradovateConfig().state === "ready";
 
-  const ctaHref = hasTradovate
-    ? "/accounts/tradovate/verify"
+  const ctaHref = tradovateAccount
+    ? `/accounts/tradovate/verify?accountId=${tradovateAccount.id}`
     : "/accounts/connect/tradovate";
   const ctaLabel = hasTradovate
     ? "Verify connection"

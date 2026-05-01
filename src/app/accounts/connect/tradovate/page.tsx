@@ -185,28 +185,33 @@ export default async function ConnectTradovatePage({
                 Your rules and journal entries remain active — the dashboard continues to evaluate
                 from your manual journal until broker reads activate.
               </p>
-              <div className="grid gap-1">
-                <p className="text-xs text-stone-400">
-                  APP_URL in use:{" "}
-                  <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
-                    {effectiveAppBaseUrl || "(not set — derived from request)"}
-                  </code>
-                </p>
-                {effectiveRedirectUri && (
-                  <p className="text-xs text-stone-400">
-                    Redirect URI in use:{" "}
+              {process.env.NODE_ENV !== "production" && (
+                <div className="grid gap-1 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600">
+                    Dev debug
+                  </p>
+                  <p className="text-xs text-stone-500">
+                    APP_URL:{" "}
                     <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
-                      {effectiveRedirectUri}
+                      {effectiveAppBaseUrl || "(not set — derived from request)"}
                     </code>
                   </p>
-                )}
-                <p className="text-xs text-stone-400">
-                  Callback error redirect base:{" "}
-                  <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
-                    {effectiveErrorRedirectBase}
-                  </code>
-                </p>
-              </div>
+                  {effectiveRedirectUri && (
+                    <p className="text-xs text-stone-500">
+                      Redirect URI:{" "}
+                      <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
+                        {effectiveRedirectUri}
+                      </code>
+                    </p>
+                  )}
+                  <p className="text-xs text-stone-500">
+                    Error redirect base:{" "}
+                    <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
+                      {effectiveErrorRedirectBase}
+                    </code>
+                  </p>
+                </div>
+              )}
             </div>
           </SectionCard>
         ) : (
