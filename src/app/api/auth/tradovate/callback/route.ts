@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getTradovateConfig, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -12,12 +12,10 @@ import { checkRateLimit } from "@/lib/rate-limit";
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
 function backToConnectPage(request: NextRequest, error: string) {
-  return NextResponse.redirect(
-    new URL(
-      `/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`,
-      request.url,
-    ),
-  );
+  const base = resolveAppBaseUrl(request.url);
+  const target = `${base}/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`;
+  console.info("[tradovate/callback] redirecting to connect page", { error, target });
+  return NextResponse.redirect(target);
 }
 
 export async function GET(request: NextRequest) {
@@ -56,12 +54,27 @@ export async function GET(request: NextRequest) {
   const storedNonce = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   cookieStore.delete(OAUTH_STATE_COOKIE);
 
+  // Debug-safe: log presence/absence of CSRF inputs, never the values.
+  let stateEnv: string = "unknown";
+  try {
+    const { decodeOAuthState } = await import("@/lib/brokers/tradovate-oauth-state");
+    const decoded = decodeOAuthState(state);
+    if (decoded.ok) stateEnv = decoded.state.env;
+  } catch { /* non-fatal */ }
+  console.info("[tradovate/callback] CSRF check", {
+    hasStateParam: Boolean(state),
+    hasCookieNonce: Boolean(storedNonce),
+    stateEnv,
+    hasSessionUser: Boolean(currentUser.id),
+  });
+
   const validation = validateOAuthState({
     rawState: state,
     cookieNonce: storedNonce,
     sessionUserId: currentUser.id,
   });
   if (!validation.ok) {
+    console.warn("[tradovate/callback] CSRF validation failed", { reason: validation.reason });
     return backToConnectPage(request, validation.reason);
   }
   const payload = validation.state!;
@@ -208,10 +221,8 @@ export async function GET(request: NextRequest) {
   // Sending the user to /accounts/[id]/edit?oauth=connected (the old
   // behaviour) would be misleading — there is nothing to read or do on
   // that connection until the read pipeline ships.
+  const base = resolveAppBaseUrl(request.url);
   return NextResponse.redirect(
-    new URL(
-      `/accounts/connect/tradovate?oauth=verified&account=${account.id}`,
-      request.url,
-    ),
+    `${base}/accounts/connect/tradovate?oauth=verified&account=${account.id}`,
   );
 }

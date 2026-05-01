@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
-import { getTradovateConfig, isDemoOAuthConfigured, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, isDemoOAuthConfigured, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import { TradovateAdapter } from "@/lib/brokers/tradovate-adapter";
 
 export const metadata: Metadata = {
@@ -48,6 +48,11 @@ export default async function ConnectTradovatePage({
   const effectiveRedirectUri = isConfigured
     ? resolveRedirectUri(status.config)
     : null;
+  // resolveAppBaseUrl reads env vars directly (no config object required).
+  const effectiveAppBaseUrl = resolveAppBaseUrl();
+  const effectiveErrorRedirectBase = effectiveAppBaseUrl
+    ? `${effectiveAppBaseUrl}/accounts/connect/tradovate`
+    : "(derived from request URL)";
 
   // Capability map for the "what this will / won't do" lists.
   const caps = new TradovateAdapter().getCapabilities();
@@ -180,14 +185,28 @@ export default async function ConnectTradovatePage({
                 Your rules and journal entries remain active — the dashboard continues to evaluate
                 from your manual journal until broker reads activate.
               </p>
-              {effectiveRedirectUri && (
+              <div className="grid gap-1">
                 <p className="text-xs text-stone-400">
-                  Redirect URI in use:{" "}
+                  APP_URL in use:{" "}
                   <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
-                    {effectiveRedirectUri}
+                    {effectiveAppBaseUrl || "(not set — derived from request)"}
                   </code>
                 </p>
-              )}
+                {effectiveRedirectUri && (
+                  <p className="text-xs text-stone-400">
+                    Redirect URI in use:{" "}
+                    <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
+                      {effectiveRedirectUri}
+                    </code>
+                  </p>
+                )}
+                <p className="text-xs text-stone-400">
+                  Callback error redirect base:{" "}
+                  <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
+                    {effectiveErrorRedirectBase}
+                  </code>
+                </p>
+              </div>
             </div>
           </SectionCard>
         ) : (

@@ -177,6 +177,29 @@ export const TRADOVATE_REQUIRED_ENV_KEYS: readonly string[] = REQUIRED_KEYS;
 const CALLBACK_PATH = "/api/auth/tradovate/callback";
 
 /**
+ * Resolve the app base URL (origin only, no trailing slash) using three-tier
+ * priority. Used by any redirect that must land on the app — e.g. the error
+ * redirects in the OAuth callback. Works without a TradovateConfig object so
+ * it is safe to call before the config check passes.
+ *
+ *   1. Origin extracted from TRADOVATE_REDIRECT_URI (always set in production)
+ *   2. APP_URL / NEXT_PUBLIC_APP_URL (Railway production safe)
+ *   3. requestUrl origin (local dev fallback — never reliable behind a proxy)
+ */
+export function resolveAppBaseUrl(requestUrl?: string): string {
+  const explicitUri = readEnv("TRADOVATE_REDIRECT_URI");
+  if (explicitUri) {
+    try { return new URL(explicitUri).origin; } catch { /* fall through */ }
+  }
+  const appUrl = readEnv("APP_URL") ?? readEnv("NEXT_PUBLIC_APP_URL");
+  if (appUrl) return appUrl.replace(/\/$/, "");
+  if (requestUrl) {
+    try { return new URL(requestUrl).origin; } catch { /* fall through */ }
+  }
+  return "";
+}
+
+/**
  * Resolve the redirect_uri to send to Tradovate, using three-tier priority:
  *
  *   1. TRADOVATE_REDIRECT_URI (explicit override — always wins)
