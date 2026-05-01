@@ -143,7 +143,7 @@ export default async function ConnectTradovatePage({
             description="You will be redirected to Tradovate to authorize Guardrail. We request read access only."
           >
             <div className="grid gap-4">
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <a
                   href="/api/auth/tradovate/connect?env=live"
                   className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
@@ -158,11 +158,19 @@ export default async function ConnectTradovatePage({
                     Connect Tradovate (Demo)
                   </a>
                 ) : (
-                  <p className="self-center text-xs text-stone-500">
-                    Demo OAuth is not configured for this app yet.
-                  </p>
+                  <span
+                    aria-disabled="true"
+                    className="inline-flex cursor-not-allowed items-center justify-center rounded-full border border-stone-200 px-6 py-3 text-sm font-medium text-stone-400"
+                  >
+                    Connect Tradovate (Demo)
+                  </span>
                 )}
               </div>
+              {!demoConfigured && (
+                <p className="text-xs text-stone-500">
+                  Demo OAuth is waiting for Tradovate demo credentials. Most prop-firm accounts will use this connection.
+                </p>
+              )}
               <p className="text-xs text-stone-500">
                 Your rules and journal entries remain active — the dashboard continues to evaluate
                 from your manual journal until broker reads activate.
