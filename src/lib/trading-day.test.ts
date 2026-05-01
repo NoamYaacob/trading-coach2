@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getTradingDayWindow } from "./trading-day.ts";
+import { getLocalCalendarDayWindow, getTradingDayWindow } from "./trading-day.ts";
 
 // All "now" values are written in UTC for clarity. Comments describe the
 // equivalent local time in the relevant timezone.
@@ -170,4 +170,17 @@ test("label formats start, end, and timezone", () => {
   // Session is 16:00-23:00 Asia/Jerusalem on 2026-04-26.
   assert.match(w.label, /Apr 26/);
   assert.match(w.label, /Asia\/Jerusalem/);
+});
+
+test("local calendar day includes after-session manual entries", () => {
+  // 18:00 UTC = 21:00 local in Asia/Jerusalem. A manual trade logged after a
+  // 09:00-16:00 session should still count in today's journal summary.
+  const w = getLocalCalendarDayWindow({
+    timezone: "Asia/Jerusalem",
+    now: new Date("2026-04-29T18:00:00Z"),
+  });
+
+  assert.equal(w.start.toISOString(), "2026-04-28T21:00:00.000Z");
+  assert.equal(w.end.toISOString(), "2026-04-29T21:00:00.000Z");
+  assert.equal(w.label, "Apr 29, 2026");
 });

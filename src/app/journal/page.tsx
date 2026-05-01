@@ -28,7 +28,10 @@ function toNum(val: DecimalLike): number | null {
 }
 
 function fmtMoney(n: number): string {
-  return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export default async function JournalPage() {
@@ -45,16 +48,19 @@ export default async function JournalPage() {
       .count({ where: { userId: user.id, isActive: true } })
       .then((c) => c > 0),
   ]);
+
   const cookieStore = await cookies();
   const tz = resolveDisplayTimeZone({
     onboardingTimeZone: profile?.timezone,
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
+
   const window = getTradingDayWindow({
     timezone: tz,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+
   const shortWindow = (() => {
     const fmtHM = (d: Date) =>
       new Intl.DateTimeFormat("en-US", {
@@ -63,12 +69,12 @@ export default async function JournalPage() {
         hour12: false,
         timeZone: tz,
       }).format(d);
+
     return `${fmtHM(window.start)}–${fmtHM(window.end)}`;
   })();
 
-  // Cap both queries at the current instant so future-dated rows (which
-  // should not exist after this fix, but may already be in the DB) are
-  // excluded from both the history display and today's metrics.
+  // Cap both queries at the current instant so future-dated rows are excluded
+  // from both the history display and today's metrics.
   const now = new Date();
   const effectiveWindowEnd = window.end < now ? window.end : now;
 
@@ -135,8 +141,6 @@ export default async function JournalPage() {
       description="Manual trade log — demo and pre-connection testing. Connect Tradovate for automatic trade tracking."
     >
       <div className="grid gap-6">
-
-        {/* No-rules warning */}
         {!riskRules && (
           <NextActionBanner
             variant="warning"
@@ -145,7 +149,6 @@ export default async function JournalPage() {
           />
         )}
 
-        {/* Locked warning */}
         {risk.permission === "LOCKED" && (
           <NextActionBanner
             variant="locked"
@@ -159,7 +162,6 @@ export default async function JournalPage() {
           />
         )}
 
-        {/* Today summary */}
         <SectionCard
           title="Today"
           description={
@@ -169,9 +171,12 @@ export default async function JournalPage() {
             </>
           }
         >
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4 xl:grid-cols-7">
             {summaryTiles.map((t) => (
-              <div key={t.label} className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2.5 sm:px-4 sm:py-3">
+              <div
+                key={t.label}
+                className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2.5 sm:px-4 sm:py-3"
+              >
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                   {t.label}
                 </p>
@@ -183,15 +188,19 @@ export default async function JournalPage() {
           </div>
         </SectionCard>
 
-        {/* Today's trades + Older trades + Add/Edit form — client area handles interactivity */}
-        <JournalClientArea entries={serializedEntries} tz={tz} windowStartIso={window.start.toISOString()} />
+        <JournalClientArea
+          entries={serializedEntries}
+          tz={tz}
+          windowStartIso={window.start.toISOString()}
+        />
 
-        {/* Mode footer */}
         <p className="text-xs text-stone-500">
           {hasBroker ? (
             <>
               <span className="md:hidden">Manual journal is used until Tradovate is connected.</span>
-              <span className="hidden md:inline">Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified.</span>
+              <span className="hidden md:inline">
+                Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified.
+              </span>
             </>
           ) : (
             <>
@@ -210,7 +219,6 @@ export default async function JournalPage() {
             </>
           )}
         </p>
-
       </div>
     </AppShell>
   );

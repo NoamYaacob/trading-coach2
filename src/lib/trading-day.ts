@@ -44,6 +44,17 @@ export type TradingDayWindow = {
   isOvernight: boolean;
 };
 
+export type LocalCalendarDayWindow = {
+  /** UTC instant marking local midnight at the start of the day. */
+  start: Date;
+  /** UTC instant marking local midnight at the start of the next day. */
+  end: Date;
+  /** Resolved IANA timezone used for the calculation. */
+  timezone: string;
+  /** Human-readable label like "Apr 29, 2026". */
+  label: string;
+};
+
 // ─── Timezone math helpers ────────────────────────────────────────────────
 
 /**
@@ -135,6 +146,15 @@ function formatLabel(start: Date, end: Date, tz: string): string {
   return `${a} – ${b} ${tz}`;
 }
 
+function formatCalendarDayLabel(start: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(start);
+}
+
 // ─── Core API ─────────────────────────────────────────────────────────────
 
 /**
@@ -215,5 +235,23 @@ export function getTradingDayWindow(input: TradingDayInput = {}): TradingDayWind
       now.getTime() >= windowStart.getTime() && now.getTime() < windowEnd.getTime(),
     hasSessionHours: true,
     isOvernight,
+  };
+}
+
+export function getLocalCalendarDayWindow(input: {
+  timezone?: string | null;
+  now?: Date;
+} = {}): LocalCalendarDayWindow {
+  const tz = isValidTimeZone(input.timezone) ? (input.timezone as string) : FALLBACK_TIMEZONE;
+  const now = input.now ?? new Date();
+  const today = getCalendarDateInTz(now, tz);
+  const start = fromTzParts(today.year, today.month, today.day, 0, 0, tz);
+  const end = new Date(start.getTime() + 24 * 60 * 60_000);
+
+  return {
+    start,
+    end,
+    timezone: tz,
+    label: formatCalendarDayLabel(start, tz),
   };
 }

@@ -55,8 +55,6 @@ export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
 };
 
-
-
 export default async function DashboardPage() {
   const currentUser = await getCurrentUser();
 
@@ -95,19 +93,19 @@ export default async function DashboardPage() {
   });
   const telegramConnected = Boolean(user.telegramConnection);
 
-  // Fetch RiskRules first (1 round-trip) so we can compute the user's
-  // trading-day window before querying today's trades. Everything else
-  // is parallel.
   const riskRules = await prisma.riskRules.findUnique({
     where: { userId: currentUser.id },
   });
+
   const tradingDay = getTradingDayWindow({
     timezone: displayTimeZone,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
+
   const now = new Date();
   const effectiveManualEnd = tradingDay.end < now ? tradingDay.end : now;
+
   const [
     todaySessionSummary,
     todaySessionEvents,
@@ -131,12 +129,14 @@ export default async function DashboardPage() {
       orderBy: { tradedAt: "asc" },
     }),
   ]);
+
   const hasBroker = brokerCount > 0;
   const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
     0,
   );
+
   const economicCalendarSelection = getEconomicCalendarSelection(user.coachingPreferences);
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
     user.coachingPreferences,
@@ -150,11 +150,13 @@ export default async function DashboardPage() {
     timeZone: displayTimeZone,
     scenario: economicCalendarSelection.stubScenario,
   });
+
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete,
     sessionStart: todayGuardianSessionStart,
     preNewsPolicyStatus: economicCalendarPolicy,
   });
+
   const premarketReadiness = derivePremarketReadiness(todaySessionState);
   const premarketReadinessWithEvent = premarketReadiness
     ? {
@@ -174,6 +176,7 @@ export default async function DashboardPage() {
             : undefined,
       }
     : null;
+
   const telegramAccess = evaluateTelegramAccess({
     subscriptionStatus: user.subscriptionStatus,
     trialEndsAt: user.trialEndsAt,
@@ -187,14 +190,15 @@ export default async function DashboardPage() {
   const telegramBotLink = telegramBotUsername
     ? `https://t.me/${telegramBotUsername}`
     : null;
+
   const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const manualTradeCount =
     manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount;
-  // Canonical manual-mode numbers come from the journal. Fall back to session-event
-  // signals only when journal is empty.
+
   const journalDrivenTradeCount = manualRisk.todayTradesCount;
   const journalDrivenPnL = manualRisk.todayPnL;
   const journalDrivenLossStreak = manualRisk.consecutiveLosses;
+
   const todaySessionStateForPanel: TodaySessionState = {
     ...todaySessionState,
     todayTradesCount: Math.max(
@@ -212,6 +216,7 @@ export default async function DashboardPage() {
       journalDrivenLossStreak > 0 ? journalDrivenLossStreak : manualEventSignals.consecutiveLosses,
     ),
   };
+
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
@@ -227,21 +232,19 @@ export default async function DashboardPage() {
       manualSignals: manualEventSignals,
     }),
   );
+
   const todayActivityTimeline = buildTodayActivityTimeline({
     sessionStart: todayGuardianSessionStart,
     guardian,
     sessionEvents: todaySessionEvents,
   });
+
   const violationActivityItems = buildViolationActivityItems(violationFeed);
   const mergedActivityTimeline = [
     ...todayActivityTimeline,
     ...violationActivityItems,
   ].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-  // Notices: warnings that add context not already covered by other visible surfaces.
-  // - guardian_disabled is shown prominently in the session panel (GUARDIAN_DISABLED state)
-  // - session_not_started is covered by the PremarketReadinessPanel
-  // - no_trade_before_major_news before start is covered by PremarketReadinessPanel
-  // - manual_rule_breach (triggered) is included explicitly — not covered anywhere else
+
   const dashboardNotices = [
     ...violationFeed.warningViolations.filter(
       (v) =>
@@ -256,6 +259,7 @@ export default async function DashboardPage() {
       (v) => v.ruleId === "manual_rule_breach",
     ),
   ];
+
   const postSessionReview = buildPostSessionReview({
     session: todayGuardianSessionStart,
     summary: todaySessionSummary,
@@ -263,17 +267,18 @@ export default async function DashboardPage() {
     guardian,
     violationFeed,
   });
+
   const isSessionEnded = todaySessionState.sessionEnded;
   const isSessionActive =
     todaySessionState.kind === "READY_TO_TRADE" &&
     todaySessionState.sessionStarted &&
     !todaySessionState.sessionEnded;
-  // Suppress the premarket banner when the session panel already explains the same state
-  // prominently (GUARDIAN_DISABLED and RESET_PENDING each render their own large hero).
+
   const showPremarketReadiness =
     Boolean(premarketReadiness) &&
     todaySessionState.kind !== "GUARDIAN_DISABLED" &&
     todaySessionState.kind !== "RESET_PENDING";
+
   const activityTitle = isSessionEnded ? "Today activity recap" : "Today activity";
   const activityDescription = isSessionEnded
     ? "The sequence that led into the close."
@@ -297,7 +302,6 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-8">
-        {/* Setup needed — single prominent card when rules/onboarding incomplete */}
         {setupNeeded && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -317,7 +321,6 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Trading permission — primary hero */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Trading permission
@@ -356,7 +359,6 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* Quick actions — 3 max */}
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Quick actions
@@ -388,8 +390,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Session record — only shown once there is activity */}
-        {(mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded) ? (
+        {mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded ? (
           <div className="grid gap-4">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
               Session record
@@ -418,11 +419,12 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        {/* Session details — economic events + manual entry, hidden by default */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
             Session details
-            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">
+              +
+            </span>
           </summary>
           <div className="mt-5 grid gap-6">
             <EconomicEventsPanel
@@ -441,7 +443,10 @@ export default async function DashboardPage() {
             </SectionCard>
             {!telegramConnected && (
               <p className="text-xs text-stone-500">
-                <a href="/alerts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+                <a
+                  href="/alerts"
+                  className="font-medium text-stone-700 underline-offset-2 hover:underline"
+                >
                   Connect Telegram
                 </a>{" "}
                 to receive lockout and warning alerts on your phone.
@@ -494,7 +499,9 @@ function QuickAction({
     >
       <p className="text-sm font-semibold text-stone-950">{title}</p>
       <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
-      <p className="mt-3 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">→</p>
+      <p className="mt-3 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">
+        →
+      </p>
     </a>
   );
 }
