@@ -35,9 +35,11 @@ import type {
 import {
   TradovateClientError,
   REFRESH_BUFFER_MS,
+  normalizeTokenResponse,
   mapOrderStatus,
   mapOrderType,
   mapSide,
+  type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
 export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
@@ -193,19 +195,69 @@ export class TradovateClient {
     const remaining = this.#tokenExpiresAt.getTime() - Date.now();
     if (remaining > REFRESH_BUFFER_MS) return;
 
-    if (!this.#refreshToken) {
-      await prisma.connectedAccount.update({
-        where: { id: this.#accountId },
-        data: {
-          connectionStatus: "expired",
-          errorMessage: "Access token expired. Re-authorize to reconnect.",
-        },
-      });
+    const tokenStillValid = remaining > 0;
+
+    if (tokenStillValid) {
+      // Token is approaching expiry but still valid.
+      // Tradovate's /auth/renewAccessToken uses the current Bearer token and
+      // returns a new access token without requiring the refresh_token secret.
+      try {
+        await this.#renewViaApiEndpoint();
+        return;
+      } catch {
+        // Fall through to OAuth grant if we have a refresh token.
+      }
+    }
+
+    if (this.#refreshToken) {
+      await this.#refreshViaOAuthGrant();
+      return;
+    }
+
+    await prisma.connectedAccount.update({
+      where: { id: this.#accountId },
+      data: {
+        connectionStatus: "expired",
+        errorMessage: "Access token expired. Re-authorize to reconnect.",
+      },
+    });
+    throw new TradovateClientError(
+      "TOKEN_EXPIRED_NO_REFRESH",
+      "Access token expired and no refresh token is available.",
+    );
+  }
+
+  /**
+   * Lightweight renewal via GET /auth/renewAccessToken.
+   * Uses the current Bearer token — no client_secret sent.
+   * Tradovate returns: { accessToken, mdAccessToken?, expirationTime? }
+   */
+  async #renewViaApiEndpoint(): Promise<void> {
+    console.info("[tradovate/client] renewing token via renewAccessToken");
+    const raw = await this.#request<TvTokenResponse>("auth/renewAccessToken");
+    const tokens = normalizeTokenResponse(raw);
+    console.info("[tradovate/client] renewAccessToken response", {
+      hasAccessToken: Boolean(tokens.accessToken),
+      hasRefreshToken: Boolean(tokens.refreshToken),
+      hasMdAccessToken: tokens.hasMdAccessToken,
+    });
+    if (!tokens.accessToken) {
       throw new TradovateClientError(
-        "TOKEN_EXPIRED_NO_REFRESH",
-        "Access token expired and no refresh token is available.",
+        "REFRESH_NO_ACCESS_TOKEN",
+        "renewAccessToken response contained no access token.",
       );
     }
+    await this.#storeRefreshedTokens(tokens, /* preserveRefreshToken */ true);
+  }
+
+  /**
+   * Full OAuth refresh_token grant via POST to the token URL.
+   * Handles both standard OAuth snake_case and Tradovate camelCase responses.
+   */
+  async #refreshViaOAuthGrant(): Promise<void> {
+    console.info("[tradovate/client] refreshing via OAuth grant", {
+      tokenEndpoint: this.#tokenUrl,
+    });
 
     let refreshRes: Response;
     try {
@@ -214,8 +266,7 @@ export class TradovateClient {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           grant_type: "refresh_token",
-          // Intentionally not logging refresh_token value.
-          refresh_token: this.#refreshToken,
+          refresh_token: this.#refreshToken!,
           client_id: this.#clientId!,
           client_secret: this.#clientSecret!,
         }).toString(),
@@ -242,13 +293,9 @@ export class TradovateClient {
       );
     }
 
-    let refreshData: {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-    };
+    let raw: TvTokenResponse;
     try {
-      refreshData = (await refreshRes.json()) as typeof refreshData;
+      raw = (await refreshRes.json()) as TvTokenResponse;
     } catch {
       throw new TradovateClientError(
         "PARSE_ERROR",
@@ -256,35 +303,74 @@ export class TradovateClient {
       );
     }
 
+    const tokens = normalizeTokenResponse(raw);
+    console.info("[tradovate/client] OAuth refresh response", {
+      hasAccessToken: Boolean(tokens.accessToken),
+      hasRefreshToken: Boolean(tokens.refreshToken),
+      hasMdAccessToken: tokens.hasMdAccessToken,
+    });
+
+    if (!tokens.accessToken) {
+      throw new TradovateClientError(
+        "REFRESH_NO_ACCESS_TOKEN",
+        "Token refresh response contained no access token.",
+      );
+    }
+
+    // When the OAuth endpoint returns no new refresh token, preserve the
+    // existing one — never overwrite a working refresh token with null.
+    await this.#storeRefreshedTokens(
+      tokens,
+      /* preserveRefreshToken */ tokens.refreshToken === null,
+    );
+  }
+
+  /**
+   * Encrypt and persist refreshed tokens. Only updates refreshTokenEncrypted
+   * when a new refresh token was returned; set preserveRefreshToken=true to
+   * leave the existing encrypted refresh token unchanged.
+   */
+  async #storeRefreshedTokens(
+    tokens: { accessToken: string | null; refreshToken: string | null; expiresAt: Date | null },
+    preserveRefreshToken: boolean,
+  ): Promise<void> {
+    if (!tokens.accessToken) {
+      throw new TradovateClientError(
+        "REFRESH_NO_ACCESS_TOKEN",
+        "Cannot store tokens: no access token provided.",
+      );
+    }
     try {
-      const encryptedAccess = encryptAndSerialize(refreshData.access_token);
-      const encryptedRefresh = refreshData.refresh_token
-        ? encryptAndSerialize(refreshData.refresh_token)
-        : undefined;
-      const newExpiresAt =
-        typeof refreshData.expires_in === "number" && refreshData.expires_in > 0
-          ? new Date(Date.now() + refreshData.expires_in * 1000)
-          : null;
+      const encryptedAccess = encryptAndSerialize(tokens.accessToken);
+
+      const data: Parameters<typeof prisma.connectedAccount.update>[0]["data"] = {
+        accessTokenEncrypted: encryptedAccess,
+        tokenExpiresAt: tokens.expiresAt,
+        connectionStatus: "connected_readonly",
+        errorMessage: null,
+      };
+      if (!preserveRefreshToken && tokens.refreshToken) {
+        data.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
+      }
 
       await prisma.connectedAccount.update({
         where: { id: this.#accountId },
-        data: {
-          accessTokenEncrypted: encryptedAccess,
-          ...(encryptedRefresh !== undefined && {
-            refreshTokenEncrypted: encryptedRefresh,
-          }),
-          tokenExpiresAt: newExpiresAt,
-          connectionStatus: "connected_readonly",
-          errorMessage: null,
-        },
+        data,
       });
 
-      this.#accessToken = refreshData.access_token;
-      if (refreshData.refresh_token) {
-        this.#refreshToken = refreshData.refresh_token;
+      this.#accessToken = tokens.accessToken;
+      if (!preserveRefreshToken && tokens.refreshToken) {
+        this.#refreshToken = tokens.refreshToken;
       }
-      this.#tokenExpiresAt = newExpiresAt;
-    } catch {
+      this.#tokenExpiresAt = tokens.expiresAt;
+
+      console.info("[tradovate/client] token store succeeded", { storeSucceeded: true });
+    } catch (err) {
+      const errorName = err instanceof Error ? err.name : "unknown";
+      console.error("[tradovate/client] token store failed", {
+        errorName,
+        storeSucceeded: false,
+      });
       throw new TradovateClientError(
         "REFRESH_STORE_FAILED",
         "Tokens refreshed but could not be stored.",

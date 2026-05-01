@@ -19,6 +19,7 @@ export type TradovateClientErrorCode =
   | "TOKEN_LOAD_FAILED"
   | "TOKEN_EXPIRED_NO_REFRESH"
   | "REFRESH_FAILED"
+  | "REFRESH_NO_ACCESS_TOKEN"
   | "REFRESH_STORE_FAILED"
   | "API_ERROR"
   | "NETWORK_ERROR"
@@ -44,6 +45,76 @@ export class TradovateClientError extends Error {
 
 /** Token refresh buffer: refresh 5 minutes before expiry. */
 export const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+// ── Token response normalization ──────────────────────────────────────────────
+
+/**
+ * Raw shape from any Tradovate token endpoint.
+ *
+ * Tradovate token endpoints return DIFFERENT field naming depending on which
+ * endpoint is called:
+ *   /auth/oauthtoken      — standard OAuth 2.0 snake_case
+ *   /auth/renewAccessToken — Tradovate camelCase
+ *
+ * Both shapes are modelled here so normalizeTokenResponse() can handle either.
+ */
+export type TvTokenResponse = Partial<{
+  // Standard OAuth 2.0 (from /auth/oauthtoken)
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  // Tradovate camelCase (from /auth/renewAccessToken and possibly /auth/oauthtoken)
+  accessToken: string;
+  refreshToken: string;
+  mdAccessToken: string;
+  expirationTime: string; // ISO 8601 datetime
+  expiresIn: number;
+}>;
+
+export type NormalizedTokens = {
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  hasMdAccessToken: boolean;
+};
+
+/**
+ * Normalize a Tradovate token response to a consistent shape.
+ *
+ * Snake_case fields take priority so that standard OAuth responses are
+ * handled correctly; camelCase is the fallback for Tradovate's own endpoints.
+ *
+ * expiresAt is computed from expires_in/expiresIn (seconds-from-now) or
+ * from expirationTime (ISO string). Returns null if neither is present or
+ * parseable.
+ *
+ * Does NOT assert that accessToken is non-null — callers must check.
+ */
+export function normalizeTokenResponse(raw: TvTokenResponse): NormalizedTokens {
+  const accessToken =
+    (typeof raw.access_token === "string" && raw.access_token ? raw.access_token : null) ??
+    (typeof raw.accessToken === "string" && raw.accessToken ? raw.accessToken : null);
+
+  const refreshToken =
+    (typeof raw.refresh_token === "string" && raw.refresh_token ? raw.refresh_token : null) ??
+    (typeof raw.refreshToken === "string" && raw.refreshToken ? raw.refreshToken : null);
+
+  let expiresAt: Date | null = null;
+  const expiresInSecs = raw.expires_in ?? raw.expiresIn;
+  if (typeof expiresInSecs === "number" && expiresInSecs > 0) {
+    expiresAt = new Date(Date.now() + expiresInSecs * 1000);
+  } else if (typeof raw.expirationTime === "string" && raw.expirationTime) {
+    const d = new Date(raw.expirationTime);
+    if (Number.isFinite(d.getTime())) expiresAt = d;
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt,
+    hasMdAccessToken: typeof raw.mdAccessToken === "string" && raw.mdAccessToken.length > 0,
+  };
+}
 
 export function mapOrderStatus(s: string): BrokerOrderStatus {
   switch (s) {

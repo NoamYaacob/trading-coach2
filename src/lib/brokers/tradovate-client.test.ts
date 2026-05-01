@@ -14,6 +14,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapSide,
+  normalizeTokenResponse,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -116,5 +117,141 @@ describe("TradovateClientError", () => {
   it("is an instance of Error", () => {
     const err = new TradovateClientError("NETWORK_ERROR", "Net error");
     assert.ok(err instanceof Error);
+  });
+});
+
+// ── normalizeTokenResponse ────────────────────────────────────────────────────
+
+describe("normalizeTokenResponse", () => {
+  // ── access token extraction ─────────────────────────────────────────────────
+
+  it("extracts access_token (OAuth snake_case)", () => {
+    const result = normalizeTokenResponse({ access_token: "tok_abc" });
+    assert.equal(result.accessToken, "tok_abc");
+  });
+
+  it("extracts accessToken (Tradovate camelCase)", () => {
+    const result = normalizeTokenResponse({ accessToken: "tok_xyz" });
+    assert.equal(result.accessToken, "tok_xyz");
+  });
+
+  it("prefers access_token over accessToken when both present", () => {
+    const result = normalizeTokenResponse({ access_token: "snake", accessToken: "camel" });
+    assert.equal(result.accessToken, "snake");
+  });
+
+  it("returns null accessToken when neither field is present", () => {
+    const result = normalizeTokenResponse({});
+    assert.equal(result.accessToken, null);
+  });
+
+  it("returns null accessToken when both fields are empty strings", () => {
+    const result = normalizeTokenResponse({ access_token: "", accessToken: "" });
+    assert.equal(result.accessToken, null);
+  });
+
+  // ── refresh token extraction ────────────────────────────────────────────────
+
+  it("extracts refresh_token (OAuth snake_case)", () => {
+    const result = normalizeTokenResponse({ access_token: "tok", refresh_token: "ref_abc" });
+    assert.equal(result.refreshToken, "ref_abc");
+  });
+
+  it("extracts refreshToken (Tradovate camelCase)", () => {
+    const result = normalizeTokenResponse({ accessToken: "tok", refreshToken: "ref_xyz" });
+    assert.equal(result.refreshToken, "ref_xyz");
+  });
+
+  it("returns null refreshToken when absent (access-token-only response)", () => {
+    const result = normalizeTokenResponse({ access_token: "tok" });
+    assert.equal(result.refreshToken, null);
+  });
+
+  // ── expiry extraction ───────────────────────────────────────────────────────
+
+  it("computes expiresAt from expires_in seconds", () => {
+    const before = Date.now();
+    const result = normalizeTokenResponse({ access_token: "t", expires_in: 3600 });
+    const after = Date.now();
+    assert.ok(result.expiresAt !== null);
+    const ms = result.expiresAt!.getTime();
+    assert.ok(ms >= before + 3600 * 1000 - 50 && ms <= after + 3600 * 1000 + 50);
+  });
+
+  it("computes expiresAt from expiresIn (camelCase alias)", () => {
+    const before = Date.now();
+    const result = normalizeTokenResponse({ accessToken: "t", expiresIn: 1800 });
+    assert.ok(result.expiresAt !== null);
+    const ms = result.expiresAt!.getTime();
+    assert.ok(ms >= before + 1800 * 1000 - 50 && ms <= before + 1800 * 1000 + 50);
+  });
+
+  it("computes expiresAt from expirationTime ISO string", () => {
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const result = normalizeTokenResponse({ accessToken: "t", expirationTime: future });
+    assert.ok(result.expiresAt !== null);
+    assert.equal(result.expiresAt!.toISOString(), future);
+  });
+
+  it("prefers expires_in over expirationTime", () => {
+    const past = new Date(Date.now() - 1000).toISOString();
+    const result = normalizeTokenResponse({
+      access_token: "t",
+      expires_in: 3600,
+      expirationTime: past,
+    });
+    assert.ok(result.expiresAt !== null);
+    // expiresAt should be ~1 hour from now, not in the past
+    assert.ok(result.expiresAt!.getTime() > Date.now());
+  });
+
+  it("returns null expiresAt when no expiry fields present", () => {
+    const result = normalizeTokenResponse({ access_token: "t" });
+    assert.equal(result.expiresAt, null);
+  });
+
+  it("returns null expiresAt for invalid expirationTime", () => {
+    const result = normalizeTokenResponse({ accessToken: "t", expirationTime: "not-a-date" });
+    assert.equal(result.expiresAt, null);
+  });
+
+  // ── mdAccessToken ───────────────────────────────────────────────────────────
+
+  it("detects mdAccessToken presence", () => {
+    const result = normalizeTokenResponse({ accessToken: "t", mdAccessToken: "md_tok" });
+    assert.equal(result.hasMdAccessToken, true);
+  });
+
+  it("hasMdAccessToken false when absent", () => {
+    const result = normalizeTokenResponse({ access_token: "t" });
+    assert.equal(result.hasMdAccessToken, false);
+  });
+
+  // ── renewAccessToken shape (Tradovate camelCase only) ──────────────────────
+
+  it("handles renewAccessToken response shape", () => {
+    const expiry = new Date(Date.now() + 7200_000).toISOString();
+    const result = normalizeTokenResponse({
+      accessToken: "new_tok",
+      mdAccessToken: "md_tok",
+      expirationTime: expiry,
+    });
+    assert.equal(result.accessToken, "new_tok");
+    assert.equal(result.refreshToken, null);
+    assert.ok(result.expiresAt !== null);
+    assert.equal(result.hasMdAccessToken, true);
+  });
+
+  // ── OAuth refresh_token grant shape (snake_case with both tokens) ──────────
+
+  it("handles OAuth refresh_token grant response with both tokens", () => {
+    const result = normalizeTokenResponse({
+      access_token: "new_access",
+      refresh_token: "new_refresh",
+      expires_in: 3600,
+    });
+    assert.equal(result.accessToken, "new_access");
+    assert.equal(result.refreshToken, "new_refresh");
+    assert.ok(result.expiresAt !== null);
   });
 });
