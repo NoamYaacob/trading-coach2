@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
-import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, isDemoOAuthConfigured } from "@/lib/brokers/tradovate-env";
 import { TradovateAdapter } from "@/lib/brokers/tradovate-adapter";
 
 export const metadata: Metadata = {
@@ -42,6 +42,7 @@ export default async function ConnectTradovatePage({
   const status = getTradovateConfig();
   const isConfigured = status.state === "ready";
   const missingKeys = status.state === "not_configured" ? status.missing : [];
+  const demoConfigured = isConfigured && isDemoOAuthConfigured();
 
   // Capability map for the "what this will / won't do" lists.
   const caps = new TradovateAdapter().getCapabilities();
@@ -149,12 +150,18 @@ export default async function ConnectTradovatePage({
                 >
                   Connect Tradovate (Live)
                 </a>
-                <a
-                  href="/api/auth/tradovate/connect?env=demo"
-                  className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
-                >
-                  Connect Tradovate (Demo)
-                </a>
+                {demoConfigured ? (
+                  <a
+                    href="/api/auth/tradovate/connect?env=demo"
+                    className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
+                  >
+                    Connect Tradovate (Demo)
+                  </a>
+                ) : (
+                  <p className="self-center text-xs text-stone-500">
+                    Demo OAuth is not configured for this app yet.
+                  </p>
+                )}
               </div>
               <p className="text-xs text-stone-500">
                 Your rules and journal entries remain active — the dashboard continues to evaluate

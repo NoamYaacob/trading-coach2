@@ -72,6 +72,9 @@ export type TradovateEnv = "live" | "demo";
 export type TradovateConfig = {
   clientId: string;
   clientSecret: string;
+  /** Separate demo-environment credentials. Null when not configured. */
+  demoClientId: string | null;
+  demoClientSecret: string | null;
   /** Will gate token persistence until encryption is wired. */
   tokenEncryptionKey: string;
   /** Optional explicit override; otherwise derived per request. */
@@ -124,6 +127,8 @@ export function getTradovateConfig(): TradovateConfigStatus {
     config: {
       clientId: clientId!,
       clientSecret: clientSecret!,
+      demoClientId: readEnv("TRADOVATE_DEMO_CLIENT_ID"),
+      demoClientSecret: readEnv("TRADOVATE_DEMO_CLIENT_SECRET"),
       tokenEncryptionKey: tokenEncryptionKey!,
       redirectUriOverride: readEnv("TRADOVATE_REDIRECT_URI"),
       authUrl: {
@@ -145,6 +150,13 @@ export function getTradovateConfig(): TradovateConfigStatus {
 /** Lightweight check — true when every required env var is present. */
 export function isTradovateConfigured(): boolean {
   return getTradovateConfig().state === "ready";
+}
+
+/** True when separate demo OAuth credentials are configured. */
+export function isDemoOAuthConfigured(): boolean {
+  const status = getTradovateConfig();
+  if (status.state !== "ready") return false;
+  return Boolean(status.config.demoClientId && status.config.demoClientSecret);
 }
 
 /** Use in UI to render an "X is missing" hint. Never logs the values. */

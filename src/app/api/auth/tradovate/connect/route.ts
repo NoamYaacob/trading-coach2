@@ -46,9 +46,17 @@ export async function GET(request: NextRequest) {
   const { config } = status;
 
   const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
-  // Prefer the explicit TRADOVATE_REDIRECT_URI override (must match exactly
-  // what is registered in the Tradovate OAuth app). Fall back to deriving
-  // the URL from the incoming request so local dev works without extra config.
+
+  // For demo env, require separate credentials — Tradovate rejects live
+  // client_id at trader-d.tradovate.com with "Wrong client_id".
+  if (env === "demo" && (!config.demoClientId || !config.demoClientSecret)) {
+    return NextResponse.json(
+      { error: "demo_oauth_not_configured" },
+      { status: 503 },
+    );
+  }
+
+  const clientId = env === "demo" ? config.demoClientId! : config.clientId;
   const redirectUri =
     config.redirectUriOverride ??
     new URL("/api/auth/tradovate/callback", request.url).toString();
@@ -74,7 +82,7 @@ export async function GET(request: NextRequest) {
 
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: config.clientId,
+    client_id: clientId,
     redirect_uri: redirectUri,
     // TODO: verify whether Tradovate requires a scope parameter for your
     // OAuth app. The official example omits scope entirely. If Tradovate
@@ -91,7 +99,7 @@ export async function GET(request: NextRequest) {
     env,
     authBase: config.authUrl[env],
     redirectUri,
-    hasClientId: Boolean(config.clientId),
+    hasClientId: Boolean(clientId),
   });
 
   return NextResponse.redirect(authUrl);
