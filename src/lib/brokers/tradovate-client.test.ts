@@ -135,9 +135,19 @@ describe("normalizeTokenResponse", () => {
     assert.equal(result.accessToken, "tok_xyz");
   });
 
+  it("extracts token (fallback field)", () => {
+    const result = normalizeTokenResponse({ token: "tok_fallback" });
+    assert.equal(result.accessToken, "tok_fallback");
+  });
+
   it("prefers access_token over accessToken when both present", () => {
     const result = normalizeTokenResponse({ access_token: "snake", accessToken: "camel" });
     assert.equal(result.accessToken, "snake");
+  });
+
+  it("prefers accessToken over token when both present", () => {
+    const result = normalizeTokenResponse({ accessToken: "camel", token: "fallback" });
+    assert.equal(result.accessToken, "camel");
   });
 
   it("returns null accessToken when neither field is present", () => {
@@ -145,8 +155,8 @@ describe("normalizeTokenResponse", () => {
     assert.equal(result.accessToken, null);
   });
 
-  it("returns null accessToken when both fields are empty strings", () => {
-    const result = normalizeTokenResponse({ access_token: "", accessToken: "" });
+  it("returns null accessToken when all fields are empty strings", () => {
+    const result = normalizeTokenResponse({ access_token: "", accessToken: "", token: "" });
     assert.equal(result.accessToken, null);
   });
 
@@ -219,6 +229,11 @@ describe("normalizeTokenResponse", () => {
 
   it("detects mdAccessToken presence", () => {
     const result = normalizeTokenResponse({ accessToken: "t", mdAccessToken: "md_tok" });
+    assert.equal(result.hasMdAccessToken, true);
+  });
+
+  it("detects md_access_token (snake_case variant)", () => {
+    const result = normalizeTokenResponse({ accessToken: "t", md_access_token: "md_tok" });
     assert.equal(result.hasMdAccessToken, true);
   });
 

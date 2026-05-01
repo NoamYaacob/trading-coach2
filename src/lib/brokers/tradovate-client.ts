@@ -129,6 +129,8 @@ export class TradovateClient {
   #tvAccountId: number | null = null;
   #baseUrl: string | null = null;
   #tokenUrl: string | null = null;
+  /** Auth-server renew URL — same host as #tokenUrl, different path. */
+  #renewUrl: string | null = null;
   #clientId: string | null = null;
   #clientSecret: string | null = null;
 
@@ -162,6 +164,14 @@ export class TradovateClient {
     const env = account.accountType === "demo" ? "demo" : "live";
     this.#baseUrl = config.apiBaseUrl[env];
     this.#tokenUrl = config.tokenUrl[env];
+    // Derive the renew URL from the token URL: same auth-server host, different path.
+    // tokenUrl example: https://live-api.tradovate.com/auth/oauthtoken
+    // renewUrl result:  https://live-api.tradovate.com/auth/renewAccessToken
+    try {
+      this.#renewUrl = new URL(config.tokenUrl[env]).origin + "/auth/renewAccessToken";
+    } catch {
+      this.#renewUrl = config.tokenUrl[env].replace(/\/[^/]+$/, "/renewAccessToken");
+    }
     this.#clientId = config.clientId;
     this.#clientSecret = config.clientSecret;
 
@@ -228,23 +238,81 @@ export class TradovateClient {
   }
 
   /**
-   * Lightweight renewal via GET /auth/renewAccessToken.
+   * Lightweight renewal via GET /auth/renewAccessToken on the auth server.
    * Uses the current Bearer token — no client_secret sent.
    * Tradovate returns: { accessToken, mdAccessToken?, expirationTime? }
+   *
+   * NOTE: This must NOT use this.#request() — that method routes through
+   * this.#baseUrl (the REST API base, e.g. live.tradovateapi.com/v1).
+   * The renew endpoint lives on the auth server (live-api.tradovate.com),
+   * stored in this.#renewUrl and derived from this.#tokenUrl.
    */
   async #renewViaApiEndpoint(): Promise<void> {
-    console.info("[tradovate/client] renewing token via renewAccessToken");
-    const raw = await this.#request<TvTokenResponse>("auth/renewAccessToken");
-    const tokens = normalizeTokenResponse(raw);
-    console.info("[tradovate/client] renewAccessToken response", {
-      hasAccessToken: Boolean(tokens.accessToken),
-      hasRefreshToken: Boolean(tokens.refreshToken),
-      hasMdAccessToken: tokens.hasMdAccessToken,
+    const renewUrl = this.#renewUrl!;
+    console.info("[tradovate/client] renewing token via renewAccessToken", {
+      endpoint: renewUrl,
+      method: "GET",
     });
+
+    let res: Response;
+    try {
+      res = await fetch(renewUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          Accept: "application/json",
+        },
+      });
+    } catch {
+      throw new TradovateClientError("NETWORK_ERROR", "Network error during token renewal.");
+    }
+
+    const contentType = res.headers.get("content-type") ?? "unknown";
+    console.info("[tradovate/client] renewAccessToken HTTP", {
+      status: res.status,
+      contentType,
+    });
+
+    if (!res.ok) {
+      throw new TradovateClientError(
+        "REFRESH_FAILED",
+        `renewAccessToken returned HTTP ${res.status}.`,
+        res.status,
+      );
+    }
+
+    let raw: TvTokenResponse;
+    try {
+      raw = (await res.json()) as TvTokenResponse;
+    } catch {
+      console.warn("[tradovate/client] renewAccessToken response is not valid JSON", {
+        status: res.status,
+        contentType,
+      });
+      throw new TradovateClientError(
+        "PARSE_ERROR",
+        "Could not parse renewAccessToken response.",
+      );
+    }
+
+    const rawKeys = Object.keys(raw as object);
+    console.info("[tradovate/client] renewAccessToken response shape", {
+      keys: rawKeys,
+      hasAccessToken: "accessToken" in (raw as object),
+      has_access_token: "access_token" in (raw as object),
+      hasToken: "token" in (raw as object),
+      hasMdAccessToken: "mdAccessToken" in (raw as object),
+      has_md_access_token: "md_access_token" in (raw as object),
+      hasExpirationTime: "expirationTime" in (raw as object),
+      hasExpiresIn: "expiresIn" in (raw as object) || "expires_in" in (raw as object),
+      hasErrorField: "error" in (raw as object) || "errorText" in (raw as object) || "errorCode" in (raw as object),
+    });
+
+    const tokens = normalizeTokenResponse(raw);
     if (!tokens.accessToken) {
       throw new TradovateClientError(
         "REFRESH_NO_ACCESS_TOKEN",
-        "renewAccessToken response contained no access token.",
+        "Tradovate did not return a renewed access token. Please re-authorize the connection.",
       );
     }
     await this.#storeRefreshedTokens(tokens, /* preserveRefreshToken */ true);
@@ -293,27 +361,41 @@ export class TradovateClient {
       );
     }
 
+    const contentType = refreshRes.headers.get("content-type") ?? "unknown";
+    console.info("[tradovate/client] OAuth refresh HTTP", {
+      status: refreshRes.status,
+      contentType,
+    });
+
     let raw: TvTokenResponse;
     try {
       raw = (await refreshRes.json()) as TvTokenResponse;
     } catch {
+      console.warn("[tradovate/client] OAuth refresh response is not valid JSON", {
+        status: refreshRes.status,
+        contentType,
+      });
       throw new TradovateClientError(
         "PARSE_ERROR",
         "Could not parse token refresh response.",
       );
     }
 
-    const tokens = normalizeTokenResponse(raw);
-    console.info("[tradovate/client] OAuth refresh response", {
-      hasAccessToken: Boolean(tokens.accessToken),
-      hasRefreshToken: Boolean(tokens.refreshToken),
-      hasMdAccessToken: tokens.hasMdAccessToken,
+    console.info("[tradovate/client] OAuth refresh response shape", {
+      keys: Object.keys(raw as object),
+      hasAccessToken: "accessToken" in (raw as object),
+      has_access_token: "access_token" in (raw as object),
+      hasToken: "token" in (raw as object),
+      hasRefreshToken: "refreshToken" in (raw as object) || "refresh_token" in (raw as object),
+      hasExpiresIn: "expiresIn" in (raw as object) || "expires_in" in (raw as object),
+      hasErrorField: "error" in (raw as object) || "errorText" in (raw as object) || "errorCode" in (raw as object),
     });
 
+    const tokens = normalizeTokenResponse(raw);
     if (!tokens.accessToken) {
       throw new TradovateClientError(
         "REFRESH_NO_ACCESS_TOKEN",
-        "Token refresh response contained no access token.",
+        "Tradovate did not return a renewed access token. Please re-authorize the connection.",
       );
     }
 

@@ -67,8 +67,11 @@ export type TvTokenResponse = Partial<{
   accessToken: string;
   refreshToken: string;
   mdAccessToken: string;
-  expirationTime: string; // ISO 8601 datetime
+  md_access_token: string; // snake_case variant observed in some responses
+  expirationTime: string;  // ISO 8601 datetime
   expiresIn: number;
+  // Some Tradovate response shapes use "token" as the access token field
+  token: string;
 }>;
 
 export type NormalizedTokens = {
@@ -91,9 +94,11 @@ export type NormalizedTokens = {
  * Does NOT assert that accessToken is non-null — callers must check.
  */
 export function normalizeTokenResponse(raw: TvTokenResponse): NormalizedTokens {
+  // Priority: access_token (OAuth snake_case) → accessToken (Tradovate camelCase) → token
   const accessToken =
     (typeof raw.access_token === "string" && raw.access_token ? raw.access_token : null) ??
-    (typeof raw.accessToken === "string" && raw.accessToken ? raw.accessToken : null);
+    (typeof raw.accessToken === "string" && raw.accessToken ? raw.accessToken : null) ??
+    (typeof raw.token === "string" && raw.token ? raw.token : null);
 
   const refreshToken =
     (typeof raw.refresh_token === "string" && raw.refresh_token ? raw.refresh_token : null) ??
@@ -108,12 +113,11 @@ export function normalizeTokenResponse(raw: TvTokenResponse): NormalizedTokens {
     if (Number.isFinite(d.getTime())) expiresAt = d;
   }
 
-  return {
-    accessToken,
-    refreshToken,
-    expiresAt,
-    hasMdAccessToken: typeof raw.mdAccessToken === "string" && raw.mdAccessToken.length > 0,
-  };
+  const hasMdAccessToken =
+    (typeof raw.mdAccessToken === "string" && raw.mdAccessToken.length > 0) ||
+    (typeof raw.md_access_token === "string" && raw.md_access_token.length > 0);
+
+  return { accessToken, refreshToken, expiresAt, hasMdAccessToken };
 }
 
 export function mapOrderStatus(s: string): BrokerOrderStatus {
