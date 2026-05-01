@@ -73,16 +73,26 @@ export async function GET(request: NextRequest) {
   });
 
   const params = new URLSearchParams({
+    response_type: "code",
     client_id: config.clientId,
     redirect_uri: redirectUri,
-    response_type: "code",
-    // Request only the read-only scope. Destructive actions (cancel,
-    // flatten, lockout) require separate scopes that we will not request
-    // until the broker integration plan reaches the relevant phase.
+    // TODO: verify whether Tradovate requires a scope parameter for your
+    // OAuth app. The official example omits scope entirely. If Tradovate
+    // rejects the request with "invalid_scope", remove this line or set
+    // the value to whatever your app registration requires.
     scope: "read",
     state,
   });
 
   const authUrl = `${config.authUrl[env]}?${params.toString()}`;
+
+  // Debug-safe diagnostics — logs what was used, never secrets or tokens.
+  console.info("[tradovate/connect] starting OAuth redirect", {
+    env,
+    authBase: config.authUrl[env],
+    redirectUri,
+    hasClientId: Boolean(config.clientId),
+  });
+
   return NextResponse.redirect(authUrl);
 }

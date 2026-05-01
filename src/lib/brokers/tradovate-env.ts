@@ -39,10 +39,30 @@
  */
 
 const DEFAULTS = {
-  authUrlLive: "https://live.tradovate.com/oauth/authorize",
-  authUrlDemo: "https://demo.tradovate.com/oauth/authorize",
-  tokenUrlLive: "https://live.tradovate.com/oauth/token",
-  tokenUrlDemo: "https://demo.tradovate.com/oauth/token",
+  // ── Authorization endpoints ────────────────────────────────────────────────
+  // Confirmed from Tradovate's official OAuth example:
+  //   https://github.com/tradovate/example-api-oauth/blob/master/index.js
+  //
+  // The example hardcodes:
+  //   AUTH_URL     = 'https://trader-d.tradovate.com/oauth'       (demo/-d)
+  //   EXCHANGE_URL = 'https://live-api-d.tradovate.com/auth/oauthtoken' (demo/-d)
+  //
+  // The "-d" suffix is Tradovate's demo/development indicator. Live removes it.
+  // Override TRADOVATE_AUTH_URL_LIVE / _DEMO in Railway if Tradovate confirms
+  // different URLs for your OAuth app registration.
+  authUrlLive: "https://trader.tradovate.com/oauth",
+  authUrlDemo: "https://trader-d.tradovate.com/oauth",
+
+  // ── Token exchange endpoints ───────────────────────────────────────────────
+  // Path is /auth/oauthtoken — NOT /oauth/token, NOT /v1/auth/oauthtoken.
+  // Verified from the same example (live-api-d for demo; live-api for live).
+  // TODO: confirm live-api.tradovate.com is reachable for your OAuth app.
+  // Override TRADOVATE_TOKEN_URL_LIVE / _DEMO in Railway to adjust.
+  tokenUrlLive: "https://live-api.tradovate.com/auth/oauthtoken",
+  tokenUrlDemo: "https://live-api-d.tradovate.com/auth/oauthtoken",
+
+  // ── REST API base (read pipeline — separate from OAuth) ───────────────────
+  // TODO: unverified against a real account — see docs/broker-integration-plan.md.
   apiBaseLive: "https://live.tradovateapi.com/v1",
   apiBaseDemo: "https://demo.tradovateapi.com/v1",
 } as const;
