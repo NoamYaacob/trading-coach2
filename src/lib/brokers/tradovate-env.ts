@@ -23,8 +23,10 @@
  * Optional env vars (with sensible defaults):
  *
  *   TRADOVATE_REDIRECT_URI
- *     Override the redirect URI sent to Tradovate. Defaults to the
- *     incoming request's origin + /api/auth/tradovate/callback.
+ *     The redirect URI sent to Tradovate. Must match exactly what is
+ *     registered in the Tradovate OAuth app. In production set this to:
+ *       https://<your-domain>/api/auth/tradovate/callback
+ *     Leave unset in local dev — routes derive it from the request origin.
  *
  *   TRADOVATE_AUTH_URL_LIVE / TRADOVATE_AUTH_URL_DEMO
  *     Override the OAuth authorize endpoint per environment.

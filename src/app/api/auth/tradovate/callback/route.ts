@@ -74,13 +74,11 @@ export async function GET(request: NextRequest) {
   }
   const { config } = status;
 
-  // Derive the same redirect_uri used in the connect route — must match
-  // exactly or Tradovate will reject the exchange. Uses the canonical
-  // /api/brokers/tradovate/callback path as the fallback so it stays
-  // consistent with the connect route even when the override is absent.
+  // Derive the same redirect_uri sent in the authorize request — must match
+  // exactly or Tradovate will reject the token exchange.
   const redirectUri =
     config.redirectUriOverride ??
-    new URL("/api/brokers/tradovate/callback", request.url).toString();
+    new URL("/api/auth/tradovate/callback", request.url).toString();
 
   // ── Token exchange ─────────────────────────────────────────────────────
   // Performs a real POST to Tradovate's token endpoint. On success we
