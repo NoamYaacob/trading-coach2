@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ConnectedAccount, AccountRiskRules, LiveSessionState, GuardianIntervention } from "@prisma/client";
 import { SectionCard } from "@/components/ui/section-card";
+import { DisconnectButton } from "./disconnect-button";
 
 type AccountWithRelations = ConnectedAccount & {
   riskRules: AccountRiskRules | null;
@@ -544,13 +545,17 @@ export function AccountCard({
           )}
         </div>
 
-        <div className="flex items-center gap-3 border-t border-stone-100 pt-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4">
           <Link
             href={`/accounts/${account.id}/edit`}
             className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
           >
             Manage connection
           </Link>
+          <DisconnectButton
+            accountId={account.id}
+            providerLabel={PLATFORM_LABEL[account.platform] ?? account.platform}
+          />
           {account.connectionStatus === "connected_live" && account.connectedAt && (
             <p className="text-xs text-stone-400">
               Live since {shortDate(account.connectedAt)}

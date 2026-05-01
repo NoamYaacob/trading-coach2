@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+  buildDisconnectUpdate,
+  buildNoRevocationResult,
+  platformHasRevocationEndpoint,
+} from "@/lib/brokers/tradovate-disconnect";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -117,10 +122,31 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  await prisma.connectedAccount.update({
-    where: { id },
-    data: { isActive: false },
+  const revokeAttempted = platformHasRevocationEndpoint(existing.platform);
+  const revokeSucceeded = false;
+
+  console.info("[accounts/disconnect] disconnecting broker account", {
+    accountId: id,
+    userId: currentUser.id,
+    platform: existing.platform,
+    revokeAttempted,
+    revokeSucceeded,
   });
 
-  return NextResponse.json({ ok: true });
+  const update = buildDisconnectUpdate();
+  await prisma.connectedAccount.update({
+    where: { id },
+    data: update,
+  });
+
+  console.info("[accounts/disconnect] local disconnect succeeded", {
+    accountId: id,
+    platform: existing.platform,
+  });
+
+  if (!revokeAttempted) {
+    void buildNoRevocationResult();
+  }
+
+  return NextResponse.json({ ok: true, revokeAttempted, revokeSucceeded });
 }

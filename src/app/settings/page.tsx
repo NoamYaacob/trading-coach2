@@ -32,6 +32,7 @@ import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 
 import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
+import { DisconnectButton } from "@/app/accounts/_components/disconnect-button";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
@@ -43,7 +44,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams;
 
-  const [dbUser, telegramConnection, googleConnection, traderProfile] = await Promise.all([
+  const [dbUser, telegramConnection, googleConnection, traderProfile, connectedAccounts] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -64,6 +65,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         tradingSession: true,
         tradingExperience: true,
       },
+    }),
+    prisma.connectedAccount.findMany({
+      where: { userId: user.id, isActive: true },
+      select: {
+        id: true,
+        label: true,
+        platform: true,
+        connectionStatus: true,
+        connectedAt: true,
+      },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -217,6 +229,63 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </div>
           </details>
         </SectionCard>
+
+        {/* Broker connections */}
+        {connectedAccounts.length > 0 && (
+          <SectionCard
+            title="Broker connections"
+            description="Manage your connected broker accounts."
+          >
+            <div className="grid gap-3">
+              {connectedAccounts.map((acct) => {
+                const platformLabel =
+                  acct.platform === "tradovate"
+                    ? "Tradovate"
+                    : acct.platform === "tradingview"
+                      ? "TradingView"
+                      : acct.platform === "manual"
+                        ? "Manual"
+                        : acct.platform;
+                const statusLabel =
+                  acct.connectionStatus === "connected_live"
+                    ? "Live"
+                    : acct.connectionStatus === "connected_readonly"
+                      ? "Read-only"
+                      : acct.connectionStatus === "pending_webhook"
+                        ? "Pending sync"
+                        : acct.connectionStatus === "expired"
+                          ? "Expired"
+                          : acct.connectionStatus === "connection_error"
+                            ? "Connection error"
+                            : "Not connected";
+                const isConnected =
+                  acct.connectionStatus === "connected_live" ||
+                  acct.connectionStatus === "connected_readonly";
+                return (
+                  <div
+                    key={acct.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3"
+                  >
+                    <div className="text-sm">
+                      <p className="font-medium text-stone-900">{acct.label}</p>
+                      <p className="text-stone-500">
+                        {platformLabel} · {statusLabel}
+                        {isConnected && acct.connectedAt
+                          ? ` · since ${acct.connectedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                          : ""}
+                      </p>
+                    </div>
+                    <DisconnectButton
+                      accountId={acct.id}
+                      providerLabel={platformLabel}
+                      redirectTo="/settings"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        )}
 
         {/* Danger zone */}
         <section className="rounded-[1.75rem] border border-red-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]">

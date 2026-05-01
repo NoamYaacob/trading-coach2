@@ -188,12 +188,43 @@ export default async function VerifyTradovatePage({
 
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
-    select: { id: true, label: true, userId: true, platform: true },
+    select: { id: true, label: true, userId: true, platform: true, isActive: true },
   });
 
   if (!account) notFound();
   if (account.userId !== currentUser.id) redirect("/accounts");
   if (account.platform !== "tradovate") redirect("/accounts");
+
+  if (!account.isActive) {
+    return (
+      <AppShell
+        eyebrow="Tradovate"
+        title="Account disconnected"
+        description="This broker account has been disconnected."
+        actions={
+          <Link
+            href="/accounts"
+            className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
+          >
+            Back to accounts
+          </Link>
+        }
+      >
+        <SectionCard title="Account not active">
+          <p className="text-sm text-stone-700">
+            This account was disconnected. Your rules, journal entries, and
+            manual mode data are still saved.
+          </p>
+          <Link
+            href="/accounts/connect/tradovate"
+            className="mt-4 inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Connect a new account
+          </Link>
+        </SectionCard>
+      </AppShell>
+    );
+  }
 
   const report = await runTradovateVerification(accountId, currentUser.id);
   const summary = summaryTone(report);
