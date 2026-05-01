@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -75,10 +75,9 @@ export async function GET(request: NextRequest) {
   const { config } = status;
 
   // Derive the same redirect_uri sent in the authorize request — must match
-  // exactly or Tradovate will reject the token exchange.
-  const redirectUri =
-    config.redirectUriOverride ??
-    new URL("/api/auth/tradovate/callback", request.url).toString();
+  // exactly or Tradovate will reject the token exchange. Uses the same
+  // three-tier priority as the connect route.
+  const redirectUri = resolveRedirectUri(config, request.url);
 
   // ── Token exchange ─────────────────────────────────────────────────────
   // Performs a real POST to Tradovate's token endpoint. On success we

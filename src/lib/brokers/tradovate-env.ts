@@ -77,8 +77,14 @@ export type TradovateConfig = {
   demoClientSecret: string | null;
   /** Will gate token persistence until encryption is wired. */
   tokenEncryptionKey: string;
-  /** Optional explicit override; otherwise derived per request. */
+  /** Explicit override from TRADOVATE_REDIRECT_URI; takes highest priority. */
   redirectUriOverride: string | null;
+  /**
+   * App origin from APP_URL / NEXT_PUBLIC_APP_URL — used as the second-tier
+   * fallback when TRADOVATE_REDIRECT_URI is not set. Prevents the connect
+   * route from sending localhost when Railway terminates TLS at a proxy.
+   */
+  appUrl: string | null;
   /** Per-env URLs (always set; falls back to hardcoded Tradovate defaults). */
   authUrl: Record<TradovateEnv, string>;
   tokenUrl: Record<TradovateEnv, string>;
@@ -131,6 +137,7 @@ export function getTradovateConfig(): TradovateConfigStatus {
       demoClientSecret: readEnv("TRADOVATE_DEMO_CLIENT_SECRET"),
       tokenEncryptionKey: tokenEncryptionKey!,
       redirectUriOverride: readEnv("TRADOVATE_REDIRECT_URI"),
+      appUrl: readEnv("APP_URL") ?? readEnv("NEXT_PUBLIC_APP_URL"),
       authUrl: {
         live: readEnv("TRADOVATE_AUTH_URL_LIVE") ?? DEFAULTS.authUrlLive,
         demo: readEnv("TRADOVATE_AUTH_URL_DEMO") ?? DEFAULTS.authUrlDemo,
@@ -166,3 +173,27 @@ export function getMissingTradovateKeys(): string[] {
 }
 
 export const TRADOVATE_REQUIRED_ENV_KEYS: readonly string[] = REQUIRED_KEYS;
+
+const CALLBACK_PATH = "/api/auth/tradovate/callback";
+
+/**
+ * Resolve the redirect_uri to send to Tradovate, using three-tier priority:
+ *
+ *   1. TRADOVATE_REDIRECT_URI (explicit override — always wins)
+ *   2. APP_URL / NEXT_PUBLIC_APP_URL + callback path (Railway/production safe)
+ *   3. requestUrl origin + callback path (local dev fallback only)
+ *
+ * The third tier exists so local dev works without any extra env config, but
+ * it must never be reached in production because Railway's reverse proxy can
+ * expose an internal localhost origin on the request object.
+ *
+ * Pass `requestUrl` as the full URL string of the incoming Next.js request.
+ * For UI display (no request available), omit it — the function returns the
+ * best static answer it can derive from env vars alone.
+ */
+export function resolveRedirectUri(config: TradovateConfig, requestUrl?: string): string {
+  if (config.redirectUriOverride) return config.redirectUriOverride;
+  if (config.appUrl) return `${config.appUrl.replace(/\/$/, "")}${CALLBACK_PATH}`;
+  if (requestUrl) return new URL(CALLBACK_PATH, requestUrl).toString();
+  return CALLBACK_PATH;
+}

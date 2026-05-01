@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
-import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
 import {
   encodeOAuthState,
   generateOAuthNonce,
@@ -57,9 +57,7 @@ export async function GET(request: NextRequest) {
   }
 
   const clientId = env === "demo" ? config.demoClientId! : config.clientId;
-  const redirectUri =
-    config.redirectUriOverride ??
-    new URL("/api/auth/tradovate/callback", request.url).toString();
+  const redirectUri = resolveRedirectUri(config, request.url);
 
   // State encodes enough context to resume after the callback without a DB
   // round-trip plus a random nonce for CSRF.
@@ -95,10 +93,17 @@ export async function GET(request: NextRequest) {
   const authUrl = `${config.authUrl[env]}?${params.toString()}`;
 
   // Debug-safe diagnostics — logs what was used, never secrets or tokens.
+  const redirectUriSource = config.redirectUriOverride
+    ? "TRADOVATE_REDIRECT_URI"
+    : config.appUrl
+      ? "APP_URL/NEXT_PUBLIC_APP_URL"
+      : "request.url (fallback)";
   console.info("[tradovate/connect] starting OAuth redirect", {
     env,
     authBase: config.authUrl[env],
     redirectUri,
+    redirectUriSource,
+    redirectUriEncoded: params.get("redirect_uri"),
     hasClientId: Boolean(clientId),
   });
 

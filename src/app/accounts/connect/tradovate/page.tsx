@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
-import { getTradovateConfig, isDemoOAuthConfigured } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, isDemoOAuthConfigured, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
 import { TradovateAdapter } from "@/lib/brokers/tradovate-adapter";
 
 export const metadata: Metadata = {
@@ -43,6 +43,11 @@ export default async function ConnectTradovatePage({
   const isConfigured = status.state === "ready";
   const missingKeys = status.state === "not_configured" ? status.missing : [];
   const demoConfigured = isConfigured && isDemoOAuthConfigured();
+  // No request object available in the page; resolveRedirectUri returns the
+  // best static answer from env vars (TRADOVATE_REDIRECT_URI → APP_URL → path only).
+  const effectiveRedirectUri = isConfigured
+    ? resolveRedirectUri(status.config)
+    : null;
 
   // Capability map for the "what this will / won't do" lists.
   const caps = new TradovateAdapter().getCapabilities();
@@ -175,6 +180,14 @@ export default async function ConnectTradovatePage({
                 Your rules and journal entries remain active — the dashboard continues to evaluate
                 from your manual journal until broker reads activate.
               </p>
+              {effectiveRedirectUri && (
+                <p className="text-xs text-stone-400">
+                  Redirect URI in use:{" "}
+                  <code className="rounded bg-stone-100 px-1 py-0.5 text-stone-600">
+                    {effectiveRedirectUri}
+                  </code>
+                </p>
+              )}
             </div>
           </SectionCard>
         ) : (
