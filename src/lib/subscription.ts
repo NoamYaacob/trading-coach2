@@ -1,14 +1,12 @@
 import { SubscriptionStatus } from "@prisma/client";
 
-// Permanent admin emails — always bypass billing gate.
-const HARDCODED_ADMINS = new Set(["noamyaacob12@gmail.com"]);
-
 function getAdminEmails(): Set<string> {
-  const extras = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  return new Set([...HARDCODED_ADMINS, ...extras]);
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 export function isBillingEnabled(): boolean {

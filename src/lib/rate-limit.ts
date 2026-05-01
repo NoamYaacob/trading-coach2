@@ -1,7 +1,15 @@
-// In-memory sliding-window rate limiter.
-// Not suitable for multi-instance deploys — each process has its own store.
-// For horizontal scale, replace checkRateLimit with a Redis/Upstash adapter
-// behind the same interface.
+// ─────────────────────────────────────────────────────────────────────────────
+// WARNING: IN-MEMORY RATE LIMITER — SINGLE-INSTANCE ONLY
+//
+// Rate-limit counters live in this process's heap. They reset to zero on every
+// deploy, crash, or restart. On a multi-instance deployment (e.g. Railway with
+// more than one replica) each instance keeps its own independent counter, so a
+// client can exceed the limit by simply spreading requests across instances.
+//
+// Before horizontally scaling, replace checkRateLimit with a Redis/Upstash
+// adapter that implements the same { ok, retryAfterSeconds } interface. The
+// call sites don't need to change — only this module does.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const store = new Map<string, number[]>();
 let lastPrune = Date.now();

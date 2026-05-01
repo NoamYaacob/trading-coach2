@@ -105,6 +105,32 @@ export async function POST(req: NextRequest) {
       }
       break;
     }
+
+    case "invoice.payment_failed": {
+      // A card charge failed. Set the user to INACTIVE immediately so they
+      // lose access during Stripe's retry window. If the card is fixed and
+      // the next retry succeeds, customer.subscription.updated fires and
+      // restores the status to ACTIVE.
+      const invoice = event.data.object as Stripe.Invoice;
+      // Stripe v22: subscription reference lives under parent.subscription_details
+      const subscriptionRef =
+        invoice.parent?.type === "subscription_details"
+          ? invoice.parent.subscription_details?.subscription
+          : null;
+      if (subscriptionRef) {
+        const subscription = await getStripe().subscriptions.retrieve(
+          String(subscriptionRef),
+        );
+        const userId = subscription.metadata?.userId;
+        if (userId) {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { subscriptionStatus: SubscriptionStatus.INACTIVE },
+          });
+        }
+      }
+      break;
+    }
   }
 
   return NextResponse.json({ received: true });

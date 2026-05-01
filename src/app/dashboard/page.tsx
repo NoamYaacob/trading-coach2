@@ -321,6 +321,24 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {!hasBroker && onboardingComplete && (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+              Manual mode
+            </p>
+            <p className="mt-1 text-sm font-medium text-stone-900">
+              Manual Mode tracks your trades but cannot block orders at your broker. Connect
+              Tradovate to enable broker-based checks.
+            </p>
+            <a
+              href="/accounts/connect/tradovate"
+              className="mt-3 inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+            >
+              Connect Tradovate →
+            </a>
+          </div>
+        )}
+
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
             Trading permission
