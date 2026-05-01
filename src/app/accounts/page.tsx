@@ -10,7 +10,7 @@ import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { AccountCard } from "./_components/account-card";
 
 export const metadata: Metadata = {
-  title: "Accounts — Guardrail",
+  title: "Broker Connections — Guardrail",
 };
 
 export default async function AccountsPage() {
@@ -74,9 +74,10 @@ export default async function AccountsPage() {
 
   return (
     <AppShell
-      eyebrow="Accounts"
-      title="Connect your broker."
-      description="Link Tradovate so Guardrail can verify your account and prepare live risk checks."
+      eyebrow="Broker Connections"
+      title="Connect your broker accounts."
+      description="Link Tradovate so Guardrail can evaluate account data and show broker-connected read-only status."
+      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
       actions={
         <Link
           href={ctaHref}

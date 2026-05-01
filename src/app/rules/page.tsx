@@ -11,7 +11,7 @@ import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 
 export const metadata: Metadata = {
-  title: "Rules — Guardrail",
+  title: "Trading Plan — Guardrail",
 };
 
 function decToString(v: unknown): string {
@@ -66,9 +66,9 @@ export default async function RulesPage() {
 
   return (
     <AppShell
-      eyebrow="Rules"
-      title="Set your trading rules."
-      description="Choose the limits Guardrail should monitor during each session."
+      eyebrow="Trading Plan"
+      title="Set your trading plan."
+      description="Choose the limits Guardrail monitors during each session."
       actions={
         <Link
           href="/guardian"
@@ -80,7 +80,7 @@ export default async function RulesPage() {
     >
       <div className="grid gap-6">
         <SectionCard
-          title="Your rules"
+          title="Your trading plan"
           description="These limits decide when your session is Allowed, Warning, or Locked."
         >
           <div id="guardian-toggle" className="mb-5 scroll-mt-20">

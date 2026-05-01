@@ -11,6 +11,7 @@ type AppShellProps = {
   note?: string;
   children?: ReactNode;
   actions?: ReactNode;
+  statusStrip?: ReactNode;
 };
 
 export async function AppShell({
@@ -20,6 +21,7 @@ export async function AppShell({
   note,
   children,
   actions,
+  statusStrip,
 }: AppShellProps) {
   const user = await getCurrentUser();
 
@@ -36,6 +38,8 @@ export async function AppShell({
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 pb-0 sm:px-6 lg:px-10">
+        {statusStrip ? <div className="-mt-4">{statusStrip}</div> : null}
+
         <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-4 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
@@ -75,4 +79,3 @@ export async function AppShell({
     </div>
   );
 }
-

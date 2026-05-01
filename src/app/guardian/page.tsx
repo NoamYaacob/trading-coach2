@@ -37,7 +37,7 @@ import {
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
-  title: "Guardian — Guardrail",
+  title: "Status details — Guardrail",
 };
 
 type Permission = "SAFE" | "WARNING" | "LOCKED" | "GUARDIAN_OFF";
@@ -233,9 +233,9 @@ export default async function GuardianPage() {
 
   return (
     <AppShell
-      eyebrow="Guardian · Enforcement"
+      eyebrow="Status details · Secondary view"
       title="Why am I allowed, warned, or locked?"
-      description="Your current trading permission and the rule that caused it."
+      description="Detailed explanation of your current trading permission and what triggered it."
       actions={
         <Link
           href="/rules"

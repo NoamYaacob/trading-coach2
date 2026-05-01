@@ -13,14 +13,14 @@ type AppNavItem = {
 };
 
 const PRIMARY_NAV: AppNavItem[] = [
-  { href: "/dashboard", label: "Dashboard", match: "exact" },
-  { href: "/rules", label: "Rules", match: "exact" },
-  { href: "/accounts", label: "Accounts", match: "startsWith" },
+  { href: "/dashboard", label: "Today", match: "exact" },
+  { href: "/rules", label: "Trading Plan", match: "exact" },
+  { href: "/accounts", label: "Broker Connections", match: "startsWith" },
 ];
 
 const MORE_NAV: AppNavItem[] = [
   { href: "/guardian", label: "Status details", match: "exact" },
-  { href: "/journal", label: "Journal", match: "exact" },
+  { href: "/journal", label: "Trade Log", match: "exact" },
   { href: "/alerts", label: "Alerts", match: "exact" },
   { href: "/settings", label: "Settings", match: "exact" },
   { href: "/onboarding", label: "Setup guide", match: "exact" },
@@ -91,7 +91,7 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
           href="/dashboard"
           className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
         >
-          Go to dashboard
+          Go to today
         </Link>
       </nav>
     );
