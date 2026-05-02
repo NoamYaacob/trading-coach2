@@ -4,11 +4,13 @@ import { cookies } from "next/headers";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
+import { CommandHeader } from "@/app/dashboard/_components/command-header";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { EconomicEventsPanel } from "@/app/dashboard/_components/economic-events-panel";
 import { ManualEventForm } from "@/app/dashboard/_components/manual-event-form";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
+import { RuleProgressPanel } from "@/app/dashboard/_components/rule-progress-panel";
 import { TodayActivityTimeline } from "@/app/dashboard/_components/today-activity-timeline";
 import { TodaySessionPanel } from "@/app/dashboard/_components/today-session-panel";
 import { getCurrentUser } from "@/lib/auth";
@@ -114,6 +116,7 @@ export default async function DashboardPage() {
     liveEnforcement,
     brokerCount,
     todayManualTrades,
+    primaryAccount,
   ] = await Promise.all([
     getTodaySessionSummary(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
@@ -127,6 +130,19 @@ export default async function DashboardPage() {
         tradedAt: { gte: tradingDay.start, lt: effectiveManualEnd },
       },
       orderBy: { tradedAt: "asc" },
+    }),
+    prisma.connectedAccount.findFirst({
+      where: { userId: currentUser.id, isActive: true },
+      select: {
+        label: true,
+        platform: true,
+        propFirm: true,
+        accountType: true,
+        connectionStatus: true,
+        lastSyncAt: true,
+        connectedAt: true,
+      },
+      orderBy: { connectedAt: "desc" },
     }),
   ]);
 
@@ -302,16 +318,27 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-8">
-        <TradingStateCard
+        <CommandHeader
+          primaryAccount={primaryAccount ?? null}
+          hasBroker={hasBroker}
           setupNeeded={setupNeeded}
           onboardingComplete={onboardingComplete}
-          hasBroker={hasBroker}
-          guardianKind={todaySessionState.kind}
+          guardianEnabled={guardian.profile.guardianEnabled}
+          todaySessionKind={todaySessionState.kind}
           lockoutActive={guardian.evaluation.lockoutActive}
           liveRiskState={liveEnforcement?.riskState ?? null}
-          connectionStatus={liveEnforcement?.connectionStatus ?? null}
           sessionStarted={todaySessionState.sessionStarted}
           sessionEnded={todaySessionState.sessionEnded}
+        />
+        <RuleProgressPanel
+          todayPnL={todaySessionStateForPanel.todayPnL}
+          todayTradesCount={todaySessionStateForPanel.todayTradesCount}
+          consecutiveLosses={todaySessionStateForPanel.consecutiveLosses}
+          maxDailyLoss={riskRules?.maxDailyLoss ? Number(riskRules.maxDailyLoss) : null}
+          maxTradesPerDay={riskRules?.maxTradesPerDay ?? null}
+          stopAfterLosses={riskRules?.stopAfterLosses ?? null}
+          dailyProfitTarget={riskRules?.dailyProfitTarget ? Number(riskRules.dailyProfitTarget) : null}
+          dataSource={liveEnforcement ? "broker" : hasBroker ? "broker" : "manual"}
         />
 
         <div className="grid gap-4">
@@ -452,133 +479,6 @@ export default async function DashboardPage() {
   );
 }
 
-function TradingStateCard({
-  setupNeeded,
-  onboardingComplete,
-  hasBroker,
-  guardianKind,
-  lockoutActive,
-  liveRiskState,
-  connectionStatus,
-  sessionStarted,
-  sessionEnded,
-}: {
-  setupNeeded: boolean;
-  onboardingComplete: boolean;
-  hasBroker: boolean;
-  guardianKind: string;
-  lockoutActive: boolean;
-  liveRiskState: "NORMAL" | "WARNING" | "STOPPED" | null;
-  connectionStatus: string | null;
-  sessionStarted: boolean;
-  sessionEnded: boolean;
-}) {
-  let permissionLabel: string;
-  let permissionTone: string;
-  if (setupNeeded) {
-    permissionLabel = "Setup needed";
-    permissionTone = "text-stone-500";
-  } else if (guardianKind === "GUARDIAN_DISABLED") {
-    permissionLabel = "Paused";
-    permissionTone = "text-stone-500";
-  } else if (lockoutActive || liveRiskState === "STOPPED") {
-    permissionLabel = "Locked";
-    permissionTone = "text-red-600";
-  } else if (liveRiskState === "WARNING") {
-    permissionLabel = "Warning";
-    permissionTone = "text-amber-600";
-  } else {
-    permissionLabel = "Allowed";
-    permissionTone = "text-emerald-600";
-  }
-
-  const modeLabel = hasBroker ? "Broker-connected read-only" : "Manual Mode";
-  const modeDetail = hasBroker
-    ? "Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
-    : "Tracks trades you enter yourself. Cannot block broker orders.";
-
-  let brokerLabel: string;
-  let brokerTone: string;
-  if (!hasBroker) {
-    brokerLabel = "Not connected";
-    brokerTone = "text-stone-500";
-  } else if (connectionStatus === "connected_live") {
-    brokerLabel = "Live";
-    brokerTone = "text-emerald-600";
-  } else if (connectionStatus === "connected_readonly") {
-    brokerLabel = "Connected · Read-only";
-    brokerTone = "text-sky-600";
-  } else if (connectionStatus === "expired") {
-    brokerLabel = "Stale — re-authorize";
-    brokerTone = "text-orange-600";
-  } else {
-    brokerLabel = "Connected";
-    brokerTone = "text-stone-700";
-  }
-
-  let nextHref: string;
-  let nextText: string;
-  if (!onboardingComplete) {
-    nextHref = "/onboarding";
-    nextText = "Finish onboarding to enable protection →";
-  } else if (setupNeeded) {
-    nextHref = "/rules";
-    nextText = "Set rules on the Rules page to activate protection →";
-  } else if (guardianKind === "GUARDIAN_DISABLED") {
-    nextHref = "/rules#guardian-toggle";
-    nextText = "Enable protection before trading →";
-  } else if (permissionLabel === "Locked") {
-    nextHref = "/guardian";
-    nextText = "Trading paused — reset on the Guardian page →";
-  } else if (permissionLabel === "Warning") {
-    nextHref = "/guardian";
-    nextText = "A rule was triggered — review before your next trade →";
-  } else if (!hasBroker) {
-    nextHref = "/accounts/connect/tradovate";
-    nextText = "Connect Tradovate for broker-based enforcement →";
-  } else if (sessionEnded) {
-    nextHref = "/guardian";
-    nextText = "Session ended — review today's activity →";
-  } else if (sessionStarted) {
-    nextHref = "/guardian";
-    nextText = "Session active — rules are monitoring your trades →";
-  } else {
-    nextHref = "/guardian";
-    nextText = "Start a session when ready to trade →";
-  }
-
-  return (
-    <div className="rounded-2xl border border-stone-200 bg-white/90 px-5 py-5 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)]">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-        Current trading state
-      </p>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <p className="text-xs font-medium text-stone-400">Permission</p>
-          <p className={`mt-1 text-sm font-semibold ${permissionTone}`}>{permissionLabel}</p>
-        </div>
-        <div>
-          <p className="text-xs font-medium text-stone-400">Mode</p>
-          <p className="mt-1 text-sm font-medium text-stone-800">{modeLabel}</p>
-          <p className="mt-0.5 text-xs leading-5 text-stone-500">{modeDetail}</p>
-        </div>
-        <div>
-          <p className="text-xs font-medium text-stone-400">Broker</p>
-          <p className={`mt-1 text-sm font-medium ${brokerTone}`}>{brokerLabel}</p>
-        </div>
-        <div className="sm:col-span-2 lg:col-span-1">
-          <p className="text-xs font-medium text-stone-400">Next</p>
-          <a
-            href={nextHref}
-            className="mt-1 block text-sm text-stone-700 underline-offset-2 hover:text-stone-950 hover:underline"
-          >
-            {nextText}
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function GuardianPausedPanel() {
   return (

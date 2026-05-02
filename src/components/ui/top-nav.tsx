@@ -13,7 +13,7 @@ type AppNavItem = {
 };
 
 const PRIMARY_NAV: AppNavItem[] = [
-  { href: "/dashboard", label: "Today", match: "exact" },
+  { href: "/dashboard", label: "Dashboard", match: "exact" },
   { href: "/rules", label: "Trading Plan", match: "exact" },
   { href: "/accounts", label: "Broker Connections", match: "startsWith" },
 ];
