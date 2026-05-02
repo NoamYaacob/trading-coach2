@@ -52,7 +52,7 @@ import {
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
-  title: "Today — Guardrail",
+  title: "Dashboard — Guardrail",
 };
 
 export default async function DashboardPage() {
@@ -289,50 +289,11 @@ export default async function DashboardPage() {
   const setupNeeded =
     !onboardingComplete || (onboardingComplete && !riskRules);
 
-  const permissionLabel =
-    todaySessionState.kind === "LOCKED_BY_GUARDIAN"
-      ? "Locked"
-      : todaySessionState.kind === "ONBOARDING_REQUIRED"
-        ? "Setup needed"
-        : manualRisk.permission === "WARNING"
-          ? "Warning"
-          : "Allowed";
-  const accountLabel = hasBroker ? "Tradovate" : "No broker connected";
-  const modeLabel = hasBroker ? "Broker-connected read-only" : "Manual Mode";
-  const brokerDataLabel = hasBroker
-    ? liveEnforcement?.connectedAt
-      ? `Last sync ${new Intl.DateTimeFormat("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          second: "2-digit",
-        }).format(liveEnforcement.connectedAt)}`
-      : "Fresh"
-    : "Not connected";
-  const nextAction = setupNeeded
-    ? !onboardingComplete
-      ? "Finish setup to enable trading permission checks."
-      : "Set your Trading Plan to enable permission checks."
-    : hasBroker
-      ? "Review status details before entering your next trade."
-      : "Connect Tradovate or continue in Manual Mode.";
-
   return (
     <AppShell
-      eyebrow="Today · Command Center"
-      title="Can I trade right now?"
-      description="See your trading permission, why, your account mode, and the next action in one view."
-      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
-      statusStrip={
-        <section className="rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(28,25,23,0.3)]">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <StatusItem label="Account" value={accountLabel} />
-            <StatusItem label="Mode" value={modeLabel} />
-            <StatusItem label="Permission" value={permissionLabel} />
-            <StatusItem label="Broker data" value={brokerDataLabel} />
-            <StatusItem label="Next action" value={nextAction} />
-          </div>
-        </section>
-      }
+      eyebrow="TODAY'S TRADING STATE"
+      title="Your trading dashboard"
+      description="See your current permission, trading plan, account mode, and next action before you trade."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -341,42 +302,17 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-8">
-        {setupNeeded && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-              Setup needed
-            </p>
-            <p className="mt-1 text-sm font-medium text-stone-900">
-              {!onboardingComplete
-                ? "Finish onboarding to enable Guardian."
-                : "Set your trading rules so Guardian can evaluate the session."}
-            </p>
-            <a
-              href={!onboardingComplete ? "/onboarding" : "/rules"}
-              className="mt-3 inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
-            >
-              {!onboardingComplete ? "Continue onboarding →" : "Set rules →"}
-            </a>
-          </div>
-        )}
-
-        {!hasBroker && onboardingComplete && (
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-              Manual mode
-            </p>
-            <p className="mt-1 text-sm font-medium text-stone-900">
-	              Manual Mode tracks trades you enter yourself. It cannot block broker orders.
-                Connect Tradovate to evaluate broker data automatically.
-            </p>
-            <a
-              href="/accounts/connect/tradovate"
-              className="mt-3 inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
-            >
-              Connect Tradovate →
-            </a>
-          </div>
-        )}
+        <TradingStateCard
+          setupNeeded={setupNeeded}
+          onboardingComplete={onboardingComplete}
+          hasBroker={hasBroker}
+          guardianKind={todaySessionState.kind}
+          lockoutActive={guardian.evaluation.lockoutActive}
+          liveRiskState={liveEnforcement?.riskState ?? null}
+          connectionStatus={liveEnforcement?.connectionStatus ?? null}
+          sessionStarted={todaySessionState.sessionStarted}
+          sessionEnded={todaySessionState.sessionEnded}
+        />
 
         <div className="grid gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
@@ -516,6 +452,134 @@ export default async function DashboardPage() {
   );
 }
 
+function TradingStateCard({
+  setupNeeded,
+  onboardingComplete,
+  hasBroker,
+  guardianKind,
+  lockoutActive,
+  liveRiskState,
+  connectionStatus,
+  sessionStarted,
+  sessionEnded,
+}: {
+  setupNeeded: boolean;
+  onboardingComplete: boolean;
+  hasBroker: boolean;
+  guardianKind: string;
+  lockoutActive: boolean;
+  liveRiskState: "NORMAL" | "WARNING" | "STOPPED" | null;
+  connectionStatus: string | null;
+  sessionStarted: boolean;
+  sessionEnded: boolean;
+}) {
+  let permissionLabel: string;
+  let permissionTone: string;
+  if (setupNeeded) {
+    permissionLabel = "Setup needed";
+    permissionTone = "text-stone-500";
+  } else if (guardianKind === "GUARDIAN_DISABLED") {
+    permissionLabel = "Paused";
+    permissionTone = "text-stone-500";
+  } else if (lockoutActive || liveRiskState === "STOPPED") {
+    permissionLabel = "Locked";
+    permissionTone = "text-red-600";
+  } else if (liveRiskState === "WARNING") {
+    permissionLabel = "Warning";
+    permissionTone = "text-amber-600";
+  } else {
+    permissionLabel = "Allowed";
+    permissionTone = "text-emerald-600";
+  }
+
+  const modeLabel = hasBroker ? "Broker-connected read-only" : "Manual Mode";
+  const modeDetail = hasBroker
+    ? "Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
+    : "Tracks trades you enter yourself. Cannot block broker orders.";
+
+  let brokerLabel: string;
+  let brokerTone: string;
+  if (!hasBroker) {
+    brokerLabel = "Not connected";
+    brokerTone = "text-stone-500";
+  } else if (connectionStatus === "connected_live") {
+    brokerLabel = "Live";
+    brokerTone = "text-emerald-600";
+  } else if (connectionStatus === "connected_readonly") {
+    brokerLabel = "Connected · Read-only";
+    brokerTone = "text-sky-600";
+  } else if (connectionStatus === "expired") {
+    brokerLabel = "Stale — re-authorize";
+    brokerTone = "text-orange-600";
+  } else {
+    brokerLabel = "Connected";
+    brokerTone = "text-stone-700";
+  }
+
+  let nextHref: string;
+  let nextText: string;
+  if (!onboardingComplete) {
+    nextHref = "/onboarding";
+    nextText = "Finish onboarding to enable protection →";
+  } else if (setupNeeded) {
+    nextHref = "/rules";
+    nextText = "Set rules on the Rules page to activate protection →";
+  } else if (guardianKind === "GUARDIAN_DISABLED") {
+    nextHref = "/rules#guardian-toggle";
+    nextText = "Enable protection before trading →";
+  } else if (permissionLabel === "Locked") {
+    nextHref = "/guardian";
+    nextText = "Trading paused — reset on the Guardian page →";
+  } else if (permissionLabel === "Warning") {
+    nextHref = "/guardian";
+    nextText = "A rule was triggered — review before your next trade →";
+  } else if (!hasBroker) {
+    nextHref = "/accounts/connect/tradovate";
+    nextText = "Connect Tradovate for broker-based enforcement →";
+  } else if (sessionEnded) {
+    nextHref = "/guardian";
+    nextText = "Session ended — review today's activity →";
+  } else if (sessionStarted) {
+    nextHref = "/guardian";
+    nextText = "Session active — rules are monitoring your trades →";
+  } else {
+    nextHref = "/guardian";
+    nextText = "Start a session when ready to trade →";
+  }
+
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white/90 px-5 py-5 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)]">
+      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+        Current trading state
+      </p>
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-xs font-medium text-stone-400">Permission</p>
+          <p className={`mt-1 text-sm font-semibold ${permissionTone}`}>{permissionLabel}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-stone-400">Mode</p>
+          <p className="mt-1 text-sm font-medium text-stone-800">{modeLabel}</p>
+          <p className="mt-0.5 text-xs leading-5 text-stone-500">{modeDetail}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-stone-400">Broker</p>
+          <p className={`mt-1 text-sm font-medium ${brokerTone}`}>{brokerLabel}</p>
+        </div>
+        <div className="sm:col-span-2 lg:col-span-1">
+          <p className="text-xs font-medium text-stone-400">Next</p>
+          <a
+            href={nextHref}
+            className="mt-1 block text-sm text-stone-700 underline-offset-2 hover:text-stone-950 hover:underline"
+          >
+            {nextText}
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GuardianPausedPanel() {
   return (
     <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-4 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
@@ -563,13 +627,3 @@ function QuickAction({
   );
 }
 
-function StatusItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-medium text-stone-900">{value}</p>
-    </div>
-  );
-}
