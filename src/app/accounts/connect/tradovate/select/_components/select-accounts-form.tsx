@@ -77,6 +77,8 @@ export function SelectAccountsForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   function updateRow(idx: number, patch: Partial<AccountRow>) {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
@@ -130,26 +132,63 @@ export function SelectAccountsForm({
     }
   }
 
+  async function handleRetrySync() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const res = await fetch("/api/auth/tradovate/retry-account-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setupId }),
+      });
+      const data = (await res.json()) as { ok?: boolean; count?: number; error?: string };
+      if (!res.ok) {
+        setRetryError("Could not sync accounts. Please try again or start a new connection.");
+        return;
+      }
+      if (!data.ok || (data.count ?? 0) === 0) {
+        setRetryError(
+          "Still no accounts found. Check that the correct environment (Demo or Live) is active for your Tradovate account.",
+        );
+        return;
+      }
+      // Accounts found — reload to get the updated server-rendered list.
+      window.location.reload();
+    } catch {
+      setRetryError("Network error. Please try again.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   if (discoveredAccounts.length === 0) {
     return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5">
-        <p className="text-sm font-semibold text-amber-800">No accounts found</p>
-        <p className="mt-1 text-sm text-amber-700">
-          Tradovate did not return any accounts for this connection. This can happen if the
-          {env === "demo" ? " demo" : " live"} environment is not activated for your account.
-        </p>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Link
-            href="/accounts/connect/tradovate"
-            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      <div className="grid gap-4">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5">
+          <p className="text-sm font-semibold text-amber-800">Account list not available yet</p>
+          <p className="mt-1 text-sm text-amber-700">
+            We connected Tradovate, but could not read your account list. This can happen if the
+            authorization hasn&rsquo;t fully synced yet, or if the{" "}
+            {env === "demo" ? "demo" : "live"} environment isn&rsquo;t activated for your account.
+          </p>
+          {retryError && (
+            <p className="mt-3 text-xs font-medium text-red-700">{retryError}</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={handleRetrySync}
+            disabled={retrying}
+            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
           >
-            Try again
-          </Link>
+            {retrying ? "Syncing…" : "Retry account sync"}
+          </button>
           <Link
             href="/accounts"
             className="inline-flex items-center justify-center rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
           >
-            Go to accounts
+            Back to accounts
           </Link>
         </div>
       </div>
