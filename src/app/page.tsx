@@ -50,7 +50,7 @@ const STEPS = [
     tagCls: "bg-red-100 text-red-700",
     title: "Session locks when a rule breaks",
     detail:
-      "When a limit is hit, the session locks inside the app. You see exactly which rule fired and when the reset window opens. App-level enforcement today.",
+      "When a limit is hit, the session locks inside the app. You see which rule fired and when the reset window opens. App-level enforcement today.",
   },
 ];
 
@@ -84,17 +84,17 @@ const RULES: Array<{ name: string; description: string; badge: RuleBadge }> = [
   },
   {
     name: "Daily Profit Target",
-    description: "Lock in a good day. Session stops when you hit your target. Manual mode today; broker mode in progress.",
+    description: "Lock in a good day. Session stops when you hit your target.",
     badge: "partial",
   },
   {
     name: "Risk Per Trade",
-    description: "Flag entries that risk more than your per-trade limit. Manual mode today.",
+    description: "Flag entries that risk more than your per-trade limit.",
     badge: "partial",
   },
   {
     name: "Allowed Trading Days",
-    description: "Set which days of the week you trade. Evaluation is skipped on blocked days.",
+    description: "Set which days of the week you trade. Evaluation skips blocked days.",
     badge: "partial",
   },
   {
@@ -139,37 +139,21 @@ const ENFORCEMENT_PLANNED = [
   "Additional broker integrations",
 ];
 
-const BROKERS: Array<{
-  name: string;
-  status: "live" | "planned";
-  description: string;
-}> = [
+const BROKERS: Array<{ name: string; status: "live" | "planned"; description?: string }> = [
   {
     name: "Tradovate",
     status: "live",
     description:
-      "First integration. Read-only webhook connection — trade events are evaluated against your rules in real time.",
+      "First integration. Read-only webhook connection — trade events evaluated against your rules in real time.",
   },
-  {
-    name: "Rithmic",
-    status: "planned",
-    description: "Planned integration.",
-  },
-  {
-    name: "NinjaTrader",
-    status: "planned",
-    description: "Planned integration.",
-  },
-  {
-    name: "Interactive Brokers",
-    status: "planned",
-    description: "Planned integration.",
-  },
+  { name: "Rithmic", status: "planned" },
+  { name: "NinjaTrader", status: "planned" },
+  { name: "Interactive Brokers", status: "planned" },
 ];
 
 const INCLUDED_FEATURES = [
-  "Daily loss limit, max trades, loss-streak stop, session hours",
   "Live rule evaluation — Allowed, Warning, or Locked",
+  "Daily loss limit, max trades, loss-streak stop, session hours",
   "Tradovate read-only connection — trade events vs. your rules",
   "Manual Mode — full rule engine before broker connection",
   "Telegram alerts when a limit triggers",
@@ -178,15 +162,11 @@ const INCLUDED_FEATURES = [
 const FAQS = [
   {
     q: "Does Guardrail block my broker orders?",
-    a: "No — not today. When a rule breaks, the session locks inside the Guardrail app and you receive a Telegram alert if connected. Guardrail does not send any commands to your broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each broker integration.",
-  },
-  {
-    q: "Is the broker connection read-only?",
-    a: "Yes. The current Tradovate connection is read-only. Guardrail receives trade events via webhook to evaluate your rules against real trades. It cannot place, modify, or cancel orders.",
+    a: "Not yet. Today, enforcement is app-level: the session locks inside Guardrail and you receive a Telegram alert if connected. Guardrail does not send commands to your broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each broker integration.",
   },
   {
     q: "What happens when a rule is hit?",
-    a: "The session moves to Locked. A banner shows which rule fired and when the reset window opens — by default, the start of the next trading day. If Telegram is connected, you receive an alert immediately. Nothing happens at the broker level today.",
+    a: "The session moves to Locked. A banner shows which rule fired and when the reset window opens — by default, the start of the next trading day. If Telegram is connected, you receive an alert immediately. Nothing happens at the broker level.",
   },
   {
     q: "Does it work for prop firm evaluation and funded accounts?",
@@ -197,12 +177,12 @@ const FAQS = [
     a: "Manual Mode lets you use Guardrail before a broker is connected. Log trades yourself and the same rule engine evaluates Allowed / Warning / Locked based on your entries. It's the best way to test your rule setup before going live.",
   },
   {
-    q: "Can I change my rules during a trading day?",
-    a: "Currently yes — there is no hard lock on rule changes during an active session. This is a known limitation we plan to address. We recommend treating your rules as locked from the moment you start the session. Rule locking during active sessions is on the roadmap.",
+    q: "Which brokers are supported? Is the connection read-only?",
+    a: "Tradovate is the first integration — read-only webhook connection. Guardrail receives trade events to evaluate your rules in real time. It cannot place, modify, or cancel orders. Rithmic, NinjaTrader, and Interactive Brokers are planned. Connect Tradovate from your account settings.",
   },
   {
-    q: "Which brokers are supported?",
-    a: "Tradovate is the first integration — read-only webhook connection. Rithmic, NinjaTrader, and Interactive Brokers are planned. Connect Tradovate from your account settings.",
+    q: "Can I change my rules during a trading day?",
+    a: "You can edit rules at any time — there's no automatic lock during active sessions today. We recommend setting your rules before the open and treating them as final until the day ends. Session-based rule locking is on the roadmap.",
   },
   {
     q: "How does Telegram fit in?",
@@ -234,7 +214,7 @@ export default async function Home() {
         href="#how-it-works"
         className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
       >
-        See how it works
+        See how it works ↓
       </a>
     </>
   );
@@ -249,7 +229,7 @@ export default async function Home() {
           Guardrail holds you to them.
         </>
       }
-      description="Set your daily loss, max trades, and session rules before the market opens. When a rule breaks, Guardrail locks the session inside the app and alerts you — with broker-side enforcement planned only after verified broker support."
+      description="Set your daily loss, max trades, and session rules before the market opens. When a rule breaks, Guardrail locks the session and alerts you immediately."
       note="App-level lock today · Broker-connected read-only mode · Broker-side enforcement planned after verification"
       actions={heroActions}
     >
@@ -266,10 +246,7 @@ export default async function Home() {
               <span className="text-stone-400">You break them anyway.</span>
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
-              Every futures trader has a plan before the market opens. Daily loss limit, max trades, no revenge trading. Those rules exist because you set them when you were thinking clearly.
-            </p>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
-              Then the session starts. A losing trade creates pressure to recover. A strong setup creates pressure to size up. Before you know it, the rules you made are the rules you broke.
+              Every futures trader sets rules before the market opens — daily loss limit, max trades, no revenge trading. Then the session starts. A losing trade creates pressure to recover. A strong setup creates temptation to size up. The rules you made when thinking clearly are the ones you break under pressure.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -384,7 +361,7 @@ export default async function Home() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
-              Partial — available in manual mode; full broker evaluation in progress
+              Partial — manual mode today
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-stone-300" aria-hidden />
@@ -403,7 +380,7 @@ export default async function Home() {
               What Guardrail does today. What&rsquo;s coming.
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              We only ship broker-side enforcement after live verification with each integration. Until then, the lock is app-level and honest about it.
+              We only ship broker-side enforcement after live verification with each integration. Until then, the lock is app-level.
             </p>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
@@ -439,7 +416,7 @@ export default async function Home() {
                 ))}
               </ul>
               <p className="mt-3 text-xs leading-5 text-stone-400">
-                Broker-side actions require write-level API permissions. Each broker integration is verified live before it ships.
+                Broker-side actions require write-level API permissions. Each integration is verified live before it ships.
               </p>
             </div>
           </div>
@@ -466,9 +443,9 @@ export default async function Home() {
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8 lg:p-10">
           <p className="mb-8 max-w-2xl text-base leading-7 text-stone-600">
             <span className="font-semibold text-stone-950">
-              One prevented bad trade pays for the month.
+              One stopped bad trade pays for the month.
             </span>{" "}
-            Most traders find that a single stopped revenge trade or oversized entry would have cost more than a month&rsquo;s subscription.
+            A single prevented revenge trade or oversized entry typically costs more than a month&rsquo;s subscription. The math is straightforward.
           </p>
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
@@ -700,7 +677,7 @@ function BrokerCard({
 }: {
   name: string;
   status: "live" | "planned";
-  description: string;
+  description?: string;
 }) {
   const isLive = status === "live";
   return (
@@ -710,9 +687,7 @@ function BrokerCard({
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <p
-          className={`text-sm font-semibold ${isLive ? "text-stone-950" : "text-stone-500"}`}
-        >
+        <p className={`text-sm font-semibold ${isLive ? "text-stone-950" : "text-stone-500"}`}>
           {name}
         </p>
         <span
@@ -723,7 +698,9 @@ function BrokerCard({
           {isLive ? "Read-only" : "Planned"}
         </span>
       </div>
-      <p className="mt-2 text-xs leading-5 text-stone-500">{description}</p>
+      {description && (
+        <p className="mt-2 text-xs leading-5 text-stone-500">{description}</p>
+      )}
     </div>
   );
 }
