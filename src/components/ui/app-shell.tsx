@@ -8,7 +8,7 @@ type AppShellProps = {
   eyebrow: string;
   title: ReactNode;
   description: string;
-  note?: string;
+  note?: ReactNode;
   children?: ReactNode;
   actions?: ReactNode;
   heroPreview?: ReactNode;
@@ -62,6 +62,11 @@ export async function AppShell({
               {actions && (
                 <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
                   {actions}
+                </div>
+              )}
+              {heroPreview && (
+                <div className="mt-5 lg:hidden">
+                  {heroPreview}
                 </div>
               )}
             </div>

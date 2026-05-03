@@ -191,7 +191,7 @@ const FAQS = [
     a: "Not yet. Today the session locks inside Guardrail — if Telegram is connected, you get an alert immediately. Nothing happens at the broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each integration.",
   },
   {
-    q: "What is the difference between app-level lock and broker-side enforcement?",
+    q: "App-level lock vs. broker-side enforcement — what's the difference?",
     a: "App-level lock means the session moves to Locked inside Guardrail and you are alerted. Your broker account is unaffected — you could still place trades there manually. Broker-side enforcement means Guardrail would cancel orders or flatten positions directly at the broker level. That requires verified write-level API permissions and is planned, not live today.",
   },
   {
@@ -260,7 +260,12 @@ export default async function Home() {
         </>
       }
       description="Set your daily loss, max trades, session hours, and loss-streak rules before the open. When pressure hits, Guardrail keeps the session inside those limits."
-      note="App-level locks today · Read-only broker connection first · Broker-side enforcement ships only after verified integration support"
+      note={
+        <>
+          <span className="hidden sm:inline">App-level locks today · Read-only broker connection first · Broker-side enforcement ships only after verified integration support</span>
+          <span className="sm:hidden">App-level locks today. Broker-side enforcement after verified support.</span>
+        </>
+      }
       actions={heroActions}
       heroPreview={user ? undefined : <HeroStatusPreview />}
     >
@@ -284,7 +289,7 @@ export default async function Home() {
             {PAIN_SCENARIOS.map((s) => (
               <div
                 key={s.title}
-                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]"
+                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-5 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
               >
                 <p className="text-sm font-semibold text-stone-950">{s.title}</p>
                 <p className="mt-2 text-sm leading-6 text-stone-600">{s.body}</p>
@@ -292,7 +297,7 @@ export default async function Home() {
             ))}
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+            <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-5 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The problem</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
                 Rules are easy before the session.
@@ -301,7 +306,7 @@ export default async function Home() {
                 Before the first trade, you know exactly what you should and should not do.
               </p>
             </div>
-            <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50/60 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+            <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50/60 px-4 py-5 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-600">The solution</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
                 Every trade is checked against your limits.
@@ -310,7 +315,7 @@ export default async function Home() {
                 Guardrail evaluates trade events against your rules and moves the session through Allowed, Warning, or Locked.
               </p>
             </div>
-            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-4 py-5 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The result</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-50">
                 When a rule breaks, the session stops.
@@ -336,7 +341,7 @@ export default async function Home() {
             {STEPS.map((step) => (
               <div
                 key={step.n}
-                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]"
+                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-5 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-mono text-2xl font-bold text-stone-200">{step.n}</p>
@@ -543,25 +548,25 @@ export default async function Home() {
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-4 py-4 sm:px-5 sm:py-5">
               <p className="text-sm font-semibold text-stone-50">Read-only broker connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
                 Guardrail needs trade events to evaluate rules. It does not need to place trades in read-only mode.
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-4 py-4 sm:px-5 sm:py-5">
               <p className="text-sm font-semibold text-stone-50">No broker password stored</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
                 When supported, connections use broker authorization or scoped tokens instead of asking for your broker password.
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-4 py-4 sm:px-5 sm:py-5">
               <p className="text-sm font-semibold text-stone-50">You control the connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
                 Disconnect your broker integration from account settings at any time. Guardrail keeps your rule configuration but stops receiving trade data immediately.
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-4 py-4 sm:px-5 sm:py-5">
               <p className="text-sm font-semibold text-stone-50">Works without a broker connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
                 Manual Mode lets you use the rule engine before connecting anything. Log trades yourself and the same evaluation runs — Allowed, Warning, or Locked.
@@ -588,20 +593,20 @@ export default async function Home() {
               <BrokerCard key={broker.name} {...broker} />
             ))}
           </div>
-          <p className="mt-4 text-xs text-stone-400">
-            Don&rsquo;t see your broker?{" "}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <p className="text-xs text-stone-400">Don&rsquo;t see your broker?</p>
             <a
               href="mailto:support@guardrail.trade"
-              className="font-medium text-stone-600 underline-offset-2 hover:underline"
+              className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition hover:border-stone-500 hover:text-stone-950"
             >
               Request a broker
             </a>
-          </p>
+          </div>
         </section>
 
         {/* ── Pricing ──────────────────────────────────────────────────────── */}
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8 lg:p-10">
-          <p className="mb-8 max-w-2xl text-base leading-7 text-stone-600">
+          <p className="mb-5 max-w-2xl text-base leading-7 text-stone-600 sm:mb-8">
             <span className="font-semibold text-stone-950">
               One stopped rule break can pay for the month.
             </span>{" "}
@@ -702,9 +707,9 @@ export default async function Home() {
               <details
                 key={faq.q}
                 name="faq"
-                className="group rounded-2xl border border-stone-200 bg-white/90 px-6 py-4 transition-colors hover:bg-stone-50/60"
+                className="group rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 transition-colors hover:bg-stone-50/60 sm:px-6 sm:py-4"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold tracking-[-0.02em] text-stone-950">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold tracking-[-0.02em] text-stone-950 sm:text-base">
                   {faq.q}
                   <span className="shrink-0 text-stone-500 transition-transform group-open:rotate-45">
                     +
@@ -720,7 +725,7 @@ export default async function Home() {
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+              <h2 className="text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl lg:text-3xl">
                 Your rules, enforced. Starting now.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
@@ -835,7 +840,7 @@ function RuleCard({
 }) {
   const cfg = RULE_BADGE_CONFIG[badge];
   return (
-    <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-5 py-5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]">
+    <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)] sm:px-5 sm:py-5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold leading-5 text-stone-950">{name}</p>
         <span
@@ -852,7 +857,7 @@ function RuleCard({
 
 function HeroStatusPreview() {
   return (
-    <div className="w-60 rounded-2xl border border-red-300/60 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(185,28,28,0.18)]">
+    <div className="w-full rounded-2xl border border-red-300/60 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(185,28,28,0.18)] lg:w-60">
       <div className="mb-1 flex items-center justify-between">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
           Today&rsquo;s session
