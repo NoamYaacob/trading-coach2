@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
-import { RoiCalculator } from "@/components/roi-calculator";
 
 export const metadata: Metadata = {
   title: "Guardrail — Trading rules that hold under pressure",
@@ -577,20 +576,52 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* ── ROI Calculator ───────────────────────────────────────────────── */}
+        {/* ── The math ─────────────────────────────────────────────────────── */}
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8 lg:p-10">
           <div className="mb-8 max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
               The math
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              What are rule breaks costing you?
+              One bad month, compounded.
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Most traders underestimate how much undisciplined sessions cost across a month. Adjust the numbers to match your reality.
+              The cost isn&rsquo;t one bad trade. It&rsquo;s the pattern — the same mistake, repeated across a month.
             </p>
           </div>
-          <RoiCalculator />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl bg-stone-50 px-6 py-6 text-center">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
+                Rule breaks / month
+              </p>
+              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-950">4</p>
+              <p className="mt-2 text-xs text-stone-500">
+                Revenge trade, oversized entry, one more trade, ignored streak stop
+              </p>
+            </div>
+            <div className="rounded-2xl bg-stone-50 px-6 py-6 text-center">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
+                Average loss per break
+              </p>
+              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-950">$150</p>
+              <p className="mt-2 text-xs text-stone-500">
+                Often more — one oversized entry can wipe a full day&rsquo;s gains
+              </p>
+            </div>
+            <div className="rounded-2xl bg-stone-950 px-6 py-6 text-center">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
+                Lost per year
+              </p>
+              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-50">$7,200</p>
+              <p className="mt-2 text-xs text-stone-400">
+                From trades you knew you shouldn&rsquo;t have taken
+              </p>
+            </div>
+          </div>
+          <p className="mt-5 rounded-2xl border border-stone-100 bg-stone-50 px-5 py-4 text-sm leading-6 text-stone-600">
+            Guardrail costs{" "}
+            <span className="font-semibold text-stone-950">$49/month</span>. At those numbers, one prevented rule break covers the subscription. The rest is recovered capital.
+          </p>
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────────────── */}
