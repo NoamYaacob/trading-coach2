@@ -14,22 +14,30 @@ const PROP_FIRMS = [
   "Other",
 ] as const;
 
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+const ERROR_MESSAGES: Record<string, string> = {
+  // Rate limiting
+  too_many_requests: "Too many connection attempts. Please wait a minute and try again.",
+  // Configuration
   oauth_not_configured: "Tradovate OAuth is not fully configured on this server.",
+  live_oauth_not_configured: "Live Tradovate connection is not configured yet.",
   demo_oauth_not_configured:
-    "Demo / Simulation connection is not configured yet. Use Live for a personal Tradovate account, or contact support.",
+    "Demo / Simulation connection is not configured yet. Prop firm evaluation and simulated funded accounts usually require Demo / Simulation.",
+  // OAuth flow
   token_exchange_failed: "Tradovate rejected the authorization code. Please try again.",
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
   token_storage_failed: "OAuth completed but token storage failed. Please try again or contact support.",
+  oauth_failed: "Authorization failed. Please try again.",
   csrf_mismatch: "Authorization session expired or was tampered with. Please try again.",
   session_mismatch: "Authorization session did not match. Please log in and start the connection again.",
   invalid_state: "Invalid authorization state. Please start the connection again.",
   missing_params: "Authorization response was incomplete. Please try again.",
   unauthenticated: "Your session expired during authorization. Please log in and try again.",
-  too_many_requests: "Too many authorization attempts. Please wait an hour and try again.",
   access_denied: "You declined to authorize Guardrail.",
+  // Setup flow
+  invalid_setup: "Setup session is invalid. Please start again.",
   setup_not_found: "Setup session expired. Please start again.",
   setup_expired: "Setup session expired. Please start again.",
+  no_accounts_found: "No accounts were found for this connection. Please check your Tradovate account and try again.",
 };
 
 type AccountSource = "prop_firm" | "personal" | "demo" | "other";
@@ -42,7 +50,7 @@ export function ConnectTradovateClient({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const oauthError = searchParams.get("oauth_error");
+  const errorCode = searchParams.get("error");
 
   const [accountSource, setAccountSource] = useState<AccountSource>("prop_firm");
   const [propFirm, setPropFirm] = useState<string>("Apex Trader Funding");
@@ -151,9 +159,9 @@ export function ConnectTradovateClient({
           </p>
         </div>
 
-        {oauthError && (
+        {errorCode && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700">
-            {OAUTH_ERROR_MESSAGES[oauthError] ?? "Authorization failed. Please try again."}
+            {ERROR_MESSAGES[errorCode] ?? "Authorization failed. Please try again."}
           </div>
         )}
 
@@ -350,7 +358,7 @@ export function ConnectTradovateClient({
                 className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
               >
                 {submitting
-                  ? "Starting…"
+                  ? "Redirecting…"
                   : demoBlocked
                     ? "Demo not available yet"
                     : "Continue to Tradovate authorization →"}

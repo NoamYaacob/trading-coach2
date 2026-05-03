@@ -32,7 +32,7 @@ type DiscoveredAccount = {
 
 function backToConnectPage(request: NextRequest, error: string) {
   const base = resolveAppBaseUrl(request.url);
-  const target = `${base}/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`;
+  const target = `${base}/accounts/connect/tradovate?error=${encodeURIComponent(error)}`;
   console.info("[tradovate/callback] redirecting to connect page", { error, target });
   return NextResponse.redirect(target);
 }

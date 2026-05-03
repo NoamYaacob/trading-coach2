@@ -18,7 +18,7 @@ const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 function backToConnectPage(request: NextRequest, error: string) {
   const base = resolveAppBaseUrl(request.url);
   return NextResponse.redirect(
-    `${base}/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`,
+    `${base}/accounts/connect/tradovate?error=${encodeURIComponent(error)}`,
   );
 }
 
@@ -34,6 +34,10 @@ export async function GET(request: NextRequest) {
     return backToConnectPage(request, "too_many_requests");
   }
 
+  // Read env before config check so we can emit env-specific error codes.
+  const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
+  const setupId = request.nextUrl.searchParams.get("setupId") ?? undefined;
+
   const status = getTradovateConfig();
 
   // Until ALL required env vars are present (including the token-encryption
@@ -42,13 +46,13 @@ export async function GET(request: NextRequest) {
   // is exactly the kind of "fake connected" state we promised never to
   // ship.
   if (status.state !== "ready") {
-    return backToConnectPage(request, "oauth_not_configured");
+    return backToConnectPage(
+      request,
+      env === "live" ? "live_oauth_not_configured" : "oauth_not_configured",
+    );
   }
 
   const { config } = status;
-
-  const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
-  const setupId = request.nextUrl.searchParams.get("setupId") ?? undefined;
 
   // For demo env, require separate credentials — Tradovate rejects live
   // client_id at trader-d.tradovate.com with "Wrong client_id".

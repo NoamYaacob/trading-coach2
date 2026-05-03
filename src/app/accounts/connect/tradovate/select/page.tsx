@@ -47,10 +47,10 @@ export default async function SelectAccountsPage({
 
   // Expired, tampered, or not yet OAuth-completed → back to start.
   if (!setup) {
-    redirect("/accounts/connect/tradovate?oauth_error=setup_not_found");
+    redirect("/accounts/connect/tradovate?error=setup_not_found");
   }
   if (!setup.brokerConnectionId) {
-    redirect("/accounts/connect/tradovate?oauth_error=setup_not_found");
+    redirect("/accounts/connect/tradovate?error=setup_not_found");
   }
 
   let discoveredAccounts: DiscoveredAccount[] = [];
