@@ -64,10 +64,10 @@ export async function AppShell({
 
         <footer className="mt-6 border-t border-stone-200/70 py-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <p className="max-w-md text-xs leading-5 text-stone-400">
+            <p className="max-w-md text-xs leading-5 text-stone-500">
               Guardrail is a discipline and risk-management tool. It does not provide financial advice or guarantee trading results. Trading involves substantial risk of loss.
             </p>
-            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-400">
+            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
               <Link href="/terms" className="transition hover:text-stone-700">Terms</Link>
               <Link href="/privacy" className="transition hover:text-stone-700">Privacy</Link>
               <Link href="/risk-disclaimer" className="transition hover:text-stone-700">Risk Disclaimer</Link>

@@ -146,9 +146,9 @@ const BROKERS: Array<{ name: string; status: "live" | "planned"; description?: s
     description:
       "First integration. Read-only webhook connection — trade events evaluated against your rules in real time.",
   },
-  { name: "Rithmic", status: "planned" },
-  { name: "NinjaTrader", status: "planned" },
-  { name: "Interactive Brokers", status: "planned" },
+  { name: "Rithmic", status: "planned", description: "Planned after Tradovate verification." },
+  { name: "NinjaTrader", status: "planned", description: "Planned after Tradovate verification." },
+  { name: "Interactive Brokers", status: "planned", description: "Planned after Tradovate verification." },
 ];
 
 const INCLUDED_FEATURES = [
@@ -200,23 +200,26 @@ export default async function Home() {
       href="/dashboard"
       className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
     >
-      Go to dashboard
+      Open today&rsquo;s session
     </Link>
   ) : (
-    <>
-      <Link
-        href="/signup"
-        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-      >
-        Start free trial
-      </Link>
-      <a
-        href="#how-it-works"
-        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
-      >
-        See how it works ↓
-      </a>
-    </>
+    <div className="flex flex-col items-start gap-4">
+      <HeroStatusPreview />
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
+        <Link
+          href="/signup"
+          className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          Start free trial
+        </Link>
+        <a
+          href="#how-it-works"
+          className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+        >
+          See how it works ↓
+        </a>
+      </div>
+    </div>
   );
 
   return (
@@ -443,9 +446,9 @@ export default async function Home() {
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8 lg:p-10">
           <p className="mb-8 max-w-2xl text-base leading-7 text-stone-600">
             <span className="font-semibold text-stone-950">
-              One stopped bad trade pays for the month.
+              One stopped rule break can pay for the month.
             </span>{" "}
-            A single prevented revenge trade or oversized entry typically costs more than a month&rsquo;s subscription. The math is straightforward.
+            For many day traders, one avoided revenge trade or oversized entry costs more than $49.
           </p>
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
@@ -520,8 +523,11 @@ export default async function Home() {
           </div>
           <div className="grid gap-3">
             {FAQS.map((faq) => (
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore – `name` on <details> is valid HTML (Chrome 120+, Firefox 130+, Safari 17.2+) but missing from older React types
               <details
                 key={faq.q}
+                name="faq"
                 className="group rounded-2xl border border-stone-200 bg-white/90 px-6 py-4 transition-colors hover:bg-stone-50/60"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold tracking-[-0.02em] text-stone-950">
@@ -666,6 +672,55 @@ function RuleCard({
         </span>
       </div>
       <p className="mt-2 text-sm leading-5 text-stone-500">{description}</p>
+    </div>
+  );
+}
+
+function HeroStatusPreview() {
+  return (
+    <div className="hidden w-56 rounded-2xl border border-stone-200 bg-stone-50/80 p-4 lg:block">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+          Today&rsquo;s session
+        </p>
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+          Allowed
+        </span>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <div>
+          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+            <span>Daily loss</span>
+            <span>$120 / $500</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-full w-[24%] rounded-full bg-emerald-500" />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+            <span>Trades</span>
+            <span>2 / 5</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-full w-[40%] rounded-full bg-emerald-500" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-[10px] text-stone-400">
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+          Allowed
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
+          Warning
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400" aria-hidden />
+          Locked
+        </span>
+      </div>
     </div>
   );
 }
