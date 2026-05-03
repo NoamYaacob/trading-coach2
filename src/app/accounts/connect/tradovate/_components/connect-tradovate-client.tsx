@@ -160,10 +160,10 @@ export function ConnectTradovateClient() {
                 ).map(({ value, label, hint }) => (
                   <label
                     key={value}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
                       accountSource === value
                         ? "border-stone-950 bg-stone-950/5"
-                        : "border-stone-200 hover:border-stone-400"
+                        : "border-stone-200 hover:border-stone-300"
                     }`}
                   >
                     <input
@@ -195,10 +195,10 @@ export function ConnectTradovateClient() {
                   {PROP_FIRMS.map((firm) => (
                     <label
                       key={firm}
-                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition ${
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
                         propFirm === firm
                           ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
-                          : "border-stone-200 text-stone-700 hover:border-stone-400"
+                          : "border-stone-200 text-stone-700 hover:border-stone-300"
                       }`}
                     >
                       <input
@@ -233,15 +233,15 @@ export function ConnectTradovateClient() {
               Tradovate environment
             </p>
             <p className="mb-3 text-xs leading-5 text-stone-500">
-              For prop firm accounts, choose Demo / Simulation if your account is an evaluation, challenge, combine, or simulated funded account. Choose Live only for a personal live Tradovate brokerage account unless your prop firm explicitly tells you otherwise.
+              If you trade through a prop firm evaluation, challenge, combine, or simulated funded account, choose Demo / Simulation. Choose Live only for your own personal live Tradovate brokerage account.
             </p>
             <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
               <div className="grid gap-2 sm:grid-cols-2">
                 <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
                     env === "demo"
                       ? "border-stone-950 bg-stone-950/5"
-                      : "border-stone-200 hover:border-stone-400"
+                      : "border-stone-200 hover:border-stone-300"
                   }`}
                 >
                   <input
@@ -258,10 +258,10 @@ export function ConnectTradovateClient() {
                   </span>
                 </label>
                 <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
                     env === "live"
                       ? "border-stone-950 bg-stone-950/5"
-                      : "border-stone-200 hover:border-stone-400"
+                      : "border-stone-200 hover:border-stone-300"
                   }`}
                 >
                   <input
@@ -297,7 +297,7 @@ export function ConnectTradovateClient() {
               Connection label <span className="font-normal text-stone-500">(optional)</span>
             </label>
             <p className="mb-3 text-xs text-stone-500">
-              A short name shown in the dashboard. Leave blank to use account names from Tradovate.
+              Used only to name this connection in Guardrail. You can rename individual accounts after import.
             </p>
             <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
               <input
@@ -318,24 +318,29 @@ export function ConnectTradovateClient() {
             </p>
           )}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
-            >
-              {submitting ? "Starting…" : "Continue to Tradovate authorization →"}
-            </button>
-            <Link
-              href="/accounts"
-              className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
-            >
-              Cancel
-            </Link>
+          <div className="grid gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
+              >
+                {submitting ? "Starting…" : "Continue to Tradovate authorization →"}
+              </button>
+              <Link
+                href="/accounts"
+                className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
+              >
+                Cancel
+              </Link>
+            </div>
+            <p className="text-xs text-stone-400">
+              After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
+            </p>
           </div>
         </form>
 
-        <div className="rounded-2xl border border-stone-100 bg-stone-50 px-5 py-4 text-xs text-stone-500">
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-xs text-stone-500">
           <p className="font-semibold text-stone-700">Read-only connection</p>
           <p className="mt-1 leading-5">
             Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active yet.
