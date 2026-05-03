@@ -28,7 +28,15 @@ const MORE_NAV: AppNavItem[] = [
 
 const ALL_NAV: AppNavItem[] = [...PRIMARY_NAV, ...MORE_NAV];
 
-const MARKETING_ROUTES = new Set<string>(["/"]);
+const MARKETING_ROUTES = new Set<string>([
+  "/",
+  "/features",
+  "/how-it-works",
+  "/security",
+  "/prop-firms",
+  "/pricing",
+  "/faq",
+]);
 
 function isActive(pathname: string, item: AppNavItem): boolean {
   if (item.match === "exact") return pathname === item.href;

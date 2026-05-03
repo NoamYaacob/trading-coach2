@@ -81,16 +81,26 @@ export async function AppShell({
         {children}
 
         <footer className="mt-6 border-t border-stone-200/70 py-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <p className="max-w-md text-xs leading-5 text-stone-500">
-              Guardrail is a discipline and risk-management tool. It does not provide financial advice or guarantee trading results. Trading involves substantial risk of loss.
-            </p>
+          <div className="flex flex-col gap-5">
             <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
-              <Link href="/terms" className="transition hover:text-stone-700">Terms</Link>
-              <Link href="/privacy" className="transition hover:text-stone-700">Privacy</Link>
-              <Link href="/risk-disclaimer" className="transition hover:text-stone-700">Risk Disclaimer</Link>
-              <a href="mailto:support@guardrail.trade" className="transition hover:text-stone-700">Contact Support</a>
+              <Link href="/features" className="transition hover:text-stone-700">Features</Link>
+              <Link href="/how-it-works" className="transition hover:text-stone-700">How it works</Link>
+              <Link href="/prop-firms" className="transition hover:text-stone-700">Prop firms</Link>
+              <Link href="/security" className="transition hover:text-stone-700">Security</Link>
+              <Link href="/pricing" className="transition hover:text-stone-700">Pricing</Link>
+              <Link href="/faq" className="transition hover:text-stone-700">FAQ</Link>
             </nav>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <p className="max-w-md text-xs leading-5 text-stone-500">
+                Guardrail is a discipline and risk-management tool. It does not provide financial advice or guarantee trading results. Trading involves substantial risk of loss.
+              </p>
+              <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
+                <Link href="/terms" className="transition hover:text-stone-700">Terms</Link>
+                <Link href="/privacy" className="transition hover:text-stone-700">Privacy</Link>
+                <Link href="/risk-disclaimer" className="transition hover:text-stone-700">Risk Disclaimer</Link>
+                <a href="mailto:support@guardrail.trade" className="transition hover:text-stone-700">Contact Support</a>
+              </nav>
+            </div>
           </div>
         </footer>
       </main>
