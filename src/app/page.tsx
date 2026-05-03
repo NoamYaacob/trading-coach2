@@ -504,7 +504,7 @@ export default async function Home() {
                 {ENFORCEMENT_NOW.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-4 py-3 text-sm text-stone-700"
+                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-3 py-2 text-sm text-stone-700 sm:px-4 sm:py-3"
                   >
                     <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                     {item}
@@ -520,7 +520,7 @@ export default async function Home() {
                 {ENFORCEMENT_PLANNED.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 px-4 py-3 text-sm text-stone-500"
+                    className="flex items-start gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 px-3 py-2 text-sm text-stone-500 sm:px-4 sm:py-3"
                   >
                     <span className="mt-0.5 shrink-0 text-stone-400">→</span>
                     {item}
@@ -647,12 +647,12 @@ export default async function Home() {
                     >
                       Start free week
                     </Link>
-                    <Link
-                      href="/login"
+                    <a
+                      href="#faq"
                       className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
                     >
-                      Log in
-                    </Link>
+                      See FAQ
+                    </a>
                   </>
                 )}
               </div>
@@ -691,7 +691,7 @@ export default async function Home() {
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-        <section>
+        <section id="faq">
           <div className="mb-5 sm:mb-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
               FAQ
@@ -841,10 +841,10 @@ function RuleCard({
   const cfg = RULE_BADGE_CONFIG[badge];
   return (
     <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)] sm:px-5 sm:py-5">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
         <p className="text-sm font-semibold leading-5 text-stone-950">{name}</p>
         <span
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${cfg.bg} ${cfg.text}`}
+          className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${cfg.bg} ${cfg.text}`}
         >
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cfg.dot}`} aria-hidden />
           {cfg.label}
@@ -867,8 +867,8 @@ function HeroStatusPreview() {
         </span>
       </div>
       <p className="mb-1 text-sm font-semibold tracking-[-0.02em] text-stone-950">Session locked</p>
-      <p className="mb-3 text-[11px] text-red-700">Daily loss limit reached</p>
-      <div className="flex flex-col gap-2.5">
+      <p className="mb-2 text-[11px] text-red-700">Daily loss limit reached</p>
+      <div className="flex flex-col gap-2">
         <div>
           <div className="mb-1 flex justify-between text-[11px] text-stone-500">
             <span>Loss used</span>
@@ -888,7 +888,7 @@ function HeroStatusPreview() {
           </div>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
+      <div className="mt-2 flex items-center justify-between border-t border-stone-100 pt-2">
         <p className="text-[10px] text-stone-400">Next reset: tomorrow</p>
         <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">
           New entries disabled
