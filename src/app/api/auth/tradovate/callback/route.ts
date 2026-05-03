@@ -11,11 +11,62 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
+// Tradovate /account/list response shape (unverified — based on public API docs).
+type TvAccount = {
+  id: number;
+  name: string;
+  userId: number;
+  accountType: string;
+  active: boolean;
+  status?: string;
+  archived?: boolean;
+  nickname?: string;
+};
+
+type DiscoveredAccount = {
+  externalAccountId: string;
+  name: string;
+  accountType: string;
+  active: boolean;
+};
+
 function backToConnectPage(request: NextRequest, error: string) {
   const base = resolveAppBaseUrl(request.url);
   const target = `${base}/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`;
   console.info("[tradovate/callback] redirecting to connect page", { error, target });
   return NextResponse.redirect(target);
+}
+
+/** Call Tradovate /account/list with a raw (plaintext) access token. */
+async function discoverAccounts(
+  baseUrl: string,
+  accessToken: string,
+): Promise<DiscoveredAccount[]> {
+  const url = `${baseUrl}/account/list`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) {
+      console.warn("[tradovate/callback] account/list returned HTTP", { status: res.status });
+      return [];
+    }
+    const data = (await res.json()) as TvAccount[];
+    if (!Array.isArray(data)) return [];
+    return data.map((a): DiscoveredAccount => ({
+      externalAccountId: String(a.id),
+      name: a.nickname ?? a.name ?? String(a.id),
+      accountType: a.accountType ?? "unknown",
+      active: Boolean(a.active),
+    }));
+  } catch {
+    console.warn("[tradovate/callback] account/list network error");
+    return [];
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -46,15 +97,11 @@ export async function GET(request: NextRequest) {
     return backToConnectPage(request, "missing_params");
   }
 
-  // CSRF check + session binding live in one helper. The state is
-  // base64-encoded but not signed, so a tampered userId would still
-  // pass the nonce check — `validateOAuthState` also requires that
-  // `state.userId === session.userId`.
+  // CSRF check + session binding live in one helper.
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   cookieStore.delete(OAUTH_STATE_COOKIE);
 
-  // Debug-safe: log presence/absence of CSRF inputs, never the values.
   let stateEnv: string = "unknown";
   try {
     const { decodeOAuthState } = await import("@/lib/brokers/tradovate-oauth-state");
@@ -79,25 +126,16 @@ export async function GET(request: NextRequest) {
   }
   const payload = validation.state!;
 
-  // Re-validate config — env may have changed between connect and callback,
-  // and we never want to accept tokens we cannot store securely.
+  // Re-validate config — env may have changed between connect and callback.
   const status = getTradovateConfig();
   if (status.state !== "ready") {
     return backToConnectPage(request, "oauth_not_configured");
   }
   const { config } = status;
 
-  // Derive the same redirect_uri sent in the authorize request — must match
-  // exactly or Tradovate will reject the token exchange. Uses the same
-  // three-tier priority as the connect route.
   const redirectUri = resolveRedirectUri(config, request.url);
 
   // ── Token exchange ─────────────────────────────────────────────────────
-  // Performs a real POST to Tradovate's token endpoint. On success we
-  // receive an access token + refresh token. We do NOT persist them yet —
-  // the encryption layer will land alongside the read API integration.
-  // Until then, OAuth proves the credential pipeline works end-to-end and
-  // we record the connection state explicitly as "oauth_pending_storage".
   let tokenData: {
     access_token: string;
     refresh_token?: string;
@@ -113,37 +151,36 @@ export async function GET(request: NextRequest) {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
+        client_id: payload.env === "demo" && config.demoClientId ? config.demoClientId : config.clientId,
+        client_secret: payload.env === "demo" && config.demoClientSecret ? config.demoClientSecret : config.clientSecret,
       }).toString(),
     });
 
     if (!tokenRes.ok) {
-      // Log status only — the response body can echo back partial
-      // tokens or sensitive diagnostics from the IdP. Read it to
-      // drain the stream but do not write it to logs.
       await tokenRes.text().catch(() => "");
-      console.error(
-        `[tradovate/callback] token exchange failed: HTTP ${tokenRes.status}`,
-      );
+      console.error(`[tradovate/callback] token exchange failed: HTTP ${tokenRes.status}`);
       return backToConnectPage(request, "token_exchange_failed");
     }
 
     tokenData = (await tokenRes.json()) as typeof tokenData;
   } catch (err) {
-    // Log error name only; never log the error object (may contain
-    // request body / response text from fetch).
     const name = err instanceof Error ? err.name : "unknown";
     console.error(`[tradovate/callback] token exchange error: ${name}`);
     return backToConnectPage(request, "token_exchange_error");
   }
 
-  // ── Encrypt tokens before persisting ───────────────────────────────────
-  // Plaintext tokens MUST never reach the database. encryptAndSerialize
-  // returns a JSON-serialised AES-256-GCM payload safe to store in TEXT.
-  // The encryption module also re-validates the master key — if it has
-  // gone missing between the connect step and now, this throws and we
-  // bail out without writing anything.
+  // ── Discover accounts before encrypting ────────────────────────────────
+  // The raw access_token is available here. We call /account/list now while
+  // the plaintext token is in scope — tokens are encrypted immediately after.
+  const discoveredAccounts = await discoverAccounts(
+    config.apiBaseUrl[payload.env],
+    tokenData.access_token,
+  );
+  console.info("[tradovate/callback] discovered accounts", {
+    count: discoveredAccounts.length,
+  });
+
+  // ── Encrypt tokens ─────────────────────────────────────────────────────
   let accessTokenEncrypted: string;
   let refreshTokenEncrypted: string | null = null;
   let tokenExpiresAt: Date | null = null;
@@ -161,13 +198,64 @@ export async function GET(request: NextRequest) {
       tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
     }
   } catch (err) {
-    // Log the error code only; never log the token plaintext.
     const code = err instanceof TokenCryptoError ? err.code : "unknown";
     console.error(`[tradovate/callback] token encryption failed: ${code}`);
     return backToConnectPage(request, "token_storage_failed");
   }
 
-  // ── Persist the connection ─────────────────────────────────────────────
+  // ── Create or update BrokerConnection ──────────────────────────────────
+  const brokerConnection = await prisma.brokerConnection.create({
+    data: {
+      userId: payload.userId,
+      platform: "tradovate",
+      env: payload.env,
+      brokerUserId: tokenData.account_id ? String(tokenData.account_id) : null,
+      connectionStatus: "connected_readonly",
+      accessTokenEncrypted,
+      refreshTokenEncrypted,
+      tokenExpiresAt,
+    },
+    select: { id: true },
+  });
+
+  const base = resolveAppBaseUrl(request.url);
+
+  // ── New multi-account flow (with setupId) ───────────────────────────────
+  if (payload.setupId) {
+    const setup = await prisma.pendingBrokerSetup.findFirst({
+      where: {
+        id: payload.setupId,
+        userId: payload.userId,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!setup) {
+      // Setup expired — still store the connection but send to the connect
+      // page with an error so the user knows they need to try again.
+      console.warn("[tradovate/callback] pending setup not found or expired", {
+        setupId: payload.setupId,
+      });
+      return backToConnectPage(request, "setup_expired");
+    }
+
+    await prisma.pendingBrokerSetup.update({
+      where: { id: setup.id },
+      data: {
+        brokerConnectionId: brokerConnection.id,
+        discoveredAccountsJson: discoveredAccounts,
+      },
+    });
+
+    return NextResponse.redirect(
+      `${base}/accounts/connect/tradovate/select?setupId=${encodeURIComponent(setup.id)}`,
+    );
+  }
+
+  // ── Legacy single-account fallback (no setupId) ─────────────────────────
+  // Kept for backward compatibility — e.g. a direct visit to /connect?env=live
+  // that bypassed the setup form.
   const externalAccountId = tokenData.account_id ? String(tokenData.account_id) : null;
 
   const existing = externalAccountId
@@ -183,13 +271,11 @@ export async function GET(request: NextRequest) {
 
   const connectionFields = {
     isActive: true,
-    // OAuth completed and tokens are encrypted in storage. The read
-    // pipeline (account / positions / orders / executions) is NOT yet
-    // implemented — flipping to "connected_live" is reserved for after
-    // the first successful broker read.
     connectionStatus: "connected_readonly",
     connectedAt: new Date(),
     errorMessage: null,
+    brokerConnectionId: brokerConnection.id,
+    // Legacy per-account columns — populated for backward compat only.
     accessTokenEncrypted,
     refreshTokenEncrypted,
     tokenExpiresAt,
@@ -217,11 +303,6 @@ export async function GET(request: NextRequest) {
         select: { id: true },
       });
 
-  // Land back on the connect page with a clear "OAuth verified" banner.
-  // Sending the user to /accounts/[id]/edit?oauth=connected (the old
-  // behaviour) would be misleading — there is nothing to read or do on
-  // that connection until the read pipeline ships.
-  const base = resolveAppBaseUrl(request.url);
   return NextResponse.redirect(
     `${base}/accounts/connect/tradovate?oauth=verified&account=${account.id}`,
   );

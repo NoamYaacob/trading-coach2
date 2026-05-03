@@ -74,6 +74,8 @@ model User {
   guardianProfile    GuardianProfile?
   guardianStatus     GuardianStatus?
   connectedAccounts  ConnectedAccount[]
+  brokerConnections  BrokerConnection[]
+  pendingBrokerSetups PendingBrokerSetup[]
   oauthConnections   OAuthConnection[]
   manualTradeEntries ManualTradeEntry[]
   alertPreferences   AlertPreferences?
@@ -332,6 +334,52 @@ enum AccountRiskState {
   STOPPED
 }
 
+// Stores one OAuth token set per broker connection. Multiple ConnectedAccount
+// rows (one per discovered account) reference a single BrokerConnection so
+// tokens are not duplicated.
+model BrokerConnection {
+  id                    String           @id @default(cuid())
+  userId                String
+  platform              TradingPlatform
+  env                   String           // "live" | "demo"
+  brokerUserId          String?
+  connectionStatus      String           @default("connected_readonly")
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  errorMessage          String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts              ConnectedAccount[]
+  pendingSetups         PendingBrokerSetup[]
+
+  @@index([userId, platform])
+}
+
+// Short-lived record (15-min TTL) that holds pre-OAuth form data and, after
+// the callback, the broker's discovered accounts. Cleaned up on finalize or expiry.
+model PendingBrokerSetup {
+  id                     String            @id @default(cuid())
+  userId                 String
+  platform               String            @default("tradovate")
+  env                    String            // "live" | "demo"
+  displayName            String?
+  accountSource          String            // "prop_firm" | "personal" | "demo" | "other"
+  propFirmName           String?
+  brokerConnectionId     String?
+  discoveredAccountsJson Json?
+  expiresAt              DateTime
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  user                   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerConnection       BrokerConnection? @relation(fields: [brokerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, expiresAt])
+}
+
 model ConnectedAccount {
   id                String           @id @default(cuid())
   userId            String
@@ -347,10 +395,11 @@ model ConnectedAccount {
   connectionStatus  String           @default("not_connected")
   brokerUserId      String?          // broker-side user ID (populated by future OAuth)
   connectedAt       DateTime?        // when the connection became live (first event received)
-  // ── Token storage placeholders ─────────────────────────────────────────
-  // Empty until Tradovate OAuth + token encryption layer ships. See
-  // src/lib/brokers/tradovate-env.ts and docs/broker-integration-plan.md.
-  // Tokens MUST be encrypted at rest before any value is written here.
+  // Shared token store — set when this account was imported via the multi-account flow.
+  // When set, tokens are read from BrokerConnection; legacy columns below are ignored.
+  brokerConnectionId    String?
+  // ── Legacy per-account token storage (pre-BrokerConnection) ────────────
+  // Only written for accounts created before the BrokerConnection model shipped.
   accessTokenEncrypted  String?
   refreshTokenEncrypted String?
   tokenExpiresAt        DateTime?
@@ -364,6 +413,7 @@ model ConnectedAccount {
   updatedAt         DateTime         @updatedAt
 
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerConnection  BrokerConnection? @relation(fields: [brokerConnectionId], references: [id], onDelete: SetNull)
   riskRules         AccountRiskRules?
   sessionState      LiveSessionState?
   tradeEvents       NormalizedTradeEvent[]

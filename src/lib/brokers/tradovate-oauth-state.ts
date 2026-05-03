@@ -17,6 +17,8 @@ export type TradovateOAuthState = {
   nonce: string;
   userId: string;
   env: TradovateOAuthEnv;
+  /** Links back to the PendingBrokerSetup record created in the setup form. */
+  setupId?: string;
 };
 
 export function generateOAuthNonce(): string {
@@ -50,6 +52,9 @@ export function decodeOAuthState(raw: string): DecodeResult {
         nonce: parsed.nonce,
         userId: parsed.userId,
         env: parsed.env,
+        setupId: typeof parsed.setupId === "string" && parsed.setupId.length > 0
+          ? parsed.setupId
+          : undefined,
       },
     };
   } catch {

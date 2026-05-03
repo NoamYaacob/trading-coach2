@@ -13,13 +13,24 @@ export const metadata: Metadata = {
   title: "Broker Connections — Guardrail",
 };
 
+const ENV_LABEL: Record<string, string> = {
+  live: "Live",
+  demo: "Demo / Sim",
+};
+
+const CONN_STATUS_LABEL: Record<string, string> = {
+  connected_readonly: "Read-only connected",
+  expired: "Expired — re-authorize",
+  connection_error: "Connection error",
+};
+
 export default async function AccountsPage() {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     redirect("/login");
   }
 
-  const [accounts, telegramConnection] = await Promise.all([
+  const [accounts, brokerConnections, telegramConnection] = await Promise.all([
     prisma.connectedAccount.findMany({
       where: { userId: currentUser.id, isActive: true },
       include: {
@@ -32,6 +43,22 @@ export default async function AccountsPage() {
       },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.brokerConnection.findMany({
+      where: { userId: currentUser.id },
+      select: {
+        id: true,
+        platform: true,
+        env: true,
+        connectionStatus: true,
+        createdAt: true,
+        accounts: {
+          where: { isActive: true },
+          select: { id: true, label: true },
+          orderBy: { label: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.telegramConnection.findUnique({
       where: { userId: currentUser.id },
       select: { telegramChatId: true },
@@ -40,8 +67,6 @@ export default async function AccountsPage() {
 
   const telegramReady = Boolean(telegramConnection?.telegramChatId);
 
-  // Fetch last 10 events per account for the live event feed.
-  // We over-fetch and group in JS to avoid per-group LIMIT queries.
   const recentEventsRaw =
     accounts.length > 0
       ? await prisma.normalizedTradeEvent.findMany({
@@ -52,63 +77,119 @@ export default async function AccountsPage() {
         })
       : [];
 
-  // Group events by account, keeping up to 10 per account.
   const eventsByAccount: Record<string, typeof recentEventsRaw> = {};
   for (const ev of recentEventsRaw) {
     const bucket = (eventsByAccount[ev.accountId] ??= []);
     if (bucket.length < 10) bucket.push(ev);
   }
 
-  const tradovateAccount = accounts.find((a) => a.platform === "tradovate");
-  const hasTradovate = Boolean(tradovateAccount);
+  const hasBrokerAccounts = accounts.some((a) => a.platform !== "manual");
   const tradovateConfigured = getTradovateConfig().state === "ready";
-
-  const ctaHref = tradovateAccount
-    ? `/accounts/tradovate/verify?accountId=${tradovateAccount.id}`
-    : "/accounts/connect/tradovate";
-  const ctaLabel = hasTradovate
-    ? "Verify connection"
-    : tradovateConfigured
-      ? "Connect Tradovate"
-      : "Prepare Tradovate connection";
 
   return (
     <AppShell
       eyebrow="Broker Connections"
-      title="Connect your broker accounts."
-      description="Link Tradovate so Guardrail can evaluate account data and show broker-connected read-only status."
-      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
+      title="Broker connections"
+      description="Manage your Tradovate connections. Guardrail reads account data to evaluate rules — it cannot place trades or modify your account."
+      note="Enforcement pending verification — broker-side order blocking is not active."
       actions={
         <Link
-          href={ctaHref}
+          href="/accounts/connect/tradovate"
           className="inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          {ctaLabel}
+          {tradovateConfigured ? "Connect Tradovate" : "Prepare Tradovate connection"}
         </Link>
       }
     >
       <div className="grid gap-6 -mb-6 sm:mb-0">
 
-        {/* Compact status row */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatusTile
-            tone={hasTradovate ? "ok" : "neutral"}
-            label="Setup mode"
-            value={hasTradovate ? "Broker connected" : "Before broker connection"}
-          />
-          <StatusTile
-            tone={hasTradovate ? "ok" : "pending"}
-            label="Tradovate"
-            value={hasTradovate ? "Connected" : "Setup needed"}
-          />
-          <StatusTile
-            tone={hasTradovate ? "pending" : "neutral"}
-            label="Broker risk checks"
-            value={hasTradovate ? "Pending verification" : "Connection not verified yet"}
-          />
-        </div>
+        {/* BrokerConnection groups */}
+        {brokerConnections.length > 0 && (
+          <div className="grid gap-4">
+            {brokerConnections.map((bc) => {
+              const statusLabel = CONN_STATUS_LABEL[bc.connectionStatus] ?? bc.connectionStatus.replace(/_/g, " ");
+              const isExpired = bc.connectionStatus === "expired" || bc.connectionStatus === "connection_error";
+              return (
+                <SectionCard
+                  key={bc.id}
+                  title={`Tradovate ${ENV_LABEL[bc.env] ?? bc.env}`}
+                >
+                  <div className="grid gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                            isExpired
+                              ? "bg-red-100 text-red-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}
+                        >
+                          {statusLabel}
+                        </span>
+                        <span className="text-xs text-stone-500">
+                          {bc.accounts.length} account{bc.accounts.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {!isExpired && (
+                          <Link
+                            href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
+                            className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"
+                          >
+                            Import more accounts
+                          </Link>
+                        )}
+                        <Link
+                          href={`/accounts/connect/tradovate?env=${bc.env}`}
+                          className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+                            isExpired
+                              ? "border-red-300 text-red-700 hover:border-red-500"
+                              : "border-stone-300 text-stone-900 hover:border-stone-950"
+                          }`}
+                        >
+                          {isExpired ? "Reconnect" : "New connection"}
+                        </Link>
+                      </div>
+                    </div>
 
-        {accounts.length === 0 ? (
+                    {bc.accounts.length > 0 && (
+                      <div className="grid gap-1.5">
+                        {bc.accounts.map((a) => (
+                          <div
+                            key={a.id}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-2.5"
+                          >
+                            <span className="text-sm font-medium text-stone-900">{a.label}</span>
+                            <Link
+                              href={`/accounts/${a.id}/edit`}
+                              className="text-xs text-stone-500 transition hover:text-stone-950"
+                            >
+                              Edit
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </SectionCard>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Individual account cards (all active accounts) */}
+        {accounts.length > 0 ? (
+          <>
+            {accounts.map((account) => (
+              <AccountCard
+                key={account.id}
+                account={account}
+                recentEvents={eventsByAccount[account.id] ?? []}
+                telegramReady={telegramReady}
+              />
+            ))}
+          </>
+        ) : (
           <SectionCard title="No broker connected yet">
             <p className="text-sm text-stone-600">
               Connect Tradovate to move from setup mode into broker-connected protection.
@@ -125,30 +206,20 @@ export default async function AccountsPage() {
               You can set rules before connecting, but live broker-based checks require a verified connection.
             </p>
           </SectionCard>
-        ) : (
-          <>
-            {accounts.map((account) => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                recentEvents={eventsByAccount[account.id] ?? []}
-                telegramReady={telegramReady}
-              />
-            ))}
-            {!hasTradovate && (
-              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-                <p className="text-sm text-stone-600">
-                  Add Tradovate for live broker-based risk checks.{" "}
-                  <Link
-                    href="/accounts/connect/tradovate"
-                    className="font-medium text-stone-950 underline-offset-2 hover:underline"
-                  >
-                    Connect Tradovate
-                  </Link>
-                </p>
-              </div>
-            )}
-          </>
+        )}
+
+        {!hasBrokerAccounts && accounts.length > 0 && (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+            <p className="text-sm text-stone-600">
+              Add Tradovate for live broker-based risk checks.{" "}
+              <Link
+                href="/accounts/connect/tradovate"
+                className="font-medium text-stone-950 underline-offset-2 hover:underline"
+              >
+                Connect Tradovate
+              </Link>
+            </p>
+          </div>
         )}
 
         {/* Connection status — collapsible */}
@@ -169,16 +240,16 @@ export default async function AccountsPage() {
                 description="Track trades manually and evaluate your rules from journal entries."
               />
               <ConnectionStatusRow
-                label="Tradovate connection"
-                status="Setup needed"
-                statusTone="pending"
-                description="Read-only broker data will be available after Tradovate setup is complete."
+                label="Tradovate — read-only connected"
+                status={hasBrokerAccounts ? "Connected" : "Setup needed"}
+                statusTone={hasBrokerAccounts ? "ok" : "pending"}
+                description="Read-only broker data is available after OAuth is completed and accounts are imported."
               />
               <ConnectionStatusRow
-                label="Broker-side actions"
+                label="Broker-side enforcement"
                 status="Disabled"
                 statusTone="neutral"
-                description="Cancel, flatten, and lockout actions require separate verification and explicit opt-in."
+                description="Cancel, flatten, and lockout actions require separate verification and explicit opt-in. Not active."
               />
             </div>
           </div>
@@ -215,35 +286,6 @@ function ConnectionStatusRow({
         </span>
       </div>
       <p className="mt-1.5 text-xs leading-5 text-stone-600">{description}</p>
-    </div>
-  );
-}
-
-function StatusTile({
-  tone,
-  label,
-  value,
-}: {
-  tone: "ok" | "pending" | "neutral";
-  label: string;
-  value: string;
-}) {
-  const cls =
-    tone === "ok"
-      ? "border-emerald-200 bg-emerald-50"
-      : tone === "pending"
-        ? "border-amber-200 bg-amber-50"
-        : "border-stone-200 bg-stone-50";
-  const valueCls =
-    tone === "ok"
-      ? "text-emerald-800"
-      : tone === "pending"
-        ? "text-amber-800"
-        : "text-stone-700";
-  return (
-    <div className={`rounded-2xl border px-4 py-3 ${cls}`}>
-      <p className="text-xs font-medium text-stone-600">{label}</p>
-      <p className={`mt-1 text-sm font-semibold ${valueCls}`}>{value}</p>
     </div>
   );
 }
