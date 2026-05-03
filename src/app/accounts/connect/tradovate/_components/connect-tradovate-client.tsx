@@ -42,11 +42,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 type AccountSource = "prop_firm" | "personal" | "demo" | "other";
 
-export function ConnectTradovateClient({
-  demoOAuthConfigured,
-}: {
-  demoOAuthConfigured: boolean;
-}) {
+export function ConnectTradovateClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -74,16 +70,9 @@ export function ConnectTradovateClient({
     setUserHasOverriddenEnv(true);
   }
 
-  const demoBlocked = env === "demo" && !demoOAuthConfigured;
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-
-    if (demoBlocked) {
-      setFormError("Demo / Simulation connection is not configured yet. Contact support.");
-      return;
-    }
 
     if (accountSource === "prop_firm" && !propFirm) {
       setFormError("Please select a prop firm.");
@@ -278,7 +267,7 @@ export function ConnectTradovateClient({
                   />
                   <span>
                     <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
-                    <span className="text-xs text-stone-500">trader-d.tradovate.com · prop firms and sim accounts</span>
+                    <span className="text-xs text-stone-500">Prop firms and sim accounts</span>
                   </span>
                 </label>
                 <label
@@ -298,29 +287,19 @@ export function ConnectTradovateClient({
                   />
                   <span>
                     <span className="block text-sm font-medium text-stone-950">Live</span>
-                    <span className="text-xs text-stone-500">trader.tradovate.com · personal live accounts</span>
+                    <span className="text-xs text-stone-500">Personal brokerage accounts</span>
                   </span>
                 </label>
               </div>
-              {env === "demo" && !demoOAuthConfigured ? (
-                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs leading-5 text-red-700">
-                  {accountSource === "prop_firm"
-                    ? "Demo / Simulation connection is not yet configured. Prop firm accounts need this — contact support to enable it."
-                    : "Demo / Simulation connection is not configured yet. For a personal Tradovate account, use Live instead."}
+              {accountSource === "prop_firm" && env === "demo" && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+                  Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
                 </p>
-              ) : (
-                <>
-                  {accountSource === "prop_firm" && env === "demo" && (
-                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
-                      Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
-                    </p>
-                  )}
-                  {accountSource === "prop_firm" && env === "live" && (
-                    <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
-                      <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
-                    </p>
-                  )}
-                </>
+              )}
+              {accountSource === "prop_firm" && env === "live" && (
+                <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
+                  <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
+                </p>
               )}
             </div>
           </div>
@@ -354,14 +333,10 @@ export function ConnectTradovateClient({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 type="submit"
-                disabled={submitting || demoBlocked}
+                disabled={submitting}
                 className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
               >
-                {submitting
-                  ? "Redirecting…"
-                  : demoBlocked
-                    ? "Demo not available yet"
-                    : "Continue to Tradovate authorization →"}
+                {submitting ? "Redirecting…" : "Continue to Tradovate authorization →"}
               </button>
               <Link
                 href="/accounts"

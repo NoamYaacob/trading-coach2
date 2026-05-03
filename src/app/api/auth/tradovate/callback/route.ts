@@ -151,8 +151,8 @@ export async function GET(request: NextRequest) {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
-        client_id: payload.env === "demo" && config.demoClientId ? config.demoClientId : config.clientId,
-        client_secret: payload.env === "demo" && config.demoClientSecret ? config.demoClientSecret : config.clientSecret,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
       }).toString(),
     });
 

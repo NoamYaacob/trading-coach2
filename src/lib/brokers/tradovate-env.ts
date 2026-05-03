@@ -30,6 +30,10 @@
  *
  *   TRADOVATE_AUTH_URL_LIVE / TRADOVATE_AUTH_URL_DEMO
  *     Override the OAuth authorize endpoint per environment.
+ *     NOTE: Tradovate support confirmed the same URL is used for both:
+ *       https://trader.tradovate.com/oauth
+ *     Guardrail stores the selected environment (demo vs live) separately
+ *     and uses it only for API base URL selection after OAuth.
  *
  *   TRADOVATE_TOKEN_URL_LIVE / TRADOVATE_TOKEN_URL_DEMO
  *     Override the token exchange endpoint per environment.
@@ -40,18 +44,13 @@
 
 const DEFAULTS = {
   // ── Authorization endpoints ────────────────────────────────────────────────
-  // Confirmed from Tradovate's official OAuth example:
-  //   https://github.com/tradovate/example-api-oauth/blob/master/index.js
-  //
-  // The example hardcodes:
-  //   AUTH_URL     = 'https://trader-d.tradovate.com/oauth'       (demo/-d)
-  //   EXCHANGE_URL = 'https://live-api-d.tradovate.com/auth/oauthtoken' (demo/-d)
-  //
-  // The "-d" suffix is Tradovate's demo/development indicator. Live removes it.
-  // Override TRADOVATE_AUTH_URL_LIVE / _DEMO in Railway if Tradovate confirms
-  // different URLs for your OAuth app registration.
+  // Tradovate support confirmed the same OAuth authorization URL is used for
+  // both live and demo accounts:
+  //   https://trader.tradovate.com/oauth
+  // The selected environment (demo vs live) is stored in our own setup state
+  // and used only for API base URL selection after OAuth completes.
   authUrlLive: "https://trader.tradovate.com/oauth",
-  authUrlDemo: "https://trader-d.tradovate.com/oauth",
+  authUrlDemo: "https://trader.tradovate.com/oauth",
 
   // ── Token exchange endpoints ───────────────────────────────────────────────
   // Path is /auth/oauthtoken — NOT /oauth/token, NOT /v1/auth/oauthtoken.
@@ -72,9 +71,6 @@ export type TradovateEnv = "live" | "demo";
 export type TradovateConfig = {
   clientId: string;
   clientSecret: string;
-  /** Separate demo-environment credentials. Null when not configured. */
-  demoClientId: string | null;
-  demoClientSecret: string | null;
   /** Will gate token persistence until encryption is wired. */
   tokenEncryptionKey: string;
   /** Explicit override from TRADOVATE_REDIRECT_URI; takes highest priority. */
@@ -133,8 +129,6 @@ export function getTradovateConfig(): TradovateConfigStatus {
     config: {
       clientId: clientId!,
       clientSecret: clientSecret!,
-      demoClientId: readEnv("TRADOVATE_DEMO_CLIENT_ID"),
-      demoClientSecret: readEnv("TRADOVATE_DEMO_CLIENT_SECRET"),
       tokenEncryptionKey: tokenEncryptionKey!,
       redirectUriOverride: readEnv("TRADOVATE_REDIRECT_URI"),
       appUrl: readEnv("APP_URL") ?? readEnv("NEXT_PUBLIC_APP_URL"),
@@ -159,11 +153,13 @@ export function isTradovateConfigured(): boolean {
   return getTradovateConfig().state === "ready";
 }
 
-/** True when separate demo OAuth credentials are configured. */
+/**
+ * True when the OAuth credentials needed to connect Tradovate are present.
+ * Demo and live accounts both use the same credentials, so this is equivalent
+ * to isTradovateConfigured().
+ */
 export function isDemoOAuthConfigured(): boolean {
-  const status = getTradovateConfig();
-  if (status.state !== "ready") return false;
-  return Boolean(status.config.demoClientId && status.config.demoClientSecret);
+  return isTradovateConfigured();
 }
 
 /** Use in UI to render an "X is missing" hint. Never logs the values. */

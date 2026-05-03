@@ -54,13 +54,10 @@ export async function GET(request: NextRequest) {
 
   const { config } = status;
 
-  // For demo env, require separate credentials — Tradovate rejects live
-  // client_id at trader-d.tradovate.com with "Wrong client_id".
-  if (env === "demo" && (!config.demoClientId || !config.demoClientSecret)) {
-    return backToConnectPage(request, "demo_oauth_not_configured");
-  }
-
-  const clientId = env === "demo" ? config.demoClientId! : config.clientId;
+  // Tradovate support confirmed the same client credentials are used for both
+  // live and demo. The selected env is stored in our state for API base URL
+  // selection after OAuth — it does not affect the OAuth credentials.
+  const clientId = config.clientId;
   const redirectUri = resolveRedirectUri(config, request.url);
 
   // State encodes enough context to resume after the callback without a DB
