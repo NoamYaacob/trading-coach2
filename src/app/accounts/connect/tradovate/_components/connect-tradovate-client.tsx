@@ -123,10 +123,13 @@ export function ConnectTradovateClient() {
         </Link>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pb-20 pt-6 sm:px-6 lg:px-10">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pb-20 pt-6 sm:px-6 lg:px-10">
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Broker Connections</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Broker Connections</p>
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-stone-400">Step 1 of 3 · Connection setup</span>
+          </div>
           <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl">
             Connect Tradovate
           </h1>
@@ -141,11 +144,11 @@ export function ConnectTradovateClient() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="grid gap-7">
+        <form onSubmit={handleSubmit} className="grid gap-5">
 
           {/* ── Step 1: Account kind ─────────────────────────────────────── */}
           <div role="group" aria-labelledby="label-account-source">
-            <p id="label-account-source" className="mb-3 text-sm font-semibold text-stone-950">
+            <p id="label-account-source" className="mb-2 text-sm font-semibold text-stone-950">
               What kind of account are you connecting?
             </p>
             <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
@@ -187,7 +190,7 @@ export function ConnectTradovateClient() {
           {/* ── Step 2: Prop firm ────────────────────────────────────────── */}
           {accountSource === "prop_firm" && (
             <div role="group" aria-labelledby="label-prop-firm">
-              <p id="label-prop-firm" className="mb-3 text-sm font-semibold text-stone-950">
+              <p id="label-prop-firm" className="mb-2 text-sm font-semibold text-stone-950">
                 Which prop firm?
               </p>
               <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
@@ -232,8 +235,8 @@ export function ConnectTradovateClient() {
             <p id="label-env" className="mb-1 text-sm font-semibold text-stone-950">
               Tradovate environment
             </p>
-            <p className="mb-3 text-xs leading-5 text-stone-500">
-              If you trade through a prop firm evaluation, challenge, combine, or simulated funded account, choose Demo / Simulation. Choose Live only for your own personal live Tradovate brokerage account.
+            <p className="mb-2 text-xs leading-5 text-stone-500">
+              If you trade an evaluation, challenge, combine, or simulated funded account, choose Demo / Simulation. Most prop firm Tradovate accounts are not Live brokerage accounts.
             </p>
             <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -293,23 +296,21 @@ export function ConnectTradovateClient() {
 
           {/* ── Optional label ───────────────────────────────────────────── */}
           <div>
-            <label htmlFor="displayName" className="mb-1 block text-sm font-semibold text-stone-950">
-              Connection label <span className="font-normal text-stone-500">(optional)</span>
+            <label htmlFor="displayName" className="mb-1.5 block text-xs font-medium text-stone-500">
+              Connection label <span className="text-stone-400">(optional)</span>
             </label>
-            <p className="mb-3 text-xs text-stone-500">
-              Used only to name this connection in Guardrail. You can rename individual accounts after import.
+            <input
+              id="displayName"
+              type="text"
+              placeholder="e.g. Apex Eval 1"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={60}
+              className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
+            />
+            <p className="mt-1.5 text-xs text-stone-400">
+              Used only to name this connection in Guardrail. You can rename accounts after import.
             </p>
-            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-              <input
-                id="displayName"
-                type="text"
-                placeholder={accountSource === "prop_firm" ? "e.g. Apex Eval 1" : "e.g. My Live Account"}
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                maxLength={60}
-                className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
-              />
-            </div>
           </div>
 
           {formError && (
@@ -337,15 +338,14 @@ export function ConnectTradovateClient() {
             <p className="text-xs text-stone-400">
               After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
             </p>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
+              <p className="font-semibold text-stone-700">Read-only connection</p>
+              <p className="mt-0.5 leading-5">
+                Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active yet.
+              </p>
+            </div>
           </div>
         </form>
-
-        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-xs text-stone-500">
-          <p className="font-semibold text-stone-700">Read-only connection</p>
-          <p className="mt-1 leading-5">
-            Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active yet.
-          </p>
-        </div>
 
       </main>
     </div>
