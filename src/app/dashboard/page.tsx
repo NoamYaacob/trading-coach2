@@ -270,6 +270,7 @@ export default async function DashboardPage() {
       eyebrow="RISK COMMAND CENTER"
       title="All accounts at a glance."
       description="Status, stop budget, trades used, and connection mode for every account — grouped by prop firm."
+      compactHero={noAccounts}
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
