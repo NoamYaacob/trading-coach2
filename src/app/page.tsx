@@ -208,7 +208,7 @@ export default async function Home() {
         href="/signup"
         className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
       >
-        Start free trial
+        Start free week
       </Link>
       <a
         href="#how-it-works"
@@ -513,7 +513,7 @@ export default async function Home() {
             <span className="font-semibold text-stone-950">
               One stopped rule break can pay for the month.
             </span>{" "}
-            For many day traders, one avoided revenge trade or oversized entry costs more than $49.
+            For many day traders, one avoided revenge trade or oversized entry costs more than $25.
           </p>
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
@@ -521,16 +521,16 @@ export default async function Home() {
                 Pricing
               </p>
               <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
-                Start your free trial.
+                First week free.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Full access during your trial. Configure your rules, run your first session, and connect Telegram. No credit card required.
+                Full access for 7 days — no credit card required. Configure your rules, run your first session, and connect Telegram. Then $25/month.
               </p>
               <div className="mt-6 flex items-baseline gap-2 sm:mt-8">
                 <span className="text-4xl font-bold tracking-[-0.04em] text-stone-950 sm:text-5xl">
-                  $49
+                  $25
                 </span>
-                <span className="text-base text-stone-500">/ month</span>
+                <span className="text-base text-stone-500">/ month after trial</span>
               </div>
               <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
               <div className="mt-6 flex flex-col items-start gap-3 sm:mt-8 sm:flex-row sm:flex-wrap">
@@ -547,7 +547,7 @@ export default async function Home() {
                       href="/signup"
                       className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                     >
-                      Start free trial
+                      Start free week
                     </Link>
                     <Link
                       href="/login"
@@ -620,7 +620,7 @@ export default async function Home() {
           </div>
           <p className="mt-5 rounded-2xl border border-stone-100 bg-stone-50 px-5 py-4 text-sm leading-6 text-stone-600">
             Guardrail costs{" "}
-            <span className="font-semibold text-stone-950">$49/month</span>. At those numbers, one prevented rule break covers the subscription. The rest is recovered capital.
+            <span className="font-semibold text-stone-950">$25/month</span>. At those numbers, one prevented rule break covers the subscription. The rest is recovered capital.
           </p>
         </section>
 
@@ -680,7 +680,7 @@ export default async function Home() {
                     href="/signup"
                     className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                   >
-                    Start free trial
+                    Start free week
                   </Link>
                   <Link
                     href="/login"
