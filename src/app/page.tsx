@@ -688,7 +688,7 @@ function HeroStatusPreview() {
       <div className="flex flex-col gap-2.5">
         <div>
           <div className="mb-1 flex justify-between text-[11px] text-stone-500">
-            <span>Daily loss</span>
+            <span>Loss used</span>
             <span>$120 / $500</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
