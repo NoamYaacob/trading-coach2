@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
+import { RoiCalculator } from "@/components/roi-calculator";
 
 export const metadata: Metadata = {
   title: "Guardrail — Trading rules that hold under pressure",
   description:
-    "Set your rules before the session. Guardrail enforces them when discipline fades.",
+    "Set daily loss, max trades, and session rules before the market opens. Guardrail evaluates every trade in real time and locks the session when a rule breaks.",
 };
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
@@ -15,15 +16,15 @@ export const metadata: Metadata = {
 const PAIN_SCENARIOS = [
   {
     title: "The revenge trade",
-    body: "Down $180. Your daily limit is $200. You size up on the next entry to recover. It stops out. Now you're at $580 — nearly three times your limit.",
+    body: "Down $180. Your daily limit is $200. You size up to make it back. Now the day is gone.",
   },
   {
     title: "The one more trade",
-    body: "You've hit your 5-trade cap. The market looks perfect. You take one more. Then another. The trade limit was a preference, not a stop.",
+    body: "You said five trades max. The sixth one looks perfect. Then comes the seventh.",
   },
   {
     title: "The oversized entry",
-    body: "High conviction. You triple your normal size. It misses. One trade wipes out three days of discipline. Your daily loss limit is gone before lunch.",
+    body: "You triple size because the setup feels obvious. One miss wipes out three good days.",
   },
 ];
 
@@ -118,9 +119,29 @@ const RULES: Array<{ name: string; description: string; badge: RuleBadge }> = [
     badge: "coming-soon",
   },
   {
+    name: "Payout Protection Mode",
+    description: "When a profit target is reached, Guardrail helps prevent the giveback trade.",
+    badge: "coming-soon",
+  },
+  {
     name: "Entry Checklist",
     description: "Confirm your pre-trade conditions are met before each entry.",
     badge: "coming-soon",
+  },
+];
+
+const PROP_FIRM_CARDS = [
+  {
+    title: "Protect the challenge",
+    body: "Daily drawdown and max trade rules are not suggestions during an evaluation. Guardrail holds them like they are.",
+  },
+  {
+    title: "Protect the funded account",
+    body: "When pressure rises, Guardrail keeps the account inside the limits you chose — before emotional decisions override them.",
+  },
+  {
+    title: "Protect payout days",
+    body: "When the goal is reached, Guardrail helps stop the giveback trade. Lock in the good day.",
   },
 ];
 
@@ -144,7 +165,7 @@ const BROKERS: Array<{ name: string; status: "live" | "planned"; description?: s
     name: "Tradovate",
     status: "live",
     description:
-      "First integration. Read-only webhook connection — trade events evaluated against your rules in real time.",
+      "First integration. Read-only webhook — trade events evaluated against your rules in real time. Guardrail starts read-only and only expands enforcement after verified broker support.",
   },
   { name: "Rithmic", status: "planned", description: "Planned after Tradovate verification." },
   { name: "NinjaTrader", status: "planned", description: "Planned after Tradovate verification." },
@@ -157,12 +178,21 @@ const INCLUDED_FEATURES = [
   "Tradovate read-only connection — trade events vs. your rules",
   "Manual Mode — full rule engine before broker connection",
   "Telegram alerts when a limit triggers",
+  "Prop firm evaluation and funded account support",
 ];
 
 const FAQS = [
   {
+    q: "Is Guardrail a trading signal tool?",
+    a: "No. Guardrail does not tell you what trades to take, when to enter, or what the market will do. It is a risk enforcement tool — it holds the rules you already chose before emotional pressure overrides them.",
+  },
+  {
     q: "Does Guardrail block my broker orders?",
     a: "Not yet. Today the session locks inside Guardrail — if Telegram is connected, you get an alert immediately. Nothing happens at the broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each integration.",
+  },
+  {
+    q: "What is the difference between app-level lock and broker-side enforcement?",
+    a: "App-level lock means the session moves to Locked inside Guardrail and you are alerted. Your broker account is unaffected — you could still place trades there manually. Broker-side enforcement means Guardrail would cancel orders or flatten positions directly at the broker level. That requires verified write-level API permissions and is planned, not live today.",
   },
   {
     q: "What happens when a rule is hit?",
@@ -224,13 +254,13 @@ export default async function Home() {
       eyebrow="FOR FUTURES & PROP FIRM TRADERS"
       title={
         <>
-          You know your limits.
+          You know your rules.
           <br />
-          Guardrail holds you to them.
+          Guardrail makes them hold.
         </>
       }
-      description="Set your daily loss, max trades, and session rules before the market opens. When a rule breaks, Guardrail locks the session and alerts you immediately."
-      note="App-level lock today · Broker-connected read-only mode · Broker-side enforcement planned after verification"
+      description="Set daily loss, max trades, session hours, and loss-streak rules before the market opens. Guardrail evaluates the session in real time and locks the day when a rule breaks."
+      note="App-level lock today · Broker-connected read-only mode · Broker-side enforcement only after verified integration support"
       actions={heroActions}
       heroPreview={user ? undefined : <HeroStatusPreview />}
     >
@@ -265,28 +295,28 @@ export default async function Home() {
             <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The problem</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
-                You set your rules when thinking clearly.
+                Rules are easy before the session.
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Before the session, when P&L is zero and pressure is low, you know exactly what you should and shouldn&rsquo;t do.
+                Before the first trade, you know exactly what you should and should not do.
               </p>
             </div>
             <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50/60 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-600">The solution</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
-                Guardrail evaluates every trade against those rules.
+                Every trade is checked against your limits.
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Every fill is checked in real time — Allowed, Warning, or Locked. No manual tracking. No mental override.
+                Guardrail evaluates trade events against your rules and moves the session through Allowed, Warning, or Locked.
               </p>
             </div>
             <div className="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The result</p>
               <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-50">
-                When a limit breaks, the session locks.
+                When a rule breaks, the session stops.
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                Immediate. No confirmation prompt. No grace period. The rules you set are the rules that hold.
+                No debate. No mental override. The rules you set are the rules that hold.
               </p>
             </div>
           </div>
@@ -370,7 +400,7 @@ export default async function Home() {
               Rule engine
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
-              Every rule that matters, in one place.
+              Every rule that protects the account, in one place.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
               Set them before the open. Guardrail evaluates every trade event against them.
@@ -394,6 +424,32 @@ export default async function Home() {
               <span className="h-1.5 w-1.5 rounded-full bg-stone-300" aria-hidden />
               Coming soon
             </span>
+          </div>
+        </section>
+
+        {/* ── Prop firm section ─────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8 lg:p-10">
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              Prop firm pressure
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              Built for prop firm pressure.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              One rule break can cost more than the trade. It can cost the challenge, the funded account, or the payout.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {PROP_FIRM_CARDS.map((card) => (
+              <div
+                key={card.title}
+                className="rounded-2xl border border-stone-100 bg-stone-50/80 px-6 py-6"
+              >
+                <p className="text-sm font-semibold text-stone-950">{card.title}</p>
+                <p className="mt-2 text-sm leading-6 text-stone-600">{card.body}</p>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -443,7 +499,7 @@ export default async function Home() {
                 ))}
               </ul>
               <p className="mt-3 text-xs leading-5 text-stone-400">
-                Broker-side actions require write-level API permissions. Each integration is verified live before it ships.
+                Broker-side actions require verified write-level permissions. We only ship them after live integration testing.
               </p>
             </div>
           </div>
@@ -456,35 +512,35 @@ export default async function Home() {
               Your data, your control
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-50 sm:text-2xl">
-              Read-only. No credentials. No surprises.
+              Read-only first. No trading credentials. No surprises.
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-400">
-              Guardrail needs to see your trades — not place them. Here&rsquo;s exactly what we access and what we don&rsquo;t.
+              Guardrail needs trade events to evaluate rules. It does not need to place trades.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
-              <p className="text-sm font-semibold text-stone-50">Read-only webhook connection</p>
+              <p className="text-sm font-semibold text-stone-50">Read-only broker connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                Guardrail receives trade events from your broker — fills, positions, P&L. It cannot place, modify, or cancel orders. The connection is receive-only.
+                Guardrail needs trade events to evaluate rules. It does not need to place trades in read-only mode.
               </p>
             </div>
             <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
-              <p className="text-sm font-semibold text-stone-50">No trading credentials stored</p>
+              <p className="text-sm font-semibold text-stone-50">No broker password stored</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                We never ask for your broker username or password. Tradovate uses a webhook token scoped only to sending trade data. No wallet, no positions, no order access.
+                When supported, connections use broker authorization or scoped tokens instead of asking for your broker password.
               </p>
             </div>
             <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
               <p className="text-sm font-semibold text-stone-50">You control the connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                Disconnect your broker integration from your account settings at any time. Guardrail keeps your rule configuration but stops receiving trade data immediately.
+                Disconnect your broker integration from account settings at any time. Guardrail keeps your rule configuration but stops receiving trade data immediately.
               </p>
             </div>
             <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
               <p className="text-sm font-semibold text-stone-50">Works without a broker connection</p>
               <p className="mt-2 text-sm leading-6 text-stone-400">
-                Manual Mode lets you use the full rule engine before connecting anything. Log trades yourself and the same evaluation runs — Allowed, Warning, or Locked.
+                Manual Mode lets you use the rule engine before connecting anything. Log trades yourself and the same evaluation runs — Allowed, Warning, or Locked.
               </p>
             </div>
           </div>
@@ -499,6 +555,9 @@ export default async function Home() {
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
               Connect your broker account.
             </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              Tradovate is the first integration. Guardrail starts read-only, evaluates trade events against your rules, and only expands enforcement after verified broker support.
+            </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {BROKERS.map((broker) => (
@@ -583,45 +642,13 @@ export default async function Home() {
               The math
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              One bad month, compounded.
+              What are broken rules costing you?
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              The cost isn&rsquo;t one bad trade. It&rsquo;s the pattern — the same mistake, repeated across a month.
+              Most traders underestimate the monthly cost. Adjust to your reality.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl bg-stone-50 px-6 py-6 text-center">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
-                Rule breaks / month
-              </p>
-              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-950">4</p>
-              <p className="mt-2 text-xs text-stone-500">
-                Revenge trade, oversized entry, one more trade, ignored streak stop
-              </p>
-            </div>
-            <div className="rounded-2xl bg-stone-50 px-6 py-6 text-center">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
-                Average loss per break
-              </p>
-              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-950">$150</p>
-              <p className="mt-2 text-xs text-stone-500">
-                Often more — one oversized entry can wipe a full day&rsquo;s gains
-              </p>
-            </div>
-            <div className="rounded-2xl bg-stone-950 px-6 py-6 text-center">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
-                Lost per year
-              </p>
-              <p className="mt-3 text-5xl font-bold tabular-nums text-stone-50">$7,200</p>
-              <p className="mt-2 text-xs text-stone-400">
-                From trades you knew you shouldn&rsquo;t have taken
-              </p>
-            </div>
-          </div>
-          <p className="mt-5 rounded-2xl border border-stone-100 bg-stone-50 px-5 py-4 text-sm leading-6 text-stone-600">
-            Guardrail costs{" "}
-            <span className="font-semibold text-stone-950">$25/month</span>. At those numbers, one prevented rule break covers the subscription. The rest is recovered capital.
-          </p>
+          <RoiCalculator />
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────────────── */}
@@ -663,7 +690,7 @@ export default async function Home() {
                 Your rules, enforced. Starting now.
               </h2>
               <p className="mt-3 text-base leading-7 text-stone-600">
-                Configure your limits. Run today&rsquo;s session. The app locks the moment a rule breaks.
+                Configure your limits. Run today&rsquo;s session. Let Guardrail lock the moment a rule breaks.
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
@@ -791,49 +818,37 @@ function RuleCard({
 
 function HeroStatusPreview() {
   return (
-    <div className="w-56 rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="w-56 rounded-2xl border border-red-200 bg-red-50/60 p-4">
+      <div className="mb-2 flex items-center justify-between">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
           Today&rsquo;s session
         </p>
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-          Allowed
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          Locked
         </span>
       </div>
+      <p className="mb-3 text-[11px] font-semibold text-red-800">Daily loss limit reached</p>
       <div className="flex flex-col gap-2.5">
         <div>
           <div className="mb-1 flex justify-between text-[11px] text-stone-500">
             <span>Loss used</span>
-            <span>$120 / $500</span>
+            <span className="font-semibold text-red-700">$500 / $500</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
-            <div className="h-full w-[24%] rounded-full bg-emerald-500" />
+          <div className="h-1.5 overflow-hidden rounded-full bg-red-200">
+            <div className="h-full w-full rounded-full bg-red-500" />
           </div>
         </div>
         <div>
           <div className="mb-1 flex justify-between text-[11px] text-stone-500">
             <span>Trades</span>
-            <span>2 / 5</span>
+            <span>5 / 5</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
-            <div className="h-full w-[40%] rounded-full bg-emerald-500" />
+            <div className="h-full w-full rounded-full bg-stone-400" />
           </div>
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-3 text-[10px] text-stone-400">
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-          Allowed
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
-          Warning
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-400" aria-hidden />
-          Locked
-        </span>
-      </div>
+      <p className="mt-3 text-[10px] text-stone-400">Next reset: tomorrow</p>
     </div>
   );
 }
