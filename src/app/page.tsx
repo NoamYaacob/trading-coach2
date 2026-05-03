@@ -183,8 +183,8 @@ const INCLUDED_FEATURES = [
 
 const FAQS = [
   {
-    q: "Is Guardrail a trading signal tool?",
-    a: "No. Guardrail does not tell you what trades to take, when to enter, or what the market will do. It is a risk enforcement tool — it holds the rules you already chose before emotional pressure overrides them.",
+    q: "What does Guardrail actually do?",
+    a: "Guardrail lets you define risk rules like daily loss, max trades, session hours, and loss streaks. It evaluates your session against those rules and moves the state through Allowed, Warning, or Locked depending on the mode your account supports.",
   },
   {
     q: "Does Guardrail block my broker orders?",
@@ -195,12 +195,12 @@ const FAQS = [
     a: "App-level lock means the session moves to Locked inside Guardrail and you are alerted. Your broker account is unaffected — you could still place trades there manually. Broker-side enforcement means Guardrail would cancel orders or flatten positions directly at the broker level. That requires verified write-level API permissions and is planned, not live today.",
   },
   {
-    q: "What happens when a rule is hit?",
-    a: "The session moves to Locked. A banner shows which rule fired and when the reset window opens — by default, the start of the next trading day. If Telegram is connected, you receive an alert immediately. Nothing happens at the broker level.",
-  },
-  {
     q: "Does it work for prop firm evaluation and funded accounts?",
     a: "Yes. Guardrail is built for futures traders on funded and evaluation accounts where a single bad day can end the account. It supports evaluation, funded, personal, and demo account types and is designed around typical prop firm daily loss and trade count constraints.",
+  },
+  {
+    q: "Is Guardrail a trading signal tool?",
+    a: "No. Guardrail does not tell you what trades to take, when to enter, or what the market will do. It is a risk enforcement tool — it holds the rules you already chose before emotional pressure overrides them.",
   },
   {
     q: "What if I haven't connected a broker yet?",
@@ -259,8 +259,8 @@ export default async function Home() {
           Guardrail makes them hold.
         </>
       }
-      description="Set daily loss, max trades, session hours, and loss-streak rules before the market opens. Guardrail evaluates the session in real time and locks the day when a rule breaks."
-      note="App-level lock today · Broker-connected read-only mode · Broker-side enforcement only after verified integration support"
+      description="Set your daily loss, max trades, session hours, and loss-streak rules before the open. When pressure hits, Guardrail keeps the session inside those limits."
+      note="App-level locks today · Read-only broker connection first · Broker-side enforcement ships only after verified integration support"
       actions={heroActions}
       heroPreview={user ? undefined : <HeroStatusPreview />}
     >
@@ -367,7 +367,7 @@ export default async function Home() {
                   Today · 11:42 AM
                 </p>
                 <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-950">
-                  Trading is open — limits are close.
+                  Guardrail shows the session state before it turns into damage.
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
@@ -403,7 +403,7 @@ export default async function Home() {
               Every rule that protects the account, in one place.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
-              Set them before the open. Guardrail evaluates every trade event against them.
+              Loss limits, trade caps, session windows, news locks, and payout protection — all evaluated by the same rule engine.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -427,14 +427,38 @@ export default async function Home() {
           </div>
         </section>
 
+        {/* ── Mid-page CTA ─────────────────────────────────────────────────── */}
+        {!user && (
+          <div className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-stone-50/60 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-6 text-stone-600">
+              <span className="font-semibold text-stone-950">Set the rules before the open.</span>{" "}
+              Let Guardrail hold them when pressure hits.
+            </p>
+            <div className="flex shrink-0 flex-wrap gap-3">
+              <Link
+                href="/signup"
+                className="rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              >
+                Start free week
+              </Link>
+              <a
+                href="#how-it-works"
+                className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-500 hover:text-stone-950"
+              >
+                See how it works
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* ── Prop firm section ─────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8 lg:p-10">
+        <section className="rounded-[2rem] border border-amber-200/80 bg-amber-50/30 p-5 sm:p-8 lg:p-10">
           <div className="mb-8 max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
               Prop firm pressure
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              Built for prop firm pressure.
+              Prop firm rules do not forgive emotional trades.
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
               One rule break can cost more than the trade. It can cost the challenge, the funded account, or the payout.
@@ -444,7 +468,7 @@ export default async function Home() {
             {PROP_FIRM_CARDS.map((card) => (
               <div
                 key={card.title}
-                className="rounded-2xl border border-stone-100 bg-stone-50/80 px-6 py-6"
+                className="rounded-2xl border border-amber-100 bg-white/80 px-6 py-6"
               >
                 <p className="text-sm font-semibold text-stone-950">{card.title}</p>
                 <p className="mt-2 text-sm leading-6 text-stone-600">{card.body}</p>
@@ -556,7 +580,7 @@ export default async function Home() {
               Connect your broker account.
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Tradovate is the first integration. Guardrail starts read-only, evaluates trade events against your rules, and only expands enforcement after verified broker support.
+              Start with Tradovate. Guardrail starts read-only, evaluates trade events against your rules, and only expands enforcement after verified broker support.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -564,6 +588,15 @@ export default async function Home() {
               <BrokerCard key={broker.name} {...broker} />
             ))}
           </div>
+          <p className="mt-4 text-xs text-stone-400">
+            Don&rsquo;t see your broker?{" "}
+            <a
+              href="mailto:support@guardrail.trade"
+              className="font-medium text-stone-600 underline-offset-2 hover:underline"
+            >
+              Request a broker
+            </a>
+          </p>
         </section>
 
         {/* ── Pricing ──────────────────────────────────────────────────────── */}
@@ -592,6 +625,7 @@ export default async function Home() {
                 <span className="text-base text-stone-500">/ month after trial</span>
               </div>
               <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
+              <p className="mt-1 text-xs text-stone-400">Less than the cost of one avoidable mistake.</p>
               <div className="mt-6 flex flex-col items-start gap-3 sm:mt-8 sm:flex-row sm:flex-wrap">
                 {user ? (
                   <Link
@@ -642,10 +676,10 @@ export default async function Home() {
               The math
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              What are broken rules costing you?
+              What are your broken rules costing you?
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Most traders underestimate the monthly cost. Adjust to your reality.
+              A broken rule is not always one big loss. The damage is the pattern.
             </p>
           </div>
           <RoiCalculator />
@@ -818,8 +852,8 @@ function RuleCard({
 
 function HeroStatusPreview() {
   return (
-    <div className="w-56 rounded-2xl border border-red-200 bg-red-50/60 p-4">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="w-60 rounded-2xl border border-red-300/60 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(185,28,28,0.18)]">
+      <div className="mb-1 flex items-center justify-between">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
           Today&rsquo;s session
         </p>
@@ -827,14 +861,15 @@ function HeroStatusPreview() {
           Locked
         </span>
       </div>
-      <p className="mb-3 text-[11px] font-semibold text-red-800">Daily loss limit reached</p>
+      <p className="mb-1 text-sm font-semibold tracking-[-0.02em] text-stone-950">Session locked</p>
+      <p className="mb-3 text-[11px] text-red-700">Daily loss limit reached</p>
       <div className="flex flex-col gap-2.5">
         <div>
           <div className="mb-1 flex justify-between text-[11px] text-stone-500">
             <span>Loss used</span>
             <span className="font-semibold text-red-700">$500 / $500</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-red-200">
+          <div className="h-1.5 overflow-hidden rounded-full bg-red-100">
             <div className="h-full w-full rounded-full bg-red-500" />
           </div>
         </div>
@@ -848,7 +883,12 @@ function HeroStatusPreview() {
           </div>
         </div>
       </div>
-      <p className="mt-3 text-[10px] text-stone-400">Next reset: tomorrow</p>
+      <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
+        <p className="text-[10px] text-stone-400">Next reset: tomorrow</p>
+        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">
+          New entries disabled
+        </span>
+      </div>
     </div>
   );
 }
