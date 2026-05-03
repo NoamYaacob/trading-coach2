@@ -12,6 +12,11 @@ type AppNavItem = {
   match: "exact" | "startsWith";
 };
 
+type MarketingNavItem = {
+  href: string;
+  label: string;
+};
+
 const PRIMARY_NAV: AppNavItem[] = [
   { href: "/dashboard", label: "Dashboard", match: "exact" },
   { href: "/rules", label: "Trading Plan", match: "exact" },
@@ -27,6 +32,25 @@ const MORE_NAV: AppNavItem[] = [
 ];
 
 const ALL_NAV: AppNavItem[] = [...PRIMARY_NAV, ...MORE_NAV];
+
+// Desktop: 5 items (Security lives in footer + mobile)
+const MARKETING_NAV_DESKTOP: MarketingNavItem[] = [
+  { href: "/features", label: "Features" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/prop-firms", label: "Prop firms" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/faq", label: "FAQ" },
+];
+
+// Mobile dropdown: all 6 marketing pages
+const MARKETING_NAV_MOBILE: MarketingNavItem[] = [
+  { href: "/features", label: "Features" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/prop-firms", label: "Prop firms" },
+  { href: "/security", label: "Security" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/faq", label: "FAQ" },
+];
 
 const MARKETING_ROUTES = new Set<string>([
   "/",
@@ -74,20 +98,116 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
 
   if (!authenticated) {
     return (
-      <nav className="flex items-center gap-1">
-        <Link
-          href="/login"
-          className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs text-stone-600 transition-colors hover:text-stone-950 sm:px-3.5 sm:py-2 sm:text-sm"
-        >
-          Log in
-        </Link>
-        <Link
-          href="/signup"
-          className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
-        >
-          Sign up
-        </Link>
-      </nav>
+      <div className="flex items-center gap-1">
+        {/* ── Desktop marketing nav (md+) ─────────────────────────── */}
+        <nav className="hidden items-center md:flex" aria-label="Marketing">
+          <div className="flex items-center gap-0.5">
+            {MARKETING_NAV_DESKTOP.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-full px-3 py-1.5 text-sm transition-colors sm:px-3.5 ${
+                    active
+                      ? "bg-stone-100 font-medium text-stone-950"
+                      : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-950"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+          <span className="mx-1.5 h-4 w-px shrink-0 bg-stone-200/80" aria-hidden />
+          <Link
+            href="/login"
+            className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm text-stone-600 transition-colors hover:text-stone-950 sm:px-3.5"
+          >
+            Log in
+          </Link>
+          <Link
+            href="/signup"
+            className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-sm font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4"
+          >
+            Sign up
+          </Link>
+        </nav>
+
+        {/* ── Mobile backdrop ──────────────────────────────────────── */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-40 md:hidden"
+            style={{ background: "rgba(28,25,23,0.07)" }}
+            aria-hidden
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+
+        {/* ── Mobile menu button + dropdown (below md) ─────────────── */}
+        <div className="relative md:hidden" ref={mobileRef}>
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-expanded={mobileOpen}
+            aria-haspopup="menu"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-950"
+          >
+            Menu
+            <span
+              className={`text-[10px] transition-transform ${mobileOpen ? "rotate-180" : ""}`}
+              aria-hidden
+            >
+              ▾
+            </span>
+          </button>
+
+          {mobileOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.28)]"
+            >
+              {MARKETING_NAV_MOBILE.map((item) => {
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    role="menuitem"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setMobileOpen(false)}
+                    className={
+                      active
+                        ? "block bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950"
+                        : "block px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
+                    }
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+              <div className="mx-4 my-1 h-px bg-stone-100" />
+              <Link
+                href="/signup"
+                role="menuitem"
+                onClick={() => setMobileOpen(false)}
+                className="block px-4 py-2.5 text-sm font-medium text-stone-950 hover:bg-stone-50"
+              >
+                Start free week
+              </Link>
+              <Link
+                href="/login"
+                role="menuitem"
+                onClick={() => setMobileOpen(false)}
+                className="block px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 hover:text-stone-950"
+              >
+                Log in
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
     );
   }
 
