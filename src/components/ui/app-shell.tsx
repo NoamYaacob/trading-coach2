@@ -11,6 +11,7 @@ type AppShellProps = {
   note?: string;
   children?: ReactNode;
   actions?: ReactNode;
+  heroPreview?: ReactNode;
   statusStrip?: ReactNode;
 };
 
@@ -21,6 +22,7 @@ export async function AppShell({
   note,
   children,
   actions,
+  heroPreview,
   statusStrip,
 }: AppShellProps) {
   const user = await getCurrentUser();
@@ -41,22 +43,33 @@ export async function AppShell({
         {statusStrip ? <div className="-mt-4">{statusStrip}</div> : null}
 
         <section className="rounded-[2rem] border border-stone-200/80 bg-white/85 p-4 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur sm:p-6 lg:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
-                {eyebrow}
-              </p>
-              <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl lg:text-4xl">
-                {title}
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600 sm:text-base">
-                {description}
-              </p>
-              {note && (
-                <p className="mt-3 text-xs leading-5 text-stone-500">{note}</p>
+          <div className={`grid gap-6 lg:gap-10 ${heroPreview ? "lg:grid-cols-[1fr_auto] lg:items-end" : ""}`}>
+            <div>
+              <div className="max-w-3xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
+                  {eyebrow}
+                </p>
+                <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl lg:text-4xl">
+                  {title}
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600 sm:text-base">
+                  {description}
+                </p>
+                {note && (
+                  <p className="mt-3 text-xs leading-5 text-stone-500">{note}</p>
+                )}
+              </div>
+              {actions && (
+                <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
+                  {actions}
+                </div>
               )}
             </div>
-            {actions ? <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">{actions}</div> : null}
+            {heroPreview && (
+              <div className="hidden shrink-0 lg:block">
+                {heroPreview}
+              </div>
+            )}
           </div>
         </section>
 

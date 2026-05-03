@@ -162,7 +162,7 @@ const INCLUDED_FEATURES = [
 const FAQS = [
   {
     q: "Does Guardrail block my broker orders?",
-    a: "Not yet. Today, enforcement is app-level: the session locks inside Guardrail and you receive a Telegram alert if connected. Guardrail does not send commands to your broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each broker integration.",
+    a: "Not yet. Today the session locks inside Guardrail — if Telegram is connected, you get an alert immediately. Nothing happens at the broker. Broker-side order cancellation and position flattening are planned and will only ship after live verification with each integration.",
   },
   {
     q: "What happens when a rule is hit?",
@@ -203,23 +203,20 @@ export default async function Home() {
       Open today&rsquo;s session
     </Link>
   ) : (
-    <div className="flex flex-col items-start gap-4">
-      <HeroStatusPreview />
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
-        <Link
-          href="/signup"
-          className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-        >
-          Start free trial
-        </Link>
-        <a
-          href="#how-it-works"
-          className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
-        >
-          See how it works ↓
-        </a>
-      </div>
-    </div>
+    <>
+      <Link
+        href="/signup"
+        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      >
+        Start free trial
+      </Link>
+      <a
+        href="#how-it-works"
+        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+      >
+        See how it works ↓
+      </a>
+    </>
   );
 
   return (
@@ -235,6 +232,7 @@ export default async function Home() {
       description="Set your daily loss, max trades, and session rules before the market opens. When a rule breaks, Guardrail locks the session and alerts you immediately."
       note="App-level lock today · Broker-connected read-only mode · Broker-side enforcement planned after verification"
       actions={heroActions}
+      heroPreview={user ? undefined : <HeroStatusPreview />}
     >
       <div className="grid gap-12 lg:gap-16">
 
@@ -474,7 +472,7 @@ export default async function Home() {
                     href="/dashboard"
                     className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                   >
-                    Go to dashboard
+                    Open today&rsquo;s session
                   </Link>
                 ) : (
                   <>
@@ -559,7 +557,7 @@ export default async function Home() {
                   href="/dashboard"
                   className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
-                  Go to dashboard
+                  Open today&rsquo;s session
                 </Link>
               ) : (
                 <>
@@ -678,7 +676,7 @@ function RuleCard({
 
 function HeroStatusPreview() {
   return (
-    <div className="hidden w-56 rounded-2xl border border-stone-200 bg-stone-50/80 p-4 lg:block">
+    <div className="w-56 rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
           Today&rsquo;s session
