@@ -42,22 +42,33 @@ export function ConnectTradovateClient() {
   const [propFirm, setPropFirm] = useState<string>("Apex Trader Funding");
   const [customFirm, setCustomFirm] = useState("");
   const [env, setEnv] = useState<"demo" | "live">("demo");
+  // Once the user manually picks an environment, source-change auto-defaults stop running.
+  const [userHasOverriddenEnv, setUserHasOverriddenEnv] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   function handleSourceChange(source: AccountSource) {
     setAccountSource(source);
-    if (source === "prop_firm" || source === "demo") {
-      setEnv("demo");
-    } else {
-      setEnv("live");
+    if (!userHasOverriddenEnv) {
+      setEnv(source === "personal" ? "live" : "demo");
     }
+  }
+
+  function handleEnvChange(newEnv: "demo" | "live") {
+    setEnv(newEnv);
+    setUserHasOverriddenEnv(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+
+    if (accountSource === "prop_firm" && !propFirm) {
+      setFormError("Please select a prop firm.");
+      return;
+    }
+
     setSubmitting(true);
 
     const resolvedFirmName =
@@ -112,7 +123,7 @@ export function ConnectTradovateClient() {
         </Link>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-20 pt-6 sm:px-6 lg:px-10">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pb-20 pt-6 sm:px-6 lg:px-10">
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Broker Connections</p>
@@ -130,163 +141,175 @@ export function ConnectTradovateClient() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="grid gap-5">
+        <form onSubmit={handleSubmit} className="grid gap-7">
 
-          {/* Account source */}
-          <fieldset className="rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-sm">
-            <legend className="mb-4 text-sm font-semibold text-stone-950">
+          {/* ── Step 1: Account kind ─────────────────────────────────────── */}
+          <div role="group" aria-labelledby="label-account-source">
+            <p id="label-account-source" className="mb-3 text-sm font-semibold text-stone-950">
               What kind of account are you connecting?
-            </legend>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  { value: "prop_firm", label: "Prop firm account", hint: "Apex, Topstep, MFF, etc." },
-                  { value: "personal", label: "Personal account", hint: "Your own live futures account" },
-                  { value: "demo", label: "Demo / sim account", hint: "Paper trading or simulation" },
-                  { value: "other", label: "Other", hint: "Any other account type" },
-                ] as const
-              ).map(({ value, label, hint }) => (
+            </p>
+            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    { value: "prop_firm", label: "Prop firm account", hint: "Apex, Topstep, MFF, etc." },
+                    { value: "personal", label: "Personal account", hint: "Your own live futures account" },
+                    { value: "demo", label: "Demo / sim account", hint: "Paper trading or simulation" },
+                    { value: "other", label: "Other", hint: "Any other account type" },
+                  ] as const
+                ).map(({ value, label, hint }) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
+                      accountSource === value
+                        ? "border-stone-950 bg-stone-950/5"
+                        : "border-stone-200 hover:border-stone-400"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="accountSource"
+                      value={value}
+                      checked={accountSource === value}
+                      onChange={() => handleSourceChange(value)}
+                      className="mt-0.5 shrink-0 accent-stone-950"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-stone-950">{label}</span>
+                      <span className="text-xs text-stone-500">{hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Step 2: Prop firm ────────────────────────────────────────── */}
+          {accountSource === "prop_firm" && (
+            <div role="group" aria-labelledby="label-prop-firm">
+              <p id="label-prop-firm" className="mb-3 text-sm font-semibold text-stone-950">
+                Which prop firm?
+              </p>
+              <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {PROP_FIRMS.map((firm) => (
+                    <label
+                      key={firm}
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition ${
+                        propFirm === firm
+                          ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
+                          : "border-stone-200 text-stone-700 hover:border-stone-400"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="propFirm"
+                        value={firm}
+                        checked={propFirm === firm}
+                        onChange={() => setPropFirm(firm)}
+                        className="shrink-0 accent-stone-950"
+                      />
+                      {firm}
+                    </label>
+                  ))}
+                </div>
+                {propFirm === "Other" && (
+                  <input
+                    type="text"
+                    placeholder="Firm name (optional)"
+                    value={customFirm}
+                    onChange={(e) => setCustomFirm(e.target.value)}
+                    className="mt-3 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
+                    maxLength={80}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Environment ──────────────────────────────────────── */}
+          <div role="group" aria-labelledby="label-env">
+            <p id="label-env" className="mb-1 text-sm font-semibold text-stone-950">
+              Tradovate environment
+            </p>
+            <p className="mb-3 text-xs leading-5 text-stone-500">
+              For prop firm accounts, choose Demo / Simulation if your account is an evaluation, challenge, combine, or simulated funded account. Choose Live only for a personal live Tradovate brokerage account unless your prop firm explicitly tells you otherwise.
+            </p>
+            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <label
-                  key={value}
                   className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
-                    accountSource === value
+                    env === "demo"
                       ? "border-stone-950 bg-stone-950/5"
                       : "border-stone-200 hover:border-stone-400"
                   }`}
                 >
                   <input
                     type="radio"
-                    name="accountSource"
-                    value={value}
-                    checked={accountSource === value}
-                    onChange={() => handleSourceChange(value)}
+                    name="env"
+                    value="demo"
+                    checked={env === "demo"}
+                    onChange={() => handleEnvChange("demo")}
                     className="mt-0.5 shrink-0 accent-stone-950"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-stone-950">{label}</span>
-                    <span className="text-xs text-stone-500">{hint}</span>
+                    <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
+                    <span className="text-xs text-stone-500">trader-d.tradovate.com · prop firms and sim accounts</span>
                   </span>
                 </label>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* Prop firm selector */}
-          {accountSource === "prop_firm" && (
-            <fieldset className="rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-sm">
-              <legend className="mb-4 text-sm font-semibold text-stone-950">Which prop firm?</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {PROP_FIRMS.map((firm) => (
-                  <label
-                    key={firm}
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition ${
-                      propFirm === firm
-                        ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
-                        : "border-stone-200 text-stone-700 hover:border-stone-400"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="propFirm"
-                      value={firm}
-                      checked={propFirm === firm}
-                      onChange={() => setPropFirm(firm)}
-                      className="shrink-0 accent-stone-950"
-                    />
-                    {firm}
-                  </label>
-                ))}
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
+                    env === "live"
+                      ? "border-stone-950 bg-stone-950/5"
+                      : "border-stone-200 hover:border-stone-400"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="env"
+                    value="live"
+                    checked={env === "live"}
+                    onChange={() => handleEnvChange("live")}
+                    className="mt-0.5 shrink-0 accent-stone-950"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-stone-950">Live</span>
+                    <span className="text-xs text-stone-500">trader.tradovate.com · personal live accounts</span>
+                  </span>
+                </label>
               </div>
-              {propFirm === "Other" && (
-                <input
-                  type="text"
-                  placeholder="Firm name (optional)"
-                  value={customFirm}
-                  onChange={(e) => setCustomFirm(e.target.value)}
-                  className="mt-3 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
-                  maxLength={80}
-                />
+              {accountSource === "prop_firm" && env === "demo" && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+                  Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
+                </p>
               )}
-            </fieldset>
-          )}
-
-          {/* Environment */}
-          <fieldset className="rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-sm">
-            <legend className="mb-1 text-sm font-semibold text-stone-950">Tradovate environment</legend>
-            <p className="mb-4 text-xs leading-5 text-stone-500">
-              For prop firm accounts: choose Demo / Simulation if your account is an evaluation, challenge, combine, or simulated funded account. Choose Live only for a personal live Tradovate brokerage account unless your prop firm explicitly tells you otherwise.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label
-                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
-                  env === "demo"
-                    ? "border-stone-950 bg-stone-950/5"
-                    : "border-stone-200 hover:border-stone-400"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="env"
-                  value="demo"
-                  checked={env === "demo"}
-                  onChange={() => setEnv("demo")}
-                  className="mt-0.5 shrink-0 accent-stone-950"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
-                  <span className="text-xs text-stone-500">trader-d.tradovate.com · prop firms and sim accounts</span>
-                </span>
-              </label>
-              <label
-                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition ${
-                  env === "live"
-                    ? "border-stone-950 bg-stone-950/5"
-                    : "border-stone-200 hover:border-stone-400"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="env"
-                  value="live"
-                  checked={env === "live"}
-                  onChange={() => setEnv("live")}
-                  className="mt-0.5 shrink-0 accent-stone-950"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-stone-950">Live</span>
-                  <span className="text-xs text-stone-500">trader.tradovate.com · personal live accounts</span>
-                </span>
-              </label>
+              {accountSource === "prop_firm" && env === "live" && (
+                <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
+                  <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
+                </p>
+              )}
             </div>
-            {accountSource === "prop_firm" && env === "demo" && (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
-                Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
-              </p>
-            )}
-            {accountSource === "prop_firm" && env === "live" && (
-              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
-                <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
-              </p>
-            )}
-          </fieldset>
+          </div>
 
-          {/* Optional display name */}
-          <div className="rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-sm">
-            <label htmlFor="displayName" className="block text-sm font-semibold text-stone-950">
+          {/* ── Optional label ───────────────────────────────────────────── */}
+          <div>
+            <label htmlFor="displayName" className="mb-1 block text-sm font-semibold text-stone-950">
               Connection label <span className="font-normal text-stone-500">(optional)</span>
             </label>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mb-3 text-xs text-stone-500">
               A short name shown in the dashboard. Leave blank to use account names from Tradovate.
             </p>
-            <input
-              id="displayName"
-              type="text"
-              placeholder={accountSource === "prop_firm" ? "e.g. Apex Eval 1" : "e.g. My Live Account"}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={60}
-              className="mt-3 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
-            />
+            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+              <input
+                id="displayName"
+                type="text"
+                placeholder={accountSource === "prop_firm" ? "e.g. Apex Eval 1" : "e.g. My Live Account"}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={60}
+                className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
+              />
+            </div>
           </div>
 
           {formError && (
@@ -315,7 +338,7 @@ export function ConnectTradovateClient() {
         <div className="rounded-2xl border border-stone-100 bg-stone-50 px-5 py-4 text-xs text-stone-500">
           <p className="font-semibold text-stone-700">Read-only connection</p>
           <p className="mt-1 leading-5">
-            Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active.
+            Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active yet.
           </p>
         </div>
 
