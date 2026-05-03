@@ -45,6 +45,7 @@ export default async function FeaturesPage() {
       title="Every rule that protects the account."
       description="Fourteen rules covering daily loss, trade caps, session windows, news locks, and payout protection — all evaluated by the same rule engine in real time."
       actions={actions}
+      heroPreview={<RuleEngineMockup />}
     >
       <div className="grid gap-8 sm:gap-12">
         <section>
@@ -121,5 +122,75 @@ export default async function FeaturesPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+// ─── Rule engine mockup ────────────────────────────────────────────────────────
+
+function RuleEngineMockup() {
+  return (
+    <div className="w-full rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-[0_8px_28px_-8px_rgba(28,25,23,0.12)] sm:w-64 lg:p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-stone-400">
+          Rule engine
+        </p>
+        <span className="text-[9px] text-stone-400">14 rules</span>
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-100/80 bg-emerald-50/60 px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold text-stone-950">Daily Loss Limit</p>
+            <p className="text-[10px] text-stone-500">Evaluated on every fill</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+            Active
+          </span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-100/80 bg-emerald-50/60 px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold text-stone-950">Max Trades Per Day</p>
+            <p className="text-[10px] text-stone-500">Count resets at midnight</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+            Active
+          </span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-amber-100/80 bg-amber-50/60 px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold text-stone-950">Daily Profit Target</p>
+            <p className="text-[10px] text-stone-500">Manual Mode today</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+            Partial
+          </span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-stone-100/80 bg-stone-50 px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-medium text-stone-400">Weekly Loss Limit</p>
+            <p className="text-[10px] text-stone-400">In development</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-stone-100 px-1.5 py-0.5 text-[9px] font-semibold text-stone-400">
+            Soon
+          </span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-stone-100/80 bg-stone-50 px-3 py-2 opacity-70">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-medium text-stone-400">Payout Protection</p>
+            <p className="text-[10px] text-stone-400">In development</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-stone-100 px-1.5 py-0.5 text-[9px] font-semibold text-stone-400">
+            Soon
+          </span>
+        </div>
+      </div>
+      <p className="mt-3 border-t border-stone-100 pt-2 text-[9px] text-stone-400">
+        5 active · 3 partial · 6 coming soon
+      </p>
+    </div>
   );
 }

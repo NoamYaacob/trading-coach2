@@ -47,6 +47,51 @@ export default async function PropFirmsPage() {
     >
       <div className="grid gap-8 sm:gap-12">
 
+        {/* ── Protection path ─────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-amber-200/60 bg-amber-50/20 p-5 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+            Protection path
+          </p>
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+            Three stages. Same rules enforced throughout.
+          </h2>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+
+            <StageCard
+              stage="Stage 1"
+              title="Challenge"
+              risk="One bad day ends the evaluation"
+              rules={["Daily loss limit", "Max trades / day", "Session hours"]}
+            />
+            <div className="hidden sm:flex sm:items-center sm:px-2" aria-hidden>
+              <span className="text-amber-300">→</span>
+            </div>
+            <StageCard
+              stage="Stage 2"
+              title="Funded Account"
+              risk="Bad week = account pulled"
+              rules={["Daily loss limit", "Loss streak stop", "News blackout"]}
+            />
+            <div className="hidden sm:flex sm:items-center sm:px-2" aria-hidden>
+              <span className="text-amber-300">→</span>
+            </div>
+            <StageCard
+              stage="Stage 3"
+              title="Payout Day"
+              risk="Giveback trade wipes the gain"
+              rules={["Profit target lock*", "Payout protection*"]}
+            />
+
+          </div>
+          <p className="mt-4 text-[11px] text-stone-400">
+            * Partial or coming-soon rules. See{" "}
+            <a href="/features" className="underline transition hover:text-stone-600">
+              features
+            </a>{" "}
+            for current status.
+          </p>
+        </section>
+
         {/* ── Three protection cards ──────────────────────────────────── */}
         <section className="rounded-[2rem] border border-amber-200/80 bg-amber-50/30 p-5 sm:p-8">
           <div className="mb-5 max-w-2xl sm:mb-8">
@@ -157,5 +202,44 @@ export default async function PropFirmsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+// ─── Stage card helper ─────────────────────────────────────────────────────────
+
+function StageCard({
+  stage,
+  title,
+  risk,
+  rules,
+}: {
+  stage: string;
+  title: string;
+  risk: string;
+  rules: string[];
+}) {
+  return (
+    <div className="flex-1 rounded-2xl border border-amber-100 bg-white/80 px-4 py-4">
+      <div className="mb-2">
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+          {stage}
+        </span>
+      </div>
+      <p className="text-sm font-semibold text-stone-950">{title}</p>
+      <p className="mt-1 text-[11px] leading-4 text-stone-500">{risk}</p>
+      <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5">
+        <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+          Rules applied
+        </p>
+        <ul className="grid gap-1">
+          {rules.map((r) => (
+            <li key={r} className="flex items-center gap-1.5 text-[10px] text-stone-700">
+              <span className="h-1 w-1 shrink-0 rounded-full bg-amber-500" aria-hidden />
+              {r}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

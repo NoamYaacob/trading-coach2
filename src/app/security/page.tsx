@@ -48,6 +48,102 @@ export default async function SecurityPage() {
     >
       <div className="grid gap-8 sm:gap-12">
 
+        {/* ── Data flow diagram ───────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+            Connection model
+          </p>
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+            Trade events in. No credentials out. No orders placed.
+          </h2>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
+
+            {/* Node 1: Broker */}
+            <div className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+                Your broker account
+              </p>
+              <ul className="mt-3 grid gap-1.5">
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                  Trade fill events
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                  P&amp;L summary
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                  <span className="mt-0.5 shrink-0">✗</span>
+                  No password shared
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                  <span className="mt-0.5 shrink-0">✗</span>
+                  No orders placed
+                </li>
+              </ul>
+            </div>
+
+            {/* Arrow 1 */}
+            <div className="flex items-center justify-center sm:flex-col sm:justify-center sm:px-3">
+              <div className="flex items-center gap-1.5 sm:flex-col sm:gap-0.5">
+                <span className="text-[10px] text-stone-400">read-only</span>
+                <span className="text-stone-300 sm:text-base">→</span>
+              </div>
+            </div>
+
+            {/* Node 2: Guardrail engine */}
+            <div className="flex-1 rounded-2xl border border-stone-800 bg-stone-950 px-4 py-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+                Guardrail rule engine
+              </p>
+              <ul className="mt-3 grid gap-1.5">
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-300">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+                  Evaluates your rules
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-300">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+                  Real-time session state
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-300">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+                  Disconnect any time
+                </li>
+              </ul>
+            </div>
+
+            {/* Arrow 2 */}
+            <div className="flex items-center justify-center sm:flex-col sm:justify-center sm:px-3">
+              <div className="flex items-center gap-1.5 sm:flex-col sm:gap-0.5">
+                <span className="text-[10px] text-stone-400">when rule fires</span>
+                <span className="text-stone-300 sm:text-base">→</span>
+              </div>
+            </div>
+
+            {/* Node 3: Action */}
+            <div className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+                Action
+              </p>
+              <ul className="mt-3 grid gap-1.5">
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                  Telegram alert
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                  <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                  Session locked (app)
+                </li>
+                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                  <span className="mt-0.5 shrink-0">→</span>
+                  Broker-side: planned
+                </li>
+              </ul>
+            </div>
+
+          </div>
+        </section>
+
         {/* ── Trust cards ─────────────────────────────────────────────── */}
         <section className="rounded-[2rem] border border-stone-800 bg-stone-950 p-5 sm:p-8">
           <div className="mb-5 max-w-2xl sm:mb-8">

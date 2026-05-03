@@ -84,37 +84,111 @@ export default async function HowItWorksPage() {
           <p className="mt-2 text-sm leading-6 text-stone-600">
             Every session moves through three states as trades accumulate against your rules.
           </p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-4">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Allowed</p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+
+            {/* Allowed */}
+            <div className="flex-1 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                  <p className="text-sm font-semibold text-stone-950">Allowed</p>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  Active
+                </span>
               </div>
-              <p className="text-sm leading-5 text-stone-600">
-                All rules are within limits. The session is active and trade events continue to be
-                evaluated.
+              <div className="rounded-xl border border-emerald-100/80 bg-white/70 px-3 py-3">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-stone-500">Trades</span>
+                  <span className="font-semibold text-stone-950">2 / 5</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full w-2/5 rounded-full bg-emerald-400" />
+                </div>
+                <div className="mt-2 flex justify-between text-[11px]">
+                  <span className="text-stone-500">P&amp;L today</span>
+                  <span className="font-semibold text-emerald-700">+$80</span>
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] leading-4 text-stone-600">
+                Rules within limits. Session continues normally.
               </p>
             </div>
-            <div className="rounded-2xl border border-amber-200/70 bg-amber-50/40 px-4 py-4">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Warning</p>
+
+            {/* Arrow — desktop only */}
+            <div className="hidden sm:flex sm:items-center sm:px-1" aria-hidden>
+              <span className="text-stone-300">→</span>
+            </div>
+
+            {/* Warning */}
+            <div className="flex-1 rounded-2xl border border-amber-200/70 bg-amber-50/40 px-4 py-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden />
+                  <p className="text-sm font-semibold text-stone-950">Warning</p>
+                </div>
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  Alert sent
+                </span>
               </div>
-              <p className="text-sm leading-5 text-stone-600">
-                A rule is approaching its limit. Guardrail flags the approaching breach before the
-                session is locked.
+              <div className="rounded-xl border border-amber-100/80 bg-white/70 px-3 py-3">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-stone-500">Trades</span>
+                  <span className="font-semibold text-stone-950">4 / 5</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full w-4/5 rounded-full bg-amber-400" />
+                </div>
+                <div className="mt-2 flex justify-between text-[11px]">
+                  <span className="text-stone-500">P&amp;L today</span>
+                  <span className="font-semibold text-amber-700">−$380</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full w-[76%] rounded-full bg-amber-400" />
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] leading-4 text-amber-800">
+                Approaching daily loss limit. Flagged before a breach.
               </p>
             </div>
-            <div className="rounded-2xl border border-red-200/70 bg-red-50/40 px-4 py-4">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Locked</p>
+
+            {/* Arrow — desktop only */}
+            <div className="hidden sm:flex sm:items-center sm:px-1" aria-hidden>
+              <span className="text-stone-300">→</span>
+            </div>
+
+            {/* Locked */}
+            <div className="flex-1 rounded-2xl border border-red-200/70 bg-red-50/40 px-4 py-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden />
+                  <p className="text-sm font-semibold text-stone-950">Locked</p>
+                </div>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                  Locked
+                </span>
               </div>
-              <p className="text-sm leading-5 text-stone-600">
-                A rule limit was crossed. The session is locked inside Guardrail. If Telegram is
-                connected, an alert fires immediately.
+              <div className="rounded-xl border border-red-100/80 bg-white/70 px-3 py-3">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-stone-500">Trades</span>
+                  <span className="font-semibold text-stone-950">5 / 5</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-red-100">
+                  <div className="h-full w-full rounded-full bg-red-500" />
+                </div>
+                <div className="mt-2 flex justify-between text-[11px]">
+                  <span className="text-stone-500">P&amp;L today</span>
+                  <span className="font-semibold text-red-700">−$500</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-red-100">
+                  <div className="h-full w-full rounded-full bg-red-500" />
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] leading-4 text-red-800">
+                Limit crossed. Session locked inside the app.
               </p>
             </div>
+
           </div>
         </section>
 

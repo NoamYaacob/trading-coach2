@@ -145,36 +145,43 @@ export default async function Home() {
 
         {/* ── Features highlight ────────────────────────────────────────── */}
         <section>
-          <div className="mb-4 max-w-2xl sm:mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              Rule engine
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              Five active rules. Nine more on the way.
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
-              Loss limits, trade caps, session windows, and news locks — evaluated in real time
-              against every trade event.
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {ACTIVE_RULE_NAMES.map((name) => (
-              <div
-                key={name}
-                className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]"
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-                <span className="text-sm font-medium text-stone-950">{name}</span>
+          <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <div className="mb-4 max-w-2xl sm:mb-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                  Rule engine
+                </p>
+                <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+                  Five active rules. Nine more on the way.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  Loss limits, trade caps, session windows, and news locks — evaluated in real time
+                  against every trade event.
+                </p>
               </div>
-            ))}
-          </div>
-          <div className="mt-4">
-            <Link
-              href="/features"
-              className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
-            >
-              View all 14 rules — Active, Partial, and Coming Soon →
-            </Link>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {ACTIVE_RULE_NAMES.map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]"
+                  >
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                    <span className="text-sm font-medium text-stone-950">{name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4">
+                <Link
+                  href="/features"
+                  className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+                >
+                  View all 14 rules — Active, Partial, and Coming Soon →
+                </Link>
+              </div>
+            </div>
+            <div className="hidden lg:block">
+              <RulesConfigCard />
+            </div>
           </div>
         </section>
 
@@ -392,6 +399,40 @@ export default async function Home() {
 
       </div>
     </AppShell>
+  );
+}
+
+// ─── Rule engine config card ───────────────────────────────────────────────────
+
+function RulesConfigCard() {
+  return (
+    <div className="w-56 rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(28,25,23,0.10)]">
+      <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-400">
+        Trading plan
+      </p>
+      <div className="grid gap-1.5">
+        {[
+          { rule: "Daily loss limit", value: "$500" },
+          { rule: "Max trades", value: "5 / day" },
+          { rule: "Loss streak stop", value: "3 losses" },
+          { rule: "Session hours", value: "9:30 – 12:00" },
+        ].map(({ rule, value }) => (
+          <div
+            key={rule}
+            className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-1.5"
+          >
+            <span className="text-[11px] text-stone-600">{rule}</span>
+            <span className="shrink-0 font-mono text-[11px] font-semibold text-stone-950">
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 border-t border-stone-100 pt-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+        <span className="text-[10px] text-stone-500">4 rules active · session live</span>
+      </div>
+    </div>
   );
 }
 
