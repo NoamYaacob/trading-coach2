@@ -8,7 +8,7 @@ const PROP_FIRMS = [
   "Apex Trader Funding",
   "Topstep",
   "MyFundedFutures",
-  "Bulenox",
+  "Lucid Trading",
   "Take Profit Trader",
   "Tradeify",
   "Other",
