@@ -46,7 +46,7 @@ export default async function FeaturesPage() {
       description="Fourteen rules covering daily loss, trade caps, session windows, news locks, and payout protection — all evaluated by the same rule engine in real time."
       actions={actions}
     >
-      <div className="grid gap-8 sm:gap-12">
+      <div className="-mt-4 sm:-mt-6 grid gap-8 sm:gap-12">
         <RuleEngineMockup />
         <section>
           <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
