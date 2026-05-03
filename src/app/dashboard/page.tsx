@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import Link from "next/link";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
@@ -8,7 +9,6 @@ import { CommandCenter } from "@/app/dashboard/_components/command-center/comman
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
-import { EconomicEventsPanel } from "@/app/dashboard/_components/economic-events-panel";
 import { ManualEventForm } from "@/app/dashboard/_components/manual-event-form";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
@@ -24,8 +24,6 @@ import {
   getTodayGuardianSessionStart,
   type TodaySessionState,
 } from "@/lib/guardian";
-import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
-import { LiveEnforcementPanel } from "@/components/ui/live-enforcement-panel";
 import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
 import { computeManualRiskState } from "@/lib/manual-risk-state";
 import { getTradingDayWindow } from "@/lib/trading-day";
@@ -61,33 +59,19 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    redirect("/login");
-  }
+  if (!currentUser) redirect("/login");
 
   const user = await prisma.user.findUnique({
     where: { id: currentUser.id },
     select: {
       subscriptionStatus: true,
       trialEndsAt: true,
-      traderProfile: {
-        select: { id: true, timezone: true },
-      },
-      telegramConnection: {
-        select: {
-          id: true,
-          telegramUsername: true,
-          connectedAt: true,
-        },
-      },
+      traderProfile: { select: { id: true, timezone: true } },
+      telegramConnection: { select: { id: true, telegramUsername: true, connectedAt: true } },
       coachingPreferences: true,
     },
   });
-
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login");
 
   const onboardingComplete = Boolean(user.traderProfile);
   const cookieStore = await cookies();
@@ -96,17 +80,14 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
+  const economicCalendarSelection = getEconomicCalendarSelection(user.coachingPreferences);
 
-  const riskRules = await prisma.riskRules.findUnique({
-    where: { userId: currentUser.id },
-  });
-
+  const riskRules = await prisma.riskRules.findUnique({ where: { userId: currentUser.id } });
   const tradingDay = getTradingDayWindow({
     timezone: displayTimeZone,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
-
   const now = new Date();
   const effectiveManualEnd = tradingDay.end < now ? tradingDay.end : now;
 
@@ -115,15 +96,14 @@ export default async function DashboardPage() {
     todaySessionEvents,
     guardian,
     todayGuardianSessionStart,
-    liveEnforcement,
     todayManualTrades,
     commandCenter,
+    economicCalendarSnapshot,
   ] = await Promise.all([
     getTodaySessionSummary(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getGuardianSnapshot(currentUser.id),
     getTodayGuardianSessionStart(currentUser.id),
-    getLiveEnforcementState(currentUser.id),
     prisma.manualTradeEntry.findMany({
       where: {
         userId: currentUser.id,
@@ -132,19 +112,15 @@ export default async function DashboardPage() {
       orderBy: { tradedAt: "asc" },
     }),
     loadCommandCenterData(currentUser.id),
+    getSelectedEconomicCalendarSnapshot(user.coachingPreferences),
   ]);
 
-  const hasBroker = commandCenter.accounts.some((a) => a.platform !== "manual");
-  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
-  const guardianAdditionalRulesCount = Math.max(
-    guardian.evaluation.triggeredRuleLabels.length - 1,
-    0,
-  );
+  // ── Determine which branch to render ───────────────────────────────────────
+  const noAccounts = commandCenter.accounts.length === 0;
+  const hasBrokerAccount = commandCenter.accounts.some((a) => a.platform !== "manual");
+  const manualOnly = !noAccounts && !hasBrokerAccount;
 
-  const economicCalendarSelection = getEconomicCalendarSelection(user.coachingPreferences);
-  const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
-    user.coachingPreferences,
-  );
+  // ── Manual-mode computations (only rendered in manualOnly branch) ──────────
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
   const nextHighImpactEvent = getNextHighImpactEconomicEvent(economicCalendarSnapshot);
   const economicCalendarVisibility = buildEconomicCalendarVisibility({
@@ -154,6 +130,12 @@ export default async function DashboardPage() {
     timeZone: displayTimeZone,
     scenario: economicCalendarSelection.stubScenario,
   });
+
+  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
+  const guardianAdditionalRulesCount = Math.max(
+    guardian.evaluation.triggeredRuleLabels.length - 1,
+    0,
+  );
 
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete,
@@ -191,9 +173,7 @@ export default async function DashboardPage() {
 
   const telegramBotUsername =
     process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? null;
-  const telegramBotLink = telegramBotUsername
-    ? `https://t.me/${telegramBotUsername}`
-    : null;
+  const telegramBotLink = telegramBotUsername ? `https://t.me/${telegramBotUsername}` : null;
 
   const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const manualTradeCount =
@@ -254,14 +234,9 @@ export default async function DashboardPage() {
       (v) =>
         v.ruleId !== "guardian_disabled" &&
         v.ruleId !== "session_not_started" &&
-        !(
-          v.ruleId === "no_trade_before_major_news" &&
-          !todaySessionState.sessionStarted
-        ),
+        !(v.ruleId === "no_trade_before_major_news" && !todaySessionState.sessionStarted),
     ),
-    ...violationFeed.triggeredViolations.filter(
-      (v) => v.ruleId === "manual_rule_breach",
-    ),
+    ...violationFeed.triggeredViolations.filter((v) => v.ruleId === "manual_rule_breach"),
   ];
 
   const postSessionReview = buildPostSessionReview({
@@ -303,160 +278,201 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-8">
+
+        {/* ── Command center — always shown ─────────────────────────────────── */}
         <div className="grid gap-3">
           <SummaryStrip summary={commandCenter.summary} />
           <CommandCenter data={commandCenter} />
         </div>
 
-        <RuleProgressPanel
-          todayPnL={todaySessionStateForPanel.todayPnL}
-          todayTradesCount={todaySessionStateForPanel.todayTradesCount}
-          consecutiveLosses={todaySessionStateForPanel.consecutiveLosses}
-          maxDailyLoss={riskRules?.maxDailyLoss ? Number(riskRules.maxDailyLoss) : null}
-          maxTradesPerDay={riskRules?.maxTradesPerDay ?? null}
-          stopAfterLosses={riskRules?.stopAfterLosses ?? null}
-          dailyProfitTarget={riskRules?.dailyProfitTarget ? Number(riskRules.dailyProfitTarget) : null}
-          dataSource={liveEnforcement ? "broker" : hasBroker ? "broker" : "manual"}
-        />
+        {/* ── State A: No accounts — setup prompt ───────────────────────────── */}
+        {noAccounts && (
+          <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+              Getting started
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              Connect an account to start monitoring risk.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+              Guardrail needs a broker connection or a manual demo account before it can track
+              daily loss limits, trade counts, or rule violations.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                href="/accounts/connect/tradovate"
+                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              >
+                Connect Tradovate
+              </Link>
+              <Link
+                href="/accounts/new"
+                className="rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+              >
+                Create manual demo account
+              </Link>
+            </div>
+          </section>
+        )}
 
-        <div className="grid gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Trading permission
-          </p>
-          {showPremarketReadiness ? (
-            <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
-          ) : null}
-          {liveEnforcement ? (
-            <LiveEnforcementPanel state={liveEnforcement} timeZone={displayTimeZone} />
-          ) : todaySessionState.kind === "GUARDIAN_DISABLED" ? (
-            <GuardianPausedPanel />
-          ) : (
-            <>
-              <div className="hidden md:block">
-                <ManualRiskPanel
-                  state={manualRisk}
-                  hasRules={Boolean(riskRules)}
-                  tradingDayLabel={tradingDay.label}
-                />
-              </div>
-              <TodaySessionPanel
-                sessionState={todaySessionStateForPanel}
-                additionalTriggeredRulesCount={guardianAdditionalRulesCount}
-                telegramAccess={telegramAccess}
-                telegramBotLink={telegramBotLink}
-                displayTimeZone={displayTimeZone}
-                mobileStats={{
-                  todayPnL: manualRisk.todayPnL,
-                  todayTradesCount: manualRisk.todayTradesCount,
-                  remainingDailyLossBudget: manualRisk.remainingDailyLossBudget,
-                  consecutiveLosses: manualRisk.consecutiveLosses,
-                }}
-              />
-              <RuleNoticeList notices={dashboardNotices} />
-            </>
-          )}
-        </div>
-
-        <div className="grid gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-            Quick actions
-          </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <QuickAction
-              href="/rules"
-              title="Trading Plan"
-              description="Edit limits and breach actions."
-            />
-            {todaySessionState.kind === "GUARDIAN_DISABLED" ? (
-              <QuickAction
-                href="/guardian"
-                title="Status details"
-                description="See why protection is paused."
-              />
-            ) : (
-              <QuickAction
-                href="/guardian"
-                title="Status details"
-                description="Why you're Allowed, Warning, or Locked."
-              />
-            )}
-            <QuickAction
-              href="/accounts"
-              title={hasBroker ? "Broker Connections" : "Connect broker"}
-              description={hasBroker ? "Manage broker connections." : "Prepare your Tradovate connection."}
-            />
-          </div>
-        </div>
-
-        {mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded ? (
+        {/* ── State B: Broker-connected — configuration nav only ────────────── */}
+        {hasBrokerAccount && (
           <div className="grid gap-4">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-              Session record
+              Configuration
             </p>
-            {postSessionReview ? (
-              <div className="grid gap-4">
-                <PostSessionReviewPanel
-                  review={postSessionReview}
-                  timeZone={displayTimeZone}
-                />
-                <TodayActivityTimeline
-                  items={mergedActivityTimeline}
-                  title={activityTitle}
-                  description={activityDescription}
-                  timeZone={displayTimeZone}
-                />
-              </div>
-            ) : (
-              <TodayActivityTimeline
-                items={mergedActivityTimeline}
-                title={activityTitle}
-                description={activityDescription}
-                timeZone={displayTimeZone}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <NavCard
+                href="/rules"
+                title="Trading Plan"
+                description="Edit daily loss limits, trade caps, and breach actions."
               />
-            )}
+              <NavCard
+                href="/accounts"
+                title="Broker Connections"
+                description="Manage connected accounts, review sync status, and reconnect."
+              />
+              <NavCard
+                href="/alerts"
+                title="Alerts"
+                description="Configure Telegram notifications for lockouts and warnings."
+              />
+            </div>
           </div>
-        ) : null}
+        )}
 
-        <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-            Session details
-            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">
-              +
-            </span>
-          </summary>
-          <div className="mt-5 grid gap-6">
-            <EconomicEventsPanel
-              events={economicCalendarSnapshot.events}
-              providerLabel={economicCalendarVisibility.providerLabel}
-              sourceLabel={economicCalendarVisibility.sourceLabel}
-              scenarioLabel={economicCalendarVisibility.scenarioLabel}
-              timeZone={displayTimeZone}
+        {/* ── State C: Manual-only — demo mode section ──────────────────────── */}
+        {manualOnly && (
+          <div className="grid gap-6">
+            <div className="rounded-2xl border border-amber-200/60 bg-amber-50/30 px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
+                Manual demo mode
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                You are using manual trade logging without a live broker connection. This mode is
+                for testing your rules before connecting Tradovate for broker-connected
+                monitoring.{" "}
+                <Link
+                  href="/accounts/connect/tradovate"
+                  className="font-medium text-stone-800 underline-offset-2 hover:underline"
+                >
+                  Connect Tradovate →
+                </Link>
+              </p>
+            </div>
+
+            <RuleProgressPanel
+              todayPnL={todaySessionStateForPanel.todayPnL}
+              todayTradesCount={todaySessionStateForPanel.todayTradesCount}
+              consecutiveLosses={todaySessionStateForPanel.consecutiveLosses}
+              maxDailyLoss={riskRules?.maxDailyLoss ? Number(riskRules.maxDailyLoss) : null}
+              maxTradesPerDay={riskRules?.maxTradesPerDay ?? null}
+              stopAfterLosses={riskRules?.stopAfterLosses ?? null}
+              dailyProfitTarget={
+                riskRules?.dailyProfitTarget ? Number(riskRules.dailyProfitTarget) : null
+              }
+              dataSource="manual"
             />
+
+            <div className="grid gap-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+                Session state
+              </p>
+              {showPremarketReadiness ? (
+                <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
+              ) : null}
+              {todaySessionState.kind === "GUARDIAN_DISABLED" ? (
+                <GuardianPausedPanel />
+              ) : (
+                <>
+                  <div className="hidden md:block">
+                    <ManualRiskPanel
+                      state={manualRisk}
+                      hasRules={Boolean(riskRules)}
+                      tradingDayLabel={tradingDay.label}
+                    />
+                  </div>
+                  <TodaySessionPanel
+                    sessionState={todaySessionStateForPanel}
+                    additionalTriggeredRulesCount={guardianAdditionalRulesCount}
+                    telegramAccess={telegramAccess}
+                    telegramBotLink={telegramBotLink}
+                    displayTimeZone={displayTimeZone}
+                    mobileStats={{
+                      todayPnL: manualRisk.todayPnL,
+                      todayTradesCount: manualRisk.todayTradesCount,
+                      remainingDailyLossBudget: manualRisk.remainingDailyLossBudget,
+                      consecutiveLosses: manualRisk.consecutiveLosses,
+                    }}
+                  />
+                  <RuleNoticeList notices={dashboardNotices} />
+                </>
+              )}
+            </div>
+
             <SectionCard
               compact
               title="Log a trade or event"
-              description="Quick manual entry — feeds today's activity."
+              description="Manual entry — feeds today's app-level session state."
             >
               <ManualEventForm compact />
             </SectionCard>
-            {!telegramConnected && (
-              <p className="text-xs text-stone-500">
-                <a
-                  href="/alerts"
-                  className="font-medium text-stone-700 underline-offset-2 hover:underline"
-                >
-                  Connect Telegram
-                </a>{" "}
-                to receive lockout and warning alerts on your phone.
-              </p>
-            )}
+
+            {mergedActivityTimeline.length > 0 || isSessionActive || isSessionEnded ? (
+              <div className="grid gap-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+                  Session record
+                </p>
+                {postSessionReview ? (
+                  <div className="grid gap-4">
+                    <PostSessionReviewPanel
+                      review={postSessionReview}
+                      timeZone={displayTimeZone}
+                    />
+                    <TodayActivityTimeline
+                      items={mergedActivityTimeline}
+                      title={activityTitle}
+                      description={activityDescription}
+                      timeZone={displayTimeZone}
+                    />
+                  </div>
+                ) : (
+                  <TodayActivityTimeline
+                    items={mergedActivityTimeline}
+                    title={activityTitle}
+                    description={activityDescription}
+                    timeZone={displayTimeZone}
+                  />
+                )}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <NavCard
+                href="/rules"
+                title="Trading Plan"
+                description="Edit daily limits and breach actions."
+              />
+              <NavCard
+                href="/accounts/connect/tradovate"
+                title="Connect Tradovate"
+                description="Switch from demo to broker-connected monitoring."
+              />
+              <NavCard
+                href="/alerts"
+                title="Alerts"
+                description="Configure Telegram notifications."
+              />
+            </div>
           </div>
-        </details>
+        )}
+
       </div>
     </AppShell>
   );
 }
 
+// ── Helper components ──────────────────────────────────────────────────────────
 
 function GuardianPausedPanel() {
   return (
@@ -482,7 +498,7 @@ function GuardianPausedPanel() {
   );
 }
 
-function QuickAction({
+function NavCard({
   href,
   title,
   description,
@@ -492,7 +508,7 @@ function QuickAction({
   description: string;
 }) {
   return (
-    <a
+    <Link
       href={href}
       className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 px-3 py-2.5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
     >
@@ -501,7 +517,6 @@ function QuickAction({
       <p className="mt-3 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">
         →
       </p>
-    </a>
+    </Link>
   );
 }
-
