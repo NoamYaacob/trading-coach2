@@ -1,0 +1,307 @@
+import { prisma } from "@/lib/db";
+
+import type {
+  AccountStatus,
+  CommandCenterAccount,
+  CommandCenterData,
+  CommandCenterFirmGroup,
+  CommandCenterSummary,
+  EnforcementMode,
+  RuleSource,
+} from "./types";
+
+const PLATFORM_LABEL: Record<string, string> = {
+  tradovate: "Tradovate",
+  tradingview: "TradingView",
+  manual: "Manual",
+};
+
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  personal: "Personal",
+  demo: "Demo",
+};
+
+const CONNECTION_STATUS_LABEL: Record<string, string> = {
+  connected_live: "Connected",
+  pending_webhook: "Awaiting first event",
+  oauth_pending_storage: "OAuth pending",
+  not_connected: "Not connected",
+  connection_error: "Connection error",
+  expired: "Expired — re-authorize",
+};
+
+const FALLBACK_FIRM_LABEL = "Unassigned firm";
+const PERSONAL_FIRM_LABEL = "Personal / Manual";
+const PERSONAL_FIRM_KEY = "__personal__";
+const FALLBACK_FIRM_KEY = "__unassigned__";
+
+function deriveFirmKeyAndLabel(account: {
+  platform: string;
+  propFirm: string | null;
+}): { key: string; label: string } {
+  if (account.propFirm && account.propFirm.trim().length > 0) {
+    const label = account.propFirm.trim();
+    return { key: label.toLowerCase(), label };
+  }
+  if (account.platform === "manual") {
+    return { key: PERSONAL_FIRM_KEY, label: PERSONAL_FIRM_LABEL };
+  }
+  return { key: FALLBACK_FIRM_KEY, label: FALLBACK_FIRM_LABEL };
+}
+
+function deriveEnforcementMode(input: {
+  platform: string;
+  connectionStatus: string;
+  isActive: boolean;
+}): EnforcementMode {
+  if (!input.isActive) return "not_connected";
+  if (input.platform === "manual") return "manual_app_level";
+  if (input.connectionStatus === "connected_live") return "broker_readonly";
+  return "not_connected";
+}
+
+function deriveStatus(input: {
+  isActive: boolean;
+  platform: string;
+  connectionStatus: string;
+  hasAnyRules: boolean;
+  riskState: "NORMAL" | "WARNING" | "STOPPED" | null;
+  dailyLossUsedPct: number | null;
+  tradesUsedPct: number | null;
+}): AccountStatus {
+  if (!input.isActive) return "not_connected";
+
+  // Broker accounts that have not finished setup or have a broken connection.
+  if (input.platform !== "manual") {
+    if (
+      input.connectionStatus === "not_connected" ||
+      input.connectionStatus === "connection_error" ||
+      input.connectionStatus === "expired"
+    ) {
+      return "not_connected";
+    }
+    if (
+      input.connectionStatus === "pending_webhook" ||
+      input.connectionStatus === "oauth_pending_storage"
+    ) {
+      return "setup_needed";
+    }
+  }
+
+  if (!input.hasAnyRules) return "setup_needed";
+
+  if (input.riskState === "STOPPED") return "locked";
+  if (input.riskState === "WARNING") return "warning";
+
+  const lossPct = input.dailyLossUsedPct ?? 0;
+  const tradesPct = input.tradesUsedPct ?? 0;
+  if (lossPct >= 0.8 || tradesPct >= 0.8) return "warning";
+
+  return "allowed";
+}
+
+function emptyCounts(): Record<AccountStatus, number> {
+  return { allowed: 0, warning: 0, locked: 0, setup_needed: 0, not_connected: 0 };
+}
+
+export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
+  const [accounts, defaultRules] = await Promise.all([
+    prisma.connectedAccount.findMany({
+      where: { userId, isActive: true },
+      include: {
+        riskRules: true,
+        sessionState: true,
+        interventions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: [{ propFirm: "asc" }, { label: "asc" }],
+    }),
+    prisma.riskRules.findUnique({ where: { userId } }),
+  ]);
+
+  const defaultMaxDailyLoss =
+    defaultRules?.maxDailyLoss != null ? Number(defaultRules.maxDailyLoss) : null;
+  const defaultMaxTradesPerDay = defaultRules?.maxTradesPerDay ?? null;
+  const defaultStopAfterLosses = defaultRules?.stopAfterLosses ?? null;
+  const hasDefaultRules = Boolean(
+    defaultMaxDailyLoss != null || defaultMaxTradesPerDay != null || defaultStopAfterLosses != null,
+  );
+
+  const computed: CommandCenterAccount[] = accounts.map((account) => {
+    const accountRules = account.riskRules;
+    const sessionState = account.sessionState;
+    const lastIntervention = account.interventions[0] ?? null;
+
+    const hasAccountRules = Boolean(
+      accountRules &&
+        (accountRules.maxDailyLoss != null ||
+          accountRules.maxTradesPerDay != null ||
+          accountRules.stopAfterLosses != null),
+    );
+    const ruleSource: RuleSource = hasAccountRules
+      ? "account"
+      : hasDefaultRules
+        ? "default"
+        : "none";
+
+    const maxDailyLoss =
+      accountRules?.maxDailyLoss != null
+        ? Number(accountRules.maxDailyLoss)
+        : defaultMaxDailyLoss;
+    const maxTradesPerDay = accountRules?.maxTradesPerDay ?? defaultMaxTradesPerDay;
+    const stopAfterLosses = accountRules?.stopAfterLosses ?? defaultStopAfterLosses;
+
+    const dailyPnl = sessionState ? Number(sessionState.dailyPnl) : null;
+    const tradesCount = sessionState ? sessionState.tradesCount : null;
+    const consecutiveLosses = sessionState ? sessionState.consecutiveLosses : null;
+    const riskState = sessionState
+      ? (sessionState.riskState as "NORMAL" | "WARNING" | "STOPPED")
+      : null;
+
+    const lossUsed = dailyPnl != null ? Math.abs(Math.min(dailyPnl, 0)) : null;
+    const remainingDailyLoss =
+      maxDailyLoss != null && lossUsed != null
+        ? Math.max(0, maxDailyLoss - lossUsed)
+        : maxDailyLoss != null
+          ? maxDailyLoss
+          : null;
+    const dailyLossUsedPct =
+      maxDailyLoss != null && maxDailyLoss > 0 && lossUsed != null
+        ? Math.min(1, lossUsed / maxDailyLoss)
+        : null;
+    const tradesUsedPct =
+      maxTradesPerDay != null && maxTradesPerDay > 0 && tradesCount != null
+        ? Math.min(1, tradesCount / maxTradesPerDay)
+        : null;
+
+    const status = deriveStatus({
+      isActive: account.isActive,
+      platform: account.platform,
+      connectionStatus: account.connectionStatus,
+      hasAnyRules: hasAccountRules || hasDefaultRules,
+      riskState,
+      dailyLossUsedPct,
+      tradesUsedPct,
+    });
+
+    const enforcementMode = deriveEnforcementMode({
+      platform: account.platform,
+      connectionStatus: account.connectionStatus,
+      isActive: account.isActive,
+    });
+
+    const { key: firmKey, label: firmLabel } = deriveFirmKeyAndLabel({
+      platform: account.platform,
+      propFirm: account.propFirm,
+    });
+
+    const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
+    const accountTypeLabel = ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
+    const connectionStatusLabel =
+      CONNECTION_STATUS_LABEL[account.connectionStatus] ??
+      account.connectionStatus.replace(/_/g, " ");
+
+    const hasOpenIntervention = Boolean(
+      lastIntervention &&
+        (status === "locked" || status === "warning") &&
+        // Only count interventions from the last 24h as "open" for the dashboard counter.
+        Date.now() - lastIntervention.createdAt.getTime() < 24 * 60 * 60 * 1000,
+    );
+
+    return {
+      id: account.id,
+      label: account.label,
+      platform: account.platform,
+      platformLabel,
+      propFirm: account.propFirm,
+      firmKey,
+      firmLabel,
+      accountType: account.accountType,
+      accountTypeLabel,
+      connectionStatus: account.connectionStatus,
+      connectionStatusLabel,
+      status,
+      enforcementMode,
+      ruleSource,
+      dailyPnl,
+      maxDailyLoss,
+      remainingDailyLoss,
+      dailyLossUsedPct,
+      tradesCount,
+      maxTradesPerDay,
+      tradesUsedPct,
+      consecutiveLosses,
+      stopAfterLosses,
+      lastSyncAt: account.lastSyncAt,
+      lastInterventionAt: lastIntervention?.createdAt ?? null,
+      hasOpenIntervention,
+    };
+  });
+
+  const summary: CommandCenterSummary = {
+    totalActive: computed.length,
+    counts: emptyCounts(),
+    totalDailyPnl: 0,
+    totalRiskRemaining: 0,
+    openInterventions: 0,
+    hasPnlData: false,
+    hasRiskData: false,
+  };
+
+  for (const account of computed) {
+    summary.counts[account.status] += 1;
+    if (account.dailyPnl != null) {
+      summary.totalDailyPnl += account.dailyPnl;
+      summary.hasPnlData = true;
+    }
+    if (account.remainingDailyLoss != null) {
+      summary.totalRiskRemaining += account.remainingDailyLoss;
+      summary.hasRiskData = true;
+    }
+    if (account.hasOpenIntervention) summary.openInterventions += 1;
+  }
+
+  const groupMap = new Map<string, CommandCenterFirmGroup>();
+  for (const account of computed) {
+    let group = groupMap.get(account.firmKey);
+    if (!group) {
+      group = {
+        firmKey: account.firmKey,
+        firmLabel: account.firmLabel,
+        accounts: [],
+        counts: emptyCounts(),
+        totalDailyPnl: 0,
+        totalRiskRemaining: 0,
+        hasPnlData: false,
+        hasRiskData: false,
+      };
+      groupMap.set(account.firmKey, group);
+    }
+    group.accounts.push(account);
+    group.counts[account.status] += 1;
+    if (account.dailyPnl != null) {
+      group.totalDailyPnl += account.dailyPnl;
+      group.hasPnlData = true;
+    }
+    if (account.remainingDailyLoss != null) {
+      group.totalRiskRemaining += account.remainingDailyLoss;
+      group.hasRiskData = true;
+    }
+  }
+
+  const groups = [...groupMap.values()].sort((a, b) => {
+    // Personal/Unassigned firm sinks to the bottom; otherwise alphabetical.
+    const aSink = a.firmKey === PERSONAL_FIRM_KEY || a.firmKey === FALLBACK_FIRM_KEY;
+    const bSink = b.firmKey === PERSONAL_FIRM_KEY || b.firmKey === FALLBACK_FIRM_KEY;
+    if (aSink !== bSink) return aSink ? 1 : -1;
+    return a.firmLabel.localeCompare(b.firmLabel);
+  });
+
+  const firms = groups.map((g) => ({ key: g.firmKey, label: g.firmLabel }));
+
+  return { accounts: computed, groups, summary, firms };
+}

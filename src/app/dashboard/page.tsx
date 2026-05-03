@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
-import { CommandHeader } from "@/app/dashboard/_components/command-header";
+import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
+import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
+import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { EconomicEventsPanel } from "@/app/dashboard/_components/economic-events-panel";
 import { ManualEventForm } from "@/app/dashboard/_components/manual-event-form";
@@ -114,16 +116,14 @@ export default async function DashboardPage() {
     guardian,
     todayGuardianSessionStart,
     liveEnforcement,
-    brokerCount,
     todayManualTrades,
-    primaryAccount,
+    commandCenter,
   ] = await Promise.all([
     getTodaySessionSummary(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getGuardianSnapshot(currentUser.id),
     getTodayGuardianSessionStart(currentUser.id),
     getLiveEnforcementState(currentUser.id),
-    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
     prisma.manualTradeEntry.findMany({
       where: {
         userId: currentUser.id,
@@ -131,22 +131,10 @@ export default async function DashboardPage() {
       },
       orderBy: { tradedAt: "asc" },
     }),
-    prisma.connectedAccount.findFirst({
-      where: { userId: currentUser.id, isActive: true },
-      select: {
-        label: true,
-        platform: true,
-        propFirm: true,
-        accountType: true,
-        connectionStatus: true,
-        lastSyncAt: true,
-        connectedAt: true,
-      },
-      orderBy: { connectedAt: "desc" },
-    }),
+    loadCommandCenterData(currentUser.id),
   ]);
 
-  const hasBroker = brokerCount > 0;
+  const hasBroker = commandCenter.accounts.some((a) => a.platform !== "manual");
   const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
@@ -302,14 +290,11 @@ export default async function DashboardPage() {
       ? "The live sequence of what has happened so far."
       : "What has happened so far today.";
 
-  const setupNeeded =
-    !onboardingComplete || (onboardingComplete && !riskRules);
-
   return (
     <AppShell
-      eyebrow="TODAY'S TRADING STATE"
-      title="Your trading dashboard"
-      description="See your current permission, trading plan, account mode, and next action before you trade."
+      eyebrow="RISK COMMAND CENTER"
+      title="All accounts at a glance."
+      description="Status, stop budget, trades used, and connection mode for every account — grouped by prop firm."
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -318,18 +303,11 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid gap-8">
-        <CommandHeader
-          primaryAccount={primaryAccount ?? null}
-          hasBroker={hasBroker}
-          setupNeeded={setupNeeded}
-          onboardingComplete={onboardingComplete}
-          guardianEnabled={guardian.profile.guardianEnabled}
-          todaySessionKind={todaySessionState.kind}
-          lockoutActive={guardian.evaluation.lockoutActive}
-          liveRiskState={liveEnforcement?.riskState ?? null}
-          sessionStarted={todaySessionState.sessionStarted}
-          sessionEnded={todaySessionState.sessionEnded}
-        />
+        <div className="grid gap-3">
+          <SummaryStrip summary={commandCenter.summary} />
+          <CommandCenter data={commandCenter} />
+        </div>
+
         <RuleProgressPanel
           todayPnL={todaySessionStateForPanel.todayPnL}
           todayTradesCount={todaySessionStateForPanel.todayTradesCount}
