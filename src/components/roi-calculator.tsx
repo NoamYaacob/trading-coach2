@@ -12,9 +12,9 @@ export function RoiCalculator() {
 
   return (
     <div>
-      <div className="grid gap-8 sm:grid-cols-2">
+      <div className="grid gap-5 sm:gap-8 sm:grid-cols-2">
         <div>
-          <div className="mb-3 flex items-baseline justify-between">
+          <div className="mb-2 flex items-baseline justify-between sm:mb-3">
             <span className="text-sm font-medium text-stone-700">Rule breaks per month</span>
             <span className="text-xl font-bold tabular-nums text-stone-950">{breaks}</span>
           </div>
@@ -33,7 +33,7 @@ export function RoiCalculator() {
           </div>
         </div>
         <div>
-          <div className="mb-3 flex items-baseline justify-between">
+          <div className="mb-2 flex items-baseline justify-between sm:mb-3">
             <span className="text-sm font-medium text-stone-700">Average loss per break</span>
             <span className="text-xl font-bold tabular-nums text-stone-950">${avgLoss.toLocaleString()}</span>
           </div>
@@ -54,24 +54,24 @@ export function RoiCalculator() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl bg-stone-950 px-6 py-6">
-        <div className="grid gap-6 sm:grid-cols-3 sm:divide-x sm:divide-stone-800">
+      <div className="mt-4 rounded-2xl bg-stone-950 px-4 py-4 sm:mt-6 sm:px-6 sm:py-6">
+        <div className="grid gap-2 sm:gap-6 sm:grid-cols-3 sm:divide-x sm:divide-stone-800">
           <div className="text-center">
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">Monthly damage</p>
-            <p className="mt-2 text-4xl font-bold tabular-nums text-stone-50">${monthlyDamage.toLocaleString()}</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums sm:mt-2 sm:text-4xl text-stone-50">${monthlyDamage.toLocaleString()}</p>
           </div>
           <div className="text-center sm:pl-6">
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">Yearly damage</p>
-            <p className="mt-2 text-4xl font-bold tabular-nums text-amber-400">${yearlyDamage.toLocaleString()}</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums sm:mt-2 sm:text-4xl text-amber-400">${yearlyDamage.toLocaleString()}</p>
           </div>
           <div className="text-center sm:pl-6">
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">Guardrail</p>
-            <p className="mt-2 text-4xl font-bold tabular-nums text-stone-400">
-              $25<span className="text-xl font-normal text-stone-600">/mo</span>
+            <p className="mt-1 text-3xl font-bold tabular-nums sm:mt-2 sm:text-4xl text-stone-400">
+              $25<span className="text-lg font-normal text-stone-600 sm:text-xl">/mo</span>
             </p>
           </div>
         </div>
-        <p className="mt-5 text-center text-sm text-stone-400">
+        <p className="mt-3 text-center text-sm text-stone-400 sm:mt-5">
           At $25/month,{" "}
           <span className="text-stone-200">one prevented rule break can cover Guardrail</span>
           {monthlySavings > 0 && (
