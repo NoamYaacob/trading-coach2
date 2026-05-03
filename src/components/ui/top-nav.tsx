@@ -91,7 +91,7 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
           href="/dashboard"
           className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
         >
-          Go to today
+          Go to dashboard
         </Link>
       </nav>
     );
