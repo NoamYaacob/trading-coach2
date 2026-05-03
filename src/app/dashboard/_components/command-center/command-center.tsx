@@ -101,7 +101,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   }, [data.groups, statusFilter, firmFilter]);
 
   if (data.accounts.length === 0) {
-    return <EmptyAccounts />;
+    return null;
   }
 
   return (

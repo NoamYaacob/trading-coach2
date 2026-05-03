@@ -292,13 +292,13 @@ export default async function DashboardPage() {
               Getting started
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-              Connect an account to start monitoring risk.
+              Connect your first trading account.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
-              Guardrail needs a broker connection or a manual demo account before it can track
-              daily loss limits, trade counts, or rule violations.
+              Guardrail starts working once it can read account activity. Connect Tradovate to
+              monitor daily loss, trades used, account status, and rule breaches.
             </p>
-            <div className="mt-5 flex flex-wrap gap-3">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <Link
                 href="/accounts/connect/tradovate"
                 className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
@@ -307,11 +307,14 @@ export default async function DashboardPage() {
               </Link>
               <Link
                 href="/accounts/new"
-                className="rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                className="rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-500 transition hover:border-stone-400 hover:text-stone-700"
               >
                 Create manual demo account
               </Link>
             </div>
+            <p className="mt-4 text-xs text-stone-400">
+              Manual demo is only for testing rules before connecting a broker.
+            </p>
           </section>
         )}
 
