@@ -213,8 +213,8 @@ export function ConnectTradovateClient() {
           {/* Environment */}
           <fieldset className="rounded-2xl border border-stone-200 bg-white/90 p-5 shadow-sm">
             <legend className="mb-1 text-sm font-semibold text-stone-950">Tradovate environment</legend>
-            <p className="mb-4 text-xs text-stone-500">
-              Most prop firm accounts use the demo (simulation) environment. Personal live accounts use the live environment.
+            <p className="mb-4 text-xs leading-5 text-stone-500">
+              For prop firm accounts: choose Demo / Simulation if your account is an evaluation, challenge, combine, or simulated funded account. Choose Live only for a personal live Tradovate brokerage account unless your prop firm explicitly tells you otherwise.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <label
@@ -233,7 +233,7 @@ export function ConnectTradovateClient() {
                   className="mt-0.5 shrink-0 accent-stone-950"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-stone-950">Demo / Sim</span>
+                  <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
                   <span className="text-xs text-stone-500">trader-d.tradovate.com · prop firms and sim accounts</span>
                 </span>
               </label>
@@ -258,6 +258,16 @@ export function ConnectTradovateClient() {
                 </span>
               </label>
             </div>
+            {accountSource === "prop_firm" && env === "demo" && (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+                Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
+              </p>
+            )}
+            {accountSource === "prop_firm" && env === "live" && (
+              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
+                <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
+              </p>
+            )}
           </fieldset>
 
           {/* Optional display name */}
