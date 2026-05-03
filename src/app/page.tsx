@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { getCurrentUser } from "@/lib/auth";
+import { RoiCalculator } from "@/components/roi-calculator";
 
 export const metadata: Metadata = {
   title: "Guardrail — Trading rules that hold under pressure",
@@ -261,9 +262,35 @@ export default async function Home() {
               </div>
             ))}
           </div>
-          <p className="mt-6 max-w-2xl text-sm leading-7 text-stone-600">
-            Guardrail enforces the decisions you made before the session — when you were thinking clearly. Not as a reminder. As a hard stop.
-          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The problem</p>
+              <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
+                You set your rules when thinking clearly.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Before the session, when P&L is zero and pressure is low, you know exactly what you should and shouldn&rsquo;t do.
+              </p>
+            </div>
+            <div className="rounded-[1.75rem] border border-amber-200 bg-amber-50/60 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-600">The solution</p>
+              <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
+                Guardrail evaluates every trade against those rules.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Every fill is checked in real time — Allowed, Warning, or Locked. No manual tracking. No mental override.
+              </p>
+            </div>
+            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-6 py-6 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">The result</p>
+              <p className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-50">
+                When a limit breaks, the session locks.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                Immediate. No confirmation prompt. No grace period. The rules you set are the rules that hold.
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* ── How it works ─────────────────────────────────────────────────── */}
@@ -423,6 +450,47 @@ export default async function Home() {
           </div>
         </section>
 
+        {/* ── Trust section ────────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-800 bg-stone-950 p-5 sm:p-8 lg:p-10">
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">
+              Your data, your control
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-50 sm:text-2xl">
+              Read-only. No credentials. No surprises.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-400">
+              Guardrail needs to see your trades — not place them. Here&rsquo;s exactly what we access and what we don&rsquo;t.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+              <p className="text-sm font-semibold text-stone-50">Read-only webhook connection</p>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                Guardrail receives trade events from your broker — fills, positions, P&L. It cannot place, modify, or cancel orders. The connection is receive-only.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+              <p className="text-sm font-semibold text-stone-50">No trading credentials stored</p>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                We never ask for your broker username or password. Tradovate uses a webhook token scoped only to sending trade data. No wallet, no positions, no order access.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+              <p className="text-sm font-semibold text-stone-50">You control the connection</p>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                Disconnect your broker integration from your account settings at any time. Guardrail keeps your rule configuration but stops receiving trade data immediately.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-5 py-5">
+              <p className="text-sm font-semibold text-stone-50">Works without a broker connection</p>
+              <p className="mt-2 text-sm leading-6 text-stone-400">
+                Manual Mode lets you use the full rule engine before connecting anything. Log trades yourself and the same evaluation runs — Allowed, Warning, or Locked.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* ── Broker integrations ───────────────────────────────────────────── */}
         <section>
           <div className="mb-5 max-w-2xl sm:mb-8">
@@ -507,6 +575,22 @@ export default async function Home() {
               </ul>
             </div>
           </div>
+        </section>
+
+        {/* ── ROI Calculator ───────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8 lg:p-10">
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              The math
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              What are rule breaks costing you?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              Most traders underestimate how much undisciplined sessions cost across a month. Adjust the numbers to match your reality.
+            </p>
+          </div>
+          <RoiCalculator />
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────────────── */}
