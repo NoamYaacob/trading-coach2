@@ -16,6 +16,8 @@ const PROP_FIRMS = [
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_not_configured: "Tradovate OAuth is not fully configured on this server.",
+  demo_oauth_not_configured:
+    "Demo / Simulation connection is not configured yet. Use Live for a personal Tradovate account, or contact support.",
   token_exchange_failed: "Tradovate rejected the authorization code. Please try again.",
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
   token_storage_failed: "OAuth completed but token storage failed. Please try again or contact support.",
@@ -32,7 +34,11 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 type AccountSource = "prop_firm" | "personal" | "demo" | "other";
 
-export function ConnectTradovateClient() {
+export function ConnectTradovateClient({
+  demoOAuthConfigured,
+}: {
+  demoOAuthConfigured: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -60,9 +66,16 @@ export function ConnectTradovateClient() {
     setUserHasOverriddenEnv(true);
   }
 
+  const demoBlocked = env === "demo" && !demoOAuthConfigured;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+
+    if (demoBlocked) {
+      setFormError("Demo / Simulation connection is not configured yet. Contact support.");
+      return;
+    }
 
     if (accountSource === "prop_firm" && !propFirm) {
       setFormError("Please select a prop firm.");
@@ -281,15 +294,25 @@ export function ConnectTradovateClient() {
                   </span>
                 </label>
               </div>
-              {accountSource === "prop_firm" && env === "demo" && (
-                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
-                  Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
+              {env === "demo" && !demoOAuthConfigured ? (
+                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs leading-5 text-red-700">
+                  {accountSource === "prop_firm"
+                    ? "Demo / Simulation connection is not yet configured. Prop firm accounts need this — contact support to enable it."
+                    : "Demo / Simulation connection is not configured yet. For a personal Tradovate account, use Live instead."}
                 </p>
-              )}
-              {accountSource === "prop_firm" && env === "live" && (
-                <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
-                  <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
-                </p>
+              ) : (
+                <>
+                  {accountSource === "prop_firm" && env === "demo" && (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+                      Most prop firm evaluation and simulated funded accounts run through the Tradovate demo/simulation environment. Personal brokerage accounts usually use Live.
+                    </p>
+                  )}
+                  {accountSource === "prop_firm" && env === "live" && (
+                    <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-900">
+                      <span className="font-semibold">Use Live only</span> if this is a real funded brokerage account or your prop firm instructed you to connect through Live.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -323,10 +346,14 @@ export function ConnectTradovateClient() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || demoBlocked}
                 className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
               >
-                {submitting ? "Starting…" : "Continue to Tradovate authorization →"}
+                {submitting
+                  ? "Starting…"
+                  : demoBlocked
+                    ? "Demo not available yet"
+                    : "Continue to Tradovate authorization →"}
               </button>
               <Link
                 href="/accounts"

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { getCurrentUser } from "@/lib/auth";
-import { getTradovateConfig, resolveRedirectUri } from "@/lib/brokers/tradovate-env";
+import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import {
   encodeOAuthState,
   generateOAuthNonce,
@@ -12,18 +12,26 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
+// All errors in this GET handler redirect the browser rather than returning
+// JSON — the route is navigated to directly by the browser after router.push(),
+// so a JSON body would render as raw text.
+function backToConnectPage(request: NextRequest, error: string) {
+  const base = resolveAppBaseUrl(request.url);
+  return NextResponse.redirect(
+    `${base}/accounts/connect/tradovate?oauth_error=${encodeURIComponent(error)}`,
+  );
+}
+
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const base = resolveAppBaseUrl(request.url);
+    return NextResponse.redirect(`${base}/login`);
   }
 
   const connectLimit = checkRateLimit(`tradovate_connect:${currentUser.id}`, 5, 3_600_000);
   if (!connectLimit.ok) {
-    return NextResponse.json(
-      { error: "too_many_requests" },
-      { status: 429, headers: { "Retry-After": String(connectLimit.retryAfterSeconds) } },
-    );
+    return backToConnectPage(request, "too_many_requests");
   }
 
   const status = getTradovateConfig();
@@ -34,13 +42,7 @@ export async function GET(request: NextRequest) {
   // is exactly the kind of "fake connected" state we promised never to
   // ship.
   if (status.state !== "ready") {
-    return NextResponse.json(
-      {
-        error: "oauth_not_configured",
-        missing: status.missing,
-      },
-      { status: 503 },
-    );
+    return backToConnectPage(request, "oauth_not_configured");
   }
 
   const { config } = status;
@@ -51,10 +53,7 @@ export async function GET(request: NextRequest) {
   // For demo env, require separate credentials — Tradovate rejects live
   // client_id at trader-d.tradovate.com with "Wrong client_id".
   if (env === "demo" && (!config.demoClientId || !config.demoClientSecret)) {
-    return NextResponse.json(
-      { error: "demo_oauth_not_configured" },
-      { status: 503 },
-    );
+    return backToConnectPage(request, "demo_oauth_not_configured");
   }
 
   const clientId = env === "demo" ? config.demoClientId! : config.clientId;
