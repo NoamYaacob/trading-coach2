@@ -726,24 +726,27 @@ export class TradovateClient {
   async getCompletedOrdersToday(): Promise<TvOrder[]> {
     const raw = await this.#request<unknown>("order/list");
     const all = parseSnapshotItems<TvOrder>(raw);
-    const todayPrefix = new Date().toISOString().slice(0, 10);
+    // 26-hour lookback covers futures sessions that start at 23:15 CT prior day
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
 
-    const todayCompleted = all.filter(
-      (o) =>
-        (o.ordStatus === "Completed" || o.ordStatus === "Filled") &&
-        o.timestamp.startsWith(todayPrefix),
-    );
+    const recentCompleted = all.filter((o) => {
+      if (o.ordStatus !== "Completed" && o.ordStatus !== "Filled") return false;
+      const d = new Date(o.timestamp);
+      return Number.isFinite(d.getTime()) && d.getTime() >= lookbackMs;
+    });
 
     const filtered =
       this.#tvAccountId !== null
-        ? todayCompleted.filter((o) => o.accountId === this.#tvAccountId)
-        : todayCompleted;
+        ? recentCompleted.filter((o) => o.accountId === this.#tvAccountId)
+        : recentCompleted;
 
+    const allStatuses = [...new Set(all.map((o) => o.ordStatus))];
     console.info("[tradovate/orders] completed today", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       totalOrders: all.length,
-      completedToday: todayCompleted.length,
+      allStatuses,
+      completedRecent: recentCompleted.length,
       filteredCount: filtered.length,
     });
 
@@ -763,7 +766,6 @@ export class TradovateClient {
   async getFills(): Promise<TvFill[]> {
     const raw = await this.#request<unknown>("fill/list");
     const all = parseSnapshotItems<TvFill>(raw);
-    const todayPrefix = new Date().toISOString().slice(0, 10);
 
     // Log raw item fields for the first fill (and the second if present) so
     // server logs reveal the exact field names Tradovate is returning.
@@ -791,10 +793,16 @@ export class TradovateClient {
       });
     }
 
+    // 26-hour lookback covers CME futures sessions that open at 23:15 CT prior day
+    // and handles Tradovate local-time timestamps that may not match UTC date prefix.
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+
     const todayFills = all.filter((f) => {
       const ts = extractFillTimestamp(f as Record<string, unknown>);
       if (ts == null) return true; // no date field — include it
-      return ts.startsWith(todayPrefix);
+      const d = new Date(ts);
+      if (!Number.isFinite(d.getTime())) return true; // unparseable — include it
+      return d.getTime() >= lookbackMs;
     });
 
     const filtered =
@@ -807,7 +815,7 @@ export class TradovateClient {
     console.info("[tradovate/fills] summary", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
-      datePrefix: todayPrefix,
+      lookbackHours: 26,
       responseShape: Array.isArray(raw)
         ? "bare_array"
         : raw !== null && typeof raw === "object"

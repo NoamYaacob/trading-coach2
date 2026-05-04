@@ -11,6 +11,7 @@ export type AccountFormInitialData = {
   externalAccountId: string | null;
   currency: string;
   isActive: boolean;
+  balance: number | null;
   riskRules: {
     maxDailyLoss: number | null;
     riskPerTrade: number | null;
@@ -18,6 +19,11 @@ export type AccountFormInitialData = {
     stopAfterLosses: number | null;
     allowedStartHour: number | null;
     allowedEndHour: number | null;
+    propFirmAccountSize: number | null;
+    propFirmDailyLossLimit: number | null;
+    propFirmMaxDrawdown: number | null;
+    propFirmTrailingDrawdown: boolean;
+    propFirmDrawdownRemaining: number | null;
   } | null;
 };
 
@@ -64,6 +70,11 @@ export function AccountForm(props: Props) {
     stopAfterLosses: init?.riskRules?.stopAfterLosses?.toString() ?? "",
     allowedStartHour: init?.riskRules?.allowedStartHour?.toString() ?? "",
     allowedEndHour: init?.riskRules?.allowedEndHour?.toString() ?? "",
+    propFirmAccountSize: init?.riskRules?.propFirmAccountSize?.toString() ?? "",
+    propFirmDailyLossLimit: init?.riskRules?.propFirmDailyLossLimit?.toString() ?? "",
+    propFirmMaxDrawdown: init?.riskRules?.propFirmMaxDrawdown?.toString() ?? "",
+    propFirmTrailingDrawdown: init?.riskRules?.propFirmTrailingDrawdown ?? false,
+    propFirmDrawdownRemaining: init?.riskRules?.propFirmDrawdownRemaining?.toString() ?? "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,9 +101,16 @@ export function AccountForm(props: Props) {
         stopAfterLosses: parseNumberOrNull(form.stopAfterLosses),
         allowedStartHour: parseNumberOrNull(form.allowedStartHour),
         allowedEndHour: parseNumberOrNull(form.allowedEndHour),
+        propFirmAccountSize: parseNumberOrNull(form.propFirmAccountSize),
+        propFirmDailyLossLimit: parseNumberOrNull(form.propFirmDailyLossLimit),
+        propFirmMaxDrawdown: parseNumberOrNull(form.propFirmMaxDrawdown),
+        propFirmTrailingDrawdown: form.propFirmTrailingDrawdown,
+        propFirmDrawdownRemaining: parseNumberOrNull(form.propFirmDrawdownRemaining),
       },
     };
   }
+
+  const liveBalance = props.mode === "edit" ? (props.initialData.balance ?? null) : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +123,16 @@ export function AccountForm(props: Props) {
         "Tradovate account ID is required — find it in Tradovate → Account → Account Settings.",
       );
       return;
+    }
+    // Block saving daily loss limit > balance for personal accounts
+    if (form.accountType === "personal" && liveBalance != null) {
+      const parsedMaxDailyLoss = parseNumberOrNull(form.maxDailyLoss);
+      if (parsedMaxDailyLoss != null && parsedMaxDailyLoss > liveBalance) {
+        setError(
+          `Daily loss limit ($${parsedMaxDailyLoss}) exceeds account balance ($${liveBalance.toFixed(2)}). Lower the limit or add more capital.`,
+        );
+        return;
+      }
     }
     setIsSubmitting(true);
     setError(null);
@@ -141,6 +169,16 @@ export function AccountForm(props: Props) {
 
   const isTradovate = form.platform === "tradovate";
   const accountIdMissing = isTradovate && !form.externalAccountId.trim();
+  const isPropFirmAccount =
+    form.propFirm.trim() !== "" ||
+    form.accountType === "evaluation" ||
+    form.accountType === "funded";
+  const parsedMaxDailyLoss = parseNumberOrNull(form.maxDailyLoss);
+  const showBalanceWarning =
+    form.accountType === "personal" &&
+    liveBalance != null &&
+    parsedMaxDailyLoss != null &&
+    parsedMaxDailyLoss > liveBalance;
   const allRulesEmpty =
     !form.maxDailyLoss.trim() &&
     !form.riskPerTrade.trim() &&
@@ -275,6 +313,11 @@ export function AccountForm(props: Props) {
               placeholder="e.g. 500"
               className={INPUT_CLASS}
             />
+            {showBalanceWarning && (
+              <p className="text-xs text-amber-700">
+                Exceeds balance (${liveBalance!.toFixed(2)}). Saving will be blocked.
+              </p>
+            )}
           </Field>
 
           <Field label="Risk per trade">
@@ -335,6 +378,69 @@ export function AccountForm(props: Props) {
           </p>
         )}
       </div>
+
+      {isPropFirmAccount && (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+            Prop firm limits
+          </p>
+          <p className="mb-4 text-xs text-stone-500">
+            The effective daily loss budget is the tightest of your guardian limit and these prop firm limits.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Account size ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmAccountSize}
+                onChange={(e) => set("propFirmAccountSize", e.target.value)}
+                placeholder="e.g. 100000"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Prop firm daily loss limit ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmDailyLossLimit}
+                onChange={(e) => set("propFirmDailyLossLimit", e.target.value)}
+                placeholder="e.g. 500"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Max drawdown ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmMaxDrawdown}
+                onChange={(e) => set("propFirmMaxDrawdown", e.target.value)}
+                placeholder="e.g. 2000"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Drawdown remaining ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmDrawdownRemaining}
+                onChange={(e) => set("propFirmDrawdownRemaining", e.target.value)}
+                placeholder="e.g. 1750"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.propFirmTrailingDrawdown}
+                  onChange={(e) => set("propFirmTrailingDrawdown", e.target.checked)}
+                  className="h-4 w-4 rounded border-stone-300 accent-stone-950"
+                />
+                <span className="font-medium text-stone-700">Trailing drawdown</span>
+                <span className="text-xs text-stone-400">
+                  (drawdown threshold moves with your high-water mark)
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(error ?? feedback) ? (
         <div

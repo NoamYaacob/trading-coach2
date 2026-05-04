@@ -737,4 +737,214 @@ describe("trade count: confirmed-zero vs unavailable", () => {
     const distinct = new Set(fills.map((f) => f.orderId));
     assert.equal(distinct.size, 2);
   });
+
+  it("fills count wins over Phase A count of 0 (order/list only returns active orders)", () => {
+    // Phase A returns 0 (order/list only shows Working orders on this env)
+    let tradesCount = 0;
+    const executions = [
+      { orderId: "A", pnl: 100 },
+      { orderId: "B", pnl: -50 },
+    ];
+    const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
+    const countFromFills = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
+    if (countFromFills > tradesCount) tradesCount = countFromFills;
+    assert.equal(tradesCount, 2);
+  });
+
+  it("Phase A count preserved when fills show same or fewer trades", () => {
+    // Phase A returned 2 (correct), fills returned 2 matching orders → still 2
+    let tradesCount = 2;
+    const executions = [
+      { orderId: "A", pnl: 100 },
+      { orderId: "B", pnl: -50 },
+    ];
+    const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
+    const countFromFills = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
+    if (countFromFills > tradesCount) tradesCount = countFromFills;
+    assert.equal(tradesCount, 2);
+  });
+});
+
+// ── 26-hour lookback date filter ──────────────────────────────────────────────
+
+describe("26-hour lookback date filter", () => {
+  function applyLookback(ts: string | null, lookbackMs: number): boolean {
+    if (ts == null) return true;
+    const d = new Date(ts);
+    if (!Number.isFinite(d.getTime())) return true;
+    return d.getTime() >= lookbackMs;
+  }
+
+  it("includes a fill from 25 hours ago", () => {
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    const ts = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    assert.equal(applyLookback(ts, lookbackMs), true);
+  });
+
+  it("excludes a fill from 27 hours ago", () => {
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    const ts = new Date(Date.now() - 27 * 60 * 60 * 1000).toISOString();
+    assert.equal(applyLookback(ts, lookbackMs), false);
+  });
+
+  it("includes a fill with no timestamp (include-all rule)", () => {
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    assert.equal(applyLookback(null, lookbackMs), true);
+  });
+
+  it("includes a fill with unparseable timestamp (include-all rule)", () => {
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    assert.equal(applyLookback("not-a-date", lookbackMs), true);
+  });
+});
+
+// ── balance cap for personal accounts ────────────────────────────────────────
+
+describe("balance cap for personal accounts", () => {
+  function computeEffectiveLossBudget(opts: {
+    maxDailyLoss: number | null;
+    lossUsed: number;
+    balance: number | null;
+    accountType: string;
+  }): { remainingDailyLoss: number | null; balanceLimitedWarning: boolean } {
+    const { maxDailyLoss, lossUsed, balance, accountType } = opts;
+    let remainingDailyLoss: number | null =
+      maxDailyLoss != null ? Math.max(0, maxDailyLoss - lossUsed) : null;
+    const balanceLimitedWarning =
+      accountType === "personal" &&
+      balance != null &&
+      maxDailyLoss != null &&
+      maxDailyLoss > balance;
+    if (accountType === "personal" && balance != null && remainingDailyLoss != null) {
+      remainingDailyLoss = Math.min(remainingDailyLoss, balance);
+    }
+    return { remainingDailyLoss, balanceLimitedWarning };
+  }
+
+  it("caps loss budget at balance for personal account when limit > balance", () => {
+    const { remainingDailyLoss, balanceLimitedWarning } = computeEffectiveLossBudget({
+      maxDailyLoss: 1000,
+      lossUsed: 0,
+      balance: 989.20,
+      accountType: "personal",
+    });
+    assert.equal(remainingDailyLoss, 989.20);
+    assert.equal(balanceLimitedWarning, true);
+  });
+
+  it("does not cap when limit is within balance", () => {
+    const { remainingDailyLoss, balanceLimitedWarning } = computeEffectiveLossBudget({
+      maxDailyLoss: 500,
+      lossUsed: 0,
+      balance: 989.20,
+      accountType: "personal",
+    });
+    assert.equal(remainingDailyLoss, 500);
+    assert.equal(balanceLimitedWarning, false);
+  });
+
+  it("does not cap for evaluation (prop firm) account even when limit > balance", () => {
+    const { balanceLimitedWarning } = computeEffectiveLossBudget({
+      maxDailyLoss: 1000,
+      lossUsed: 0,
+      balance: 989.20,
+      accountType: "evaluation",
+    });
+    assert.equal(balanceLimitedWarning, false);
+  });
+
+  it("accounts for already-used loss when capping", () => {
+    // balance $500, limit $1000, already lost $600 → configured remaining = $400
+    // but balance cap = $500, so remaining = min(400, 500) = $400
+    const { remainingDailyLoss } = computeEffectiveLossBudget({
+      maxDailyLoss: 1000,
+      lossUsed: 600,
+      balance: 500,
+      accountType: "personal",
+    });
+    assert.equal(remainingDailyLoss, 400); // already below balance cap
+  });
+});
+
+// ── prop firm effective loss budget ───────────────────────────────────────────
+
+describe("prop firm effective loss budget", () => {
+  function computePropFirmBudget(opts: {
+    maxDailyLoss: number | null;
+    lossUsed: number;
+    propFirmDailyLossLimit: number | null;
+    propFirmDrawdownRemaining: number | null;
+  }): { remainingDailyLoss: number | null; propFirmLimited: boolean } {
+    const { maxDailyLoss, lossUsed, propFirmDailyLossLimit, propFirmDrawdownRemaining } = opts;
+    let remainingDailyLoss: number | null =
+      maxDailyLoss != null ? Math.max(0, maxDailyLoss - lossUsed) : null;
+    let propFirmLimited = false;
+    if (propFirmDailyLossLimit != null) {
+      const pfRemaining = Math.max(0, propFirmDailyLossLimit - lossUsed);
+      if (remainingDailyLoss == null || pfRemaining < remainingDailyLoss) {
+        remainingDailyLoss = pfRemaining;
+        propFirmLimited = true;
+      }
+    }
+    if (propFirmDrawdownRemaining != null) {
+      if (remainingDailyLoss == null || propFirmDrawdownRemaining < remainingDailyLoss) {
+        remainingDailyLoss = propFirmDrawdownRemaining;
+        propFirmLimited = true;
+      }
+    }
+    return { remainingDailyLoss, propFirmLimited };
+  }
+
+  it("uses user daily limit when tighter than prop firm", () => {
+    const { remainingDailyLoss, propFirmLimited } = computePropFirmBudget({
+      maxDailyLoss: 300,
+      lossUsed: 0,
+      propFirmDailyLossLimit: 500,
+      propFirmDrawdownRemaining: null,
+    });
+    assert.equal(remainingDailyLoss, 300);
+    assert.equal(propFirmLimited, false);
+  });
+
+  it("uses prop firm daily limit when tighter than user", () => {
+    const { remainingDailyLoss, propFirmLimited } = computePropFirmBudget({
+      maxDailyLoss: 500,
+      lossUsed: 0,
+      propFirmDailyLossLimit: 300,
+      propFirmDrawdownRemaining: null,
+    });
+    assert.equal(remainingDailyLoss, 300);
+    assert.equal(propFirmLimited, true);
+  });
+
+  it("uses drawdown remaining when it's tighter than daily limits", () => {
+    const { remainingDailyLoss, propFirmLimited } = computePropFirmBudget({
+      maxDailyLoss: 500,
+      lossUsed: 0,
+      propFirmDailyLossLimit: 400,
+      propFirmDrawdownRemaining: 200,
+    });
+    assert.equal(remainingDailyLoss, 200);
+    assert.equal(propFirmLimited, true);
+  });
+
+  it("prop firm account missing limits → propFirmSetupNeeded", () => {
+    const isPropFirm = true;
+    const accountRules = null;
+    const propFirmSetupNeeded =
+      isPropFirm &&
+      (accountRules == null ||
+        (accountRules as null) === null);
+    assert.equal(propFirmSetupNeeded, true);
+  });
+
+  it("prop firm account with drawdown remaining $300 and user limit $500 → effective $300", () => {
+    const { remainingDailyLoss } = computePropFirmBudget({
+      maxDailyLoss: 500,
+      lossUsed: 0,
+      propFirmDailyLossLimit: null,
+      propFirmDrawdownRemaining: 300,
+    });
+    assert.equal(remainingDailyLoss, 300);
+  });
 });

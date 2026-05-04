@@ -112,11 +112,14 @@ export async function syncTradovateAccount(
     let pnlFromFills: number | null = null;
     let fillsSyncedAt: Date | null = null;
 
-    // Phase A: count completed orders (reliable accountId filtering)
+    // Phase A: count completed orders (best-effort).
+    // NOTE: order/list on many Tradovate environments only returns active/working orders,
+    // not completed ones. Phase B fills are the authoritative count source. Phase A is kept
+    // as a secondary signal — its count is only used when fills return fewer (which shouldn't
+    // happen in practice, but avoids accidentally reducing the count on API inconsistencies).
     try {
       const completedOrders = await client.getCompletedOrdersToday();
       tradesCount = completedOrders.length;
-      fillsSyncedAt = new Date(); // mark that trade count is confirmed
       console.info("[tradovate/trades] count from completed orders", {
         accountId,
         tradesCount,
@@ -129,25 +132,26 @@ export async function syncTradovateAccount(
       });
     }
 
-    // Phase B: fills for P&L backup and NormalizedTradeEvent storage
+    // Phase B: fills for P&L and NormalizedTradeEvent storage.
+    // Fills are the authoritative source for tradesCount — always update it when
+    // fills show more trades than Phase A (which may only see active orders).
     try {
       const executions = await client.toExecutions();
       pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
-      // If Phase A failed, use fills as fallback for trade count
-      if (fillsSyncedAt == null) {
-        const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
-        tradesCount = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
-        fillsSyncedAt = new Date();
-        console.info("[tradovate/trades] count from fills (fallback)", {
-          accountId,
-          rawFillCount: executions.length,
-          distinctOrders: distinctOrderIds.size,
-          tradesCount,
-        });
+
+      fillsSyncedAt = new Date(); // fills successfully fetched
+
+      const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
+      const countFromFills = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
+      if (countFromFills > tradesCount) {
+        tradesCount = countFromFills;
       }
-      console.info("[tradovate/fills] today's executions", {
+
+      console.info("[tradovate/trades] count from fills", {
         accountId,
-        count: executions.length,
+        rawFillCount: executions.length,
+        distinctOrders: distinctOrderIds.size,
+        tradesCount,
         pnlFromFills,
       });
       for (const ex of executions) {

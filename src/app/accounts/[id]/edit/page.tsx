@@ -251,6 +251,7 @@ export default async function EditAccountPage({
     externalAccountId: account.externalAccountId,
     currency: account.currency,
     isActive: account.isActive,
+    balance: account.balance != null ? Number(account.balance) : null,
     riskRules: account.riskRules
       ? {
           maxDailyLoss:
@@ -265,6 +266,23 @@ export default async function EditAccountPage({
           stopAfterLosses: account.riskRules.stopAfterLosses,
           allowedStartHour: account.riskRules.allowedStartHour,
           allowedEndHour: account.riskRules.allowedEndHour,
+          propFirmAccountSize:
+            account.riskRules.propFirmAccountSize != null
+              ? Number(account.riskRules.propFirmAccountSize)
+              : null,
+          propFirmDailyLossLimit:
+            account.riskRules.propFirmDailyLossLimit != null
+              ? Number(account.riskRules.propFirmDailyLossLimit)
+              : null,
+          propFirmMaxDrawdown:
+            account.riskRules.propFirmMaxDrawdown != null
+              ? Number(account.riskRules.propFirmMaxDrawdown)
+              : null,
+          propFirmTrailingDrawdown: account.riskRules.propFirmTrailingDrawdown,
+          propFirmDrawdownRemaining:
+            account.riskRules.propFirmDrawdownRemaining != null
+              ? Number(account.riskRules.propFirmDrawdownRemaining)
+              : null,
         }
       : null,
   };

@@ -23,6 +23,11 @@ type RiskRulesBody = {
   stopAfterLosses?: number | null;
   allowedStartHour?: number | null;
   allowedEndHour?: number | null;
+  propFirmAccountSize?: number | null;
+  propFirmDailyLossLimit?: number | null;
+  propFirmMaxDrawdown?: number | null;
+  propFirmTrailingDrawdown?: boolean;
+  propFirmDrawdownRemaining?: number | null;
 };
 
 function riskRulesData(r: RiskRulesBody) {
@@ -33,6 +38,11 @@ function riskRulesData(r: RiskRulesBody) {
     stopAfterLosses: r.stopAfterLosses ?? null,
     allowedStartHour: r.allowedStartHour ?? null,
     allowedEndHour: r.allowedEndHour ?? null,
+    propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null,
+    propFirmDailyLossLimit: r.propFirmDailyLossLimit != null ? String(r.propFirmDailyLossLimit) : null,
+    propFirmMaxDrawdown: r.propFirmMaxDrawdown != null ? String(r.propFirmMaxDrawdown) : null,
+    propFirmTrailingDrawdown: r.propFirmTrailingDrawdown ?? false,
+    propFirmDrawdownRemaining: r.propFirmDrawdownRemaining != null ? String(r.propFirmDrawdownRemaining) : null,
   };
 }
 

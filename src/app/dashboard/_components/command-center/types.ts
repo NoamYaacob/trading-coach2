@@ -47,6 +47,12 @@ export type CommandCenterAccount = {
   openPnl: number | null;
   lastSyncAt: Date | null;
   fillsSyncedAt: Date | null;
+  /** true when maxDailyLoss > balance for personal accounts — effective budget is capped */
+  balanceLimitedWarning: boolean;
+  /** true when this is a prop firm account with no prop firm limits configured */
+  propFirmSetupNeeded: boolean;
+  /** true when the prop firm drawdown/daily limit is tighter than the user-configured limit */
+  propFirmLimited: boolean;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;

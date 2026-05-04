@@ -50,6 +50,15 @@ export function RulesForm({ initial, hasBroker }: Props) {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
+  const parsedAccountSize = parseFloat(values.accountSize);
+  const parsedMaxDailyLoss = parseFloat(values.maxDailyLoss);
+  const showDailyLossBalanceWarning =
+    values.accountSize.trim() !== "" &&
+    values.maxDailyLoss.trim() !== "" &&
+    Number.isFinite(parsedAccountSize) &&
+    Number.isFinite(parsedMaxDailyLoss) &&
+    parsedMaxDailyLoss > parsedAccountSize;
+
   function update<K extends keyof RulesFormValues>(key: K, value: RulesFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setSavedAt(null);
@@ -135,6 +144,11 @@ export function RulesForm({ initial, hasBroker }: Props) {
           </Field>
           <Field label="Daily loss limit ($)">
             <NumberInput value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
+            {showDailyLossBalanceWarning && (
+              <span className="text-xs text-amber-700">
+                Exceeds account size. Your loss limit is higher than your stated account balance — the dashboard will show the balance as the effective cap.
+              </span>
+            )}
           </Field>
           <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />

@@ -209,13 +209,61 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       ? (sessionState.riskState as "NORMAL" | "WARNING" | "STOPPED")
       : null;
 
+    const balance = account.balance != null ? Number(account.balance) : null;
     const lossUsed = dailyPnl != null ? Math.abs(Math.min(dailyPnl, 0)) : null;
-    const remainingDailyLoss =
+
+    // Base remaining loss budget from user-configured limit
+    let remainingDailyLoss: number | null =
       maxDailyLoss != null && lossUsed != null
         ? Math.max(0, maxDailyLoss - lossUsed)
         : maxDailyLoss != null
           ? maxDailyLoss
           : null;
+
+    // Part B: for personal accounts, cap the displayed budget at account balance
+    const balanceLimitedWarning =
+      account.accountType === "personal" &&
+      balance != null &&
+      maxDailyLoss != null &&
+      maxDailyLoss > balance;
+    if (account.accountType === "personal" && balance != null && remainingDailyLoss != null) {
+      remainingDailyLoss = Math.min(remainingDailyLoss, balance);
+    }
+
+    // Part C: prop firm accounts — effective budget = min of user + prop firm limits
+    const isPropFirm = account.propFirm != null && account.propFirm.trim() !== "";
+    const propFirmSetupNeeded =
+      isPropFirm &&
+      (accountRules == null ||
+        (accountRules.propFirmMaxDrawdown == null &&
+          accountRules.propFirmDailyLossLimit == null &&
+          accountRules.propFirmDrawdownRemaining == null));
+    let propFirmLimited = false;
+    if (isPropFirm && accountRules != null) {
+      const pfDailyLimit =
+        accountRules.propFirmDailyLossLimit != null
+          ? Number(accountRules.propFirmDailyLossLimit)
+          : null;
+      const pfDrawdownRemaining =
+        accountRules.propFirmDrawdownRemaining != null
+          ? Number(accountRules.propFirmDrawdownRemaining)
+          : null;
+      if (pfDailyLimit != null) {
+        const pfDailyRemaining =
+          lossUsed != null ? Math.max(0, pfDailyLimit - lossUsed) : pfDailyLimit;
+        if (remainingDailyLoss == null || pfDailyRemaining < remainingDailyLoss) {
+          remainingDailyLoss = pfDailyRemaining;
+          propFirmLimited = true;
+        }
+      }
+      if (pfDrawdownRemaining != null) {
+        if (remainingDailyLoss == null || pfDrawdownRemaining < remainingDailyLoss) {
+          remainingDailyLoss = pfDrawdownRemaining;
+          propFirmLimited = true;
+        }
+      }
+    }
+
     const dailyLossUsedPct =
       maxDailyLoss != null && maxDailyLoss > 0 && lossUsed != null
         ? Math.min(1, lossUsed / maxDailyLoss)
@@ -275,7 +323,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       status,
       enforcementMode,
       ruleSource,
-      balance: account.balance != null ? Number(account.balance) : null,
+      balance,
       openPnl: account.openPnl != null ? Number(account.openPnl) : null,
       dailyPnl,
       maxDailyLoss,
@@ -288,6 +336,9 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       stopAfterLosses,
       lastSyncAt: account.lastSyncAt,
       fillsSyncedAt: account.fillsSyncedAt,
+      balanceLimitedWarning,
+      propFirmSetupNeeded,
+      propFirmLimited,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,

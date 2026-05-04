@@ -217,8 +217,18 @@ export function AccountCard({
 
   const maxDailyLoss =
     riskRules?.maxDailyLoss != null ? Number(riskRules.maxDailyLoss) : null;
+  const accountBalance = account.balance != null ? Number(account.balance) : null;
+  const balanceLimitedWarning =
+    account.accountType === "personal" &&
+    accountBalance != null &&
+    maxDailyLoss != null &&
+    maxDailyLoss > accountBalance;
+  const effectiveMaxDailyLoss =
+    balanceLimitedWarning && accountBalance != null
+      ? Math.min(maxDailyLoss!, accountBalance)
+      : maxDailyLoss;
   const pnlHeadroom =
-    maxDailyLoss != null && dailyPnl < 0 ? maxDailyLoss + dailyPnl : null;
+    effectiveMaxDailyLoss != null && dailyPnl < 0 ? effectiveMaxDailyLoss + dailyPnl : null;
 
   const tradesCount = hasLiveData ? (sessionState.tradesCount ?? 0) : 0;
   const consecutiveLosses = hasLiveData ? (sessionState.consecutiveLosses ?? 0) : 0;
@@ -429,7 +439,12 @@ export function AccountCard({
                   </p>
                 ) : (
                   <p className="mt-1 text-sm text-stone-500">
-                    {maxDailyLoss != null ? `Limit: ${maxDailyLoss}` : account.currency}
+                    {effectiveMaxDailyLoss != null ? `Limit: ${effectiveMaxDailyLoss}` : account.currency}
+                  </p>
+                )}
+                {balanceLimitedWarning && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Loss limit exceeds balance — capped at ${accountBalance!.toFixed(0)}.
                   </p>
                 )}
               </>

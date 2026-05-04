@@ -565,18 +565,32 @@ function StopLeftCell({
   account: CommandCenterAccount;
   compact?: boolean;
 }) {
-  if (account.maxDailyLoss == null) {
+  if (account.propFirmSetupNeeded) {
+    return (
+      <div>
+        <p className="text-xs font-medium text-amber-700">Setup needed</p>
+        <p className="text-[10px] text-stone-400">Enter prop firm limits</p>
+      </div>
+    );
+  }
+  if (account.maxDailyLoss == null && !account.propFirmLimited) {
     return (
       <p className={`font-mono ${compact ? "text-sm" : "text-sm"} text-stone-400`}>—</p>
     );
   }
-  const remaining = account.remainingDailyLoss ?? account.maxDailyLoss;
+  const remaining = account.remainingDailyLoss ?? account.maxDailyLoss ?? 0;
   const pct = account.dailyLossUsedPct ?? 0;
   return (
     <div className={compact ? "" : "flex flex-col items-end gap-1"}>
       <p className="font-mono text-sm font-semibold text-stone-900">
         {CURRENCY_FORMATTER.format(remaining)}
       </p>
+      {account.balanceLimitedWarning && (
+        <p className="text-[10px] text-amber-700">Capped by balance</p>
+      )}
+      {account.propFirmLimited && !account.balanceLimitedWarning && (
+        <p className="text-[10px] text-amber-700">Prop firm limit</p>
+      )}
       <div
         className={`mt-1 h-1 w-full overflow-hidden rounded-full bg-stone-100 ${compact ? "" : "max-w-[110px]"}`}
         aria-hidden
