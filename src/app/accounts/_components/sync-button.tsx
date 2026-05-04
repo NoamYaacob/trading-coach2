@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 
-function shortDate(date: Date): string {
+/** Returns a human-friendly relative time: "just now", "2m ago", "1h ago". */
+function relativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 60) return "just now";
+  const diffMins = Math.floor(diffSecs / 60);
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -19,9 +27,9 @@ type Props = {
 };
 
 /**
- * Triggers a server-side Tradovate sync for one account or a whole connection.
- * Pass `accountId` for a single account, `connectionId` to sync all accounts
- * linked to a BrokerConnection. Exactly one must be provided.
+ * Manual refresh button for a single account or a whole broker connection.
+ * Pass `accountId` for a single account, `connectionId` to refresh all
+ * accounts linked to a BrokerConnection. Exactly one must be provided.
  */
 export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
   const [syncing, setSyncing] = useState(false);
@@ -46,17 +54,16 @@ export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
       };
 
       if (!res.ok || !data.ok) {
-        const msg = data.message ?? data.error ?? "Sync failed. Please try again.";
+        const msg = data.message ?? data.error ?? "Refresh failed. Please try again.";
         setError(
           msg.includes("TOKEN_EXPIRED") || msg.includes("expired")
-            ? "Connection expired — re-authorize Tradovate to sync."
+            ? "Connection expired — re-authorize Tradovate to refresh."
             : msg.includes("NO_ACCESS_TOKEN") || msg.includes("NO_TOKENS")
               ? "No tokens found — re-authorize Tradovate."
-              : "Sync failed. Please try again.",
+              : "Refresh failed. Please try again.",
         );
       } else {
         if (data.lastSyncAt) setLastSync(new Date(data.lastSyncAt));
-        // Reload to show updated balance / P&L data.
         window.location.reload();
       }
     } catch {
@@ -77,14 +84,14 @@ export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
         {syncing ? (
           <>
             <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-stone-400 border-t-stone-700" />
-            Syncing…
+            Refreshing…
           </>
         ) : (
-          "Sync now"
+          "Refresh"
         )}
       </button>
       {lastSync && !error && (
-        <p className="text-[10px] text-stone-400">Last sync {shortDate(lastSync)}</p>
+        <p className="text-[10px] text-stone-400">Synced {relativeTime(lastSync)}</p>
       )}
       {error && <p className="text-[10px] text-red-600">{error}</p>}
     </div>

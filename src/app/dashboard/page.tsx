@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
+import { AutoSync } from "@/app/dashboard/_components/auto-sync";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { ManualEventForm } from "@/app/dashboard/_components/manual-event-form";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
@@ -52,6 +53,7 @@ import {
   DISPLAY_TIME_ZONE_COOKIE,
   resolveDisplayTimeZone,
 } from "@/lib/timezone";
+import { needsSync } from "@/lib/sync-freshness";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -279,6 +281,14 @@ export default async function DashboardPage() {
       }
     >
       <div className="grid min-w-0 gap-8">
+
+        {/* ── Auto-sync stale Tradovate accounts in background ─────────────── */}
+        {(() => {
+          const staleIds = commandCenter.accounts
+            .filter((a) => a.platform === "tradovate" && needsSync(a.lastSyncAt))
+            .map((a) => a.id);
+          return staleIds.length > 0 ? <AutoSync staleAccountIds={staleIds} /> : null;
+        })()}
 
         {/* ── Command center — always shown ─────────────────────────────────── */}
         <div className="grid gap-3">

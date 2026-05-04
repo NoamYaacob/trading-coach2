@@ -11,6 +11,8 @@ import { getProtectionLockState } from "@/lib/account-protection";
 import { AccountCard } from "./_components/account-card";
 import { SyncButton } from "./_components/sync-button";
 import { ProtectionControls } from "./_components/protection-controls";
+import { AutoSync } from "@/app/dashboard/_components/auto-sync";
+import { needsSync } from "@/lib/sync-freshness";
 
 export const metadata: Metadata = {
   title: "Broker Connections — Guardrail",
@@ -69,6 +71,7 @@ export default async function AccountsPage() {
             pendingProtectionStatus: true,
             pendingProtectionEffectiveDate: true,
             missingFromBrokerSince: true,
+            lastSyncAt: true,
           },
           orderBy: { label: "asc" },
         },
@@ -156,12 +159,30 @@ export default async function AccountsPage() {
           </div>
         )}
 
+        {/* Auto-sync stale accounts across all broker connections */}
+        {(() => {
+          const staleIds = brokerConnections
+            .filter((bc) => bc.connectionStatus !== "expired" && bc.connectionStatus !== "connection_error")
+            .flatMap((bc) => bc.accounts)
+            .filter((a) =>
+              (a.protectionStatus === "protected" || a.protectionStatus === "monitor_only") &&
+              needsSync(a.lastSyncAt),
+            )
+            .map((a) => a.id);
+          return staleIds.length > 0 ? <AutoSync staleAccountIds={staleIds} /> : null;
+        })()}
+
         {/* BrokerConnection groups */}
         {brokerConnections.length > 0 && (
           <div className="grid gap-4">
             {brokerConnections.map((bc) => {
               const statusLabel = CONN_STATUS_LABEL[bc.connectionStatus] ?? bc.connectionStatus.replace(/_/g, " ");
               const isExpired = bc.connectionStatus === "expired" || bc.connectionStatus === "connection_error";
+              // Most-recent lastSyncAt across this connection's accounts.
+              const connectionLastSyncAt = bc.accounts.reduce<Date | null>((latest, a) => {
+                if (!a.lastSyncAt) return latest;
+                return !latest || a.lastSyncAt > latest ? a.lastSyncAt : latest;
+              }, null);
               return (
                 <SectionCard
                   key={bc.id}
@@ -187,7 +208,7 @@ export default async function AccountsPage() {
                       <div className="flex flex-wrap gap-2">
                         {!isExpired && (
                           <>
-                            <SyncButton connectionId={bc.id} lastSyncAt={null} />
+                            <SyncButton connectionId={bc.id} lastSyncAt={connectionLastSyncAt} />
                             <Link
                               href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
                               className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"

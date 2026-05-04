@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { syncTradovateAccount } from "@/lib/brokers/tradovate-sync";
 
 type SelectedAccount = {
   externalAccountId: string;
@@ -156,6 +157,20 @@ export async function POST(request: NextRequest) {
     count: createdAccountIds.length,
     brokerConnectionId: brokerConnection.id,
   });
+
+  // Immediately sync the newly imported accounts so the dashboard shows live
+  // balance/P&L data rather than empty/unavailable state on first visit.
+  // Errors are swallowed — a failed sync here should never block finalize.
+  await Promise.allSettled(
+    createdAccountIds.map((id) =>
+      syncTradovateAccount(id, currentUser.id).catch((err) => {
+        console.warn("[tradovate/finalize] post-import sync failed (non-fatal)", {
+          accountId: id,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }),
+    ),
+  );
 
   return NextResponse.json({
     ok: true,
