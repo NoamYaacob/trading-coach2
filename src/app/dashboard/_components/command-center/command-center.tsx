@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
+import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -348,6 +349,13 @@ function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> })
 
 // ─── Broker enforcement note ───────────────────────────────────────────────────
 
+const RULE_NOTE_BY_TRIGGER: Record<EnforcementTrigger, string> = {
+  daily_loss_limit: "Broker blocking is not active for this rule yet.",
+  trade_limit: "Broker blocking is not active for trade-limit rules yet.",
+  consecutive_losses: "Broker blocking is not active for loss-streak rules yet.",
+  manual: "Broker blocking is not active for this rule yet.",
+};
+
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
 
@@ -368,14 +376,9 @@ function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   }
 
   const trigger = account.lastInterventionTrigger;
-  let ruleNote: string;
-  if (trigger === "trade_limit") {
-    ruleNote = "Broker blocking is not active for trade-limit rules yet.";
-  } else if (trigger === "consecutive_losses") {
-    ruleNote = "Broker blocking is not active for loss-streak rules yet.";
-  } else {
-    ruleNote = "Broker blocking is not active for this rule yet.";
-  }
+  const ruleNote = trigger
+    ? RULE_NOTE_BY_TRIGGER[trigger]
+    : "Broker blocking is not active for this rule yet.";
 
   return (
     <p className="mt-0.5 text-[10px] text-stone-400">
