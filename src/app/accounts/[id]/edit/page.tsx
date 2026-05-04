@@ -59,9 +59,9 @@ const READINESS_CONFIG: Record<
     badgeBg: "bg-emerald-100",
     badgeText: "text-emerald-700",
     badgeLabel: "Ready",
-    status: "Live protection active",
+    status: "Monitoring active",
     description:
-      "Events are arriving and guardian rules are in effect. The guardian will intervene when limits are hit.",
+      "Events are arriving and rules are in effect. Rule alerts fire when limits are hit. Broker-side enforcement is not active.",
   },
   pending_first_event: {
     border: "border-amber-200",

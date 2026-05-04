@@ -17,8 +17,8 @@ export function DisconnectButton({ accountId }: Props) {
     try {
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        setError(data.error ?? "Failed to disconnect account.");
+        const data = (await res.json()) as { error?: string; message?: string };
+        setError(data.message ?? data.error ?? "Failed to disconnect account.");
         setRemoving(false);
         return;
       }
