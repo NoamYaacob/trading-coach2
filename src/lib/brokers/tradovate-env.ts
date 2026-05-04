@@ -117,7 +117,19 @@ export function getTradovateConfig(): TradovateConfigStatus {
 
   if (!clientId) missing.push("TRADOVATE_CLIENT_ID");
   if (!clientSecret) missing.push("TRADOVATE_CLIENT_SECRET");
-  if (!tokenEncryptionKey) missing.push("TRADOVATE_TOKEN_ENCRYPTION_KEY");
+  if (!tokenEncryptionKey) {
+    missing.push("TRADOVATE_TOKEN_ENCRYPTION_KEY");
+  } else {
+    // Validate the key decodes to exactly 32 bytes (AES-256 requirement).
+    // Normalize URL-safe base64 first (mirrors token-crypto.ts loadKey).
+    const normalized = tokenEncryptionKey.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = Buffer.from(normalized, "base64");
+    if (decoded.length !== 32) {
+      missing.push(
+        `TRADOVATE_TOKEN_ENCRYPTION_KEY (must decode to 32 bytes; got ${decoded.length} — regenerate with: openssl rand -base64 32)`,
+      );
+    }
+  }
 
   if (missing.length > 0) {
     return { state: "not_configured", missing };

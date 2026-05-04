@@ -72,7 +72,13 @@ function loadKey(): Buffer {
   }
   let key: Buffer;
   try {
-    key = Buffer.from(raw.trim(), "base64");
+    // Normalize URL-safe base64 (- → +, _ → /) before decoding. Node's
+    // Buffer.from silently skips unrecognised chars, producing a shorter
+    // buffer and a spurious KEY_LENGTH error when the key was generated
+    // with openssl (which emits standard base64) but copied via a tool
+    // that converts to URL-safe encoding.
+    const normalized = raw.trim().replace(/-/g, "+").replace(/_/g, "/");
+    key = Buffer.from(normalized, "base64");
   } catch {
     throw new TokenCryptoError(
       "KEY_INVALID",

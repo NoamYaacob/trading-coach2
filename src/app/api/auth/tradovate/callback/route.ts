@@ -180,6 +180,12 @@ export async function GET(request: NextRequest) {
     count: discoveredAccounts.length,
   });
 
+  // ── Validate access_token presence ─────────────────────────────────────
+  if (!tokenData.access_token || typeof tokenData.access_token !== "string") {
+    console.error("[tradovate/callback] token exchange returned no access_token");
+    return backToConnectPage(request, "token_exchange_failed");
+  }
+
   // ── Encrypt tokens ─────────────────────────────────────────────────────
   let accessTokenEncrypted: string;
   let refreshTokenEncrypted: string | null = null;
@@ -199,24 +205,33 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     const code = err instanceof TokenCryptoError ? err.code : "unknown";
-    console.error(`[tradovate/callback] token encryption failed: ${code}`);
-    return backToConnectPage(request, "token_storage_failed");
+    const name = err instanceof Error ? err.name : "unknown";
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[tradovate/callback] token encryption failed", { code, name, msg });
+    return backToConnectPage(request, "token_encryption_failed");
   }
 
   // ── Create or update BrokerConnection ──────────────────────────────────
-  const brokerConnection = await prisma.brokerConnection.create({
-    data: {
-      userId: payload.userId,
-      platform: "tradovate",
-      env: payload.env,
-      brokerUserId: tokenData.account_id ? String(tokenData.account_id) : null,
-      connectionStatus: "connected_readonly",
-      accessTokenEncrypted,
-      refreshTokenEncrypted,
-      tokenExpiresAt,
-    },
-    select: { id: true },
-  });
+  let brokerConnection: { id: string };
+  try {
+    brokerConnection = await prisma.brokerConnection.create({
+      data: {
+        userId: payload.userId,
+        platform: "tradovate",
+        env: payload.env,
+        brokerUserId: tokenData.account_id ? String(tokenData.account_id) : null,
+        connectionStatus: "connected_readonly",
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        tokenExpiresAt,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[tradovate/callback] brokerConnection create failed", { msg });
+    return backToConnectPage(request, "broker_connection_storage_failed");
+  }
 
   const base = resolveAppBaseUrl(request.url);
 
@@ -240,13 +255,19 @@ export async function GET(request: NextRequest) {
       return backToConnectPage(request, "setup_expired");
     }
 
-    await prisma.pendingBrokerSetup.update({
-      where: { id: setup.id },
-      data: {
-        brokerConnectionId: brokerConnection.id,
-        discoveredAccountsJson: discoveredAccounts,
-      },
-    });
+    try {
+      await prisma.pendingBrokerSetup.update({
+        where: { id: setup.id },
+        data: {
+          brokerConnectionId: brokerConnection.id,
+          discoveredAccountsJson: discoveredAccounts,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[tradovate/callback] pendingBrokerSetup update failed", { msg });
+      return backToConnectPage(request, "setup_update_failed");
+    }
 
     return NextResponse.redirect(
       `${base}/accounts/connect/tradovate/select?setupId=${encodeURIComponent(setup.id)}`,
