@@ -80,6 +80,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
 
   if (account?.platform === "tradovate" && trigger === "daily_loss_limit") {
     // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────
+    // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
+    //   — confirms Account Risk Settings read access and finds existing rule
+    // Step 2 (write): POST userAccountAutoLiq/update or /create
+    //   — sets dailyLossAutoLiq = lossAmountToSet, changesLocked = true
     const lossAmountToSet = Math.max(0, currentDailyLoss ?? 0);
 
     try {
@@ -95,7 +99,7 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       outcome = "broker_locked";
       message =
         `Broker-side lock applied via ${result.endpoint}. ` +
-        `dailyLossAutoLiq set to $${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
+        `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
         `Tradovate will halt new opening orders for the rest of the trading session.`;
 
       console.info("[enforcement] broker lock succeeded", {
@@ -106,19 +110,39 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
     } catch (err) {
       const isClientError = err instanceof TradovateClientError;
       const errCode = isClientError ? err.code : "UNKNOWN";
+      const statusCode = isClientError ? (err as TradovateClientError).statusCode : null;
       const errMsg = err instanceof Error ? err.message : "Unknown error";
+
+      // Produce a specific failure reason so logs and UI are actionable.
+      let failureReason: string;
+      if (statusCode === 403) {
+        failureReason =
+          "Account Risk Settings permission denied (HTTP 403). " +
+          "Verify the OAuth token was issued with 'Account Risk Settings: Full Access'.";
+      } else if (statusCode === 401) {
+        failureReason = "OAuth token unauthorized (HTTP 401) — re-authorize to reconnect.";
+      } else if (errCode === "NO_ACCOUNT_ID") {
+        failureReason =
+          "Tradovate account ID not resolved. " +
+          "Ensure externalAccountId is saved (re-sync to refresh).";
+      } else if (errCode === "NETWORK_ERROR") {
+        failureReason = "Network error reaching Tradovate API.";
+      } else {
+        failureReason = `${errCode}: ${errMsg}`;
+      }
 
       brokerLockStatus = "broker_lock_failed";
       outcome = "broker_lock_failed";
       message =
-        `Broker lock attempt failed (${errCode}: ${errMsg}). ` +
-        "Broker blocking is not active yet. Guardrail is monitoring and alerting only.";
+        `Broker lock attempt failed: ${failureReason} ` +
+        "Guardrail is monitoring and alerting only.";
 
       console.error("[enforcement] broker lock failed", {
         accountId,
         trigger,
         errCode,
-        error: errMsg,
+        statusCode,
+        failureReason,
       });
     }
   } else if (account?.platform === "tradovate" && trigger === "trade_limit") {

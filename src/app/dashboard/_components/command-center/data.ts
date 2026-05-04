@@ -405,6 +405,11 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       propFirmLimited,
       setupNeededReason,
       breachReason,
+      brokerLockStatus: (lastIntervention?.brokerLockStatus ?? null) as
+        | "broker_locked"
+        | "monitoring_only"
+        | "broker_lock_failed"
+        | null,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,

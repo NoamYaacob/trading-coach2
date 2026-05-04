@@ -378,6 +378,23 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
                 )}
               </p>
             )}
+            {account.status === "locked" && (
+              <p
+                className={`mt-0.5 text-[10px] ${
+                  account.brokerLockStatus === "broker_locked"
+                    ? "text-emerald-700"
+                    : account.brokerLockStatus === "broker_lock_failed"
+                      ? "text-amber-700"
+                      : "text-stone-400"
+                }`}
+              >
+                {account.brokerLockStatus === "broker_locked"
+                  ? "Broker blocking active via Tradovate risk settings."
+                  : account.brokerLockStatus === "broker_lock_failed"
+                    ? "Broker blocking failed — Guardrail is monitoring only."
+                    : "Guardrail locked internally · Broker blocking not active for this rule."}
+              </p>
+            )}
             {account.setupNeededReason && (
               <p className="mt-0.5 text-[10px] text-stone-400">
                 {SETUP_NEEDED_REASON_TEXT[account.setupNeededReason]}
@@ -484,6 +501,23 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           {account.breachReason.detail && (
             <span className="ml-1 text-stone-500">{account.breachReason.detail}</span>
           )}
+        </p>
+      )}
+      {account.status === "locked" && (
+        <p
+          className={`mt-0.5 text-[10px] ${
+            account.brokerLockStatus === "broker_locked"
+              ? "text-emerald-700"
+              : account.brokerLockStatus === "broker_lock_failed"
+                ? "text-amber-700"
+                : "text-stone-400"
+          }`}
+        >
+          {account.brokerLockStatus === "broker_locked"
+            ? "Broker blocking active via Tradovate risk settings."
+            : account.brokerLockStatus === "broker_lock_failed"
+              ? "Broker blocking failed — Guardrail is monitoring only."
+              : "Guardrail locked internally · Broker blocking not active for this rule."}
         </p>
       )}
 

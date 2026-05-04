@@ -59,6 +59,8 @@ export type CommandCenterAccount = {
   setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
   /** Explanation of the current breach, when status is warning or locked */
   breachReason: { headline: string; detail?: string } | null;
+  /** Broker enforcement outcome from the most recent GuardianIntervention */
+  brokerLockStatus: "broker_locked" | "monitoring_only" | "broker_lock_failed" | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;
