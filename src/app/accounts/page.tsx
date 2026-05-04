@@ -179,15 +179,26 @@ export default async function AccountsPage() {
         )}
 
         {manualAccounts.length > 0 && (
-          <SectionCard title="Manual accounts" description="Accounts not linked to a broker connection.">
+          <SectionCard
+            title="Manual accounts · App-level only"
+            description="Not linked to a broker connection. No live data — rules are evaluated from manually logged trades only."
+          >
+            <div className="mb-3 rounded-xl border border-stone-200 bg-stone-100/60 px-3.5 py-2.5 text-xs text-stone-500">
+              These accounts are not broker-connected. Protection controls apply in Guardrail only — no broker-side actions are possible.
+            </div>
             <div className="grid gap-3">
               {manualAccounts.map((a) => (
-                <div key={a.id} className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3">
+                <div key={a.id} className="rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-stone-900">{a.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-stone-700">{a.label}</p>
+                      <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">
+                        Manual
+                      </span>
+                    </div>
                     <Link
                       href={`/accounts/${a.id}/edit`}
-                      className="text-xs text-stone-500 transition hover:text-stone-950"
+                      className="text-xs text-stone-400 transition hover:text-stone-950"
                     >
                       Edit
                     </Link>

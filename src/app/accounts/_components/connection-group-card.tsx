@@ -100,14 +100,14 @@ function deriveCapability(
   if (isExpiredStatus(connectionStatus)) {
     return {
       label: "Reconnect required",
-      detail: "Reconnect to restore broker-enforced daily-loss locks via Tradovate's risk engine.",
+      detail: "Reconnect to restore account data sync and rule evaluation for this connection.",
       cls: "border-amber-200 bg-amber-50 text-amber-800",
     };
   }
   return {
-    label: "Broker-enforced available",
-    detail: "Daily-loss locks are enforced by Tradovate's risk engine when a limit is hit.",
-    cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    label: "Read-only monitoring",
+    detail: "Account data is synced and rules are evaluated. In-app and Telegram alerts are active. Broker-side blocking is not active on this connection.",
+    cls: "border-sky-200 bg-sky-50 text-sky-800",
   };
 }
 
@@ -265,7 +265,11 @@ export function ConnectionGroupCard({
             <StatusChip label={connStatus.label} cls={connStatus.cls} />
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
-            {brokerUserId && <span>@{brokerUserId}</span>}
+            {brokerUserId && (
+              <span>
+                User ID {brokerUserId.length > 14 ? `${brokerUserId.slice(0, 12)}…` : brokerUserId}
+              </span>
+            )}
             <span>
               {accounts.length} account{accounts.length === 1 ? "" : "s"}
             </span>
@@ -288,7 +292,7 @@ export function ConnectionGroupCard({
                 href={`/accounts/connect/tradovate?env=${env}&reconnect=${id}`}
                 className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"
               >
-                Import accounts
+                Add accounts
               </Link>
             </>
           )}
@@ -328,7 +332,7 @@ export function ConnectionGroupCard({
               href={`/accounts/connect/tradovate?env=${env}&reconnect=${id}`}
               className="font-medium text-stone-950 underline-offset-2 hover:underline"
             >
-              Import accounts
+              Add accounts
             </Link>
           )}
         </div>
