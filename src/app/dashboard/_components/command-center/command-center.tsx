@@ -258,40 +258,76 @@ function FilterBar({
   );
 }
 
+// ─── Connection status color ───────────────────────────────────────────────────
+
+const CONN_STATUS_CLASS: Record<string, string> = {
+  connected_live: "text-emerald-600",
+  connected_readonly: "text-emerald-600",
+  pending_webhook: "text-amber-600",
+  oauth_pending_storage: "text-amber-600",
+  expired: "text-red-600",
+  not_connected: "text-red-500",
+  connection_error: "text-red-600",
+};
+
 // ─── Firm section ──────────────────────────────────────────────────────────────
 
 function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
+  const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
+  const showBrokerMeta = group.platform !== "manual";
+
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50/30">
-      <header className="flex flex-col gap-1.5 border-b border-stone-100 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
-          <span className="text-[11px] text-stone-500">
-            {group.accounts.length} account{group.accounts.length === 1 ? "" : "s"}
-          </span>
-          <FirmStatusInline counts={group.counts} />
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-stone-500 sm:gap-x-4">
-          <span>
-            P&L:{" "}
-            {group.hasPnlData ? (
-              <span className={`font-mono font-semibold ${pnlClass(group.totalDailyPnl)}`}>
-                {formatSignedCurrency(group.totalDailyPnl)}
+      <header className="border-b border-stone-100 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          {/* Left: firm identity + broker meta */}
+          <div>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
+              <span className="text-[11px] text-stone-500">
+                {group.accounts.length} account{group.accounts.length === 1 ? "" : "s"}
               </span>
-            ) : (
-              <span className="font-medium text-stone-400">—</span>
+              <FirmStatusInline counts={group.counts} />
+            </div>
+            {showBrokerMeta && (
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-stone-400">
+                <span>{group.platformLabel}</span>
+                <span aria-hidden>·</span>
+                <span className={connClass}>{group.connectionStatusLabel}</span>
+                {group.lastSyncAt && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span>Synced {SYNC_DATE_FORMAT.format(group.lastSyncAt)}</span>
+                  </>
+                )}
+              </p>
             )}
-          </span>
-          <span>
-            Budget:{" "}
-            {group.hasRiskData ? (
-              <span className="font-mono font-semibold text-stone-800">
-                {CURRENCY_FORMATTER.format(group.totalRiskRemaining)}
-              </span>
-            ) : (
-              <span className="font-medium text-stone-400">—</span>
-            )}
-          </span>
+          </div>
+
+          {/* Right: financials + enforcement mode */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500 sm:shrink-0 sm:gap-x-4">
+            <span>
+              P&L:{" "}
+              {group.hasPnlData ? (
+                <span className={`font-mono font-semibold ${pnlClass(group.totalDailyPnl)}`}>
+                  {formatSignedCurrency(group.totalDailyPnl)}
+                </span>
+              ) : (
+                <span className="font-medium text-stone-400">—</span>
+              )}
+            </span>
+            <span>
+              Budget:{" "}
+              {group.hasRiskData ? (
+                <span className="font-mono font-semibold text-stone-800">
+                  {CURRENCY_FORMATTER.format(group.totalRiskRemaining)}
+                </span>
+              ) : (
+                <span className="font-medium text-stone-400">—</span>
+              )}
+            </span>
+            <EnforcementChip mode={group.enforcementMode} />
+          </div>
         </div>
       </header>
 

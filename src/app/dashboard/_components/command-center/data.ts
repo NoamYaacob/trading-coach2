@@ -411,6 +411,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         | "monitoring_only"
         | "broker_lock_failed"
         | null,
+      brokerConnectionId: account.brokerConnectionId ?? null,
       lastInterventionTrigger: (lastIntervention?.triggerType ?? null) as EnforcementTrigger | null,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
@@ -459,6 +460,15 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         totalRiskRemaining: 0,
         hasPnlData: false,
         hasRiskData: false,
+        // Connection context — derived from the first account in the group.
+        // All accounts in a named prop-firm group share the same broker connection.
+        platform: account.platform,
+        platformLabel: account.platformLabel,
+        connectionStatus: account.connectionStatus,
+        connectionStatusLabel: account.connectionStatusLabel,
+        brokerConnectionId: account.brokerConnectionId,
+        lastSyncAt: account.lastSyncAt,
+        enforcementMode: account.enforcementMode,
       };
       groupMap.set(account.firmKey, group);
     }
@@ -471,6 +481,13 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     if (account.remainingDailyLoss != null) {
       group.totalRiskRemaining += account.remainingDailyLoss;
       group.hasRiskData = true;
+    }
+    // Track the most recent sync across all accounts in the group
+    if (
+      account.lastSyncAt != null &&
+      (group.lastSyncAt == null || account.lastSyncAt > group.lastSyncAt)
+    ) {
+      group.lastSyncAt = account.lastSyncAt;
     }
   }
 

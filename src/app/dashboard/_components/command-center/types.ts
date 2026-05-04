@@ -63,6 +63,8 @@ export type CommandCenterAccount = {
   breachReason: { headline: string; detail?: string } | null;
   /** Broker enforcement outcome from the most recent GuardianIntervention */
   brokerLockStatus: "broker_locked" | "monitoring_only" | "broker_lock_failed" | null;
+  /** OAuth broker connection ID — used to group accounts by connection */
+  brokerConnectionId: string | null;
   /** triggerType from the most recent GuardianIntervention, for rule-specific UI copy */
   lastInterventionTrigger: EnforcementTrigger | null;
   lastInterventionAt: Date | null;
@@ -95,6 +97,18 @@ export type CommandCenterFirmGroup = {
   totalRiskRemaining: number;
   hasPnlData: boolean;
   hasRiskData: boolean;
+  /** Broker platform for all accounts in this group (e.g. "tradovate") */
+  platform: string;
+  platformLabel: string;
+  /** Connection status of the broker connection serving this group */
+  connectionStatus: string;
+  connectionStatusLabel: string;
+  /** OAuth broker connection ID shared by accounts in this group */
+  brokerConnectionId: string | null;
+  /** Most recent account sync timestamp in this group */
+  lastSyncAt: Date | null;
+  /** Dominant enforcement mode across accounts in this group */
+  enforcementMode: EnforcementMode;
 };
 
 export type CommandCenterSummary = {

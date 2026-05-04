@@ -7,6 +7,7 @@ import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
+import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
 import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
@@ -290,10 +291,27 @@ export default async function DashboardPage() {
           return staleIds.length > 0 ? <AutoSync staleAccountIds={staleIds} /> : null;
         })()}
 
-        {/* ── Command center — always shown ─────────────────────────────────── */}
+        {/* ── Command center — real data, or demo preview when no accounts ──── */}
         <div className="grid gap-3">
-          <SummaryStrip summary={commandCenter.summary} />
-          <CommandCenter data={commandCenter} />
+          {noAccounts ? (
+            <>
+              <div className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50/60 px-4 py-2.5 text-xs text-sky-800">
+                <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
+                <span>
+                  <span className="font-semibold">Dashboard preview · </span>
+                  This is what your dashboard looks like with multiple prop firm accounts.
+                  Connect an account to see live data.
+                </span>
+              </div>
+              <SummaryStrip summary={DEMO_COMMAND_CENTER_DATA.summary} />
+              <CommandCenter data={DEMO_COMMAND_CENTER_DATA} />
+            </>
+          ) : (
+            <>
+              <SummaryStrip summary={commandCenter.summary} />
+              <CommandCenter data={commandCenter} />
+            </>
+          )}
         </div>
 
         {/* ── State A: No accounts — setup prompt ───────────────────────────── */}
