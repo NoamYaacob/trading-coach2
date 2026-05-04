@@ -10,41 +10,127 @@ import { getGuardianSnapshot } from "@/lib/guardian";
 import { getProtectionLockState } from "@/lib/account-protection";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
+import { ScopeSelector } from "./_components/scope-selector";
+import { AccountRulesForm, type AccountRulesValues } from "./_components/account-rules-form";
+import { buildRuleScopes } from "./_components/rule-scope-utils";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
 };
 
-function decToString(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object" && v !== null && "toString" in v) {
-    return (v as { toString: () => string }).toString();
-  }
-  return String(v);
+// ── Value converters (Decimal → string, int → string) ─────────────────────────
+
+function decStr(v: { toString(): string } | null | undefined): string {
+  return v != null ? Number(v).toString() : "";
 }
 
-function intToString(v: number | null | undefined): string {
-  return v === null || v === undefined ? "" : String(v);
+function intStr(v: number | null | undefined): string {
+  return v != null ? String(v) : "";
 }
 
 function parseTradingDays(v: string | null | undefined): string[] {
   if (!v) return [];
-  return v
-    .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter((s) => s.length > 0);
+  return v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
 }
 
-export default async function RulesPage() {
+// ── Enforcement note helpers ───────────────────────────────────────────────────
+
+type EnforcementNote = { label: string; detail: string; cls: string };
+
+function defaultEnforcementNote(): EnforcementNote {
+  return {
+    label: "Monitoring only",
+    detail:
+      "These are the default limits used by any account without account-specific rules. Rule alerts fire in-app and via Telegram when limits are hit. Broker-side blocking is not active.",
+    cls: "border-stone-200 bg-stone-50 text-stone-600",
+  };
+}
+
+function accountEnforcementNote(
+  platform: string,
+  connectionStatus: string,
+  hasBrokerConnection: boolean,
+): EnforcementNote {
+  if (!hasBrokerConnection) {
+    return {
+      label: "App-level only",
+      detail:
+        "This account is not linked to a broker connection. Rules are evaluated from manually logged trades. No live broker data.",
+      cls: "border-stone-200 bg-stone-50 text-stone-600",
+    };
+  }
+  if (connectionStatus === "expired" || connectionStatus === "connection_error") {
+    return {
+      label: "Connection required",
+      detail:
+        "The broker connection for this account has expired. Reconnect to restore live rule monitoring.",
+      cls: "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+  if (platform === "tradovate") {
+    return {
+      label: "Read-only monitoring",
+      detail:
+        "Account data is synced and rules are evaluated in Guardrail. Rule alerts fire in-app and via Telegram. Broker-side blocking is not active on this connection.",
+      cls: "border-sky-200 bg-sky-50 text-sky-800",
+    };
+  }
+  return {
+    label: "Monitoring only",
+    detail:
+      "Rules are evaluated from synced account data. Rule alerts fire in-app and via Telegram.",
+    cls: "border-stone-200 bg-stone-50 text-stone-600",
+  };
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default async function RulesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string; id?: string }>;
+}) {
+  const { scope = "default", id } = await searchParams;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, brokerCount, guardian] = await Promise.all([
+  const [riskRules, accounts, guardian] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
-    prisma.connectedAccount.count({ where: { userId: user.id, isActive: true } }),
+    prisma.connectedAccount.findMany({
+      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
+      select: {
+        id: true,
+        label: true,
+        platform: true,
+        propFirm: true,
+        connectionStatus: true,
+        brokerConnectionId: true,
+        brokerConnection: {
+          select: {
+            id: true,
+            platform: true,
+            env: true,
+            brokerUserId: true,
+            connectionStatus: true,
+          },
+        },
+        riskRules: {
+          select: {
+            maxDailyLoss: true, riskPerTrade: true,
+            maxTradesPerDay: true, stopAfterLosses: true,
+            allowedStartHour: true, allowedEndHour: true,
+            propFirmAccountSize: true, propFirmPhase: true,
+            propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
+            propFirmEODDrawdown: true, propFirmTrailingDrawdown: true,
+            propFirmDrawdownRemaining: true, propFirmProfitTarget: true,
+            propFirmMinTradingDays: true,
+          },
+        },
+      },
+      orderBy: { label: "asc" },
+    }),
     getGuardianSnapshot(user.id),
   ]);
-  const hasBroker = brokerCount > 0;
 
   const protectionLock = getProtectionLockState({
     sessionStartHour: riskRules?.sessionStartHour ?? null,
@@ -52,21 +138,37 @@ export default async function RulesPage() {
     cutoffMinutes: riskRules?.protectionLockCutoffMinutes ?? null,
   });
 
-  const hasPendingPayload = Boolean(
-    riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate,
+  const hasDefaultRules = Boolean(
+    riskRules &&
+      (riskRules.maxDailyLoss != null ||
+        riskRules.maxTradesPerDay != null ||
+        riskRules.stopAfterLosses != null ||
+        riskRules.riskPerTrade != null),
   );
 
-  const initial: RulesFormValues = {
-    accountSize: decToString(riskRules?.accountSize),
-    maxDailyLoss: decToString(riskRules?.maxDailyLoss),
-    dailyProfitTarget: decToString(riskRules?.dailyProfitTarget),
-    maxRiskPerTrade: decToString(riskRules?.maxRiskPerTrade ?? riskRules?.riskPerTrade),
-    maxTradesPerDay: intToString(riskRules?.maxTradesPerDay),
-    stopAfterLosses: intToString(riskRules?.stopAfterLosses),
-    maxContracts: intToString(riskRules?.maxContracts),
+  // Build scope selector data
+  const scopeAccounts = accounts.map((a) => ({
+    ...a,
+    hasAccountRules: a.riskRules !== null,
+  }));
+  const { groups, unattached } = buildRuleScopes(scopeAccounts);
+
+  // Resolve selected account when scope=account
+  const selectedAccount =
+    scope === "account" && id ? accounts.find((a) => a.id === id) ?? null : null;
+
+  // Build default template initial values
+  const defaultInitial: RulesFormValues = {
+    accountSize: decStr(riskRules?.accountSize),
+    maxDailyLoss: decStr(riskRules?.maxDailyLoss),
+    dailyProfitTarget: decStr(riskRules?.dailyProfitTarget),
+    maxRiskPerTrade: decStr(riskRules?.maxRiskPerTrade ?? riskRules?.riskPerTrade),
+    maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
+    stopAfterLosses: intStr(riskRules?.stopAfterLosses),
+    maxContracts: intStr(riskRules?.maxContracts),
     allowedSymbols: riskRules?.allowedSymbols ?? "",
-    sessionStartHour: intToString(riskRules?.sessionStartHour),
-    sessionEndHour: intToString(riskRules?.sessionEndHour),
+    sessionStartHour: intStr(riskRules?.sessionStartHour),
+    sessionEndHour: intStr(riskRules?.sessionEndHour),
     tradingDays: parseTradingDays(riskRules?.tradingDays),
     newsLockoutEnabled: riskRules?.newsLockoutEnabled ?? false,
     onBreachWarn: riskRules?.onBreachWarn ?? true,
@@ -75,11 +177,45 @@ export default async function RulesPage() {
     onBreachFlatten: riskRules?.onBreachFlatten ?? false,
   };
 
+  const hasPendingPayload = Boolean(riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate);
+
+  // Build account-specific initial values (only used when scope=account)
+  const accountInitial: AccountRulesValues = {
+    maxDailyLoss: decStr(selectedAccount?.riskRules?.maxDailyLoss),
+    riskPerTrade: decStr(selectedAccount?.riskRules?.riskPerTrade),
+    maxTradesPerDay: intStr(selectedAccount?.riskRules?.maxTradesPerDay),
+    stopAfterLosses: intStr(selectedAccount?.riskRules?.stopAfterLosses),
+    allowedStartHour: intStr(selectedAccount?.riskRules?.allowedStartHour),
+    allowedEndHour: intStr(selectedAccount?.riskRules?.allowedEndHour),
+    propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
+    propFirmPhase: selectedAccount?.riskRules?.propFirmPhase ?? "",
+    propFirmDailyLossLimit: decStr(selectedAccount?.riskRules?.propFirmDailyLossLimit),
+    propFirmMaxDrawdown: decStr(selectedAccount?.riskRules?.propFirmMaxDrawdown),
+    propFirmEODDrawdown: decStr(selectedAccount?.riskRules?.propFirmEODDrawdown),
+    propFirmTrailingDrawdown: selectedAccount?.riskRules?.propFirmTrailingDrawdown ?? false,
+    propFirmDrawdownRemaining: decStr(selectedAccount?.riskRules?.propFirmDrawdownRemaining),
+    propFirmProfitTarget: decStr(selectedAccount?.riskRules?.propFirmProfitTarget),
+    propFirmMinTradingDays: intStr(selectedAccount?.riskRules?.propFirmMinTradingDays),
+  };
+
+  const hasBroker = accounts.some((a) => a.platform !== "manual" && a.brokerConnectionId != null);
+
+  // Enforcement note for the current scope
+  const enforcementNote =
+    scope === "account" && selectedAccount
+      ? accountEnforcementNote(
+          selectedAccount.platform,
+          selectedAccount.brokerConnection?.connectionStatus ?? selectedAccount.connectionStatus,
+          selectedAccount.brokerConnectionId != null,
+        )
+      : defaultEnforcementNote();
+
   return (
     <AppShell
       eyebrow="Trading Plan"
       title="Set your trading plan."
       description="Choose the limits Guardrail monitors during each session."
+      compactHero
       actions={
         <Link
           href="/guardian"
@@ -89,33 +225,201 @@ export default async function RulesPage() {
         </Link>
       }
     >
-      <div className="grid gap-6">
-        {protectionLock.isLocked && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
-            <p className="font-medium">Today&apos;s rules are locked.</p>
-            <p className="mt-1 text-[13px] text-amber-700">
-              Saved changes will apply on the next trading day ({protectionLock.nextTradingDayKey}).
-            </p>
+      {/* Two-column layout: selector sidebar + editor */}
+      <div className="grid gap-5 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-8">
+
+        {/* ── Scope selector ──────────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-stone-200 bg-white/90 p-3 lg:sticky lg:top-6">
+          <p className="mb-2 px-3.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+            Configure rules for
+          </p>
+          <ScopeSelector
+            groups={groups}
+            unattached={unattached}
+            currentScope={scope}
+            currentAccountId={id ?? null}
+          />
+        </div>
+
+        {/* ── Rule editor ─────────────────────────────────────────────────── */}
+        <div className="grid gap-5">
+
+          {/* Scope context header */}
+          <ScopeContextHeader scope={scope} account={selectedAccount} />
+
+          {/* Enforcement mode banner */}
+          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementNote.cls}`}>
+            <span className="font-semibold">{enforcementNote.label}. </span>
+            {enforcementNote.detail}
           </div>
-        )}
-        {hasPendingPayload && riskRules?.pendingEffectiveDate && (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm text-sky-800">
-            <p>
-              You have rule changes pending — they apply on{" "}
-              <span className="font-semibold">{riskRules.pendingEffectiveDate}</span>.
-            </p>
-          </div>
-        )}
-        <SectionCard
-          title="Your trading plan"
-          description="These limits decide when your session is Allowed, Warning, or Locked."
-        >
-          <div id="guardian-toggle" className="mb-5 scroll-mt-20">
-            <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
-          </div>
-          <RulesForm initial={initial} hasBroker={hasBroker} />
-        </SectionCard>
+
+          {/* Lock / pending banners — default scope only */}
+          {scope !== "account" && protectionLock.isLocked && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
+              <p className="font-medium">Today&apos;s rules are locked.</p>
+              <p className="mt-1 text-[13px] text-amber-700">
+                Saved changes will apply on the next trading day ({protectionLock.nextTradingDayKey}).
+              </p>
+            </div>
+          )}
+          {scope !== "account" && hasPendingPayload && riskRules?.pendingEffectiveDate && (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm text-sky-800">
+              <p>
+                You have rule changes pending — they apply on{" "}
+                <span className="font-semibold">{riskRules.pendingEffectiveDate}</span>.
+              </p>
+            </div>
+          )}
+
+          {/* Editor body */}
+          {scope === "account" ? (
+            selectedAccount ? (
+              <SectionCard
+                title={selectedAccount.label}
+                description={buildAccountSubtitle(selectedAccount)}
+              >
+                <AccountRulesForm
+                  accountId={selectedAccount.id}
+                  hasExistingRules={selectedAccount.riskRules !== null}
+                  initial={accountInitial}
+                  isLocked={protectionLock.isLocked}
+                  hasPropFirm={Boolean(selectedAccount.propFirm)}
+                  hasDefaultRules={hasDefaultRules}
+                />
+              </SectionCard>
+            ) : (
+              <SectionCard title="Account not found">
+                <p className="text-sm text-stone-600">
+                  The selected account was not found.{" "}
+                  <Link href="/rules" className="font-medium underline-offset-2 hover:underline">
+                    Back to default template
+                  </Link>
+                </p>
+              </SectionCard>
+            )
+          ) : (
+            /* Default template editor */
+            <SectionCard
+              title="Default template"
+              description="These limits apply to any account that doesn't have account-specific rules."
+            >
+              <div id="guardian-toggle" className="mb-5 scroll-mt-20">
+                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
+              </div>
+              <RulesForm initial={defaultInitial} hasBroker={hasBroker} />
+            </SectionCard>
+          )}
+
+          {/* No accounts hint — only shown on default scope */}
+          {scope !== "account" && accounts.length === 0 && (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+              <p className="font-medium text-stone-950">No accounts connected yet.</p>
+              <p className="mt-1">
+                Connect a broker to set up account-specific rules and start live monitoring.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href="/accounts/connect/tradovate"
+                  className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Connect Tradovate
+                </Link>
+                <Link
+                  href="/accounts/connect/manual"
+                  className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-400"
+                >
+                  Add manual account
+                </Link>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+type SelectedAccount = {
+  label: string;
+  platform: string;
+  propFirm: string | null;
+  connectionStatus: string;
+  brokerConnectionId: string | null;
+  brokerConnection: {
+    platform: string;
+    env: string;
+    brokerUserId: string | null;
+    connectionStatus: string;
+  } | null;
+} | null;
+
+function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
+  const parts: string[] = [];
+  if (account.propFirm) parts.push(account.propFirm);
+  const conn = account.brokerConnection;
+  if (conn) {
+    const pLabel = conn.platform === "tradovate" ? "Tradovate"
+      : conn.platform === "tradingview" ? "TradingView"
+      : conn.platform;
+    const eLabel = conn.env === "live" ? "Live" : conn.env === "demo" ? "Demo / Sim" : conn.env;
+    parts.push(`${pLabel} · ${eLabel}`);
+    if (conn.brokerUserId) {
+      const uid = conn.brokerUserId.length > 14
+        ? `${conn.brokerUserId.slice(0, 12)}…`
+        : conn.brokerUserId;
+      parts.push(`User ID ${uid}`);
+    }
+  } else {
+    parts.push("Manual account · App-level only");
+  }
+  return parts.join(" · ");
+}
+
+function ScopeContextHeader({
+  scope,
+  account,
+}: {
+  scope: string;
+  account: SelectedAccount;
+}) {
+  if (scope !== "account") {
+    return (
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
+          Trading Plan
+        </p>
+        <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
+          Default template
+        </h2>
+        <p className="mt-0.5 text-sm text-stone-500">
+          Applies to all accounts without account-specific rules. Select an account on the left to
+          configure it individually.
+        </p>
+      </div>
+    );
+  }
+
+  if (!account) return null;
+
+  const conn = account.brokerConnection;
+  const firmLine = account.propFirm
+    ? account.propFirm
+    : conn
+    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${conn.env === "live" ? "Live" : conn.env}`
+    : "Manual account";
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
+        Trading Plan · Account rules
+      </p>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
+        {account.label}
+      </h2>
+      <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>
+    </div>
   );
 }
