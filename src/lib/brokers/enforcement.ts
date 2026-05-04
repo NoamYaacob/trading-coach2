@@ -46,6 +46,49 @@ export type BrokerLockStatus =
   | "monitoring_only"    // no applicable broker API for this trigger
   | "broker_lock_failed" // broker API was called but returned an error
 
+/**
+ * Canonical enforcement capability per trigger type.
+ *
+ * "broker_enforced" means the trigger CAN be enforced server-side via
+ * Tradovate's Account Risk Settings API (if the call succeeds).
+ * "internal_only" means Guardrail locks the account internally but has
+ * no proven Tradovate endpoint to enforce it at the broker level with
+ * the current permission set (Account Risk Settings Full Access,
+ * Orders/Positions Read Only).
+ */
+export const ENFORCEMENT_CAPABILITIES = {
+  daily_loss_limit: {
+    capability: "broker_enforced" as const,
+    brokerEndpoint: "userAccountAutoLiq/update (or /create)",
+    permission: "Account Risk Settings: Full Access",
+    notes:
+      "Sets dailyLossAutoLiq to the current loss amount so Tradovate's risk engine " +
+      "immediately places the account in liquidation-only mode and blocks new opening " +
+      "orders for the rest of the trading session.",
+  },
+  trade_limit: {
+    capability: "internal_only" as const,
+    notes:
+      "userAccountAutoLiq has no max-trades-per-day field. " +
+      "userAccountRiskParameter has per-contract maxOpeningOrderQty but not an " +
+      "account-wide trade count limit. Order cancellation would require Orders " +
+      "Full Access. Internal Guardrail lock only.",
+  },
+  consecutive_losses: {
+    capability: "internal_only" as const,
+    notes:
+      "No Tradovate API field maps to consecutive loss streaks. " +
+      "Internal Guardrail lock only.",
+  },
+  manual: {
+    capability: "internal_only" as const,
+    notes: "Manual interventions are Guardrail-internal only.",
+  },
+} as const satisfies Record<
+  EnforcementTrigger,
+  { capability: "broker_enforced" | "internal_only"; brokerEndpoint?: string; permission?: string; notes: string }
+>;
+
 export type EnforcementContext = {
   accountId: string;
   userId: string;

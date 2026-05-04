@@ -346,6 +346,51 @@ function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> })
   );
 }
 
+// ─── Broker enforcement note ───────────────────────────────────────────────────
+//
+// Three distinct states for a locked account:
+//   broker_locked       → Tradovate risk settings are enforcing the block
+//   broker_lock_failed  → API call was attempted but failed; Guardrail-internal only
+//   monitoring_only/null → No broker enforcement for this rule type; Guardrail-internal only
+//
+// Rules that can be broker-enforced:  daily_loss_limit (via userAccountAutoLiq)
+// Rules that are always internal-only: trade_limit, consecutive_losses, manual
+
+function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
+  if (account.status !== "locked") return null;
+
+  if (account.brokerLockStatus === "broker_locked") {
+    return (
+      <p className="mt-0.5 text-[10px] text-emerald-700">
+        Broker-enforced lock · Tradovate risk settings active.
+      </p>
+    );
+  }
+
+  if (account.brokerLockStatus === "broker_lock_failed") {
+    return (
+      <p className="mt-0.5 text-[10px] text-amber-700">
+        Broker blocking failed · Guardrail is monitoring only.
+      </p>
+    );
+  }
+
+  // Internal Guardrail lock — rule-specific copy
+  const trigger = account.lastInterventionTrigger;
+  const ruleNote =
+    trigger === "trade_limit"
+      ? "Broker blocking is not active for trade-limit rules yet."
+      : trigger === "consecutive_losses"
+        ? "Broker blocking is not active for loss-streak rules yet."
+        : "Broker blocking is not active for this rule yet.";
+
+  return (
+    <p className="mt-0.5 text-[10px] text-stone-400">
+      Guardrail locked this account internally. {ruleNote}
+    </p>
+  );
+}
+
 // ─── Desktop row ───────────────────────────────────────────────────────────────
 
 const SYNC_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
@@ -378,23 +423,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
                 )}
               </p>
             )}
-            {account.status === "locked" && (
-              <p
-                className={`mt-0.5 text-[10px] ${
-                  account.brokerLockStatus === "broker_locked"
-                    ? "text-emerald-700"
-                    : account.brokerLockStatus === "broker_lock_failed"
-                      ? "text-amber-700"
-                      : "text-stone-400"
-                }`}
-              >
-                {account.brokerLockStatus === "broker_locked"
-                  ? "Broker blocking active via Tradovate risk settings."
-                  : account.brokerLockStatus === "broker_lock_failed"
-                    ? "Broker blocking failed — Guardrail is monitoring only."
-                    : "Guardrail locked internally · Broker blocking not active for this rule."}
-              </p>
-            )}
+            <BrokerEnforcementNote account={account} />
             {account.setupNeededReason && (
               <p className="mt-0.5 text-[10px] text-stone-400">
                 {SETUP_NEEDED_REASON_TEXT[account.setupNeededReason]}
@@ -503,23 +532,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           )}
         </p>
       )}
-      {account.status === "locked" && (
-        <p
-          className={`mt-0.5 text-[10px] ${
-            account.brokerLockStatus === "broker_locked"
-              ? "text-emerald-700"
-              : account.brokerLockStatus === "broker_lock_failed"
-                ? "text-amber-700"
-                : "text-stone-400"
-          }`}
-        >
-          {account.brokerLockStatus === "broker_locked"
-            ? "Broker blocking active via Tradovate risk settings."
-            : account.brokerLockStatus === "broker_lock_failed"
-              ? "Broker blocking failed — Guardrail is monitoring only."
-              : "Guardrail locked internally · Broker blocking not active for this rule."}
-        </p>
-      )}
+      <BrokerEnforcementNote account={account} />
 
       {/* 2×2 labeled metrics grid */}
       <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-stone-100 pt-2.5">

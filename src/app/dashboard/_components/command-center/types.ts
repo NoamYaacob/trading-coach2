@@ -61,6 +61,8 @@ export type CommandCenterAccount = {
   breachReason: { headline: string; detail?: string } | null;
   /** Broker enforcement outcome from the most recent GuardianIntervention */
   brokerLockStatus: "broker_locked" | "monitoring_only" | "broker_lock_failed" | null;
+  /** triggerType from the most recent GuardianIntervention, for rule-specific UI copy */
+  lastInterventionTrigger: string | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;

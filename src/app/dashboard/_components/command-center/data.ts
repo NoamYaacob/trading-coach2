@@ -410,6 +410,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         | "monitoring_only"
         | "broker_lock_failed"
         | null,
+      lastInterventionTrigger: lastIntervention?.triggerType ?? null,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,
