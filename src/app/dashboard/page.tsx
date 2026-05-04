@@ -299,8 +299,8 @@ export default async function DashboardPage() {
                 <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
                 <span>
                   <span className="font-semibold">Dashboard preview · </span>
-                  This is what your dashboard looks like with multiple prop firm accounts.
-                  Connect an account to see live data.
+                  Sample accounts only. These are not live broker accounts and the balances are not real.
+                  Connect a broker to replace this with live account data.
                 </span>
               </div>
               <SummaryStrip summary={DEMO_COMMAND_CENTER_DATA.summary} />

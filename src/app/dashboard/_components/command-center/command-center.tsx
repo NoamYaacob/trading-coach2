@@ -164,7 +164,12 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             {filteredGroups.length === 0 ? (
               <EmptyFilterMatch />
             ) : (
-              filteredGroups.map((group) => <FirmSection key={group.firmKey} group={group} />)
+              filteredGroups.map((group) => (
+                <FirmSection
+                  key={`${group.firmKey}::${group.brokerConnectionId ?? ""}`}
+                  group={group}
+                />
+              ))
             )}
           </div>
 

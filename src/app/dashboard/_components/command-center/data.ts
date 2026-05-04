@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 
 import { getProtectionLockState } from "@/lib/account-protection";
 import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
+import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -132,9 +133,6 @@ function deriveStatus(input: {
   return "allowed";
 }
 
-function emptyCounts(): Record<AccountStatus, number> {
-  return { allowed: 0, warning: 0, locked: 0, setup_needed: 0, not_connected: 0 };
-}
 
 export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
   const [accounts, defaultRules] = await Promise.all([
@@ -447,60 +445,13 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     if (account.hasOpenIntervention) summary.openInterventions += 1;
   }
 
-  const groupMap = new Map<string, CommandCenterFirmGroup>();
-  for (const account of computed) {
-    let group = groupMap.get(account.firmKey);
-    if (!group) {
-      group = {
-        firmKey: account.firmKey,
-        firmLabel: account.firmLabel,
-        accounts: [],
-        counts: emptyCounts(),
-        totalDailyPnl: 0,
-        totalRiskRemaining: 0,
-        hasPnlData: false,
-        hasRiskData: false,
-        // Connection context — derived from the first account in the group.
-        // All accounts in a named prop-firm group share the same broker connection.
-        platform: account.platform,
-        platformLabel: account.platformLabel,
-        connectionStatus: account.connectionStatus,
-        connectionStatusLabel: account.connectionStatusLabel,
-        brokerConnectionId: account.brokerConnectionId,
-        lastSyncAt: account.lastSyncAt,
-        enforcementMode: account.enforcementMode,
-      };
-      groupMap.set(account.firmKey, group);
-    }
-    group.accounts.push(account);
-    group.counts[account.status] += 1;
-    if (account.dailyPnl != null) {
-      group.totalDailyPnl += account.dailyPnl;
-      group.hasPnlData = true;
-    }
-    if (account.remainingDailyLoss != null) {
-      group.totalRiskRemaining += account.remainingDailyLoss;
-      group.hasRiskData = true;
-    }
-    // Track the most recent sync across all accounts in the group
-    if (
-      account.lastSyncAt != null &&
-      (group.lastSyncAt == null || account.lastSyncAt > group.lastSyncAt)
-    ) {
-      group.lastSyncAt = account.lastSyncAt;
-    }
-  }
-
   const SINK_KEYS = new Set([MANUAL_FIRM_KEY, PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);
-  const groups = [...groupMap.values()].sort((a, b) => {
-    // Personal / Manual / Unassigned groups sink to the bottom; otherwise alphabetical.
-    const aSink = SINK_KEYS.has(a.firmKey);
-    const bSink = SINK_KEYS.has(b.firmKey);
-    if (aSink !== bSink) return aSink ? 1 : -1;
-    return a.firmLabel.localeCompare(b.firmLabel);
-  });
+  const groups = buildCommandCenterGroups(computed, SINK_KEYS);
 
-  const firms = groups.map((g) => ({ key: g.firmKey, label: g.firmLabel }));
+  // Deduplicate by firmKey: same firm across multiple broker connections shows once
+  // in the filter dropdown (filtering by firm shows all connections for that firm).
+  const firmsMap = new Map(groups.map((g) => [g.firmKey, g.firmLabel]));
+  const firms = [...firmsMap.entries()].map(([key, label]) => ({ key, label }));
 
   const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => ({
     id: p.id,
