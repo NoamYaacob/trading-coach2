@@ -198,39 +198,42 @@ function FilterBar({
   const totalActive = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      {/* Scrollable chip row — no wrapping, hidden scrollbar, full bleed on mobile */}
       <div
+        className="-mx-4 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
         aria-label="Status filter"
-        className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-x-visible"
       >
-        {STATUS_FILTERS.map((filter) => {
-          const active = statusFilter === filter.value;
-          const count =
-            filter.value === "all" ? totalActive : counts[filter.value as AccountStatus];
-          return (
-            <button
-              key={filter.value}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onStatusChange(filter.value)}
-              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs ${
-                active
-                  ? "bg-stone-950 text-stone-50"
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
-              }`}
-            >
-              <span>{filter.label}</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
-                  active ? "bg-stone-800 text-stone-100" : "bg-white/80 text-stone-500"
+        <div className="flex min-w-max items-center gap-1.5">
+          {STATUS_FILTERS.map((filter) => {
+            const active = statusFilter === filter.value;
+            const count =
+              filter.value === "all" ? totalActive : counts[filter.value as AccountStatus];
+            return (
+              <button
+                key={filter.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onStatusChange(filter.value)}
+                className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-medium transition ${
+                  active
+                    ? "bg-stone-950 text-stone-50"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
                 }`}
               >
-                {count}
-              </span>
-            </button>
-          );
-        })}
+                <span>{filter.label}</span>
+                <span
+                  className={`min-w-[18px] rounded-md px-1 py-px text-center font-mono text-[10px] leading-4 ${
+                    active ? "bg-stone-800 text-stone-300" : "bg-white/70 text-stone-400"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {firms.length > 1 ? (
@@ -239,7 +242,7 @@ function FilterBar({
           <select
             value={firmFilter}
             onChange={(e) => onFirmChange(e.target.value)}
-            className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
+            className="rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
           >
             <option value="all">All firms</option>
             {firms.map((firm) => (
