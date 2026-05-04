@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 
 import { getProtectionLockState } from "@/lib/account-protection";
+import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -410,7 +411,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         | "monitoring_only"
         | "broker_lock_failed"
         | null,
-      lastInterventionTrigger: lastIntervention?.triggerType ?? null,
+      lastInterventionTrigger: (lastIntervention?.triggerType ?? null) as EnforcementTrigger | null,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,

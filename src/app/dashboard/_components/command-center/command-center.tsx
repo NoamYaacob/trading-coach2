@@ -347,14 +347,6 @@ function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> })
 }
 
 // ─── Broker enforcement note ───────────────────────────────────────────────────
-//
-// Three distinct states for a locked account:
-//   broker_locked       → Tradovate risk settings are enforcing the block
-//   broker_lock_failed  → API call was attempted but failed; Guardrail-internal only
-//   monitoring_only/null → No broker enforcement for this rule type; Guardrail-internal only
-//
-// Rules that can be broker-enforced:  daily_loss_limit (via userAccountAutoLiq)
-// Rules that are always internal-only: trade_limit, consecutive_losses, manual
 
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
@@ -375,14 +367,15 @@ function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
     );
   }
 
-  // Internal Guardrail lock — rule-specific copy
   const trigger = account.lastInterventionTrigger;
-  const ruleNote =
-    trigger === "trade_limit"
-      ? "Broker blocking is not active for trade-limit rules yet."
-      : trigger === "consecutive_losses"
-        ? "Broker blocking is not active for loss-streak rules yet."
-        : "Broker blocking is not active for this rule yet.";
+  let ruleNote: string;
+  if (trigger === "trade_limit") {
+    ruleNote = "Broker blocking is not active for trade-limit rules yet.";
+  } else if (trigger === "consecutive_losses") {
+    ruleNote = "Broker blocking is not active for loss-streak rules yet.";
+  } else {
+    ruleNote = "Broker blocking is not active for this rule yet.";
+  }
 
   return (
     <p className="mt-0.5 text-[10px] text-stone-400">

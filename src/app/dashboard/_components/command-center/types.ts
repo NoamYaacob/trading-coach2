@@ -1,3 +1,5 @@
+import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
+
 export type AccountStatus =
   | "allowed"
   | "warning"
@@ -62,7 +64,7 @@ export type CommandCenterAccount = {
   /** Broker enforcement outcome from the most recent GuardianIntervention */
   brokerLockStatus: "broker_locked" | "monitoring_only" | "broker_lock_failed" | null;
   /** triggerType from the most recent GuardianIntervention, for rule-specific UI copy */
-  lastInterventionTrigger: string | null;
+  lastInterventionTrigger: EnforcementTrigger | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;
