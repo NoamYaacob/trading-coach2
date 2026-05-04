@@ -40,6 +40,7 @@ import {
   mapOrderType,
   mapSide,
   selectBestBalance,
+  parseSnapshotItems,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -579,61 +580,47 @@ export class TradovateClient {
   }
 
   /**
-   * Cash balance snapshot for a Tradovate account ID.
-   * Returns the first entry from the list, or null if empty.
+   * Primary balance source: POST cashBalance/getCashBalanceSnapshot.
+   *
+   * Tradovate may return a bare array, a single object, or a wrapper envelope.
+   * parseSnapshotItems() normalises all shapes to an array before we pick the
+   * first item. Logs the raw response shape and per-candidate field types so
+   * server logs tell us exactly what Tradovate sent.
    */
   async getCashBalanceSnapshot(
     tvAccountId: number,
   ): Promise<TvCashBalanceSnapshot | null> {
-    console.info("[tradovate/balance] → request", {
-      accountId: this.#accountId,
-      tvAccountId,
-      endpoint: "cashBalance/getCashBalanceSnapshot",
-      body: { accountId: tvAccountId },
-    });
-
     const raw = await this.#request<unknown>(
       "cashBalance/getCashBalanceSnapshot",
       "POST",
       { accountId: tvAccountId },
     );
 
-    // Diagnose the top-level response shape before any casting.
-    const isArray = Array.isArray(raw);
-    const arrayLength = isArray ? (raw as unknown[]).length : null;
+    const isRawArray = Array.isArray(raw);
     const topLevelKeys =
-      !isArray && typeof raw === "object" && raw !== null
+      !isRawArray && typeof raw === "object" && raw !== null
         ? Object.keys(raw as object)
         : null;
-    console.info("[tradovate/balance] ← raw response shape", {
-      accountId: this.#accountId,
-      tvAccountId,
-      isArray,
-      arrayLength,
-      topLevelKeys,
-    });
 
-    const results = (isArray ? raw : []) as TvCashBalanceSnapshot[];
-    const snapshot = results[0] ?? null;
+    const items = parseSnapshotItems<TvCashBalanceSnapshot>(raw);
+    const snapshot = items[0] ?? null;
 
     if (snapshot) {
-      // Log value types for each balance candidate — never log raw values.
       const s = snapshot as Record<string, unknown>;
       const describeField = (key: string): string => {
         if (!(key in s)) return "absent";
         const v = s[key];
         if (v === null) return "null";
-        if (v === undefined) return "undefined";
-        if (typeof v === "number") {
-          return Number.isFinite(v) ? "number(finite)" : "number(non-finite)";
-        }
+        if (typeof v === "number") return Number.isFinite(v) ? "number(finite)" : "number(non-finite)";
         return typeof v;
       };
-      console.info("[tradovate/balance] ← snapshot candidate fields", {
+      console.info("[tradovate/balance] getCashBalanceSnapshot", {
         accountId: this.#accountId,
         tvAccountId,
+        rawIsArray: isRawArray,
+        parsedItems: items.length,
         allKeys: Object.keys(s),
-        candidateTypes: {
+        candidates: {
           netLiq: describeField("netLiq"),
           totalCashValue: describeField("totalCashValue"),
           cashBalance: describeField("cashBalance"),
@@ -643,15 +630,46 @@ export class TradovateClient {
         },
       });
     } else {
-      console.info("[tradovate/balance] ← snapshot is null/empty", {
+      console.info("[tradovate/balance] getCashBalanceSnapshot → no snapshot", {
         accountId: this.#accountId,
         tvAccountId,
-        isArray,
-        arrayLength,
+        rawIsArray: isRawArray,
+        topLevelKeys,
+        parsedItems: items.length,
       });
     }
 
     return snapshot;
+  }
+
+  /**
+   * Fallback balance source: GET cashBalance/list, filtered to tvAccountId.
+   *
+   * Called only when getCashBalanceSnapshot returns no usable balance.
+   * cashBalance/list returns all cash balance records for the authenticated
+   * user's accounts — we filter client-side to the target account.
+   */
+  async getCashBalanceFallback(
+    tvAccountId: number,
+  ): Promise<TvCashBalanceSnapshot | null> {
+    const raw = await this.#request<unknown>("cashBalance/list");
+    const items = parseSnapshotItems<TvCashBalanceSnapshot>(raw);
+    const match = items.find((item) => item.accountId === tvAccountId) ?? null;
+
+    console.info("[tradovate/balance] getCashBalanceFallback (cashBalance/list)", {
+      accountId: this.#accountId,
+      tvAccountId,
+      rawIsArray: Array.isArray(raw),
+      totalItems: items.length,
+      foundMatch: match !== null,
+      candidateType: match
+        ? (typeof (match as Record<string, unknown>).amount === "number"
+            ? "number(finite)"
+            : "other")
+        : "none",
+    });
+
+    return match;
   }
 
   /** Open positions, filtered to the stored Tradovate account ID when set. */
@@ -748,18 +766,53 @@ export class TradovateClient {
       });
     }
 
-    const balanceSnapshot = await this.getCashBalanceSnapshot(this.#tvAccountId);
+    // ── Balance: primary endpoint → fallback ──────────────────────────────
+    let balanceSnapshot = await this.getCashBalanceSnapshot(this.#tvAccountId);
+    let balanceEndpoint = "cashBalance/getCashBalanceSnapshot";
 
     let balance: number | null = null;
     let openPnlFromSnapshot: number | null = null;
+
     if (balanceSnapshot) {
       const { value, field } = selectBestBalance(balanceSnapshot);
       balance = value;
       openPnlFromSnapshot = balanceSnapshot.openPl ?? null;
-      console.info("[tradovate/balance] selectBestBalance result", {
+      console.info("[tradovate/balance] selected", {
         accountId: this.#accountId,
-        selectedField: field ?? "none",
-        gotValue: value != null,
+        endpoint: balanceEndpoint,
+        field: field ?? "none",
+        gotValue: balance != null,
+      });
+    }
+
+    // If primary returned no usable balance, try cashBalance/list fallback.
+    if (balance == null) {
+      try {
+        const fallback = await this.getCashBalanceFallback(this.#tvAccountId);
+        if (fallback) {
+          const { value, field } = selectBestBalance(fallback);
+          if (value != null) {
+            balance = value;
+            balanceSnapshot = fallback;
+            balanceEndpoint = "cashBalance/list";
+            openPnlFromSnapshot = fallback.openPl ?? null;
+            console.info("[tradovate/balance] selected (fallback)", {
+              accountId: this.#accountId,
+              endpoint: balanceEndpoint,
+              field: field ?? "none",
+              gotValue: true,
+            });
+          }
+        }
+      } catch {
+        // Fallback is best-effort; primary failure already logged.
+      }
+    }
+
+    if (balance == null) {
+      console.warn("[tradovate/balance] no usable balance from any endpoint", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
       });
     }
 

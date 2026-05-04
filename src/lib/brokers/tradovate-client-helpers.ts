@@ -190,3 +190,33 @@ export function selectBestBalance(
   }
   return { value: null, field: null };
 }
+
+// ── Snapshot response normalisation ───────────────────────────────────────────
+
+/**
+ * Tradovate cash-balance endpoints return data in several shapes depending on
+ * the endpoint and API version. Normalise all observed formats to a flat array
+ * of snapshot-like objects so callers always deal with T[].
+ *
+ * Handled shapes:
+ *   T[]                           — bare array (most list endpoints)
+ *   T                             — single object (some "get" endpoints;
+ *                                   detected by a numeric `accountId` field)
+ *   { i: T[] }                    — Tradovate batch / websocket envelope
+ *   { d|data|result|results|items: T[] }  — common REST wrappers
+ */
+export function parseSnapshotItems<T extends object>(raw: unknown): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (raw !== null && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    // Tradovate batch envelope
+    if (Array.isArray(obj.i)) return obj.i as T[];
+    // Common REST wrappers
+    for (const key of ["d", "data", "result", "results", "items"] as const) {
+      if (Array.isArray(obj[key])) return obj[key] as T[];
+    }
+    // Single item object — identified by having a numeric accountId field
+    if (typeof obj.accountId === "number") return [raw as T];
+  }
+  return [];
+}

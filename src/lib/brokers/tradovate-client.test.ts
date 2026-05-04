@@ -15,6 +15,7 @@ import {
   mapOrderType,
   mapSide,
   normalizeTokenResponse,
+  parseSnapshotItems,
   selectBestBalance,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
@@ -118,6 +119,64 @@ describe("TradovateClientError", () => {
   it("is an instance of Error", () => {
     const err = new TradovateClientError("NETWORK_ERROR", "Net error");
     assert.ok(err instanceof Error);
+  });
+});
+
+// ── parseSnapshotItems ────────────────────────────────────────────────────────
+
+type FakeSnap = { accountId: number; amount: number | null };
+const snap: FakeSnap = { accountId: 42, amount: 1000 };
+
+describe("parseSnapshotItems", () => {
+  it("passes a bare array through unchanged", () => {
+    const result = parseSnapshotItems<FakeSnap>([snap]);
+    assert.deepEqual(result, [snap]);
+  });
+
+  it("returns empty array for an empty array", () => {
+    assert.deepEqual(parseSnapshotItems([]), []);
+  });
+
+  it("wraps a single object with numeric accountId", () => {
+    const result = parseSnapshotItems<FakeSnap>(snap);
+    assert.deepEqual(result, [snap]);
+  });
+
+  it("does not wrap an object without a numeric accountId", () => {
+    assert.deepEqual(parseSnapshotItems({ foo: "bar" }), []);
+  });
+
+  it("extracts from Tradovate batch envelope { i: [...] }", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ s: 200, i: [snap] }), [snap]);
+  });
+
+  it("extracts from { d: [...] } wrapper", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ d: [snap] }), [snap]);
+  });
+
+  it("extracts from { data: [...] } wrapper", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ data: [snap] }), [snap]);
+  });
+
+  it("extracts from { result: [...] } wrapper", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ result: [snap] }), [snap]);
+  });
+
+  it("extracts from { results: [...] } wrapper", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ results: [snap] }), [snap]);
+  });
+
+  it("extracts from { items: [...] } wrapper", () => {
+    assert.deepEqual(parseSnapshotItems<FakeSnap>({ items: [snap] }), [snap]);
+  });
+
+  it("returns empty array for null", () => {
+    assert.deepEqual(parseSnapshotItems(null), []);
+  });
+
+  it("returns empty array for a primitive", () => {
+    assert.deepEqual(parseSnapshotItems("not an object"), []);
+    assert.deepEqual(parseSnapshotItems(42), []);
   });
 });
 
