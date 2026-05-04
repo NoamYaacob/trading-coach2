@@ -120,26 +120,21 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "def
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-start gap-0.5">
       <button
         type="button"
         onClick={handleSync}
         disabled={syncing}
-        className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-3.5 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:opacity-50"
+        aria-label="Refresh account data"
+        className="inline-flex items-center gap-1 text-[11px] text-stone-500 transition hover:text-stone-900 disabled:opacity-40"
       >
-        {syncing ? (
-          <>
-            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-stone-400 border-t-stone-700" />
-            Refreshing…
-          </>
-        ) : (
-          "Refresh data"
-        )}
+        <RotateIcon spinning={syncing} />
+        {syncing ? "Refreshing…" : "Refresh data"}
       </button>
       {lastSync && !error && (
         <p className="text-[10px] text-stone-400">Synced {relativeTime(lastSync)}</p>
       )}
-      {error && <p className="text-[10px] text-red-600">{error}</p>}
+      {error && <p className="text-[10px] text-red-500">{error}</p>}
     </div>
   );
 }

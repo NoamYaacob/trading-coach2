@@ -90,7 +90,8 @@ function deriveStatus(input: {
   propFirmSetupNeeded: boolean;
   riskState: "NORMAL" | "WARNING" | "STOPPED" | null;
   dailyLossUsedPct: number | null;
-  tradesUsedPct: number | null;
+  tradesCount: number | null;
+  maxTradesPerDay: number | null;
 }): AccountStatus {
   if (!input.isActive) return "not_connected";
 
@@ -118,8 +119,14 @@ function deriveStatus(input: {
   if (input.riskState === "WARNING") return "warning";
 
   const lossPct = input.dailyLossUsedPct ?? 0;
-  const tradesPct = input.tradesUsedPct ?? 0;
-  if (lossPct >= 0.8 || tradesPct >= 0.8) return "warning";
+  if (lossPct >= 1.0) return "locked";
+  if (lossPct >= 0.8) return "warning";
+
+  const { tradesCount, maxTradesPerDay } = input;
+  if (tradesCount != null && maxTradesPerDay != null) {
+    if (tradesCount >= maxTradesPerDay) return "locked";
+    if (maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) return "warning";
+  }
 
   return "allowed";
 }
@@ -286,7 +293,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       propFirmSetupNeeded,
       riskState,
       dailyLossUsedPct,
-      tradesUsedPct,
+      tradesCount,
+      maxTradesPerDay,
     });
 
     let setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null = null;
@@ -303,26 +311,38 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       }
     }
 
-    let breachReason: string | null = null;
+    let breachReason: { headline: string; detail?: string } | null = null;
     if (status === "warning" || status === "locked") {
-      if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
-        breachReason = "Daily loss limit breached";
-      } else if (
-        tradesCount != null &&
-        maxTradesPerDay != null &&
-        tradesCount >= maxTradesPerDay
-      ) {
-        breachReason = `Max trades exceeded: ${tradesCount}/${maxTradesPerDay}`;
+      if (riskState === "STOPPED" && tradesCount != null && maxTradesPerDay != null && tradesCount > maxTradesPerDay) {
+        breachReason = { headline: "Post-lock activity detected" };
+      } else if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
+        breachReason = {
+          headline: "Daily loss limit reached",
+          detail: "This account is locked for the rest of the trading day.",
+        };
+      } else if (tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay) {
+        breachReason = {
+          headline: `Trade limit reached: ${tradesCount}/${maxTradesPerDay}`,
+          detail: "This account is locked for the rest of the trading day.",
+        };
       } else if (
         consecutiveLosses != null &&
         stopAfterLosses != null &&
         consecutiveLosses >= stopAfterLosses
       ) {
-        breachReason = `Consecutive losses: ${consecutiveLosses}/${stopAfterLosses}`;
+        breachReason = { headline: `Loss streak: ${consecutiveLosses}/${stopAfterLosses}` };
       } else if (dailyLossUsedPct != null && dailyLossUsedPct >= 0.8) {
-        breachReason = "Approaching daily loss limit";
-      } else if (tradesCount != null && maxTradesPerDay != null) {
-        breachReason = `Trades near limit: ${tradesCount}/${maxTradesPerDay}`;
+        breachReason = { headline: "Approaching daily loss limit" };
+      } else if (
+        tradesCount != null &&
+        maxTradesPerDay != null &&
+        maxTradesPerDay > 1 &&
+        tradesCount === maxTradesPerDay - 1
+      ) {
+        breachReason = {
+          headline: `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`,
+          detail: "One trade left today.",
+        };
       }
     }
 

@@ -216,7 +216,7 @@ function FilterBar({
                 role="tab"
                 aria-selected={active}
                 onClick={() => onStatusChange(filter.value)}
-                className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-medium transition ${
+                className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-medium transition md:h-8 md:px-3.5 ${
                   active
                     ? "bg-stone-950 text-stone-50"
                     : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
@@ -371,7 +371,12 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
               {account.accountTypeLabel}
             </p>
             {account.breachReason && (
-              <p className="mt-0.5 text-[10px] text-red-600">{account.breachReason}</p>
+              <p className="mt-0.5 text-[10px] text-red-600">
+                {account.breachReason.headline}
+                {account.breachReason.detail && (
+                  <span className="ml-1 text-stone-500">{account.breachReason.detail}</span>
+                )}
+              </p>
             )}
             {account.setupNeededReason && (
               <p className="mt-0.5 text-[10px] text-stone-400">
@@ -474,7 +479,12 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         {account.accountTypeLabel}
       </p>
       {account.breachReason && (
-        <p className="mt-0.5 text-[10px] text-red-600">{account.breachReason}</p>
+        <p className="mt-0.5 text-[10px] text-red-600">
+          {account.breachReason.headline}
+          {account.breachReason.detail && (
+            <span className="ml-1 text-stone-500">{account.breachReason.detail}</span>
+          )}
+        </p>
       )}
 
       {/* 2×2 labeled metrics grid */}

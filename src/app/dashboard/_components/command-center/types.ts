@@ -57,8 +57,8 @@ export type CommandCenterAccount = {
   propFirmLimited: boolean;
   /** Why this account is in setup_needed state, used for context-specific labels */
   setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
-  /** Human-readable explanation of the current breach, when status is warning or locked */
-  breachReason: string | null;
+  /** Explanation of the current breach, when status is warning or locked */
+  breachReason: { headline: string; detail?: string } | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;

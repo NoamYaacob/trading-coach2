@@ -22,6 +22,7 @@ import {
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
 import { sumFillPnl, countEntryTrades } from "./tradovate-client-helpers";
+import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 
 export type SyncResult = {
   ok: boolean;
@@ -194,19 +195,64 @@ export async function syncTradovateAccount(
       resolved: resolvedDailyPnl,
     });
 
-    // ── LiveSessionState: update dailyPnl and tradesCount ─────────────────
+    // ── Load risk rules for riskState computation ─────────────────────────
+    const [accountRules, defaultRules] = await Promise.all([
+      prisma.accountRiskRules.findUnique({
+        where: { accountId },
+        select: { maxDailyLoss: true, maxTradesPerDay: true },
+      }),
+      prisma.riskRules.findUnique({
+        where: { userId },
+        select: { maxDailyLoss: true, maxTradesPerDay: true },
+      }),
+    ]);
+    const effectiveMaxDailyLoss =
+      accountRules?.maxDailyLoss != null
+        ? Number(accountRules.maxDailyLoss)
+        : defaultRules?.maxDailyLoss != null
+          ? Number(defaultRules.maxDailyLoss)
+          : null;
+    const effectiveMaxTrades =
+      accountRules?.maxTradesPerDay ?? defaultRules?.maxTradesPerDay ?? null;
+
+    const lossUsed =
+      resolvedDailyPnl != null ? Math.abs(Math.min(resolvedDailyPnl, 0)) : null;
+    const lossPct =
+      effectiveMaxDailyLoss != null && effectiveMaxDailyLoss > 0 && lossUsed != null
+        ? Math.min(1, lossUsed / effectiveMaxDailyLoss)
+        : null;
+
+    let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
+    let enforcementTrigger: EnforcementTrigger | null = null;
+    if (lossPct != null && lossPct >= 1.0) {
+      newRiskState = "STOPPED";
+      enforcementTrigger = "daily_loss_limit";
+    } else if (effectiveMaxTrades != null && tradesCount >= effectiveMaxTrades) {
+      newRiskState = "STOPPED";
+      enforcementTrigger = "trade_limit";
+    } else if (
+      (lossPct != null && lossPct >= 0.8) ||
+      (effectiveMaxTrades != null && effectiveMaxTrades > 1 && tradesCount === effectiveMaxTrades - 1)
+    ) {
+      newRiskState = "WARNING";
+    }
+
+    // ── LiveSessionState: update dailyPnl, tradesCount, and riskState ─────
     const today = new Date().toISOString().slice(0, 10);
     const existing = await prisma.liveSessionState.findUnique({
       where: { accountId },
-      select: { id: true, sessionDate: true },
+      select: { id: true, sessionDate: true, riskState: true },
     });
+    const prevRiskState = existing?.riskState ?? "NORMAL";
+    const isStale = existing ? existing.sessionDate !== today : false;
+
     if (existing) {
-      const isStale = existing.sessionDate !== today;
       await prisma.liveSessionState.update({
         where: { accountId },
         data: {
           ...(isStale ? { sessionDate: today } : {}),
           tradesCount,
+          riskState: newRiskState,
           ...(resolvedDailyPnl != null
             ? { dailyPnl: resolvedDailyPnl }
             : isStale
@@ -222,9 +268,22 @@ export async function syncTradovateAccount(
           dailyPnl: resolvedDailyPnl ?? 0,
           tradesCount,
           consecutiveLosses: 0,
-          riskState: "NORMAL",
+          riskState: newRiskState,
         },
       });
+    }
+
+    // ── Trigger enforcement on STOPPED transition ──────────────────────────
+    if (enforcementTrigger != null && prevRiskState !== "STOPPED" && newRiskState === "STOPPED") {
+      const reason =
+        enforcementTrigger === "daily_loss_limit"
+          ? "Daily loss limit reached"
+          : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
+      triggerEnforcement({ accountId, userId, trigger: enforcementTrigger, reason }).catch(
+        (err) => {
+          console.error("[enforcement] trigger failed", { accountId, error: err });
+        },
+      );
     }
 
     console.info("[tradovate/sync] account sync succeeded", {

@@ -90,6 +90,29 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     ? (body.accountType as (typeof VALID_ACCOUNT_TYPES)[number])
     : undefined;
 
+  // Block deactivating a protected/monitor-only account while the session is locked.
+  if (body.isActive === false && (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only")) {
+    const userRules = await prisma.riskRules.findUnique({
+      where: { userId: currentUser.id },
+      select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },
+    });
+    const lock = getProtectionLockState({
+      sessionStartHour: userRules?.sessionStartHour ?? null,
+      sessionEndHour: userRules?.sessionEndHour ?? null,
+      cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
+    });
+    if (lock.isLocked) {
+      return NextResponse.json(
+        {
+          error: "protection_locked",
+          message:
+            "This account is protected during today's trading session. Deactivating is blocked until the session ends.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const account = await prisma.connectedAccount.update({
     where: { id },
     data: {
