@@ -16,6 +16,7 @@ import type {
 export type TradovateClientErrorCode =
   | "CONFIG_MISSING"
   | "NO_TOKENS"
+  | "NO_ACCOUNT_ID"
   | "TOKEN_LOAD_FAILED"
   | "TOKEN_EXPIRED_NO_REFRESH"
   | "REFRESH_FAILED"

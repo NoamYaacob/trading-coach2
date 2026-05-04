@@ -279,11 +279,17 @@ export async function syncTradovateAccount(
         enforcementTrigger === "daily_loss_limit"
           ? "Daily loss limit reached"
           : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
-      triggerEnforcement({ accountId, userId, trigger: enforcementTrigger, reason }).catch(
-        (err) => {
-          console.error("[enforcement] trigger failed", { accountId, error: err });
-        },
-      );
+      triggerEnforcement({
+        accountId,
+        userId,
+        trigger: enforcementTrigger,
+        reason,
+        // Pass current loss so the broker threshold is set exactly at the amount
+        // already lost — ensuring the account is immediately past the limit.
+        currentDailyLoss: lossUsed,
+      }).catch((err) => {
+        console.error("[enforcement] trigger failed", { accountId, error: err });
+      });
     }
 
     console.info("[tradovate/sync] account sync succeeded", {

@@ -139,6 +139,27 @@ type TvContract = {
   name: string;
 };
 
+// UNVERIFIED — field names match TradovatePy open-source client generated from Tradovate's OpenAPI spec.
+// Confirm response shape against a real account before relying on field values.
+type TvUserAccountAutoLiq = {
+  id?: number;
+  changesLocked?: boolean | null;
+  dailyLossAlert?: number | null;
+  dailyLossLiqOnly?: number | null;
+  dailyLossAutoLiq?: number | null;
+  weeklyLossAutoLiq?: number | null;
+  dailyProfitAutoLiq?: number | null;
+  weeklyProfitAutoLiq?: number | null;
+  flattenTimestamp?: string | null;
+  trailingMaxDrawdown?: number | null;
+  trailingMaxDrawdownLimit?: number | null;
+};
+
+export type AutoLiqLockResult = {
+  endpoint: string;
+  payload: Record<string, unknown>;
+  response: unknown;
+};
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
@@ -848,6 +869,98 @@ export class TradovateClient {
       // Contract resolution is best-effort; callers fall back to contractId.
     }
     return map;
+  }
+
+  // ── Account risk / auto-liquidation ──────────────────────────────────────
+
+  /**
+   * Fetch userAccountAutoLiq rules for this account.
+   * Tradovate uses /deps?masterid={tvAccountId} to scope rules to an account.
+   *
+   * Endpoint: GET userAccountAutoLiq/deps?masterid={tvAccountId}
+   */
+  async getUserAccountAutoLiq(): Promise<TvUserAccountAutoLiq[]> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+    const raw = await this.#request<unknown>(
+      `userAccountAutoLiq/deps?masterid=${this.#tvAccountId}`,
+    );
+    return parseSnapshotItems<TvUserAccountAutoLiq>(raw);
+  }
+
+  /**
+   * Apply a broker-side daily loss lock by setting the userAccountAutoLiq
+   * dailyLossAutoLiq threshold to lossAmountToSet (dollars already lost).
+   *
+   * When the threshold is at or below the current daily loss, Tradovate's
+   * risk engine immediately places the account into liquidation-only mode and
+   * blocks new opening orders for the rest of the trading session.
+   *
+   * Sets changesLocked=true to prevent the setting from being modified until
+   * the next trading session.
+   *
+   * Endpoints used:
+   *   GET  userAccountAutoLiq/deps?masterid={tvAccountId}  (check for existing record)
+   *   POST userAccountAutoLiq/update  (if record exists)
+   *   POST userAccountAutoLiq/create  (if no record exists)
+   *
+   * Returns the endpoint used, exact payload sent, and raw response received
+   * so callers can log all three for audit purposes.
+   */
+  async applyDailyLossLock(params: {
+    lossAmountToSet: number;
+    changesLocked?: boolean;
+  }): Promise<AutoLiqLockResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+
+    const existing = await this.getUserAccountAutoLiq();
+    const record = existing[0] ?? null;
+
+    let endpoint: string;
+    let payload: Record<string, unknown>;
+
+    if (record?.id != null) {
+      endpoint = "userAccountAutoLiq/update";
+      payload = {
+        id: record.id,
+        dailyLossAutoLiq: params.lossAmountToSet,
+        changesLocked: params.changesLocked ?? true,
+      };
+    } else {
+      endpoint = "userAccountAutoLiq/create";
+      payload = {
+        accountId: this.#tvAccountId,
+        dailyLossAutoLiq: params.lossAmountToSet,
+        changesLocked: params.changesLocked ?? true,
+      };
+    }
+
+    console.info("[tradovate/autoLiq] applying daily loss lock", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      endpoint,
+      lossAmountToSet: params.lossAmountToSet,
+      existingRecordId: record?.id ?? null,
+    });
+
+    const response = await this.#request<TvUserAccountAutoLiq>(endpoint, "POST", payload);
+
+    console.info("[tradovate/autoLiq] daily loss lock response", {
+      accountId: this.#accountId,
+      endpoint,
+      responseKeys: response != null && typeof response === "object" ? Object.keys(response as object) : [],
+    });
+
+    return { endpoint, payload, response };
   }
 
   // ── Normalized outputs (BrokerAdapter shapes) ────────────────────────────

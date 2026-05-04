@@ -545,14 +545,22 @@ model NormalizedTradeEvent {
 }
 
 model GuardianIntervention {
-  id          String            @id @default(cuid())
-  accountId   String
-  userId      String
-  triggerType String
-  outcome     String
-  message     String?
-  sentAt      DateTime?
-  createdAt   DateTime          @default(now())
+  id                 String            @id @default(cuid())
+  accountId          String
+  userId             String
+  triggerType        String
+  outcome            String
+  message            String?
+  sentAt             DateTime?
+  createdAt          DateTime          @default(now())
+  /// Tradovate endpoint path that was called (e.g. "userAccountAutoLiq/update")
+  brokerEndpoint     String?
+  /// Exact JSON payload sent to the broker API
+  brokerPayloadJson  Json?
+  /// Raw JSON response received from the broker API
+  brokerResponseJson Json?
+  /// "broker_locked" | "monitoring_only" | "broker_lock_failed"
+  brokerLockStatus   String?
 
   account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
