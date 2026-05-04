@@ -85,6 +85,8 @@ export type BrokerAccountSnapshot = {
   balance: number | null;
   equity: number | null;
   todayPnL: number | null;
+  /** Unrealised P&L from the cash-balance snapshot endpoint, when available. */
+  openPnlFromSnapshot: number | null;
   asOf: Date;
 };
 

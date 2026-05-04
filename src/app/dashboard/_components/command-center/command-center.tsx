@@ -358,8 +358,10 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
               </p>
             )}
           </div>
+        ) : account.lastSyncAt != null ? (
+          <p className="text-xs text-stone-400">Unavailable</p>
         ) : (
-          <p className="text-sm text-stone-400">—</p>
+          <p className="text-xs text-stone-400">Awaiting sync</p>
         )}
       </td>
       <td className="px-4 py-3 text-right align-top">
@@ -425,6 +427,8 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
             <p className="font-mono text-sm font-semibold text-stone-950">
               {CURRENCY_FORMATTER.format(account.balance)}
             </p>
+          ) : account.lastSyncAt != null ? (
+            <p className="text-[11px] text-stone-400">Balance unavailable</p>
           ) : (
             <p className="text-[11px] text-stone-400">Awaiting sync</p>
           )}

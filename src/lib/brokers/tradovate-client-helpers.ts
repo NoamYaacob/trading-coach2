@@ -158,3 +158,35 @@ export function mapOrderType(t: string): BrokerOrderType {
 export function mapSide(action: "Buy" | "Sell"): BrokerSide {
   return action === "Buy" ? "LONG" : "SHORT";
 }
+
+// ── Balance selection ─────────────────────────────────────────────────────────
+
+export type BalanceCandidates = {
+  netLiq?: number | null;
+  totalCashValue?: number | null;
+  cashBalance?: number | null;
+  accountBalance?: number | null;
+  amount?: number | null;
+};
+
+/**
+ * Pick the best available balance from a Tradovate cash-balance snapshot.
+ * Priority: netLiq > totalCashValue > cashBalance > accountBalance > amount.
+ * Returns { value: null, field: null } when no finite numeric value is found.
+ */
+export function selectBestBalance(
+  candidates: BalanceCandidates,
+): { value: number | null; field: string | null } {
+  const order: [keyof BalanceCandidates, string][] = [
+    ["netLiq", "netLiq"],
+    ["totalCashValue", "totalCashValue"],
+    ["cashBalance", "cashBalance"],
+    ["accountBalance", "accountBalance"],
+    ["amount", "amount"],
+  ];
+  for (const [key, label] of order) {
+    const v = candidates[key];
+    if (v != null && Number.isFinite(v)) return { value: v, field: label };
+  }
+  return { value: null, field: null };
+}

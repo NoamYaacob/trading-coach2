@@ -15,6 +15,7 @@ import {
   mapOrderType,
   mapSide,
   normalizeTokenResponse,
+  selectBestBalance,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -117,6 +118,82 @@ describe("TradovateClientError", () => {
   it("is an instance of Error", () => {
     const err = new TradovateClientError("NETWORK_ERROR", "Net error");
     assert.ok(err instanceof Error);
+  });
+});
+
+// ── selectBestBalance ─────────────────────────────────────────────────────────
+
+describe("selectBestBalance", () => {
+  it("prefers netLiq over all others", () => {
+    const result = selectBestBalance({
+      netLiq: 10000,
+      totalCashValue: 9000,
+      cashBalance: 8000,
+      accountBalance: 7000,
+      amount: 6000,
+    });
+    assert.equal(result.value, 10000);
+    assert.equal(result.field, "netLiq");
+  });
+
+  it("falls back to totalCashValue when netLiq is null", () => {
+    const result = selectBestBalance({ netLiq: null, totalCashValue: 9000, amount: 6000 });
+    assert.equal(result.value, 9000);
+    assert.equal(result.field, "totalCashValue");
+  });
+
+  it("falls back to cashBalance when netLiq and totalCashValue are null", () => {
+    const result = selectBestBalance({ netLiq: null, totalCashValue: null, cashBalance: 8000 });
+    assert.equal(result.value, 8000);
+    assert.equal(result.field, "cashBalance");
+  });
+
+  it("falls back to accountBalance", () => {
+    const result = selectBestBalance({ accountBalance: 7000, amount: 6000 });
+    assert.equal(result.value, 7000);
+    assert.equal(result.field, "accountBalance");
+  });
+
+  it("falls back to amount as last resort", () => {
+    const result = selectBestBalance({ amount: 6000 });
+    assert.equal(result.value, 6000);
+    assert.equal(result.field, "amount");
+  });
+
+  it("returns null when all candidates are null", () => {
+    const result = selectBestBalance({
+      netLiq: null,
+      totalCashValue: null,
+      cashBalance: null,
+      accountBalance: null,
+      amount: null,
+    });
+    assert.equal(result.value, null);
+    assert.equal(result.field, null);
+  });
+
+  it("returns null when no candidates are provided", () => {
+    const result = selectBestBalance({});
+    assert.equal(result.value, null);
+    assert.equal(result.field, null);
+  });
+
+  it("skips non-finite values (NaN, Infinity)", () => {
+    const result = selectBestBalance({ netLiq: NaN, totalCashValue: Infinity, amount: 5000 });
+    assert.equal(result.value, 5000);
+    assert.equal(result.field, "amount");
+  });
+
+  it("accepts zero as a valid balance", () => {
+    const result = selectBestBalance({ netLiq: 0 });
+    assert.equal(result.value, 0);
+    assert.equal(result.field, "netLiq");
+  });
+
+  it("skips undefined fields and continues down the priority chain", () => {
+    const result = selectBestBalance({ cashBalance: 8500 });
+    assert.equal(result.value, 8500);
+    assert.equal(result.field, "cashBalance");
   });
 });
 

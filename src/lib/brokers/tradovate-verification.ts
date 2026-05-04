@@ -13,7 +13,7 @@
 
 import { prisma } from "@/lib/db";
 import { TradovateClient } from "./tradovate-client";
-import { TradovateClientError } from "./tradovate-client-helpers";
+import { TradovateClientError, selectBestBalance } from "./tradovate-client-helpers";
 import {
   CHECK_LABELS,
   SKIP_NAMES,
@@ -258,13 +258,13 @@ export async function runTradovateVerification(
   }
 
   // ── 3-6. Parallel reads (balance + positions + orders + executions) ──────
-  const balancePromise: Promise<Timed<{ amount: number; realizedPnl: number | null } | null>> =
+  const balancePromise: Promise<Timed<{ balance: number | null; balanceField: string | null; realizedPnl: number | null; openPl: number | null } | null>> =
     tvAccountId !== null
       ? timed(async () => {
           const snap = await client.getCashBalanceSnapshot(tvAccountId!);
-          return snap
-            ? { amount: snap.amount, realizedPnl: snap.realizedPnl }
-            : null;
+          if (!snap) return null;
+          const { value, field } = selectBestBalance(snap);
+          return { balance: value, balanceField: field, realizedPnl: snap.realizedPnl, openPl: snap.openPl ?? null };
         })
       : Promise.resolve({
           ok: false,
@@ -273,7 +273,7 @@ export async function runTradovateVerification(
             "Skipped — no Tradovate account ID available.",
           ),
           durationMs: 0,
-        } satisfies Timed<{ amount: number; realizedPnl: number | null } | null>);
+        } satisfies Timed<{ balance: number | null; balanceField: string | null; realizedPnl: number | null; openPl: number | null } | null>);
 
   const [balanceResult, positionsResult, ordersResult, executionsResult] =
     await Promise.all([
@@ -290,7 +290,7 @@ export async function runTradovateVerification(
         "balance",
         balanceResult.durationMs,
         balanceResult.value
-          ? `Balance ${balanceResult.value.amount}.`
+          ? `Balance field=${balanceResult.value.balanceField ?? "none"} value=${balanceResult.value.balance ?? "null"}.`
           : "No balance snapshot returned.",
       ),
     );
@@ -299,9 +299,10 @@ export async function runTradovateVerification(
         accountId,
         label: String(tvAccountId),
         currency: "USD",
-        balance: balanceResult.value?.amount ?? null,
+        balance: balanceResult.value?.balance ?? null,
         equity: null,
         todayPnL: balanceResult.value?.realizedPnl ?? null,
+        openPnlFromSnapshot: balanceResult.value?.openPl ?? null,
         asOf: new Date(),
       };
     }

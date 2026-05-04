@@ -39,6 +39,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapSide,
+  selectBestBalance,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -65,8 +66,15 @@ type TvCashBalanceSnapshot = {
   id: number;
   accountId: number;
   timestamp: string;
-  amount: number;
+  // Tradovate may return any combination of these balance fields.
+  // Use selectBestBalance() to pick the most meaningful one.
+  amount: number | null;
   realizedPnl: number | null;
+  cashBalance?: number | null;
+  netLiq?: number | null;
+  totalCashValue?: number | null;
+  accountBalance?: number | null;
+  openPl?: number | null;
 };
 
 type TvPosition = {
@@ -577,12 +585,41 @@ export class TradovateClient {
   async getCashBalanceSnapshot(
     tvAccountId: number,
   ): Promise<TvCashBalanceSnapshot | null> {
+    console.info("[tradovate/client] getCashBalanceSnapshot request", {
+      accountId: this.#accountId,
+      tvAccountId,
+      endpoint: "cashBalance/getCashBalanceSnapshot",
+    });
     const results = await this.#request<TvCashBalanceSnapshot[]>(
       "cashBalance/getCashBalanceSnapshot",
       "POST",
       { accountId: tvAccountId },
     );
-    return results[0] ?? null;
+    const snapshot = results[0] ?? null;
+    if (snapshot) {
+      const keys = Object.keys(snapshot as object);
+      console.info("[tradovate/client] getCashBalanceSnapshot response", {
+        accountId: this.#accountId,
+        tvAccountId,
+        status: "ok",
+        responseKeys: keys,
+        hasCandidates: {
+          netLiq: "netLiq" in (snapshot as object),
+          totalCashValue: "totalCashValue" in (snapshot as object),
+          cashBalance: "cashBalance" in (snapshot as object),
+          accountBalance: "accountBalance" in (snapshot as object),
+          amount: "amount" in (snapshot as object),
+          openPl: "openPl" in (snapshot as object),
+        },
+      });
+    } else {
+      console.info("[tradovate/client] getCashBalanceSnapshot response", {
+        accountId: this.#accountId,
+        tvAccountId,
+        status: "empty",
+      });
+    }
+    return snapshot;
   }
 
   /** Open positions, filtered to the stored Tradovate account ID when set. */
@@ -679,15 +716,29 @@ export class TradovateClient {
       });
     }
 
-    const balance = await this.getCashBalanceSnapshot(this.#tvAccountId);
+    const balanceSnapshot = await this.getCashBalanceSnapshot(this.#tvAccountId);
+
+    let balance: number | null = null;
+    let openPnlFromSnapshot: number | null = null;
+    if (balanceSnapshot) {
+      const { value, field } = selectBestBalance(balanceSnapshot);
+      balance = value;
+      openPnlFromSnapshot = balanceSnapshot.openPl ?? null;
+      console.info("[tradovate/client] balance field selected", {
+        accountId: this.#accountId,
+        selectedField: field,
+        selectedValue: value != null ? "[number]" : null,
+      });
+    }
 
     return {
       accountId: this.#accountId,
       label: String(this.#tvAccountId),
       currency: "USD",
-      balance: balance?.amount ?? null,
+      balance,
       equity: null,
-      todayPnL: balance?.realizedPnl ?? null,
+      todayPnL: balanceSnapshot?.realizedPnl ?? null,
+      openPnlFromSnapshot,
       asOf: new Date(),
     };
   }

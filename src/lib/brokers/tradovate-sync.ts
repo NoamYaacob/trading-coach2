@@ -25,7 +25,7 @@ import { parseAndDecrypt } from "@/lib/security/token-crypto";
 export type SyncResult = {
   ok: boolean;
   accountId: string;
-  /** Account balance (Tradovate cash-balance "amount"). null when unavailable. */
+  /** Account balance from the cash-balance snapshot. null when unavailable or endpoint failed. */
   balance: number | null;
   /** Unrealised P&L across open positions. null when no positions or endpoint failed. */
   openPnl: number | null;
@@ -50,20 +50,37 @@ export async function syncTradovateAccount(
   try {
     await client.initialize();
 
-    // ── Balance & daily P&L ────────────────────────────────────────────────
-    const snapshot = await client.toAccountSnapshot();
-    const balance = snapshot.balance;
-    const dailyPnl = snapshot.todayPnL;
+    // ── Balance & daily P&L (best-effort) ─────────────────────────────────
+    let balance: number | null = null;
+    let dailyPnl: number | null = null;
+    let openPnlFromSnapshot: number | null = null;
+    let balanceUnavailable = false;
+    try {
+      const snapshot = await client.toAccountSnapshot();
+      balance = snapshot.balance;
+      dailyPnl = snapshot.todayPnL;
+      openPnlFromSnapshot = snapshot.openPnlFromSnapshot;
+    } catch (snapshotErr) {
+      const code =
+        snapshotErr instanceof TradovateClientError
+          ? snapshotErr.code
+          : "BALANCE_FAILED";
+      console.error("[tradovate/sync] balance snapshot failed, continuing without balance", {
+        accountId,
+        code,
+      });
+      balanceUnavailable = true;
+    }
 
     // ── Open positions → unrealised P&L ────────────────────────────────────
-    let openPnl: number | null = null;
+    // Prefer openPl from the snapshot; fall back to summing position data.
+    let openPnl: number | null = openPnlFromSnapshot;
     try {
       const positions = await client.toPositions();
       if (positions.length > 0) {
         const sum = positions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
-        // Only set openPnl when at least one position has a value.
         const hasAnyPnl = positions.some((p) => p.unrealizedPnL !== null);
-        openPnl = hasAnyPnl ? sum : null;
+        if (openPnl == null && hasAnyPnl) openPnl = sum;
       }
     } catch {
       // Positions are best-effort; don't fail the whole sync.
@@ -77,7 +94,7 @@ export async function syncTradovateAccount(
         ...(balance != null ? { balance, cashBalance: balance } : {}),
         ...(openPnl != null ? { openPnl } : {}),
         lastSyncAt: syncedAt,
-        errorMessage: null,
+        errorMessage: balanceUnavailable ? "Balance data unavailable." : null,
       },
     });
 
