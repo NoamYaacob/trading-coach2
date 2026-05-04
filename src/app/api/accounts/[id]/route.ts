@@ -24,10 +24,14 @@ type RiskRulesBody = {
   allowedStartHour?: number | null;
   allowedEndHour?: number | null;
   propFirmAccountSize?: number | null;
+  propFirmPhase?: string | null;
   propFirmDailyLossLimit?: number | null;
   propFirmMaxDrawdown?: number | null;
+  propFirmEODDrawdown?: number | null;
   propFirmTrailingDrawdown?: boolean;
   propFirmDrawdownRemaining?: number | null;
+  propFirmProfitTarget?: number | null;
+  propFirmMinTradingDays?: number | null;
 };
 
 function riskRulesData(r: RiskRulesBody) {
@@ -39,10 +43,14 @@ function riskRulesData(r: RiskRulesBody) {
     allowedStartHour: r.allowedStartHour ?? null,
     allowedEndHour: r.allowedEndHour ?? null,
     propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null,
+    propFirmPhase: r.propFirmPhase ?? null,
     propFirmDailyLossLimit: r.propFirmDailyLossLimit != null ? String(r.propFirmDailyLossLimit) : null,
     propFirmMaxDrawdown: r.propFirmMaxDrawdown != null ? String(r.propFirmMaxDrawdown) : null,
+    propFirmEODDrawdown: r.propFirmEODDrawdown != null ? String(r.propFirmEODDrawdown) : null,
     propFirmTrailingDrawdown: r.propFirmTrailingDrawdown ?? false,
     propFirmDrawdownRemaining: r.propFirmDrawdownRemaining != null ? String(r.propFirmDrawdownRemaining) : null,
+    propFirmProfitTarget: r.propFirmProfitTarget != null ? String(r.propFirmProfitTarget) : null,
+    propFirmMinTradingDays: r.propFirmMinTradingDays ?? null,
   };
 }
 

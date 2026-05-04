@@ -21,7 +21,7 @@ import {
 } from "./tradovate-discovery";
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
-import { sumFillPnl } from "./tradovate-client-helpers";
+import { sumFillPnl, countEntryTrades } from "./tradovate-client-helpers";
 
 export type SyncResult = {
   ok: boolean;
@@ -141,17 +141,15 @@ export async function syncTradovateAccount(
 
       fillsSyncedAt = new Date(); // fills successfully fetched
 
-      const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
-      const countFromFills = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
-      if (countFromFills > tradesCount) {
-        tradesCount = countFromFills;
-      }
+      // Entry-based count: each symbol position opening from flat = 1 trade.
+      // Always authoritative over Phase A (which counts all completed orders
+      // and cannot distinguish entries from exits).
+      tradesCount = countEntryTrades(executions);
 
       console.info("[tradovate/trades] count from fills", {
         accountId,
         rawFillCount: executions.length,
-        distinctOrders: distinctOrderIds.size,
-        tradesCount,
+        entryBasedCount: tradesCount,
         pnlFromFills,
       });
       for (const ex of executions) {

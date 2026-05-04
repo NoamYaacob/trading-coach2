@@ -49,10 +49,16 @@ export type CommandCenterAccount = {
   fillsSyncedAt: Date | null;
   /** true when maxDailyLoss > balance for personal accounts — effective budget is capped */
   balanceLimitedWarning: boolean;
+  /** true when a personal account has maxDailyLoss configured but balance hasn't synced yet */
+  balanceUnavailableForBudget: boolean;
   /** true when this is a prop firm account with no prop firm limits configured */
   propFirmSetupNeeded: boolean;
   /** true when the prop firm drawdown/daily limit is tighter than the user-configured limit */
   propFirmLimited: boolean;
+  /** Why this account is in setup_needed state, used for context-specific labels */
+  setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
+  /** Human-readable explanation of the current breach, when status is warning or locked */
+  breachReason: string | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;

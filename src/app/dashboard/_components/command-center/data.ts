@@ -87,6 +87,7 @@ function deriveStatus(input: {
   platform: string;
   connectionStatus: string;
   hasAnyRules: boolean;
+  propFirmSetupNeeded: boolean;
   riskState: "NORMAL" | "WARNING" | "STOPPED" | null;
   dailyLossUsedPct: number | null;
   tradesUsedPct: number | null;
@@ -111,6 +112,7 @@ function deriveStatus(input: {
   }
 
   if (!input.hasAnyRules) return "setup_needed";
+  if (input.propFirmSetupNeeded) return "setup_needed";
 
   if (input.riskState === "STOPPED") return "locked";
   if (input.riskState === "WARNING") return "warning";
@@ -273,15 +275,56 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         ? Math.min(1, tradesCount / maxTradesPerDay)
         : null;
 
+    const balanceUnavailableForBudget =
+      account.accountType === "personal" && balance == null && maxDailyLoss != null;
+
     const status = deriveStatus({
       isActive: account.isActive,
       platform: account.platform,
       connectionStatus: account.connectionStatus,
       hasAnyRules: hasAccountRules || hasDefaultRules,
+      propFirmSetupNeeded,
       riskState,
       dailyLossUsedPct,
       tradesUsedPct,
     });
+
+    let setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null = null;
+    if (status === "setup_needed") {
+      if (
+        account.connectionStatus === "pending_webhook" ||
+        account.connectionStatus === "oauth_pending_storage"
+      ) {
+        setupNeededReason = "pending_connection";
+      } else if (propFirmSetupNeeded) {
+        setupNeededReason = "prop_firm_rules_missing";
+      } else {
+        setupNeededReason = "no_rules";
+      }
+    }
+
+    let breachReason: string | null = null;
+    if (status === "warning" || status === "locked") {
+      if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
+        breachReason = "Daily loss limit breached";
+      } else if (
+        tradesCount != null &&
+        maxTradesPerDay != null &&
+        tradesCount >= maxTradesPerDay
+      ) {
+        breachReason = `Max trades exceeded: ${tradesCount}/${maxTradesPerDay}`;
+      } else if (
+        consecutiveLosses != null &&
+        stopAfterLosses != null &&
+        consecutiveLosses >= stopAfterLosses
+      ) {
+        breachReason = `Consecutive losses: ${consecutiveLosses}/${stopAfterLosses}`;
+      } else if (dailyLossUsedPct != null && dailyLossUsedPct >= 0.8) {
+        breachReason = "Approaching daily loss limit";
+      } else if (tradesCount != null && maxTradesPerDay != null) {
+        breachReason = `Trades near limit: ${tradesCount}/${maxTradesPerDay}`;
+      }
+    }
 
     const enforcementMode = deriveEnforcementMode({
       platform: account.platform,
@@ -337,8 +380,11 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       lastSyncAt: account.lastSyncAt,
       fillsSyncedAt: account.fillsSyncedAt,
       balanceLimitedWarning,
+      balanceUnavailableForBudget,
       propFirmSetupNeeded,
       propFirmLimited,
+      setupNeededReason,
+      breachReason,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,

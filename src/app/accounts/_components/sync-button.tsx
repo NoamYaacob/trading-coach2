@@ -24,6 +24,7 @@ type Props = {
   accountId?: string;
   connectionId?: string;
   lastSyncAt: Date | null;
+  fullWidth?: boolean;
 };
 
 /**
@@ -31,7 +32,7 @@ type Props = {
  * Pass `accountId` for a single account, `connectionId` to refresh all
  * accounts linked to a BrokerConnection. Exactly one must be provided.
  */
-export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
+export function SyncButton({ accountId, connectionId, lastSyncAt, fullWidth = false }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(lastSyncAt);
@@ -79,7 +80,11 @@ export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
         type="button"
         onClick={handleSync}
         disabled={syncing}
-        className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-3.5 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:opacity-50"
+        className={`items-center gap-1.5 border border-stone-200 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:opacity-50 ${
+          fullWidth
+            ? "flex w-full justify-center rounded-xl py-2"
+            : "inline-flex rounded-full px-3.5 py-1.5"
+        }`}
       >
         {syncing ? (
           <>
@@ -87,7 +92,7 @@ export function SyncButton({ accountId, connectionId, lastSyncAt }: Props) {
             Refreshing…
           </>
         ) : (
-          "Refresh"
+          "Refresh data"
         )}
       </button>
       {lastSync && !error && (

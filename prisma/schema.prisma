@@ -468,11 +468,15 @@ model AccountRiskRules {
   // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,
   // propFirmDrawdownRemaining). Set propFirmDrawdownRemaining to the account's current
   // remaining drawdown so the dashboard reflects the tightest limit in effect.
-  propFirmAccountSize      Decimal?  @db.Decimal(14, 2)
-  propFirmDailyLossLimit   Decimal?  @db.Decimal(10, 2)
-  propFirmMaxDrawdown      Decimal?  @db.Decimal(10, 2)
-  propFirmTrailingDrawdown Boolean   @default(false)
-  propFirmDrawdownRemaining Decimal? @db.Decimal(10, 2)
+  propFirmAccountSize       Decimal?  @db.Decimal(14, 2)
+  propFirmPhase             String?   // evaluation / funded / pa / sim
+  propFirmDailyLossLimit    Decimal?  @db.Decimal(10, 2)
+  propFirmMaxDrawdown       Decimal?  @db.Decimal(10, 2)
+  propFirmEODDrawdown       Decimal?  @db.Decimal(10, 2)
+  propFirmTrailingDrawdown  Boolean   @default(false)
+  propFirmDrawdownRemaining Decimal?  @db.Decimal(10, 2)
+  propFirmProfitTarget      Decimal?  @db.Decimal(10, 2)
+  propFirmMinTradingDays    Int?
   // Pending rule changes saved after the cutoff — applied when the next
   // trading day starts. JSON mirrors the editable fields above.
   pendingPayloadJson    Json?

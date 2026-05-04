@@ -44,6 +44,24 @@ const STATUS_LABEL: Record<AccountStatus, string> = {
   not_connected: "Not connected",
 };
 
+const SETUP_NEEDED_LABEL: Record<
+  "no_rules" | "pending_connection" | "prop_firm_rules_missing",
+  string
+> = {
+  no_rules: "Needs rules",
+  pending_connection: "Pending connection",
+  prop_firm_rules_missing: "Firm rules missing",
+};
+
+const SETUP_NEEDED_REASON_TEXT: Record<
+  "no_rules" | "pending_connection" | "prop_firm_rules_missing",
+  string
+> = {
+  no_rules: "No trading plan assigned",
+  pending_connection: "Awaiting first broker event",
+  prop_firm_rules_missing: "Enter prop firm limits",
+};
+
 const STATUS_BADGE_CLASS: Record<AccountStatus, string> = {
   allowed: "bg-emerald-100 text-emerald-800",
   warning: "bg-amber-100 text-amber-800",
@@ -62,7 +80,7 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
   manual_app_level: "Manual / App-level",
-  broker_readonly: "Read-only connected",
+  broker_readonly: "Monitoring only",
   not_connected: "Not connected",
 };
 
@@ -150,7 +168,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           </div>
 
           <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] text-stone-400">
-            Read-only connected · Broker enforcement is not active.
+            Monitoring only · Alerts and rule checks active · Broker blocking not active.
           </div>
         </section>
       )}
@@ -341,7 +359,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
       {/* Account — status badge + name + platform + sync time */}
       <td className="px-4 py-3 align-top">
         <div className="flex min-w-0 items-start gap-2">
-          <StatusBadge status={account.status} />
+          <StatusBadge status={account.status} setupNeededReason={account.setupNeededReason} />
           <div className="min-w-0">
             <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
             <p className="mt-0.5 text-[11px] text-stone-500">
@@ -349,7 +367,15 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
               <span aria-hidden> · </span>
               {account.accountTypeLabel}
             </p>
-            {account.lastSyncAt && (
+            {account.breachReason && (
+              <p className="mt-0.5 text-[10px] text-red-600">{account.breachReason}</p>
+            )}
+            {account.setupNeededReason && (
+              <p className="mt-0.5 text-[10px] text-stone-400">
+                {SETUP_NEEDED_REASON_TEXT[account.setupNeededReason]}
+              </p>
+            )}
+            {account.lastSyncAt && !account.breachReason && !account.setupNeededReason && (
               <p className="mt-0.5 text-[10px] text-stone-400">
                 Synced {SYNC_DATE_FORMAT.format(account.lastSyncAt)}
               </p>
@@ -436,7 +462,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
     <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
       {/* Header: status + name + platform/type */}
       <div className="flex min-w-0 items-center gap-2">
-        <StatusBadge status={account.status} />
+        <StatusBadge status={account.status} setupNeededReason={account.setupNeededReason} />
         <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
       </div>
       <p className="mt-0.5 text-[11px] text-stone-500">
@@ -444,6 +470,9 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         <span aria-hidden> · </span>
         {account.accountTypeLabel}
       </p>
+      {account.breachReason && (
+        <p className="mt-0.5 text-[10px] text-red-600">{account.breachReason}</p>
+      )}
 
       {/* 2×2 labeled metrics grid */}
       <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-stone-100 pt-2.5">
@@ -520,7 +549,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           )}
         </div>
 
-        {/* Primary nav links */}
+        {/* Nav pills — Open + Rules on one row */}
         <div className="mt-2 flex items-center gap-1.5">
           <Link
             href={`/accounts/${account.id}/edit`}
@@ -536,19 +565,19 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           </Link>
         </div>
 
-        {/* Secondary action: Sync or Reconnect */}
+        {/* Full-width action below */}
         {reconnectNeeded ? (
-          <div className="mt-1.5">
+          <div className="mt-2">
             <Link
               href="/accounts/connect/tradovate"
-              className="inline-flex h-7 items-center rounded-full bg-stone-950 px-3 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
+              className="flex w-full items-center justify-center rounded-xl border border-stone-200 py-2 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
             >
               Reconnect
             </Link>
           </div>
         ) : account.platform === "tradovate" ? (
-          <div className="mt-1.5">
-            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} />
+          <div className="mt-2">
+            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} fullWidth />
           </div>
         ) : null}
       </div>
@@ -568,15 +597,16 @@ function StopLeftCell({
   if (account.propFirmSetupNeeded) {
     return (
       <div>
-        <p className="text-xs font-medium text-amber-700">Setup needed</p>
+        <p className="text-xs font-medium text-amber-700">Firm rules missing</p>
         <p className="text-[10px] text-stone-400">Enter prop firm limits</p>
       </div>
     );
   }
+  if (account.balanceUnavailableForBudget) {
+    return <p className="text-xs text-stone-400">Awaiting balance sync</p>;
+  }
   if (account.maxDailyLoss == null && !account.propFirmLimited) {
-    return (
-      <p className={`font-mono ${compact ? "text-sm" : "text-sm"} text-stone-400`}>—</p>
-    );
+    return <p className="font-mono text-sm text-stone-400">—</p>;
   }
   const remaining = account.remainingDailyLoss ?? account.maxDailyLoss ?? 0;
   const pct = account.dailyLossUsedPct ?? 0;
@@ -648,13 +678,23 @@ function TradesCell({
   );
 }
 
-function StatusBadge({ status }: { status: AccountStatus }) {
+function StatusBadge({
+  status,
+  setupNeededReason,
+}: {
+  status: AccountStatus;
+  setupNeededReason?: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
+}) {
+  const label =
+    status === "setup_needed" && setupNeededReason
+      ? SETUP_NEEDED_LABEL[setupNeededReason]
+      : STATUS_LABEL[status];
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${STATUS_BADGE_CLASS[status]}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_CLASS[status]}`} aria-hidden />
-      {STATUS_LABEL[status]}
+      {label}
     </span>
   );
 }

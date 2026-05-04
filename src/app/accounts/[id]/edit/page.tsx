@@ -278,11 +278,21 @@ export default async function EditAccountPage({
             account.riskRules.propFirmMaxDrawdown != null
               ? Number(account.riskRules.propFirmMaxDrawdown)
               : null,
+          propFirmPhase: account.riskRules.propFirmPhase ?? null,
           propFirmTrailingDrawdown: account.riskRules.propFirmTrailingDrawdown,
+          propFirmEODDrawdown:
+            account.riskRules.propFirmEODDrawdown != null
+              ? Number(account.riskRules.propFirmEODDrawdown)
+              : null,
           propFirmDrawdownRemaining:
             account.riskRules.propFirmDrawdownRemaining != null
               ? Number(account.riskRules.propFirmDrawdownRemaining)
               : null,
+          propFirmProfitTarget:
+            account.riskRules.propFirmProfitTarget != null
+              ? Number(account.riskRules.propFirmProfitTarget)
+              : null,
+          propFirmMinTradingDays: account.riskRules.propFirmMinTradingDays ?? null,
         }
       : null,
   };

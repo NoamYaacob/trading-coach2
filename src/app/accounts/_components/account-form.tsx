@@ -20,10 +20,14 @@ export type AccountFormInitialData = {
     allowedStartHour: number | null;
     allowedEndHour: number | null;
     propFirmAccountSize: number | null;
+    propFirmPhase: string | null;
     propFirmDailyLossLimit: number | null;
     propFirmMaxDrawdown: number | null;
+    propFirmEODDrawdown: number | null;
     propFirmTrailingDrawdown: boolean;
     propFirmDrawdownRemaining: number | null;
+    propFirmProfitTarget: number | null;
+    propFirmMinTradingDays: number | null;
   } | null;
 };
 
@@ -71,10 +75,14 @@ export function AccountForm(props: Props) {
     allowedStartHour: init?.riskRules?.allowedStartHour?.toString() ?? "",
     allowedEndHour: init?.riskRules?.allowedEndHour?.toString() ?? "",
     propFirmAccountSize: init?.riskRules?.propFirmAccountSize?.toString() ?? "",
+    propFirmPhase: init?.riskRules?.propFirmPhase ?? "",
     propFirmDailyLossLimit: init?.riskRules?.propFirmDailyLossLimit?.toString() ?? "",
     propFirmMaxDrawdown: init?.riskRules?.propFirmMaxDrawdown?.toString() ?? "",
+    propFirmEODDrawdown: init?.riskRules?.propFirmEODDrawdown?.toString() ?? "",
     propFirmTrailingDrawdown: init?.riskRules?.propFirmTrailingDrawdown ?? false,
     propFirmDrawdownRemaining: init?.riskRules?.propFirmDrawdownRemaining?.toString() ?? "",
+    propFirmProfitTarget: init?.riskRules?.propFirmProfitTarget?.toString() ?? "",
+    propFirmMinTradingDays: init?.riskRules?.propFirmMinTradingDays?.toString() ?? "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,10 +110,14 @@ export function AccountForm(props: Props) {
         allowedStartHour: parseNumberOrNull(form.allowedStartHour),
         allowedEndHour: parseNumberOrNull(form.allowedEndHour),
         propFirmAccountSize: parseNumberOrNull(form.propFirmAccountSize),
+        propFirmPhase: form.propFirmPhase || null,
         propFirmDailyLossLimit: parseNumberOrNull(form.propFirmDailyLossLimit),
         propFirmMaxDrawdown: parseNumberOrNull(form.propFirmMaxDrawdown),
+        propFirmEODDrawdown: parseNumberOrNull(form.propFirmEODDrawdown),
         propFirmTrailingDrawdown: form.propFirmTrailingDrawdown,
         propFirmDrawdownRemaining: parseNumberOrNull(form.propFirmDrawdownRemaining),
+        propFirmProfitTarget: parseNumberOrNull(form.propFirmProfitTarget),
+        propFirmMinTradingDays: parseNumberOrNull(form.propFirmMinTradingDays),
       },
     };
   }
@@ -382,10 +394,10 @@ export function AccountForm(props: Props) {
       {isPropFirmAccount && (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-            Prop firm limits
+            Prop firm profile
           </p>
           <p className="mb-4 text-xs text-stone-500">
-            The effective daily loss budget is the tightest of your guardian limit and these prop firm limits.
+            The effective daily loss budget is the tightest of your guardian limit and the prop firm limits below.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Account size ($)">
@@ -397,12 +409,34 @@ export function AccountForm(props: Props) {
                 className={INPUT_CLASS}
               />
             </Field>
-            <Field label="Prop firm daily loss limit ($)">
+            <Field label="Account phase">
+              <select
+                value={form.propFirmPhase}
+                onChange={(e) => set("propFirmPhase", e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="">— Select phase —</option>
+                <option value="evaluation">Evaluation / Challenge</option>
+                <option value="funded">Funded</option>
+                <option value="pa">PA (Performance Account)</option>
+                <option value="sim">Simulation / Demo</option>
+              </select>
+            </Field>
+            <Field label="Daily loss limit ($)">
               <input
                 inputMode="decimal"
                 value={form.propFirmDailyLossLimit}
                 onChange={(e) => set("propFirmDailyLossLimit", e.target.value)}
                 placeholder="e.g. 500"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Profit target ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmProfitTarget}
+                onChange={(e) => set("propFirmProfitTarget", e.target.value)}
+                placeholder="e.g. 3000"
                 className={INPUT_CLASS}
               />
             </Field>
@@ -415,12 +449,30 @@ export function AccountForm(props: Props) {
                 className={INPUT_CLASS}
               />
             </Field>
+            <Field label="EOD drawdown ($)">
+              <input
+                inputMode="decimal"
+                value={form.propFirmEODDrawdown}
+                onChange={(e) => set("propFirmEODDrawdown", e.target.value)}
+                placeholder="e.g. 1500"
+                className={INPUT_CLASS}
+              />
+            </Field>
             <Field label="Drawdown remaining ($)">
               <input
                 inputMode="decimal"
                 value={form.propFirmDrawdownRemaining}
                 onChange={(e) => set("propFirmDrawdownRemaining", e.target.value)}
                 placeholder="e.g. 1750"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Min trading days">
+              <input
+                inputMode="numeric"
+                value={form.propFirmMinTradingDays}
+                onChange={(e) => set("propFirmMinTradingDays", e.target.value)}
+                placeholder="e.g. 5"
                 className={INPUT_CLASS}
               />
             </Field>

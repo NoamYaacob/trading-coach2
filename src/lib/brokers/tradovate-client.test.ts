@@ -21,6 +21,7 @@ import {
   sumFillPnl,
   extractFillTimestamp,
   fillMatchesAccount,
+  countEntryTrades,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -863,6 +864,82 @@ describe("balance cap for personal accounts", () => {
       accountType: "personal",
     });
     assert.equal(remainingDailyLoss, 400); // already below balance cap
+  });
+});
+
+// ── entry-based trade counting ────────────────────────────────────────────────
+
+describe("countEntryTrades", () => {
+  function mkEx(
+    symbol: string,
+    side: "LONG" | "SHORT",
+    qty: number,
+    offsetMs = 0,
+  ) {
+    return {
+      symbol,
+      side,
+      quantity: qty,
+      occurredAt: new Date(1_000_000 + offsetMs),
+    };
+  }
+
+  it("single buy fill = 1 trade", () => {
+    const count = countEntryTrades([mkEx("ES", "LONG", 1)]);
+    assert.equal(count, 1);
+  });
+
+  it("partial fills of same order count as 1 trade", () => {
+    // Two LONG fills on the same symbol = still one opening entry
+    const count = countEntryTrades([mkEx("ES", "LONG", 1, 0), mkEx("ES", "LONG", 1, 100)]);
+    assert.equal(count, 1);
+  });
+
+  it("entry then exit = 1 trade (exit not counted)", () => {
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 2, 0),  // open long 2
+      mkEx("ES", "SHORT", 2, 1), // close long
+    ]);
+    assert.equal(count, 1);
+  });
+
+  it("two separate entries (close then reopen) = 2 trades", () => {
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0),   // entry 1
+      mkEx("ES", "SHORT", 1, 1),  // exit
+      mkEx("ES", "LONG", 1, 2),   // entry 2
+    ]);
+    assert.equal(count, 2);
+  });
+
+  it("scale-in (adding to open position) does not add a trade", () => {
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0),  // entry: flat → long 1
+      mkEx("ES", "LONG", 1, 1),  // scale-in: long 1 → long 2 (no new entry)
+      mkEx("ES", "SHORT", 2, 2), // exit: long 2 → flat
+    ]);
+    assert.equal(count, 1);
+  });
+
+  it("reversal (long → short in one motion) counts as 1 new entry", () => {
+    // Position goes from +1 to -1: crossed zero → one new entry
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0),   // open long
+      mkEx("ES", "SHORT", 2, 1),  // reversal: close long + open short
+    ]);
+    assert.equal(count, 2); // 1 long entry + 1 short entry
+  });
+
+  it("two different symbols are counted independently", () => {
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0),  // ES entry
+      mkEx("NQ", "LONG", 1, 1),  // NQ entry (separate symbol)
+    ]);
+    assert.equal(count, 2);
+  });
+
+  it("empty executions = 0 trades", () => {
+    assert.equal(countEntryTrades([]), 0);
   });
 });
 

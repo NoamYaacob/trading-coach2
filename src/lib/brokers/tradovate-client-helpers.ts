@@ -325,6 +325,42 @@ export function extractFillTimestamp(fill: Record<string, unknown>): string | nu
   return null;
 }
 
+// ── Entry-based trade counting ────────────────────────────────────────────────
+
+/**
+ * Count the number of distinct "entry" trades in a set of executions.
+ *
+ * A trade is counted when the net position for a symbol crosses from flat (0)
+ * to non-flat — i.e., each time the trader opens a new position. Partial
+ * fills of the same order are aggregated, scale-ins (adding to an existing
+ * position) are not double-counted, and exits (reducing/closing a position)
+ * are not counted. Reversals (crossing zero) count as one new entry.
+ *
+ * Executions must carry .side ("LONG" = buy, "SHORT" = sell), .quantity, and
+ * .symbol. They are sorted by occurredAt before processing.
+ */
+export function countEntryTrades(
+  executions: { side: "LONG" | "SHORT"; quantity: number; symbol: string; occurredAt: Date }[],
+): number {
+  const sorted = [...executions].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+  const positions = new Map<string, number>(); // symbol → net qty (positive = long, negative = short)
+  let trades = 0;
+  for (const ex of sorted) {
+    const prev = positions.get(ex.symbol) ?? 0;
+    const delta = ex.side === "LONG" ? ex.quantity : -ex.quantity;
+    const next = prev + delta;
+    positions.set(ex.symbol, next);
+    // Flat → non-flat: new entry
+    if (prev === 0 && next !== 0) {
+      trades++;
+    // Reversal (crossed zero): one new entry in the new direction
+    } else if (prev !== 0 && next !== 0 && Math.sign(prev) !== Math.sign(next)) {
+      trades++;
+    }
+  }
+  return trades;
+}
+
 // ── Fill account matching ─────────────────────────────────────────────────────
 
 /**
