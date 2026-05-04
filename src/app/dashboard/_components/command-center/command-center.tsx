@@ -395,47 +395,66 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 // ─── Mobile card ───────────────────────────────────────────────────────────────
 
 function AccountCard({ account }: { account: CommandCenterAccount }) {
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white px-2.5 py-2.5 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)] sm:px-3 sm:py-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <StatusBadge status={account.status} />
-            <p className="truncate text-sm font-semibold text-stone-950">{account.label}</p>
-          </div>
-          <p className="mt-1 text-[11px] text-stone-500">
-            {account.platformLabel}
-            <span aria-hidden> · </span>
-            {account.accountTypeLabel}
-          </p>
-        </div>
-        <p className={`shrink-0 font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
-          {account.dailyPnl != null ? formatSignedCurrency(account.dailyPnl) : "—"}
-        </p>
-      </div>
+  const reconnectNeeded =
+    account.platform !== "manual" &&
+    (account.status === "not_connected" ||
+      account.connectionStatus === "expired" ||
+      account.connectionStatus === "connection_error");
 
-      <p className="mt-1 font-mono text-sm font-semibold text-stone-950">
-        {account.balance != null ? (
-          <>
-            {CURRENCY_FORMATTER.format(account.balance)}
-            {account.openPnl != null && account.openPnl !== 0 && (
-              <span className={`ml-1.5 text-[11px] font-normal ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
-                {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-[11px] font-normal text-stone-400">Awaiting sync</span>
-        )}
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
+      {/* Header: status + name + platform/type */}
+      <div className="flex min-w-0 items-center gap-2">
+        <StatusBadge status={account.status} />
+        <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
+      </div>
+      <p className="mt-0.5 text-[11px] text-stone-500">
+        {account.platformLabel}
+        <span aria-hidden> · </span>
+        {account.accountTypeLabel}
       </p>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+      {/* 2×2 labeled metrics grid */}
+      <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-stone-100 pt-2.5">
+        {/* Balance */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
+            Balance
+          </p>
+          {account.balance != null ? (
+            <p className="font-mono text-sm font-semibold text-stone-950">
+              {CURRENCY_FORMATTER.format(account.balance)}
+            </p>
+          ) : (
+            <p className="text-[11px] text-stone-400">Awaiting sync</p>
+          )}
+          {account.balance != null && account.openPnl != null && account.openPnl !== 0 && (
+            <p className={`font-mono text-[11px] ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {account.openPnl > 0 ? "+" : ""}
+              {account.openPnl.toFixed(2)} open
+            </p>
+          )}
+        </div>
+
+        {/* Daily P&L */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
+            Daily P&L
+          </p>
+          <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
+            {account.dailyPnl != null ? formatSignedCurrency(account.dailyPnl) : "—"}
+          </p>
+        </div>
+
+        {/* Stop left */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
             Stop left
           </p>
           <StopLeftCell account={account} compact />
         </div>
+
+        {/* Trades */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
             Trades
@@ -444,12 +463,14 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         </div>
       </div>
 
-      <div className="mt-3 border-t border-stone-100 pt-2.5">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-stone-500">
+      {/* Footer: meta + actions */}
+      <div className="mt-2.5 border-t border-stone-100 pt-2">
+        {/* Rule source & enforcement */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-500">
           <span>{RULE_SOURCE_LABEL[account.ruleSource]}</span>
           <span aria-hidden>·</span>
           <EnforcementChip mode={account.enforcementMode} />
-          {account.consecutiveLosses != null && account.consecutiveLosses > 0 ? (
+          {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
             <>
               <span aria-hidden>·</span>
               <span className="text-amber-700">
@@ -457,11 +478,40 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
                 {account.stopAfterLosses != null ? ` / ${account.stopAfterLosses}` : ""}
               </span>
             </>
-          ) : null}
+          )}
         </div>
-        <div className="mt-2 flex justify-end">
-          <AccountActions account={account} />
+
+        {/* Primary nav links */}
+        <div className="mt-2 flex items-center gap-1.5">
+          <Link
+            href={`/accounts/${account.id}/edit`}
+            className="inline-flex h-7 items-center rounded-full border border-stone-200 px-3 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+          >
+            Open
+          </Link>
+          <Link
+            href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
+            className="inline-flex h-7 items-center rounded-full border border-stone-200 px-3 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+          >
+            Rules
+          </Link>
         </div>
+
+        {/* Secondary action: Sync or Reconnect */}
+        {reconnectNeeded ? (
+          <div className="mt-1.5">
+            <Link
+              href="/accounts/connect/tradovate"
+              className="inline-flex h-7 items-center rounded-full bg-stone-950 px-3 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
+            >
+              Reconnect
+            </Link>
+          </div>
+        ) : account.platform === "tradovate" ? (
+          <div className="mt-1.5">
+            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
