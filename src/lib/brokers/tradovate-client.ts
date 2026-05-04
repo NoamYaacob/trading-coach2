@@ -585,40 +585,72 @@ export class TradovateClient {
   async getCashBalanceSnapshot(
     tvAccountId: number,
   ): Promise<TvCashBalanceSnapshot | null> {
-    console.info("[tradovate/client] getCashBalanceSnapshot request", {
+    console.info("[tradovate/balance] → request", {
       accountId: this.#accountId,
       tvAccountId,
       endpoint: "cashBalance/getCashBalanceSnapshot",
+      body: { accountId: tvAccountId },
     });
-    const results = await this.#request<TvCashBalanceSnapshot[]>(
+
+    const raw = await this.#request<unknown>(
       "cashBalance/getCashBalanceSnapshot",
       "POST",
       { accountId: tvAccountId },
     );
+
+    // Diagnose the top-level response shape before any casting.
+    const isArray = Array.isArray(raw);
+    const arrayLength = isArray ? (raw as unknown[]).length : null;
+    const topLevelKeys =
+      !isArray && typeof raw === "object" && raw !== null
+        ? Object.keys(raw as object)
+        : null;
+    console.info("[tradovate/balance] ← raw response shape", {
+      accountId: this.#accountId,
+      tvAccountId,
+      isArray,
+      arrayLength,
+      topLevelKeys,
+    });
+
+    const results = (isArray ? raw : []) as TvCashBalanceSnapshot[];
     const snapshot = results[0] ?? null;
+
     if (snapshot) {
-      const keys = Object.keys(snapshot as object);
-      console.info("[tradovate/client] getCashBalanceSnapshot response", {
+      // Log value types for each balance candidate — never log raw values.
+      const s = snapshot as Record<string, unknown>;
+      const describeField = (key: string): string => {
+        if (!(key in s)) return "absent";
+        const v = s[key];
+        if (v === null) return "null";
+        if (v === undefined) return "undefined";
+        if (typeof v === "number") {
+          return Number.isFinite(v) ? "number(finite)" : "number(non-finite)";
+        }
+        return typeof v;
+      };
+      console.info("[tradovate/balance] ← snapshot candidate fields", {
         accountId: this.#accountId,
         tvAccountId,
-        status: "ok",
-        responseKeys: keys,
-        hasCandidates: {
-          netLiq: "netLiq" in (snapshot as object),
-          totalCashValue: "totalCashValue" in (snapshot as object),
-          cashBalance: "cashBalance" in (snapshot as object),
-          accountBalance: "accountBalance" in (snapshot as object),
-          amount: "amount" in (snapshot as object),
-          openPl: "openPl" in (snapshot as object),
+        allKeys: Object.keys(s),
+        candidateTypes: {
+          netLiq: describeField("netLiq"),
+          totalCashValue: describeField("totalCashValue"),
+          cashBalance: describeField("cashBalance"),
+          accountBalance: describeField("accountBalance"),
+          amount: describeField("amount"),
+          openPl: describeField("openPl"),
         },
       });
     } else {
-      console.info("[tradovate/client] getCashBalanceSnapshot response", {
+      console.info("[tradovate/balance] ← snapshot is null/empty", {
         accountId: this.#accountId,
         tvAccountId,
-        status: "empty",
+        isArray,
+        arrayLength,
       });
     }
+
     return snapshot;
   }
 
@@ -724,10 +756,10 @@ export class TradovateClient {
       const { value, field } = selectBestBalance(balanceSnapshot);
       balance = value;
       openPnlFromSnapshot = balanceSnapshot.openPl ?? null;
-      console.info("[tradovate/client] balance field selected", {
+      console.info("[tradovate/balance] selectBestBalance result", {
         accountId: this.#accountId,
-        selectedField: field,
-        selectedValue: value != null ? "[number]" : null,
+        selectedField: field ?? "none",
+        gotValue: value != null,
       });
     }
 

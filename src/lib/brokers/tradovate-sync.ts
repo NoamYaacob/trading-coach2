@@ -88,6 +88,14 @@ export async function syncTradovateAccount(
 
     const syncedAt = new Date();
 
+    console.info("[tradovate/sync] persisting to DB", {
+      accountId,
+      hasBalance: balance != null,
+      hasOpenPnl: openPnl != null,
+      hasDailyPnl: dailyPnl != null,
+      balanceUnavailable,
+    });
+
     await prisma.connectedAccount.update({
       where: { id: accountId },
       data: {
