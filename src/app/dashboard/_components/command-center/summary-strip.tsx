@@ -63,7 +63,7 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
       hint: summary.hasPnlData ? "Across synced accounts" : "Awaiting first sync",
     },
     {
-      label: "Risk left",
+      label: "Loss budget left",
       value: summary.hasRiskData ? CURRENCY_FORMATTER.format(summary.totalRiskRemaining) : "—",
       hint: summary.hasRiskData ? "Based on configured rules" : "Set rules to track",
     },

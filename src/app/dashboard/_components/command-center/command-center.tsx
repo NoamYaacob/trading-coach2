@@ -20,6 +20,13 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+const BALANCE_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 const STATUS_FILTERS: { value: AccountStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "allowed", label: "Allowed" },
@@ -120,9 +127,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
         >
           {data.protectionLock.isLocked && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] text-amber-800">
-              Protection is locked for today&apos;s session. Reductions and rule changes will apply
-              from the next trading day ({data.protectionLock.nextTradingDayKey}).
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-700">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              <span>Protection locked for today · Rule changes apply from {data.protectionLock.nextTradingDayKey}.</span>
             </div>
           )}
           <FilterBar
@@ -142,13 +149,8 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             )}
           </div>
 
-          <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
-            <p className="hidden sm:block">
-              Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
-              flatten, lockout) is not active and requires separate verification before it can be
-              enabled.
-            </p>
-            <p className="sm:hidden">Read-only connected · Broker enforcement is not active.</p>
+          <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] text-stone-400">
+            Read-only connected · Broker enforcement is not active.
           </div>
         </section>
       )}
@@ -259,7 +261,7 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
             )}
           </span>
           <span>
-            Risk:{" "}
+            Budget:{" "}
             {group.hasRiskData ? (
               <span className="font-mono font-semibold text-stone-800">
                 {CURRENCY_FORMATTER.format(group.totalRiskRemaining)}
@@ -276,14 +278,12 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
         <table className="w-full text-left text-sm">
           <thead className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
             <tr className="border-b border-stone-100">
-              <th className="px-4 py-2 font-semibold">Status</th>
               <th className="px-4 py-2 font-semibold">Account</th>
               <th className="px-4 py-2 text-right font-semibold">Balance</th>
               <th className="px-4 py-2 text-right font-semibold">Daily P&L</th>
-              <th className="px-4 py-2 text-right font-semibold">Stop left</th>
+              <th className="px-4 py-2 text-right font-semibold">Loss budget left</th>
               <th className="px-4 py-2 text-right font-semibold">Trades</th>
-              <th className="px-4 py-2 font-semibold">Rules</th>
-              <th className="px-4 py-2 font-semibold">Mode</th>
+              <th className="px-4 py-2 font-semibold">Rules / Mode</th>
               <th className="px-4 py-2 text-right font-semibold">Actions</th>
             </tr>
           </thead>
@@ -327,33 +327,46 @@ function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> })
 
 // ─── Desktop row ───────────────────────────────────────────────────────────────
 
+const SYNC_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 function AccountRow({ account }: { account: CommandCenterAccount }) {
   return (
-    <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/80">
+    <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
+      {/* Account — status badge + name + platform + sync time */}
       <td className="px-4 py-3 align-top">
-        <StatusBadge status={account.status} />
+        <div className="flex min-w-0 items-start gap-2">
+          <StatusBadge status={account.status} />
+          <div className="min-w-0">
+            <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
+            <p className="mt-0.5 text-[11px] text-stone-500">
+              {account.platformLabel}
+              <span aria-hidden> · </span>
+              {account.accountTypeLabel}
+            </p>
+            {account.lastSyncAt && (
+              <p className="mt-0.5 text-[10px] text-stone-400">
+                Synced {SYNC_DATE_FORMAT.format(account.lastSyncAt)}
+              </p>
+            )}
+          </div>
+        </div>
       </td>
-      <td className="px-4 py-3 align-top">
-        <p className="text-sm font-semibold text-stone-950">{account.label}</p>
-        <p className="mt-0.5 text-[11px] text-stone-500">
-          {account.platformLabel}
-          <span aria-hidden> · </span>
-          {account.accountTypeLabel}
-        </p>
-        {account.lastSyncAt && (
-          <p className="mt-0.5 text-[10px] text-stone-400">
-            Synced {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(account.lastSyncAt)}
-          </p>
-        )}
-      </td>
+
+      {/* Balance */}
       <td className="px-4 py-3 text-right align-top">
         {account.balance != null ? (
           <div>
             <p className="font-mono text-sm font-semibold text-stone-950">
-              {CURRENCY_FORMATTER.format(account.balance)}
+              {BALANCE_FORMATTER.format(account.balance)}
             </p>
             {account.openPnl != null && account.openPnl !== 0 && (
-              <p className={`text-[11px] font-mono ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
+              <p className={`font-mono text-[11px] ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
                 {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
               </p>
             )}
@@ -364,29 +377,45 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
           <p className="text-xs text-stone-400">Awaiting sync</p>
         )}
       </td>
+
+      {/* Daily P&L */}
       <td className="px-4 py-3 text-right align-top">
-        <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
-          {account.dailyPnl != null ? formatSignedCurrency(account.dailyPnl) : "—"}
-        </p>
+        {account.dailyPnl != null ? (
+          <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
+            {formatSignedCurrency(account.dailyPnl)}
+          </p>
+        ) : account.lastSyncAt != null ? (
+          <p className="text-xs text-stone-400">No trades today</p>
+        ) : (
+          <p className="font-mono text-sm text-stone-300">—</p>
+        )}
       </td>
+
+      {/* Loss budget left */}
       <td className="px-4 py-3 text-right align-top">
         <StopLeftCell account={account} />
       </td>
+
+      {/* Trades */}
       <td className="px-4 py-3 text-right align-top">
         <TradesCell account={account} />
       </td>
-      <td className="px-4 py-3 align-top text-xs text-stone-600">
-        {RULE_SOURCE_LABEL[account.ruleSource]}
-        {account.consecutiveLosses != null && account.consecutiveLosses > 0 ? (
-          <p className="mt-0.5 text-[10px] text-amber-700">
+
+      {/* Rules + Mode combined */}
+      <td className="px-4 py-3 align-top">
+        <p className="text-xs text-stone-600">{RULE_SOURCE_LABEL[account.ruleSource]}</p>
+        <div className="mt-1">
+          <EnforcementChip mode={account.enforcementMode} />
+        </div>
+        {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
+          <p className="mt-1 text-[10px] text-amber-700">
             Loss streak {account.consecutiveLosses}
             {account.stopAfterLosses != null ? ` / ${account.stopAfterLosses}` : ""}
           </p>
-        ) : null}
+        )}
       </td>
-      <td className="px-4 py-3 align-top">
-        <EnforcementChip mode={account.enforcementMode} />
-      </td>
+
+      {/* Actions */}
       <td className="px-4 py-3 text-right align-top">
         <AccountActions account={account} />
       </td>
@@ -425,10 +454,10 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           </p>
           {account.balance != null ? (
             <p className="font-mono text-sm font-semibold text-stone-950">
-              {CURRENCY_FORMATTER.format(account.balance)}
+              {BALANCE_FORMATTER.format(account.balance)}
             </p>
           ) : account.lastSyncAt != null ? (
-            <p className="text-[11px] text-stone-400">Balance unavailable</p>
+            <p className="text-[11px] text-stone-400">Unavailable</p>
           ) : (
             <p className="text-[11px] text-stone-400">Awaiting sync</p>
           )}
@@ -445,15 +474,21 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
             Daily P&L
           </p>
-          <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
-            {account.dailyPnl != null ? formatSignedCurrency(account.dailyPnl) : "—"}
-          </p>
+          {account.dailyPnl != null ? (
+            <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
+              {formatSignedCurrency(account.dailyPnl)}
+            </p>
+          ) : account.lastSyncAt != null ? (
+            <p className="text-[11px] text-stone-400">No trades today</p>
+          ) : (
+            <p className="font-mono text-sm text-stone-300">—</p>
+          )}
         </div>
 
-        {/* Stop left */}
+        {/* Loss budget left */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
-            Stop left
+            Loss budget left
           </p>
           <StopLeftCell account={account} compact />
         </div>
