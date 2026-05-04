@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ConnectedAccount, AccountRiskRules, LiveSessionState, GuardianIntervention } from "@prisma/client";
 import { SectionCard } from "@/components/ui/section-card";
 import { DisconnectButton } from "./disconnect-button";
+import { SyncButton } from "./sync-button";
 
 type AccountWithRelations = ConnectedAccount & {
   riskRules: AccountRiskRules | null;
@@ -348,7 +349,7 @@ export function AccountCard({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {/* Guardian state */}
           <div className={`rounded-2xl border px-4 py-4 ${riskStyle.card}`}>
             <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${riskStyle.text} opacity-80`}>
@@ -368,22 +369,57 @@ export function AccountCard({
             )}
           </div>
 
+          {/* Balance */}
+          {account.balance != null ? (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Balance
+              </p>
+              <p className="mt-2 text-lg font-semibold tabular-nums text-stone-950">
+                ${Number(account.balance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              {account.openPnl != null && Number(account.openPnl) !== 0 && (
+                <p className={`mt-1 text-sm tabular-nums ${Number(account.openPnl) > 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  {Number(account.openPnl) > 0 ? "+" : ""}
+                  {Number(account.openPnl).toFixed(2)} open P&L
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Balance
+              </p>
+              <p className="mt-2 text-lg font-semibold text-stone-400">Awaiting first sync</p>
+              <p className="mt-1 text-xs text-stone-400">Use &quot;Sync now&quot; below</p>
+            </div>
+          )}
+
           {/* Daily P&L */}
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               Daily P&amp;L
             </p>
-            <p className={`mt-2 text-lg font-semibold tabular-nums ${pnlClass}`}>
-              {dailyPnl >= 0 ? "+" : ""}{dailyPnl.toFixed(2)}
-            </p>
-            {pnlHeadroom !== null ? (
-              <p className={`mt-1 text-sm tabular-nums ${pnlHeadroom <= 0 ? "text-red-600" : "text-stone-500"}`}>
-                {pnlHeadroom > 0 ? `${pnlHeadroom.toFixed(2)} to limit` : "Limit reached"}
-              </p>
+            {hasLiveData ? (
+              <>
+                <p className={`mt-2 text-lg font-semibold tabular-nums ${pnlClass}`}>
+                  {dailyPnl >= 0 ? "+" : ""}{dailyPnl.toFixed(2)}
+                </p>
+                {pnlHeadroom !== null ? (
+                  <p className={`mt-1 text-sm tabular-nums ${pnlHeadroom <= 0 ? "text-red-600" : "text-stone-500"}`}>
+                    {pnlHeadroom > 0 ? `${pnlHeadroom.toFixed(2)} to limit` : "Limit reached"}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-stone-500">
+                    {maxDailyLoss != null ? `Limit: ${maxDailyLoss}` : account.currency}
+                  </p>
+                )}
+              </>
             ) : (
-              <p className="mt-1 text-sm text-stone-500">
-                {maxDailyLoss != null ? `Limit: ${maxDailyLoss}` : account.currency}
-              </p>
+              <>
+                <p className="mt-2 text-lg font-semibold text-stone-400">Awaiting first sync</p>
+                <p className="mt-1 text-xs text-stone-400">Based on configured rules</p>
+              </>
             )}
           </div>
 
@@ -598,6 +634,9 @@ export function AccountCard({
             accountId={account.id}
             providerLabel={PLATFORM_LABEL[account.platform] ?? account.platform}
           />
+          {account.platform === "tradovate" && (
+            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt ?? null} />
+          )}
           {account.connectionStatus === "connected_live" && account.connectedAt && (
             <p className="text-xs text-stone-400">
               Live since {shortDate(account.connectedAt)}

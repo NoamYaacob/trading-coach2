@@ -160,6 +160,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     accountIds: createdAccountIds,
-    redirectTo: "/accounts",
+    redirectTo: `/accounts/connect/tradovate/rules?accountIds=${createdAccountIds.join(",")}`,
   });
 }

@@ -36,6 +36,8 @@ export type CommandCenterAccount = {
   tradesUsedPct: number | null;
   consecutiveLosses: number | null;
   stopAfterLosses: number | null;
+  balance: number | null;
+  openPnl: number | null;
   lastSyncAt: Date | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;

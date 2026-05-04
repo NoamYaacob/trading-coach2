@@ -127,6 +127,8 @@ export class TradovateClient {
   #tokenExpiresAt: Date | null = null;
   /** Tradovate's integer account ID — resolved from externalAccountId or /account/list. */
   #tvAccountId: number | null = null;
+  /** Set when this account's tokens live on a BrokerConnection row. */
+  #brokerConnectionId: string | null = null;
   #baseUrl: string | null = null;
   #tokenUrl: string | null = null;
   /** Auth-server renew URL — same host as #tokenUrl, different path. */
@@ -155,13 +157,26 @@ export class TradovateClient {
 
     const account = await prisma.connectedAccount.findUnique({
       where: { id: this.#accountId },
-      select: { accountType: true, externalAccountId: true },
+      select: { accountType: true, externalAccountId: true, brokerConnectionId: true },
     });
     if (!account) {
       throw new TradovateClientError("NO_TOKENS", "ConnectedAccount not found.");
     }
 
-    const env = account.accountType === "demo" ? "demo" : "live";
+    // Determine env: prefer BrokerConnection.env (set during OAuth) over
+    // accountType heuristic, which is unreliable for prop-firm evaluation/
+    // funded accounts that actually live on the Tradovate demo environment.
+    let env: "demo" | "live";
+    if (account.brokerConnectionId) {
+      this.#brokerConnectionId = account.brokerConnectionId;
+      const bc = await prisma.brokerConnection.findUnique({
+        where: { id: account.brokerConnectionId },
+        select: { env: true },
+      });
+      env = (bc?.env as "demo" | "live") ?? (account.accountType === "demo" ? "demo" : "live");
+    } else {
+      env = account.accountType === "demo" ? "demo" : "live";
+    }
     this.#baseUrl = config.apiBaseUrl[env];
     this.#tokenUrl = config.tokenUrl[env];
     // Derive the renew URL from the token URL: same auth-server host, different path.
@@ -195,6 +210,11 @@ export class TradovateClient {
     this.#accessToken = tokens.accessToken;
     this.#refreshToken = tokens.refreshToken;
     this.#tokenExpiresAt = tokens.tokenExpiresAt;
+    // Override the brokerConnectionId from tokens in case initialize() loaded
+    // it from ConnectedAccount.brokerConnectionId above already — they agree.
+    if (tokens.brokerConnectionId) {
+      this.#brokerConnectionId = tokens.brokerConnectionId;
+    }
 
     await this.#refreshIfExpired();
   }
@@ -224,13 +244,17 @@ export class TradovateClient {
       return;
     }
 
-    await prisma.connectedAccount.update({
-      where: { id: this.#accountId },
-      data: {
-        connectionStatus: "expired",
-        errorMessage: "Access token expired. Re-authorize to reconnect.",
-      },
-    });
+    if (this.#brokerConnectionId) {
+      await prisma.brokerConnection.update({
+        where: { id: this.#brokerConnectionId },
+        data: { connectionStatus: "expired", errorMessage: "Access token expired. Re-authorize to reconnect." },
+      });
+    } else {
+      await prisma.connectedAccount.update({
+        where: { id: this.#accountId },
+        data: { connectionStatus: "expired", errorMessage: "Access token expired. Re-authorize to reconnect." },
+      });
+    }
     throw new TradovateClientError(
       "TOKEN_EXPIRED_NO_REFRESH",
       "Access token expired and no refresh token is available.",
@@ -425,20 +449,38 @@ export class TradovateClient {
     try {
       const encryptedAccess = encryptAndSerialize(tokens.accessToken);
 
-      const data: Parameters<typeof prisma.connectedAccount.update>[0]["data"] = {
-        accessTokenEncrypted: encryptedAccess,
-        tokenExpiresAt: tokens.expiresAt,
-        connectionStatus: "connected_readonly",
-        errorMessage: null,
-      };
-      if (!preserveRefreshToken && tokens.refreshToken) {
-        data.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
+      if (this.#brokerConnectionId) {
+        // BrokerConnection-backed account — update the shared token row so
+        // all accounts linked to this connection pick up the new token.
+        const bcData: Parameters<typeof prisma.brokerConnection.update>[0]["data"] = {
+          accessTokenEncrypted: encryptedAccess,
+          tokenExpiresAt: tokens.expiresAt,
+          connectionStatus: "connected_readonly",
+          errorMessage: null,
+        };
+        if (!preserveRefreshToken && tokens.refreshToken) {
+          bcData.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
+        }
+        await prisma.brokerConnection.update({
+          where: { id: this.#brokerConnectionId },
+          data: bcData,
+        });
+      } else {
+        // Legacy per-account token columns.
+        const data: Parameters<typeof prisma.connectedAccount.update>[0]["data"] = {
+          accessTokenEncrypted: encryptedAccess,
+          tokenExpiresAt: tokens.expiresAt,
+          connectionStatus: "connected_readonly",
+          errorMessage: null,
+        };
+        if (!preserveRefreshToken && tokens.refreshToken) {
+          data.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
+        }
+        await prisma.connectedAccount.update({
+          where: { id: this.#accountId },
+          data,
+        });
       }
-
-      await prisma.connectedAccount.update({
-        where: { id: this.#accountId },
-        data,
-      });
 
       this.#accessToken = tokens.accessToken;
       if (!preserveRefreshToken && tokens.refreshToken) {
@@ -489,13 +531,12 @@ export class TradovateClient {
     }
 
     if (res.status === 401) {
-      await prisma.connectedAccount.update({
-        where: { id: this.#accountId },
-        data: {
-          connectionStatus: "expired",
-          errorMessage: "API returned 401 — re-authorize to reconnect.",
-        },
-      });
+      const expiredData = { connectionStatus: "expired", errorMessage: "API returned 401 — re-authorize to reconnect." };
+      if (this.#brokerConnectionId) {
+        await prisma.brokerConnection.update({ where: { id: this.#brokerConnectionId }, data: expiredData });
+      } else {
+        await prisma.connectedAccount.update({ where: { id: this.#accountId }, data: expiredData });
+      }
       throw new TradovateClientError(
         "API_ERROR",
         `Tradovate API ${path} returned 401 Unauthorized.`,

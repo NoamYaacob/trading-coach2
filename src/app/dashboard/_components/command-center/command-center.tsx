@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { SyncButton } from "@/app/accounts/_components/sync-button";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -256,6 +257,7 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
             <tr className="border-b border-stone-100">
               <th className="px-4 py-2 font-semibold">Status</th>
               <th className="px-4 py-2 font-semibold">Account</th>
+              <th className="px-4 py-2 text-right font-semibold">Balance</th>
               <th className="px-4 py-2 text-right font-semibold">Daily P&L</th>
               <th className="px-4 py-2 text-right font-semibold">Stop left</th>
               <th className="px-4 py-2 text-right font-semibold">Trades</th>
@@ -317,6 +319,27 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
           <span aria-hidden> · </span>
           {account.accountTypeLabel}
         </p>
+        {account.lastSyncAt && (
+          <p className="mt-0.5 text-[10px] text-stone-400">
+            Synced {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(account.lastSyncAt)}
+          </p>
+        )}
+      </td>
+      <td className="px-4 py-3 text-right align-top">
+        {account.balance != null ? (
+          <div>
+            <p className="font-mono text-sm font-semibold text-stone-950">
+              {CURRENCY_FORMATTER.format(account.balance)}
+            </p>
+            {account.openPnl != null && account.openPnl !== 0 && (
+              <p className={`text-[11px] font-mono ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-stone-400">—</p>
+        )}
       </td>
       <td className="px-4 py-3 text-right align-top">
         <p className={`font-mono text-sm font-semibold ${pnlClass(account.dailyPnl)}`}>
@@ -369,6 +392,17 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           {account.dailyPnl != null ? formatSignedCurrency(account.dailyPnl) : "—"}
         </p>
       </div>
+
+      {account.balance != null && (
+        <p className="mt-1 font-mono text-sm font-semibold text-stone-950">
+          {CURRENCY_FORMATTER.format(account.balance)}
+          {account.openPnl != null && account.openPnl !== 0 && (
+            <span className={`ml-1.5 text-[11px] font-normal ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
+            </span>
+          )}
+        </p>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
         <div>
@@ -533,6 +567,8 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
         >
           Reconnect
         </Link>
+      ) : account.platform === "tradovate" ? (
+        <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} />
       ) : null}
     </div>
   );

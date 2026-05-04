@@ -409,6 +409,13 @@ model ConnectedAccount {
   lastSyncAt            DateTime?
   // Surfaced in the UI when the connection is degraded or errored.
   errorMessage          String?
+  // Broker-synced account snapshot — updated by syncTradovateAccount.
+  // balance: account equity (Tradovate "amount" from cashBalance endpoint)
+  // cashBalance: cash available (same source)
+  // openPnl: sum of unrealised P&L across open positions
+  balance               Decimal?         @db.Decimal(14, 2)
+  cashBalance           Decimal?         @db.Decimal(14, 2)
+  openPnl               Decimal?         @db.Decimal(10, 2)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 

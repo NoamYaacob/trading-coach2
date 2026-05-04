@@ -245,6 +245,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       status,
       enforcementMode,
       ruleSource,
+      balance: account.balance != null ? Number(account.balance) : null,
+      openPnl: account.openPnl != null ? Number(account.openPnl) : null,
       dailyPnl,
       maxDailyLoss,
       remainingDailyLoss,

@@ -22,6 +22,8 @@ import {
 
 export type TradovateTokens = {
   accountId: string;
+  /** Set when tokens live on a BrokerConnection rather than the account row. */
+  brokerConnectionId: string | null;
   externalAccountId: string | null;
   accountLabel: string;
   accessToken: string;
@@ -62,6 +64,7 @@ export async function getTradovateTokensForAccount(
       platform: true,
       label: true,
       externalAccountId: true,
+      brokerConnectionId: true,
       accessTokenEncrypted: true,
       refreshTokenEncrypted: true,
       tokenExpiresAt: true,
@@ -83,6 +86,58 @@ export async function getTradovateTokensForAccount(
       "Account is not a Tradovate connection.",
     );
   }
+
+  // Prefer BrokerConnection tokens when the account was imported via the
+  // multi-account OAuth flow (brokerConnectionId is set and the per-account
+  // token columns are empty).
+  if (account.brokerConnectionId && !account.accessTokenEncrypted) {
+    const bc = await prisma.brokerConnection.findFirst({
+      where: { id: account.brokerConnectionId, userId },
+      select: {
+        accessTokenEncrypted: true,
+        refreshTokenEncrypted: true,
+        tokenExpiresAt: true,
+      },
+    });
+    if (!bc || !bc.accessTokenEncrypted) {
+      throw new TradovateTokenError(
+        "NO_ACCESS_TOKEN",
+        "Broker connection has no stored access token.",
+      );
+    }
+    let accessToken: string;
+    try {
+      accessToken = parseAndDecrypt(bc.accessTokenEncrypted);
+    } catch (err) {
+      const code = err instanceof TokenCryptoError ? err.code : "unknown";
+      throw new TradovateTokenError(
+        "DECRYPT_FAILED",
+        `Failed to decrypt broker-connection access token (${code}).`,
+      );
+    }
+    let refreshToken: string | null = null;
+    if (bc.refreshTokenEncrypted) {
+      try {
+        refreshToken = parseAndDecrypt(bc.refreshTokenEncrypted);
+      } catch (err) {
+        const code = err instanceof TokenCryptoError ? err.code : "unknown";
+        console.error(
+          `[tradovate] broker-connection refresh token decrypt failed for account ${account.id}: ${code}`,
+        );
+      }
+    }
+    return {
+      accountId: account.id,
+      brokerConnectionId: account.brokerConnectionId,
+      externalAccountId: account.externalAccountId,
+      accountLabel: account.label,
+      accessToken,
+      refreshToken,
+      tokenExpiresAt: bc.tokenExpiresAt,
+    };
+  }
+
+  // Legacy path: per-account token columns.
   if (!account.accessTokenEncrypted) {
     throw new TradovateTokenError(
       "NO_ACCESS_TOKEN",
@@ -120,6 +175,7 @@ export async function getTradovateTokensForAccount(
 
   return {
     accountId: account.id,
+    brokerConnectionId: null,
     externalAccountId: account.externalAccountId,
     accountLabel: account.label,
     accessToken,

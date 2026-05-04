@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { AccountCard } from "./_components/account-card";
+import { SyncButton } from "./_components/sync-button";
 
 export const metadata: Metadata = {
   title: "Broker Connections — Guardrail",
@@ -145,12 +146,15 @@ export default async function AccountsPage() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {!isExpired && (
-                          <Link
-                            href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
-                            className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"
-                          >
-                            Import more accounts
-                          </Link>
+                          <>
+                            <SyncButton connectionId={bc.id} lastSyncAt={null} />
+                            <Link
+                              href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
+                              className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"
+                            >
+                              Import more accounts
+                            </Link>
+                          </>
                         )}
                         <Link
                           href={`/accounts/connect/tradovate?env=${bc.env}`}
