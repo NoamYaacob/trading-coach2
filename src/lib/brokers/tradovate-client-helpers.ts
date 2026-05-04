@@ -220,3 +220,87 @@ export function parseSnapshotItems<T extends object>(raw: unknown): T[] {
   }
   return [];
 }
+
+// ── Snapshot balance + P&L extraction ────────────────────────────────────────
+
+export type SnapshotForBalance = {
+  netLiq?: number | null;
+  totalCashValue?: number | null;
+  cashBalance?: number | null;
+  accountBalance?: number | null;
+  amount?: number | null;
+  /** Tradovate API field — uppercase L is the canonical casing. */
+  realizedPnL?: number | null;
+  /** Lowercase-l variant kept for defensive compat with older API responses. */
+  realizedPnl?: number | null;
+};
+
+export type SnapshotBalanceResult = {
+  balance: number | null;
+  field: string | null;
+  todayPnL: number | null;
+};
+
+/**
+ * Extract balance and today's realised P&L from a Tradovate snapshot.
+ *
+ * Balance priority:
+ *   netLiq > totalCashValue > cashBalance > accountBalance
+ *   → amount + realizedPnL  (Tradovate futures: amount = prior settlement)
+ *   → amount alone
+ *
+ * todayPnL: realizedPnL (uppercase L, canonical) takes priority over
+ * realizedPnl (lowercase, defensive fallback).
+ */
+export function computeSnapshotBalance(snap: SnapshotForBalance): SnapshotBalanceResult {
+  const todayPnL =
+    (typeof snap.realizedPnL === "number" && Number.isFinite(snap.realizedPnL)
+      ? snap.realizedPnL
+      : null) ??
+    (typeof snap.realizedPnl === "number" && Number.isFinite(snap.realizedPnl)
+      ? snap.realizedPnl
+      : null);
+
+  const { value: preferredBalance, field } = selectBestBalance({
+    netLiq: snap.netLiq,
+    totalCashValue: snap.totalCashValue,
+    cashBalance: snap.cashBalance,
+    accountBalance: snap.accountBalance,
+  });
+
+  if (preferredBalance != null) {
+    return { balance: preferredBalance, field, todayPnL };
+  }
+
+  const amount =
+    typeof snap.amount === "number" && Number.isFinite(snap.amount)
+      ? snap.amount
+      : null;
+
+  if (amount != null && todayPnL != null) {
+    return { balance: amount + todayPnL, field: "amount+realizedPnL", todayPnL };
+  }
+  if (amount != null) {
+    return { balance: amount, field: "amount", todayPnL };
+  }
+  return { balance: null, field: null, todayPnL };
+}
+
+// ── Fill P&L aggregation ──────────────────────────────────────────────────────
+
+/**
+ * Sum an array of per-fill P&L values, skipping nulls and non-finite numbers.
+ * Returns null when no finite value is present (so callers can distinguish
+ * "zero P&L" from "no P&L data available").
+ */
+export function sumFillPnl(pnls: (number | null | undefined)[]): number | null {
+  let total = 0;
+  let hasAny = false;
+  for (const p of pnls) {
+    if (typeof p === "number" && Number.isFinite(p)) {
+      total += p;
+      hasAny = true;
+    }
+  }
+  return hasAny ? total : null;
+}

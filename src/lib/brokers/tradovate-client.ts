@@ -39,8 +39,8 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapSide,
-  selectBestBalance,
   parseSnapshotItems,
+  computeSnapshotBalance,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -68,9 +68,12 @@ type TvCashBalanceSnapshot = {
   accountId: number;
   timestamp: string;
   // Tradovate may return any combination of these balance fields.
-  // Use selectBestBalance() to pick the most meaningful one.
+  // Use computeSnapshotBalance() to extract balance and P&L in one pass.
   amount: number | null;
-  realizedPnl: number | null;
+  /** Tradovate API canonical field name — uppercase L. */
+  realizedPnL?: number | null;
+  /** Lowercase fallback — kept defensively in case some responses differ. */
+  realizedPnl?: number | null;
   cashBalance?: number | null;
   netLiq?: number | null;
   totalCashValue?: number | null;
@@ -103,12 +106,15 @@ type TvOrder = {
 
 type TvFill = {
   id: number;
+  accountId: number;
   orderId: number;
   contractId: number;
   timestamp: string;
   action: "Buy" | "Sell";
   qty: number;
   price: number;
+  profit?: number | null;
+  commission?: number | null;
 };
 
 type TvContract = {
@@ -694,13 +700,25 @@ export class TradovateClient {
   }
 
   /**
-   * Today's fills (UTC date boundary).
-   * Filtered to the stored Tradovate account ID when set.
+   * Today's fills (UTC date boundary), filtered to this account's tvAccountId.
    */
   async getFills(): Promise<TvFill[]> {
     const all = await this.#request<TvFill[]>("fill/list");
     const todayPrefix = new Date().toISOString().slice(0, 10);
-    return all.filter((f) => f.timestamp.startsWith(todayPrefix));
+    const todayFills = all.filter((f) => f.timestamp.startsWith(todayPrefix));
+    const filtered =
+      this.#tvAccountId !== null
+        ? todayFills.filter((f) => f.accountId === this.#tvAccountId)
+        : todayFills;
+    console.info("[tradovate/fills]", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      datePrefix: todayPrefix,
+      rawCount: all.length,
+      todayCount: todayFills.length,
+      filteredCount: filtered.length,
+    });
+    return filtered;
   }
 
   /**
@@ -767,21 +785,29 @@ export class TradovateClient {
     }
 
     // ── Balance: primary endpoint → fallback ──────────────────────────────
-    let balanceSnapshot = await this.getCashBalanceSnapshot(this.#tvAccountId);
+    const balanceSnapshot = await this.getCashBalanceSnapshot(this.#tvAccountId);
     let balanceEndpoint = "cashBalance/getCashBalanceSnapshot";
 
     let balance: number | null = null;
     let openPnlFromSnapshot: number | null = null;
+    let todayPnL: number | null = null;
 
     if (balanceSnapshot) {
-      const { value, field } = selectBestBalance(balanceSnapshot);
-      balance = value;
+      const extracted = computeSnapshotBalance(balanceSnapshot);
+      balance = extracted.balance;
+      todayPnL = extracted.todayPnL;
       openPnlFromSnapshot = balanceSnapshot.openPl ?? null;
       console.info("[tradovate/balance] selected", {
         accountId: this.#accountId,
         endpoint: balanceEndpoint,
-        field: field ?? "none",
+        field: extracted.field ?? "none",
         gotValue: balance != null,
+      });
+      console.info("[tradovate/pnl]", {
+        accountId: this.#accountId,
+        source: "snapshot",
+        todayPnL,
+        openPl: openPnlFromSnapshot,
       });
     }
 
@@ -790,16 +816,16 @@ export class TradovateClient {
       try {
         const fallback = await this.getCashBalanceFallback(this.#tvAccountId);
         if (fallback) {
-          const { value, field } = selectBestBalance(fallback);
-          if (value != null) {
-            balance = value;
-            balanceSnapshot = fallback;
+          const extracted = computeSnapshotBalance(fallback);
+          if (extracted.balance != null) {
+            balance = extracted.balance;
             balanceEndpoint = "cashBalance/list";
             openPnlFromSnapshot = fallback.openPl ?? null;
+            if (todayPnL == null) todayPnL = extracted.todayPnL;
             console.info("[tradovate/balance] selected (fallback)", {
               accountId: this.#accountId,
               endpoint: balanceEndpoint,
-              field: field ?? "none",
+              field: extracted.field ?? "none",
               gotValue: true,
             });
           }
@@ -822,7 +848,7 @@ export class TradovateClient {
       currency: "USD",
       balance,
       equity: null,
-      todayPnL: balanceSnapshot?.realizedPnl ?? null,
+      todayPnL,
       openPnlFromSnapshot,
       asOf: new Date(),
     };
@@ -882,7 +908,7 @@ export class TradovateClient {
         side: mapSide(f.action),
         quantity: f.qty,
         price: f.price,
-        pnl: null,
+        pnl: f.profit ?? null,
         occurredAt: new Date(f.timestamp),
       }),
     );

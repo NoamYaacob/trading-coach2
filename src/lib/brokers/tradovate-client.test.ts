@@ -17,6 +17,8 @@ import {
   normalizeTokenResponse,
   parseSnapshotItems,
   selectBestBalance,
+  computeSnapshotBalance,
+  sumFillPnl,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -404,5 +406,114 @@ describe("normalizeTokenResponse", () => {
     assert.equal(result.accessToken, "new_access");
     assert.equal(result.refreshToken, "new_refresh");
     assert.ok(result.expiresAt !== null);
+  });
+});
+
+// ── computeSnapshotBalance ────────────────────────────────────────────────────
+
+describe("computeSnapshotBalance", () => {
+  it("prefers netLiq over amount and realizedPnL for balance", () => {
+    const result = computeSnapshotBalance({ netLiq: 10000, amount: 9000, realizedPnL: 100 });
+    assert.equal(result.balance, 10000);
+    assert.equal(result.field, "netLiq");
+    assert.equal(result.todayPnL, 100);
+  });
+
+  it("prefers totalCashValue when netLiq absent", () => {
+    const result = computeSnapshotBalance({ totalCashValue: 9500, amount: 8000, realizedPnL: 200 });
+    assert.equal(result.balance, 9500);
+    assert.equal(result.field, "totalCashValue");
+  });
+
+  it("computes amount + realizedPnL when no preferred balance field", () => {
+    const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 100 });
+    assert.equal(result.balance, 9100);
+    assert.equal(result.field, "amount+realizedPnL");
+    assert.equal(result.todayPnL, 100);
+  });
+
+  it("falls back to amount alone when realizedPnL is null", () => {
+    const result = computeSnapshotBalance({ amount: 9000 });
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount");
+    assert.equal(result.todayPnL, null);
+  });
+
+  it("prefers realizedPnL (uppercase L) over realizedPnl (lowercase l)", () => {
+    const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 200, realizedPnl: 100 });
+    assert.equal(result.todayPnL, 200);
+    assert.equal(result.balance, 9200);
+    assert.equal(result.field, "amount+realizedPnL");
+  });
+
+  it("uses realizedPnl (lowercase l) as fallback when realizedPnL absent", () => {
+    const result = computeSnapshotBalance({ amount: 9000, realizedPnl: 150 });
+    assert.equal(result.todayPnL, 150);
+    assert.equal(result.balance, 9150);
+    assert.equal(result.field, "amount+realizedPnL");
+  });
+
+  it("handles negative realizedPnL (losing day)", () => {
+    const result = computeSnapshotBalance({ amount: 10000, realizedPnL: -500 });
+    assert.equal(result.balance, 9500);
+    assert.equal(result.todayPnL, -500);
+  });
+
+  it("returns null balance and null todayPnL for empty snapshot", () => {
+    const result = computeSnapshotBalance({});
+    assert.equal(result.balance, null);
+    assert.equal(result.field, null);
+    assert.equal(result.todayPnL, null);
+  });
+
+  it("skips non-finite amount values", () => {
+    const result = computeSnapshotBalance({ amount: NaN, realizedPnL: 100 });
+    assert.equal(result.balance, null);
+    assert.equal(result.todayPnL, 100);
+  });
+
+  it("skips non-finite realizedPnL values", () => {
+    const result = computeSnapshotBalance({ amount: 9000, realizedPnL: Infinity });
+    assert.equal(result.todayPnL, null);
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount");
+  });
+
+  it("accepts zero realizedPnL as a valid (break-even) day", () => {
+    const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 0 });
+    assert.equal(result.todayPnL, 0);
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount+realizedPnL");
+  });
+});
+
+// ── sumFillPnl ────────────────────────────────────────────────────────────────
+
+describe("sumFillPnl", () => {
+  it("returns null for empty input", () => {
+    assert.equal(sumFillPnl([]), null);
+  });
+
+  it("returns null when all values are null or undefined", () => {
+    assert.equal(sumFillPnl([null, null, undefined]), null);
+  });
+
+  it("sums finite values", () => {
+    assert.equal(sumFillPnl([100, 50, -30]), 120);
+  });
+
+  it("skips null and non-finite values", () => {
+    assert.equal(sumFillPnl([100, null, undefined, NaN, Infinity, 50]), 150);
+  });
+
+  it("includes zero as a valid P&L value", () => {
+    assert.equal(sumFillPnl([0, 100]), 100);
+    assert.equal(sumFillPnl([0]), 0);
+  });
+
+  it("handles two fills — tradesCount=2 scenario", () => {
+    const result = sumFillPnl([120.5, -45.25]);
+    assert.ok(result !== null);
+    assert.ok(Math.abs(result - 75.25) < 0.001);
   });
 });

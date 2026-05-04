@@ -21,6 +21,7 @@ import {
 } from "./tradovate-discovery";
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
+import { sumFillPnl } from "./tradovate-client-helpers";
 
 export type SyncResult = {
   ok: boolean;
@@ -106,37 +107,18 @@ export async function syncTradovateAccount(
       },
     });
 
-    // ── LiveSessionState: update dailyPnl if we have broker data ──────────
-    if (dailyPnl != null) {
-      const today = new Date().toISOString().slice(0, 10);
-      const existing = await prisma.liveSessionState.findUnique({
-        where: { accountId },
-        select: { id: true, sessionDate: true },
-      });
-      if (existing && existing.sessionDate === today) {
-        await prisma.liveSessionState.update({
-          where: { accountId },
-          data: { dailyPnl },
-        });
-      } else if (!existing) {
-        await prisma.liveSessionState.create({
-          data: {
-            accountId,
-            sessionDate: today,
-            dailyPnl,
-            tradesCount: 0,
-            consecutiveLosses: 0,
-            riskState: "NORMAL",
-          },
-        });
-        // If the existing session is from a previous day, leave it alone — the
-        // guardian will reset it on the next event.
-      }
-    }
-
     // ── Today's fills → NormalizedTradeEvent (best-effort) ─────────────────
+    let tradesCount = 0;
+    let pnlFromFills: number | null = null;
     try {
       const executions = await client.toExecutions();
+      tradesCount = executions.length;
+      pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
+      console.info("[tradovate/fills] today's executions", {
+        accountId,
+        count: tradesCount,
+        pnlFromFills,
+      });
       for (const ex of executions) {
         const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
           where: { accountId, externalTradeId: ex.executionId },
@@ -162,11 +144,54 @@ export async function syncTradovateAccount(
       // Fill persistence is best-effort; a failure here does not fail the sync.
     }
 
+    // Use snapshot P&L when available; fall back to summing fill profits.
+    const resolvedDailyPnl = dailyPnl ?? pnlFromFills;
+    console.info("[tradovate/pnl] resolved daily P&L", {
+      accountId,
+      fromSnapshot: dailyPnl,
+      fromFills: pnlFromFills,
+      resolved: resolvedDailyPnl,
+    });
+
+    // ── LiveSessionState: update dailyPnl and tradesCount ─────────────────
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = await prisma.liveSessionState.findUnique({
+      where: { accountId },
+      select: { id: true, sessionDate: true },
+    });
+    if (existing) {
+      const isStale = existing.sessionDate !== today;
+      await prisma.liveSessionState.update({
+        where: { accountId },
+        data: {
+          ...(isStale ? { sessionDate: today } : {}),
+          tradesCount,
+          ...(resolvedDailyPnl != null
+            ? { dailyPnl: resolvedDailyPnl }
+            : isStale
+              ? { dailyPnl: 0 }
+              : {}),
+        },
+      });
+    } else {
+      await prisma.liveSessionState.create({
+        data: {
+          accountId,
+          sessionDate: today,
+          dailyPnl: resolvedDailyPnl ?? 0,
+          tradesCount,
+          consecutiveLosses: 0,
+          riskState: "NORMAL",
+        },
+      });
+    }
+
     console.info("[tradovate/sync] account sync succeeded", {
       accountId,
       hasBalance: balance != null,
       hasOpenPnl: openPnl != null,
-      hasDailyPnl: dailyPnl != null,
+      hasDailyPnl: resolvedDailyPnl != null,
+      tradesCount,
     });
 
     return {

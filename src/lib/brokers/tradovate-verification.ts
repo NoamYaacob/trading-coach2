@@ -264,7 +264,7 @@ export async function runTradovateVerification(
           const snap = await client.getCashBalanceSnapshot(tvAccountId!);
           if (!snap) return null;
           const { value, field } = selectBestBalance(snap);
-          return { balance: value, balanceField: field, realizedPnl: snap.realizedPnl, openPl: snap.openPl ?? null };
+          return { balance: value, balanceField: field, realizedPnl: snap.realizedPnL ?? snap.realizedPnl ?? null, openPl: snap.openPl ?? null };
         })
       : Promise.resolve({
           ok: false,
