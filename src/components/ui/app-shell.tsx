@@ -41,7 +41,7 @@ export async function AppShell({
         <TopNav authenticated={Boolean(user)} />
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 pb-0 sm:px-6 lg:px-10">
+      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-10 overflow-x-hidden px-4 pb-0 sm:px-6 lg:px-10">
         {statusStrip ? <div className="-mt-4">{statusStrip}</div> : null}
 
         <section className={`rounded-[2rem] border border-stone-200/80 bg-white/85 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur ${compactHero ? "p-3 sm:p-4 lg:p-5" : "p-3 sm:p-6 lg:p-8"}`}>

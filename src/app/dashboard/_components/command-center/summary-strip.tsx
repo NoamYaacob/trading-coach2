@@ -78,13 +78,13 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
   return (
     <section
       aria-label="Account risk summary"
-      className="rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-4"
+      className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-2.5 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-4"
     >
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8 lg:gap-3">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-8 lg:gap-3">
         {tiles.map((tile) => (
           <div
             key={tile.label}
-            className="rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 sm:px-3.5 sm:py-3"
+            className="rounded-xl border border-stone-100 bg-stone-50/60 px-2.5 py-2 sm:px-3.5 sm:py-3"
           >
             <div className="flex items-center gap-1.5">
               {tile.dotClass ? (
@@ -95,7 +95,7 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
               </p>
             </div>
             <p
-              className={`mt-1.5 font-mono text-lg font-semibold tracking-tight ${tile.valueClass ?? "text-stone-950"}`}
+              className={`mt-1 font-mono text-base font-semibold tracking-tight sm:mt-1.5 sm:text-lg ${tile.valueClass ?? "text-stone-950"}`}
             >
               {tile.value}
             </p>

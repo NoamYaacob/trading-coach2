@@ -117,7 +117,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       {data.accounts.length > 0 && (
         <section
           aria-label="Risk command center"
-          className="rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
+          className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
         >
           {data.protectionLock.isLocked && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] text-amber-800">
@@ -181,7 +181,7 @@ function FilterBar({
       <div
         role="tablist"
         aria-label="Status filter"
-        className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap"
+        className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-x-visible"
       >
         {STATUS_FILTERS.map((filter) => {
           const active = statusFilter === filter.value;
@@ -194,7 +194,7 @@ function FilterBar({
               role="tab"
               aria-selected={active}
               onClick={() => onStatusChange(filter.value)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition ${
+              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs ${
                 active
                   ? "bg-stone-950 text-stone-50"
                   : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
@@ -239,7 +239,7 @@ function FilterBar({
 function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50/30">
-      <header className="flex flex-col gap-2 border-b border-stone-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-1.5 border-b border-stone-100 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
           <span className="text-[11px] text-stone-500">
@@ -247,25 +247,25 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
           </span>
           <FirmStatusInline counts={group.counts} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-stone-500">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-stone-500 sm:gap-x-4">
           <span>
-            Daily P&L:{" "}
+            P&L:{" "}
             {group.hasPnlData ? (
               <span className={`font-mono font-semibold ${pnlClass(group.totalDailyPnl)}`}>
                 {formatSignedCurrency(group.totalDailyPnl)}
               </span>
             ) : (
-              <span className="font-medium text-stone-400">Awaiting first sync</span>
+              <span className="font-medium text-stone-400">—</span>
             )}
           </span>
           <span>
-            Risk left:{" "}
+            Risk:{" "}
             {group.hasRiskData ? (
               <span className="font-mono font-semibold text-stone-800">
                 {CURRENCY_FORMATTER.format(group.totalRiskRemaining)}
               </span>
             ) : (
-              <span className="font-medium text-stone-400">Set rules to track</span>
+              <span className="font-medium text-stone-400">—</span>
             )}
           </span>
         </div>
@@ -296,7 +296,7 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
       </div>
 
       {/* Mobile/tablet cards */}
-      <div className="grid gap-2 p-3 lg:hidden">
+      <div className="grid gap-2 p-2.5 lg:hidden sm:p-3">
         {group.accounts.map((account) => (
           <AccountCard key={account.id} account={account} />
         ))}
@@ -396,7 +396,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 
 function AccountCard({ account }: { account: CommandCenterAccount }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
+    <div className="rounded-xl border border-stone-200 bg-white px-2.5 py-2.5 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)] sm:px-3 sm:py-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

@@ -278,7 +278,7 @@ export default async function DashboardPage() {
         />
       }
     >
-      <div className="grid gap-8">
+      <div className="grid min-w-0 gap-8">
 
         {/* ── Command center — always shown ─────────────────────────────────── */}
         <div className="grid gap-3">
