@@ -142,10 +142,14 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             )}
           </div>
 
-          <p className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
-            Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
-            flatten, lockout) is not active and requires separate verification before it can be enabled.
-          </p>
+          <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
+            <p className="hidden sm:block">
+              Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
+              flatten, lockout) is not active and requires separate verification before it can be
+              enabled.
+            </p>
+            <p className="sm:hidden">Read-only connected · Broker enforcement is not active.</p>
+          </div>
         </section>
       )}
     </div>
@@ -177,7 +181,7 @@ function FilterBar({
       <div
         role="tablist"
         aria-label="Status filter"
-        className="-mx-1 flex flex-wrap gap-1 overflow-x-auto px-1 pb-1"
+        className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap"
       >
         {STATUS_FILTERS.map((filter) => {
           const active = statusFilter === filter.value;
@@ -410,16 +414,20 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         </p>
       </div>
 
-      {account.balance != null && (
-        <p className="mt-1 font-mono text-sm font-semibold text-stone-950">
-          {CURRENCY_FORMATTER.format(account.balance)}
-          {account.openPnl != null && account.openPnl !== 0 && (
-            <span className={`ml-1.5 text-[11px] font-normal ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
-              {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
-            </span>
-          )}
-        </p>
-      )}
+      <p className="mt-1 font-mono text-sm font-semibold text-stone-950">
+        {account.balance != null ? (
+          <>
+            {CURRENCY_FORMATTER.format(account.balance)}
+            {account.openPnl != null && account.openPnl !== 0 && (
+              <span className={`ml-1.5 text-[11px] font-normal ${account.openPnl > 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {account.openPnl > 0 ? "+" : ""}{account.openPnl.toFixed(2)} open
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-[11px] font-normal text-stone-400">Awaiting sync</span>
+        )}
+      </p>
 
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
         <div>
@@ -436,7 +444,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-2.5">
+      <div className="mt-3 border-t border-stone-100 pt-2.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-stone-500">
           <span>{RULE_SOURCE_LABEL[account.ruleSource]}</span>
           <span aria-hidden>·</span>
@@ -451,7 +459,9 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
             </>
           ) : null}
         </div>
-        <AccountActions account={account} />
+        <div className="mt-2 flex justify-end">
+          <AccountActions account={account} />
+        </div>
       </div>
     </div>
   );
