@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getProtectionLockState } from "@/lib/account-protection";
 
 type RulesPayload = {
   accountSize?: number | null;
@@ -172,11 +174,64 @@ export async function POST(request: Request) {
     if (v !== undefined) cleaned[k] = v;
   }
 
+  // ── Protection-lock check ─────────────────────────────────────────────
+  // After today's cutoff, edits to enforcement-relevant fields are saved as
+  // "applies next trading day" instead of being applied live. Display-only
+  // fields (none currently in this payload) would bypass the lock.
+  const existing = await prisma.riskRules.findUnique({
+    where: { userId: user.id },
+    select: {
+      sessionStartHour: true,
+      sessionEndHour: true,
+      protectionLockCutoffMinutes: true,
+    },
+  });
+  const lock = getProtectionLockState({
+    sessionStartHour: existing?.sessionStartHour ?? null,
+    sessionEndHour: existing?.sessionEndHour ?? null,
+    cutoffMinutes: existing?.protectionLockCutoffMinutes ?? null,
+  });
+
+  if (lock.isLocked) {
+    try {
+      await prisma.riskRules.upsert({
+        where: { userId: user.id },
+        // Always have a row so we can store the pending payload, but never
+        // apply edited fields on lock.
+        create: {
+          userId: user.id,
+          pendingPayloadJson: cleaned as Prisma.InputJsonValue,
+          pendingEffectiveDate: lock.nextTradingDayKey,
+        },
+        update: {
+          pendingPayloadJson: cleaned as Prisma.InputJsonValue,
+          pendingEffectiveDate: lock.nextTradingDayKey,
+        },
+      });
+    } catch (err) {
+      console.error("[rules] save pending error:", err);
+      return NextResponse.json({ error: "Failed to save rules." }, { status: 500 });
+    }
+    return NextResponse.json({
+      ok: true,
+      applied: false,
+      reason: "protection_locked",
+      effectiveDate: lock.nextTradingDayKey,
+      message:
+        "Today's rules are locked. These changes will apply next trading day.",
+    });
+  }
+
   try {
     await prisma.riskRules.upsert({
       where: { userId: user.id },
       create: { userId: user.id, ...cleaned },
-      update: cleaned,
+      update: {
+        ...cleaned,
+        // Edits while unlocked supersede any earlier pending change.
+        pendingPayloadJson: Prisma.JsonNull,
+        pendingEffectiveDate: null,
+      },
     });
 
     // Mirror enforcement-relevant fields into GuardianProfile so the live

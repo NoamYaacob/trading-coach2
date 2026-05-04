@@ -15,6 +15,12 @@
 
 import { prisma } from "@/lib/db";
 import { TradovateClient, TradovateClientError } from "./tradovate-client";
+import {
+  fetchTradovateAccountList,
+  reconcileDiscoveredAccounts,
+} from "./tradovate-discovery";
+import { getTradovateConfig } from "./tradovate-env";
+import { parseAndDecrypt } from "@/lib/security/token-crypto";
 
 export type SyncResult = {
   ok: boolean;
@@ -176,19 +182,70 @@ export async function syncTradovateAccount(
 
 /**
  * Sync all active Tradovate accounts linked to a BrokerConnection.
- * Results are returned in the same order as the DB query — accounts that
- * fail individually return ok=false entries rather than throwing.
+ *
+ * Three-step flow:
+ *  1. Discover the broker's current account list and reconcile against the DB
+ *     (creates `pending_decision` rows for new broker accounts; flags missing).
+ *  2. Sync only `protected` and `monitor_only` accounts — `pending_decision`,
+ *     `ignored`, and `archived` are skipped (they don't carry rules and the
+ *     user must opt in first).
+ *  3. Return per-account results in label order. Discovery failures don't
+ *     abort the sync — we still try the accounts we already know about.
  */
 export async function syncTradovateConnection(
   connectionId: string,
   userId: string,
-): Promise<SyncResult[]> {
+): Promise<{
+  results: SyncResult[];
+  discovery: { newlyCreatedIds: string[]; missingIds: string[]; ok: boolean };
+}> {
+  // ── 1. Discovery + reconciliation ────────────────────────────────────────
+  let discoveryOk = true;
+  let newlyCreatedIds: string[] = [];
+  let missingIds: string[] = [];
+  try {
+    const connection = await prisma.brokerConnection.findFirst({
+      where: { id: connectionId, userId },
+      select: { env: true, accessTokenEncrypted: true },
+    });
+    const cfg = getTradovateConfig();
+    if (connection && cfg.state === "ready") {
+      const accessToken = parseAndDecrypt(connection.accessTokenEncrypted);
+      const env = connection.env as "live" | "demo";
+      const discovered = await fetchTradovateAccountList(
+        cfg.config.apiBaseUrl[env],
+        accessToken,
+      );
+      if (discovered) {
+        const reconciled = await reconcileDiscoveredAccounts({
+          userId,
+          brokerConnectionId: connectionId,
+          discovered,
+        });
+        newlyCreatedIds = reconciled.newlyCreatedIds;
+        missingIds = reconciled.missingIds;
+      } else {
+        discoveryOk = false;
+      }
+    } else {
+      discoveryOk = false;
+    }
+  } catch (err) {
+    discoveryOk = false;
+    console.error("[tradovate/sync] discovery failed", {
+      connectionId,
+      msg: err instanceof Error ? err.message : "unknown",
+    });
+  }
+
+  // ── 2. Sync only protected + monitor_only accounts ──────────────────────
   const accounts = await prisma.connectedAccount.findMany({
     where: {
       brokerConnectionId: connectionId,
       userId,
       isActive: true,
       platform: "tradovate",
+      protectionStatus: { in: ["protected", "monitor_only"] },
     },
     select: { id: true },
     orderBy: { label: "asc" },
@@ -198,7 +255,7 @@ export async function syncTradovateConnection(
     accounts.map((a) => syncTradovateAccount(a.id, userId)),
   );
 
-  return settled.map((r, i): SyncResult => {
+  const results = settled.map((r, i): SyncResult => {
     if (r.status === "fulfilled") return r.value;
     return {
       ok: false,
@@ -212,4 +269,9 @@ export async function syncTradovateConnection(
         r.reason instanceof Error ? r.reason.message : "Unknown error.",
     };
   });
+
+  return {
+    results,
+    discovery: { newlyCreatedIds, missingIds, ok: discoveryOk },
+  };
 }

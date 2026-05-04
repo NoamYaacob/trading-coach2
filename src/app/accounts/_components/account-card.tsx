@@ -3,6 +3,7 @@ import type { ConnectedAccount, AccountRiskRules, LiveSessionState, GuardianInte
 import { SectionCard } from "@/components/ui/section-card";
 import { DisconnectButton } from "./disconnect-button";
 import { SyncButton } from "./sync-button";
+import { ProtectionControls } from "./protection-controls";
 
 type AccountWithRelations = ConnectedAccount & {
   riskRules: AccountRiskRules | null;
@@ -189,11 +190,13 @@ export function AccountCard({
   recentEvents,
   telegramReady,
   hasDefaultRules,
+  isLockedForToday = false,
 }: {
   account: AccountWithRelations;
   recentEvents: RecentEvent[];
   telegramReady: boolean;
   hasDefaultRules: boolean;
+  isLockedForToday?: boolean;
 }) {
   const { sessionState, riskRules, interventions } = account;
 
@@ -324,7 +327,26 @@ export function AccountCard({
               No recent activity from Tradovate — check your broker connection.
             </p>
           )}
+          {account.missingFromBrokerSince && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This account was not found in the latest broker sync. It may be closed,
+              expired, or removed by the prop firm.
+            </p>
+          )}
         </div>
+
+        {/* Protection controls */}
+        {account.platform === "tradovate" && (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <ProtectionControls
+              accountId={account.id}
+              currentStatus={account.protectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision"}
+              pendingStatus={account.pendingProtectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision" | null}
+              pendingEffectiveDate={account.pendingProtectionEffectiveDate}
+              isLocked={isLockedForToday}
+            />
+          </div>
+        )}
 
         {!hasLiveData && sessionState != null && (
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-500">

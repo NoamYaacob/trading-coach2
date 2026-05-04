@@ -7,8 +7,10 @@ import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
+import { getProtectionLockState } from "@/lib/account-protection";
 import { AccountCard } from "./_components/account-card";
 import { SyncButton } from "./_components/sync-button";
+import { ProtectionControls } from "./_components/protection-controls";
 
 export const metadata: Metadata = {
   title: "Broker Connections — Guardrail",
@@ -33,7 +35,13 @@ export default async function AccountsPage() {
 
   const [accounts, brokerConnections, telegramConnection, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
-      where: { userId: currentUser.id, isActive: true },
+      where: {
+        userId: currentUser.id,
+        isActive: true,
+        // Hide archived rows from the active management surface; ignored rows
+        // still appear so the user can re-enable them.
+        protectionStatus: { in: ["protected", "monitor_only", "ignored", "pending_decision"] },
+      },
       include: {
         riskRules: true,
         sessionState: true,
@@ -53,8 +61,15 @@ export default async function AccountsPage() {
         connectionStatus: true,
         createdAt: true,
         accounts: {
-          where: { isActive: true },
-          select: { id: true, label: true },
+          where: { isActive: true, protectionStatus: { not: "archived" } },
+          select: {
+            id: true,
+            label: true,
+            protectionStatus: true,
+            pendingProtectionStatus: true,
+            pendingProtectionEffectiveDate: true,
+            missingFromBrokerSince: true,
+          },
           orderBy: { label: "asc" },
         },
       },
@@ -66,9 +81,23 @@ export default async function AccountsPage() {
     }),
     prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
-      select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true, riskPerTrade: true },
+      select: {
+        maxDailyLoss: true,
+        maxTradesPerDay: true,
+        stopAfterLosses: true,
+        riskPerTrade: true,
+        sessionStartHour: true,
+        sessionEndHour: true,
+        protectionLockCutoffMinutes: true,
+      },
     }),
   ]);
+
+  const protectionLock = getProtectionLockState({
+    sessionStartHour: defaultRules?.sessionStartHour ?? null,
+    sessionEndHour: defaultRules?.sessionEndHour ?? null,
+    cutoffMinutes: defaultRules?.protectionLockCutoffMinutes ?? null,
+  });
 
   const hasDefaultRules = Boolean(
     defaultRules &&
@@ -115,6 +144,17 @@ export default async function AccountsPage() {
       }
     >
       <div className="grid gap-6 -mb-6 sm:mb-0">
+
+        {protectionLock.isLocked && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
+            <p className="font-medium">Protection is locked for today&apos;s session.</p>
+            <p className="mt-1 text-[13px] text-amber-700">
+              You can change account protection before the trading session starts. After the
+              cutoff, reductions and rule changes apply from the next trading day
+              ({protectionLock.nextTradingDayKey}).
+            </p>
+          </div>
+        )}
 
         {/* BrokerConnection groups */}
         {brokerConnections.length > 0 && (
@@ -170,19 +210,37 @@ export default async function AccountsPage() {
                     </div>
 
                     {bc.accounts.length > 0 && (
-                      <div className="grid gap-1.5">
+                      <div className="grid gap-2">
                         {bc.accounts.map((a) => (
                           <div
                             key={a.id}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-2.5"
+                            className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3"
                           >
-                            <span className="text-sm font-medium text-stone-900">{a.label}</span>
-                            <Link
-                              href={`/accounts/${a.id}/edit`}
-                              className="text-xs text-stone-500 transition hover:text-stone-950"
-                            >
-                              Edit
-                            </Link>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <span className="text-sm font-medium text-stone-900">{a.label}</span>
+                                {a.missingFromBrokerSince && (
+                                  <p className="mt-0.5 text-[11px] text-amber-700">
+                                    Not found in latest broker sync — may be closed or removed by the prop firm.
+                                  </p>
+                                )}
+                              </div>
+                              <Link
+                                href={`/accounts/${a.id}/edit`}
+                                className="text-xs text-stone-500 transition hover:text-stone-950"
+                              >
+                                Edit
+                              </Link>
+                            </div>
+                            <div className="mt-2">
+                              <ProtectionControls
+                                accountId={a.id}
+                                currentStatus={a.protectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision"}
+                                pendingStatus={a.pendingProtectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision" | null}
+                                pendingEffectiveDate={a.pendingProtectionEffectiveDate}
+                                isLocked={protectionLock.isLocked}
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -197,15 +255,18 @@ export default async function AccountsPage() {
         {/* Individual account cards (all active accounts) */}
         {accounts.length > 0 ? (
           <>
-            {accounts.map((account) => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                recentEvents={eventsByAccount[account.id] ?? []}
-                telegramReady={telegramReady}
-                hasDefaultRules={hasDefaultRules}
-              />
-            ))}
+            {accounts
+              .filter((a) => a.protectionStatus !== "pending_decision")
+              .map((account) => (
+                <AccountCard
+                  key={account.id}
+                  account={account}
+                  recentEvents={eventsByAccount[account.id] ?? []}
+                  telegramReady={telegramReady}
+                  hasDefaultRules={hasDefaultRules}
+                  isLockedForToday={protectionLock.isLocked}
+                />
+              ))}
           </>
         ) : (
           <SectionCard title="No broker connected yet">

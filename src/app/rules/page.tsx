@@ -7,6 +7,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
+import { getProtectionLockState } from "@/lib/account-protection";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 
@@ -45,6 +46,16 @@ export default async function RulesPage() {
   ]);
   const hasBroker = brokerCount > 0;
 
+  const protectionLock = getProtectionLockState({
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+    cutoffMinutes: riskRules?.protectionLockCutoffMinutes ?? null,
+  });
+
+  const hasPendingPayload = Boolean(
+    riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate,
+  );
+
   const initial: RulesFormValues = {
     accountSize: decToString(riskRules?.accountSize),
     maxDailyLoss: decToString(riskRules?.maxDailyLoss),
@@ -79,6 +90,22 @@ export default async function RulesPage() {
       }
     >
       <div className="grid gap-6">
+        {protectionLock.isLocked && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
+            <p className="font-medium">Today&apos;s rules are locked.</p>
+            <p className="mt-1 text-[13px] text-amber-700">
+              Saved changes will apply on the next trading day ({protectionLock.nextTradingDayKey}).
+            </p>
+          </div>
+        )}
+        {hasPendingPayload && riskRules?.pendingEffectiveDate && (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm text-sky-800">
+            <p>
+              You have rule changes pending — they apply on{" "}
+              <span className="font-semibold">{riskRules.pendingEffectiveDate}</span>.
+            </p>
+          </div>
+        )}
         <SectionCard
           title="Your trading plan"
           description="These limits decide when your session is Allowed, Warning, or Locked."

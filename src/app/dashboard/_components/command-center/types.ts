@@ -12,6 +12,13 @@ export type EnforcementMode =
 
 export type RuleSource = "account" | "default" | "none";
 
+export type ProtectionStatus =
+  | "protected"
+  | "monitor_only"
+  | "ignored"
+  | "archived"
+  | "pending_decision";
+
 export type CommandCenterAccount = {
   id: string;
   label: string;
@@ -41,6 +48,23 @@ export type CommandCenterAccount = {
   lastSyncAt: Date | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
+  protectionStatus: ProtectionStatus;
+  pendingProtectionStatus: ProtectionStatus | null;
+  pendingProtectionEffectiveDate: string | null;
+  missingFromBrokerSince: Date | null;
+  isLockedForToday: boolean;
+};
+
+export type PendingDiscoveredAccount = {
+  id: string;
+  label: string;
+  externalAccountId: string | null;
+  platform: string;
+  platformLabel: string;
+  accountType: string;
+  accountTypeLabel: string;
+  brokerConnectionId: string | null;
+  lastSeenInBrokerAt: Date | null;
 };
 
 export type CommandCenterFirmGroup = {
@@ -69,4 +93,12 @@ export type CommandCenterData = {
   groups: CommandCenterFirmGroup[];
   summary: CommandCenterSummary;
   firms: { key: string; label: string }[];
+  pendingAccounts: PendingDiscoveredAccount[];
+  protectionLock: {
+    isLocked: boolean;
+    cutoffTime: string | null;
+    tradingDayKey: string;
+    nextTradingDayKey: string;
+    hasSessionHours: boolean;
+  };
 };

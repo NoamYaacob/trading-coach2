@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
+import { NewAccountsPanel } from "./new-accounts-panel";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -101,37 +102,53 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       .filter((group) => group.accounts.length > 0);
   }, [data.groups, statusFilter, firmFilter]);
 
-  if (data.accounts.length === 0) {
+  if (data.accounts.length === 0 && data.pendingAccounts.length === 0) {
     return null;
   }
 
   return (
-    <section
-      aria-label="Risk command center"
-      className="rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
-    >
-      <FilterBar
-        statusFilter={statusFilter}
-        firmFilter={firmFilter}
-        firms={data.firms}
-        counts={data.summary.counts}
-        onStatusChange={setStatusFilter}
-        onFirmChange={setFirmFilter}
-      />
+    <div className="grid gap-4">
+      {data.pendingAccounts.length > 0 && (
+        <NewAccountsPanel
+          accounts={data.pendingAccounts}
+          isLocked={data.protectionLock.isLocked}
+        />
+      )}
+      {data.accounts.length > 0 && (
+        <section
+          aria-label="Risk command center"
+          className="rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
+        >
+          {data.protectionLock.isLocked && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] text-amber-800">
+              Protection is locked for today&apos;s session. Reductions and rule changes will apply
+              from the next trading day ({data.protectionLock.nextTradingDayKey}).
+            </div>
+          )}
+          <FilterBar
+            statusFilter={statusFilter}
+            firmFilter={firmFilter}
+            firms={data.firms}
+            counts={data.summary.counts}
+            onStatusChange={setStatusFilter}
+            onFirmChange={setFirmFilter}
+          />
 
-      <div className="mt-5 grid gap-5">
-        {filteredGroups.length === 0 ? (
-          <EmptyFilterMatch />
-        ) : (
-          filteredGroups.map((group) => <FirmSection key={group.firmKey} group={group} />)
-        )}
-      </div>
+          <div className="mt-5 grid gap-5">
+            {filteredGroups.length === 0 ? (
+              <EmptyFilterMatch />
+            ) : (
+              filteredGroups.map((group) => <FirmSection key={group.firmKey} group={group} />)
+            )}
+          </div>
 
-      <p className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
-        Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
-        flatten, lockout) is not active and requires separate verification before it can be enabled.
-      </p>
-    </section>
+          <p className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
+            Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
+            flatten, lockout) is not active and requires separate verification before it can be enabled.
+          </p>
+        </section>
+      )}
+    </div>
   );
 }
 

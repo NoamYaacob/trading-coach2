@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -8,6 +9,7 @@ import {
   buildNoRevocationResult,
   platformHasRevocationEndpoint,
 } from "@/lib/brokers/tradovate-disconnect";
+import { getProtectionLockState } from "@/lib/account-protection";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -91,20 +93,66 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     },
   });
 
+  let rulesLockResult:
+    | { applied: false; reason: "protection_locked"; effectiveDate: string; message: string }
+    | null = null;
+
   if (body.riskRules !== undefined) {
-    if (body.riskRules === null) {
+    // Check the user's protection-lock state before mutating account rules.
+    const userRules = await prisma.riskRules.findUnique({
+      where: { userId: currentUser.id },
+      select: {
+        sessionStartHour: true,
+        sessionEndHour: true,
+        protectionLockCutoffMinutes: true,
+      },
+    });
+    const lock = getProtectionLockState({
+      sessionStartHour: userRules?.sessionStartHour ?? null,
+      sessionEndHour: userRules?.sessionEndHour ?? null,
+      cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
+    });
+
+    if (lock.isLocked) {
+      // Save the requested change as a pending payload that will apply on
+      // the next trading day. Do NOT mutate AccountRiskRules columns now.
+      const payload =
+        body.riskRules === null ? { __delete: true } : riskRulesData(body.riskRules);
+      await prisma.accountRiskRules.upsert({
+        where: { accountId: id },
+        create: {
+          accountId: id,
+          pendingPayloadJson: payload as Prisma.InputJsonValue,
+          pendingEffectiveDate: lock.nextTradingDayKey,
+        },
+        update: {
+          pendingPayloadJson: payload as Prisma.InputJsonValue,
+          pendingEffectiveDate: lock.nextTradingDayKey,
+        },
+      });
+      rulesLockResult = {
+        applied: false,
+        reason: "protection_locked",
+        effectiveDate: lock.nextTradingDayKey,
+        message: "Today's rules are locked. These changes will apply next trading day.",
+      };
+    } else if (body.riskRules === null) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });
     } else {
       const data = riskRulesData(body.riskRules);
       await prisma.accountRiskRules.upsert({
         where: { accountId: id },
         create: { accountId: id, ...data },
-        update: data,
+        update: {
+          ...data,
+          pendingPayloadJson: Prisma.JsonNull,
+          pendingEffectiveDate: null,
+        },
       });
     }
   }
 
-  return NextResponse.json({ account });
+  return NextResponse.json({ account, rulesLock: rulesLockResult });
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {

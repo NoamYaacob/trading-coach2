@@ -48,6 +48,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   function update<K extends keyof RulesFormValues>(key: K, value: RulesFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -91,14 +92,29 @@ export function RulesForm({ initial, hasBroker }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        applied?: boolean;
+        reason?: string;
+        message?: string;
+        effectiveDate?: string;
+        error?: string;
+      };
       if (!res.ok) {
         if (res.status === 429) {
           throw new Error("Saving too quickly. Please wait a moment and try again.");
         }
         throw new Error(data.error ?? "Failed to save rules.");
       }
-      setSavedAt(new Date());
+      if (data.applied === false && data.message) {
+        // Saved as pending — surface the message to the user instead of
+        // pretending the change took effect today.
+        setError(null);
+        setPendingMessage(data.message);
+      } else {
+        setPendingMessage(null);
+        setSavedAt(new Date());
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save rules.");
@@ -271,8 +287,11 @@ export function RulesForm({ initial, hasBroker }: Props) {
         <span className="text-xs text-stone-500">
           Changes apply to the next trade you log.
         </span>
-        {savedAt && (
+        {savedAt && !pendingMessage && (
           <span className="text-xs text-emerald-700">Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</span>
+        )}
+        {pendingMessage && (
+          <span className="text-xs text-amber-700">{pendingMessage}</span>
         )}
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>

@@ -30,7 +30,10 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const results = await syncTradovateConnection(connectionId, currentUser.id);
+  const { results, discovery } = await syncTradovateConnection(
+    connectionId,
+    currentUser.id,
+  );
   const allOk = results.every((r) => r.ok);
 
   return NextResponse.json({
@@ -42,5 +45,10 @@ export async function POST(
       lastSyncAt: r.lastSyncAt,
       errorCode: r.errorCode,
     })),
+    discovery: {
+      ok: discovery.ok,
+      newAccountsCount: discovery.newlyCreatedIds.length,
+      missingCount: discovery.missingIds.length,
+    },
   });
 }

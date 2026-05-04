@@ -171,6 +171,13 @@ model RiskRules {
   onBreachAppLock       Boolean  @default(true)
   onBreachCancelOrders  Boolean  @default(false)
   onBreachFlatten       Boolean  @default(false)
+  // Protection-lock cutoff: how many minutes before session start the user can
+  // still change account protection / rule limits for today's session.
+  protectionLockCutoffMinutes Int @default(5)
+  // Pending rule changes saved after the cutoff — applied when the next trading
+  // day starts. JSON payload mirrors the editable fields above.
+  pendingPayloadJson    Json?
+  pendingEffectiveDate  String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -416,6 +423,19 @@ model ConnectedAccount {
   balance               Decimal?         @db.Decimal(14, 2)
   cashBalance           Decimal?         @db.Decimal(14, 2)
   openPnl               Decimal?         @db.Decimal(10, 2)
+  // ── Protection layer ──────────────────────────────────────────────────
+  // protectionStatus: protected | monitor_only | ignored | archived | pending_decision
+  // pending_decision: newly discovered broker account awaiting user choice.
+  // Existing accounts are migrated to "protected" — they were already in use.
+  protectionStatus              String   @default("protected")
+  // Pending change saved after today's cutoff; applies on its effective date.
+  pendingProtectionStatus       String?
+  pendingProtectionEffectiveDate String?
+  // Sync-discovery tracking: set every time the broker returns this account.
+  lastSeenInBrokerAt            DateTime?
+  // Cleared on the first sync that re-finds it; set when broker omits the
+  // account from /account/list. Used to surface "missing from broker" copy.
+  missingFromBrokerSince        DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -425,9 +445,11 @@ model ConnectedAccount {
   sessionState      LiveSessionState?
   tradeEvents       NormalizedTradeEvent[]
   interventions     GuardianIntervention[]
+  dailyProtections  DailyAccountProtection[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
+  @@index([userId, protectionStatus])
 }
 
 model AccountRiskRules {
@@ -439,10 +461,35 @@ model AccountRiskRules {
   stopAfterLosses  Int?
   allowedStartHour Int?
   allowedEndHour   Int?
+  // Pending rule changes saved after the cutoff — applied when the next
+  // trading day starts. JSON mirrors the editable fields above.
+  pendingPayloadJson    Json?
+  pendingEffectiveDate  String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   account          ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// Daily snapshot of an account's protection state — locked at the cutoff time.
+// Once `lockedAt` is set, the user cannot reduce protection for `tradingDay`;
+// changes are saved to ConnectedAccount.pendingProtectionStatus instead.
+model DailyAccountProtection {
+  id                  String           @id @default(cuid())
+  userId              String
+  connectedAccountId  String
+  tradingDay          String           // YYYY-MM-DD in user's timezone
+  protectionStatus    String           // snapshot of "protected" | "monitor_only" | "ignored" at lock time
+  ruleSource          String           // "default_trading_plan" | "account_specific" | "monitor_only" | "none"
+  lockedAt            DateTime?
+  canChangeUntil      DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  account             ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([connectedAccountId, tradingDay])
+  @@index([userId, tradingDay])
 }
 
 model LiveSessionState {

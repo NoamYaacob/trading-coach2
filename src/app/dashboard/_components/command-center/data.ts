@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 
+import { getProtectionLockState } from "@/lib/account-protection";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -7,6 +8,8 @@ import type {
   CommandCenterFirmGroup,
   CommandCenterSummary,
   EnforcementMode,
+  PendingDiscoveredAccount,
+  ProtectionStatus,
   RuleSource,
 } from "./types";
 
@@ -126,7 +129,13 @@ function emptyCounts(): Record<AccountStatus, number> {
 export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
   const [accounts, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
-      where: { userId, isActive: true },
+      where: {
+        userId,
+        isActive: true,
+        // Active dashboard hides ignored + archived. Pending decision is
+        // surfaced in a dedicated panel, not in the main accounts list.
+        protectionStatus: { in: ["protected", "monitor_only"] },
+      },
       include: {
         riskRules: true,
         sessionState: true,
@@ -139,6 +148,27 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     }),
     prisma.riskRules.findUnique({ where: { userId } }),
   ]);
+
+  // Pending-decision rows: rendered in a separate "New accounts found" panel.
+  const pendingRows = await prisma.connectedAccount.findMany({
+    where: { userId, isActive: true, protectionStatus: "pending_decision" },
+    select: {
+      id: true,
+      label: true,
+      externalAccountId: true,
+      platform: true,
+      accountType: true,
+      brokerConnectionId: true,
+      lastSeenInBrokerAt: true,
+    },
+    orderBy: { lastSeenInBrokerAt: "desc" },
+  });
+
+  const protectionLock = getProtectionLockState({
+    sessionStartHour: defaultRules?.sessionStartHour ?? null,
+    sessionEndHour: defaultRules?.sessionEndHour ?? null,
+    cutoffMinutes: defaultRules?.protectionLockCutoffMinutes ?? null,
+  });
 
   const defaultMaxDailyLoss =
     defaultRules?.maxDailyLoss != null ? Number(defaultRules.maxDailyLoss) : null;
@@ -259,6 +289,12 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       lastSyncAt: account.lastSyncAt,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
+      protectionStatus: account.protectionStatus as ProtectionStatus,
+      pendingProtectionStatus:
+        (account.pendingProtectionStatus as ProtectionStatus | null) ?? null,
+      pendingProtectionEffectiveDate: account.pendingProtectionEffectiveDate ?? null,
+      missingFromBrokerSince: account.missingFromBrokerSince,
+      isLockedForToday: protectionLock.isLocked,
     };
   });
 
@@ -324,5 +360,30 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
   const firms = groups.map((g) => ({ key: g.firmKey, label: g.firmLabel }));
 
-  return { accounts: computed, groups, summary, firms };
+  const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => ({
+    id: p.id,
+    label: p.label,
+    externalAccountId: p.externalAccountId,
+    platform: p.platform,
+    platformLabel: PLATFORM_LABEL[p.platform] ?? p.platform,
+    accountType: p.accountType,
+    accountTypeLabel: ACCOUNT_TYPE_LABEL[p.accountType] ?? p.accountType,
+    brokerConnectionId: p.brokerConnectionId,
+    lastSeenInBrokerAt: p.lastSeenInBrokerAt,
+  }));
+
+  return {
+    accounts: computed,
+    groups,
+    summary,
+    firms,
+    pendingAccounts,
+    protectionLock: {
+      isLocked: protectionLock.isLocked,
+      cutoffTime: protectionLock.cutoffTime ? protectionLock.cutoffTime.toISOString() : null,
+      tradingDayKey: protectionLock.tradingDayKey,
+      nextTradingDayKey: protectionLock.nextTradingDayKey,
+      hasSessionHours: protectionLock.hasSessionHours,
+    },
+  };
 }
