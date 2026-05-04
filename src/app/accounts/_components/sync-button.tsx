@@ -20,11 +20,31 @@ function relativeTime(date: Date): string {
   }).format(date);
 }
 
+function RotateIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      className={`h-3 w-3 shrink-0 ${spinning ? "animate-spin" : ""}`}
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12.5 7a5.5 5.5 0 1 1-1.08-3.3" />
+      <polyline points="12.5 2 12.5 5.5 9 5.5" />
+    </svg>
+  );
+}
+
 type Props = {
   accountId?: string;
   connectionId?: string;
   lastSyncAt: Date | null;
-  fullWidth?: boolean;
+  /** "default" = standard bordered button (desktop/connection pages).
+   *  "compact" = icon+text inline action with muted sync time (mobile cards). */
+  variant?: "default" | "compact";
 };
 
 /**
@@ -32,7 +52,7 @@ type Props = {
  * Pass `accountId` for a single account, `connectionId` to refresh all
  * accounts linked to a BrokerConnection. Exactly one must be provided.
  */
-export function SyncButton({ accountId, connectionId, lastSyncAt, fullWidth = false }: Props) {
+export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "default" }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(lastSyncAt);
@@ -74,17 +94,38 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, fullWidth = fa
     }
   }
 
+  if (variant === "compact") {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={syncing}
+          aria-label="Refresh account data"
+          className="inline-flex items-center gap-1 text-[11px] text-stone-400 transition hover:text-stone-700 disabled:opacity-40"
+        >
+          <RotateIcon spinning={syncing} />
+          {syncing ? "Refreshing…" : "Refresh"}
+        </button>
+        {lastSync && !error && (
+          <span className="ml-auto text-[10px] text-stone-400">
+            Synced {relativeTime(lastSync)}
+          </span>
+        )}
+        {error && (
+          <span className="ml-auto text-[10px] text-red-500">{error}</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <button
         type="button"
         onClick={handleSync}
         disabled={syncing}
-        className={`items-center gap-1.5 border border-stone-200 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:opacity-50 ${
-          fullWidth
-            ? "flex w-full justify-center rounded-xl py-2"
-            : "inline-flex rounded-full px-3.5 py-1.5"
-        }`}
+        className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-3.5 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:opacity-50"
       >
         {syncing ? (
           <>

@@ -533,53 +533,52 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
 
       {/* Footer: meta + actions */}
       <div className="mt-2.5 border-t border-stone-100 pt-2">
-        {/* Rule source & enforcement */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-500">
+        {/* Rule source & enforcement — muted metadata */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
           <span>{RULE_SOURCE_LABEL[account.ruleSource]}</span>
           <span aria-hidden>·</span>
           <EnforcementChip mode={account.enforcementMode} />
           {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
             <>
               <span aria-hidden>·</span>
-              <span className="text-amber-700">
+              <span className="text-amber-600">
                 Streak {account.consecutiveLosses}
-                {account.stopAfterLosses != null ? ` / ${account.stopAfterLosses}` : ""}
+                {account.stopAfterLosses != null ? `/${account.stopAfterLosses}` : ""}
               </span>
             </>
           )}
         </div>
 
-        {/* Nav pills — Open + Rules on one row */}
+        {/* Nav actions + reconnect on one row */}
         <div className="mt-2 flex items-center gap-1.5">
           <Link
             href={`/accounts/${account.id}/edit`}
-            className="inline-flex h-7 items-center rounded-full border border-stone-200 px-3 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+            className="inline-flex items-center rounded-md border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Open
           </Link>
           <Link
             href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-            className="inline-flex h-7 items-center rounded-full border border-stone-200 px-3 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+            className="inline-flex items-center rounded-md border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Rules
           </Link>
-        </div>
-
-        {/* Full-width action below */}
-        {reconnectNeeded ? (
-          <div className="mt-2">
+          {reconnectNeeded && (
             <Link
               href="/accounts/connect/tradovate"
-              className="flex w-full items-center justify-center rounded-xl border border-stone-200 py-2 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+              className="ml-auto inline-flex items-center rounded-md bg-stone-900 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-700"
             >
               Reconnect
             </Link>
+          )}
+        </div>
+
+        {/* Refresh / last sync — compact secondary action */}
+        {account.platform === "tradovate" && !reconnectNeeded && (
+          <div className="mt-1.5">
+            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} variant="compact" />
           </div>
-        ) : account.platform === "tradovate" ? (
-          <div className="mt-2">
-            <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} fullWidth />
-          </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
