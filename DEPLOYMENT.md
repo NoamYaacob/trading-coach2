@@ -166,21 +166,35 @@ Generate a secret:
 openssl rand -base64 32
 ```
 
-### Scheduling on Railway
+### Scheduling on Railway (recommended)
 
-Railway cron jobs are created as a separate **Cron** service in the dashboard:
+The project ships `scripts/cron-tradovate-sync.mjs` — a tiny Node.js script that
+calls the endpoint using built-in `fetch`. No extra packages or `curl` required.
 
-1. In your Railway project → **New** → **Cron Job**
-2. Set the command to:
-   ```
-   curl -s -X POST https://<your-domain>/api/cron/tradovate-sync \
-     -H "x-cron-secret: $CRON_SECRET" \
-     -H "Content-Type: application/json"
-   ```
-3. Set the schedule: `*/5 * * * *` (every 5 minutes). Tighten to `*/2 * * * *` during active market hours if needed.
-4. Add `CRON_SECRET` as a variable on the Cron service (same value as on the app service).
+**One-time setup:**
 
-Alternatively, use an external scheduler (e.g. cron-job.org, Upstash QStash) with the same POST + header.
+1. In your Railway project → **New** → **Empty Service** (or "Cron Job" if available)
+2. Connect it to the same repository
+3. Set the **Start Command**: `npm run cron:sync`
+4. Set the **Deploy Trigger** / **Schedule**: `*/5 * * * *`
+5. Add these variables on the Cron service:
+
+   | Variable | Value |
+   |---|---|
+   | `APP_URL` | `https://guardrail-trade.com` |
+   | `CRON_SECRET` | Same value as on the app service |
+
+The script exits with code 1 on any failure (network error, wrong status, missing env),
+so Railway marks the cron run as failed and surfaces it in the dashboard.
+
+**Test before enabling the schedule:**
+```bash
+APP_URL=https://guardrail-trade.com CRON_SECRET=<your-secret> npm run cron:sync
+# Expected: [cron] Done — synced: 0 skipped: <n> failed: 0
+```
+
+Alternatively, use an external scheduler (cron-job.org, Upstash QStash) with the same
+POST + `x-cron-secret` header if you prefer zero-code setup.
 
 ### Scheduling on Vercel
 
@@ -414,21 +428,20 @@ If the response has a `warnings` array, address each one before continuing. A `N
 
 ### 6. Cron job
 
-- [ ] In the Railway project → **New** → **Cron Job**
-- [ ] Command:
-  ```
-  curl -s -X POST https://<your-domain>/api/cron/tradovate-sync \
-    -H "x-cron-secret: $CRON_SECRET"
-  ```
+- [ ] Railway project → **New** → **Empty Service**, connected to this repo
+- [ ] Start Command: `npm run cron:sync`
 - [ ] Schedule: `*/5 * * * *`
-- [ ] Add `CRON_SECRET` variable on the Cron service (same value as the app service)
-- [ ] Verify manually:
+- [ ] Variables on the Cron service: `APP_URL=https://<your-domain>`, `CRON_SECRET=<same value as app service>`
+- [ ] Test locally before enabling:
   ```bash
-  curl -s -X POST https://<your-domain>/api/cron/tradovate-sync \
-    -H "x-cron-secret: <CRON_SECRET>" | jq .
-  # Expected: {"ok":true,"synced":0,"skipped":<n>}
+  APP_URL=https://<your-domain> CRON_SECRET=<secret> npm run cron:sync
+  # Expected: [cron] Done — synced: 0 skipped: <n> failed: 0
   ```
-- [ ] Verify auth check: `curl -s -X POST https://<your-domain>/api/cron/tradovate-sync` returns `{"error":"unauthorized"}` with HTTP 401
+- [ ] Verify auth check: an unauthenticated POST returns HTTP 401
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" -X POST https://<your-domain>/api/cron/tradovate-sync
+  # Expected: 401
+  ```
 
 ### 7. Smoke test
 
