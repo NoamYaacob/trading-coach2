@@ -103,8 +103,12 @@ export function DisconnectButton({
 
     try {
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to disconnect.");
+      const data = (await res.json()) as { error?: string; message?: string };
+      if (!res.ok) {
+        throw new Error(
+          data.message ?? data.error ?? "Failed to disconnect.",
+        );
+      }
       setShowDialog(false);
       router.push(redirectTo);
       router.refresh();

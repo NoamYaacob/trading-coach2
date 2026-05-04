@@ -29,7 +29,7 @@ export function NewAccountsPanel({ accounts, isLocked }: Props) {
         </div>
         {isLocked && (
           <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-medium text-amber-700">
-            Locked for today — protection starts next trading day
+            Session is locked — first-time choices apply immediately
           </span>
         )}
       </header>
@@ -72,6 +72,7 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
         status: data.status ?? status,
         effectiveDate: data.effectiveDate,
       });
+      window.location.reload();
     } catch {
       setError("Network error. Please try again.");
     } finally {

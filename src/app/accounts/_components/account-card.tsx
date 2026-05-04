@@ -157,30 +157,28 @@ function deriveEnforcementMode(
       style: "text-amber-700 bg-amber-50 border-amber-200",
     };
   }
-  if (!hasAccountRules && !hasDefaultRules) {
+  const hasAnyRules = hasAccountRules || hasDefaultRules;
+  if (!hasAnyRules) {
     return {
       label: "Monitoring only",
       detail: "No rules configured — events are logged but nothing is enforced.",
       style: "text-stone-600 bg-stone-50 border-stone-200",
     };
   }
-  if (!hasAccountRules && hasDefaultRules) {
-    return {
-      label: "Monitoring only",
-      detail: "Using default trading plan. Account-specific rules not set.",
-      style: "text-stone-600 bg-stone-50 border-stone-200",
-    };
-  }
   if (!hasLiveData) {
     return {
       label: "Monitoring only",
-      detail: "Account rules configured — awaiting first live event.",
+      detail: hasAccountRules
+        ? "Account rules configured — awaiting first live event."
+        : "Using default trading plan — awaiting first live event.",
       style: "text-stone-600 bg-stone-50 border-stone-200",
     };
   }
   return {
     label: "Monitoring active",
-    detail: "Watching every trade. Rule alerts fire when limits are hit. Broker-side enforcement is not active.",
+    detail: hasAccountRules
+      ? "Watching every trade. Rule alerts fire when limits are hit. Broker-side enforcement is not active."
+      : "Watching every trade using your default trading plan. Broker-side enforcement is not active.",
     style: "text-emerald-700 bg-emerald-50 border-emerald-200",
   };
 }
@@ -271,10 +269,10 @@ export function AccountCard({
               {connStatus.label}
             </span>
             {account.platform === "tradovate" &&
-            account.connectionStatus !== "connected_live" && (
+            account.connectionStatus !== "connected_live" &&
+            account.connectionStatus !== "connected_readonly" && (
               <Link
                 href={
-                  account.connectionStatus === "connected_readonly" ||
                   account.connectionStatus === "expired"
                     ? `/accounts/connect/tradovate`
                     : `/accounts/${account.id}/edit`
@@ -286,11 +284,9 @@ export function AccountCard({
                   : account.connectionStatus === "connection_error" ||
                       account.connectionStatus === "expired"
                     ? "Re-authorize Tradovate"
-                    : account.connectionStatus === "connected_readonly"
-                      ? "Re-authorize"
-                      : !hasAnyRule
-                        ? "Configure rules"
-                        : "Manage connection"}
+                    : !hasAnyRule
+                      ? "Configure rules"
+                      : "Manage connection"}
               </Link>
             )}
           </div>

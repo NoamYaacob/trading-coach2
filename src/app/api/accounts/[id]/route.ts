@@ -170,6 +170,31 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Block disconnecting a protected account while the trading session is locked.
+  // Doing so during active hours would remove live data from an account the user
+  // explicitly opted into protecting for today.
+  if (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only") {
+    const userRules = await prisma.riskRules.findUnique({
+      where: { userId: currentUser.id },
+      select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },
+    });
+    const lock = getProtectionLockState({
+      sessionStartHour: userRules?.sessionStartHour ?? null,
+      sessionEndHour: userRules?.sessionEndHour ?? null,
+      cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
+    });
+    if (lock.isLocked) {
+      return NextResponse.json(
+        {
+          error: "protection_locked",
+          message:
+            "This account is protected during today's trading session. Disconnect is blocked until the session ends.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const revokeAttempted = platformHasRevocationEndpoint(existing.platform);
   const revokeSucceeded = false;
 
