@@ -41,6 +41,8 @@ import {
   mapSide,
   parseSnapshotItems,
   computeSnapshotBalance,
+  extractFillTimestamp,
+  fillMatchesAccount,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -106,14 +108,29 @@ type TvOrder = {
 
 type TvFill = {
   id: number;
-  accountId: number;
   orderId: number;
   contractId: number;
-  timestamp: string;
-  action: "Buy" | "Sell";
-  qty: number;
-  price: number;
+  // Account identification — accountId may be absent; accountSpec is the string alternative
+  accountId?: number;
+  accountSpec?: string;
+  // Multiple possible timestamp field names across Tradovate API versions
+  timestamp?: string;
+  tradeDate?: { year: number; month: number; day: number } | string;
+  time?: string;
+  tradeTime?: string;
+  // Side — either field name may appear
+  action?: "Buy" | "Sell";
+  side?: "Buy" | "Sell";
+  // Quantity
+  qty?: number;
+  size?: number;
+  // Price
+  price?: number;
+  // P&L — multiple possible field names
   profit?: number | null;
+  pnl?: number | null;
+  realizedPnL?: number | null;
+  realizedPnl?: number | null;
   commission?: number | null;
 };
 
@@ -700,27 +717,107 @@ export class TradovateClient {
   }
 
   /**
-   * Today's fills (UTC date boundary), filtered to this account's tvAccountId.
-   * Uses parseSnapshotItems to handle all Tradovate response shapes.
+   * Today's completed (fully filled) orders, filtered to this account.
+   * Each completed order corresponds to one user-facing trade.
+   *
+   * Preferred over fill/list for trade counting because orders reliably
+   * carry accountId as a direct field.
+   */
+  async getCompletedOrdersToday(): Promise<TvOrder[]> {
+    const raw = await this.#request<unknown>("order/list");
+    const all = parseSnapshotItems<TvOrder>(raw);
+    const todayPrefix = new Date().toISOString().slice(0, 10);
+
+    const todayCompleted = all.filter(
+      (o) =>
+        (o.ordStatus === "Completed" || o.ordStatus === "Filled") &&
+        o.timestamp.startsWith(todayPrefix),
+    );
+
+    const filtered =
+      this.#tvAccountId !== null
+        ? todayCompleted.filter((o) => o.accountId === this.#tvAccountId)
+        : todayCompleted;
+
+    console.info("[tradovate/orders] completed today", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      totalOrders: all.length,
+      completedToday: todayCompleted.length,
+      filteredCount: filtered.length,
+    });
+
+    return filtered;
+  }
+
+  /**
+   * Today's fills, using the most permissive filters possible to avoid
+   * silently dropping items when Tradovate omits account/date fields.
+   *
+   * Account filter: checks accountId (number) → accountSpec (string ending
+   * with tvAccountId) → includes all (assumes already-scoped response).
+   *
+   * Date filter: checks timestamp, time, tradeTime, executionTime, tradeDate
+   * (object or string). When none of those fields exist, includes the fill.
    */
   async getFills(): Promise<TvFill[]> {
     const raw = await this.#request<unknown>("fill/list");
     const all = parseSnapshotItems<TvFill>(raw);
     const todayPrefix = new Date().toISOString().slice(0, 10);
-    const todayFills = all.filter((f) => f.timestamp.startsWith(todayPrefix));
+
+    // Log raw item fields for the first fill (and the second if present) so
+    // server logs reveal the exact field names Tradovate is returning.
+    const samplesToLog = Math.min(all.length, 2);
+    for (let i = 0; i < samplesToLog; i++) {
+      const s = all[i] as Record<string, unknown>;
+      console.info("[tradovate/fills] raw item", {
+        accountId: this.#accountId,
+        sampleIndex: i,
+        keys: Object.keys(s),
+        id: s.id,
+        orderId: s.orderId,
+        fillAccountId: s.accountId,
+        accountSpec: s.accountSpec,
+        timestamp: s.timestamp,
+        tradeDate: s.tradeDate,
+        time: s.time,
+        action: s.action,
+        side: s.side,
+        qty: s.qty,
+        size: s.size,
+        profit: s.profit,
+        pnl: s.pnl,
+        realizedPnL: s.realizedPnL,
+      });
+    }
+
+    const todayFills = all.filter((f) => {
+      const ts = extractFillTimestamp(f as Record<string, unknown>);
+      if (ts == null) return true; // no date field — include it
+      return ts.startsWith(todayPrefix);
+    });
+
     const filtered =
       this.#tvAccountId !== null
-        ? todayFills.filter((f) => f.accountId === this.#tvAccountId)
+        ? todayFills.filter((f) =>
+            fillMatchesAccount(f as Record<string, unknown>, this.#tvAccountId!),
+          )
         : todayFills;
-    console.info("[tradovate/fills]", {
+
+    console.info("[tradovate/fills] summary", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       datePrefix: todayPrefix,
-      responseShape: Array.isArray(raw) ? "bare_array" : raw !== null && typeof raw === "object" ? "wrapped_object" : "other",
+      responseShape: Array.isArray(raw)
+        ? "bare_array"
+        : raw !== null && typeof raw === "object"
+          ? "wrapped_object"
+          : "other",
       rawCount: all.length,
       todayCount: todayFills.length,
       filteredCount: filtered.length,
     });
+
     return filtered;
   }
 
@@ -911,17 +1008,26 @@ export class TradovateClient {
     const ids = [...new Set(fills.map((f) => f.contractId))];
     const contractMap = await this.resolveContracts(ids);
 
-    return fills.map(
-      (f): BrokerExecution => ({
-        executionId: String(f.id),
-        orderId: String(f.orderId),
-        symbol: contractMap.get(f.contractId) ?? String(f.contractId),
-        side: mapSide(f.action),
-        quantity: f.qty,
-        price: f.price,
-        pnl: f.profit ?? null,
-        occurredAt: new Date(f.timestamp),
-      }),
-    );
+    return fills
+      .map((f): BrokerExecution | null => {
+        const action = f.action ?? f.side;
+        if (!action) return null; // skip fills with no side info
+        const qty = f.qty ?? f.size;
+        if (qty == null) return null;
+        const price = f.price;
+        if (price == null) return null;
+        const ts = f.timestamp ?? f.time ?? f.tradeTime;
+        return {
+          executionId: String(f.id),
+          orderId: String(f.orderId),
+          symbol: contractMap.get(f.contractId) ?? String(f.contractId),
+          side: mapSide(action),
+          quantity: qty,
+          price,
+          pnl: f.profit ?? f.pnl ?? f.realizedPnL ?? f.realizedPnl ?? null,
+          occurredAt: ts ? new Date(ts) : new Date(),
+        };
+      })
+      .filter((e): e is BrokerExecution => e !== null);
   }
 }

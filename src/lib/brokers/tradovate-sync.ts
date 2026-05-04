@@ -107,24 +107,48 @@ export async function syncTradovateAccount(
       },
     });
 
-    // ── Today's fills → NormalizedTradeEvent (best-effort) ─────────────────
+    // ── Today's trades and fills ──────────────────────────────────────────────
     let tradesCount = 0;
     let pnlFromFills: number | null = null;
     let fillsSyncedAt: Date | null = null;
+
+    // Phase A: count completed orders (reliable accountId filtering)
+    try {
+      const completedOrders = await client.getCompletedOrdersToday();
+      tradesCount = completedOrders.length;
+      fillsSyncedAt = new Date(); // mark that trade count is confirmed
+      console.info("[tradovate/trades] count from completed orders", {
+        accountId,
+        tradesCount,
+        orderIds: completedOrders.map((o) => o.id),
+      });
+    } catch (ordErr) {
+      console.warn("[tradovate/trades] completed orders failed, will try fills", {
+        accountId,
+        error: ordErr instanceof Error ? ordErr.message : "unknown",
+      });
+    }
+
+    // Phase B: fills for P&L backup and NormalizedTradeEvent storage
     try {
       const executions = await client.toExecutions();
-      // Group fills by orderId to count user-facing trades (not raw fill legs).
-      const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
-      tradesCount = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
       pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
-      fillsSyncedAt = new Date();
+      // If Phase A failed, use fills as fallback for trade count
+      if (fillsSyncedAt == null) {
+        const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
+        tradesCount = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
+        fillsSyncedAt = new Date();
+        console.info("[tradovate/trades] count from fills (fallback)", {
+          accountId,
+          rawFillCount: executions.length,
+          distinctOrders: distinctOrderIds.size,
+          tradesCount,
+        });
+      }
       console.info("[tradovate/fills] today's executions", {
         accountId,
-        rawFillCount: executions.length,
-        distinctOrders: distinctOrderIds.size,
-        tradesCount,
+        count: executions.length,
         pnlFromFills,
-        countMethod: distinctOrderIds.size > 0 ? "grouped_by_order" : "raw_fills_fallback",
       });
       for (const ex of executions) {
         const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
@@ -148,8 +172,8 @@ export async function syncTradovateAccount(
         }
       }
     } catch {
-      // Fill persistence is best-effort; a failure here does not fail the sync.
-      // fillsSyncedAt remains null — UI will show "Unavailable" for trade count.
+      // Fill storage is best-effort. If Phase A also failed, fillsSyncedAt
+      // remains null — the UI will show "Trades unavailable" instead of 0.
     }
 
     // Persist fillsSyncedAt separately (it's set inside the try block above).

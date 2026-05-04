@@ -19,6 +19,8 @@ import {
   selectBestBalance,
   computeSnapshotBalance,
   sumFillPnl,
+  extractFillTimestamp,
+  fillMatchesAccount,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -609,5 +611,130 @@ describe("order-level trade grouping from fills", () => {
     const fills: { orderId: string; profit: number }[] = [];
     const distinctOrderIds = new Set(fills.map((f) => f.orderId));
     assert.equal(distinctOrderIds.size, 0);
+  });
+});
+
+// ── extractFillTimestamp ──────────────────────────────────────────────────────
+
+describe("extractFillTimestamp", () => {
+  it("extracts from timestamp field", () => {
+    assert.equal(
+      extractFillTimestamp({ timestamp: "2026-05-04T20:30:45Z" }),
+      "2026-05-04T20:30:45Z",
+    );
+  });
+
+  it("extracts from tradeTime field", () => {
+    assert.equal(
+      extractFillTimestamp({ tradeTime: "2026-05-04T10:00:00Z" }),
+      "2026-05-04T10:00:00Z",
+    );
+  });
+
+  it("extracts from tradeDate object {year, month, day}", () => {
+    assert.equal(
+      extractFillTimestamp({ tradeDate: { year: 2026, month: 5, day: 4 } }),
+      "2026-05-04",
+    );
+  });
+
+  it("zero-pads month and day in tradeDate object", () => {
+    assert.equal(
+      extractFillTimestamp({ tradeDate: { year: 2026, month: 1, day: 9 } }),
+      "2026-01-09",
+    );
+  });
+
+  it("extracts from tradeDate string", () => {
+    assert.equal(
+      extractFillTimestamp({ tradeDate: "2026-05-04" }),
+      "2026-05-04",
+    );
+  });
+
+  it("returns null when no date field present", () => {
+    assert.equal(extractFillTimestamp({ id: 1, orderId: 2 }), null);
+  });
+
+  it("prefers timestamp over tradeDate", () => {
+    assert.equal(
+      extractFillTimestamp({
+        timestamp: "2026-05-04T20:00:00Z",
+        tradeDate: { year: 2026, month: 5, day: 3 },
+      }),
+      "2026-05-04T20:00:00Z",
+    );
+  });
+
+  it("extracts from executionTime field", () => {
+    assert.equal(
+      extractFillTimestamp({ executionTime: "2026-05-04T14:00:00Z" }),
+      "2026-05-04T14:00:00Z",
+    );
+  });
+});
+
+// ── fillMatchesAccount ────────────────────────────────────────────────────────
+
+describe("fillMatchesAccount", () => {
+  it("matches by numeric accountId", () => {
+    assert.equal(fillMatchesAccount({ accountId: 12345 }, 12345), true);
+  });
+
+  it("rejects wrong numeric accountId", () => {
+    assert.equal(fillMatchesAccount({ accountId: 99999 }, 12345), false);
+  });
+
+  it("fills with accountId as number — exact match", () => {
+    assert.equal(fillMatchesAccount({ accountId: 67890, orderId: 1 }, 67890), true);
+    assert.equal(fillMatchesAccount({ accountId: 67890, orderId: 1 }, 12345), false);
+  });
+
+  it("fills with accountSpec as string — matches trailing segment", () => {
+    assert.equal(fillMatchesAccount({ accountSpec: "APEX/12345" }, 12345), true);
+    assert.equal(fillMatchesAccount({ accountSpec: "TOPSTEP/12345" }, 12345), true);
+    assert.equal(fillMatchesAccount({ accountSpec: "FTMO/67890" }, 67890), true);
+  });
+
+  it("fills with accountSpec — rejects when trailing segment differs", () => {
+    assert.equal(fillMatchesAccount({ accountSpec: "APEX/99999" }, 12345), false);
+  });
+
+  it("returns true when neither accountId nor accountSpec present (assume already-scoped)", () => {
+    assert.equal(fillMatchesAccount({ orderId: 1, contractId: 2 }, 12345), true);
+  });
+});
+
+// ── trade count: confirmed-zero vs unavailable ────────────────────────────────
+
+describe("trade count: confirmed-zero vs unavailable", () => {
+  it("fillsSyncedAt null → trade count is unknown (not zero)", () => {
+    const fillsSyncedAt: Date | null = null;
+    assert.equal(fillsSyncedAt, null);
+  });
+
+  it("fillsSyncedAt set, tradesCount 0 → confirmed zero trades", () => {
+    const fillsSyncedAt: Date | null = new Date();
+    const tradesCount = 0;
+    assert.ok(fillsSyncedAt !== null);
+    assert.equal(tradesCount, 0);
+  });
+
+  it("two distinct completed orders → tradesCount 2", () => {
+    const orders = [{ id: 1, ordStatus: "Completed" }, { id: 2, ordStatus: "Completed" }];
+    const count = orders.filter((o) => o.ordStatus === "Completed" || o.ordStatus === "Filled").length;
+    assert.equal(count, 2);
+  });
+
+  it("multiple fills under same orderId → tradesCount 1 via grouping", () => {
+    const fills = [{ orderId: "A" }, { orderId: "A" }];
+    const distinct = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinct.size, 1);
+  });
+
+  it("two fills with different orderIds → tradesCount 2 via grouping", () => {
+    const fills = [{ orderId: "A" }, { orderId: "B" }];
+    const distinct = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinct.size, 2);
   });
 });

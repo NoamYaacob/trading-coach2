@@ -296,3 +296,55 @@ export function sumFillPnl(pnls: (number | null | undefined)[]): number | null {
   }
   return hasAny ? total : null;
 }
+
+// ── Fill timestamp extraction ─────────────────────────────────────────────────
+
+/**
+ * Extract the best available ISO-date string from a raw Tradovate fill item.
+ *
+ * Tradovate fill responses may use:
+ *   timestamp   — ISO string "2026-05-04T20:30:45Z"
+ *   tradeDate   — object {year:2026, month:5, day:4} OR ISO string
+ *   time/tradeTime/executionTime/createdAt — ISO string variants
+ *
+ * Returns null when no recognizable date field is found.
+ */
+export function extractFillTimestamp(fill: Record<string, unknown>): string | null {
+  for (const key of ["timestamp", "time", "tradeTime", "executionTime", "createdAt"]) {
+    const v = fill[key];
+    if (typeof v === "string" && v.length >= 10) return v;
+  }
+  const td = fill.tradeDate;
+  if (td !== null && typeof td === "object" && !Array.isArray(td)) {
+    const { year, month, day } = td as Record<string, unknown>;
+    if (typeof year === "number" && typeof month === "number" && typeof day === "number") {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  if (typeof td === "string" && td.length >= 10) return td;
+  return null;
+}
+
+// ── Fill account matching ─────────────────────────────────────────────────────
+
+/**
+ * Return true if a raw Tradovate fill item belongs to the given account.
+ *
+ * Tradovate fills carry account identity in three possible ways:
+ *  - accountId (number) — present on some endpoints
+ *  - accountSpec (string like "FIRM/12345") — present on others
+ *  - neither — when the response is already scoped to one account
+ *
+ * When neither field is present we assume the response is already scoped and
+ * include the fill (the caller's account filter is best-effort for multi-account
+ * tokens; single-account tokens need no filtering).
+ */
+export function fillMatchesAccount(fill: Record<string, unknown>, tvAccountId: number): boolean {
+  const fId = fill.accountId;
+  if (typeof fId === "number") return fId === tvAccountId;
+  const fSpec = fill.accountSpec;
+  if (typeof fSpec === "string") {
+    return fSpec.split("/").at(-1) === String(tvAccountId);
+  }
+  return true; // neither field present — assume already-scoped
+}
