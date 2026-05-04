@@ -60,12 +60,12 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
       label: "Daily P&L",
       value: summary.hasPnlData ? formatSignedCurrency(summary.totalDailyPnl) : "—",
       valueClass: summary.hasPnlData ? pnlClass(summary.totalDailyPnl) : undefined,
-      hint: summary.hasPnlData ? "Across live accounts" : "No live data yet",
+      hint: summary.hasPnlData ? "Across synced accounts" : "Awaiting first sync",
     },
     {
       label: "Risk left",
       value: summary.hasRiskData ? CURRENCY_FORMATTER.format(summary.totalRiskRemaining) : "—",
-      hint: summary.hasRiskData ? "Sum of stop budgets" : "Set rules to track",
+      hint: summary.hasRiskData ? "Based on configured rules" : "Set rules to track",
     },
     {
       label: "Open issues",

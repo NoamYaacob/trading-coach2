@@ -131,7 +131,8 @@ function deriveEnforcementMode(
   riskState: string,
   cooldownActive: boolean,
   hasLiveData: boolean,
-  hasRules: boolean,
+  hasAccountRules: boolean,
+  hasDefaultRules: boolean,
 ): { label: string; detail: string; style: string } {
   if (riskState === "STOPPED" && cooldownActive) {
     return {
@@ -154,23 +155,30 @@ function deriveEnforcementMode(
       style: "text-amber-700 bg-amber-50 border-amber-200",
     };
   }
-  if (!hasRules) {
+  if (!hasAccountRules && !hasDefaultRules) {
     return {
       label: "Monitoring only",
       detail: "No rules configured — events are logged but nothing is enforced.",
       style: "text-stone-600 bg-stone-50 border-stone-200",
     };
   }
+  if (!hasAccountRules && hasDefaultRules) {
+    return {
+      label: "Monitoring only",
+      detail: "Using default trading plan. Account-specific rules not set.",
+      style: "text-stone-600 bg-stone-50 border-stone-200",
+    };
+  }
   if (!hasLiveData) {
     return {
-      label: "Enforcement ready",
-      detail: "Rules configured — awaiting first live event.",
+      label: "Monitoring only",
+      detail: "Account rules configured — awaiting first live event.",
       style: "text-stone-600 bg-stone-50 border-stone-200",
     };
   }
   return {
-    label: "Enforcement active",
-    detail: "Watching every trade. Rules will fire when limits are hit.",
+    label: "Monitoring active",
+    detail: "Watching every trade. Rule alerts fire when limits are hit. Broker-side enforcement is not active.",
     style: "text-emerald-700 bg-emerald-50 border-emerald-200",
   };
 }
@@ -179,10 +187,12 @@ export function AccountCard({
   account,
   recentEvents,
   telegramReady,
+  hasDefaultRules,
 }: {
   account: AccountWithRelations;
   recentEvents: RecentEvent[];
   telegramReady: boolean;
+  hasDefaultRules: boolean;
 }) {
   const { sessionState, riskRules, interventions } = account;
 
@@ -241,6 +251,7 @@ export function AccountCard({
     cooldownActive,
     hasLiveData,
     hasAnyRule,
+    hasDefaultRules,
   );
 
   return (
@@ -282,7 +293,7 @@ export function AccountCard({
           {account.connectionStatus === "connected_readonly" && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="text-xs text-sky-700">
-                Read-only connected — live broker-based risk checks are not yet active.
+                Read-only account data is connected. Live rule checks activate after account sync and rule setup.
               </p>
               {account.lastSyncAt && (
                 <p className="text-xs text-stone-400">
@@ -448,7 +459,38 @@ export function AccountCard({
               )}
             </div>
           </div>
-        ) : null}
+        ) : hasDefaultRules ? (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Rules
+            </p>
+            <p className="text-sm text-stone-700">
+              Using default trading plan. Account-specific rules not set.
+            </p>
+            <Link
+              href={`/accounts/${account.id}/edit`}
+              className="mt-1 inline-block text-xs text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
+            >
+              Set account-specific rules ↗
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Rules
+            </p>
+            <p className="text-sm text-stone-700">
+              No rules configured. Add a default trading plan or set account-specific rules to start
+              monitoring.
+            </p>
+            <Link
+              href="/rules"
+              className="mt-1 inline-block text-xs text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
+            >
+              Configure rules ↗
+            </Link>
+          </div>
+        )}
 
         {/* Live event feed */}
         {recentEvents.length > 0 && (

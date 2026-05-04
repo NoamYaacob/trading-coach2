@@ -30,7 +30,7 @@ export default async function AccountsPage() {
     redirect("/login");
   }
 
-  const [accounts, brokerConnections, telegramConnection] = await Promise.all([
+  const [accounts, brokerConnections, telegramConnection, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
       where: { userId: currentUser.id, isActive: true },
       include: {
@@ -63,7 +63,19 @@ export default async function AccountsPage() {
       where: { userId: currentUser.id },
       select: { telegramChatId: true },
     }),
+    prisma.riskRules.findUnique({
+      where: { userId: currentUser.id },
+      select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true, riskPerTrade: true },
+    }),
   ]);
+
+  const hasDefaultRules = Boolean(
+    defaultRules &&
+      (defaultRules.maxDailyLoss != null ||
+        defaultRules.maxTradesPerDay != null ||
+        defaultRules.stopAfterLosses != null ||
+        defaultRules.riskPerTrade != null),
+  );
 
   const telegramReady = Boolean(telegramConnection?.telegramChatId);
 
@@ -112,7 +124,8 @@ export default async function AccountsPage() {
               return (
                 <SectionCard
                   key={bc.id}
-                  title={`Tradovate ${ENV_LABEL[bc.env] ?? bc.env}`}
+                  title={`Tradovate ${ENV_LABEL[bc.env] ?? bc.env} connection`}
+                  description="OAuth-authorized read-only connection. Imported accounts below."
                 >
                   <div className="grid gap-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -186,6 +199,7 @@ export default async function AccountsPage() {
                 account={account}
                 recentEvents={eventsByAccount[account.id] ?? []}
                 telegramReady={telegramReady}
+                hasDefaultRules={hasDefaultRules}
               />
             ))}
           </>
@@ -222,7 +236,8 @@ export default async function AccountsPage() {
           </div>
         )}
 
-        {/* Connection status — collapsible */}
+        {/* Connection status — collapsible. When a broker account exists, Tradovate read-only
+            is the primary connected state and Manual mode drops to secondary. */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
             Connection status
@@ -230,26 +245,49 @@ export default async function AccountsPage() {
           </summary>
           <div className="mt-4">
             <p className="text-sm text-stone-500">
-              Manual mode is available now. Broker-connected protection will become available after setup is complete.
+              {hasBrokerAccounts
+                ? "Tradovate is connected read-only. Manual journaling remains available alongside the broker connection."
+                : "Manual mode is available now. Broker-connected protection becomes available after Tradovate setup is complete."}
             </p>
             <div className="mt-4 grid gap-3">
-              <ConnectionStatusRow
-                label="Manual mode"
-                status="Available"
-                statusTone="ok"
-                description="Track trades manually and evaluate your rules from journal entries."
-              />
-              <ConnectionStatusRow
-                label="Tradovate — read-only connected"
-                status={hasBrokerAccounts ? "Connected" : "Setup needed"}
-                statusTone={hasBrokerAccounts ? "ok" : "pending"}
-                description="Read-only broker data is available after OAuth is completed and accounts are imported."
-              />
+              {hasBrokerAccounts ? (
+                <>
+                  <ConnectionStatusRow
+                    label="Tradovate — read-only connected"
+                    status="Connected"
+                    statusTone="ok"
+                    description="Read-only account data is connected. Live rule checks activate after account sync and rule setup."
+                  />
+                  <ConnectionStatusRow
+                    label="Manual mode"
+                    status="Available"
+                    statusTone="neutral"
+                    description="Track trades manually and evaluate your rules from journal entries."
+                    secondary
+                  />
+                </>
+              ) : (
+                <>
+                  <ConnectionStatusRow
+                    label="Manual mode"
+                    status="Available"
+                    statusTone="ok"
+                    description="Track trades manually and evaluate your rules from journal entries."
+                  />
+                  <ConnectionStatusRow
+                    label="Tradovate — read-only connected"
+                    status="Setup needed"
+                    statusTone="pending"
+                    description="Read-only account data is available after OAuth is completed and accounts are imported."
+                  />
+                </>
+              )}
               <ConnectionStatusRow
                 label="Broker-side enforcement"
                 status="Disabled"
                 statusTone="neutral"
                 description="Cancel, flatten, and lockout actions require separate verification and explicit opt-in. Not active."
+                secondary
               />
             </div>
           </div>
@@ -265,11 +303,13 @@ function ConnectionStatusRow({
   status,
   statusTone,
   description,
+  secondary = false,
 }: {
   label: string;
   status: string;
   statusTone: "ok" | "pending" | "neutral";
   description: string;
+  secondary?: boolean;
 }) {
   const pillCls =
     statusTone === "ok"
@@ -277,15 +317,24 @@ function ConnectionStatusRow({
       : statusTone === "pending"
         ? "bg-amber-100 text-amber-700"
         : "bg-stone-100 text-stone-500";
+  const wrapperCls = secondary
+    ? "rounded-xl border border-stone-100 bg-white px-4 py-3"
+    : "rounded-xl border border-stone-100 bg-stone-50 px-4 py-3";
+  const labelCls = secondary
+    ? "text-sm font-medium text-stone-700"
+    : "text-sm font-medium text-stone-950";
+  const descCls = secondary
+    ? "mt-1.5 text-xs leading-5 text-stone-500"
+    : "mt-1.5 text-xs leading-5 text-stone-600";
   return (
-    <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+    <div className={wrapperCls}>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-stone-950">{label}</p>
+        <p className={labelCls}>{label}</p>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${pillCls}`}>
           {status}
         </span>
       </div>
-      <p className="mt-1.5 text-xs leading-5 text-stone-600">{description}</p>
+      <p className={descCls}>{description}</p>
     </div>
   );
 }

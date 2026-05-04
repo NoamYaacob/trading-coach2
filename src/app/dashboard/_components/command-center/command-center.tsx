@@ -53,14 +53,14 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
   manual_app_level: "Manual / App-level",
-  broker_readonly: "Read-only foundation",
+  broker_readonly: "Read-only connected",
   not_connected: "Not connected",
 };
 
 const RULE_SOURCE_LABEL: Record<RuleSource, string> = {
   account: "Account rules",
-  default: "Default rules",
-  none: "No rules set",
+  default: "Default trading plan",
+  none: "No rules configured",
 };
 
 function formatSignedCurrency(amount: number): string {
@@ -127,8 +127,8 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       </div>
 
       <p className="mt-5 border-t border-stone-100 pt-3 text-[11px] leading-5 text-stone-500">
-        Broker-side enforcement is shown only after verified broker support. Tradovate is currently
-        treated as a read-only foundation unless capability data proves otherwise.
+        Tradovate connections are read-only for account data. Broker-side enforcement (cancel,
+        flatten, lockout) is not active and requires separate verification before it can be enabled.
       </p>
     </section>
   );
@@ -228,15 +228,23 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-stone-500">
           <span>
             Daily P&L:{" "}
-            <span className={`font-mono font-semibold ${pnlClass(group.hasPnlData ? group.totalDailyPnl : null)}`}>
-              {group.hasPnlData ? formatSignedCurrency(group.totalDailyPnl) : "—"}
-            </span>
+            {group.hasPnlData ? (
+              <span className={`font-mono font-semibold ${pnlClass(group.totalDailyPnl)}`}>
+                {formatSignedCurrency(group.totalDailyPnl)}
+              </span>
+            ) : (
+              <span className="font-medium text-stone-400">Awaiting first sync</span>
+            )}
           </span>
           <span>
             Risk left:{" "}
-            <span className="font-mono font-semibold text-stone-800">
-              {group.hasRiskData ? CURRENCY_FORMATTER.format(group.totalRiskRemaining) : "—"}
-            </span>
+            {group.hasRiskData ? (
+              <span className="font-mono font-semibold text-stone-800">
+                {CURRENCY_FORMATTER.format(group.totalRiskRemaining)}
+              </span>
+            ) : (
+              <span className="font-medium text-stone-400">Set rules to track</span>
+            )}
           </span>
         </div>
       </header>

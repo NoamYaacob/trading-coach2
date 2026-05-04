@@ -32,21 +32,30 @@ const CONNECTION_STATUS_LABEL: Record<string, string> = {
   expired: "Expired — re-authorize",
 };
 
+// Personal brokerage / personal-source accounts have no prop firm — they get
+// their own group instead of being lumped under "Unassigned firm" (which is
+// reserved for prop-firm-style accounts that never had a firm selected).
 const FALLBACK_FIRM_LABEL = "Unassigned firm";
-const PERSONAL_FIRM_LABEL = "Personal / Manual";
-const PERSONAL_FIRM_KEY = "__personal__";
+const PERSONAL_BROKER_FIRM_LABEL = "Personal accounts";
+const MANUAL_FIRM_LABEL = "Personal / Manual";
+const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
+const MANUAL_FIRM_KEY = "__personal_manual__";
 const FALLBACK_FIRM_KEY = "__unassigned__";
 
 function deriveFirmKeyAndLabel(account: {
   platform: string;
   propFirm: string | null;
+  accountType: string;
 }): { key: string; label: string } {
   if (account.propFirm && account.propFirm.trim().length > 0) {
     const label = account.propFirm.trim();
     return { key: label.toLowerCase(), label };
   }
   if (account.platform === "manual") {
-    return { key: PERSONAL_FIRM_KEY, label: PERSONAL_FIRM_LABEL };
+    return { key: MANUAL_FIRM_KEY, label: MANUAL_FIRM_LABEL };
+  }
+  if (account.accountType === "personal") {
+    return { key: PERSONAL_BROKER_FIRM_KEY, label: PERSONAL_BROKER_FIRM_LABEL };
   }
   return { key: FALLBACK_FIRM_KEY, label: FALLBACK_FIRM_LABEL };
 }
@@ -58,7 +67,15 @@ function deriveEnforcementMode(input: {
 }): EnforcementMode {
   if (!input.isActive) return "not_connected";
   if (input.platform === "manual") return "manual_app_level";
-  if (input.connectionStatus === "connected_live") return "broker_readonly";
+  // Both connected_live (full) and connected_readonly (post-OAuth import) count
+  // as "broker_readonly" mode for UI purposes — the chip/label is the same and
+  // we explicitly do not claim broker-side enforcement is active.
+  if (
+    input.connectionStatus === "connected_live" ||
+    input.connectionStatus === "connected_readonly"
+  ) {
+    return "broker_readonly";
+  }
   return "not_connected";
 }
 
@@ -197,6 +214,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     const { key: firmKey, label: firmLabel } = deriveFirmKeyAndLabel({
       platform: account.platform,
       propFirm: account.propFirm,
+      accountType: account.accountType,
     });
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
@@ -293,10 +311,11 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     }
   }
 
+  const SINK_KEYS = new Set([MANUAL_FIRM_KEY, PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);
   const groups = [...groupMap.values()].sort((a, b) => {
-    // Personal/Unassigned firm sinks to the bottom; otherwise alphabetical.
-    const aSink = a.firmKey === PERSONAL_FIRM_KEY || a.firmKey === FALLBACK_FIRM_KEY;
-    const bSink = b.firmKey === PERSONAL_FIRM_KEY || b.firmKey === FALLBACK_FIRM_KEY;
+    // Personal / Manual / Unassigned groups sink to the bottom; otherwise alphabetical.
+    const aSink = SINK_KEYS.has(a.firmKey);
+    const bSink = SINK_KEYS.has(b.firmKey);
     if (aSink !== bSink) return aSink ? 1 : -1;
     return a.firmLabel.localeCompare(b.firmLabel);
   });
