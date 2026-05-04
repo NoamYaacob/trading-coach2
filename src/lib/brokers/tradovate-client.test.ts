@@ -425,14 +425,15 @@ describe("computeSnapshotBalance", () => {
     assert.equal(result.field, "totalCashValue");
   });
 
-  it("computes amount + realizedPnL when no preferred balance field", () => {
+  it("uses amount as balance when no higher-priority field present", () => {
+    // amount IS the current balance in Tradovate — must NOT be combined with realizedPnL.
     const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 100 });
-    assert.equal(result.balance, 9100);
-    assert.equal(result.field, "amount+realizedPnL");
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount");
     assert.equal(result.todayPnL, 100);
   });
 
-  it("falls back to amount alone when realizedPnL is null", () => {
+  it("uses amount alone when realizedPnL is absent", () => {
     const result = computeSnapshotBalance({ amount: 9000 });
     assert.equal(result.balance, 9000);
     assert.equal(result.field, "amount");
@@ -442,20 +443,30 @@ describe("computeSnapshotBalance", () => {
   it("prefers realizedPnL (uppercase L) over realizedPnl (lowercase l)", () => {
     const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 200, realizedPnl: 100 });
     assert.equal(result.todayPnL, 200);
-    assert.equal(result.balance, 9200);
-    assert.equal(result.field, "amount+realizedPnL");
+    // balance is amount alone — not combined with pnl
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount");
   });
 
-  it("uses realizedPnl (lowercase l) as fallback when realizedPnL absent", () => {
+  it("uses realizedPnl (lowercase l) as todayPnL fallback when realizedPnL absent", () => {
     const result = computeSnapshotBalance({ amount: 9000, realizedPnl: 150 });
     assert.equal(result.todayPnL, 150);
-    assert.equal(result.balance, 9150);
-    assert.equal(result.field, "amount+realizedPnL");
+    // balance is still amount alone
+    assert.equal(result.balance, 9000);
+    assert.equal(result.field, "amount");
   });
 
-  it("handles negative realizedPnL (losing day)", () => {
+  it("does not add realizedPnL to amount (avoids double-counting)", () => {
+    // Tradovate $989.20 account with $26 realized P&L — should show 989.20, not 1015.20.
+    const result = computeSnapshotBalance({ amount: 989.2, realizedPnL: 26 });
+    assert.equal(result.balance, 989.2);
+    assert.equal(result.field, "amount");
+    assert.equal(result.todayPnL, 26);
+  });
+
+  it("handles negative realizedPnL (losing day) without affecting balance", () => {
     const result = computeSnapshotBalance({ amount: 10000, realizedPnL: -500 });
-    assert.equal(result.balance, 9500);
+    assert.equal(result.balance, 10000);
     assert.equal(result.todayPnL, -500);
   });
 
@@ -483,7 +494,14 @@ describe("computeSnapshotBalance", () => {
     const result = computeSnapshotBalance({ amount: 9000, realizedPnL: 0 });
     assert.equal(result.todayPnL, 0);
     assert.equal(result.balance, 9000);
-    assert.equal(result.field, "amount+realizedPnL");
+    assert.equal(result.field, "amount");
+  });
+
+  it("prefers cashBalance over amount", () => {
+    const result = computeSnapshotBalance({ cashBalance: 9800, amount: 9000, realizedPnL: 50 });
+    assert.equal(result.balance, 9800);
+    assert.equal(result.field, "cashBalance");
+    assert.equal(result.todayPnL, 50);
   });
 });
 
@@ -515,5 +533,81 @@ describe("sumFillPnl", () => {
     const result = sumFillPnl([120.5, -45.25]);
     assert.ok(result !== null);
     assert.ok(Math.abs(result - 75.25) < 0.001);
+  });
+});
+
+// ── parseSnapshotItems with fill shapes ───────────────────────────────────────
+
+type FakeFill = { accountId: number; id: number; orderId: number; timestamp: string; profit: number | null };
+
+describe("parseSnapshotItems — fill response shapes", () => {
+  const fill1: FakeFill = { accountId: 1, id: 101, orderId: 50, timestamp: "2026-05-04T10:00:00Z", profit: 120 };
+  const fill2: FakeFill = { accountId: 1, id: 102, orderId: 51, timestamp: "2026-05-04T10:05:00Z", profit: -45 };
+
+  it("handles bare array of fills", () => {
+    const result = parseSnapshotItems<FakeFill>([fill1, fill2]);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].orderId, 50);
+  });
+
+  it("handles { d: [...] } wrapped fill response", () => {
+    const result = parseSnapshotItems<FakeFill>({ d: [fill1, fill2] });
+    assert.equal(result.length, 2);
+    assert.equal(result[1].orderId, 51);
+  });
+
+  it("handles { results: [...] } wrapped fill response", () => {
+    const result = parseSnapshotItems<FakeFill>({ results: [fill1] });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].profit, 120);
+  });
+
+  it("handles single fill object (by accountId field)", () => {
+    const result = parseSnapshotItems<FakeFill>(fill1);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, 101);
+  });
+
+  it("returns empty array for empty wrapped response", () => {
+    const result = parseSnapshotItems<FakeFill>({ d: [] });
+    assert.equal(result.length, 0);
+  });
+});
+
+// ── order-level trade grouping ────────────────────────────────────────────────
+
+describe("order-level trade grouping from fills", () => {
+  it("counts two fills with different orderIds as 2 trades", () => {
+    const fills = [
+      { orderId: "A", profit: 100 },
+      { orderId: "B", profit: -50 },
+    ];
+    const distinctOrderIds = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinctOrderIds.size, 2);
+  });
+
+  it("counts multiple fills for the same orderId as 1 trade", () => {
+    const fills = [
+      { orderId: "A", profit: 60 },   // partial fill 1
+      { orderId: "A", profit: 40 },   // partial fill 2
+    ];
+    const distinctOrderIds = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinctOrderIds.size, 1);
+  });
+
+  it("counts 3 fills across 2 orders correctly", () => {
+    const fills = [
+      { orderId: "A", profit: 60 },
+      { orderId: "A", profit: 40 },
+      { orderId: "B", profit: -30 },
+    ];
+    const distinctOrderIds = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinctOrderIds.size, 2);
+  });
+
+  it("returns 0 when fills array is empty", () => {
+    const fills: { orderId: string; profit: number }[] = [];
+    const distinctOrderIds = new Set(fills.map((f) => f.orderId));
+    assert.equal(distinctOrderIds.size, 0);
   });
 });

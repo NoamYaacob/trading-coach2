@@ -287,6 +287,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       consecutiveLosses,
       stopAfterLosses,
       lastSyncAt: account.lastSyncAt,
+      fillsSyncedAt: account.fillsSyncedAt,
       lastInterventionAt: lastIntervention?.createdAt ?? null,
       hasOpenIntervention,
       protectionStatus: account.protectionStatus as ProtectionStatus,

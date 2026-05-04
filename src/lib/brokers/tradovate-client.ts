@@ -701,9 +701,11 @@ export class TradovateClient {
 
   /**
    * Today's fills (UTC date boundary), filtered to this account's tvAccountId.
+   * Uses parseSnapshotItems to handle all Tradovate response shapes.
    */
   async getFills(): Promise<TvFill[]> {
-    const all = await this.#request<TvFill[]>("fill/list");
+    const raw = await this.#request<unknown>("fill/list");
+    const all = parseSnapshotItems<TvFill>(raw);
     const todayPrefix = new Date().toISOString().slice(0, 10);
     const todayFills = all.filter((f) => f.timestamp.startsWith(todayPrefix));
     const filtered =
@@ -714,6 +716,7 @@ export class TradovateClient {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       datePrefix: todayPrefix,
+      responseShape: Array.isArray(raw) ? "bare_array" : raw !== null && typeof raw === "object" ? "wrapped_object" : "other",
       rawCount: all.length,
       todayCount: todayFills.length,
       filteredCount: filtered.length,
@@ -797,17 +800,25 @@ export class TradovateClient {
       balance = extracted.balance;
       todayPnL = extracted.todayPnL;
       openPnlFromSnapshot = balanceSnapshot.openPl ?? null;
+      console.info("[tradovate/balance] candidates", {
+        accountId: this.#accountId,
+        endpoint: balanceEndpoint,
+        keys: Object.keys(balanceSnapshot).join(","),
+        netLiq: balanceSnapshot.netLiq ?? null,
+        totalCashValue: balanceSnapshot.totalCashValue ?? null,
+        cashBalance: balanceSnapshot.cashBalance ?? null,
+        accountBalance: balanceSnapshot.accountBalance ?? null,
+        amount: balanceSnapshot.amount ?? null,
+        realizedPnL: balanceSnapshot.realizedPnL ?? null,
+        realizedPnl: balanceSnapshot.realizedPnl ?? null,
+        openPl: openPnlFromSnapshot,
+      });
       console.info("[tradovate/balance] selected", {
         accountId: this.#accountId,
         endpoint: balanceEndpoint,
         field: extracted.field ?? "none",
-        gotValue: balance != null,
-      });
-      console.info("[tradovate/pnl]", {
-        accountId: this.#accountId,
-        source: "snapshot",
+        value: balance,
         todayPnL,
-        openPl: openPnlFromSnapshot,
       });
     }
 

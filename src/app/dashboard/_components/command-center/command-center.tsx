@@ -597,6 +597,14 @@ function TradesCell({
   account: CommandCenterAccount;
   compact?: boolean;
 }) {
+  // Broker account synced but fills never successfully fetched — count is unknown.
+  if (
+    account.platform !== "manual" &&
+    account.fillsSyncedAt == null &&
+    account.lastSyncAt != null
+  ) {
+    return <p className="text-xs text-stone-400">Unavailable</p>;
+  }
   const used = account.tradesCount ?? 0;
   if (account.maxTradesPerDay == null && account.tradesCount == null) {
     return (

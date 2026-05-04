@@ -110,14 +110,21 @@ export async function syncTradovateAccount(
     // ── Today's fills → NormalizedTradeEvent (best-effort) ─────────────────
     let tradesCount = 0;
     let pnlFromFills: number | null = null;
+    let fillsSyncedAt: Date | null = null;
     try {
       const executions = await client.toExecutions();
-      tradesCount = executions.length;
+      // Group fills by orderId to count user-facing trades (not raw fill legs).
+      const distinctOrderIds = new Set(executions.map((ex) => ex.orderId).filter(Boolean));
+      tradesCount = distinctOrderIds.size > 0 ? distinctOrderIds.size : executions.length;
       pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
+      fillsSyncedAt = new Date();
       console.info("[tradovate/fills] today's executions", {
         accountId,
-        count: tradesCount,
+        rawFillCount: executions.length,
+        distinctOrders: distinctOrderIds.size,
+        tradesCount,
         pnlFromFills,
+        countMethod: distinctOrderIds.size > 0 ? "grouped_by_order" : "raw_fills_fallback",
       });
       for (const ex of executions) {
         const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
@@ -142,6 +149,14 @@ export async function syncTradovateAccount(
       }
     } catch {
       // Fill persistence is best-effort; a failure here does not fail the sync.
+      // fillsSyncedAt remains null — UI will show "Unavailable" for trade count.
+    }
+
+    // Persist fillsSyncedAt separately (it's set inside the try block above).
+    if (fillsSyncedAt != null) {
+      await prisma.connectedAccount
+        .update({ where: { id: accountId }, data: { fillsSyncedAt } })
+        .catch(() => {});
     }
 
     // Use snapshot P&L when available; fall back to summing fill profits.

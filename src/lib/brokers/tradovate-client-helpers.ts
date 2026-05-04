@@ -245,9 +245,11 @@ export type SnapshotBalanceResult = {
  * Extract balance and today's realised P&L from a Tradovate snapshot.
  *
  * Balance priority:
- *   netLiq > totalCashValue > cashBalance > accountBalance
- *   → amount + realizedPnL  (Tradovate futures: amount = prior settlement)
- *   → amount alone
+ *   netLiq > totalCashValue > cashBalance > accountBalance > amount
+ *
+ * `amount` in Tradovate cash-balance responses IS the current account balance
+ * (not prior-session settlement), so it must NOT be combined with realizedPnL
+ * — that would double-count today's P&L.
  *
  * todayPnL: realizedPnL (uppercase L, canonical) takes priority over
  * realizedPnl (lowercase, defensive fallback).
@@ -266,23 +268,13 @@ export function computeSnapshotBalance(snap: SnapshotForBalance): SnapshotBalanc
     totalCashValue: snap.totalCashValue,
     cashBalance: snap.cashBalance,
     accountBalance: snap.accountBalance,
+    amount: snap.amount,
   });
 
   if (preferredBalance != null) {
     return { balance: preferredBalance, field, todayPnL };
   }
 
-  const amount =
-    typeof snap.amount === "number" && Number.isFinite(snap.amount)
-      ? snap.amount
-      : null;
-
-  if (amount != null && todayPnL != null) {
-    return { balance: amount + todayPnL, field: "amount+realizedPnL", todayPnL };
-  }
-  if (amount != null) {
-    return { balance: amount, field: "amount", todayPnL };
-  }
   return { balance: null, field: null, todayPnL };
 }
 

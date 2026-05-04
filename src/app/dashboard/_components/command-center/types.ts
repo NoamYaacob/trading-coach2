@@ -46,6 +46,7 @@ export type CommandCenterAccount = {
   balance: number | null;
   openPnl: number | null;
   lastSyncAt: Date | null;
+  fillsSyncedAt: Date | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
   protectionStatus: ProtectionStatus;

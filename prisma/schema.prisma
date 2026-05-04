@@ -414,6 +414,9 @@ model ConnectedAccount {
   capabilitiesJson      Json?
   // Last successful read from the broker (account snapshot, executions, etc).
   lastSyncAt            DateTime?
+  // Set when fills/executions were last successfully fetched (even if 0 fills).
+  // Null means fills have never been synced; tradesCount in LiveSessionState is unknown.
+  fillsSyncedAt         DateTime?
   // Surfaced in the UI when the connection is degraded or errored.
   errorMessage          String?
   // Broker-synced account snapshot — updated by syncTradovateAccount.
