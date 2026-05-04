@@ -532,8 +532,8 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
       </div>
 
       {/* Footer: meta + actions */}
-      <div className="mt-2.5 border-t border-stone-100 pt-2">
-        {/* Rule source & enforcement — muted metadata */}
+      <div className="mt-2.5 border-t border-stone-100 pt-2.5">
+        {/* Muted metadata row */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
           <span>{RULE_SOURCE_LABEL[account.ruleSource]}</span>
           <span aria-hidden>·</span>
@@ -549,33 +549,33 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           )}
         </div>
 
-        {/* Nav actions + reconnect on one row */}
-        <div className="mt-2 flex items-center gap-1.5">
+        {/* Primary nav buttons — fixed height + min-width so Open and Rules are identical */}
+        <div className="mt-2.5 flex items-center gap-2">
           <Link
             href={`/accounts/${account.id}/edit`}
-            className="inline-flex items-center rounded-md border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-xl border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Open
           </Link>
           <Link
             href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-            className="inline-flex items-center rounded-md border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-xl border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Rules
           </Link>
           {reconnectNeeded && (
             <Link
               href="/accounts/connect/tradovate"
-              className="ml-auto inline-flex items-center rounded-md bg-stone-900 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-700"
+              className="ml-auto inline-flex h-10 items-center justify-center rounded-xl bg-stone-900 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-700"
             >
               Reconnect
             </Link>
           )}
         </div>
 
-        {/* Refresh / last sync — compact secondary action */}
+        {/* Refresh icon-button + sync time on same row */}
         {account.platform === "tradovate" && !reconnectNeeded && (
-          <div className="mt-1.5">
+          <div className="mt-2">
             <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} variant="compact" />
           </div>
         )}
