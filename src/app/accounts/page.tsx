@@ -8,8 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { getProtectionLockState } from "@/lib/account-protection";
-import { AccountCard } from "./_components/account-card";
-import { SyncButton } from "./_components/sync-button";
+import { ConnectionGroupCard } from "./_components/connection-group-card";
 import { ProtectionControls } from "./_components/protection-controls";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
 import { needsSync } from "@/lib/sync-freshness";
@@ -18,48 +17,20 @@ export const metadata: Metadata = {
   title: "Broker Connections — Guardrail",
 };
 
-const ENV_LABEL: Record<string, string> = {
-  live: "Live",
-  demo: "Demo / Sim",
-};
-
-const CONN_STATUS_LABEL: Record<string, string> = {
-  connected_readonly: "Read-only connected",
-  expired: "Expired — re-authorize",
-  connection_error: "Connection error",
-};
-
 export default async function AccountsPage() {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     redirect("/login");
   }
 
-  const [accounts, brokerConnections, telegramConnection, defaultRules] = await Promise.all([
-    prisma.connectedAccount.findMany({
-      where: {
-        userId: currentUser.id,
-        isActive: true,
-        // Hide archived rows from the active management surface; ignored rows
-        // still appear so the user can re-enable them.
-        protectionStatus: { in: ["protected", "monitor_only", "ignored", "pending_decision"] },
-      },
-      include: {
-        riskRules: true,
-        sessionState: true,
-        interventions: {
-          orderBy: { createdAt: "desc" },
-          take: 5,
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    }),
+  const [brokerConnections, manualAccounts, defaultRules] = await Promise.all([
     prisma.brokerConnection.findMany({
       where: { userId: currentUser.id },
       select: {
         id: true,
         platform: true,
         env: true,
+        brokerUserId: true,
         connectionStatus: true,
         createdAt: true,
         accounts: {
@@ -67,20 +38,44 @@ export default async function AccountsPage() {
           select: {
             id: true,
             label: true,
+            balance: true,
             protectionStatus: true,
             pendingProtectionStatus: true,
             pendingProtectionEffectiveDate: true,
             missingFromBrokerSince: true,
             lastSyncAt: true,
+            riskRules: {
+              select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
+            },
+            sessionState: {
+              select: { riskState: true, sessionDate: true },
+            },
+            interventions: {
+              select: { brokerLockStatus: true },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
           },
           orderBy: { label: "asc" },
         },
       },
       orderBy: { createdAt: "desc" },
     }),
-    prisma.telegramConnection.findUnique({
-      where: { userId: currentUser.id },
-      select: { telegramChatId: true },
+    prisma.connectedAccount.findMany({
+      where: {
+        userId: currentUser.id,
+        isActive: true,
+        brokerConnectionId: null,
+        protectionStatus: { not: "archived" },
+      },
+      select: {
+        id: true,
+        label: true,
+        protectionStatus: true,
+        pendingProtectionStatus: true,
+        pendingProtectionEffectiveDate: true,
+      },
+      orderBy: { label: "asc" },
     }),
     prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
@@ -110,26 +105,18 @@ export default async function AccountsPage() {
         defaultRules.riskPerTrade != null),
   );
 
-  const telegramReady = Boolean(telegramConnection?.telegramChatId);
-
-  const recentEventsRaw =
-    accounts.length > 0
-      ? await prisma.normalizedTradeEvent.findMany({
-          where: { accountId: { in: accounts.map((a) => a.id) } },
-          orderBy: { occurredAt: "desc" },
-          take: Math.max(accounts.length * 10, 50),
-          select: { accountId: true, eventType: true, occurredAt: true, pnl: true, side: true },
-        })
-      : [];
-
-  const eventsByAccount: Record<string, typeof recentEventsRaw> = {};
-  for (const ev of recentEventsRaw) {
-    const bucket = (eventsByAccount[ev.accountId] ??= []);
-    if (bucket.length < 10) bucket.push(ev);
-  }
-
-  const hasBrokerAccounts = accounts.some((a) => a.platform !== "manual");
+  const hasBrokerConnections = brokerConnections.length > 0;
   const tradovateConfigured = getTradovateConfig().state === "ready";
+
+  const staleAccountIds = brokerConnections
+    .filter((bc) => bc.connectionStatus !== "expired" && bc.connectionStatus !== "connection_error")
+    .flatMap((bc) => bc.accounts)
+    .filter(
+      (a) =>
+        (a.protectionStatus === "protected" || a.protectionStatus === "monitor_only") &&
+        needsSync(a.lastSyncAt),
+    )
+    .map((a) => a.id);
 
   return (
     <AppShell
@@ -159,136 +146,19 @@ export default async function AccountsPage() {
           </div>
         )}
 
-        {/* Auto-sync stale accounts across all broker connections */}
-        {(() => {
-          const staleIds = brokerConnections
-            .filter((bc) => bc.connectionStatus !== "expired" && bc.connectionStatus !== "connection_error")
-            .flatMap((bc) => bc.accounts)
-            .filter((a) =>
-              (a.protectionStatus === "protected" || a.protectionStatus === "monitor_only") &&
-              needsSync(a.lastSyncAt),
-            )
-            .map((a) => a.id);
-          return staleIds.length > 0 ? <AutoSync staleAccountIds={staleIds} /> : null;
-        })()}
+        {staleAccountIds.length > 0 && <AutoSync staleAccountIds={staleAccountIds} />}
 
-        {/* BrokerConnection groups */}
-        {brokerConnections.length > 0 && (
+        {hasBrokerConnections ? (
           <div className="grid gap-4">
-            {brokerConnections.map((bc) => {
-              const statusLabel = CONN_STATUS_LABEL[bc.connectionStatus] ?? bc.connectionStatus.replace(/_/g, " ");
-              const isExpired = bc.connectionStatus === "expired" || bc.connectionStatus === "connection_error";
-              // Most-recent lastSyncAt across this connection's accounts.
-              const connectionLastSyncAt = bc.accounts.reduce<Date | null>((latest, a) => {
-                if (!a.lastSyncAt) return latest;
-                return !latest || a.lastSyncAt > latest ? a.lastSyncAt : latest;
-              }, null);
-              return (
-                <SectionCard
-                  key={bc.id}
-                  title={`Tradovate ${ENV_LABEL[bc.env] ?? bc.env} connection`}
-                  description="OAuth-authorized read-only connection. Imported accounts below."
-                >
-                  <div className="grid gap-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                            isExpired
-                              ? "bg-red-100 text-red-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {statusLabel}
-                        </span>
-                        <span className="text-xs text-stone-500">
-                          {bc.accounts.length} account{bc.accounts.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {!isExpired && (
-                          <>
-                            <SyncButton connectionId={bc.id} lastSyncAt={connectionLastSyncAt} />
-                            <Link
-                              href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
-                              className="inline-flex items-center rounded-full border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-900 transition hover:border-stone-950"
-                            >
-                              Import more accounts
-                            </Link>
-                          </>
-                        )}
-                        <Link
-                          href={`/accounts/connect/tradovate?env=${bc.env}`}
-                          className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
-                            isExpired
-                              ? "border-red-300 text-red-700 hover:border-red-500"
-                              : "border-stone-300 text-stone-900 hover:border-stone-950"
-                          }`}
-                        >
-                          {isExpired ? "Reconnect" : "New connection"}
-                        </Link>
-                      </div>
-                    </div>
-
-                    {bc.accounts.length > 0 && (
-                      <div className="grid gap-2">
-                        {bc.accounts.map((a) => (
-                          <div
-                            key={a.id}
-                            className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <span className="text-sm font-medium text-stone-900">{a.label}</span>
-                                {a.missingFromBrokerSince && (
-                                  <p className="mt-0.5 text-[11px] text-amber-700">
-                                    Not found in latest broker sync — may be closed or removed by the prop firm.
-                                  </p>
-                                )}
-                              </div>
-                              <Link
-                                href={`/accounts/${a.id}/edit`}
-                                className="text-xs text-stone-500 transition hover:text-stone-950"
-                              >
-                                Edit
-                              </Link>
-                            </div>
-                            <div className="mt-2">
-                              <ProtectionControls
-                                accountId={a.id}
-                                currentStatus={a.protectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision"}
-                                pendingStatus={a.pendingProtectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision" | null}
-                                pendingEffectiveDate={a.pendingProtectionEffectiveDate}
-                                isLocked={protectionLock.isLocked}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </SectionCard>
-              );
-            })}
+            {brokerConnections.map((bc) => (
+              <ConnectionGroupCard
+                key={bc.id}
+                connection={bc}
+                isLocked={protectionLock.isLocked}
+                hasDefaultRules={hasDefaultRules}
+              />
+            ))}
           </div>
-        )}
-
-        {/* Individual account cards (all active accounts) */}
-        {accounts.length > 0 ? (
-          <>
-            {accounts
-              .filter((a) => a.protectionStatus !== "pending_decision")
-              .map((account) => (
-                <AccountCard
-                  key={account.id}
-                  account={account}
-                  recentEvents={eventsByAccount[account.id] ?? []}
-                  telegramReady={telegramReady}
-                  hasDefaultRules={hasDefaultRules}
-                  isLockedForToday={protectionLock.isLocked}
-                />
-              ))}
-          </>
         ) : (
           <SectionCard title="No broker connected yet">
             <p className="text-sm text-stone-600">
@@ -308,22 +178,35 @@ export default async function AccountsPage() {
           </SectionCard>
         )}
 
-        {!hasBrokerAccounts && accounts.length > 0 && (
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-            <p className="text-sm text-stone-600">
-              Add Tradovate for live broker-based risk checks.{" "}
-              <Link
-                href="/accounts/connect/tradovate"
-                className="font-medium text-stone-950 underline-offset-2 hover:underline"
-              >
-                Connect Tradovate
-              </Link>
-            </p>
-          </div>
+        {manualAccounts.length > 0 && (
+          <SectionCard title="Manual accounts" description="Accounts not linked to a broker connection.">
+            <div className="grid gap-3">
+              {manualAccounts.map((a) => (
+                <div key={a.id} className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-stone-900">{a.label}</p>
+                    <Link
+                      href={`/accounts/${a.id}/edit`}
+                      className="text-xs text-stone-500 transition hover:text-stone-950"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                  <div className="mt-2">
+                    <ProtectionControls
+                      accountId={a.id}
+                      currentStatus={a.protectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision"}
+                      pendingStatus={a.pendingProtectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision" | null}
+                      pendingEffectiveDate={a.pendingProtectionEffectiveDate}
+                      isLocked={protectionLock.isLocked}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
         )}
 
-        {/* Connection status — collapsible. When a broker account exists, Tradovate read-only
-            is the primary connected state and Manual mode drops to secondary. */}
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
             Connection status
@@ -331,12 +214,12 @@ export default async function AccountsPage() {
           </summary>
           <div className="mt-4">
             <p className="text-sm text-stone-500">
-              {hasBrokerAccounts
+              {hasBrokerConnections
                 ? "Tradovate is connected read-only. Manual journaling remains available alongside the broker connection."
                 : "Manual mode is available now. Broker-connected protection becomes available after Tradovate setup is complete."}
             </p>
             <div className="mt-4 grid gap-3">
-              {hasBrokerAccounts ? (
+              {hasBrokerConnections ? (
                 <>
                   <ConnectionStatusRow
                     label="Tradovate — read-only connected"
@@ -406,12 +289,8 @@ function ConnectionStatusRow({
   const wrapperCls = secondary
     ? "rounded-xl border border-stone-100 bg-white px-4 py-3"
     : "rounded-xl border border-stone-100 bg-stone-50 px-4 py-3";
-  const labelCls = secondary
-    ? "text-sm font-medium text-stone-700"
-    : "text-sm font-medium text-stone-950";
-  const descCls = secondary
-    ? "mt-1.5 text-xs leading-5 text-stone-500"
-    : "mt-1.5 text-xs leading-5 text-stone-600";
+  const labelCls = secondary ? "text-sm font-medium text-stone-700" : "text-sm font-medium text-stone-950";
+  const descCls = secondary ? "mt-1.5 text-xs leading-5 text-stone-500" : "mt-1.5 text-xs leading-5 text-stone-600";
   return (
     <div className={wrapperCls}>
       <div className="flex items-start justify-between gap-3">
