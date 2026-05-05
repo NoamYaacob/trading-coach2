@@ -490,11 +490,26 @@ export async function syncTradovateConnection(
         });
         newlyCreatedIds = reconciled.newlyCreatedIds;
         missingIds = reconciled.missingIds;
+        console.info("[tradovate/sync] discovery + reconciliation succeeded", {
+          connectionId,
+          discoveredCount: discovered.length,
+          newlyCreatedCount: newlyCreatedIds.length,
+          missingCount: missingIds.length,
+        });
       } else {
         discoveryOk = false;
+        console.warn("[tradovate/sync] discovery returned null — skipping reconciliation", {
+          connectionId,
+          note: "Local missingFromBrokerSince flags are preserved from the previous successful sync.",
+        });
       }
     } else {
       discoveryOk = false;
+      console.warn("[tradovate/sync] discovery preconditions not met", {
+        connectionId,
+        hasConnection: connection != null,
+        configReady: cfg.state === "ready",
+      });
     }
   } catch (err) {
     discoveryOk = false;

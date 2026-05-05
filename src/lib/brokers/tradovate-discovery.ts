@@ -31,28 +31,77 @@ type TvAccount = {
 };
 
 /** Fetch the broker's current account list. Caller provides the API base URL
- *  for the right env (live/demo) and a raw access token. */
+ *  for the right env (live/demo) and a raw access token.
+ *
+ *  Detailed logging is intentional — silent discovery failures used to hide
+ *  the case where /account/list returned 5xx/401 and the dashboard kept
+ *  showing stale "Allowed" rows for accounts the prop firm had already reset.
+ */
 export async function fetchTradovateAccountList(
   baseUrl: string,
   accessToken: string,
 ): Promise<DiscoveredAccount[] | null> {
+  const url = `${baseUrl}/account/list`;
+  let res: Response;
   try {
-    const res = await fetch(`${baseUrl}/account/list`, {
+    res = await fetch(url, {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as TvAccount[];
-    if (!Array.isArray(data)) return null;
-    return data.map((a): DiscoveredAccount => ({
-      externalAccountId: String(a.id),
-      name: a.nickname ?? a.name ?? String(a.id),
-      accountType: a.accountType ?? "unknown",
-      active: Boolean(a.active),
-    }));
-  } catch {
+  } catch (err) {
+    console.warn("[tradovate/discovery] /account/list network error", {
+      url,
+      error: err instanceof Error ? err.message : "unknown",
+    });
     return null;
   }
+  if (!res.ok) {
+    console.warn("[tradovate/discovery] /account/list non-ok response — discovery skipped", {
+      url,
+      status: res.status,
+      note: "Local accounts will NOT be reconciled this sync — missingFromBrokerSince is preserved.",
+    });
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch (err) {
+    console.warn("[tradovate/discovery] /account/list parse error", {
+      url,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return null;
+  }
+  if (!Array.isArray(data)) {
+    console.warn("[tradovate/discovery] /account/list unexpected shape", {
+      url,
+      shape: data === null ? "null" : typeof data,
+    });
+    return null;
+  }
+  const rows = data as TvAccount[];
+  // Log enough to diagnose mismatches without leaking PII: id (numeric),
+  // name (account label which is the prop-firm-issued public id), active flag.
+  console.info("[tradovate/discovery] /account/list result", {
+    url,
+    httpStatus: res.status,
+    count: rows.length,
+    entries: rows.map((a) => ({
+      id: a.id,
+      idType: typeof a.id,
+      name: a.name,
+      nickname: a.nickname,
+      accountType: a.accountType,
+      active: a.active,
+    })),
+  });
+  return rows.map((a): DiscoveredAccount => ({
+    externalAccountId: String(a.id),
+    name: a.nickname ?? a.name ?? String(a.id),
+    accountType: a.accountType ?? "unknown",
+    active: Boolean(a.active),
+  }));
 }
 
 export type ReconcileResult = {
@@ -102,10 +151,40 @@ export async function reconcileDiscoveredAccounts(input: {
     },
   });
 
+  console.info("[tradovate/discovery] reconciliation input", {
+    userId,
+    brokerConnectionId,
+    discoveredCount: discovered.length,
+    discovered: discovered.map((d) => ({
+      externalAccountId: d.externalAccountId,
+      name: d.name,
+      accountType: d.accountType,
+      active: d.active,
+    })),
+    localCount: localAccounts.length,
+    local: localAccounts.map((a) => ({
+      id: a.id,
+      externalAccountId: a.externalAccountId,
+      brokerConnectionId: a.brokerConnectionId,
+      protectionStatus: a.protectionStatus,
+      missingFromBrokerSince: a.missingFromBrokerSince?.toISOString() ?? null,
+    })),
+  });
+
   const decision = decideReconciliation({
     brokerConnectionId,
     discovered,
     localAccounts,
+  });
+
+  console.info("[tradovate/discovery] reconciliation decision", {
+    brokerConnectionId,
+    matchedCount: decision.matched.length,
+    matched: decision.matched,
+    newCount: decision.newAccounts.length,
+    newAccountIds: decision.newAccounts.map((d) => d.externalAccountId),
+    missingCount: decision.missing.length,
+    missing: decision.missing,
   });
 
   // Apply matched rows.

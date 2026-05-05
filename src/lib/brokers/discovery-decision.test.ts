@@ -158,3 +158,87 @@ test("pending_decision rows are matched on subsequent syncs (not duplicated)", (
   assert.equal(d.matched.length, 1);
   assert.equal(d.newAccounts.length, 0);
 });
+
+// ─── Inactive accounts (the production bug) ───────────────────────────────
+// Many prop firms keep a reset/blown account in /account/list with active=false
+// rather than deleting it. The dashboard MUST flag those as missing — otherwise
+// they keep rendering stale balance / loss budget / "Allowed" badge.
+
+test("account in /account/list with active=false is flagged as missing", () => {
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [{ externalAccountId: "1001", name: "MFFUEVBLDR1", accountType: "evaluation", active: false }],
+    localAccounts: [local("la1", "1001")],
+  });
+  // Match still happens (so we keep brokerConnectionId fresh), BUT
+  // the missing list also includes la1.
+  assert.equal(d.matched.length, 1);
+  assert.equal(d.matched[0]!.id, "la1");
+  assert.equal(d.matched[0]!.clearMissing, false, "must NOT clear missing for inactive account");
+  assert.equal(d.missing.length, 1);
+  assert.equal(d.missing[0]!.id, "la1");
+});
+
+test("inactive account already flagged stays alreadyMissing=true", () => {
+  const earlier = new Date("2026-05-01T00:00:00Z");
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [{ externalAccountId: "1001", name: "X", accountType: "evaluation", active: false }],
+    localAccounts: [local("la1", "1001", { missingFromBrokerSince: earlier })],
+  });
+  assert.equal(d.missing.length, 1);
+  assert.equal(d.missing[0]!.alreadyMissing, true);
+});
+
+test("re-activated account (was missing → now active=true) clears missing flag", () => {
+  const earlier = new Date("2026-05-01T00:00:00Z");
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [discovered("1001")], // active: true (default)
+    localAccounts: [local("la1", "1001", { missingFromBrokerSince: earlier })],
+  });
+  assert.equal(d.matched.length, 1);
+  assert.equal(d.matched[0]!.clearMissing, true);
+  assert.equal(d.missing.length, 0);
+});
+
+test("inactive broker entries do NOT auto-create new pending_decision rows", () => {
+  // Tradovate occasionally exposes legacy inactive accounts the user never
+  // had. Don't create local rows for them.
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [{ externalAccountId: "9999", name: "Old", accountType: "evaluation", active: false }],
+    localAccounts: [],
+  });
+  assert.equal(d.newAccounts.length, 0);
+});
+
+// ─── Type-safe id matching (string ↔ numeric) ─────────────────────────────
+
+test("matching survives numeric broker id ↔ string DB externalAccountId", () => {
+  // The discovery fetcher converts numeric ids with String(a.id) before
+  // building DiscoveredAccount, so by the time decideReconciliation runs,
+  // both sides are strings. This test pins that contract: a DB row with
+  // externalAccountId="49392735" must match a discovered "49392735".
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [discovered("49392735", "MFFUEVBLDR133936248")],
+    localAccounts: [local("la1", "49392735")],
+  });
+  assert.equal(d.matched.length, 1);
+  assert.equal(d.matched[0]!.id, "la1");
+  assert.equal(d.missing.length, 0);
+});
+
+test("matching is case-insensitive and trims whitespace (defensive normalization)", () => {
+  // Defends against any historical migration that left whitespace or case
+  // drift in externalAccountId. Normalization is symmetric on both sides.
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [discovered("ABC123")],
+    localAccounts: [local("la1", "  abc123  ")],
+  });
+  assert.equal(d.matched.length, 1);
+  assert.equal(d.matched[0]!.id, "la1");
+  assert.equal(d.missing.length, 0);
+});
