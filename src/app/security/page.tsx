@@ -180,7 +180,7 @@ export default async function SecurityPage() {
               <p className="text-sm font-semibold text-stone-50">Broker connection required</p>
               <p className="mt-1.5 text-sm leading-5 text-stone-400 sm:mt-2 sm:leading-6">
                 Guardrail evaluates your rules against live trade events from your connected broker.
-                Connect Tradovate from your account settings to activate enforcement.
+                Connect Tradovate from your account settings to enable live account monitoring.
               </p>
             </div>
           </div>

@@ -54,8 +54,7 @@ function DisconnectDialog({
           id="disconnect-dialog-desc"
           className="mt-3 text-sm leading-6 text-stone-600"
         >
-          Guardrail will stop reading this broker account. Your rules, journal
-          entries will stay saved.
+          Guardrail will stop reading this broker account. Your rules and settings will stay saved.
         </p>
 
         <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

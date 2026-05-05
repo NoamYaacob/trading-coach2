@@ -299,8 +299,7 @@ export default async function RulesPage({
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
               <p className="font-medium text-stone-950">No broker accounts connected.</p>
               <p className="mt-1">
-                Connect your broker to activate Guardrail. The default template above applies
-                to all accounts once connected.
+                Connect your broker to enable live account monitoring. The rules above apply as session defaults across connected accounts.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link

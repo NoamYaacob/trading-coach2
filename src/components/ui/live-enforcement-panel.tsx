@@ -230,7 +230,7 @@ export function LiveEnforcementPanel({ state }: Props) {
               <div className="flex items-start gap-2">
                 <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
                 <span>
-                  <span className="font-medium">App-level enforcement active</span> — Guardrail sets
+                  <span className="font-medium">Guardian monitoring active</span> — Guardrail sets
                   account state and sends Telegram alerts.
                 </span>
               </div>
