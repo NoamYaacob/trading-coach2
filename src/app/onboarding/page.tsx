@@ -200,7 +200,7 @@ export default async function OnboardingPage() {
           )}
           {!hasBroker && (
             <p className="text-xs text-stone-400">
-              Broker connection required for live account monitoring and enforcement.
+              Broker connection is required for live account monitoring. Broker enforcement depends on account support, connection type, and permissions.
             </p>
           )}
         </div>
