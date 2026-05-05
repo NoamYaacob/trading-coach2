@@ -260,14 +260,16 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
     let breachReason: { headline: string; detail?: string } | null = null;
     if (status === "warning" || status === "locked") {
-      if (riskState === "STOPPED" && tradesCount != null && maxTradesPerDay != null && tradesCount > maxTradesPerDay) {
-        breachReason = { headline: "Post-lock activity detected" };
-      } else if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
+      const tradesAtOrOverLimit =
+        tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay;
+      if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
         breachReason = {
           headline: "Daily loss limit reached",
-          detail: "This account is locked for the rest of the trading day.",
+          detail: tradesAtOrOverLimit
+            ? `Max trades exceeded: ${tradesCount} / ${maxTradesPerDay}.`
+            : "This account is locked for the rest of the trading day.",
         };
-      } else if (tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay) {
+      } else if (tradesAtOrOverLimit) {
         breachReason = {
           headline: `Trade limit reached: ${tradesCount}/${maxTradesPerDay}`,
           detail: "This account is locked for the rest of the trading day.",

@@ -65,7 +65,11 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
     {
       label: "Loss budget left",
       value: summary.hasRiskData ? CURRENCY_FORMATTER.format(summary.totalRiskRemaining) : "—",
-      hint: summary.hasRiskData ? "Based on configured rules" : "Set rules to track",
+      hint: !summary.hasRiskData
+        ? "Set rules to track"
+        : summary.counts.locked > 0
+          ? "Excludes locked accounts"
+          : "Based on configured rules",
     },
     {
       label: "Open issues",
