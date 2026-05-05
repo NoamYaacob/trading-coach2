@@ -46,12 +46,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "label is required" }, { status: 400 });
   }
 
-  const validPlatforms = ["tradovate", "tradingview", "manual"] as const;
+  const validPlatforms = ["tradovate", "tradingview"] as const;
   const validAccountTypes = ["evaluation", "funded", "personal", "demo"] as const;
 
-  const platform = validPlatforms.includes(body.platform as (typeof validPlatforms)[number])
-    ? (body.platform as (typeof validPlatforms)[number])
-    : ("manual" as const);
+  if (!validPlatforms.includes(body.platform as (typeof validPlatforms)[number])) {
+    return NextResponse.json(
+      { error: `Invalid platform. Must be one of: ${validPlatforms.join(", ")}` },
+      { status: 400 },
+    );
+  }
+  const platform = body.platform as (typeof validPlatforms)[number];
 
   const accountType = validAccountTypes.includes(body.accountType as (typeof validAccountTypes)[number])
     ? (body.accountType as (typeof validAccountTypes)[number])

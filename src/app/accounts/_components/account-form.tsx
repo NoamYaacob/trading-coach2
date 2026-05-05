@@ -224,7 +224,6 @@ export function AccountForm(props: Props) {
               >
                 <option value="tradovate">Tradovate</option>
                 <option value="tradingview">TradingView</option>
-                <option value="manual">Manual</option>
               </select>
             </Field>
           )}
