@@ -2,6 +2,11 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { SyncButton } from "./sync-button";
 import { ProtectionControls } from "./protection-controls";
+import {
+  deriveEnforcementLabelValues,
+  deriveRulesLabel,
+  deriveStopContext,
+} from "./account-rule-helpers";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -9,11 +14,13 @@ type AccountRules = {
   maxDailyLoss: Prisma.Decimal | null;
   maxTradesPerDay: number | null;
   stopAfterLosses: number | null;
+  propFirmDailyLossLimit: Prisma.Decimal | null;
 };
 
 type AccountSessionState = {
   riskState: string;
   sessionDate: string;
+  dailyPnl: Prisma.Decimal | null;
 };
 
 type AccountIntervention = {
@@ -24,6 +31,8 @@ export type AccountForConnectionCard = {
   id: string;
   label: string;
   balance: Prisma.Decimal | null;
+  propFirm: string | null;
+  accountType: string;
   protectionStatus: string;
   pendingProtectionStatus: string | null;
   pendingProtectionEffectiveDate: string | null;
@@ -123,34 +132,6 @@ function deriveGuardianLabel(
   return { label: "Normal", cls: "bg-emerald-100 text-emerald-700" };
 }
 
-function deriveEnforcementLabel(
-  account: AccountForConnectionCard,
-  today: string,
-): { label: string; cls: string } {
-  const latest = account.interventions[0] ?? null;
-  if (latest?.brokerLockStatus === "broker_locked") {
-    return { label: "Broker-enforced", cls: "bg-emerald-100 text-emerald-700" };
-  }
-  const stoppedToday =
-    account.sessionState?.sessionDate === today &&
-    account.sessionState?.riskState === "STOPPED";
-  if (stoppedToday) {
-    return { label: "Internal lock", cls: "bg-red-100 text-red-700" };
-  }
-  return { label: "Monitoring only", cls: "bg-stone-100 text-stone-500" };
-}
-
-function deriveRulesLabel(riskRules: AccountRules | null, hasDefaultRules: boolean): string {
-  if (riskRules) {
-    const hasAny =
-      riskRules.maxDailyLoss != null ||
-      riskRules.maxTradesPerDay != null ||
-      riskRules.stopAfterLosses != null;
-    if (hasAny) return "Account rules";
-  }
-  return hasDefaultRules ? "Default plan" : "No rules";
-}
-
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function StatusChip({ label, cls }: { label: string; cls: string }) {
@@ -168,16 +149,60 @@ function AccountCompactRow({
   today,
   isLocked,
   hasDefaultRules,
+  defaultMaxDailyLoss,
+  connectionStatus,
 }: {
   account: AccountForConnectionCard;
   today: string;
   isLocked: boolean;
   hasDefaultRules: boolean;
+  defaultMaxDailyLoss: number | null;
+  connectionStatus: string;
 }) {
+  const hasAccountRules = Boolean(
+    account.riskRules &&
+      (account.riskRules.maxDailyLoss != null ||
+        account.riskRules.maxTradesPerDay != null ||
+        account.riskRules.stopAfterLosses != null),
+  );
+
   const guardian = deriveGuardianLabel(account.sessionState, today);
-  const enforcement = deriveEnforcementLabel(account, today);
-  const rulesLabel = deriveRulesLabel(account.riskRules, hasDefaultRules);
+  const enforcement = deriveEnforcementLabelValues(
+    account.interventions[0]?.brokerLockStatus ?? null,
+    account.sessionState?.riskState ?? null,
+    account.sessionState?.sessionDate ?? null,
+    today,
+  );
+  const rulesLabel = deriveRulesLabel(
+    hasAccountRules,
+    hasDefaultRules,
+    account.propFirm,
+    account.accountType,
+  );
+
   const balance = account.balance != null ? Number(account.balance) : null;
+
+  const isStoppedToday =
+    account.sessionState?.riskState === "STOPPED" &&
+    account.sessionState.sessionDate === today;
+
+  // Effective daily loss limit for stop-detail display.
+  // Prefer account-specific rule, then propFirmDailyLossLimit, then default plan limit.
+  const effectiveDailyLossLimit =
+    account.riskRules?.maxDailyLoss != null
+      ? Number(account.riskRules.maxDailyLoss)
+      : account.riskRules?.propFirmDailyLossLimit != null
+        ? Number(account.riskRules.propFirmDailyLossLimit)
+        : defaultMaxDailyLoss;
+
+  const stopCtx = isStoppedToday
+    ? deriveStopContext({
+        propFirm: account.propFirm,
+        accountType: account.accountType,
+        dailyLossLimit: effectiveDailyLossLimit,
+        connectionStatus,
+      })
+    : null;
 
   return (
     <div className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3">
@@ -214,6 +239,20 @@ function AccountCompactRow({
         )}
       </div>
 
+      {/* Stop detail — only shown when this account is STOPPED today */}
+      {stopCtx && (
+        <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-800">
+          <p className="font-medium">Daily loss limit reached</p>
+          <p className="mt-0.5">{stopCtx.lockNote}</p>
+          {stopCtx.readOnlyNote && (
+            <p className="mt-1 text-red-700">{stopCtx.readOnlyNote}</p>
+          )}
+          {stopCtx.softPauseNote && (
+            <p className="mt-1 text-red-700">{stopCtx.softPauseNote}</p>
+          )}
+        </div>
+      )}
+
       <div className="mt-3 border-t border-stone-100 pt-3">
         <ProtectionControls
           accountId={account.id}
@@ -233,10 +272,12 @@ export function ConnectionGroupCard({
   connection,
   isLocked,
   hasDefaultRules,
+  defaultMaxDailyLoss,
 }: {
   connection: ConnectionForCard;
   isLocked: boolean;
   hasDefaultRules: boolean;
+  defaultMaxDailyLoss: number | null;
 }) {
   const today = todayKey();
   const { id, platform, env, brokerUserId, connectionStatus, accounts } = connection;
@@ -321,12 +362,14 @@ export function ConnectionGroupCard({
               today={today}
               isLocked={isLocked}
               hasDefaultRules={hasDefaultRules}
+              defaultMaxDailyLoss={defaultMaxDailyLoss}
+              connectionStatus={connectionStatus}
             />
           ))}
         </div>
       ) : (
         <div className="mt-3 rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3 text-sm text-stone-500">
-          No accounts imported yet.{" "}
+          No accounts added yet.{" "}
           {!isExpired && (
             <Link
               href={`/accounts/connect/tradovate?env=${env}&reconnect=${id}`}

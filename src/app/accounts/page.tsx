@@ -43,11 +43,18 @@ export default async function AccountsPage() {
             pendingProtectionEffectiveDate: true,
             missingFromBrokerSince: true,
             lastSyncAt: true,
+            propFirm: true,
+            accountType: true,
             riskRules: {
-              select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
+              select: {
+                maxDailyLoss: true,
+                maxTradesPerDay: true,
+                stopAfterLosses: true,
+                propFirmDailyLossLimit: true,
+              },
             },
             sessionState: {
-              select: { riskState: true, sessionDate: true },
+              select: { riskState: true, sessionDate: true, dailyPnl: true },
             },
             interventions: {
               select: { brokerLockStatus: true },
@@ -87,6 +94,9 @@ export default async function AccountsPage() {
         defaultRules.stopAfterLosses != null ||
         defaultRules.riskPerTrade != null),
   );
+
+  const defaultMaxDailyLoss =
+    defaultRules?.maxDailyLoss != null ? Number(defaultRules.maxDailyLoss) : null;
 
   const hasBrokerConnections = brokerConnections.length > 0;
   const tradovateConfigured = getTradovateConfig().state === "ready";
@@ -139,6 +149,7 @@ export default async function AccountsPage() {
                 connection={bc}
                 isLocked={protectionLock.isLocked}
                 hasDefaultRules={hasDefaultRules}
+                defaultMaxDailyLoss={defaultMaxDailyLoss}
               />
             ))}
           </div>
