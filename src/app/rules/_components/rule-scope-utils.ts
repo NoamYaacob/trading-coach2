@@ -12,6 +12,7 @@ export type RuleScopeAccount = {
   connectionStatus: string;
   brokerConnectionId: string | null;
   hasAccountRules: boolean;
+  missingFromBrokerSince: Date | null;
   brokerConnection: {
     id: string;
     platform: string;

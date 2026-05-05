@@ -56,6 +56,7 @@ export default async function RulesPage({
         propFirm: true,
         connectionStatus: true,
         brokerConnectionId: true,
+        missingFromBrokerSince: true,
         brokerConnection: {
           select: {
             id: true,

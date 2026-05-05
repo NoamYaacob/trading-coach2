@@ -181,7 +181,10 @@ function AccountCompactRow({
 
   const balance = account.balance != null ? Number(account.balance) : null;
 
+  const isUnavailable = account.missingFromBrokerSince != null;
+
   const isStoppedToday =
+    !isUnavailable &&
     account.sessionState?.riskState === "STOPPED" &&
     account.sessionState.sessionDate === today;
 
@@ -202,18 +205,19 @@ function AccountCompactRow({
       })
     : null;
 
+  const borderCls = isUnavailable
+    ? "border-amber-100 bg-amber-50/40"
+    : "border-stone-100 bg-stone-50";
+
   return (
-    <div className="rounded-xl border border-stone-100 bg-stone-50 px-3.5 py-3">
+    <div className={`rounded-xl border px-3.5 py-3 ${borderCls}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-stone-900">{account.label}</p>
+          <p className={`text-sm font-medium ${isUnavailable ? "text-stone-500" : "text-stone-900"}`}>
+            {account.label}
+          </p>
           {propFirmDescriptor && (
             <p className="mt-0.5 text-[11px] text-stone-500">{propFirmDescriptor}</p>
-          )}
-          {account.missingFromBrokerSince && (
-            <p className="mt-0.5 text-[11px] text-amber-700">
-              Not found in latest broker sync — may be closed or removed by the prop firm.
-            </p>
           )}
         </div>
         <Link
@@ -224,31 +228,45 @@ function AccountCompactRow({
         </Link>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <StatusChip label={guardian.label} cls={guardian.cls} />
-        <StatusChip label={enforcement.label} cls={enforcement.cls} />
-        <span className="text-[10px] text-stone-400">{rulesLabel}</span>
-        {balance != null && (
-          <span className="text-[10px] tabular-nums text-stone-500">
-            ${balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        )}
-        {account.lastSyncAt && (
-          <span className="ml-auto text-[10px] text-stone-400">
-            Synced {shortDate(account.lastSyncAt)}
-          </span>
-        )}
-      </div>
+      {isUnavailable ? (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <StatusChip label="Unavailable" cls="bg-amber-100 text-amber-800" />
+            <StatusChip label="Monitoring paused" cls="bg-stone-100 text-stone-500" />
+          </div>
+          <p className="mt-2 text-[11px] text-amber-800">
+            Not found in latest broker sync — may be closed or removed by the prop firm.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <StatusChip label={guardian.label} cls={guardian.cls} />
+            <StatusChip label={enforcement.label} cls={enforcement.cls} />
+            <span className="text-[10px] text-stone-400">{rulesLabel}</span>
+            {balance != null && (
+              <span className="text-[10px] tabular-nums text-stone-500">
+                ${balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            )}
+            {account.lastSyncAt && (
+              <span className="ml-auto text-[10px] text-stone-400">
+                Synced {shortDate(account.lastSyncAt)}
+              </span>
+            )}
+          </div>
 
-      {/* Stop detail — only shown when this account is STOPPED today */}
-      {stopCtx && (
-        <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-800">
-          <p className="font-medium">Daily loss limit reached</p>
-          <p className="mt-0.5">{stopCtx.lockNote}</p>
-          {stopCtx.readOnlyNote && (
-            <p className="mt-1 text-red-700">{stopCtx.readOnlyNote}</p>
+          {/* Stop detail — only shown when this account is STOPPED today */}
+          {stopCtx && (
+            <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-800">
+              <p className="font-medium">Daily loss limit reached</p>
+              <p className="mt-0.5">{stopCtx.lockNote}</p>
+              {stopCtx.readOnlyNote && (
+                <p className="mt-1 text-red-700">{stopCtx.readOnlyNote}</p>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
 
       <div className="mt-3 border-t border-stone-100 pt-3">

@@ -29,17 +29,29 @@ function AccountItem({
   account: RuleScopeAccount;
   isSelected: boolean;
 }) {
+  const isUnavailable = account.missingFromBrokerSince != null;
+
   return (
     <Link
       href={`/rules?scope=account&id=${account.id}`}
       className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm transition ${
         isSelected
           ? "bg-stone-950 text-stone-50"
-          : "text-stone-700 hover:bg-stone-100"
+          : isUnavailable
+            ? "text-stone-400 hover:bg-stone-100"
+            : "text-stone-700 hover:bg-stone-100"
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{account.label}</span>
-      {account.hasAccountRules && (
+      {isUnavailable ? (
+        <span
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
+            isSelected ? "bg-stone-700 text-stone-200" : "bg-amber-100 text-amber-700"
+          }`}
+        >
+          inactive
+        </span>
+      ) : account.hasAccountRules ? (
         <span
           className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
             isSelected ? "bg-stone-700 text-stone-200" : "bg-amber-100 text-amber-700"
@@ -47,7 +59,7 @@ function AccountItem({
         >
           custom
         </span>
-      )}
+      ) : null}
     </Link>
   );
 }

@@ -26,6 +26,7 @@ function stub(overrides: Partial<RuleScopeAccount>): RuleScopeAccount {
     connectionStatus: "connected_readonly",
     brokerConnectionId: "conn-a",
     hasAccountRules: false,
+    missingFromBrokerSince: null,
     brokerConnection: conn("conn-a"),
     ...overrides,
   };
