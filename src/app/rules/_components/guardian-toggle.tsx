@@ -58,14 +58,19 @@ export function GuardianToggle({ initialEnabled }: Props) {
               <p className="mt-0.5 text-xs text-emerald-800/80">Guardrail is monitoring each session against your rules.</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDisable}
-            disabled={loading}
-            className="inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Turning off..." : "Turn off Guardian"}
-          </button>
+          <div className="shrink-0 text-right">
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={loading}
+              className="inline-flex h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Turning off..." : "Turn off Guardian"}
+            </button>
+            <p className="mt-1 text-[11px] text-emerald-700/70">
+              Turns off Guardian monitoring across your Guardrail account.
+            </p>
+          </div>
         </div>
         {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
       </div>
