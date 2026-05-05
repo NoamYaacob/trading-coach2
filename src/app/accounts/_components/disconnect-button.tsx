@@ -149,9 +149,16 @@ export function DisconnectButton({
   redirectTo?: string;
 }) {
   const router = useRouter();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [dialogMode, setDialogMode] = useState<"destructive" | "blocked" | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function closeDialog() {
+    setDialogMode(null);
+    // Return focus to the trigger after modal closes.
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
 
   function handleClick() {
     setError(null);
@@ -185,16 +192,34 @@ export function DisconnectButton({
   return (
     <>
       {error && <p className="text-xs text-red-700">{error}</p>}
-      <button
-        type="button"
-        onClick={handleClick}
-        className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
-      >
-        Disconnect
-      </button>
+
+      {isBlocked ? (
+        <div className="flex flex-col items-end gap-1">
+          <p className="text-xs text-amber-700">
+            Protected session active · Disconnect available after session ends.
+          </p>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={handleClick}
+            className="inline-flex rounded-full border border-stone-100 px-4 py-2 text-xs font-medium text-stone-400 transition hover:border-stone-200 hover:text-stone-500"
+          >
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={handleClick}
+          className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
+        >
+          Disconnect
+        </button>
+      )}
 
       {dialogMode === "blocked" && (
-        <BlockedDialog onClose={() => setDialogMode(null)} />
+        <BlockedDialog onClose={closeDialog} />
       )}
 
       {dialogMode === "destructive" && (
@@ -203,7 +228,7 @@ export function DisconnectButton({
           isDisconnecting={isDisconnecting}
           onConfirm={handleConfirm}
           onCancel={() => {
-            if (!isDisconnecting) setDialogMode(null);
+            if (!isDisconnecting) closeDialog();
           }}
         />
       )}
