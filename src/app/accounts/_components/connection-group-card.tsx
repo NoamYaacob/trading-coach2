@@ -6,6 +6,7 @@ import {
   deriveEnforcementLabelValues,
   deriveRulesLabel,
   deriveStopContext,
+  formatPropFirmDescriptor,
 } from "./account-rule-helpers";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -166,6 +167,9 @@ function AccountCompactRow({
         account.riskRules.stopAfterLosses != null),
   );
 
+  const hasPropFirm = Boolean(account.propFirm && account.propFirm.trim());
+  const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+
   const guardian = deriveGuardianLabel(account.sessionState, today);
   const enforcement = deriveEnforcementLabelValues(
     account.interventions[0]?.brokerLockStatus ?? null,
@@ -173,12 +177,7 @@ function AccountCompactRow({
     account.sessionState?.sessionDate ?? null,
     today,
   );
-  const rulesLabel = deriveRulesLabel(
-    hasAccountRules,
-    hasDefaultRules,
-    account.propFirm,
-    account.accountType,
-  );
+  const rulesLabel = deriveRulesLabel(hasAccountRules, hasDefaultRules, hasPropFirm);
 
   const balance = account.balance != null ? Number(account.balance) : null;
 
@@ -197,8 +196,7 @@ function AccountCompactRow({
 
   const stopCtx = isStoppedToday
     ? deriveStopContext({
-        propFirm: account.propFirm,
-        accountType: account.accountType,
+        hasPropFirm,
         dailyLossLimit: effectiveDailyLossLimit,
         connectionStatus,
       })
@@ -209,6 +207,9 @@ function AccountCompactRow({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-stone-900">{account.label}</p>
+          {propFirmDescriptor && (
+            <p className="mt-0.5 text-[11px] text-stone-500">{propFirmDescriptor}</p>
+          )}
           {account.missingFromBrokerSince && (
             <p className="mt-0.5 text-[11px] text-amber-700">
               Not found in latest broker sync — may be closed or removed by the prop firm.
@@ -246,9 +247,6 @@ function AccountCompactRow({
           <p className="mt-0.5">{stopCtx.lockNote}</p>
           {stopCtx.readOnlyNote && (
             <p className="mt-1 text-red-700">{stopCtx.readOnlyNote}</p>
-          )}
-          {stopCtx.softPauseNote && (
-            <p className="mt-1 text-red-700">{stopCtx.softPauseNote}</p>
           )}
         </div>
       )}

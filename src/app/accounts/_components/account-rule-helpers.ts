@@ -1,27 +1,44 @@
 /**
  * Pure helpers for account rule label derivation and stop-state display.
- * No React or Prisma dependencies — all functions are side-effect-free and
- * straightforward to unit-test.
+ *
+ * Design intent: the UI must NOT overclaim a specific prop-firm program
+ * (e.g. "MFF Builder") from local metadata alone. propFirm + accountType
+ * are user-set free text / enum values; without verified program data
+ * they only tell us "this is a prop firm evaluation account", not which
+ * specific plan (Builder, Pro, Lightning, etc.) it is on.
+ *
+ * Helpers therefore return generic, honest labels and let callers show
+ * the underlying propFirm + accountType as descriptive context separately.
+ *
+ * No React or Prisma dependencies — all functions are side-effect-free.
  */
 
-// ── Prop-firm detection ────────────────────────────────────────────────────────
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  personal: "Personal",
+  demo: "Demo",
+};
+
+// ── Prop-firm descriptor ──────────────────────────────────────────────────────
 
 /**
- * Map a free-text propFirm string + accountType to a short display label.
- * Returns null for unknown firms so callers can fall back gracefully.
+ * Format the prop-firm + account-type metadata as a short descriptor for
+ * display (e.g. "MyFundedFutures · Evaluation"). Returns null when no
+ * propFirm is set so callers can hide the line entirely.
+ *
+ * This is intentionally generic — it does not infer or assert a specific
+ * program (Builder, Pro, etc.) from the propFirm string.
  */
-export function derivePropFirmLabel(
+export function formatPropFirmDescriptor(
   propFirm: string | null,
   accountType: string,
 ): string | null {
   if (!propFirm) return null;
-  const n = propFirm.toLowerCase();
-  if (n.includes("myfunded") || n === "mff") {
-    if (accountType === "evaluation") return "MFF Builder";
-    if (accountType === "funded") return "MFF Funded";
-    return "MFF";
-  }
-  return null;
+  const trimmed = propFirm.trim();
+  if (!trimmed) return null;
+  const typeLabel = ACCOUNT_TYPE_LABEL[accountType] ?? accountType;
+  return `${trimmed} · ${typeLabel}`;
 }
 
 // ── Rules label ───────────────────────────────────────────────────────────────
@@ -30,19 +47,17 @@ export function derivePropFirmLabel(
  * Returns the rule-source label shown in the compact account row.
  *
  * Priority: account-specific rules > default plan > no rules.
- * When the account belongs to a known prop firm, the label is enriched with
- * the firm's short name so users can see "MFF Builder rule" or
- * "Default plan · MFF Builder" instead of generic labels.
+ * When the account has a prop firm set, the label is generic ("Prop firm
+ * rule" / "Default plan · prop firm preset") — we never claim a specific
+ * program from propFirm metadata alone.
  */
 export function deriveRulesLabel(
   hasAccountRules: boolean,
   hasDefaultRules: boolean,
-  propFirm: string | null,
-  accountType: string,
+  hasPropFirm: boolean,
 ): string {
-  const firm = derivePropFirmLabel(propFirm, accountType);
-  if (hasAccountRules) return firm ? `${firm} rule` : "Account rules";
-  if (hasDefaultRules) return firm ? `Default plan · ${firm}` : "Default plan";
+  if (hasAccountRules) return hasPropFirm ? "Prop firm rule" : "Account-specific rule";
+  if (hasDefaultRules) return hasPropFirm ? "Default plan · prop firm preset" : "Default trading plan";
   return "No rules";
 }
 
@@ -51,10 +66,13 @@ export function deriveRulesLabel(
 /**
  * Returns the label and CSS classes for the enforcement status chip.
  *
- * "Broker-enforced" only fires when a broker lock is explicitly confirmed —
- * a read-only connection never reaches that branch. When the account is
- * STOPPED today, the chip shows "Internal lock", scoped to this account's
- * session state (not to the broker connection or the user).
+ * "Broker-enforced" only fires when a broker lock is explicitly confirmed
+ * via brokerLockStatus === "broker_locked". A read-only Tradovate
+ * connection cannot reach that branch — the only way to be enforced
+ * broker-side is verified write-level access plus an explicit lock event.
+ *
+ * When the account is STOPPED today, the chip shows
+ * "Internal Guardrail lock", scoped to this account's session state.
  */
 export function deriveEnforcementLabelValues(
   brokerLockStatus: string | null,
@@ -66,7 +84,7 @@ export function deriveEnforcementLabelValues(
     return { label: "Broker-enforced", cls: "bg-emerald-100 text-emerald-700" };
   }
   if (riskState === "STOPPED" && sessionDate === today) {
-    return { label: "Internal lock", cls: "bg-red-100 text-red-700" };
+    return { label: "Internal Guardrail lock", cls: "bg-red-100 text-red-700" };
   }
   return { label: "Monitoring only", cls: "bg-stone-100 text-stone-500" };
 }
@@ -74,32 +92,28 @@ export function deriveEnforcementLabelValues(
 // ── Stop-state contextual detail ─────────────────────────────────────────────
 
 export type StopContext = {
-  /** One-line lock note, e.g. "MFF Builder daily loss limit reached ($1,000). Guardrail marked this account locked." */
+  /** Generic lock summary, e.g. "Prop firm daily loss limit reached ($1,000). Guardrail marked this account locked …" */
   lockNote: string;
   /** Shown when the connection is read-only to clarify Guardrail did not block orders at the broker. */
   readOnlyNote: string | null;
-  /** Shown for MFF accounts to surface the prop firm's own soft-pause behaviour. */
-  softPauseNote: string | null;
 };
 
 /**
- * Build the contextual text shown below the status chips when an account is STOPPED.
- * Returns null when the account is not in a stopped state (caller is responsible for gating).
+ * Build the contextual text shown below the status chips when an account
+ * is STOPPED today. Copy is generic — it does not name a specific program.
  */
 export function deriveStopContext(input: {
-  propFirm: string | null;
-  accountType: string;
+  hasPropFirm: boolean;
   /** Effective daily loss limit driving the stop (account-specific, prop-firm, or default). */
   dailyLossLimit: number | null;
   connectionStatus: string;
 }): StopContext {
-  const firm = derivePropFirmLabel(input.propFirm, input.accountType);
   const limitPart =
     input.dailyLossLimit != null
       ? ` ($${input.dailyLossLimit.toLocaleString("en-US")})`
       : "";
-  const prefix = firm
-    ? `${firm} daily loss limit reached${limitPart}.`
+  const prefix = input.hasPropFirm
+    ? `Prop firm daily loss limit reached${limitPart}.`
     : `Daily loss limit reached${limitPart}.`;
   const lockNote = `${prefix} Guardrail marked this account locked for the protected session.`;
 
@@ -108,10 +122,5 @@ export function deriveStopContext(input: {
       ? "Broker-side blocking from Guardrail is not active on this read-only connection."
       : null;
 
-  const softPauseNote =
-    firm?.startsWith("MFF")
-      ? "MyFundedFutures may apply its own soft pause according to its rules. Guardrail shows the account as stopped inside the app based on the detected rule breach."
-      : null;
-
-  return { lockNote, readOnlyNote, softPauseNote };
+  return { lockNote, readOnlyNote };
 }
