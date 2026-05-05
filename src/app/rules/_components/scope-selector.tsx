@@ -34,7 +34,7 @@ function AccountItem({
   return (
     <Link
       href={`/rules?scope=account&id=${account.id}`}
-      className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm transition ${
+      className={`flex min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3.5 py-2 text-sm transition ${
         isSelected
           ? "bg-stone-950 text-stone-50"
           : isUnavailable
@@ -78,7 +78,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             : "text-stone-700 hover:bg-stone-100"
         }`}
       >
-        <p className="text-sm font-semibold">Default template</p>
+        <p className="truncate text-sm font-semibold">Default template</p>
         <p className={`text-xs leading-5 ${isDefault ? "text-stone-300" : "text-stone-500"}`}>
           Applies to all accounts without account-specific rules
         </p>
@@ -101,10 +101,10 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
           <div key={group.groupKey} className="mt-2">
             <div className="flex items-start justify-between gap-1.5 px-2 pb-0.5 pt-1">
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-stone-700">{group.firmLabel}</p>
-                <p className="text-[10px] text-stone-400">
+                <p className="truncate text-xs font-semibold text-stone-700">{group.firmLabel}</p>
+                <p className="truncate text-[10px] text-stone-400">
                   {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
-                  {group.connectionStatus === "connected_readonly" ? " · Read-only connection" : ""}
+                  {group.connectionStatus === "connected_readonly" ? " · Read-only" : ""}
                   {userId}
                 </p>
               </div>
