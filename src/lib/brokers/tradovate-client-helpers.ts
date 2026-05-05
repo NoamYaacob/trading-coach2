@@ -328,38 +328,109 @@ export function extractFillTimestamp(fill: Record<string, unknown>): string | nu
 
 // ── Entry-based trade counting ────────────────────────────────────────────────
 
+export type EntryFill = {
+  side: "LONG" | "SHORT";
+  quantity: number;
+  symbol: string;
+  occurredAt: Date;
+  /** Broker order id used to deduplicate partial fills of the same parent order. */
+  orderId?: string | null;
+};
+
 /**
- * Count the number of distinct "entry" trades in a set of executions.
+ * Count the number of distinct "entry decision" trades in a set of executions.
  *
- * A trade is counted when the net position for a symbol crosses from flat (0)
- * to non-flat — i.e., each time the trader opens a new position. Partial
- * fills of the same order are aggregated, scale-ins (adding to an existing
- * position) are not double-counted, and exits (reducing/closing a position)
- * are not counted. Reversals (crossing zero) count as one new entry.
+ * Product definition (NOT raw fill count):
+ *  - New position from flat                   → +1 trade
+ *  - Scale-in (adding to an existing same-side
+ *    position)                                → +1 trade
+ *  - Reversal (crossing zero in one motion)   → +1 trade in the new direction
+ *  - Reductions / partial exits / full closes → 0 new trades
+ *  - Partial fills of the same parent order   → aggregated into one decision
  *
- * Executions must carry .side ("LONG" = buy, "SHORT" = sell), .quantity, and
- * .symbol. They are sorted by occurredAt before processing.
+ * Partial fills are deduplicated by `orderId` so that a single broker order
+ * filled in three slices counts as one entry, not three. Fills with a missing
+ * orderId are kept as individual rows (defensive — the broker rarely omits it
+ * but we must not silently merge unrelated fills).
  */
-export function countEntryTrades(
-  executions: { side: "LONG" | "SHORT"; quantity: number; symbol: string; occurredAt: Date }[],
-): number {
-  const sorted = [...executions].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-  const positions = new Map<string, number>(); // symbol → net qty (positive = long, negative = short)
+export function countEntryTrades(executions: EntryFill[]): number {
+  // Step 1: Group fills by orderId+side+symbol so partial fills of one parent
+  // order count as a single decision. The trader placed one order; how the
+  // broker filled it is an implementation detail.
+  type Group = {
+    side: "LONG" | "SHORT";
+    quantity: number;
+    symbol: string;
+    occurredAt: Date;
+  };
+  const grouped = new Map<string, Group>();
+  let unkeyed = 0;
+  for (const ex of executions) {
+    const key =
+      ex.orderId != null && ex.orderId !== ""
+        ? `oid:${ex.orderId}:${ex.side}:${ex.symbol}`
+        : `unkeyed:${unkeyed++}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.quantity += ex.quantity;
+      if (ex.occurredAt.getTime() < existing.occurredAt.getTime()) {
+        existing.occurredAt = ex.occurredAt;
+      }
+    } else {
+      grouped.set(key, {
+        side: ex.side,
+        quantity: ex.quantity,
+        symbol: ex.symbol,
+        occurredAt: ex.occurredAt,
+      });
+    }
+  }
+
+  // Step 2: Walk grouped orders chronologically and track net position per
+  // symbol. Each time the position opens from flat, scales in same-direction,
+  // or reverses across zero, count one entry trade.
+  const sorted = [...grouped.values()].sort(
+    (a, b) => a.occurredAt.getTime() - b.occurredAt.getTime(),
+  );
+  const positions = new Map<string, number>();
   let trades = 0;
   for (const ex of sorted) {
     const prev = positions.get(ex.symbol) ?? 0;
     const delta = ex.side === "LONG" ? ex.quantity : -ex.quantity;
     const next = prev + delta;
     positions.set(ex.symbol, next);
-    // Flat → non-flat: new entry
+
     if (prev === 0 && next !== 0) {
+      // Open from flat
       trades++;
-    // Reversal (crossed zero): one new entry in the new direction
     } else if (prev !== 0 && next !== 0 && Math.sign(prev) !== Math.sign(next)) {
+      // Reversal: crossed zero in one motion (the new opposite-side exposure
+      // is the new entry; the implicit close of the prior side is not counted).
+      trades++;
+    } else if (
+      prev !== 0 &&
+      Math.sign(prev) === Math.sign(next) &&
+      Math.abs(next) > Math.abs(prev)
+    ) {
+      // Scale-in: same direction, position grew → another entry decision.
       trades++;
     }
+    // else: reduction, partial close, or full close — not a new entry.
   }
   return trades;
+}
+
+/**
+ * Count entry-based trades whose `occurredAt` is at or after `since`.
+ *
+ * Used to derive a "trades since connected" count separately from the full
+ * day count. Executions with timestamps strictly before `since` are dropped
+ * before counting, so any pre-connection net position is implicitly treated
+ * as flat at `since` for the purpose of detecting new entries.
+ */
+export function countEntryTradesSince(executions: EntryFill[], since: Date): number {
+  const cutoff = since.getTime();
+  return countEntryTrades(executions.filter((ex) => ex.occurredAt.getTime() >= cutoff));
 }
 
 // ── Fill account matching ─────────────────────────────────────────────────────

@@ -756,6 +756,11 @@ function TradesCell({
           />
         </div>
       ) : null}
+      {account.tradesMayIncludePreConnection && (
+        <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
+          Includes broker activity from today before Guardrail was connected.
+        </p>
+      )}
     </div>
   );
 }

@@ -41,6 +41,10 @@ export type CommandCenterAccount = {
   remainingDailyLoss: number | null;
   dailyLossUsedPct: number | null;
   tradesCount: number | null;
+  /** True when tradesCount may include broker activity from before this account
+   *  was connected to Guardrail today (full-day count is used for risk
+   *  enforcement; this flag drives the disclosure note in the UI). */
+  tradesMayIncludePreConnection: boolean;
   maxTradesPerDay: number | null;
   tradesUsedPct: number | null;
   consecutiveLosses: number | null;

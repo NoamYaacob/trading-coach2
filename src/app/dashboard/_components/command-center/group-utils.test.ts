@@ -30,6 +30,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     remainingDailyLoss: null,
     dailyLossUsedPct: null,
     tradesCount: null,
+    tradesMayIncludePreConnection: false,
     maxTradesPerDay: null,
     tradesUsedPct: null,
     consecutiveLosses: null,

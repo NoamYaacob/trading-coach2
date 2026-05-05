@@ -22,6 +22,7 @@ import {
   extractFillTimestamp,
   fillMatchesAccount,
   countEntryTrades,
+  countEntryTradesSince,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -875,71 +876,157 @@ describe("countEntryTrades", () => {
     side: "LONG" | "SHORT",
     qty: number,
     offsetMs = 0,
+    orderId: string | null = null,
   ) {
     return {
       symbol,
       side,
       quantity: qty,
       occurredAt: new Date(1_000_000 + offsetMs),
+      orderId,
     };
   }
 
   it("single buy fill = 1 trade", () => {
-    const count = countEntryTrades([mkEx("ES", "LONG", 1)]);
+    const count = countEntryTrades([mkEx("ES", "LONG", 1, 0, "ord-1")]);
     assert.equal(count, 1);
   });
 
-  it("partial fills of same order count as 1 trade", () => {
-    // Two LONG fills on the same symbol = still one opening entry
-    const count = countEntryTrades([mkEx("ES", "LONG", 1, 0), mkEx("ES", "LONG", 1, 100)]);
-    assert.equal(count, 1);
-  });
-
-  it("entry then exit = 1 trade (exit not counted)", () => {
+  it("one 10-contract entry split into 3 fills (3+4+3) of same orderId = 1 trade", () => {
     const count = countEntryTrades([
-      mkEx("ES", "LONG", 2, 0),  // open long 2
-      mkEx("ES", "SHORT", 2, 1), // close long
+      mkEx("ES", "LONG", 3, 0, "ord-1"),
+      mkEx("ES", "LONG", 4, 100, "ord-1"),
+      mkEx("ES", "LONG", 3, 200, "ord-1"),
     ]);
     assert.equal(count, 1);
   });
 
-  it("two separate entries (close then reopen) = 2 trades", () => {
+  it("entry then partial TP exit = still 1 trade (exit not counted)", () => {
+    // Buy 10, take profit on 5, leave 5 open → only one entry decision
     const count = countEntryTrades([
-      mkEx("ES", "LONG", 1, 0),   // entry 1
-      mkEx("ES", "SHORT", 1, 1),  // exit
-      mkEx("ES", "LONG", 1, 2),   // entry 2
+      mkEx("ES", "LONG", 10, 0, "entry-1"),
+      mkEx("ES", "SHORT", 5, 100, "tp-1"),
+    ]);
+    assert.equal(count, 1);
+  });
+
+  it("stop loss split into multiple fills adds no new trades", () => {
+    // Open long 10, stop fills as 2+3+5 contracts
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 10, 0, "entry-1"),
+      mkEx("ES", "SHORT", 2, 100, "stop-1"),
+      mkEx("ES", "SHORT", 3, 200, "stop-1"),
+      mkEx("ES", "SHORT", 5, 300, "stop-1"),
+    ]);
+    assert.equal(count, 1);
+  });
+
+  it("scale-in (adding to an open position) counts as a new trade", () => {
+    // Already long 5, buy 5 more → trader made another entry decision (+1)
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 5, 0, "ord-1"), // open long 5
+      mkEx("ES", "LONG", 5, 100, "ord-2"), // scale-in: long 5 → long 10
     ]);
     assert.equal(count, 2);
   });
 
-  it("scale-in (adding to open position) does not add a trade", () => {
+  it("scale-in with partial fills does not double-count", () => {
+    // Original entry: 5 contracts (one order, two fills 2+3)
+    // Scale-in: 5 more contracts (one order, two fills 2+3)
+    // → exactly 2 entry decisions, not 4 fills
     const count = countEntryTrades([
-      mkEx("ES", "LONG", 1, 0),  // entry: flat → long 1
-      mkEx("ES", "LONG", 1, 1),  // scale-in: long 1 → long 2 (no new entry)
-      mkEx("ES", "SHORT", 2, 2), // exit: long 2 → flat
+      mkEx("ES", "LONG", 2, 0, "entry-1"),
+      mkEx("ES", "LONG", 3, 50, "entry-1"),
+      mkEx("ES", "LONG", 2, 100, "entry-2"),
+      mkEx("ES", "LONG", 3, 150, "entry-2"),
     ]);
-    assert.equal(count, 1);
+    assert.equal(count, 2);
   });
 
-  it("reversal (long → short in one motion) counts as 1 new entry", () => {
-    // Position goes from +1 to -1: crossed zero → one new entry
+  it("two separate entries (close then reopen) = 2 trades", () => {
     const count = countEntryTrades([
-      mkEx("ES", "LONG", 1, 0),   // open long
-      mkEx("ES", "SHORT", 2, 1),  // reversal: close long + open short
+      mkEx("ES", "LONG", 1, 0, "ord-1"),
+      mkEx("ES", "SHORT", 1, 100, "ord-2"),
+      mkEx("ES", "LONG", 1, 200, "ord-3"),
     ]);
-    assert.equal(count, 2); // 1 long entry + 1 short entry
+    assert.equal(count, 2);
+  });
+
+  it("reversal (long → short in one fill) counts as 1 new short entry", () => {
+    // Position goes from +1 to -1 in one motion → close + new opposite entry
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0, "ord-1"),
+      mkEx("ES", "SHORT", 2, 100, "ord-2"),
+    ]);
+    assert.equal(count, 2);
   });
 
   it("two different symbols are counted independently", () => {
     const count = countEntryTrades([
-      mkEx("ES", "LONG", 1, 0),  // ES entry
-      mkEx("NQ", "LONG", 1, 1),  // NQ entry (separate symbol)
+      mkEx("ES", "LONG", 1, 0, "ord-1"),
+      mkEx("NQ", "LONG", 1, 100, "ord-2"),
+    ]);
+    assert.equal(count, 2);
+  });
+
+  it("fills with no orderId are not silently merged", () => {
+    // Defensive: if the broker omits orderId we must not collapse unrelated
+    // fills into one. Two separate fills with no orderId = two decisions.
+    const count = countEntryTrades([
+      mkEx("ES", "LONG", 1, 0, null),
+      mkEx("ES", "LONG", 1, 100, null), // scale-in (counted as new entry)
     ]);
     assert.equal(count, 2);
   });
 
   it("empty executions = 0 trades", () => {
     assert.equal(countEntryTrades([]), 0);
+  });
+});
+
+// ── countEntryTradesSince (connection timing) ────────────────────────────────
+
+describe("countEntryTradesSince", () => {
+  function mkEx(
+    symbol: string,
+    side: "LONG" | "SHORT",
+    qty: number,
+    occurredAt: Date,
+    orderId = "ord",
+  ) {
+    return { symbol, side, quantity: qty, occurredAt, orderId };
+  }
+
+  it("excludes fills strictly before the cutoff", () => {
+    const t0 = new Date("2026-05-05T13:00:00Z");
+    const t1 = new Date("2026-05-05T14:00:00Z");
+    const t2 = new Date("2026-05-05T14:30:00Z");
+    // Pre-connection: long entry + scale-in (would be 2 if counted)
+    // Post-connection (>= t1): only the t2 fill is included; from a flat
+    // post-connection baseline the t2 LONG fill is one new entry.
+    const count = countEntryTradesSince(
+      [
+        mkEx("ES", "LONG", 1, t0, "pre-1"),
+        mkEx("ES", "LONG", 1, t1, "post-1"),
+        mkEx("ES", "LONG", 1, t2, "post-2"),
+      ],
+      t1,
+    );
+    assert.equal(count, 2);
+  });
+
+  it("matches countEntryTrades when cutoff is older than all fills", () => {
+    const epoch = new Date(0);
+    const fills = [
+      mkEx("ES", "LONG", 5, new Date(1000), "a"),
+      mkEx("ES", "LONG", 5, new Date(2000), "b"), // scale-in
+    ];
+    assert.equal(countEntryTradesSince(fills, epoch), countEntryTrades(fills));
+  });
+
+  it("returns 0 when cutoff is after all fills", () => {
+    const fills = [mkEx("ES", "LONG", 1, new Date(1000), "a")];
+    assert.equal(countEntryTradesSince(fills, new Date(5000)), 0);
   });
 });
 

@@ -95,6 +95,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        brokerConnection: { select: { createdAt: true } },
       },
       orderBy: [{ propFirm: "asc" }, { label: "asc" }],
     }),
@@ -320,6 +321,21 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         Date.now() - lastIntervention.createdAt.getTime() < 24 * 60 * 60 * 1000,
     );
 
+    // Pre-connection activity disclosure: tradesCount uses the full broker
+    // trading day (Option A — needed for accurate risk enforcement). When the
+    // broker connection itself was created today, the count may include fills
+    // that happened before Guardrail was watching the account. Conservative
+    // detection: same UTC date as today AND tradesCount > 0.
+    const brokerConnectedAt = account.brokerConnection?.createdAt ?? null;
+    const now = new Date();
+    const tradesMayIncludePreConnection =
+      brokerConnectedAt != null &&
+      tradesCount != null &&
+      tradesCount > 0 &&
+      brokerConnectedAt.getUTCFullYear() === now.getUTCFullYear() &&
+      brokerConnectedAt.getUTCMonth() === now.getUTCMonth() &&
+      brokerConnectedAt.getUTCDate() === now.getUTCDate();
+
     return {
       id: account.id,
       label: account.label,
@@ -343,6 +359,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       remainingDailyLoss,
       dailyLossUsedPct,
       tradesCount,
+      tradesMayIncludePreConnection,
       maxTradesPerDay,
       tradesUsedPct,
       consecutiveLosses,
