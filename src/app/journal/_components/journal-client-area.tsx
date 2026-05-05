@@ -1,39 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { SectionCard } from "@/components/ui/section-card";
-import { TradeEntryForm } from "./trade-entry-form";
 import { TradeHistoryList } from "./trade-history-list";
 import type { TradeEntry } from "./types";
-
-function toLocalIsoMinute(isoUtc: string): string {
-  const d = new Date(isoUtc);
-  const offset = d.getTimezoneOffset() * 60_000;
-  return new Date(d.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function entryToFormValues(e: TradeEntry) {
-  return {
-    tradedAt: toLocalIsoMinute(e.tradedAt),
-    symbol: e.symbol,
-    direction: e.direction as "LONG" | "SHORT",
-    entryPrice: e.entryPrice?.toString() ?? "",
-    exitPrice: e.exitPrice?.toString() ?? "",
-    stopPrice: e.stopPrice?.toString() ?? "",
-    targetPrice: e.targetPrice?.toString() ?? "",
-    quantity: e.quantity?.toString() ?? "",
-    netPnl: e.pnl?.toString() ?? "",
-    fees: e.fees?.toString() ?? "",
-    riskAmount: e.riskAmount?.toString() ?? "",
-    rMultiple: e.rMultiple?.toString() ?? "",
-    strategy: e.strategy ?? "",
-    notes: e.notes ?? "",
-    ruleBreached: e.ruleBreached,
-    breachReason: e.breachReason ?? "",
-    overrideCalculated: e.pnlSource === "override",
-  };
-}
 
 // Returns YYYY-MM-DD in the given timezone (sv-SE locale gives ISO date format).
 function toDateKey(isoUtc: string, tz: string): string {
@@ -45,7 +16,6 @@ function toDateKey(isoUtc: string, tz: string): string {
 function formatDateLabel(key: string, todayKey: string, yesterdayKey: string): string {
   if (key === todayKey) return "Today";
   if (key === yesterdayKey) return "Yesterday";
-  // Parse the YYYY-MM-DD key and format as "Apr 29, 2026".
   const [y, m, d] = key.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -65,7 +35,6 @@ function groupByDate(
     tz,
   );
 
-  // entries are newest-first; we accumulate in order to preserve that ordering.
   const seen: string[] = [];
   const map: Record<string, TradeEntry[]> = {};
 
@@ -108,14 +77,8 @@ export function JournalClientArea({
   tz: string;
   windowStartIso: string;
 }) {
-  const [editingTrade, setEditingTrade] = useState<TradeEntry | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
   const [olderOpen, setOlderOpen] = useState(false);
-  const formRef = useRef<HTMLDivElement>(null);
 
-  // Split entries into today vs older. Entries from the server already exclude
-  // future-dated rows (queried with `lte: now`), so the split is just by
-  // whether the trade falls within today's trading-day window.
   const { todayEntries, olderEntries } = useMemo(() => {
     const today: TradeEntry[] = [];
     const older: TradeEntry[] = [];
@@ -131,24 +94,6 @@ export function JournalClientArea({
     [olderEntries, tz],
   );
 
-  // Scroll to the form panel whenever a trade is selected for editing.
-  useEffect(() => {
-    if (!editingTrade) return;
-    requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, [editingTrade?.id]);
-
-  function handleEdit(entry: TradeEntry) {
-    setEditingTrade(entry);
-    setFormOpen(true);
-  }
-
-  function handleFormDone() {
-    setEditingTrade(null);
-    setFormOpen(false);
-  }
-
   return (
     <>
       {/* Today's trades */}
@@ -156,11 +101,11 @@ export function JournalClientArea({
         title="Today's trades"
         description={
           todayEntries.length > 0
-            ? `${todayEntries.length} trade${todayEntries.length === 1 ? "" : "s"} logged today. Newest first.`
-            : "No trades logged today."
+            ? `${todayEntries.length} trade${todayEntries.length === 1 ? "" : "s"} synced today. Newest first.`
+            : "No synced trades today."
         }
       >
-        <TradeHistoryList entries={todayEntries} tz={tz} onEdit={handleEdit} />
+        <TradeHistoryList entries={todayEntries} tz={tz} />
       </SectionCard>
 
       {/* Older trades — collapsed by default, expanded on demand */}
@@ -189,44 +134,13 @@ export function JournalClientArea({
                   <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
                     {group.label}
                   </p>
-                  <TradeHistoryList entries={group.entries} tz={tz} onEdit={handleEdit} />
+                  <TradeHistoryList entries={group.entries} tz={tz} />
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
-
-      {/* Add / Edit trade panel */}
-      <div ref={formRef} className="rounded-2xl border border-stone-200 bg-white/90">
-        <button
-          type="button"
-          onClick={() => {
-            if (formOpen) {
-              handleFormDone();
-            } else {
-              setFormOpen(true);
-            }
-          }}
-          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-stone-950"
-        >
-          {editingTrade ? `Edit trade — ${editingTrade.symbol}` : "Add manual trade"}
-          <span className={`text-xs font-normal text-stone-400 transition-transform ${formOpen ? "rotate-45" : ""}`}>
-            +
-          </span>
-        </button>
-        {formOpen && (
-          <div className="px-5 pb-5 pt-0">
-            <TradeEntryForm
-              key={editingTrade?.id ?? "new"}
-              tradeId={editingTrade?.id}
-              initialValues={editingTrade ? entryToFormValues(editingTrade) : undefined}
-              onSaved={handleFormDone}
-              onCancel={handleFormDone}
-            />
-          </div>
-        )}
-      </div>
     </>
   );
 }

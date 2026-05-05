@@ -167,10 +167,18 @@ export default async function JournalPage() {
     <AppShell
       eyebrow="Trade Review"
       title="Trade history."
-      description="Review your trade history and rule compliance. When a broker is connected, data comes from live account sync."
+      description="Trades sync automatically from your connected broker account. Rule violations are flagged by the Guardrail engine."
       note="Broker-side order blocking is not enabled yet."
     >
       <div className="grid gap-6">
+        {!hasBroker && (
+          <NextActionBanner
+            variant="warning"
+            message="No broker connected — trade data is not yet syncing."
+            cta={{ label: "Connect broker", href: "/accounts" }}
+          />
+        )}
+
         {!riskRules && (
           <NextActionBanner
             variant="warning"
@@ -224,14 +232,6 @@ export default async function JournalPage() {
           windowStartIso={window.start.toISOString()}
         />
 
-        {!hasBroker && (
-          <p className="text-xs text-stone-500">
-            No broker connected.{" "}
-            <a href="/accounts/connect/tradovate" className="font-medium text-stone-700 underline-offset-2 hover:underline">
-              Connect Tradovate to activate Guardrail →
-            </a>
-          </p>
-        )}
       </div>
     </AppShell>
   );

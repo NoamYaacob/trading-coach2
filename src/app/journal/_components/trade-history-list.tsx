@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { getProduct } from "@/lib/trading-products";
 
@@ -114,18 +113,6 @@ function PnlDetails({ entry }: { entry: TradeEntry }) {
   const pnl = fmtMoney(entry.pnl);
   const source = entry.pnlSource;
 
-  if (source === "manual" || source === null) {
-    return (
-      <>
-        <div className="rounded-xl bg-stone-100 px-3 py-2.5 text-xs">
-          <p className="font-medium text-stone-700">Manual net P&L</p>
-          <p className="mt-0.5 text-stone-400">Price-based calculation unavailable</p>
-        </div>
-        <DetailRow label="Net P&L" value={pnl.text} />
-      </>
-    );
-  }
-
   if (source === "override") {
     const expectedNet =
       entry.grossPnl !== null && entry.fees !== null
@@ -146,30 +133,28 @@ function PnlDetails({ entry }: { entry: TradeEntry }) {
     );
   }
 
-  // calculated
-  return (
-    <>
-      <DetailRow label="Gross P&L" value={entry.grossPnl !== null ? fmtMoney(entry.grossPnl).text : "—"} />
-      <DetailRow label="Fees" value={entry.fees !== null ? fmtNum(entry.fees) : "—"} />
-      <DetailRow label="Net P&L" value={pnl.text} />
-    </>
-  );
+  if (source === "calculated") {
+    return (
+      <>
+        <DetailRow label="Gross P&L" value={entry.grossPnl !== null ? fmtMoney(entry.grossPnl).text : "—"} />
+        <DetailRow label="Fees" value={entry.fees !== null ? fmtNum(entry.fees) : "—"} />
+        <DetailRow label="Net P&L" value={pnl.text} />
+      </>
+    );
+  }
+
+  // Broker-reported net P&L (pnlSource null or unrecognized)
+  return <DetailRow label="Net P&L" value={pnl.text} />;
 }
 
 export function TradeHistoryList({
   entries,
   tz,
-  onEdit,
 }: {
   entries: TradeEntry[];
   tz: string;
-  onEdit: (entry: TradeEntry) => void;
 }) {
-  const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -180,29 +165,11 @@ export function TradeHistoryList({
     });
   }
 
-  async function handleDelete(id: string) {
-    setDeleting(id);
-    setDeleteError(null);
-    try {
-      const res = await fetch(`/api/journal/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Failed to delete trade.");
-      }
-      setConfirmingDelete(null);
-      router.refresh();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete trade.");
-    } finally {
-      setDeleting(null);
-    }
-  }
-
   if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-stone-200 bg-stone-50 px-6 py-8 text-center">
-        <p className="text-base font-semibold text-stone-800">No trades logged for this session</p>
-        <p className="mt-2 text-sm text-stone-600">Add a manual trade below to track risk state.</p>
+        <p className="text-base font-semibold text-stone-800">No synced trades found for this session</p>
+        <p className="mt-2 text-sm text-stone-600">Trades appear here once your broker account is connected and syncing.</p>
       </div>
     );
   }
@@ -214,8 +181,6 @@ export function TradeHistoryList({
         {entries.map((e) => {
           const pnl = fmtMoney(e.pnl);
           const isExpanded = expanded.has(e.id);
-          const isConfirming = confirmingDelete === e.id;
-          const isDeleting = deleting === e.id;
 
           return (
             <div key={e.id} className="py-3">
@@ -289,45 +254,6 @@ export function TradeHistoryList({
                       <span className="font-medium text-stone-600">Notes: </span>{e.notes}
                     </div>
                   )}
-
-                  {isConfirming ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-2">
-                      <span className="text-xs text-stone-600">Delete this trade?</span>
-                      <button
-                        type="button"
-                        disabled={isDeleting}
-                        onClick={() => handleDelete(e.id)}
-                        className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                      >
-                        {isDeleting ? "Deleting..." : "Yes, delete"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setConfirmingDelete(null); setDeleteError(null); }}
-                        className="rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600"
-                      >
-                        Cancel
-                      </button>
-                      {deleteError && <span className="w-full text-xs text-red-600">{deleteError}</span>}
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex gap-2 border-t border-stone-100 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(e)}
-                        className="rounded-full border border-stone-200 px-4 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingDelete(e.id)}
-                        className="rounded-full border border-red-200 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -351,16 +277,13 @@ export function TradeHistoryList({
               <th className="pb-3 pr-4">Net P&L</th>
               <th className="pb-3 pr-4">Risk</th>
               <th className="pb-3 pr-4">R</th>
-              <th className="pb-3 pr-4">Strategy</th>
-              <th className="pb-3">Actions</th>
+              <th className="pb-3">Strategy</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {entries.map((e) => {
               const pnl = fmtMoney(e.pnl);
               const isExpanded = expanded.has(e.id);
-              const isConfirming = confirmingDelete === e.id;
-              const isDeleting = deleting === e.id;
 
               return (
                 <Fragment key={e.id}>
@@ -387,46 +310,25 @@ export function TradeHistoryList({
                     <td className={`py-3 pr-4 font-mono ${pnl.cls}`}>{pnl.text}</td>
                     <td className="py-3 pr-4 font-mono text-stone-500">{fmtNum(e.riskAmount)}</td>
                     <td className="py-3 pr-4 font-mono text-stone-500">{fmtR(e.rMultiple)}</td>
-                    <td className="py-3 pr-4 text-stone-500">{e.strategy ?? "—"}</td>
-                    <td className="py-3" onClick={(ev) => ev.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onEdit(e)}
-                          className="text-xs text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <span className="text-stone-200">|</span>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingDelete(isConfirming ? null : e.id)}
-                          className="text-xs text-red-500 underline-offset-2 hover:text-red-700 hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
+                    <td className="py-3 text-stone-500">{e.strategy ?? "—"}</td>
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={13} className="bg-stone-50 px-3 pb-4 pt-2">
+                      <td colSpan={12} className="bg-stone-50 px-3 pb-4 pt-2">
                         <div className="mb-2">
                           <ProductInfo symbol={e.symbol} />
                         </div>
                         <div className="grid grid-cols-2 gap-x-8 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
                           <DetailRow label="Stop" value={fmtNum(e.stopPrice)} />
                           <DetailRow label="Target" value={fmtNum(e.targetPrice)} />
-                          <div className="text-xs text-stone-500">
-                            Source:{" "}
-                            <span className="font-medium text-stone-700">
-                              {e.pnlSource === "calculated"
-                                ? "Calculated"
-                                : e.pnlSource === "override"
-                                  ? "Override"
-                                  : "Manual"}
-                            </span>
-                          </div>
+                          {e.pnlSource && e.pnlSource !== "manual" && (
+                            <div className="text-xs text-stone-500">
+                              Source:{" "}
+                              <span className="font-medium text-stone-700">
+                                {e.pnlSource === "calculated" ? "Calculated" : "Override"}
+                              </span>
+                            </div>
+                          )}
                           {e.ruleBreached && (
                             <div className="flex items-center gap-1.5 text-xs">
                               <span className="text-stone-500">Rule breach:</span>
@@ -440,27 +342,6 @@ export function TradeHistoryList({
                             </div>
                           )}
                         </div>
-                        {isConfirming && (
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-stone-600">Delete this trade?</span>
-                            <button
-                              type="button"
-                              disabled={isDeleting}
-                              onClick={() => handleDelete(e.id)}
-                              className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                            >
-                              {isDeleting ? "Deleting..." : "Yes, delete"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setConfirmingDelete(null); setDeleteError(null); }}
-                              className="rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600"
-                            >
-                              Cancel
-                            </button>
-                            {deleteError && <span className="text-xs text-red-600">{deleteError}</span>}
-                          </div>
-                        )}
                       </td>
                     </tr>
                   )}
