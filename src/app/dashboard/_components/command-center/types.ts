@@ -35,6 +35,7 @@ export type CommandCenterAccount = {
   status: AccountStatus;
   enforcementMode: EnforcementMode;
   ruleSource: RuleSource;
+  rulesLabel: string;
   dailyPnl: number | null;
   maxDailyLoss: number | null;
   remainingDailyLoss: number | null;

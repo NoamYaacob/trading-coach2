@@ -22,6 +22,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     status: "allowed",
     enforcementMode: "broker_readonly",
     ruleSource: "account",
+    rulesLabel: "Account rules",
     balance: null,
     openPnl: null,
     dailyPnl: null,

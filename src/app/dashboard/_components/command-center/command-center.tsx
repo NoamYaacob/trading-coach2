@@ -519,7 +519,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 
       {/* Rules + Mode combined */}
       <td className="px-4 py-3 align-top">
-        <p className="text-xs text-stone-600">{RULE_SOURCE_LABEL[account.ruleSource]}</p>
+        <p className="text-xs text-stone-600">{account.rulesLabel}</p>
         <div className="mt-1">
           <EnforcementChip mode={account.enforcementMode} />
         </div>
@@ -631,7 +631,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
       <div className="mt-2.5 border-t border-stone-100 pt-2.5">
         {/* Muted metadata row */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
-          <span>{RULE_SOURCE_LABEL[account.ruleSource]}</span>
+          <span>{account.rulesLabel}</span>
           <span aria-hidden>·</span>
           <EnforcementChip mode={account.enforcementMode} />
           {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (

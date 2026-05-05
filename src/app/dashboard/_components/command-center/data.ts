@@ -2,9 +2,10 @@ import { prisma } from "@/lib/db";
 
 import { getProtectionLockState } from "@/lib/account-protection";
 import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
+import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
+import { derivePropFirmSetupNeeded, deriveStatus } from "./data-helpers";
 import type {
-  AccountStatus,
   CommandCenterAccount,
   CommandCenterData,
   CommandCenterFirmGroup,
@@ -76,56 +77,6 @@ function deriveEnforcementMode(input: {
   }
   return "not_connected";
 }
-
-function deriveStatus(input: {
-  isActive: boolean;
-  platform: string;
-  connectionStatus: string;
-  hasAnyRules: boolean;
-  propFirmSetupNeeded: boolean;
-  riskState: "NORMAL" | "WARNING" | "STOPPED" | null;
-  dailyLossUsedPct: number | null;
-  tradesCount: number | null;
-  maxTradesPerDay: number | null;
-}): AccountStatus {
-  if (!input.isActive) return "not_connected";
-
-  // Broker accounts that have not finished setup or have a broken connection.
-  if (input.platform !== "manual") {
-    if (
-      input.connectionStatus === "not_connected" ||
-      input.connectionStatus === "connection_error" ||
-      input.connectionStatus === "expired"
-    ) {
-      return "not_connected";
-    }
-    if (
-      input.connectionStatus === "pending_webhook" ||
-      input.connectionStatus === "oauth_pending_storage"
-    ) {
-      return "setup_needed";
-    }
-  }
-
-  if (!input.hasAnyRules) return "setup_needed";
-  if (input.propFirmSetupNeeded) return "setup_needed";
-
-  if (input.riskState === "STOPPED") return "locked";
-  if (input.riskState === "WARNING") return "warning";
-
-  const lossPct = input.dailyLossUsedPct ?? 0;
-  if (lossPct >= 1.0) return "locked";
-  if (lossPct >= 0.8) return "warning";
-
-  const { tradesCount, maxTradesPerDay } = input;
-  if (tradesCount != null && maxTradesPerDay != null) {
-    if (tradesCount >= maxTradesPerDay) return "locked";
-    if (maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) return "warning";
-  }
-
-  return "allowed";
-}
-
 
 export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
   const [accounts, defaultRules] = await Promise.all([
@@ -233,12 +184,14 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
     // Part C: prop firm accounts — effective budget = min of user + prop firm limits
     const isPropFirm = account.propFirm != null && account.propFirm.trim() !== "";
-    const propFirmSetupNeeded =
-      isPropFirm &&
-      (accountRules == null ||
-        (accountRules.propFirmMaxDrawdown == null &&
-          accountRules.propFirmDailyLossLimit == null &&
-          accountRules.propFirmDrawdownRemaining == null));
+    const propFirmSetupNeeded = derivePropFirmSetupNeeded({
+      isPropFirm,
+      hasAccountRules,
+      hasDefaultRules,
+      hasPropFirmDailyLossLimit: accountRules?.propFirmDailyLossLimit != null,
+      hasPropFirmMaxDrawdown: accountRules?.propFirmMaxDrawdown != null,
+      hasPropFirmDrawdownRemaining: accountRules?.propFirmDrawdownRemaining != null,
+    });
     let propFirmLimited = false;
     if (isPropFirm && accountRules != null) {
       const pfDailyLimit =
@@ -276,6 +229,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
     const balanceUnavailableForBudget =
       account.accountType === "personal" && balance == null && maxDailyLoss != null;
+
+    const rulesLabel = deriveRulesLabel(hasAccountRules, hasDefaultRules, isPropFirm);
 
     const status = deriveStatus({
       isActive: account.isActive,
@@ -378,6 +333,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       status,
       enforcementMode,
       ruleSource,
+      rulesLabel,
       balance,
       openPnl: account.openPnl != null ? Number(account.openPnl) : null,
       dailyPnl,
