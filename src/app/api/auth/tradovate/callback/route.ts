@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
+import { mapTvTokenError, parseTvTokenErrorBody } from "@/lib/brokers/tradovate-token-exchange";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -143,6 +144,17 @@ export async function GET(request: NextRequest) {
     expires_in?: number;
   };
 
+  // The state cookie is already deleted above — any second invocation of this
+  // callback will fail CSRF validation before reaching the token exchange.
+  console.info("[tradovate/callback] token exchange params", {
+    tokenUrl: config.tokenUrl[payload.env],
+    redirectUri,
+    clientId: config.clientId,
+    hasClientSecret: Boolean(config.clientSecret),
+    env: payload.env,
+    setupIdExists: Boolean(payload.setupId),
+  });
+
   try {
     const tokenRes = await fetch(config.tokenUrl[payload.env], {
       method: "POST",
@@ -157,9 +169,14 @@ export async function GET(request: NextRequest) {
     });
 
     if (!tokenRes.ok) {
-      await tokenRes.text().catch(() => "");
-      console.error(`[tradovate/callback] token exchange failed: HTTP ${tokenRes.status}`);
-      return backToConnectPage(request, "token_exchange_failed");
+      const rawBody = await tokenRes.text().catch(() => "");
+      const { tvError, tvErrorDesc } = parseTvTokenErrorBody(rawBody);
+      console.error("[tradovate/callback] token exchange failed", {
+        httpStatus: tokenRes.status,
+        tvError,
+        tvErrorDesc,
+      });
+      return backToConnectPage(request, mapTvTokenError(tvError));
     }
 
     tokenData = (await tokenRes.json()) as typeof tokenData;

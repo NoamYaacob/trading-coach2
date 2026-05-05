@@ -23,7 +23,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   demo_oauth_not_configured:
     "Demo / Simulation connection is not configured yet. Prop firm evaluation and simulated funded accounts usually require Demo / Simulation.",
   // OAuth flow
-  token_exchange_failed: "Tradovate rejected the authorization code. Please try again.",
+  token_exchange_failed:
+    "Tradovate could not complete the connection. Please try again. If this repeats, contact support with error code: OAUTH_TOKEN_EXCHANGE_FAILED.",
+  oauth_code_expired_or_reused:
+    "The authorization code expired or was already used. Please start the connection again.",
+  oauth_invalid_client:
+    "Tradovate rejected the application credentials. Please contact support.",
+  oauth_redirect_uri_mismatch:
+    "The redirect URL did not match. Please contact support.",
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
   token_storage_failed: "OAuth completed but token storage failed. Please try again or contact support.",
   token_encryption_failed: "OAuth completed but token encryption failed (server configuration issue). Please contact support.",
