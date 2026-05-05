@@ -118,3 +118,84 @@ export function parseTvTokenResponse(rawJson: unknown): TvTokenParseResult {
     },
   };
 }
+
+// ── Token-exchange request builder ────────────────────────────────────────────
+
+export type TvTokenRequest = {
+  url: string;
+  method: "POST";
+  headers: Record<string, string>;
+  body: string;
+};
+
+export type TvTokenRequestShape = {
+  tokenUrl: string;
+  method: "POST";
+  contentType: string;
+  hasCode: boolean;
+  hasRedirectUri: boolean;
+  hasClientId: boolean;
+  hasClientSecretInBody: boolean;
+  hasAuthorizationHeader: boolean;
+  grantType: string | null;
+};
+
+/**
+ * Build the Tradovate OAuth token-exchange request.
+ *
+ * Uses the standard OAuth 2.0 (RFC 6749 §4.1.3) token request format:
+ *   POST <tokenUrl>
+ *   Content-Type: application/x-www-form-urlencoded
+ *   Body: grant_type=authorization_code&code=...&redirect_uri=...
+ *         &client_id=...&client_secret=...
+ *
+ * Client credentials go in the body (not Basic Auth) because Tradovate's
+ * sample OAuth flow accepts them there. If invalid_client is returned with
+ * this format, the cause is value mismatch (wrong CID, secret, or redirect_uri),
+ * not format mismatch — invalid_request would surface format issues instead.
+ */
+export function buildTradovateOAuthTokenRequest(params: {
+  tokenUrl: string;
+  code: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}): TvTokenRequest {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: params.code,
+    redirect_uri: params.redirectUri,
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+  });
+  return {
+    url: params.tokenUrl,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  };
+}
+
+/**
+ * Sanitized shape of a token request — booleans only for the sensitive fields
+ * (code, client_secret), the value for non-sensitive ones (grant_type, content-type).
+ * Safe to log in production.
+ */
+export function describeTokenRequestShape(req: TvTokenRequest): TvTokenRequestShape {
+  const params = new URLSearchParams(req.body);
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    headers[k.toLowerCase()] = v;
+  }
+  return {
+    tokenUrl: req.url,
+    method: req.method,
+    contentType: headers["content-type"] ?? "",
+    hasCode: params.has("code"),
+    hasRedirectUri: params.has("redirect_uri"),
+    hasClientId: params.has("client_id"),
+    hasClientSecretInBody: params.has("client_secret"),
+    hasAuthorizationHeader: "authorization" in headers,
+    grantType: params.get("grant_type"),
+  };
+}

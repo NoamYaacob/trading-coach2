@@ -6,7 +6,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
-import { mapTvTokenError, parseTvTokenErrorBody, parseTvTokenResponse } from "@/lib/brokers/tradovate-token-exchange";
+import {
+  buildTradovateOAuthTokenRequest,
+  describeTokenRequestShape,
+  mapTvTokenError,
+  parseTvTokenErrorBody,
+  parseTvTokenResponse,
+} from "@/lib/brokers/tradovate-token-exchange";
 import type { TvParsedToken } from "@/lib/brokers/tradovate-token-exchange";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -158,17 +164,20 @@ export async function GET(request: NextRequest) {
 
   let token: TvParsedToken;
 
+  const tokenReq = buildTradovateOAuthTokenRequest({
+    tokenUrl: config.tokenUrl[payload.env],
+    code,
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    redirectUri,
+  });
+  console.info("[tradovate/callback] token request shape", describeTokenRequestShape(tokenReq));
+
   try {
-    const tokenRes = await fetch(config.tokenUrl[payload.env], {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-      }).toString(),
+    const tokenRes = await fetch(tokenReq.url, {
+      method: tokenReq.method,
+      headers: tokenReq.headers,
+      body: tokenReq.body,
     });
 
     if (!tokenRes.ok) {

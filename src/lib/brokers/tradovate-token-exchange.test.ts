@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildTradovateOAuthTokenRequest,
+  describeTokenRequestShape,
   mapTvTokenError,
   parseTvTokenErrorBody,
   parseTvTokenResponse,
@@ -196,5 +198,110 @@ describe("parseTvTokenResponse", () => {
     const result = parseTvTokenResponse({ error: "invalid_client", error_description: long });
     assert.ok(!result.ok);
     assert.equal(result.tvErrorDesc!.length, 300);
+  });
+});
+
+describe("buildTradovateOAuthTokenRequest", () => {
+  const sample = {
+    tokenUrl: "https://live-api-d.tradovate.com/auth/oauthtoken",
+    code: "auth_code_xyz",
+    clientId: "12660",
+    clientSecret: "secret_value",
+    redirectUri: "https://guardrail-trade.com/api/auth/tradovate/callback",
+  };
+
+  it("builds POST request to the given token URL", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    assert.equal(req.url, sample.tokenUrl);
+    assert.equal(req.method, "POST");
+  });
+
+  it("uses application/x-www-form-urlencoded Content-Type", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    assert.equal(req.headers["Content-Type"], "application/x-www-form-urlencoded");
+  });
+
+  it("does not include an Authorization header (creds go in body)", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    assert.equal(req.headers["Authorization"], undefined);
+    assert.equal(req.headers["authorization"], undefined);
+  });
+
+  it("body includes grant_type=authorization_code", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    const params = new URLSearchParams(req.body);
+    assert.equal(params.get("grant_type"), "authorization_code");
+  });
+
+  it("body includes code, client_id, client_secret, redirect_uri verbatim", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    const params = new URLSearchParams(req.body);
+    assert.equal(params.get("code"), sample.code);
+    assert.equal(params.get("client_id"), sample.clientId);
+    assert.equal(params.get("client_secret"), sample.clientSecret);
+    assert.equal(params.get("redirect_uri"), sample.redirectUri);
+  });
+
+  it("URL-encodes redirect_uri but preserves the original on parse", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    // The encoded body should contain the percent-encoded redirect URI.
+    assert.ok(req.body.includes("redirect_uri=https%3A%2F%2Fguardrail-trade.com"));
+    // And parsing it back should round-trip exactly.
+    const params = new URLSearchParams(req.body);
+    assert.equal(params.get("redirect_uri"), sample.redirectUri);
+  });
+});
+
+describe("describeTokenRequestShape", () => {
+  const sample = {
+    tokenUrl: "https://live-api-d.tradovate.com/auth/oauthtoken",
+    code: "auth_code_xyz",
+    clientId: "12660",
+    clientSecret: "secret_value",
+    redirectUri: "https://guardrail-trade.com/api/auth/tradovate/callback",
+  };
+
+  it("describes the standard request without exposing secret values", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    const shape = describeTokenRequestShape(req);
+    assert.deepEqual(shape, {
+      tokenUrl: sample.tokenUrl,
+      method: "POST",
+      contentType: "application/x-www-form-urlencoded",
+      hasCode: true,
+      hasRedirectUri: true,
+      hasClientId: true,
+      hasClientSecretInBody: true,
+      hasAuthorizationHeader: false,
+      grantType: "authorization_code",
+    });
+  });
+
+  it("contains no secret strings in the shape JSON", () => {
+    const req = buildTradovateOAuthTokenRequest(sample);
+    const json = JSON.stringify(describeTokenRequestShape(req));
+    assert.ok(!json.includes("auth_code_xyz"));
+    assert.ok(!json.includes("secret_value"));
+  });
+
+  it("detects an Authorization header when present", () => {
+    const shape = describeTokenRequestShape({
+      url: "https://example.com",
+      method: "POST",
+      headers: { Authorization: "Basic xxx", "Content-Type": "application/x-www-form-urlencoded" },
+      body: "grant_type=authorization_code&code=c",
+    });
+    assert.equal(shape.hasAuthorizationHeader, true);
+    assert.equal(shape.hasClientSecretInBody, false);
+  });
+
+  it("reports null grantType when missing", () => {
+    const shape = describeTokenRequestShape({
+      url: "https://example.com",
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "code=c",
+    });
+    assert.equal(shape.grantType, null);
   });
 });
