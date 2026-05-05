@@ -101,15 +101,19 @@ export default async function AccountsPage() {
   const hasBrokerConnections = brokerConnections.length > 0;
   const tradovateConfigured = getTradovateConfig().state === "ready";
 
-  const staleAccountIds = brokerConnections
-    .filter((bc) => bc.connectionStatus !== "expired" && bc.connectionStatus !== "connection_error")
-    .flatMap((bc) => bc.accounts)
+  const staleConnectionIds = brokerConnections
     .filter(
-      (a) =>
-        (a.protectionStatus === "protected" || a.protectionStatus === "monitor_only") &&
-        needsSync(a.lastSyncAt),
+      (bc) =>
+        bc.connectionStatus !== "expired" &&
+        bc.connectionStatus !== "connection_error" &&
+        bc.accounts.some(
+          (a) =>
+            (a.protectionStatus === "protected" || a.protectionStatus === "monitor_only") &&
+            needsSync(a.lastSyncAt),
+        ),
     )
-    .map((a) => a.id);
+    .map((bc) => bc.id);
+  const staleAccountIds: string[] = [];
 
   return (
     <AppShell
@@ -139,7 +143,9 @@ export default async function AccountsPage() {
           </div>
         )}
 
-        {staleAccountIds.length > 0 && <AutoSync staleAccountIds={staleAccountIds} />}
+        {(staleConnectionIds.length > 0 || staleAccountIds.length > 0) && (
+          <AutoSync staleConnectionIds={staleConnectionIds} staleAccountIds={staleAccountIds} />
+        )}
 
         {hasBrokerConnections ? (
           <div className="grid gap-4">

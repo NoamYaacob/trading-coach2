@@ -241,11 +241,24 @@ export default async function DashboardPage() {
       <div className="grid min-w-0 gap-8">
 
         {/* ── Auto-sync stale Tradovate accounts in background ─────────────── */}
+        {/* Connection-level sync runs discovery first (marks missing accounts). */}
         {(() => {
-          const staleIds = commandCenter.accounts
-            .filter((a) => a.platform === "tradovate" && needsSync(a.lastSyncAt))
+          const staleAccounts = commandCenter.accounts.filter(
+            (a) => a.platform === "tradovate" && needsSync(a.lastSyncAt),
+          );
+          const staleConnectionIds = [
+            ...new Set(
+              staleAccounts
+                .filter((a) => a.brokerConnectionId != null)
+                .map((a) => a.brokerConnectionId!),
+            ),
+          ];
+          const staleAccountIds = staleAccounts
+            .filter((a) => a.brokerConnectionId == null)
             .map((a) => a.id);
-          return staleIds.length > 0 ? <AutoSync staleAccountIds={staleIds} /> : null;
+          return staleConnectionIds.length > 0 || staleAccountIds.length > 0 ? (
+            <AutoSync staleConnectionIds={staleConnectionIds} staleAccountIds={staleAccountIds} />
+          ) : null;
         })()}
 
         {/* ── Command center — real data, or demo preview when no accounts ──── */}

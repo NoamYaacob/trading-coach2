@@ -678,6 +678,13 @@ export class TradovateClient {
     body?: unknown,
     /** Internal: true when the call is the post-renewal retry (prevents loops). */
     retriedAfterRenewal = false,
+    /**
+     * When true, a persistent 401 (after renewal succeeds) does NOT mark the
+     * connection expired. Used for optional trade-count endpoints (order/deps,
+     * fillPair/deps, fill/deps) whose 401 means "OAuth scope can't access this
+     * endpoint" rather than "credentials are globally broken".
+     */
+    skipMarkExpired = false,
   ): Promise<T> {
     if (!this.#accessToken || !this.#baseUrl) {
       throw new TradovateClientError(
@@ -711,6 +718,7 @@ export class TradovateClient {
         console.info("[tradovate/auth] received 401 — attempting in-place renewal + retry", {
           accountId: this.#accountId,
           path,
+          skipMarkExpired,
         });
         try {
           await this.#renewTokenNow();
@@ -729,12 +737,17 @@ export class TradovateClient {
           // Transient renewal failure — surface without marking expired.
           throw renewErr;
         }
-        return this.#request<T>(path, method, body, /* retriedAfterRenewal */ true);
+        return this.#request<T>(path, method, body, /* retriedAfterRenewal */ true, skipMarkExpired);
       }
-      // Already tried renewal and got 401 again — credential is invalid.
-      await this.#markConnectionExpired(
-        "Tradovate returned 401 after a successful token renewal. Re-authorize to reconnect.",
-      );
+      // Already tried renewal and got 401 again.
+      // For core endpoints this means the credential is invalid — mark expired.
+      // For optional endpoints (skipMarkExpired=true) a persistent 401 means
+      // "this OAuth scope can't access this endpoint", not a global auth failure.
+      if (!skipMarkExpired) {
+        await this.#markConnectionExpired(
+          "Tradovate returned 401 after a successful token renewal. Re-authorize to reconnect.",
+        );
+      }
       throw new TradovateClientError(
         "API_ERROR",
         `Tradovate API ${path} returned 401 after renewal retry.`,
@@ -1185,7 +1198,7 @@ export class TradovateClient {
     const endpoint = `order/deps?masterid=${this.#tvAccountId}`;
     let raw: unknown;
     try {
-      raw = await this.#request<unknown>(endpoint);
+      raw = await this.#request<unknown>(endpoint, "GET", undefined, false, /* skipMarkExpired */ true);
     } catch (err) {
       const status =
         err instanceof TradovateClientError ? err.statusCode : undefined;
@@ -1239,7 +1252,7 @@ export class TradovateClient {
     const endpoint = `fillPair/deps?masterid=${this.#tvAccountId}`;
     let raw: unknown;
     try {
-      raw = await this.#request<unknown>(endpoint);
+      raw = await this.#request<unknown>(endpoint, "GET", undefined, false, /* skipMarkExpired */ true);
     } catch (err) {
       const status =
         err instanceof TradovateClientError ? err.statusCode : undefined;
@@ -1294,7 +1307,7 @@ export class TradovateClient {
     const endpoint = `fill/deps?masterid=${this.#tvAccountId}`;
     let raw: unknown;
     try {
-      raw = await this.#request<unknown>(endpoint);
+      raw = await this.#request<unknown>(endpoint, "GET", undefined, false, /* skipMarkExpired */ true);
     } catch (err) {
       const status =
         err instanceof TradovateClientError ? err.statusCode : undefined;

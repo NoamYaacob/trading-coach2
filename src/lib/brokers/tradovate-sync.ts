@@ -250,19 +250,6 @@ export async function syncTradovateAccount(
     tradesCount = resolved.count ?? 0;
     tradeCountSource = resolved.trustLevel;
 
-    // If the fills response was already verified account-scoped (every row
-    // carried this account's accountId), the unscoped-fallback "estimated"
-    // verdict is too pessimistic — upgrade to "verified" so the dashboard
-    // can render the count without the disclaimer.
-    if (
-      tradeCountSource === "estimated" &&
-      cachedFills != null &&
-      (client.getLastFillsScopingVerdict() === "api_scoped" ||
-        client.getLastFillsScopingVerdict() === "field_scoped")
-    ) {
-      tradeCountSource = "verified";
-    }
-
     console.info("[tradovate/trades] resolver result", {
       accountId,
       count: resolved.count,
