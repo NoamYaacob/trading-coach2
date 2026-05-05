@@ -26,6 +26,9 @@ import {
   countEntryTrades,
   countEntryTradesSince,
   traceEntryTrades,
+  shouldRenewToken,
+  classifyRenewalError,
+  REFRESH_BUFFER_MS,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -1030,6 +1033,202 @@ describe("countEntryTradesSince", () => {
   it("returns 0 when cutoff is after all fills", () => {
     const fills = [mkEx("ES", "LONG", 1, new Date(1000), "a")];
     assert.equal(countEntryTradesSince(fills, new Date(5000)), 0);
+  });
+});
+
+// ── shouldRenewToken ──────────────────────────────────────────────────────────
+
+describe("shouldRenewToken", () => {
+  const NOW = new Date("2026-05-05T12:00:00Z");
+  const BUFFER = 15 * 60 * 1000; // 15 minutes
+
+  it("renews when expiresAt is null (no recorded expiry)", () => {
+    const r = shouldRenewToken({ expiresAt: null, now: NOW, bufferMs: BUFFER });
+    assert.equal(r.shouldRenew, true);
+    assert.equal(r.reason, "no_expiry_known");
+  });
+
+  it("renews when token is already past expiry", () => {
+    const r = shouldRenewToken({
+      expiresAt: new Date(NOW.getTime() - 60_000),
+      now: NOW,
+      bufferMs: BUFFER,
+    });
+    assert.equal(r.shouldRenew, true);
+    assert.equal(r.reason, "already_expired");
+  });
+
+  it("renews when token expires within the buffer window", () => {
+    const r = shouldRenewToken({
+      expiresAt: new Date(NOW.getTime() + 5 * 60_000), // 5min remaining, buffer is 15min
+      now: NOW,
+      bufferMs: BUFFER,
+    });
+    assert.equal(r.shouldRenew, true);
+    assert.equal(r.reason, "within_buffer");
+    assert.equal(r.msUntilExpiry, 5 * 60_000);
+  });
+
+  it("does NOT renew when token has plenty of time left", () => {
+    const r = shouldRenewToken({
+      expiresAt: new Date(NOW.getTime() + 60 * 60_000), // 60min remaining
+      now: NOW,
+      bufferMs: BUFFER,
+    });
+    assert.equal(r.shouldRenew, false);
+    assert.equal(r.reason, "valid_outside_buffer");
+  });
+
+  it("default buffer is 15 minutes (matches REFRESH_BUFFER_MS)", () => {
+    assert.equal(REFRESH_BUFFER_MS, 15 * 60 * 1000);
+  });
+
+  it("REFRESH_BUFFER_MS is large enough to cover a slow sync", () => {
+    // A full sync touches balance, positions, orders, fills, report — easily
+    // 30+ seconds. The buffer must comfortably exceed that to ensure no API
+    // call inside the sync runs with a token expiring mid-flight.
+    assert.ok(REFRESH_BUFFER_MS >= 5 * 60 * 1000);
+  });
+});
+
+// ── classifyRenewalError ──────────────────────────────────────────────────────
+
+describe("classifyRenewalError", () => {
+  it("network error → transient", () => {
+    assert.equal(
+      classifyRenewalError({ networkError: true }),
+      "transient",
+    );
+  });
+
+  it("NETWORK_ERROR code → transient", () => {
+    assert.equal(
+      classifyRenewalError({ code: "NETWORK_ERROR" }),
+      "transient",
+    );
+  });
+
+  it("PARSE_ERROR code → transient (Tradovate likely degraded)", () => {
+    assert.equal(
+      classifyRenewalError({ code: "PARSE_ERROR" }),
+      "transient",
+    );
+  });
+
+  it("REFRESH_NO_ACCESS_TOKEN code → auth_invalid (must re-authorize)", () => {
+    assert.equal(
+      classifyRenewalError({ code: "REFRESH_NO_ACCESS_TOKEN" }),
+      "auth_invalid",
+    );
+  });
+
+  it("HTTP 401 → auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 401 }),
+      "auth_invalid",
+    );
+  });
+
+  it("HTTP 403 → auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 403 }),
+      "auth_invalid",
+    );
+  });
+
+  it("HTTP 429 (rate limited) → transient (DO NOT mark expired)", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 429 }),
+      "transient",
+    );
+  });
+
+  it("HTTP 500 → transient (DO NOT mark expired on Tradovate outage)", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 500 }),
+      "transient",
+    );
+  });
+
+  it("HTTP 502/503/504 → transient", () => {
+    for (const status of [502, 503, 504]) {
+      assert.equal(
+        classifyRenewalError({ httpStatus: status }),
+        "transient",
+        `status ${status} should be transient`,
+      );
+    }
+  });
+
+  it("HTTP 400 with invalid_grant body → auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({
+        httpStatus: 400,
+        bodyExcerpt: '{"error":"invalid_grant"}',
+      }),
+      "auth_invalid",
+    );
+  });
+
+  it("HTTP 400 default → auth_invalid (most refresh-grant 400s are auth)", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 400 }),
+      "auth_invalid",
+    );
+  });
+
+  it("HTTP 200 with invalid_token in body → auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({
+        httpStatus: 200,
+        bodyExcerpt: "<error>invalid_token</error>",
+      }),
+      "auth_invalid",
+    );
+  });
+
+  it("unknown error with no status, no code, no network flag → unknown", () => {
+    assert.equal(classifyRenewalError({}), "unknown");
+  });
+});
+
+// ── token refresh policy: end-to-end contract ────────────────────────────────
+
+describe("token refresh policy contract", () => {
+  // These tests document the expected behavior at the boundary between the
+  // pure helpers and the TradovateClient that consumes them. They don't
+  // exercise network code; they assert the shape of the decisions.
+
+  it("transient renewal failure must NOT mark connection expired", () => {
+    // Contract: classifyRenewalError(transient) → caller leaves status alone.
+    const cls: string = classifyRenewalError({ httpStatus: 503 });
+    assert.equal(cls, "transient");
+    // Production code's check: `if (cls === "auth_invalid") markExpired()`.
+    assert.notEqual(cls, "auth_invalid", "503 from Tradovate must not expire the connection");
+  });
+
+  it("auth_invalid renewal failure DOES mark connection expired", () => {
+    const cls: string = classifyRenewalError({ httpStatus: 401 });
+    assert.equal(cls, "auth_invalid");
+  });
+
+  it("rate-limited renewal (429) is transient, retry on next sync", () => {
+    const cls = classifyRenewalError({ httpStatus: 429 });
+    assert.equal(cls, "transient");
+  });
+
+  it("near-expired token triggers renewal", () => {
+    const now = new Date("2026-05-05T12:00:00Z");
+    const expiresIn10Min = new Date(now.getTime() + 10 * 60_000);
+    const r = shouldRenewToken({ expiresAt: expiresIn10Min, now, bufferMs: REFRESH_BUFFER_MS });
+    assert.equal(r.shouldRenew, true);
+  });
+
+  it("fresh token does not trigger renewal", () => {
+    const now = new Date("2026-05-05T12:00:00Z");
+    const expiresIn70Min = new Date(now.getTime() + 70 * 60_000);
+    const r = shouldRenewToken({ expiresAt: expiresIn70Min, now, bufferMs: REFRESH_BUFFER_MS });
+    assert.equal(r.shouldRenew, false);
   });
 });
 

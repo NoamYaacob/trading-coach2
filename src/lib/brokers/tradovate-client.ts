@@ -45,6 +45,9 @@ import {
   fillMatchesAccount,
   fillCarriesAccountId,
   isAccountScopingSuspect,
+  shouldRenewToken,
+  classifyRenewalError,
+  type RenewalErrorClass,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -302,46 +305,136 @@ export class TradovateClient {
     await this.#refreshIfExpired();
   }
 
-  async #refreshIfExpired(): Promise<void> {
-    if (!this.#tokenExpiresAt) return;
-
-    const remaining = this.#tokenExpiresAt.getTime() - Date.now();
-    if (remaining > REFRESH_BUFFER_MS) return;
-
-    const tokenStillValid = remaining > 0;
-
-    if (tokenStillValid) {
-      // Token is approaching expiry but still valid.
-      // Tradovate's /auth/renewAccessToken uses the current Bearer token and
-      // returns a new access token without requiring the refresh_token secret.
-      try {
-        await this.#renewViaApiEndpoint();
-        return;
-      } catch {
-        // Fall through to OAuth grant if we have a refresh token.
-      }
-    }
-
-    if (this.#refreshToken) {
-      await this.#refreshViaOAuthGrant();
-      return;
-    }
-
+  /**
+   * Mark the connection as expired in the DB. Used only when we have a
+   * confirmed auth_invalid response from Tradovate. Transient errors
+   * must NOT call this — they leave the connection in its current state
+   * so the next sync can retry.
+   */
+  async #markConnectionExpired(reason: string): Promise<void> {
+    const data = { connectionStatus: "expired", errorMessage: reason };
     if (this.#brokerConnectionId) {
       await prisma.brokerConnection.update({
         where: { id: this.#brokerConnectionId },
-        data: { connectionStatus: "expired", errorMessage: "Access token expired. Re-authorize to reconnect." },
+        data,
       });
     } else {
       await prisma.connectedAccount.update({
         where: { id: this.#accountId },
-        data: { connectionStatus: "expired", errorMessage: "Access token expired. Re-authorize to reconnect." },
+        data,
       });
     }
-    throw new TradovateClientError(
-      "TOKEN_EXPIRED_NO_REFRESH",
-      "Access token expired and no refresh token is available.",
-    );
+    console.warn("[tradovate/auth] connection marked expired", {
+      accountId: this.#accountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      reason,
+    });
+  }
+
+  /**
+   * Classify a token-renewal failure into auth_invalid / transient / unknown.
+   * Used by the renewal flow to decide whether to mark the connection expired
+   * (auth_invalid) or surface the error and let the caller retry (transient).
+   */
+  #classifyError(err: unknown): RenewalErrorClass {
+    if (err instanceof TradovateClientError) {
+      return classifyRenewalError({
+        code: err.code,
+        httpStatus: err.statusCode ?? null,
+      });
+    }
+    // Treat unknown thrown values as transient by default — we don't want to
+    // expire a working connection because of an unexpected internal error.
+    return "transient";
+  }
+
+  /**
+   * Attempt to renew the access token using the lightweight renewAccessToken
+   * endpoint first, then falling back to the OAuth refresh_token grant.
+   * NEVER marks the connection expired — the caller decides based on the
+   * classified error class. Throws the most informative TradovateClientError
+   * encountered along the way.
+   */
+  async #renewTokenNow(): Promise<void> {
+    let firstError: unknown = null;
+
+    try {
+      await this.#renewViaApiEndpoint();
+      return;
+    } catch (renewErr) {
+      firstError = renewErr;
+      const cls = this.#classifyError(renewErr);
+      console.info("[tradovate/auth] renewAccessToken failed", {
+        accountId: this.#accountId,
+        class: cls,
+        code: renewErr instanceof TradovateClientError ? renewErr.code : "unknown",
+        status: renewErr instanceof TradovateClientError ? renewErr.statusCode : undefined,
+      });
+      // Transient renewAccessToken errors: don't burn the refresh token by
+      // attempting an OAuth grant — surface the transient failure so the
+      // next sync retries.
+      if (cls === "transient") throw renewErr;
+      // auth_invalid or unknown → fall through to OAuth grant (the access
+      // token may simply be stale; the refresh_token may still be valid).
+    }
+
+    if (!this.#refreshToken) {
+      throw firstError ?? new TradovateClientError(
+        "TOKEN_EXPIRED_NO_REFRESH",
+        "Access token cannot be renewed and no refresh token is available.",
+      );
+    }
+
+    await this.#refreshViaOAuthGrant();
+  }
+
+  async #refreshIfExpired(): Promise<void> {
+    const decision = shouldRenewToken({
+      expiresAt: this.#tokenExpiresAt,
+      now: new Date(),
+      bufferMs: REFRESH_BUFFER_MS,
+    });
+    console.info("[tradovate/auth] renewal decision", {
+      accountId: this.#accountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      expiresAt: this.#tokenExpiresAt?.toISOString() ?? null,
+      now: new Date().toISOString(),
+      bufferMs: REFRESH_BUFFER_MS,
+      shouldRenew: decision.shouldRenew,
+      reason: decision.reason,
+      msUntilExpiry: decision.msUntilExpiry,
+    });
+    if (!decision.shouldRenew) return;
+
+    try {
+      await this.#renewTokenNow();
+      console.info("[tradovate/auth] token renewal succeeded", {
+        accountId: this.#accountId,
+        newExpiresAt: this.#tokenExpiresAt?.toISOString() ?? null,
+      });
+    } catch (err) {
+      const cls = this.#classifyError(err);
+      console.warn("[tradovate/auth] token renewal failed", {
+        accountId: this.#accountId,
+        class: cls,
+        code: err instanceof TradovateClientError ? err.code : "unknown",
+        status: err instanceof TradovateClientError ? err.statusCode : undefined,
+        willMarkExpired: cls === "auth_invalid",
+      });
+      if (cls === "auth_invalid") {
+        await this.#markConnectionExpired(
+          "Access token renewal was rejected by Tradovate. Re-authorize to reconnect.",
+        );
+        throw new TradovateClientError(
+          "TOKEN_EXPIRED_NO_REFRESH",
+          "Access token renewal was rejected by Tradovate.",
+        );
+      }
+      // Transient or unknown — propagate without marking expired so the next
+      // sync can retry. The sync layer's catch block records the error but
+      // leaves connectionStatus untouched.
+      throw err;
+    }
   }
 
   /**
@@ -454,13 +547,9 @@ export class TradovateClient {
     }
 
     if (!refreshRes.ok) {
-      await prisma.connectedAccount.update({
-        where: { id: this.#accountId },
-        data: {
-          connectionStatus: "expired",
-          errorMessage: "Token refresh was rejected. Re-authorize to reconnect.",
-        },
-      });
+      // Do NOT mark connection expired here — the caller (#refreshIfExpired)
+      // classifies the error and marks expired only when it's auth_invalid.
+      // Status 5xx/429 must not burn the connection.
       throw new TradovateClientError(
         "REFRESH_FAILED",
         `Token refresh rejected (HTTP ${refreshRes.status}).`,
@@ -589,6 +678,8 @@ export class TradovateClient {
     path: string,
     method: "GET" | "POST" = "GET",
     body?: unknown,
+    /** Internal: true when the call is the post-renewal retry (prevents loops). */
+    retriedAfterRenewal = false,
   ): Promise<T> {
     if (!this.#accessToken || !this.#baseUrl) {
       throw new TradovateClientError(
@@ -614,15 +705,41 @@ export class TradovateClient {
     }
 
     if (res.status === 401) {
-      const expiredData = { connectionStatus: "expired", errorMessage: "API returned 401 — re-authorize to reconnect." };
-      if (this.#brokerConnectionId) {
-        await prisma.brokerConnection.update({ where: { id: this.#brokerConnectionId }, data: expiredData });
-      } else {
-        await prisma.connectedAccount.update({ where: { id: this.#accountId }, data: expiredData });
+      // First 401 in this request: try one in-place renewal then retry once.
+      // Only mark the connection expired when the renewal itself fails with
+      // an auth_invalid error — never on the bare 401, which can happen if
+      // the token expired between #refreshIfExpired and the actual fetch.
+      if (!retriedAfterRenewal) {
+        console.info("[tradovate/auth] received 401 — attempting in-place renewal + retry", {
+          accountId: this.#accountId,
+          path,
+        });
+        try {
+          await this.#renewTokenNow();
+        } catch (renewErr) {
+          const cls = this.#classifyError(renewErr);
+          if (cls === "auth_invalid") {
+            await this.#markConnectionExpired(
+              "Tradovate rejected token renewal after a 401 response. Re-authorize to reconnect.",
+            );
+            throw new TradovateClientError(
+              "API_ERROR",
+              `Tradovate API ${path} returned 401 and renewal was rejected.`,
+              401,
+            );
+          }
+          // Transient renewal failure — surface without marking expired.
+          throw renewErr;
+        }
+        return this.#request<T>(path, method, body, /* retriedAfterRenewal */ true);
       }
+      // Already tried renewal and got 401 again — credential is invalid.
+      await this.#markConnectionExpired(
+        "Tradovate returned 401 after a successful token renewal. Re-authorize to reconnect.",
+      );
       throw new TradovateClientError(
         "API_ERROR",
-        `Tradovate API ${path} returned 401 Unauthorized.`,
+        `Tradovate API ${path} returned 401 after renewal retry.`,
         401,
       );
     }

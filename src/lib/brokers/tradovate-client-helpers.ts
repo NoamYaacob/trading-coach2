@@ -44,8 +44,139 @@ export class TradovateClientError extends Error {
 
 // ── Mapping helpers ───────────────────────────────────────────────────────────
 
-/** Token refresh buffer: refresh 5 minutes before expiry. */
-export const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+/**
+ * Token renewal buffer: refresh 15 minutes before expiry.
+ *
+ * Tradovate access tokens last about 80 minutes. Tradovate community guidance
+ * is to renew before the latest request reaches ~75 minutes — a generous buffer
+ * here means a sync that takes a minute or two will never run with a token
+ * expiring mid-call. The 5-minute buffer used previously was too tight: a
+ * sync starting at "5min remaining" could easily blow through expiry while
+ * fetching balance + positions + orders + fills + report sequentially.
+ */
+export const REFRESH_BUFFER_MS = 15 * 60 * 1000;
+
+// ── Token renewal decision (pure) ─────────────────────────────────────────────
+
+export type RenewalDecisionInput = {
+  expiresAt: Date | null;
+  now: Date;
+  bufferMs: number;
+};
+
+export type RenewalDecision = {
+  shouldRenew: boolean;
+  /** Diagnostic reason, e.g. "no_expiry_known", "already_expired", "within_buffer", "valid_outside_buffer". */
+  reason:
+    | "no_expiry_known"
+    | "already_expired"
+    | "within_buffer"
+    | "valid_outside_buffer";
+  /** Milliseconds until expiry. Null when expiresAt is unknown. */
+  msUntilExpiry: number | null;
+};
+
+/**
+ * Decide whether to renew the access token before making a request.
+ *
+ * Renews when:
+ *   - We have no recorded expiry (defensive: assume the token may be stale).
+ *   - The token is already past expiry.
+ *   - The token will expire within `bufferMs` of `now`.
+ *
+ * Pure — call from any execution context.
+ */
+export function shouldRenewToken(input: RenewalDecisionInput): RenewalDecision {
+  if (input.expiresAt == null) {
+    return { shouldRenew: true, reason: "no_expiry_known", msUntilExpiry: null };
+  }
+  const remaining = input.expiresAt.getTime() - input.now.getTime();
+  if (remaining <= 0) {
+    return { shouldRenew: true, reason: "already_expired", msUntilExpiry: remaining };
+  }
+  if (remaining <= input.bufferMs) {
+    return { shouldRenew: true, reason: "within_buffer", msUntilExpiry: remaining };
+  }
+  return { shouldRenew: false, reason: "valid_outside_buffer", msUntilExpiry: remaining };
+}
+
+// ── Renewal failure classification (pure) ─────────────────────────────────────
+
+/**
+ * Classify a token-renewal failure so the caller can decide whether to mark
+ * the connection as expired (auth_invalid) or surface a transient error
+ * without mutating the connection's status (transient).
+ *
+ *   auth_invalid — Tradovate refused the credentials/refresh token and we
+ *                  must require a re-authorization. Trigger UI re-connect.
+ *                  Examples: 401, 403, 400 with invalid_grant / invalid_token,
+ *                  Tradovate returned no accessToken in a 200 OK response.
+ *   transient    — Tradovate failed to answer or returned a server error.
+ *                  Do NOT mark the connection expired; let the next sync
+ *                  retry. Examples: network error, 429, 5xx, parse error.
+ *   unknown      — Can't classify (default conservative behavior is
+ *                  "transient" so we don't unnecessarily expire users).
+ */
+export type RenewalErrorClass = "auth_invalid" | "transient" | "unknown";
+
+export type RenewalErrorInput = {
+  /** TradovateClientError.code or another short code identifier. */
+  code?: string | null;
+  /** HTTP status from the renew response, if any. */
+  httpStatus?: number | null;
+  /** Optional response body excerpt for invalid_grant/invalid_token detection. */
+  bodyExcerpt?: string | null;
+  /** True for fetch network errors / DNS / abort. */
+  networkError?: boolean;
+};
+
+const AUTH_INVALID_BODY_MARKERS = [
+  "invalid_grant",
+  "invalid_token",
+  "invalid_client",
+  "unauthorized",
+  "expired",
+] as const;
+
+export function classifyRenewalError(input: RenewalErrorInput): RenewalErrorClass {
+  if (input.networkError) return "transient";
+
+  // Specific code-based classifications take priority over status code.
+  switch (input.code) {
+    case "NETWORK_ERROR":
+      return "transient";
+    case "PARSE_ERROR":
+      return "transient"; // Tradovate likely degraded, returning HTML/empty
+    case "REFRESH_NO_ACCESS_TOKEN":
+      return "auth_invalid"; // 200 OK but Tradovate refused to mint a new token
+    case "TOKEN_EXPIRED_NO_REFRESH":
+      return "auth_invalid";
+    default:
+      break;
+  }
+
+  const status = input.httpStatus;
+  if (status != null) {
+    if (status === 401 || status === 403) return "auth_invalid";
+    if (status === 429) return "transient";
+    if (status >= 500 && status < 600) return "transient";
+    if (status === 400) {
+      // 400 is ambiguous: it can be invalid_grant (auth) or bad request shape.
+      // Look at body markers to disambiguate; default to auth_invalid because
+      // the OAuth refresh_token grant returns 400 for invalid_grant.
+      const body = (input.bodyExcerpt ?? "").toLowerCase();
+      if (AUTH_INVALID_BODY_MARKERS.some((m) => body.includes(m))) return "auth_invalid";
+      return "auth_invalid";
+    }
+    if (status >= 200 && status < 300) {
+      // OK status but classification was requested — likely a body-level error.
+      const body = (input.bodyExcerpt ?? "").toLowerCase();
+      if (AUTH_INVALID_BODY_MARKERS.some((m) => body.includes(m))) return "auth_invalid";
+    }
+  }
+
+  return "unknown";
+}
 
 // ── Token response normalization ──────────────────────────────────────────────
 
