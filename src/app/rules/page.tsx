@@ -45,7 +45,7 @@ export default async function RulesPage({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, accounts, guardian] = await Promise.all([
+  const [riskRules, accounts, guardian, traderProfile] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount.findMany({
       where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
@@ -81,6 +81,7 @@ export default async function RulesPage({
       orderBy: { label: "asc" },
     }),
     getGuardianSnapshot(user.id),
+    prisma.traderProfile.findFirst({ where: { userId: user.id }, select: { timezone: true } }),
   ]);
 
   const protectionLock = getProtectionLockState({
@@ -269,6 +270,7 @@ export default async function RulesPage({
                   isLocked={protectionLock.isLocked}
                   hasPropFirm={Boolean(selectedAccount.propFirm)}
                   hasDefaultRules={hasDefaultRules}
+                  timezone={traderProfile?.timezone}
                 />
               </SectionCard>
             ) : (
@@ -290,7 +292,7 @@ export default async function RulesPage({
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
               </div>
-              <RulesForm initial={defaultInitial} hasBroker={hasBroker} />
+              <RulesForm initial={defaultInitial} hasBroker={hasBroker} timezone={traderProfile?.timezone} />
             </SectionCard>
           )}
 
@@ -342,8 +344,11 @@ function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
     const pLabel = conn.platform === "tradovate" ? "Tradovate"
       : conn.platform === "tradingview" ? "TradingView"
       : conn.platform;
-    const eLabel = conn.env === "live" ? "Live" : conn.env === "demo" ? "Demo / Sim" : conn.env;
+    const eLabel = conn.env === "live" ? "Live account" : conn.env === "demo" ? "Demo / Sim" : conn.env;
     parts.push(`${pLabel} · ${eLabel}`);
+    if (conn.connectionStatus === "connected_readonly") {
+      parts.push("Read-only connection");
+    }
     if (conn.brokerUserId) {
       const uid = conn.brokerUserId.length > 14
         ? `${conn.brokerUserId.slice(0, 12)}…`
@@ -381,10 +386,12 @@ function ScopeContextHeader({
   if (!account) return null;
 
   const conn = account.brokerConnection;
+  const envLabel = conn?.env === "live" ? "Live account" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
+  const readOnlySuffix = conn?.connectionStatus === "connected_readonly" ? " · Read-only connection" : "";
   const firmLine = account.propFirm
     ? account.propFirm
     : conn
-    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${conn.env === "live" ? "Live" : conn.env}`
+    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${envLabel}${readOnlySuffix}`
     : null;
 
   return (

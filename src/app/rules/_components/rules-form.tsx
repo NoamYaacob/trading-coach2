@@ -25,7 +25,26 @@ export type RulesFormValues = {
 type Props = {
   initial: RulesFormValues;
   hasBroker: boolean;
+  timezone?: string | null;
 };
+
+const TZ_CITY: Record<string, string> = {
+  "Asia/Jerusalem": "Israel",
+  "America/New_York": "New York",
+  "America/Chicago": "Chicago",
+  "America/Los_Angeles": "Los Angeles",
+  "Europe/London": "London",
+  "Europe/Berlin": "Berlin",
+  "Asia/Bangkok": "Bangkok",
+  "Asia/Tokyo": "Tokyo",
+  "Australia/Sydney": "Sydney",
+};
+
+function tzLabel(tz: string | null | undefined): string | null {
+  if (!tz) return null;
+  const city = TZ_CITY[tz];
+  return city ? `${city} time` : null;
+}
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 type Day = (typeof DAYS)[number];
@@ -42,7 +61,7 @@ function intOrNull(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function RulesForm({ initial, hasBroker }: Props) {
+export function RulesForm({ initial, hasBroker, timezone }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<RulesFormValues>(initial);
   const [saving, setSaving] = useState(false);
@@ -174,15 +193,18 @@ export function RulesForm({ initial, hasBroker }: Props) {
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Protected session window</legend>
+        <legend className="text-sm font-semibold text-stone-950">
+          Protected session window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
+        </legend>
         <p className="-mt-2 text-xs text-stone-500">
           The hours when Guardian monitors this account&apos;s rules. Disconnect protection and daily rule progress use this window.
+          Use 24-hour format (0–23).
         </p>
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
-          <Field label="Session start (hour, 0–23)">
+          <Field label="Session start">
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end (hour, 0–23)">
+          <Field label="Session end">
             <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
@@ -226,7 +248,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
             onChange={(v) => update("onBreachAppLock", v)}
             available
             label="Lock session for the day"
-            description="Mark the session stopped in Guardrail."
+            description="Marks the session stopped in Guardian. Does not block orders at the broker."
           />
         </div>
       </fieldset>
@@ -259,14 +281,14 @@ export function RulesForm({ initial, hasBroker }: Props) {
             />
             <span>
               <span className="font-medium text-stone-950">News lockout</span>
-              <span className="block text-stone-500">Block trading around high-impact economic events.</span>
+              <span className="block text-stone-500">Warn and mark Guardian locked around high-impact economic events.</span>
             </span>
           </label>
           <div className="grid gap-2">
             <p className="text-sm font-medium text-stone-950">Broker actions</p>
             <p className="text-xs text-stone-500">
               {hasBroker
-                ? "Activate once broker support is verified."
+                ? "Not active · requires verified broker write permissions."
                 : "Connect a broker to access these."}
             </p>
             <div className="grid gap-2 sm:gap-3">
@@ -299,7 +321,7 @@ export function RulesForm({ initial, hasBroker }: Props) {
           {saving ? "Saving..." : "Save rules"}
         </button>
         <span className="text-xs text-stone-500">
-          Changes apply to the next trade you log.
+          Changes apply from the next protected session.
         </span>
         {savedAt && !pendingMessage && (
           <span className="text-xs text-emerald-700">Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</span>
@@ -388,7 +410,7 @@ function BreachOption({
           <span className="text-sm font-medium text-stone-950">{label}</span>
           {!available && (
             <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-600">
-              Coming soon
+              Not active
             </span>
           )}
         </div>

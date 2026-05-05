@@ -70,12 +70,10 @@ export function computeEnforcementMode(
   if (isDefault) {
     return {
       mode: "monitoring_only",
-      label: "Monitoring only",
+      label: "Default template · Monitoring only",
       detail:
-        "The default template applies to all accounts without account-specific rules. " +
-        "Alerts fire in-app and via Telegram when limits are hit. " +
-        "No broker-side action is taken from the default template — " +
-        "select an individual account on the left to see its enforcement mode.",
+        "Applies only to accounts without account-specific rules. " +
+        "Broker actions require account-specific rules and verified broker permissions.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
     };
   }

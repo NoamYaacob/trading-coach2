@@ -30,7 +30,26 @@ type Props = {
   isLocked: boolean;
   hasPropFirm: boolean;
   hasDefaultRules: boolean;
+  timezone?: string | null;
 };
+
+const TZ_CITY: Record<string, string> = {
+  "Asia/Jerusalem": "Israel",
+  "America/New_York": "New York",
+  "America/Chicago": "Chicago",
+  "America/Los_Angeles": "Los Angeles",
+  "Europe/London": "London",
+  "Europe/Berlin": "Berlin",
+  "Asia/Bangkok": "Bangkok",
+  "Asia/Tokyo": "Tokyo",
+  "Australia/Sydney": "Sydney",
+};
+
+function tzLabel(tz: string | null | undefined): string | null {
+  if (!tz) return null;
+  const city = TZ_CITY[tz];
+  return city ? `${city} time` : null;
+}
 
 function num(v: string): number | null {
   if (!v.trim()) return null;
@@ -86,6 +105,7 @@ export function AccountRulesForm({
   isLocked,
   hasPropFirm,
   hasDefaultRules,
+  timezone,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -181,11 +201,13 @@ export function AccountRulesForm({
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
 
       {!hasExistingRules && (
-        <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
-          No account-specific rules yet.{" "}
-          {hasDefaultRules
-            ? "This account currently uses the default template."
-            : "No default template is set — add rules below to start monitoring."}
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          <p className="font-medium">Create account-specific override</p>
+          <p className="mt-0.5">
+            {hasDefaultRules
+              ? `This account currently uses the default template. Saving here will create rules only for ${accountLabel}.`
+              : `No default template is set. Saving here will create rules only for ${accountLabel}.`}
+          </p>
         </div>
       )}
 
@@ -216,13 +238,17 @@ export function AccountRulesForm({
 
       {/* Trading window */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
-        <p className="-mt-2 text-xs text-stone-500">Override the default session hours for this account.</p>
+        <legend className="text-sm font-semibold text-stone-950">
+          Trading window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
+        </legend>
+        <p className="-mt-2 text-xs text-stone-500">
+          Override the default session hours for this account. Use 24-hour format (0–23).
+        </p>
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label="Session start (hour, 0–23)">
+          <Field label="Session start">
             <Input value={values.allowedStartHour} onChange={(v) => update("allowedStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end (hour, 0–23)">
+          <Field label="Session end">
             <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
@@ -281,9 +307,8 @@ export function AccountRulesForm({
 
       {/* Submit row */}
       <div className="grid gap-2 border-t border-stone-100 pt-4 sm:pt-6">
-        {/* Scope confirmation — always visible so the user knows which account they're saving */}
         <p className="text-[11px] text-stone-400">
-          Saving rules for <span className="font-semibold text-stone-600">{accountLabel}</span>
+          Rules target: <span className="font-semibold text-stone-600">{accountLabel}</span>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
