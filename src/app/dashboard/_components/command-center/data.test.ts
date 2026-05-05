@@ -107,6 +107,61 @@ describe("deriveStatus", () => {
       "setup_needed",
     );
   });
+
+  // ── missingFromBrokerSince → unavailable ─────────────────────────────────
+  // When the broker's /account/list no longer returns this account, every
+  // cached number is suspect. The status must flip to "unavailable" and
+  // beat every other state, including STOPPED — we cannot trust riskState
+  // computed against stale fills.
+
+  it("returns 'unavailable' when missingFromBrokerSince is set", () => {
+    assert.equal(
+      deriveStatus({ ...base, missingFromBrokerSince: new Date("2026-05-04T12:00:00Z") }),
+      "unavailable",
+    );
+  });
+
+  it("'unavailable' wins over riskState=STOPPED (don't trust stale lock state)", () => {
+    assert.equal(
+      deriveStatus({
+        ...base,
+        riskState: "STOPPED",
+        missingFromBrokerSince: new Date("2026-05-04T12:00:00Z"),
+      }),
+      "unavailable",
+    );
+  });
+
+  it("'unavailable' wins over a verified trade-count limit breach", () => {
+    assert.equal(
+      deriveStatus({
+        ...base,
+        tradesCount: 5,
+        maxTradesPerDay: 3,
+        tradeCountSource: "verified",
+        missingFromBrokerSince: new Date("2026-05-04T12:00:00Z"),
+      }),
+      "unavailable",
+    );
+  });
+
+  it("inactive accounts stay 'not_connected' even when also missing", () => {
+    assert.equal(
+      deriveStatus({
+        ...base,
+        isActive: false,
+        missingFromBrokerSince: new Date("2026-05-04T12:00:00Z"),
+      }),
+      "not_connected",
+    );
+  });
+
+  it("returns 'allowed' when missingFromBrokerSince is null (broker still returns the account)", () => {
+    assert.equal(
+      deriveStatus({ ...base, missingFromBrokerSince: null }),
+      "allowed",
+    );
+  });
 });
 
 // ── deriveBreachReason ────────────────────────────────────────────────────────

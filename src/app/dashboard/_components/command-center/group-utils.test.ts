@@ -142,4 +142,54 @@ describe("buildCommandCenterGroups", () => {
     const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
     assert.deepEqual(group.lastSyncAt, later);
   });
+
+  // ── Unavailable accounts must not pollute group totals ──────────────────
+  // When an account is "unavailable" the broker no longer returns it, so any
+  // cached balance/P&L/loss-budget is stale by definition. The row is kept
+  // in the group (so the user sees it) but its numbers are excluded from
+  // aggregates.
+
+  it("excludes unavailable accounts from totalDailyPnl and totalRiskRemaining", () => {
+    const accounts = [
+      stubAccount({
+        id: "live",
+        brokerConnectionId: "conn-a",
+        status: "allowed",
+        dailyPnl: -200,
+        remainingDailyLoss: 800,
+      }),
+      stubAccount({
+        id: "gone",
+        brokerConnectionId: "conn-a",
+        status: "unavailable",
+        dailyPnl: -1500, // stale — must NOT be summed
+        remainingDailyLoss: 0, // stale — must NOT be summed
+        missingFromBrokerSince: new Date("2026-05-04T12:00:00Z"),
+      }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.accounts.length, 2, "row is kept for visibility");
+    assert.equal(group.totalDailyPnl, -200, "stale -1500 must be excluded");
+    assert.equal(group.totalRiskRemaining, 800, "stale risk slot must be excluded");
+    assert.equal(group.counts.allowed, 1);
+    assert.equal(group.counts.unavailable, 1);
+  });
+
+  it("a group with only unavailable accounts has hasPnlData=false", () => {
+    const accounts = [
+      stubAccount({
+        id: "gone",
+        brokerConnectionId: "conn-a",
+        status: "unavailable",
+        dailyPnl: -300,
+        remainingDailyLoss: 500,
+        missingFromBrokerSince: new Date("2026-05-04T12:00:00Z"),
+      }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.hasPnlData, false);
+    assert.equal(group.hasRiskData, false);
+    assert.equal(group.totalDailyPnl, 0);
+    assert.equal(group.totalRiskRemaining, 0);
+  });
 });

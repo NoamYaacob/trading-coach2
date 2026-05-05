@@ -35,6 +35,7 @@ const STATUS_FILTERS: { value: AccountStatus | "all"; label: string }[] = [
   { value: "locked", label: "Locked" },
   { value: "setup_needed", label: "Setup needed" },
   { value: "not_connected", label: "Not connected" },
+  { value: "unavailable", label: "Unavailable" },
 ];
 
 const STATUS_LABEL: Record<AccountStatus, string> = {
@@ -43,6 +44,7 @@ const STATUS_LABEL: Record<AccountStatus, string> = {
   locked: "Locked",
   setup_needed: "Setup needed",
   not_connected: "Not connected",
+  unavailable: "Unavailable",
 };
 
 const SETUP_NEEDED_LABEL: Record<
@@ -69,6 +71,7 @@ const STATUS_BADGE_CLASS: Record<AccountStatus, string> = {
   locked: "bg-red-100 text-red-800",
   setup_needed: "bg-stone-200 text-stone-700",
   not_connected: "bg-stone-100 text-stone-500",
+  unavailable: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
 };
 
 const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
@@ -77,6 +80,7 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
   locked: "bg-red-500",
   setup_needed: "bg-stone-400",
   not_connected: "bg-stone-300",
+  unavailable: "bg-amber-500",
 };
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
@@ -425,7 +429,51 @@ const SYNC_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
   hour12: false,
 });
 
+function UnavailableRow({ account }: { account: CommandCenterAccount }) {
+  return (
+    <tr className="border-b border-stone-100 last:border-b-0 bg-amber-50/40 hover:bg-amber-50/60">
+      <td colSpan={6} className="px-4 py-3 align-top">
+        <div className="flex min-w-0 items-start gap-2">
+          <StatusBadge status="unavailable" setupNeededReason={null} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-stone-950">{account.label}</p>
+            <p className="mt-0.5 text-[11px] text-stone-500">
+              {account.platformLabel}
+              <span aria-hidden> · </span>
+              {account.accountTypeLabel}
+            </p>
+            <p className="mt-1 text-xs font-medium text-amber-900">
+              Account no longer available in {account.platformLabel}
+            </p>
+            <p className="mt-0.5 text-[11px] text-amber-800">
+              This account may have been reset, closed, or removed by the prop firm.
+              Stale balance, P&amp;L, and trade counts are excluded from totals.
+            </p>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-right align-top">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Link
+            href="/accounts/connect/tradovate"
+            className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Reconnect
+          </Link>
+          <Link
+            href={`/accounts/${account.id}/edit`}
+            className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+          >
+            Archive
+          </Link>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function AccountRow({ account }: { account: CommandCenterAccount }) {
+  if (account.status === "unavailable") return <UnavailableRow account={account} />;
   return (
     <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
       {/* Account — status badge + name + platform + sync time */}
@@ -535,6 +583,42 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
     (account.status === "not_connected" ||
       account.connectionStatus === "expired" ||
       account.connectionStatus === "connection_error");
+
+  if (account.status === "unavailable") {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <StatusBadge status="unavailable" setupNeededReason={null} />
+          <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
+        </div>
+        <p className="mt-0.5 text-[11px] text-stone-500">
+          {account.platformLabel}
+          <span aria-hidden> · </span>
+          {account.accountTypeLabel}
+        </p>
+        <p className="mt-2 text-xs font-medium text-amber-900">
+          Account no longer available in {account.platformLabel}
+        </p>
+        <p className="mt-0.5 text-[11px] text-amber-800">
+          May have been reset, closed, or removed by the prop firm. Excluded from totals.
+        </p>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <Link
+            href="/accounts/connect/tradovate"
+            className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Reconnect
+          </Link>
+          <Link
+            href={`/accounts/${account.id}/edit`}
+            className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+          >
+            Archive
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">

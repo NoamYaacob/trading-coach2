@@ -1,7 +1,14 @@
 import type { AccountStatus, CommandCenterAccount, CommandCenterFirmGroup } from "./types";
 
 export function emptyCounts(): Record<AccountStatus, number> {
-  return { allowed: 0, warning: 0, locked: 0, setup_needed: 0, not_connected: 0 };
+  return {
+    allowed: 0,
+    warning: 0,
+    locked: 0,
+    setup_needed: 0,
+    not_connected: 0,
+    unavailable: 0,
+  };
 }
 
 /**
@@ -44,13 +51,18 @@ export function buildCommandCenterGroups(
     }
     group.accounts.push(account);
     group.counts[account.status] += 1;
-    if (account.dailyPnl != null) {
-      group.totalDailyPnl += account.dailyPnl;
-      group.hasPnlData = true;
-    }
-    if (account.remainingDailyLoss != null) {
-      group.totalRiskRemaining += account.remainingDailyLoss;
-      group.hasRiskData = true;
+    // Unavailable accounts (broker no longer returns them) are kept in the
+    // group for the user to see, but their stale balance/P&L/loss budget is
+    // excluded from group totals — same rule as the dashboard summary.
+    if (account.status !== "unavailable") {
+      if (account.dailyPnl != null) {
+        group.totalDailyPnl += account.dailyPnl;
+        group.hasPnlData = true;
+      }
+      if (account.remainingDailyLoss != null) {
+        group.totalRiskRemaining += account.remainingDailyLoss;
+        group.hasRiskData = true;
+      }
     }
     if (
       account.lastSyncAt != null &&

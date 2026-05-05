@@ -5,7 +5,11 @@ export type AccountStatus =
   | "warning"
   | "locked"
   | "setup_needed"
-  | "not_connected";
+  | "not_connected"
+  /** Broker /account/list no longer returns this account. May have been
+   *  reset, closed, or removed by the prop firm. Not counted in totals,
+   *  not synced, not enforced. */
+  | "unavailable";
 
 export type EnforcementMode =
   | "broker_readonly"

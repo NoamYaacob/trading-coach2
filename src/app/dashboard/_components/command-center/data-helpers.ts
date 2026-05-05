@@ -157,8 +157,15 @@ export function deriveStatus(input: {
   /** When not "verified", trade count alone cannot push status to locked/warning
    *  because it may include fills from other accounts on the same OAuth token. */
   tradeCountSource?: "verified" | "estimated" | "unavailable";
+  /** When set, the broker's /account/list no longer returns this account
+   *  (reset, closed, or removed by the prop firm). Wins over every other
+   *  status — we cannot trust any cached balance/P&L/rules for it. */
+  missingFromBrokerSince?: Date | null;
 }): AccountStatus {
   if (!input.isActive) return "not_connected";
+
+  // Broker no longer returns this account — stale data, do not enforce.
+  if (input.missingFromBrokerSince != null) return "unavailable";
 
   // Broker accounts that have not finished setup or have a broken connection.
   if (input.platform !== "manual") {

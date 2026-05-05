@@ -425,7 +425,7 @@ const MFF_GROUP: CommandCenterFirmGroup = {
   firmLabel: MFF_FIRM_LABEL,
   accounts: MFF_ACCOUNTS,
   // allowed: mff-1, mff-3 · warning: mff-2 · locked: mff-4 · setup_needed: mff-5
-  counts: { allowed: 2, warning: 1, locked: 1, setup_needed: 1, not_connected: 0 },
+  counts: { allowed: 2, warning: 1, locked: 1, setup_needed: 1, not_connected: 0, unavailable: 0 },
   // dailyPnl: 543 + (-1050) + 1876 + (-2500) = -1131  (mff-5 has no PnL)
   totalDailyPnl: -1_131,
   // remaining: 3000 + 200 + 3000 + 0 = 6200  (mff-5 has no risk data)
@@ -446,7 +446,7 @@ const LUCID_GROUP: CommandCenterFirmGroup = {
   firmLabel: LUCID_FIRM_LABEL,
   accounts: LUCID_ACCOUNTS,
   // allowed: lucid-1, lucid-2 · warning: lucid-3
-  counts: { allowed: 2, warning: 1, locked: 0, setup_needed: 0, not_connected: 0 },
+  counts: { allowed: 2, warning: 1, locked: 0, setup_needed: 0, not_connected: 0, unavailable: 0 },
   // dailyPnl: 1243 + (-234) + (-2100) = -1091
   totalDailyPnl: -1_091,
   // remaining: 2000 + 1766 + 400 = 4166
@@ -468,7 +468,7 @@ const ALL_ACCOUNTS = [...MFF_ACCOUNTS, ...LUCID_ACCOUNTS];
 
 const DEMO_SUMMARY: CommandCenterSummary = {
   totalActive: ALL_ACCOUNTS.length,
-  counts: { allowed: 4, warning: 2, locked: 1, setup_needed: 1, not_connected: 0 },
+  counts: { allowed: 4, warning: 2, locked: 1, setup_needed: 1, not_connected: 0, unavailable: 0 },
   totalDailyPnl: -2_222,
   totalRiskRemaining: 10_366,
   openInterventions: 1,

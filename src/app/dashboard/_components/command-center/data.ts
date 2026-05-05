@@ -247,6 +247,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       tradesCount,
       maxTradesPerDay,
       tradeCountSource,
+      missingFromBrokerSince: account.missingFromBrokerSince,
     });
 
     let setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null = null;
@@ -369,8 +370,13 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     };
   });
 
+  // Accounts the broker no longer returns ("unavailable") are excluded from
+  // every aggregate — totalActive, counts, totalDailyPnl, totalRiskRemaining,
+  // openInterventions. Their cached balance/P&L is stale by definition since
+  // the prop firm has reset/closed/removed the account.
+  const liveForSummary = computed.filter((a) => a.status !== "unavailable");
   const summary: CommandCenterSummary = {
-    totalActive: computed.length,
+    totalActive: liveForSummary.length,
     counts: emptyCounts(),
     totalDailyPnl: 0,
     totalRiskRemaining: 0,
@@ -380,7 +386,10 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
   };
 
   for (const account of computed) {
+    // Count unavailable in its own bucket so the dashboard can show it in
+    // chips if needed, but do not include its stale numbers in totals.
     summary.counts[account.status] += 1;
+    if (account.status === "unavailable") continue;
     if (account.dailyPnl != null) {
       summary.totalDailyPnl += account.dailyPnl;
       summary.hasPnlData = true;

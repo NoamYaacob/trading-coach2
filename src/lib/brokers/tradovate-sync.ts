@@ -505,6 +505,10 @@ export async function syncTradovateConnection(
   }
 
   // ── 2. Sync only protected + monitor_only accounts ──────────────────────
+  // Accounts the broker no longer returns are excluded — their cached state
+  // is stale and re-fetching would just emit warnings against missing accounts.
+  // They will be re-included automatically the next time discovery returns
+  // them (reconcileDiscoveredAccounts clears missingFromBrokerSince).
   const accounts = await prisma.connectedAccount.findMany({
     where: {
       brokerConnectionId: connectionId,
@@ -512,6 +516,7 @@ export async function syncTradovateConnection(
       isActive: true,
       platform: "tradovate",
       protectionStatus: { in: ["protected", "monitor_only"] },
+      missingFromBrokerSince: null,
     },
     select: { id: true },
     orderBy: { label: "asc" },
