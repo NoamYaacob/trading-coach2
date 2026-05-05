@@ -80,7 +80,6 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 };
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
-  manual_app_level: "Manual / App-level",
   broker_readonly: "Monitoring only",
   not_connected: "Not connected",
 };
@@ -797,11 +796,9 @@ function StatusBadge({
 
 function EnforcementChip({ mode }: { mode: EnforcementMode }) {
   const tone =
-    mode === "manual_app_level"
-      ? "bg-emerald-50 text-emerald-700"
-      : mode === "broker_readonly"
-        ? "bg-sky-50 text-sky-700"
-        : "bg-stone-100 text-stone-500";
+    mode === "broker_readonly"
+      ? "bg-sky-50 text-sky-700"
+      : "bg-stone-100 text-stone-500";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}

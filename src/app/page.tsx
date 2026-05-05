@@ -138,7 +138,7 @@ export default async function Home() {
               href="/how-it-works"
               className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
             >
-              Session states, Manual Mode, and enforcement scope →
+              Session states and enforcement scope →
             </Link>
           </div>
         </section>

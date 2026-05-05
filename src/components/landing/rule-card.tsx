@@ -61,7 +61,7 @@ export function RuleCardLegend() {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
-        Partial — manual mode today
+        Monitoring only
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-stone-300" aria-hidden />

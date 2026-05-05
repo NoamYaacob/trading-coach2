@@ -27,9 +27,9 @@ export default function RiskDisclaimerPage() {
             Guardrail enforces the rules you configure. It does not predict market behavior, recommend entries or exits, or prevent you from taking losses. It is your responsibility to define rules that match your risk tolerance and to follow them.
           </p>
 
-          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Manual Mode does not block trades at the broker</h2>
+          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Guardrail does not block trades at the broker</h2>
           <p className="mt-2 text-stone-700">
-            Manual Mode evaluates risk state from the trades you log in your journal. When a rule is breached, Guardrail transitions to a Locked state inside the application — it shows a lockout banner and (if configured) sends a Telegram alert. Manual Mode <strong>does not</strong> place, cancel, modify, or block orders at your broker. You retain full control of order entry at all times.
+            When a rule is breached, Guardrail transitions to a Locked state inside the application — it shows a lockout banner and (if configured) sends a Telegram alert. Guardrail <strong>does not</strong> place, cancel, modify, or block orders at your broker. You retain full control of order entry at all times.
           </p>
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Broker-level enforcement depends on broker API support</h2>
@@ -53,7 +53,7 @@ export default function RiskDisclaimerPage() {
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Connection reliability</h2>
           <p className="mt-2 text-stone-700">
-            Rule evaluation depends on timely data — from your journal entries (Manual Mode) or from your broker (when connected and verified). Network delays, API outages, browser issues, and broker-side problems may affect evaluation timing. Guardrail is not liable for losses occurring during such interruptions.
+            Rule evaluation depends on timely data from your connected broker. Network delays, API outages, browser issues, and broker-side problems may affect evaluation timing. Guardrail is not liable for losses occurring during such interruptions.
           </p>
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">User responsibility</h2>

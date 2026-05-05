@@ -164,7 +164,7 @@ export default async function PropFirmsPage() {
               },
               {
                 label: "Demo accounts",
-                text: "Test your rule setup without risk. Manual Mode runs the full rule engine on demo or paper trades.",
+                text: "Test your rule setup without risk using a connected demo or paper trading account.",
               },
             ].map((item) => (
               <div

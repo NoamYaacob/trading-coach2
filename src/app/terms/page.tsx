@@ -18,7 +18,7 @@ export default function TermsPage() {
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">1. What Guardrail is</h2>
         <p className="mt-3">
-          Guardrail is a risk-management and discipline tool for active traders. It evaluates rules you configure against trades you log (Manual Mode) or, where supported, fills and balances read from your connected broker. It is not a trading advisory service, broker, or financial-services provider. It does not place, modify, or guarantee execution of any order.
+          Guardrail is a risk-management and discipline tool for active traders. It evaluates rules you configure against fills and balances read from your connected broker. It is not a trading advisory service, broker, or financial-services provider. It does not place, modify, or guarantee execution of any order.
         </p>
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">2. No financial advice; no guarantee of outcomes</h2>
@@ -30,42 +30,37 @@ export default function TermsPage() {
           for details.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">3. Manual Mode is in-app only</h2>
-        <p className="mt-3">
-          Manual Mode evaluates risk state from journal entries. When a rule is breached, Guardrail transitions to a Locked state inside the application and may emit alerts. Manual Mode does not place, cancel, or block orders at your broker. You retain full order-entry control at your broker at all times.
-        </p>
-
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">4. Broker integrations</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">3. Broker integrations</h2>
         <p className="mt-3">
           Where Guardrail integrates with a broker (e.g., Tradovate), it does so via the broker&rsquo;s API and only with scopes you explicitly authorize. Read-only capabilities require read scope; destructive capabilities (cancelling orders, flattening positions, broker-level lockout) require both broker API support and explicit per-capability user opt-in inside the Service. Until a capability has been verified end-to-end against the live broker and explicitly opted into, Guardrail will not invoke it.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">5. Your responsibilities</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">4. Your responsibilities</h2>
         <p className="mt-3">
           You are responsible for: (a) the accuracy of journal entries you submit, (b) the rules you configure, (c) the broker accounts you authorize, (d) following the rules you set, and (e) any trading decisions you take. Guardrail is a tool that helps you hold yourself to your stated rules; it is not a substitute for capital preservation or professional advice.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">6. Service availability</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">5. Service availability</h2>
         <p className="mt-3">
           The Service is provided on an &ldquo;as-is&rdquo; and &ldquo;as-available&rdquo; basis. We aim for high availability but do not guarantee uninterrupted operation. Network delays, API outages (ours or the broker&rsquo;s), browser issues, and infrastructure problems may delay or prevent rule evaluation. Guardrail is not liable for losses occurring during such interruptions.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">7. Account, billing, and cancellation</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">6. Account, billing, and cancellation</h2>
         <p className="mt-3">
           Subscription billing is handled by Stripe. You may cancel your subscription at any time from the Settings page. Refunds, where applicable, follow our refund policy described at signup.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">8. Termination</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">7. Termination</h2>
         <p className="mt-3">
           We may suspend or terminate access for misuse, abuse, security concerns, or violation of these terms. You may delete your account at any time from the Settings page.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">9. Changes to these terms</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">8. Changes to these terms</h2>
         <p className="mt-3">
           We may update these terms from time to time. Material changes will be communicated through the Service. Continued use after a change constitutes acceptance.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">10. Contact</h2>
+        <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">9. Contact</h2>
         <p className="mt-3">
           For questions, contact{" "}
           <a

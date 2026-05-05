@@ -7,9 +7,8 @@
  * flatten positions, broker-level lockout) MUST throw NotImplementedError
  * until verified end-to-end against the live broker API.
  *
- * Manual Mode is modelled as a broker adapter too — its capability profile
- * declares which actions are supportable from manual journal data so the
- * UI can render the same capability matrix for every provider.
+ * The "manual" provider is a legacy database value. Active accounts use
+ * the tradovate adapter; other providers use the PlaceholderAdapter.
  */
 
 // ─── Identity ─────────────────────────────────────────────────────────────
@@ -47,8 +46,7 @@ export type BrokerCapabilityKey =
  * - `unknown`         — broker API support has not been verified yet.
  *                       Distinct from `coming_soon` because we are not
  *                       certain it is even possible.
- * - `not_supported`   — the broker / mode cannot do this action by design
- *                       (e.g. Manual Mode cannot flatten positions).
+ * - `not_supported`   — the broker / mode cannot do this action by design.
  */
 export type BrokerCapabilityStatus =
   | "available"

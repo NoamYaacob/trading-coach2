@@ -28,12 +28,11 @@ import {
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
 import type { GuardianSnapshot } from "@/lib/guardian";
-import { deriveManualEventSignals, getTodayManualEvents } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
-import type { ManualEventSignals, ViolationFeed } from "@/lib/rule-engine";
+import type { ViolationFeed } from "@/lib/rule-engine";
 import { getRecentCoachingExchanges, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -233,7 +232,6 @@ function deriveInterventionAlertContext(params: {
   violationFeed: ViolationFeed;
   currentState: string;
   guardian: GuardianSnapshot;
-  manualSignals: ManualEventSignals;
   tradingGoal: string | null;
   wantsGoalReminders: boolean;
 }): string | null {
@@ -248,13 +246,9 @@ function deriveInterventionAlertContext(params: {
       const pctUsed = maxLoss > 0 ? used / maxLoss : 0;
       events.push({ type: "near_daily_loss_limit", pctUsed, remaining });
     } else if (v.ruleId === "stop_after_consecutive_losses" && params.guardian.profile.stopAfterConsecutiveLosses) {
-      const streak = Math.max(
-        params.guardian.evaluation.consecutiveLosses,
-        params.manualSignals.consecutiveLosses,
-      );
       events.push({
         type: "consecutive_losses_warning",
-        streak,
+        streak: params.guardian.evaluation.consecutiveLosses,
         limit: params.guardian.profile.stopAfterConsecutiveLosses,
       });
     }
@@ -416,11 +410,10 @@ export async function POST(request: Request) {
 
   const isFreeText = effectiveText.length > 0 && matchedAction === null && !effectiveText.startsWith("/");
   const isSignOff = isFreeText && (isSignOffMessage(effectiveText) || endsWithSignOff(effectiveText));
-  const [guardian, todayGuardianSession, economicCalendarSnapshot, todayManualEvents, recentCoachingExchanges] = await Promise.all([
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, recentCoachingExchanges] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
-    getTodayManualEvents(connection.user.id),
     isAICoachEnabled() ? getRecentCoachingExchanges(connection.user.id, 3) : Promise.resolve([]),
   ]);
 
@@ -430,7 +423,6 @@ export async function POST(request: Request) {
   });
 
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
-  const manualEventSignals = deriveManualEventSignals(todayManualEvents);
 
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
@@ -444,7 +436,6 @@ export async function POST(request: Request) {
             message: economicCalendarPolicy.message,
           }
         : null,
-      manualSignals: manualEventSignals,
     }),
   );
 
@@ -470,7 +461,6 @@ export async function POST(request: Request) {
         violationFeed,
         currentState: String(flags.currentState),
         guardian,
-        manualSignals: manualEventSignals,
         tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
         wantsGoalReminders,
       })
@@ -503,10 +493,7 @@ export async function POST(request: Request) {
       : null,
     todayPnL: guardian.evaluation.todayPnL,
     stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
-    consecutiveLosses: Math.max(
-      guardian.evaluation.consecutiveLosses,
-      manualEventSignals.consecutiveLosses,
-    ),
+    consecutiveLosses: guardian.evaluation.consecutiveLosses,
   });
 
   const coachBrainInput: CoachBrainInput = {
@@ -528,10 +515,7 @@ export async function POST(request: Request) {
     usage: {
       todayPnL: guardian.evaluation.todayPnL,
       todayTradesCount: guardian.evaluation.todayTradesCount,
-      consecutiveLosses: Math.max(
-        guardian.evaluation.consecutiveLosses,
-        manualEventSignals.consecutiveLosses,
-      ),
+      consecutiveLosses: guardian.evaluation.consecutiveLosses,
     },
     coachingTone: connection.user.mentalProfile?.coachingTone ?? null,
     preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,

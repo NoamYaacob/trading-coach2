@@ -3,13 +3,13 @@
  *
  * Pure, side-effect-free helper that turns the user's timezone + optional
  * session hours into the half-open UTC window `[start, end)` that defines
- * the current "trading day" — used by Manual Mode to bucket trades for
- * P&L, max trades, loss streak, and daily-loss / profit-target rules.
+ * the current "trading day" — used to bucket trades for P&L, max trades,
+ * loss streak, and daily-loss / profit-target rules.
  *
  * Why this exists: a futures trader's "today" is not the server's calendar
  * day. Sessions span timezones, and many futures sessions are overnight
- * (e.g. 22:00 -> 05:00 next day). All Manual Mode surfaces must agree on
- * the same window so summaries match the rule engine.
+ * (e.g. 22:00 -> 05:00 next day). All surfaces that compute daily metrics
+ * must use the same window so summaries match the rule engine.
  */
 
 import { isValidTimeZone } from "./timezone.ts";

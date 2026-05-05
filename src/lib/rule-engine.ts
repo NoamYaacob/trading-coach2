@@ -51,8 +51,7 @@ export type RuleResult = {
 // ─── Manual event signals ──────────────────────────────────────────────────────
 
 /**
- * Derived signals from manually logged trade/session events.
- * Produced by deriveManualEventSignals() in manual-trade-events.ts.
+ * Derived signals from manually logged session events.
  * Optional augmentation — rules degrade gracefully when absent.
  */
 export type ManualEventSignals = {

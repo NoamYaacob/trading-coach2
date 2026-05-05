@@ -32,7 +32,6 @@ import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
 } from "@/lib/rule-engine";
-import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import { getTodaySessionEvents, getTodaySessionSummary } from "@/lib/session-log";
 import {
   buildTodayActivityTimeline,
@@ -107,8 +106,7 @@ export default async function DashboardPage() {
   ]);
 
   // ── Determine which branch to render ───────────────────────────────────────
-  // noAccounts covers both truly empty AND manual-only states — both should
-  // prompt the user to connect a broker rather than use manual mode.
+  // noAccounts covers truly empty states and accounts with no active broker connection.
   const hasBrokerAccount = commandCenter.accounts.some((a) => a.platform !== "manual");
   const noAccounts = !hasBrokerAccount;
 
@@ -166,10 +164,6 @@ export default async function DashboardPage() {
     process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? null;
   const telegramBotLink = telegramBotUsername ? `https://t.me/${telegramBotUsername}` : null;
 
-  const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
-  const manualTradeCount =
-    manualEventSignals.winCount + manualEventSignals.lossCount + manualEventSignals.tradeCount;
-
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
@@ -182,7 +176,6 @@ export default async function DashboardPage() {
             message: economicCalendarPolicy.message,
           }
         : null,
-      manualSignals: manualEventSignals,
     }),
   );
 

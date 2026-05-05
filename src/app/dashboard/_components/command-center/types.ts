@@ -8,7 +8,6 @@ export type AccountStatus =
   | "not_connected";
 
 export type EnforcementMode =
-  | "manual_app_level"
   | "broker_readonly"
   | "not_connected";
 

@@ -177,10 +177,10 @@ export default async function SecurityPage() {
               </p>
             </div>
             <div className="rounded-2xl border border-stone-700/60 bg-stone-900/60 px-4 py-4 sm:px-5 sm:py-5">
-              <p className="text-sm font-semibold text-stone-50">Works without a broker connection</p>
+              <p className="text-sm font-semibold text-stone-50">Broker connection required</p>
               <p className="mt-1.5 text-sm leading-5 text-stone-400 sm:mt-2 sm:leading-6">
-                Manual Mode lets you use the rule engine before connecting anything. Log trades
-                yourself and the same evaluation runs — Allowed, Warning, or Locked.
+                Guardrail evaluates your rules against live trade events from your connected broker.
+                Connect Tradovate from your account settings to activate enforcement.
               </p>
             </div>
           </div>

@@ -14,10 +14,7 @@ import {
   deriveTodaySessionState,
 } from "@/lib/guardian";
 import { getLiveEnforcementState } from "@/lib/live-enforcement-state";
-import { ManualRiskPanel } from "@/components/ui/manual-risk-panel";
-import { computeManualRiskState } from "@/lib/manual-risk-state";
 import { getTradingDayWindow } from "@/lib/trading-day";
-import { deriveManualEventSignals } from "@/lib/manual-trade-events";
 import {
   buildRuleEngineInputFromGuardianSnapshot,
   buildViolationFeed,
@@ -101,8 +98,6 @@ export default async function GuardianPage() {
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
-  const now = new Date();
-  const effectiveManualEnd = tradingDay.end < now ? tradingDay.end : now;
   const shortTradingDay = (() => {
     const fmt = (d: Date) =>
       new Intl.DateTimeFormat("en-US", {
@@ -120,22 +115,13 @@ export default async function GuardianPage() {
     todaySessionEvents,
     liveEnforcement,
     brokerCount,
-    todayManualTrades,
   ] = await Promise.all([
     getGuardianSnapshot(currentUser.id),
     getTodayGuardianSessionStart(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getLiveEnforcementState(currentUser.id),
     prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
-    prisma.manualTradeEntry.findMany({
-      where: {
-        userId: currentUser.id,
-        tradedAt: { gte: tradingDay.start, lt: effectiveManualEnd },
-      },
-      orderBy: { tradedAt: "asc" },
-    }),
   ]);
-  const manualRisk = computeManualRiskState({ rules: riskRules, todayTrades: todayManualTrades });
 
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
     user?.coachingPreferences,
@@ -147,7 +133,6 @@ export default async function GuardianPage() {
     sessionStart: todayGuardianSessionStart,
     preNewsPolicyStatus: economicCalendarPolicy,
   });
-  const manualEventSignals = deriveManualEventSignals(todaySessionEvents);
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: Boolean(todayGuardianSessionStart),
@@ -160,7 +145,6 @@ export default async function GuardianPage() {
             message: economicCalendarPolicy.message,
           }
         : null,
-      manualSignals: manualEventSignals,
     }),
   );
 
@@ -175,18 +159,13 @@ export default async function GuardianPage() {
 
   const hasBroker = brokerCount > 0;
   const guardianOff = !guardian.evaluation.guardianActive;
-  // Manual-mode breach state contributes to the Guardian permission verdict.
-  const manualLocked = manualRisk.permission === "LOCKED";
-  const manualWarning = manualRisk.permission === "WARNING";
   const isLocked =
     guardian.evaluation.lockoutActive ||
-    liveEnforcement?.riskState === "STOPPED" ||
-    (!hasBroker && manualLocked);
+    liveEnforcement?.riskState === "STOPPED";
   const hasWarnings =
     violationFeed.warningViolations.length > 0 ||
     (liveEnforcement &&
-      ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier)) ||
-    (!hasBroker && manualWarning);
+      ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier));
 
   const permission: Permission = guardianOff
     ? "GUARDIAN_OFF"
@@ -209,9 +188,7 @@ export default async function GuardianPage() {
   const detail = guardianOff
     ? "Your rules are saved, but Guardian is not actively monitoring the session."
     : isLocked
-      ? !hasBroker && manualLocked
-        ? manualRisk.lastBreach?.detail ?? "A daily limit was reached based on your journal entries."
-        : guardian.evaluation.primaryReasonLabel
+      ? guardian.evaluation.primaryReasonLabel ?? "A daily limit was reached."
       : hasWarnings
         ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
         : "No rule limits have been hit. Guardian is monitoring every trade event.";
@@ -283,7 +260,7 @@ export default async function GuardianPage() {
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
             <span className="font-medium text-stone-600">Source</span>
-            <span className="text-stone-700">{hasBroker ? "Broker connection" : "Manual fallback"}</span>
+            <span className="text-stone-700">{hasBroker ? "Broker connection" : "No broker"}</span>
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
@@ -298,77 +275,73 @@ export default async function GuardianPage() {
         </div>
 
         {/* ── Permission hero ─────────────────────────────────────────────── */}
-        {!hasBroker && !guardianOff ? (
-          <ManualRiskPanel
-            state={manualRisk}
-            hasRules={Boolean(riskRules)}
-            hideEditRulesCta
-            tradingDayLabel={tradingDay.label}
-            tradingDayLabelShort={shortTradingDay}
-          />
-        ) : (
-          <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${styles.chip}`}>
-                {styles.label}
-              </span>
-              <span className="text-xs text-stone-500">
-                {hasBroker ? "Broker connected" : (
-                  <>
-                    <span className="md:hidden">Manual journal</span>
-                    <span className="hidden md:inline">Manual fallback</span>
-                  </>
-                )}
-              </span>
+        <section className={`rounded-[2rem] border px-6 py-6 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.4)] ${styles.shell}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${styles.chip}`}>
+              {styles.label}
+            </span>
+            <span className="text-xs text-stone-500">
+              {hasBroker ? "Broker connected" : "No broker connected"}
+            </span>
+          </div>
+          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detail}</p>
+
+          {!hasBroker && (
+            <div className="mt-5">
+              <Link
+                href="/accounts/connect/tradovate"
+                className="inline-flex rounded-full border border-stone-400 bg-white px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
+              >
+                Connect Tradovate →
+              </Link>
             </div>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{headline}</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{detail}</p>
+          )}
 
-            {guardianOff && (
-              <div className="mt-5">
-                <Link
-                  href="/rules#guardian-toggle"
-                  className="inline-flex rounded-full border border-stone-400 bg-white px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
-                >
-                  Enable protection →
-                </Link>
-              </div>
-            )}
+          {guardianOff && (
+            <div className="mt-5">
+              <Link
+                href="/rules#guardian-toggle"
+                className="inline-flex rounded-full border border-stone-400 bg-white px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
+              >
+                Enable protection →
+              </Link>
+            </div>
+          )}
 
-            {triggeredLabels.length > 0 && (
-              <div className="mt-5 grid gap-1 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm">
-                <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${styles.accent}`}>
-                  Triggered
-                </p>
-                <ul className="grid gap-0.5 text-stone-800">
-                  {triggeredLabels.map((label) => (
-                    <li key={label}>• {label}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-        )}
+          {triggeredLabels.length > 0 && (
+            <div className="mt-5 grid gap-1 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm">
+              <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${styles.accent}`}>
+                Triggered
+              </p>
+              <ul className="grid gap-0.5 text-stone-800">
+                {triggeredLabels.map((label) => (
+                  <li key={label}>• {label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
 
         {/* ── Rule progress today ─────────────────────────────────────────── */}
         <SectionCard
           title="Rule progress today"
-          description={hasBroker ? "Live numbers vs. configured limits." : "Calculated from journal entries dated today."}
+          description="Live numbers vs. configured limits."
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <ProgressTile
               label="P&L today"
-              value={hasBroker ? `$${guardian.evaluation.todayPnL}` : `${manualRisk.todayPnL >= 0 ? "+" : "−"}$${Math.abs(manualRisk.todayPnL).toFixed(2)}`}
+              value={`$${guardian.evaluation.todayPnL}`}
               limit={maxDailyLoss != null ? `Limit: −$${maxDailyLoss}` : "No limit set"}
             />
             <ProgressTile
               label="Trades"
-              value={String(hasBroker ? guardian.evaluation.todayTradesCount : manualRisk.todayTradesCount)}
+              value={String(guardian.evaluation.todayTradesCount)}
               limit={maxTradesPerDay != null ? `${maxTradesPerDay} max` : "No limit set"}
             />
             <ProgressTile
               label="Loss streak"
-              value={String(hasBroker ? guardian.evaluation.consecutiveLosses : manualRisk.consecutiveLosses)}
+              value={String(guardian.evaluation.consecutiveLosses)}
               limit={stopAfterLosses != null ? `Stop after ${stopAfterLosses}` : "No limit set"}
             />
           </div>
@@ -392,42 +365,6 @@ export default async function GuardianPage() {
                   <p className="mt-0.5 text-stone-700">{v.message}</p>
                 </li>
               ))}
-            </ul>
-          </SectionCard>
-        )}
-
-        {/* ── Recent manual breaches ──────────────────────────────────────── */}
-        {todayManualTrades.some((t) => t.ruleBreached) && (
-          <SectionCard
-            title="Recent manual breaches"
-            description="Trades you marked as rule breaches in today's journal."
-          >
-            <ul className="grid gap-2">
-              {todayManualTrades
-                .filter((t) => t.ruleBreached)
-                .slice(-5)
-                .reverse()
-                .map((t) => (
-                  <li
-                    key={t.id}
-                    className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-stone-800"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="font-medium text-red-900">
-                        {t.symbol} · {t.direction}
-                      </p>
-                      <p className="font-mono text-xs text-stone-500">
-                        {new Intl.DateTimeFormat("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }).format(t.tradedAt)}
-                      </p>
-                    </div>
-                    {t.breachReason && (
-                      <p className="mt-1 text-stone-700">{t.breachReason}</p>
-                    )}
-                  </li>
-                ))}
             </ul>
           </SectionCard>
         )}

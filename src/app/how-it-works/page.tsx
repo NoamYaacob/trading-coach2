@@ -230,25 +230,6 @@ export default async function HowItWorksPage() {
           </div>
         </section>
 
-        {/* ── Manual Mode ────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-            Manual Mode
-          </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-            No broker connection required to start.
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            Manual Mode lets you use the full rule engine before connecting a broker. Log trades
-            yourself and Guardrail evaluates Allowed, Warning, or Locked based on your entries. It is
-            the best way to test your rule setup and understand the lock behavior before going live.
-          </p>
-          <p className="mt-3 text-sm leading-6 text-stone-600">
-            When you connect Tradovate, trade events flow in automatically and the same rule engine
-            evaluates them in real time. The session state updates without manual input.
-          </p>
-        </section>
-
         {/* ── Enforcement scope ───────────────────────────────────────── */}
         <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
           <div className="mb-5 sm:mb-8 max-w-2xl">

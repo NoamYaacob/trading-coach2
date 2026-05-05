@@ -18,7 +18,7 @@ type TodaySessionPanelProps = {
   };
   telegramBotLink: string | null;
   displayTimeZone: string;
-  /** Mobile-only compact stats from ManualRiskPanel, shown when that panel is hidden below md. */
+  /** Mobile-only compact stats for small screens. */
   mobileStats?: {
     todayPnL: number;
     todayTradesCount: number;
@@ -305,7 +305,7 @@ export function TodaySessionPanel({
             ) : null}
           </div>
 
-          {/* Mobile compact stats — visible below md when ManualRiskPanel is hidden */}
+          {/* Mobile compact stats */}
           {mobileStats && (
             <div className="mt-4 grid grid-cols-2 gap-2 md:hidden">
               <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">

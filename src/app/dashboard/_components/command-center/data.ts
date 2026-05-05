@@ -18,7 +18,6 @@ import type {
 const PLATFORM_LABEL: Record<string, string> = {
   tradovate: "Tradovate",
   tradingview: "TradingView",
-  manual: "Manual",
 };
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
@@ -42,9 +41,7 @@ const CONNECTION_STATUS_LABEL: Record<string, string> = {
 // reserved for prop-firm-style accounts that never had a firm selected).
 const FALLBACK_FIRM_LABEL = "Unassigned firm";
 const PERSONAL_BROKER_FIRM_LABEL = "Personal accounts";
-const MANUAL_FIRM_LABEL = "Personal / Manual";
 const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
-const MANUAL_FIRM_KEY = "__personal_manual__";
 const FALLBACK_FIRM_KEY = "__unassigned__";
 
 function deriveFirmKeyAndLabel(account: {
@@ -55,9 +52,6 @@ function deriveFirmKeyAndLabel(account: {
   if (account.propFirm && account.propFirm.trim().length > 0) {
     const label = account.propFirm.trim();
     return { key: label.toLowerCase(), label };
-  }
-  if (account.platform === "manual") {
-    return { key: MANUAL_FIRM_KEY, label: MANUAL_FIRM_LABEL };
   }
   if (account.accountType === "personal") {
     return { key: PERSONAL_BROKER_FIRM_KEY, label: PERSONAL_BROKER_FIRM_LABEL };
@@ -71,7 +65,6 @@ function deriveEnforcementMode(input: {
   isActive: boolean;
 }): EnforcementMode {
   if (!input.isActive) return "not_connected";
-  if (input.platform === "manual") return "manual_app_level";
   // Both connected_live (full) and connected_readonly (post-OAuth import) count
   // as "broker_readonly" mode for UI purposes — the chip/label is the same and
   // we explicitly do not claim broker-side enforcement is active.
@@ -445,7 +438,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     if (account.hasOpenIntervention) summary.openInterventions += 1;
   }
 
-  const SINK_KEYS = new Set([MANUAL_FIRM_KEY, PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);
+  const SINK_KEYS = new Set([PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);
   const groups = buildCommandCenterGroups(computed, SINK_KEYS);
 
   // Deduplicate by firmKey: same firm across multiple broker connections shows once

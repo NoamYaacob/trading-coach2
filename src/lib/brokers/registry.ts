@@ -14,7 +14,6 @@
 
 import type { BrokerAdapter, BrokerCapabilityMap, BrokerProvider } from "./types";
 import { NotImplementedError } from "./types";
-import { ManualAdapter } from "./manual-adapter";
 import { TradovateAdapter } from "./tradovate-adapter";
 
 class PlaceholderAdapter implements BrokerAdapter {
@@ -92,7 +91,7 @@ const PROVIDER_DISPLAY_NAMES: Record<BrokerProvider, string> = {
   tradovate: "Tradovate",
   rithmic: "Rithmic",
   ninjatrader: "NinjaTrader",
-  manual: "Manual Mode",
+  manual: "Manual",
   demo: "Demo",
   other: "Other",
 };
@@ -104,10 +103,9 @@ export function getBrokerDisplayName(provider: BrokerProvider): string {
 /** Returns a fresh adapter instance for the given provider. */
 export function getBrokerAdapter(provider: BrokerProvider): BrokerAdapter {
   switch (provider) {
-    case "manual":
-      return new ManualAdapter();
     case "tradovate":
       return new TradovateAdapter();
+    case "manual":
     case "rithmic":
     case "ninjatrader":
     case "demo":
@@ -125,7 +123,6 @@ export const VISIBLE_PROVIDERS: BrokerProvider[] = [
   "tradovate",
   "rithmic",
   "ninjatrader",
-  "manual",
 ];
 
 export function getVisibleAdapters(): BrokerAdapter[] {

@@ -205,7 +205,7 @@ export function CommandHeader(props: CommandHeaderProps) {
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium text-stone-600">
-              No broker connected · Manual Mode active
+              No broker connected
             </p>
             <Link
               href="/accounts/connect/tradovate"
@@ -232,7 +232,7 @@ export function CommandHeader(props: CommandHeaderProps) {
             </div>
             {!hasBroker && (
               <p className="mt-2 text-xs leading-5 text-stone-500">
-                Manual Mode tracks trades you enter yourself. It cannot block broker orders.
+                Connect a broker to activate live rule monitoring and enforcement.
               </p>
             )}
             <Link

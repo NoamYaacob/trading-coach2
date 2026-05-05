@@ -81,8 +81,8 @@ export default async function FeaturesPage() {
                 <p className="text-sm font-semibold text-stone-950">Partial</p>
               </div>
               <p className="text-sm leading-6 text-stone-600">
-                Available in Manual Mode today. Broker-connected evaluation for these rules is in
-                progress and ships after live verification.
+                Broker-connected evaluation for these rules is in progress and ships after live
+                verification.
               </p>
             </div>
             <div>

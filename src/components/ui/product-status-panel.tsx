@@ -70,14 +70,6 @@ function buildItems(opts: {
 
   return [
     {
-      key: "manual",
-      title: "Manual journal (demo / pre-connection)",
-      mobileTitle: "Manual journal",
-      status: "ready",
-      detail:
-        "Journal-driven risk evaluation for testing before a broker is connected. Define rules, log trades manually, and Guardrail evaluates Allowed / Warning / Locked. Does not block trades at the broker — demo and fallback only.",
-    },
-    {
       key: "telegram",
       title: "Telegram alerts",
       status: "optional",

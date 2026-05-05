@@ -134,7 +134,6 @@ export const ENFORCEMENT_NOW = [
   "App-level session lock when a rule breaks",
   "Rule evaluation against broker or manual trade data",
   "Telegram lockout alerts — optional, immediate",
-  "Manual Mode — full rule engine without a broker connection",
   "Broker-connected read-only mode — live trade events from Tradovate",
 ];
 
@@ -161,7 +160,6 @@ export const INCLUDED_FEATURES = [
   "Live rule evaluation — Allowed, Warning, or Locked",
   "Daily loss limit, max trades, loss-streak stop, session hours",
   "Tradovate read-only connection — trade events vs. your rules",
-  "Manual Mode — full rule engine before broker connection",
   "Telegram alerts when a limit triggers",
   "Prop firm evaluation and funded account support",
 ];
@@ -186,10 +184,6 @@ export const FAQS = [
   {
     q: "Does it work for prop firm evaluation and funded accounts?",
     a: "Yes. Guardrail is built for futures traders on funded and evaluation accounts where a single bad day can end the account. It supports evaluation, funded, personal, and demo account types and is designed around typical prop firm daily loss and trade count constraints.",
-  },
-  {
-    q: "What if I haven't connected a broker yet?",
-    a: "Manual Mode lets you use Guardrail before a broker is connected. Log trades yourself and the same rule engine evaluates Allowed / Warning / Locked based on your entries. It's the best way to test your rule setup before going live.",
   },
   {
     q: "Which brokers are supported?",

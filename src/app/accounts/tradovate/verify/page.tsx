@@ -213,7 +213,7 @@ export default async function VerifyTradovatePage({
         <SectionCard title="Account not active">
           <p className="text-sm text-stone-700">
             This account was disconnected. Your rules, journal entries, and
-            manual mode data are still saved.
+            journal entries are still saved.
           </p>
           <Link
             href="/accounts/connect/tradovate"

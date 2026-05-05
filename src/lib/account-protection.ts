@@ -9,10 +9,10 @@
  *  - whether the user is currently locked out of reducing protection / editing
  *    rules for the active trading day
  *
- * Why a separate module: the Manual Mode trading-day window exists for P&L
- * bucketing, but protection has its own semantics — it spans the whole
- * cutoff-to-session-end window, and the "next trading day" must be exposed so
- * we can label "applies next trading day" messages.
+ * Why a separate module: the trading-day window defines P&L bucketing, but
+ * protection has its own semantics — it spans the whole cutoff-to-session-end
+ * window, and the "next trading day" must be exposed so we can label
+ * "applies next trading day" messages.
  */
 
 import {

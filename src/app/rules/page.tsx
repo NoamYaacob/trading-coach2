@@ -351,8 +351,6 @@ function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
         : conn.brokerUserId;
       parts.push(`User ID ${uid}`);
     }
-  } else {
-    parts.push("Manual account");
   }
   return parts.join(" · ");
 }
@@ -388,7 +386,7 @@ function ScopeContextHeader({
     ? account.propFirm
     : conn
     ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${conn.env === "live" ? "Live" : conn.env}`
-    : "Manual account";
+    : null;
 
   return (
     <div>

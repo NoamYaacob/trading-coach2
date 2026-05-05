@@ -204,7 +204,7 @@ export default async function OnboardingPage() {
             </Link>
           )}
           <p className="text-xs text-stone-400">
-            You can start in manual mode now. Connect Tradovate later when you&apos;re ready.
+            Connect Tradovate to activate Guardrail.
           </p>
         </div>
       </main>
