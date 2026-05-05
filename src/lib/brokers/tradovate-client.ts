@@ -170,6 +170,14 @@ export type FillsScopingVerdict =
   | "unscoped_suspect"
   | "not_loaded";
 
+/** MM/DD/YYYY in UTC — the format Tradovate's reports endpoint expects. */
+function formatDateMMDDYYYY(d: Date): string {
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  return `${m}/${day}/${y}`;
+}
+
 // ── Client ────────────────────────────────────────────────────────────────────
 
 /**
@@ -192,6 +200,8 @@ export class TradovateClient {
   /** Set when this account's tokens live on a BrokerConnection row. */
   #brokerConnectionId: string | null = null;
   #baseUrl: string | null = null;
+  /** Reporting API base URL — different host (rpt-{env}.tradovateapi.com). */
+  #reportsBaseUrl: string | null = null;
   #tokenUrl: string | null = null;
   /** Auth-server renew URL — same host as #tokenUrl, different path. */
   #renewUrl: string | null = null;
@@ -250,6 +260,7 @@ export class TradovateClient {
       env = account.accountType === "demo" ? "demo" : "live";
     }
     this.#baseUrl = config.apiBaseUrl[env];
+    this.#reportsBaseUrl = config.reportsBaseUrl[env];
     this.#tokenUrl = config.tokenUrl[env];
     // Derive the renew URL from the token URL: same auth-server host, different path.
     // tokenUrl example: https://live-api.tradovate.com/auth/oauthtoken
@@ -944,6 +955,259 @@ export class TradovateClient {
    */
   getLastFillsScopingVerdict(): FillsScopingVerdict {
     return this.#lastFillsScopingVerdict;
+  }
+
+  // ── Per-account trade count sources ──────────────────────────────────────
+  // Each method below is one fallback step in the trade-count resolver
+  // (see tradovate-trade-count.ts). They are deliberately defensive: never
+  // throw, log enough for diagnostics, and explicitly verify whether the
+  // response can be attributed to a single account before reporting trust.
+
+  /**
+   * Look up the Tradovate account name (used as the `account` param when
+   * requesting the Performance Report). Resolves from /account/list — the
+   * stored externalAccountId is `account.id`, but the report wants
+   * `account.name`. Returns null if it can't be resolved.
+   */
+  async getAccountName(): Promise<string | null> {
+    if (this.#tvAccountId === null) return null;
+    try {
+      const accounts = await this.getAccounts();
+      const match = accounts.find((a) => a.id === this.#tvAccountId);
+      const name = match?.nickname ?? match?.name ?? null;
+      console.info("[tradovate/trade-count] account name lookup", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        found: name != null,
+      });
+      return typeof name === "string" && name.length > 0 ? name : null;
+    } catch (err) {
+      console.warn("[tradovate/trade-count] account name lookup failed", {
+        accountId: this.#accountId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return null;
+    }
+  }
+
+  /**
+   * POST to the Performance Report endpoint and return the raw response body
+   * + content type for the parser. Returns null on network/config failure or
+   * when the reports base URL isn't configured.
+   *
+   * Uses the existing OAuth bearer token; the reports host may reject it
+   * with 401/403 for some account types — that's expected and the resolver
+   * will fall through to the next source.
+   */
+  async fetchPerformanceReport(input: {
+    accountName: string;
+    date: Date;
+  }): Promise<{ status: number; body: string; contentType: string | null } | null> {
+    if (!this.#reportsBaseUrl || !this.#accessToken) return null;
+    const dateStr = formatDateMMDDYYYY(input.date);
+    const url = `${this.#reportsBaseUrl}/reports/requestreport`;
+    const body = {
+      name: "Performance",
+      params: [
+        { name: "startDate", value: dateStr },
+        { name: "endDate", value: dateStr },
+        { name: "startTime", value: "00:00:00" },
+        { name: "endTime", value: "23:59:59" },
+        { name: "account", value: input.accountName },
+      ],
+      representationType: "html",
+      template: "Flex.html",
+    };
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "text/html, application/json, text/csv, */*;q=0.5",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      console.warn("[tradovate/trade-count] reports fetch network error", {
+        accountId: this.#accountId,
+        url,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return null;
+    }
+
+    const contentType = res.headers.get("content-type");
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      // Treat as empty body — the parser will return null.
+    }
+
+    console.info("[tradovate/trade-count] reports response", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      url,
+      status: res.status,
+      contentType,
+      bodyLength: text.length,
+    });
+
+    return { status: res.status, body: text, contentType };
+  }
+
+  /**
+   * GET /order/deps?masterid={tvAccountId} for today's completed/filled
+   * orders. The /deps endpoint is account-scoped at the Tradovate API
+   * level. We additionally verify that every kept order carries
+   * accountId === this.#tvAccountId before reporting accountScopedAtApi.
+   */
+  async fetchAccountScopedOrders(): Promise<{
+    count: number;
+    accountScopedAtApi: boolean;
+    httpStatus?: number;
+    endpoint: string;
+  } | null> {
+    if (this.#tvAccountId === null) return null;
+    const endpoint = `order/deps?masterid=${this.#tvAccountId}`;
+    let raw: unknown;
+    try {
+      raw = await this.#request<unknown>(endpoint);
+    } catch (err) {
+      const status =
+        err instanceof TradovateClientError ? err.statusCode : undefined;
+      console.warn("[tradovate/trade-count] order/deps failed", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        status,
+      });
+      return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
+    }
+
+    const all = parseSnapshotItems<{ accountId?: number; ordStatus?: string; timestamp?: string }>(raw);
+    // Today's window — 26h lookback to cover futures sessions starting prior day
+    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    const completed = all.filter((o) => {
+      const status = o.ordStatus;
+      if (status !== "Completed" && status !== "Filled") return false;
+      if (!o.timestamp) return true;
+      const t = new Date(o.timestamp).getTime();
+      return Number.isFinite(t) && t >= lookbackMs;
+    });
+    const allHaveAccountId = completed.every((o) => o.accountId === this.#tvAccountId);
+
+    console.info("[tradovate/trade-count] order/deps result", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      total: all.length,
+      completedToday: completed.length,
+      allRowsCarryMatchingAccountId: allHaveAccountId,
+    });
+
+    return {
+      count: completed.length,
+      // Only trust the count when EVERY row was tagged with the right account
+      // (otherwise the /deps endpoint may have been order-scoped, not account-scoped).
+      accountScopedAtApi: completed.length > 0 && allHaveAccountId,
+      endpoint,
+    };
+  }
+
+  /**
+   * Try GET /fillPair/deps?masterid={tvAccountId}. Each fillPair represents
+   * one round-trip trade (entry+exit pair). Availability varies — many
+   * Tradovate environments don't expose fillPair endpoints over OAuth.
+   */
+  async fetchAccountScopedFillPairs(): Promise<{
+    count: number;
+    accountScopedAtApi: boolean;
+    httpStatus?: number;
+    endpoint: string;
+  } | null> {
+    if (this.#tvAccountId === null) return null;
+    const endpoint = `fillPair/deps?masterid=${this.#tvAccountId}`;
+    let raw: unknown;
+    try {
+      raw = await this.#request<unknown>(endpoint);
+    } catch (err) {
+      const status =
+        err instanceof TradovateClientError ? err.statusCode : undefined;
+      console.warn("[tradovate/trade-count] fillPair/deps failed", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        status,
+      });
+      return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
+    }
+
+    const all = parseSnapshotItems<{ accountId?: number }>(raw);
+    const allHaveAccountId =
+      all.length > 0 && all.every((p) => p.accountId === this.#tvAccountId);
+
+    console.info("[tradovate/trade-count] fillPair/deps result", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      total: all.length,
+      allRowsCarryMatchingAccountId: allHaveAccountId,
+    });
+
+    return {
+      count: all.length,
+      accountScopedAtApi: allHaveAccountId,
+      endpoint,
+    };
+  }
+
+  /**
+   * Try GET /fill/deps?masterid={tvAccountId}. Tradovate's `/deps` for fills
+   * is documented as order-scoped (`masterid` = order id), not account-scoped,
+   * so we verify the response by requiring every fill to carry the matching
+   * accountId. If any fill lacks accountId or has a different one, we report
+   * accountScopedAtApi=false and the resolver moves on.
+   */
+  async fetchAccountScopedFills(): Promise<{
+    count: number;
+    accountScopedAtApi: boolean;
+    httpStatus?: number;
+    endpoint: string;
+  } | null> {
+    if (this.#tvAccountId === null) return null;
+    const endpoint = `fill/deps?masterid=${this.#tvAccountId}`;
+    let raw: unknown;
+    try {
+      raw = await this.#request<unknown>(endpoint);
+    } catch (err) {
+      const status =
+        err instanceof TradovateClientError ? err.statusCode : undefined;
+      console.warn("[tradovate/trade-count] fill/deps failed", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        status,
+      });
+      return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
+    }
+
+    const all = parseSnapshotItems<TvFill>(raw);
+    // Strict: must carry accountId AND must match
+    const allMatch =
+      all.length > 0 &&
+      all.every((f) => typeof f.accountId === "number" && f.accountId === this.#tvAccountId);
+
+    console.info("[tradovate/trade-count] fill/deps result", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      total: all.length,
+      allRowsCarryMatchingAccountId: allMatch,
+    });
+
+    return {
+      count: all.length,
+      accountScopedAtApi: allMatch,
+      endpoint,
+    };
   }
 
   /**

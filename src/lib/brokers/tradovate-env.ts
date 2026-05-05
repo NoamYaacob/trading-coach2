@@ -112,6 +112,15 @@ const DEFAULTS = {
   // TODO: unverified against a real account — see docs/broker-integration-plan.md.
   apiBaseLive: "https://live.tradovateapi.com/v1",
   apiBaseDemo: "https://demo.tradovateapi.com/v1",
+
+  // ── Reports API base (rpt-{env}.tradovateapi.com/v1) ──────────────────────
+  // Used by the Trader Web "Performance Report" tab. Endpoints under
+  // /reports/requestreport accept a JSON body and return a serialized report
+  // in HTML/CSV/JSON form. Availability via OAuth tokens is not guaranteed
+  // (community reports of 401/403); the trade-count resolver tries this
+  // first and falls through gracefully on failure.
+  reportsBaseLive: "https://rpt-live.tradovateapi.com/v1",
+  reportsBaseDemo: "https://rpt-demo.tradovateapi.com/v1",
 } as const;
 
 export type TradovateEnv = "live" | "demo";
@@ -133,6 +142,7 @@ export type TradovateConfig = {
   authUrl: Record<TradovateEnv, string>;
   tokenUrl: Record<TradovateEnv, string>;
   apiBaseUrl: Record<TradovateEnv, string>;
+  reportsBaseUrl: Record<TradovateEnv, string>;
 };
 
 export type TradovateConfigStatus =
@@ -203,6 +213,10 @@ export function getTradovateConfig(): TradovateConfigStatus {
       apiBaseUrl: {
         live: readEnv("TRADOVATE_API_BASE_URL_LIVE") ?? DEFAULTS.apiBaseLive,
         demo: readEnv("TRADOVATE_API_BASE_URL_DEMO") ?? DEFAULTS.apiBaseDemo,
+      },
+      reportsBaseUrl: {
+        live: readEnv("TRADOVATE_REPORTS_BASE_URL_LIVE") ?? DEFAULTS.reportsBaseLive,
+        demo: readEnv("TRADOVATE_REPORTS_BASE_URL_DEMO") ?? DEFAULTS.reportsBaseDemo,
       },
     },
   };

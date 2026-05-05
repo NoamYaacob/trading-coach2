@@ -22,6 +22,7 @@ import {
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
+import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 
 export type SyncResult = {
@@ -136,36 +137,30 @@ export async function syncTradovateAccount(
       });
     }
 
-    // Phase B: fills for P&L and NormalizedTradeEvent storage.
-    // Fills are the authoritative source for tradesCount — always update it when
-    // fills show more trades than Phase A (which may only see active orders).
+    // Phase B: fills — used for P&L sum + NormalizedTradeEvent storage. The
+    // tradesCount itself is resolved separately in Phase C below via the
+    // multi-source resolver, which can prefer Tradovate's Performance Report
+    // or an account-scoped endpoint over the unscoped fill/list dump.
+    type CachedFills = {
+      executions: Awaited<ReturnType<typeof client.toExecutions>>;
+      derivedCount: number;
+    } | null;
+    let cachedFills: CachedFills = null;
     try {
       const executions = await client.toExecutions();
       pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
+      fillsSyncedAt = new Date();
 
-      fillsSyncedAt = new Date(); // fills successfully fetched
-
-      // Entry-based count: each symbol position opening from flat = 1 trade.
-      // Always authoritative over Phase A (which counts all completed orders
-      // and cannot distinguish entries from exits).
       const trace = traceEntryTrades(executions);
-      tradesCount = trace.count;
+      cachedFills = { executions, derivedCount: trace.count };
 
-      // Mark the count as "estimated" when fills couldn't be reliably scoped
-      // to one account — the response may include fills from other accounts on
-      // the same multi-account OAuth token, so the count may be inflated.
-      const verdict = client.getLastFillsScopingVerdict();
-      tradeCountSource =
-        verdict === "api_scoped" || verdict === "field_scoped" ? "verified" : "estimated";
-
-      console.info("[tradovate/trades] entry count diagnostic", {
+      console.info("[tradovate/trades] fills phase diagnostic", {
         accountId,
         rawFillCount: executions.length,
         uniqueOrderIds: trace.uniqueOrderIds,
         groupedOrderCount: trace.groupedCount,
         derivedEntryTradeCount: trace.count,
-        scopingVerdict: verdict,
-        tradeCountSource,
+        fillsScopingVerdict: client.getLastFillsScopingVerdict(),
         pnlFromFills,
       });
       for (const row of trace.rows) {
@@ -206,6 +201,60 @@ export async function syncTradovateAccount(
       // Fill storage is best-effort. If Phase A also failed, fillsSyncedAt
       // remains null — the UI will show "Trades unavailable" instead of 0.
     }
+
+    // Phase C: resolve the authoritative per-account trade count by trying
+    // multiple sources in order of trustworthiness:
+    //   1. Tradovate Performance Report (broker_report)
+    //   2. order/deps?masterid={tvAccountId} (account-scoped at API)
+    //   3. fillPair/deps?masterid={tvAccountId}
+    //   4. fill/deps?masterid={tvAccountId} (verified per-row accountId)
+    //   5. Cached unscoped fills count → marked "estimated"
+    // See tradovate-trade-count.ts for the orchestration logic.
+    const adapter: TradeCountAdapter = {
+      getAccountName: () => client.getAccountName(),
+      fetchPerformanceReport: (input) => client.fetchPerformanceReport(input),
+      fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(),
+      fetchAccountScopedFillPairs: () => client.fetchAccountScopedFillPairs(),
+      fetchAccountScopedFills: () => client.fetchAccountScopedFills(),
+      fetchUnscopedFillsFallback: async () => {
+        if (cachedFills == null) return null;
+        const verdict = client.getLastFillsScopingVerdict();
+        // If the fills response WAS account-scoped at the API (api_scoped) or
+        // every fill carried a matching accountId (field_scoped), the cached
+        // count is already trustworthy — surface it as the unscoped fallback
+        // but the resolver's earlier branches will normally have provided a
+        // verified source by then.
+        return {
+          count: cachedFills.derivedCount,
+          endpoint: `fill/list (cached, verdict=${verdict})`,
+        };
+      },
+    };
+    const resolved = await resolveTradeCount(adapter, { date: new Date() });
+    tradesCount = resolved.count ?? 0;
+    tradeCountSource = resolved.trustLevel;
+
+    // If the fills response was already verified account-scoped (every row
+    // carried this account's accountId), the unscoped-fallback "estimated"
+    // verdict is too pessimistic — upgrade to "verified" so the dashboard
+    // can render the count without the disclaimer.
+    if (
+      tradeCountSource === "estimated" &&
+      cachedFills != null &&
+      (client.getLastFillsScopingVerdict() === "api_scoped" ||
+        client.getLastFillsScopingVerdict() === "field_scoped")
+    ) {
+      tradeCountSource = "verified";
+    }
+
+    console.info("[tradovate/trades] resolver result", {
+      accountId,
+      count: resolved.count,
+      source: resolved.source,
+      trustLevel: resolved.trustLevel,
+      finalTradeCountSource: tradeCountSource,
+      attempts: resolved.attempts,
+    });
 
     // Persist fillsSyncedAt separately (it's set inside the try block above).
     if (fillsSyncedAt != null) {
