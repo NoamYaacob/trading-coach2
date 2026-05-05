@@ -15,38 +15,35 @@ delete process.env.TRADOVATE_TOKEN_URL_DEMO;
 
 const { getTradovateConfig } = await import("./tradovate-env.ts");
 
-describe("tradovate-env auth/token URL env-pairing", () => {
+describe("tradovate-env unified-host OAuth defaults", () => {
   after(() => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("default demo auth URL uses the -d hostname", () => {
+  it("default auth URL is trader.tradovate.com for both envs", () => {
     const status = getTradovateConfig();
     assert.equal(status.state, "ready");
     if (status.state !== "ready") return;
-    assert.equal(status.config.authUrl.demo, "https://trader-d.tradovate.com/oauth");
-  });
-
-  it("default live auth URL uses the production hostname (no -d)", () => {
-    const status = getTradovateConfig();
-    if (status.state !== "ready") return;
     assert.equal(status.config.authUrl.live, "https://trader.tradovate.com/oauth");
+    assert.equal(status.config.authUrl.demo, "https://trader.tradovate.com/oauth");
   });
 
-  it("default demo auth URL and demo token URL are env-paired (both -d)", () => {
+  it("default token URL is live-api.tradovate.com for both envs", () => {
+    const status = getTradovateConfig();
+    if (status.state !== "ready") return;
+    assert.equal(status.config.tokenUrl.live, "https://live-api.tradovate.com/auth/oauthtoken");
+    assert.equal(status.config.tokenUrl.demo, "https://live-api.tradovate.com/auth/oauthtoken");
+  });
+
+  it("auth and token URLs are paired to the same host family (no -d for both)", () => {
     const status = getTradovateConfig();
     if (status.state !== "ready") return;
     const { authUrl, tokenUrl } = status.config;
-    // Both demo URLs should reference the -d hostname.
-    assert.ok(authUrl.demo.includes("trader-d."), `demo auth URL: ${authUrl.demo}`);
-    assert.ok(tokenUrl.demo.includes("-api-d."), `demo token URL: ${tokenUrl.demo}`);
-  });
-
-  it("default live auth URL and live token URL are env-paired (no -d)", () => {
-    const status = getTradovateConfig();
-    if (status.state !== "ready") return;
-    const { authUrl, tokenUrl } = status.config;
+    // No URL should reference the -d demo host while another references the
+    // production host — that mix produced the original invalid_client error.
     assert.ok(!authUrl.live.includes("-d."), `live auth URL: ${authUrl.live}`);
+    assert.ok(!authUrl.demo.includes("-d."), `demo auth URL: ${authUrl.demo}`);
     assert.ok(!tokenUrl.live.includes("-d."), `live token URL: ${tokenUrl.live}`);
+    assert.ok(!tokenUrl.demo.includes("-d."), `demo token URL: ${tokenUrl.demo}`);
   });
 });
