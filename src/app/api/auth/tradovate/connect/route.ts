@@ -54,9 +54,9 @@ export async function GET(request: NextRequest) {
 
   const { config } = status;
 
-  // Tradovate support confirmed the same client credentials are used for both
-  // live and demo. The selected env is stored in our state for API base URL
-  // selection after OAuth — it does not affect the OAuth credentials.
+  // The selected env determines BOTH the auth URL (config.authUrl[env]) and
+  // the token URL (config.tokenUrl[env]) — they must be paired or Tradovate
+  // returns invalid_client at the token exchange.
   const clientId = config.clientId;
   const redirectUri = resolveRedirectUri(config, request.url);
 

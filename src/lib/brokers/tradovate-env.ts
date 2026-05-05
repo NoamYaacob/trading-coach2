@@ -29,11 +29,11 @@
  *     Leave unset in local dev — routes derive it from the request origin.
  *
  *   TRADOVATE_AUTH_URL_LIVE / TRADOVATE_AUTH_URL_DEMO
- *     Override the OAuth authorize endpoint per environment.
- *     NOTE: Tradovate support confirmed the same URL is used for both:
- *       https://trader.tradovate.com/oauth
- *     Guardrail stores the selected environment (demo vs live) separately
- *     and uses it only for API base URL selection after OAuth.
+ *     Override the OAuth authorize endpoint per environment. Defaults are
+ *     env-paired with the token URLs (see DEFAULTS below). The auth URL and
+ *     token URL must be paired by environment — mixing them causes
+ *     invalid_client at the token exchange because authorization codes are
+ *     scoped to the env that issued them.
  *
  *   TRADOVATE_TOKEN_URL_LIVE / TRADOVATE_TOKEN_URL_DEMO
  *     Override the token exchange endpoint per environment.
@@ -59,20 +59,42 @@
 // The redirect_uri sent during authorization and during token exchange must
 // be byte-for-byte identical, including scheme, domain, and path.
 
-const DEFAULTS = {
-  // ── Authorization endpoints ────────────────────────────────────────────────
-  // Tradovate support confirmed the same OAuth authorization URL is used for
-  // both live and demo accounts:
-  //   https://trader.tradovate.com/oauth
-  // The selected environment (demo vs live) is stored in our own setup state
-  // and used only for API base URL selection after OAuth completes.
-  authUrlLive: "https://trader.tradovate.com/oauth",
-  authUrlDemo: "https://trader.tradovate.com/oauth",
+// ── Tradovate authentication flows — there are TWO and they are not
+//    interchangeable ─────────────────────────────────────────────────────────
+//
+// (1) OAuth authorization-code flow — what Guardrail uses.
+//     User authorizes at trader[-d].tradovate.com/oauth, gets ?code=...,
+//     and the app exchanges it at /auth/oauthtoken with grant_type=
+//     authorization_code, code, redirect_uri, client_id, client_secret in a
+//     form-urlencoded body. This is the "OAuth Registration" path.
+//
+// (2) Password / access-token-request flow — NOT used here.
+//     Posts JSON { name, password, appId, appVersion, cid, sec, deviceId }
+//     to /v1/auth/accesstokenrequest. This is the username/password flow,
+//     not OAuth. The "Curl Example" shown in Tradovate's portal sometimes
+//     references this endpoint — it does NOT apply to the OAuth callback.
+//
+// Reference: https://github.com/tradovate/example-api-oauth (official example)
 
-  // ── Token exchange endpoints ───────────────────────────────────────────────
+const DEFAULTS = {
+  // ── Authorization endpoints (OAuth flow #1) ───────────────────────────────
+  // The auth URL and the token URL must be paired by environment. Mixing
+  // demo auth URL with live token URL (or vice versa) causes Tradovate to
+  // return invalid_client at the token exchange because the authorization
+  // code is scoped to the environment that issued it.
+  //
+  // Live:  https://trader.tradovate.com/oauth      (auth)
+  //        https://live-api.tradovate.com/auth/oauthtoken  (token)
+  // Demo:  https://trader-d.tradovate.com/oauth    (auth)
+  //        https://live-api-d.tradovate.com/auth/oauthtoken (token)
+  //
+  // The official example pairs them this way; both env vars
+  // TRADOVATE_AUTH_URL_LIVE / _DEMO can override these defaults.
+  authUrlLive: "https://trader.tradovate.com/oauth",
+  authUrlDemo: "https://trader-d.tradovate.com/oauth",
+
+  // ── Token exchange endpoints (OAuth flow #1) ──────────────────────────────
   // Path is /auth/oauthtoken — NOT /oauth/token, NOT /v1/auth/oauthtoken.
-  // Verified from the same example (live-api-d for demo; live-api for live).
-  // TODO: confirm live-api.tradovate.com is reachable for your OAuth app.
   // Override TRADOVATE_TOKEN_URL_LIVE / _DEMO in Railway to adjust.
   tokenUrlLive: "https://live-api.tradovate.com/auth/oauthtoken",
   tokenUrlDemo: "https://live-api-d.tradovate.com/auth/oauthtoken",
