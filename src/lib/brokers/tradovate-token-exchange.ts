@@ -49,3 +49,60 @@ export function parseTvTokenErrorBody(body: string): {
     return { tvError: "", tvErrorDesc: "" };
   }
 }
+
+/** Normalized token fields extracted from a Tradovate OAuth token response. */
+export type TvParsedToken = {
+  accessToken: string;
+  refreshToken: string | null;
+  accountId: string | null;
+  expiresIn: number | null;
+};
+
+export type TvTokenParseResult =
+  | { ok: true; token: TvParsedToken; responseKeys: string[] }
+  | { ok: false; responseKeys: string[] };
+
+function pickString(primary: unknown, fallback: unknown): string | null {
+  if (typeof primary === "string" && primary.length > 0) return primary;
+  if (typeof fallback === "string" && fallback.length > 0) return fallback;
+  return null;
+}
+
+function pickPositiveNumber(primary: unknown, fallback: unknown): number | null {
+  if (typeof primary === "number" && Number.isFinite(primary) && primary > 0) return primary;
+  if (typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0) return fallback;
+  return null;
+}
+
+/**
+ * Parse a Tradovate OAuth token response, normalising both snake_case
+ * (access_token) and camelCase (accessToken) field names. Tradovate REST
+ * APIs use camelCase; the OAuth token endpoint response shape is not
+ * officially documented and may differ — both conventions are supported.
+ */
+export function parseTvTokenResponse(rawJson: unknown): TvTokenParseResult {
+  if (rawJson === null || typeof rawJson !== "object" || Array.isArray(rawJson)) {
+    return { ok: false, responseKeys: [] };
+  }
+  const obj = rawJson as Record<string, unknown>;
+  const responseKeys = Object.keys(obj);
+
+  const accessToken = pickString(obj.access_token, obj.accessToken);
+  if (!accessToken) {
+    return { ok: false, responseKeys };
+  }
+
+  const rawId = obj.account_id ?? obj.accountId;
+  const accountId = rawId != null ? String(rawId) : null;
+
+  return {
+    ok: true,
+    responseKeys,
+    token: {
+      accessToken,
+      refreshToken: pickString(obj.refresh_token, obj.refreshToken),
+      accountId,
+      expiresIn: pickPositiveNumber(obj.expires_in, obj.expiresIn),
+    },
+  };
+}

@@ -6,7 +6,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
 import { validateOAuthState } from "@/lib/brokers/tradovate-oauth-state";
-import { mapTvTokenError, parseTvTokenErrorBody } from "@/lib/brokers/tradovate-token-exchange";
+import { mapTvTokenError, parseTvTokenErrorBody, parseTvTokenResponse } from "@/lib/brokers/tradovate-token-exchange";
+import type { TvParsedToken } from "@/lib/brokers/tradovate-token-exchange";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -53,7 +54,14 @@ async function discoverAccounts(
       },
     });
     if (!res.ok) {
-      console.warn("[tradovate/callback] account/list returned HTTP", { status: res.status });
+      if (res.status === 401) {
+        console.warn("[tradovate/callback] account/list unauthorized — token may not be valid for this API base URL", {
+          status: res.status,
+          apiBaseUrl: url,
+        });
+      } else {
+        console.warn("[tradovate/callback] account/list returned HTTP", { status: res.status });
+      }
       return [];
     }
     const data = (await res.json()) as TvAccount[];
@@ -137,16 +145,9 @@ export async function GET(request: NextRequest) {
   const redirectUri = resolveRedirectUri(config, request.url);
 
   // ── Token exchange ─────────────────────────────────────────────────────
-  let tokenData: {
-    access_token: string;
-    refresh_token?: string;
-    account_id?: string | number;
-    expires_in?: number;
-  };
-
   // The state cookie is already deleted above — any second invocation of this
   // callback will fail CSRF validation before reaching the token exchange.
-  console.info("[tradovate/callback] token exchange params", {
+  console.info("[tradovate/callback] token exchange preflight", {
     tokenUrl: config.tokenUrl[payload.env],
     redirectUri,
     clientId: config.clientId,
@@ -154,6 +155,8 @@ export async function GET(request: NextRequest) {
     env: payload.env,
     setupIdExists: Boolean(payload.setupId),
   });
+
+  let token: TvParsedToken;
 
   try {
     const tokenRes = await fetch(config.tokenUrl[payload.env], {
@@ -179,29 +182,51 @@ export async function GET(request: NextRequest) {
       return backToConnectPage(request, mapTvTokenError(tvError));
     }
 
-    tokenData = (await tokenRes.json()) as typeof tokenData;
+    const rawJson = (await tokenRes.json()) as unknown;
+    const rawObj =
+      rawJson !== null && typeof rawJson === "object" && !Array.isArray(rawJson)
+        ? (rawJson as Record<string, unknown>)
+        : null;
+    // Log response shape for diagnostics — field names only, never values.
+    console.info("[tradovate/callback] token response shape", {
+      responseKeys: rawObj ? Object.keys(rawObj) : [],
+      has_access_token: typeof rawObj?.access_token === "string",
+      has_accessToken: typeof rawObj?.accessToken === "string",
+      token_type: typeof rawObj?.token_type === "string" ? rawObj.token_type : null,
+      tokenType: typeof rawObj?.tokenType === "string" ? rawObj.tokenType : null,
+      expiresField:
+        "expires_in" in (rawObj ?? {})
+          ? "expires_in"
+          : "expiresIn" in (rawObj ?? {})
+            ? "expiresIn"
+            : null,
+    });
+
+    const parsed = parseTvTokenResponse(rawJson);
+    if (!parsed.ok) {
+      console.error("[tradovate/callback] token response missing access token", {
+        responseKeys: parsed.responseKeys,
+      });
+      return backToConnectPage(request, "oauth_token_response_missing_access_token");
+    }
+
+    token = parsed.token;
   } catch (err) {
     const name = err instanceof Error ? err.name : "unknown";
     console.error(`[tradovate/callback] token exchange error: ${name}`);
     return backToConnectPage(request, "token_exchange_error");
   }
 
-  // ── Discover accounts before encrypting ────────────────────────────────
-  // The raw access_token is available here. We call /account/list now while
-  // the plaintext token is in scope — tokens are encrypted immediately after.
+  // ── Discover accounts (only after token is confirmed) ──────────────────
+  // Raw accessToken is available here; we call /account/list while the
+  // plaintext token is in scope — it is encrypted immediately after.
   const discoveredAccounts = await discoverAccounts(
     config.apiBaseUrl[payload.env],
-    tokenData.access_token,
+    token.accessToken,
   );
   console.info("[tradovate/callback] discovered accounts", {
     count: discoveredAccounts.length,
   });
-
-  // ── Validate access_token presence ─────────────────────────────────────
-  if (!tokenData.access_token || typeof tokenData.access_token !== "string") {
-    console.error("[tradovate/callback] token exchange returned no access_token");
-    return backToConnectPage(request, "token_exchange_failed");
-  }
 
   // ── Encrypt tokens ─────────────────────────────────────────────────────
   let accessTokenEncrypted: string;
@@ -209,16 +234,12 @@ export async function GET(request: NextRequest) {
   let tokenExpiresAt: Date | null = null;
 
   try {
-    accessTokenEncrypted = encryptAndSerialize(tokenData.access_token);
-    if (tokenData.refresh_token) {
-      refreshTokenEncrypted = encryptAndSerialize(tokenData.refresh_token);
+    accessTokenEncrypted = encryptAndSerialize(token.accessToken);
+    if (token.refreshToken) {
+      refreshTokenEncrypted = encryptAndSerialize(token.refreshToken);
     }
-    if (
-      typeof tokenData.expires_in === "number" &&
-      Number.isFinite(tokenData.expires_in) &&
-      tokenData.expires_in > 0
-    ) {
-      tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    if (token.expiresIn !== null) {
+      tokenExpiresAt = new Date(Date.now() + token.expiresIn * 1000);
     }
   } catch (err) {
     const code = err instanceof TokenCryptoError ? err.code : "unknown";
@@ -236,7 +257,7 @@ export async function GET(request: NextRequest) {
         userId: payload.userId,
         platform: "tradovate",
         env: payload.env,
-        brokerUserId: tokenData.account_id ? String(tokenData.account_id) : null,
+        brokerUserId: token.accountId,
         connectionStatus: "connected_readonly",
         accessTokenEncrypted,
         refreshTokenEncrypted,
@@ -294,7 +315,7 @@ export async function GET(request: NextRequest) {
   // ── Legacy single-account fallback (no setupId) ─────────────────────────
   // Kept for backward compatibility — e.g. a direct visit to /connect?env=live
   // that bypassed the setup form.
-  const externalAccountId = tokenData.account_id ? String(tokenData.account_id) : null;
+  const externalAccountId = token.accountId;
 
   const existing = externalAccountId
     ? await prisma.connectedAccount.findFirst({

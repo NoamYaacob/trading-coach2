@@ -31,6 +31,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Tradovate rejected the application credentials. Please contact support.",
   oauth_redirect_uri_mismatch:
     "The redirect URL did not match. Please contact support.",
+  oauth_token_response_missing_access_token:
+    "Tradovate returned an authorization response but no access token was found. Please try again. If this repeats, contact support with error code: OAUTH_TOKEN_RESPONSE_MISSING_ACCESS_TOKEN.",
   token_exchange_error: "Could not reach Tradovate during authorization. Please try again.",
   token_storage_failed: "OAuth completed but token storage failed. Please try again or contact support.",
   token_encryption_failed: "OAuth completed but token encryption failed (server configuration issue). Please contact support.",
