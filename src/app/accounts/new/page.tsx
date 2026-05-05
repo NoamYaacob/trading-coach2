@@ -70,29 +70,7 @@ export default async function NewAccountPage() {
           </div>
         </div>
 
-        {/* Manual — fallback */}
-        <Link
-          href="/accounts/connect/manual"
-          className="group flex flex-col gap-4 rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.1)] transition hover:border-stone-400"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="rounded-xl bg-stone-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-600">
-              Manual
-            </div>
-            <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-500">
-              Fallback
-            </span>
-          </div>
-          <div className="flex-1">
-            <h2 className="text-base font-semibold text-stone-950">Other / Manual</h2>
-            <p className="mt-1 text-sm text-stone-600">
-              Set up a custom account with manual tracking. No live event feed.
-            </p>
-          </div>
-          <span className="text-sm font-medium text-stone-950 transition group-hover:translate-x-0.5">
-            Set up →
-          </span>
-        </Link>
+
       </div>
     </AppShell>
   );

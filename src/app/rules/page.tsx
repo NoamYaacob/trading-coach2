@@ -102,7 +102,7 @@ export default async function RulesPage({
     ...a,
     hasAccountRules: a.riskRules !== null,
   }));
-  const { groups, unattached } = buildRuleScopes(scopeAccounts);
+  const { groups } = buildRuleScopes(scopeAccounts);
 
   // Resolve selected account when scope=account
   const selectedAccount =
@@ -199,7 +199,6 @@ export default async function RulesPage({
           <div className="border-t border-stone-100 px-3 pb-3 pt-2">
             <ScopeSelector
               groups={groups}
-              unattached={unattached}
               currentScope={scope}
               currentAccountId={id ?? null}
             />
@@ -213,7 +212,6 @@ export default async function RulesPage({
           </p>
           <ScopeSelector
             groups={groups}
-            unattached={unattached}
             currentScope={scope}
             currentAccountId={id ?? null}
           />
@@ -296,12 +294,13 @@ export default async function RulesPage({
             </SectionCard>
           )}
 
-          {/* No accounts hint — only shown on default scope */}
-          {scope !== "account" && accounts.length === 0 && (
+          {/* No broker accounts — push toward connection */}
+          {scope !== "account" && groups.length === 0 && (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-              <p className="font-medium text-stone-950">No accounts connected yet.</p>
+              <p className="font-medium text-stone-950">No broker accounts connected.</p>
               <p className="mt-1">
-                Connect a broker to set up account-specific rules and start live monitoring.
+                Connect your broker to activate Guardrail. The default template above applies
+                to all accounts once connected.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -309,12 +308,6 @@ export default async function RulesPage({
                   className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
                 >
                   Connect Tradovate
-                </Link>
-                <Link
-                  href="/accounts/connect/manual"
-                  className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-400"
-                >
-                  Add manual account
                 </Link>
               </div>
             </div>

@@ -14,7 +14,7 @@ import { JournalClientArea } from "./_components/journal-client-area";
 import type { TradeEntry } from "./_components/types";
 
 export const metadata: Metadata = {
-  title: "Trade Log (Manual Mode) — Guardrail",
+  title: "Trade Review — Guardrail",
 };
 
 type DecimalLike = { toNumber?: () => number } | string | number | null;
@@ -136,10 +136,10 @@ export default async function JournalPage() {
 
   return (
     <AppShell
-      eyebrow="Trade Log · Manual Mode"
-      title="Manual trade log."
-      description="Manual Mode tracks trades you enter yourself. It cannot block broker orders."
-      note="Broker-connected read-only means Guardrail can evaluate Tradovate data. Broker-side order blocking is not enabled yet."
+      eyebrow="Trade Review"
+      title="Trade history."
+      description="Review your trade history and rule compliance. When a broker is connected, data comes from live account sync."
+      note="Broker-side order blocking is not enabled yet."
     >
       <div className="grid gap-6">
         {!riskRules && (
@@ -195,31 +195,14 @@ export default async function JournalPage() {
           windowStartIso={window.start.toISOString()}
         />
 
-        <p className="text-xs text-stone-500">
-          {hasBroker ? (
-            <>
-              <span className="md:hidden">Manual journal is used until Tradovate is connected.</span>
-              <span className="hidden md:inline">
-                Running in demo mode — broker connection is pending verification. Risk state will switch to live broker data once verified.
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="md:hidden">
-                Manual journal is used until Tradovate is connected.{" "}
-                <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
-                  Connect →
-                </a>
-              </span>
-              <span className="hidden md:inline">
-                Demo mode — risk state is evaluated from manual entries, not live broker data.{" "}
-                <a href="/accounts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
-                  Connect Tradovate for live enforcement →
-                </a>
-              </span>
-            </>
-          )}
-        </p>
+        {!hasBroker && (
+          <p className="text-xs text-stone-500">
+            No broker connected.{" "}
+            <a href="/accounts/connect/tradovate" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+              Connect Tradovate to activate Guardrail →
+            </a>
+          </p>
+        )}
       </div>
     </AppShell>
   );

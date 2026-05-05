@@ -18,7 +18,6 @@ const CONN_STATUS: Record<string, { label: string; cls: string }> = {
 
 type Props = {
   groups: RuleScopeGroup[];
-  unattached: RuleScopeAccount[];
   currentScope: string;
   currentAccountId: string | null;
 };
@@ -53,7 +52,7 @@ function AccountItem({
   );
 }
 
-export function ScopeSelector({ groups, unattached, currentScope, currentAccountId }: Props) {
+export function ScopeSelector({ groups, currentScope, currentAccountId }: Props) {
   const isDefault = currentScope !== "account";
 
   return (
@@ -114,27 +113,9 @@ export function ScopeSelector({ groups, unattached, currentScope, currentAccount
         );
       })}
 
-      {/* Manual / unattached accounts */}
-      {unattached.length > 0 && (
-        <div className="mt-2">
-          <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-400">
-            Manual accounts
-          </p>
-          <div className="mt-0.5 grid gap-0.5">
-            {unattached.map((account) => (
-              <AccountItem
-                key={account.id}
-                account={account}
-                isSelected={currentScope === "account" && currentAccountId === account.id}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {groups.length === 0 && unattached.length === 0 && (
+      {groups.length === 0 && (
         <p className="mt-3 px-3.5 text-xs text-stone-400">
-          No accounts yet.{" "}
+          No broker accounts connected yet.{" "}
           <Link href="/accounts/connect/tradovate" className="underline-offset-2 hover:underline">
             Connect Tradovate
           </Link>{" "}

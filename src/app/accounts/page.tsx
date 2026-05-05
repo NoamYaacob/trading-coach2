@@ -9,7 +9,6 @@ import { prisma } from "@/lib/db";
 import { getTradovateConfig } from "@/lib/brokers/tradovate-env";
 import { getProtectionLockState } from "@/lib/account-protection";
 import { ConnectionGroupCard } from "./_components/connection-group-card";
-import { ProtectionControls } from "./_components/protection-controls";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
 import { needsSync } from "@/lib/sync-freshness";
 
@@ -23,7 +22,7 @@ export default async function AccountsPage() {
     redirect("/login");
   }
 
-  const [brokerConnections, manualAccounts, defaultRules] = await Promise.all([
+  const [brokerConnections, defaultRules] = await Promise.all([
     prisma.brokerConnection.findMany({
       where: { userId: currentUser.id },
       select: {
@@ -60,22 +59,6 @@ export default async function AccountsPage() {
         },
       },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.connectedAccount.findMany({
-      where: {
-        userId: currentUser.id,
-        isActive: true,
-        brokerConnectionId: null,
-        protectionStatus: { not: "archived" },
-      },
-      select: {
-        id: true,
-        label: true,
-        protectionStatus: true,
-        pendingProtectionStatus: true,
-        pendingProtectionEffectiveDate: true,
-      },
-      orderBy: { label: "asc" },
     }),
     prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
@@ -178,46 +161,6 @@ export default async function AccountsPage() {
           </SectionCard>
         )}
 
-        {manualAccounts.length > 0 && (
-          <SectionCard
-            title="Manual accounts · App-level only"
-            description="Not linked to a broker connection. No live data — rules are evaluated from manually logged trades only."
-          >
-            <div className="mb-3 rounded-xl border border-stone-200 bg-stone-100/60 px-3.5 py-2.5 text-xs text-stone-500">
-              These accounts are not broker-connected. Protection controls apply in Guardrail only — no broker-side actions are possible.
-            </div>
-            <div className="grid gap-3">
-              {manualAccounts.map((a) => (
-                <div key={a.id} className="rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-stone-700">{a.label}</p>
-                      <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">
-                        Manual
-                      </span>
-                    </div>
-                    <Link
-                      href={`/accounts/${a.id}/edit`}
-                      className="text-xs text-stone-400 transition hover:text-stone-950"
-                    >
-                      Edit
-                    </Link>
-                  </div>
-                  <div className="mt-2">
-                    <ProtectionControls
-                      accountId={a.id}
-                      currentStatus={a.protectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision"}
-                      pendingStatus={a.pendingProtectionStatus as "protected" | "monitor_only" | "ignored" | "archived" | "pending_decision" | null}
-                      pendingEffectiveDate={a.pendingProtectionEffectiveDate}
-                      isLocked={protectionLock.isLocked}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-        )}
-
         <details className="group rounded-2xl border border-stone-200 bg-white/90 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
             Connection status
@@ -226,47 +169,25 @@ export default async function AccountsPage() {
           <div className="mt-4">
             <p className="text-sm text-stone-500">
               {hasBrokerConnections
-                ? "Tradovate is connected read-only. Manual journaling remains available alongside the broker connection."
-                : "Manual mode is available now. Broker-connected protection becomes available after Tradovate setup is complete."}
+                ? "Tradovate is connected read-only. Guardrail evaluates rules from live account data."
+                : "Connect Tradovate to enable live rule monitoring and broker-connected protection."}
             </p>
             <div className="mt-4 grid gap-3">
-              {hasBrokerConnections ? (
-                <>
-                  <ConnectionStatusRow
-                    label="Tradovate — read-only connected"
-                    status="Connected"
-                    statusTone="ok"
-                    description="Read-only account data is connected. Live rule checks activate after account sync and rule setup."
-                  />
-                  <ConnectionStatusRow
-                    label="Manual mode"
-                    status="Available"
-                    statusTone="neutral"
-                    description="Track trades manually and evaluate your rules from journal entries."
-                    secondary
-                  />
-                </>
-              ) : (
-                <>
-                  <ConnectionStatusRow
-                    label="Manual mode"
-                    status="Available"
-                    statusTone="ok"
-                    description="Track trades manually and evaluate your rules from journal entries."
-                  />
-                  <ConnectionStatusRow
-                    label="Tradovate — read-only connected"
-                    status="Setup needed"
-                    statusTone="pending"
-                    description="Read-only account data is available after OAuth is completed and accounts are imported."
-                  />
-                </>
-              )}
+              <ConnectionStatusRow
+                label="Tradovate — read-only"
+                status={hasBrokerConnections ? "Connected" : "Setup needed"}
+                statusTone={hasBrokerConnections ? "ok" : "pending"}
+                description={
+                  hasBrokerConnections
+                    ? "Read-only account data is connected. Live rule checks are active."
+                    : "Read-only account data is available after OAuth is completed and accounts are added."
+                }
+              />
               <ConnectionStatusRow
                 label="Broker-side enforcement"
-                status="Disabled"
+                status="Pending"
                 statusTone="neutral"
-                description="Cancel, flatten, and lockout actions require separate verification and explicit opt-in. Not active."
+                description="Broker-side order blocking requires full-access permissions and explicit opt-in. Not active."
                 secondary
               />
             </div>
