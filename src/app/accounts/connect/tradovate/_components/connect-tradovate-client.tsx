@@ -28,7 +28,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   oauth_code_expired_or_reused:
     "The authorization code expired or was already used. Please start the connection again.",
   oauth_invalid_client:
-    "Tradovate rejected the application credentials. Please contact support.",
+    "Tradovate rejected Guardrail's OAuth configuration. Please contact support with code OAUTH_INVALID_CLIENT.",
   oauth_redirect_uri_mismatch:
     "The redirect URL did not match. Please contact support.",
   oauth_token_response_missing_access_token:

@@ -42,6 +42,23 @@
  *     Override the REST API base URL. Used by future read methods.
  */
 
+// ── Production OAuth setup checklist ──────────────────────────────────────────
+//
+// If Tradovate returns invalid_client ("client_id, redirect_uri and
+// client_secret do not match existing setup"), verify all three match the
+// OAuth Registration at trader.tradovate.com exactly:
+//
+//   Redirect URI: https://guardrail-trade.com/api/auth/tradovate/callback
+//     (Railway: TRADOVATE_REDIRECT_URI must be this exact string)
+//   Client ID: from the same OAuth Registration
+//     (Railway: TRADOVATE_CLIENT_ID)
+//   Client Secret: from the same OAuth Registration
+//     (Railway: TRADOVATE_CLIENT_SECRET)
+//
+// All three values in the token exchange POST must match the registration.
+// The redirect_uri sent during authorization and during token exchange must
+// be byte-for-byte identical, including scheme, domain, and path.
+
 const DEFAULTS = {
   // ── Authorization endpoints ────────────────────────────────────────────────
   // Tradovate support confirmed the same OAuth authorization URL is used for
@@ -227,4 +244,30 @@ export function resolveRedirectUri(config: TradovateConfig, requestUrl?: string)
   if (config.appUrl) return `${config.appUrl.replace(/\/$/, "")}${CALLBACK_PATH}`;
   if (requestUrl) return new URL(CALLBACK_PATH, requestUrl).toString();
   return CALLBACK_PATH;
+}
+
+/**
+ * Log a sanitized snapshot of the Tradovate OAuth configuration.
+ * Intended to be called once at server startup via instrumentation.ts.
+ *
+ * Never logs TRADOVATE_CLIENT_SECRET or any token value.
+ */
+export function logTradovateConfigDiagnostic(): void {
+  const status = getTradovateConfig();
+  if (status.state !== "ready") {
+    console.warn("[tradovate/config] OAuth not configured at startup — missing keys:", status.missing);
+    return;
+  }
+  const { config } = status;
+  console.info("[tradovate/config] OAuth startup diagnostic", {
+    clientId: config.clientId,
+    hasClientSecret: Boolean(config.clientSecret),
+    redirectUriEnvVar: readEnv("TRADOVATE_REDIRECT_URI") ?? "(not set — derived from APP_URL or request)",
+    nextPublicAppUrl: readEnv("NEXT_PUBLIC_APP_URL") ?? "(not set)",
+    appUrl: config.appUrl ?? "(not set)",
+    authUrlLive: config.authUrl.live,
+    authUrlDemo: config.authUrl.demo,
+    tokenUrlLive: config.tokenUrl.live,
+    tokenUrlDemo: config.tokenUrl.demo,
+  });
 }
