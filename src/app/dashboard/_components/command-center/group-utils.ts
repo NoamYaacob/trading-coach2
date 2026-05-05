@@ -11,7 +11,7 @@ export function emptyCounts(): Record<AccountStatus, number> {
  * prop firm on *different* broker connections (different OAuth credentials)
  * are never merged into the same group.
  *
- * sinkKeys — firm keys that sort to the bottom (personal, manual, unassigned).
+ * sinkKeys — firm keys that sort to the bottom (personal, unassigned).
  */
 export function buildCommandCenterGroups(
   accounts: CommandCenterAccount[],

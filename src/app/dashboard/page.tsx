@@ -13,7 +13,6 @@ import { AutoSync } from "@/app/dashboard/_components/auto-sync";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
-import { RuleProgressPanel } from "@/app/dashboard/_components/rule-progress-panel";
 import { TodayActivityTimeline } from "@/app/dashboard/_components/today-activity-timeline";
 import { TodaySessionPanel } from "@/app/dashboard/_components/today-session-panel";
 import { getCurrentUser } from "@/lib/auth";
@@ -106,11 +105,11 @@ export default async function DashboardPage() {
   ]);
 
   // ── Determine which branch to render ───────────────────────────────────────
-  // noAccounts covers truly empty states and accounts with no active broker connection.
-  const hasBrokerAccount = commandCenter.accounts.some((a) => a.platform !== "manual");
+  // noAccounts: true when no active broker accounts are connected.
+  const hasBrokerAccount = commandCenter.accounts.length > 0;
   const noAccounts = !hasBrokerAccount;
 
-  // ── Manual-mode computations (only rendered in manualOnly branch) ──────────
+  // ── Economic calendar + rule-of-engagement computations ───────────────────
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
   const nextHighImpactEvent = getNextHighImpactEconomicEvent(economicCalendarSnapshot);
   const economicCalendarVisibility = buildEconomicCalendarVisibility({
@@ -198,7 +197,6 @@ export default async function DashboardPage() {
         v.ruleId !== "session_not_started" &&
         !(v.ruleId === "no_trade_before_major_news" && !todaySessionState.sessionStarted),
     ),
-    ...violationFeed.triggeredViolations.filter((v) => v.ruleId === "manual_rule_breach"),
   ];
 
   const postSessionReview = buildPostSessionReview({

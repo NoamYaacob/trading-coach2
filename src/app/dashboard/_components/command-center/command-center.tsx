@@ -852,20 +852,20 @@ function EmptyAccounts() {
     <section className="rounded-2xl border border-dashed border-stone-300 bg-white/80 p-6 text-center">
       <p className="text-sm font-semibold text-stone-950">No accounts yet</p>
       <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-stone-500">
-        Add a manual account to journal trades or connect Tradovate to track a live broker account.
+        Connect Tradovate to monitor live broker activity and activate rule enforcement.
       </p>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <Link
-          href="/accounts/new"
+          href="/accounts/connect/tradovate"
           className="rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
         >
-          Add account
+          Connect Tradovate
         </Link>
         <Link
-          href="/accounts/connect/tradovate"
+          href="/accounts"
           className="rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
-          Connect Tradovate
+          Manage accounts
         </Link>
       </div>
     </section>

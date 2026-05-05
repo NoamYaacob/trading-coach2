@@ -6,7 +6,7 @@ export type RuleProgressPanelProps = {
   maxTradesPerDay: number | null;
   stopAfterLosses: number | null;
   dailyProfitTarget: number | null;
-  dataSource: "broker" | "manual" | "none";
+  dataSource: "broker" | "none";
 };
 
 type BarColor = "emerald" | "green" | "amber" | "red";
@@ -152,12 +152,7 @@ export function RuleProgressPanel({
     );
   }
 
-  const sourceLabel =
-    dataSource === "broker"
-      ? "From broker data"
-      : dataSource === "manual"
-        ? "From manual journal"
-        : null;
+  const sourceLabel = dataSource === "broker" ? "From broker data" : null;
 
   return (
     <div className="rounded-2xl border border-stone-200 bg-white/90 px-5 py-5 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)]">

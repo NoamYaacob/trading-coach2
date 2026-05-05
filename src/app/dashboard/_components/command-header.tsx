@@ -3,7 +3,6 @@ import Link from "next/link";
 const PLATFORM_LABEL: Record<string, string> = {
   tradovate: "Tradovate",
   tradingview: "TradingView",
-  manual: "Manual",
 };
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
