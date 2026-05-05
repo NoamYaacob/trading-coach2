@@ -198,8 +198,8 @@ export default async function RulesAssignmentPage({
 
         <p className="text-xs leading-5 text-stone-500">
           Guardrail evaluates rules in-app from connected broker data. Alerts fire when a limit
-          is hit. Broker-side enforcement (cancel, flatten, lockout) is not active and requires
-          separate opt-in.
+          is hit. Broker-side actions (cancel orders, flatten positions) are not active and
+          require separate opt-in.
         </p>
       </main>
     </div>
