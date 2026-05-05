@@ -145,7 +145,6 @@ export default async function GuardianPage() {
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
 
-  // "Protected session: 09:00–18:00 Israel time" / "session time" fallback
   const fmtHHMM = (d: Date) =>
     new Intl.DateTimeFormat("en-US", {
       hour: "2-digit",
@@ -154,9 +153,10 @@ export default async function GuardianPage() {
       timeZone: displayTimeZone,
     }).format(d);
   const tz = tzLabel(displayTimeZone, hasSavedTimezone);
+  // Value shown next to the "Protected session" pill key — no prefix repetition.
   const sessionWindowLabel = tradingDay.hasSessionHours
-    ? `Protected session: ${fmtHHMM(tradingDay.start)}–${fmtHHMM(tradingDay.end)} ${tz} time`
-    : "No session hours configured";
+    ? `${fmtHHMM(tradingDay.start)}–${fmtHHMM(tradingDay.end)} ${tz} time`
+    : "Not configured";
   // Compact version for mobile status strip
   const shortTradingDay = tradingDay.hasSessionHours
     ? `${fmtHHMM(tradingDay.start)}–${fmtHHMM(tradingDay.end)} ${tz} time`
@@ -367,7 +367,7 @@ export default async function GuardianPage() {
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
-            <span className="font-medium text-stone-600">Session</span>
+            <span className="font-medium text-stone-600">Protected session</span>
             <span className="text-stone-700">{sessionWindowLabel}</span>
           </span>
         </div>
