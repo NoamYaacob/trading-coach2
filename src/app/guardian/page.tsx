@@ -169,7 +169,7 @@ export default async function GuardianPage() {
   const brokerSourceLabel = !hasBroker
     ? "No broker connected"
     : hasLiveConnection
-      ? "Partial enforcement active"
+      ? "Partial broker enforcement available"
       : "Read-only monitoring";
   const guardianOff = !guardian.evaluation.guardianActive;
   const isLocked =
@@ -400,6 +400,11 @@ export default async function GuardianPage() {
         )}
 
         {/* ── Recent breaches / session events ────────────────────────────── */}
+        {/* TODO: Future intervention feed should display account-level context per event:
+            account name/number, prop firm, broker connection ID / user ID, trigger rule,
+            attempted action (warn / app-lock / cancel-orders / flatten), result
+            (broker_locked | monitoring_only | broker_lock_failed), and timestamp.
+            Pull from LiveSessionState + ConnectedAccount joined on brokerConnectionId. */}
         <RecentSessionEvents items={recentSessionEvents} timeZone={displayTimeZone} />
 
         {/* ── How enforcement works (collapsible details) ─────────────────── */}
