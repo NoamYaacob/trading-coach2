@@ -60,7 +60,7 @@ export default async function OnboardingPage() {
     },
     {
       title: "Broker connection",
-      description: "Optional. Connect Tradovate later when broker-based checks are available.",
+      description: "Connect Tradovate to enable live broker trade monitoring and rule enforcement.",
       cta: "Connect Tradovate",
       href: "/accounts/connect/tradovate",
       done: hasBroker,

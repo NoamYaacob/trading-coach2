@@ -71,8 +71,7 @@ export default async function FeaturesPage() {
                 <p className="text-sm font-semibold text-stone-950">Active</p>
               </div>
               <p className="text-sm leading-6 text-stone-600">
-                Fully live — evaluated against every trade event in real time. Works in both Manual
-                Mode and broker-connected mode.
+                Fully live — evaluated against every trade event from your connected broker account in real time.
               </p>
             </div>
             <div>

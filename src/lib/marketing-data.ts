@@ -132,7 +132,7 @@ export const PROP_FIRM_CARDS = [
 
 export const ENFORCEMENT_NOW = [
   "App-level session lock when a rule breaks",
-  "Rule evaluation against broker or manual trade data",
+  "Rule evaluation against live broker trade events",
   "Telegram lockout alerts — optional, immediate",
   "Broker-connected read-only mode — live trade events from Tradovate",
 ];
@@ -184,6 +184,10 @@ export const FAQS = [
   {
     q: "Does it work for prop firm evaluation and funded accounts?",
     a: "Yes. Guardrail is built for futures traders on funded and evaluation accounts where a single bad day can end the account. It supports evaluation, funded, personal, and demo account types and is designed around typical prop firm daily loss and trade count constraints.",
+  },
+  {
+    q: "Does Guardrail work across multiple prop firm accounts or broker connections?",
+    a: "Yes. Guardrail supports multiple Tradovate connections and multiple trading accounts under each connection. Each connection is tracked independently — accounts across different prop firms or on different connections stay isolated. Enforcement is account-specific: a rule breach on one account does not affect others.",
   },
   {
     q: "Which brokers are supported?",

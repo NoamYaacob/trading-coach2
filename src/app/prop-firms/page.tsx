@@ -176,6 +176,9 @@ export default async function PropFirmsPage() {
               </div>
             ))}
           </div>
+          <p className="mt-4 text-xs leading-5 text-stone-500">
+            Multiple prop firms and broker connections are supported. Each Tradovate connection and trading account is tracked independently — rules and enforcement are account-specific.
+          </p>
         </section>
 
         {!user && (
