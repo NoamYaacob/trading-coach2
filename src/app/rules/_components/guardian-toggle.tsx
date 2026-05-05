@@ -61,6 +61,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
           <div className="shrink-0 text-right">
             <button
               type="button"
+              aria-pressed={true}
               onClick={handleDisable}
               disabled={loading}
               className="inline-flex h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -91,6 +92,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
         </div>
         <button
           type="button"
+          aria-pressed={false}
           onClick={handleEnable}
           disabled={loading}
           className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
