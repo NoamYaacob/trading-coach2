@@ -331,7 +331,7 @@ export function ConnectTradovateClient() {
               className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
             />
             <p className="mt-1.5 text-xs text-stone-400">
-              Used only to name this connection in Guardrail. You can rename accounts after import.
+              Used only to name this connection in Guardrail. You can rename accounts after adding them.
             </p>
           </div>
 
