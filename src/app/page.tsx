@@ -65,8 +65,8 @@ export default async function Home() {
       description="Set your daily loss, max trades, session hours, and loss-streak rules before the open. When pressure hits, Guardrail keeps the session inside those limits."
       note={
         <>
-          <span className="hidden sm:inline">In-app enforcement always on · Broker enforcement when connection type and permissions support it</span>
-          <span className="sm:hidden">In-app enforcement on. Broker enforcement when connection and permissions support it.</span>
+          <span className="hidden sm:inline">Account-level monitoring · Broker enforcement when supported and verified</span>
+          <span className="sm:hidden">Account-level monitoring. Broker enforcement when supported and verified.</span>
         </>
       }
       actions={heroActions}
