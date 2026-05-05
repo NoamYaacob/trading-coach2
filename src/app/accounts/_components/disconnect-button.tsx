@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-// Maps common IANA zones to trader-friendly city names.
+// Maps common IANA zones to trader-friendly location names.
 // Falls back to the short TZ abbreviation (e.g. "EST") for unlisted zones.
 const TZ_CITY: Record<string, string> = {
   "America/New_York":    "New York",
@@ -17,12 +17,18 @@ const TZ_CITY: Record<string, string> = {
   "Europe/Berlin":       "Frankfurt",
   "Europe/Paris":        "Paris",
   "Europe/Amsterdam":    "Amsterdam",
-  "Asia/Jerusalem":      "Tel Aviv",
+  "Europe/Madrid":       "Madrid",
+  "Europe/Rome":         "Rome",
+  "Europe/Zurich":       "Zurich",
+  "Asia/Jerusalem":      "Israel",
   "Asia/Dubai":          "Dubai",
-  "Asia/Tokyo":          "Tokyo",
+  "Asia/Kolkata":        "India",
+  "Asia/Bangkok":        "Bangkok",
+  "Asia/Shanghai":       "China",
   "Asia/Hong_Kong":      "Hong Kong",
   "Asia/Singapore":      "Singapore",
   "Asia/Seoul":          "Seoul",
+  "Asia/Tokyo":          "Tokyo",
   "Australia/Sydney":    "Sydney",
 };
 
@@ -36,7 +42,14 @@ function tzCityName(tz: string): string {
   return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
 }
 
-function formatUnlockLabel(lockedUntilMs: number, tz: string): string {
+/**
+ * Returns a human-readable unlock label.
+ *
+ * `tz` is the user's explicitly saved IANA timezone — null means the user
+ * hasn't set one. When null we omit the absolute time (it would show the
+ * fallback timezone city which may be misleading) and only show relative time.
+ */
+function formatUnlockLabel(lockedUntilMs: number, tz: string | null): string {
   const now = Date.now();
   const diffMin = Math.ceil((lockedUntilMs - now) / 60_000);
 
@@ -45,6 +58,9 @@ function formatUnlockLabel(lockedUntilMs: number, tz: string): string {
   if (diffMin <= 90) {
     return `in ${diffMin} minute${diffMin !== 1 ? "s" : ""}`;
   }
+
+  // No saved timezone — avoid showing a potentially wrong city.
+  if (!tz) return "after today's session ends";
 
   const timeStr = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -80,7 +96,7 @@ function BlockedDialog({
   }, []);
 
   const unlockSuffix =
-    lockedUntilMs != null && lockedUntilTz
+    lockedUntilMs != null
       ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
       : null;
 
@@ -263,8 +279,8 @@ export function DisconnectButton({
   }
 
   const unlockLabel =
-    isBlocked && lockedUntilMs != null && lockedUntilTz
-      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
+    isBlocked && lockedUntilMs != null
+      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz ?? null)
       : null;
 
   return (
