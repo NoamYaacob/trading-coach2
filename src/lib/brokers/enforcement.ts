@@ -111,7 +111,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
 
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
-    select: { platform: true },
+    select: {
+      platform: true,
+      brokerConnection: { select: { connectionStatus: true } },
+    },
   });
 
   let outcome: string;
@@ -122,6 +125,19 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
   let brokerResponseJson: Prisma.InputJsonValue | null = null;
 
   if (account?.platform === "tradovate" && trigger === "daily_loss_limit") {
+    const connStatus = account.brokerConnection?.connectionStatus ?? "not_connected";
+
+    // connected_readonly tokens lack Account Risk Settings write access —
+    // the userAccountAutoLiq call would always fail with 403. Skip the attempt
+    // and record monitoring_only so the log is accurate and not misleading.
+    if (connStatus === "connected_readonly") {
+      brokerLockStatus = "monitoring_only";
+      outcome = "monitoring_only";
+      message =
+        "Broker-side enforcement skipped: connection is read-only (connected_readonly). " +
+        "Full-access permissions are required for userAccountAutoLiq writes. " +
+        "Guardrail is monitoring and alerting only for this account.";
+    } else {
     // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────
     // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
     //   — confirms Account Risk Settings read access and finds existing rule
@@ -188,6 +204,7 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
         failureReason,
       });
     }
+    } // end else (not connected_readonly)
   } else if (account?.platform === "tradovate" && trigger === "trade_limit") {
     // ── Trade limit: no account-wide order block in userAccountAutoLiq ────
     brokerLockStatus = "monitoring_only";

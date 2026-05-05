@@ -93,14 +93,18 @@ export function computeEnforcementMode(
   const platform = brokerConnection?.platform ?? account.platform;
   const connStatus = brokerConnection?.connectionStatus ?? "not_connected";
 
-  // No broker connection → internal app lock (Guardrail controls only, no broker side)
+  // No broker connection → monitoring from manual trades; Guardrail can apply
+  // an internal session lock when a rule is breached, but has no broker path.
+  // internal_app_lock is reserved for when a lock is actually confirmed active
+  // (e.g. GuardianIntervention records, shown on the Guardian status page).
   if (!brokerConnectionId || !brokerConnection) {
     return {
-      mode: "internal_app_lock",
-      label: "App-level only",
+      mode: "monitoring_only",
+      label: "Manual · App-level only",
       detail:
-        "This account has no broker connection. Guardrail evaluates rules from manually logged trades " +
-        "and can apply an internal session lock. No broker-side order blocking is possible.",
+        "This account has no broker connection. Guardrail evaluates rules from manually logged trades. " +
+        "When a rule is breached, Guardrail applies an internal session lock and sends alerts. " +
+        "No broker-side order blocking is possible.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
     };
   }

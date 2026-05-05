@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -24,6 +24,7 @@ export type AccountRulesValues = {
 
 type Props = {
   accountId: string;
+  accountLabel: string;
   hasExistingRules: boolean;
   initial: AccountRulesValues;
   isLocked: boolean;
@@ -79,6 +80,7 @@ function Input({
 
 export function AccountRulesForm({
   accountId,
+  accountLabel,
   hasExistingRules,
   initial,
   isLocked,
@@ -87,14 +89,24 @@ export function AccountRulesForm({
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
+  const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
+  // Warn before unload/refresh when there are unsaved changes.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
   function update<K extends keyof AccountRulesValues>(key: K, value: AccountRulesValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
     setSavedAt(null);
   }
 
@@ -142,6 +154,7 @@ export function AccountRulesForm({
         setPendingMessage(null);
         setSavedAt(new Date());
       }
+      setIsDirty(false);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save.");
@@ -155,6 +168,7 @@ export function AccountRulesForm({
     setError(null);
     try {
       await sendPatch({ riskRules: null });
+      setIsDirty(false);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove.");
@@ -266,37 +280,46 @@ export function AccountRulesForm({
       )}
 
       {/* Submit row */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-6">
-        <button
-          type="submit"
-          disabled={saving || removing}
-          className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
-        >
-          {saving ? "Saving…" : "Save rules"}
-        </button>
-        {hasExistingRules && (
+      <div className="grid gap-2 border-t border-stone-100 pt-4 sm:pt-6">
+        {/* Scope confirmation — always visible so the user knows which account they're saving */}
+        <p className="text-[11px] text-stone-400">
+          Saving rules for <span className="font-semibold text-stone-600">{accountLabel}</span>
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            type="button"
-            onClick={handleRemove}
+            type="submit"
             disabled={saving || removing}
-            className="rounded-full border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50"
+            className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            {removing ? "Removing…" : "Remove account-specific rules"}
+            {saving ? "Saving…" : "Save rules"}
           </button>
-        )}
-        <Link
-          href={`/accounts/${accountId}/edit`}
-          className="text-xs text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline"
-        >
-          Full account settings ↗
-        </Link>
-        {savedAt && !pendingMessage && (
-          <span className="text-xs text-emerald-700">
-            Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.
-          </span>
-        )}
-        {pendingMessage && <span className="text-xs text-amber-700">{pendingMessage}</span>}
-        {error && <span className="text-xs text-red-700">{error}</span>}
+          {hasExistingRules && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={saving || removing}
+              className="rounded-full border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50"
+            >
+              {removing ? "Removing…" : "Remove account-specific rules"}
+            </button>
+          )}
+          <Link
+            href={`/accounts/${accountId}/edit`}
+            className="text-xs text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline"
+          >
+            Full account settings ↗
+          </Link>
+          {isDirty && !saving && (
+            <span className="text-xs text-amber-600">Unsaved changes</span>
+          )}
+          {savedAt && !pendingMessage && !isDirty && (
+            <span className="text-xs text-emerald-700">
+              Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.
+            </span>
+          )}
+          {pendingMessage && <span className="text-xs text-amber-700">{pendingMessage}</span>}
+          {error && <span className="text-xs text-red-700">{error}</span>}
+        </div>
       </div>
     </form>
   );

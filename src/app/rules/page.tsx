@@ -187,7 +187,27 @@ export default async function RulesPage({
       <div className="grid gap-5 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-8">
 
         {/* ── Scope selector ──────────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-stone-200 bg-white/90 p-3 lg:sticky lg:top-6">
+
+        {/* Mobile: collapsible — collapses after scope selection so editor is visible */}
+        <details className="rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+              Configure rules for…
+            </span>
+            <span className="text-stone-400 select-none">▾</span>
+          </summary>
+          <div className="border-t border-stone-100 px-3 pb-3 pt-2">
+            <ScopeSelector
+              groups={groups}
+              unattached={unattached}
+              currentScope={scope}
+              currentAccountId={id ?? null}
+            />
+          </div>
+        </details>
+
+        {/* Desktop: always-visible sticky sidebar */}
+        <div className="hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
           <p className="mb-2 px-3.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
             Configure rules for
           </p>
@@ -245,6 +265,7 @@ export default async function RulesPage({
               >
                 <AccountRulesForm
                   accountId={selectedAccount.id}
+                  accountLabel={selectedAccount.label}
                   hasExistingRules={selectedAccount.riskRules !== null}
                   initial={accountInitial}
                   isLocked={protectionLock.isLocked}
