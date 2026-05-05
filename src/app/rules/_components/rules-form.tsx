@@ -174,9 +174,10 @@ export function RulesForm({ initial, hasBroker }: Props) {
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Trading window</legend>
+        <legend className="text-sm font-semibold text-stone-950">Protected session window</legend>
         <p className="-mt-2 text-xs text-stone-500">
-          Only monitor sessions during these days and hours.
+          The hours during which Guardian monitors your rules and protects the account.
+          This window is also used for protection lock, session status, and daily P&amp;L bucketing.
         </p>
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           <Field label="Session start (hour, 0–23)">

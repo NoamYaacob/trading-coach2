@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   title: "Status details — Guardrail",
 };
 
-type Permission = "SAFE" | "WARNING" | "LOCKED" | "GUARDIAN_OFF";
+type Permission = "SAFE" | "WARNING" | "LOCKED" | "GUARDIAN_OFF" | "READ_ONLY";
 
 // Maps common IANA zones to trader-friendly location names.
 const TZ_CITY: Record<string, string> = {
@@ -96,6 +96,13 @@ function permissionStyles(p: Permission) {
         chip: "bg-stone-600 text-white",
         accent: "text-stone-700",
         label: "Paused",
+      };
+    case "READ_ONLY":
+      return {
+        shell: "border-stone-200 bg-stone-50/80",
+        chip: "bg-stone-500 text-white",
+        accent: "text-stone-600",
+        label: "Read-only",
       };
     default:
       return {
@@ -237,13 +244,17 @@ export default async function GuardianPage() {
     (liveEnforcement != null &&
       ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier));
 
+  // READ_ONLY: broker connected but no live enforcement — monitoring only, nothing broken.
+  const isReadOnly = hasBroker && !hasLiveConnection;
   const permission: Permission = guardianOff
     ? "GUARDIAN_OFF"
     : isLocked
       ? "LOCKED"
       : hasWarnings
         ? "WARNING"
-        : "SAFE";
+        : isReadOnly
+          ? "READ_ONLY"
+          : "SAFE";
 
   const styles = permissionStyles(permission);
 
@@ -256,7 +267,9 @@ export default async function GuardianPage() {
         ? "Protected session has not started yet."
         : hasWarnings
           ? "Trading is open — limits are close."
-          : "Trading is open. All limits clear.";
+          : permission === "READ_ONLY"
+            ? "Trading is open. Read-only monitoring active."
+            : "Trading is open. All limits clear.";
 
   const detail = guardianOff
     ? "Your rules are saved, but Guardian is not actively monitoring the session."
@@ -266,7 +279,9 @@ export default async function GuardianPage() {
         ? "Rule progress and warnings will appear once broker events begin syncing."
         : hasWarnings
           ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
-          : "No rule limits have been hit. Guardian is monitoring every trade event.";
+          : permission === "READ_ONLY"
+            ? "Guardian is monitoring via a read-only broker connection. No rule thresholds have been reached. Broker-level enforcement is not active for this connection type."
+            : "No rule limits have been hit. Guardian is monitoring every trade event.";
 
   const triggeredLabels = guardian.evaluation.triggeredRuleLabels;
 
@@ -276,13 +291,14 @@ export default async function GuardianPage() {
     riskRules?.stopAfterLosses ?? guardian.profile.stopAfterConsecutiveLosses;
 
   // On-breach actions configured by the user.
-  // "Mark account locked in Guardrail" replaces the old "Lock session for the day" label
-  // to clarify scope: read-only connections cannot block orders at the broker level.
   const breachActions: Array<{ label: string; note?: string; available: boolean; on: boolean }> = [
     { label: "Send warning", available: true, on: riskRules?.onBreachWarn ?? true },
     {
       label: "Mark account locked in Guardrail",
-      note: "Read-only connections mark the account locked and send alerts. Orders placed directly in Tradovate are not blocked.",
+      // Show read-only scope note only when the connection is read-only.
+      note: isReadOnly
+        ? "Guardian status only — does not block orders placed directly in Tradovate."
+        : undefined,
       available: true,
       on: riskRules?.onBreachAppLock ?? true,
     },
@@ -536,7 +552,7 @@ export default async function GuardianPage() {
                           : "bg-stone-100 text-stone-500"
                     }`}
                   >
-                    {!available ? "Requires write permissions" : on ? "On" : "Off"}
+                    {!available ? "Not active · requires write permissions" : on ? "On" : "Off"}
                   </span>
                 </div>
                 {note && (
