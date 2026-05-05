@@ -157,6 +157,9 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
     const dailyPnl = sessionState ? Number(sessionState.dailyPnl) : null;
     const tradesCount = sessionState ? sessionState.tradesCount : null;
+    const tradeCountSource: "verified" | "estimated" | "unavailable" = sessionState
+      ? ((sessionState.tradeCountSource ?? "verified") as "verified" | "estimated" | "unavailable")
+      : "unavailable";
     const consecutiveLosses = sessionState ? sessionState.consecutiveLosses : null;
     const riskState = sessionState
       ? (sessionState.riskState as "NORMAL" | "WARNING" | "STOPPED")
@@ -243,6 +246,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       dailyLossUsedPct,
       tradesCount,
       maxTradesPerDay,
+      tradeCountSource,
     });
 
     let setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null = null;
@@ -267,6 +271,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       maxTradesPerDay,
       consecutiveLosses,
       stopAfterLosses,
+      tradeCountSource,
     });
 
     const enforcementMode = deriveEnforcementMode({
@@ -333,6 +338,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       dailyLossUsedPct,
       tradesCount,
       tradesMayIncludePreConnection,
+      tradeCountSource,
       maxTradesPerDay,
       tradesUsedPct,
       consecutiveLosses,

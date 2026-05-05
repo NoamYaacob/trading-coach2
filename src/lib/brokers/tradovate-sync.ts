@@ -112,6 +112,9 @@ export async function syncTradovateAccount(
     let tradesCount = 0;
     let pnlFromFills: number | null = null;
     let fillsSyncedAt: Date | null = null;
+    // Defaults to "unavailable" so a fills-fetch failure correctly downgrades
+    // tradesCount; flipped to "verified"/"estimated" once fills are processed.
+    let tradeCountSource: "verified" | "estimated" | "unavailable" = "unavailable";
 
     // Phase A: count completed orders (best-effort).
     // NOTE: order/list on many Tradovate environments only returns active/working orders,
@@ -148,12 +151,21 @@ export async function syncTradovateAccount(
       const trace = traceEntryTrades(executions);
       tradesCount = trace.count;
 
+      // Mark the count as "estimated" when fills couldn't be reliably scoped
+      // to one account — the response may include fills from other accounts on
+      // the same multi-account OAuth token, so the count may be inflated.
+      const verdict = client.getLastFillsScopingVerdict();
+      tradeCountSource =
+        verdict === "api_scoped" || verdict === "field_scoped" ? "verified" : "estimated";
+
       console.info("[tradovate/trades] entry count diagnostic", {
         accountId,
         rawFillCount: executions.length,
         uniqueOrderIds: trace.uniqueOrderIds,
         groupedOrderCount: trace.groupedCount,
         derivedEntryTradeCount: trace.count,
+        scopingVerdict: verdict,
+        tradeCountSource,
         pnlFromFills,
       });
       for (const row of trace.rows) {
@@ -238,17 +250,30 @@ export async function syncTradovateAccount(
         ? Math.min(1, lossUsed / effectiveMaxDailyLoss)
         : null;
 
+    // Trade-limit checks are only authoritative when tradeCountSource is
+    // "verified" — an estimated/unavailable count must NOT trigger a broker
+    // lock or a "locked" status, since it may include fills from other
+    // accounts on the same OAuth token.
+    const tradeCountIsAuthoritative = tradeCountSource === "verified";
+
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
     let enforcementTrigger: EnforcementTrigger | null = null;
     if (lossPct != null && lossPct >= 1.0) {
       newRiskState = "STOPPED";
       enforcementTrigger = "daily_loss_limit";
-    } else if (effectiveMaxTrades != null && tradesCount >= effectiveMaxTrades) {
+    } else if (
+      tradeCountIsAuthoritative &&
+      effectiveMaxTrades != null &&
+      tradesCount >= effectiveMaxTrades
+    ) {
       newRiskState = "STOPPED";
       enforcementTrigger = "trade_limit";
     } else if (
       (lossPct != null && lossPct >= 0.8) ||
-      (effectiveMaxTrades != null && effectiveMaxTrades > 1 && tradesCount === effectiveMaxTrades - 1)
+      (tradeCountIsAuthoritative &&
+        effectiveMaxTrades != null &&
+        effectiveMaxTrades > 1 &&
+        tradesCount === effectiveMaxTrades - 1)
     ) {
       newRiskState = "WARNING";
     }
@@ -268,6 +293,7 @@ export async function syncTradovateAccount(
         data: {
           ...(isStale ? { sessionDate: today } : {}),
           tradesCount,
+          tradeCountSource,
           riskState: newRiskState,
           ...(resolvedDailyPnl != null
             ? { dailyPnl: resolvedDailyPnl }
@@ -283,6 +309,7 @@ export async function syncTradovateAccount(
           sessionDate: today,
           dailyPnl: resolvedDailyPnl ?? 0,
           tradesCount,
+          tradeCountSource,
           consecutiveLosses: 0,
           riskState: newRiskState,
         },

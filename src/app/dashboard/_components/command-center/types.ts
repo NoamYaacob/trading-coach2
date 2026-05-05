@@ -45,6 +45,13 @@ export type CommandCenterAccount = {
    *  was connected to Guardrail today (full-day count is used for risk
    *  enforcement; this flag drives the disclosure note in the UI). */
   tradesMayIncludePreConnection: boolean;
+  /** How tradesCount was derived. "verified" means the broker source was
+   *  account-scoped and the count can drive trade-limit enforcement. "estimated"
+   *  means fills could not be attributed to a specific account (multi-account
+   *  OAuth tokens) — UI shows the count with a disclaimer and trade-limit
+   *  enforcement is suppressed. "unavailable" means fills failed to fetch this
+   *  sync; daily P&L based locks remain authoritative. */
+  tradeCountSource: "verified" | "estimated" | "unavailable";
   maxTradesPerDay: number | null;
   tradesUsedPct: number | null;
   consecutiveLosses: number | null;

@@ -8,12 +8,19 @@ export function deriveBreachReason(input: {
   maxTradesPerDay: number | null;
   consecutiveLosses: number | null;
   stopAfterLosses: number | null;
+  /** When not "verified", trade-limit breach copy is suppressed entirely
+   *  because the count cannot be trusted to belong to this account. */
+  tradeCountSource?: "verified" | "estimated" | "unavailable";
 }): { headline: string; detail?: string } | null {
   if (input.status !== "warning" && input.status !== "locked") return null;
 
   const { tradesCount, maxTradesPerDay, consecutiveLosses, stopAfterLosses } = input;
+  const tradeCountSource = input.tradeCountSource ?? "verified";
   const tradesAtOrOverLimit =
-    tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay;
+    tradeCountSource === "verified" &&
+    tradesCount != null &&
+    maxTradesPerDay != null &&
+    tradesCount >= maxTradesPerDay;
 
   // Daily loss is definitively at the limit — always takes priority over trade count.
   if (input.dailyLossUsedPct != null && input.dailyLossUsedPct >= 1) {
@@ -23,7 +30,7 @@ export function deriveBreachReason(input: {
     };
   }
 
-  // Trade count is at or over limit (may be the stop trigger, or running alongside a loss stop).
+  // Trade count is at or over limit (only when tradeCountSource is "verified").
   if (tradesAtOrOverLimit) {
     return {
       headline: "Trade activity may exceed limit",
@@ -48,7 +55,13 @@ export function deriveBreachReason(input: {
     return { headline: "Approaching daily loss limit" };
   }
 
-  if (tradesCount != null && maxTradesPerDay != null && maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) {
+  if (
+    tradeCountSource === "verified" &&
+    tradesCount != null &&
+    maxTradesPerDay != null &&
+    maxTradesPerDay > 1 &&
+    tradesCount === maxTradesPerDay - 1
+  ) {
     return {
       headline: `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`,
       detail: "One trade left today.",
@@ -88,6 +101,9 @@ export function deriveStatus(input: {
   dailyLossUsedPct: number | null;
   tradesCount: number | null;
   maxTradesPerDay: number | null;
+  /** When not "verified", trade count alone cannot push status to locked/warning
+   *  because it may include fills from other accounts on the same OAuth token. */
+  tradeCountSource?: "verified" | "estimated" | "unavailable";
 }): AccountStatus {
   if (!input.isActive) return "not_connected";
 
@@ -120,10 +136,16 @@ export function deriveStatus(input: {
   if (lossPct >= 1.0) return "locked";
   if (lossPct >= 0.8) return "warning";
 
-  const { tradesCount, maxTradesPerDay } = input;
-  if (tradesCount != null && maxTradesPerDay != null) {
-    if (tradesCount >= maxTradesPerDay) return "locked";
-    if (maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) return "warning";
+  // Trade-count-driven status only applies when the count is verified per
+  // account; otherwise we may be reading mixed multi-account fill data and
+  // must not lock the account based on trades alone.
+  const tradeCountSource = input.tradeCountSource ?? "verified";
+  if (tradeCountSource === "verified") {
+    const { tradesCount, maxTradesPerDay } = input;
+    if (tradesCount != null && maxTradesPerDay != null) {
+      if (tradesCount >= maxTradesPerDay) return "locked";
+      if (maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) return "warning";
+    }
   }
 
   return "allowed";

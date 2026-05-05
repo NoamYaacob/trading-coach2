@@ -205,6 +205,113 @@ describe("deriveBreachReason", () => {
   });
 });
 
+// ── source-gated trade-limit enforcement (multi-account OAuth tokens) ────────
+
+describe("trade-limit enforcement is suppressed when tradeCountSource is not 'verified'", () => {
+  const lockableTrades = {
+    isActive: true,
+    platform: "tradovate",
+    connectionStatus: "connected_readonly",
+    hasAnyRules: true,
+    propFirmSetupNeeded: false,
+    riskState: null as "NORMAL" | "WARNING" | "STOPPED" | null,
+    dailyLossUsedPct: 0.5, // below daily loss limit
+    tradesCount: 12,
+    maxTradesPerDay: 3,
+  };
+
+  it("estimated count + trades over limit → status stays 'allowed' (not 'locked')", () => {
+    // Multi-account OAuth scenario: tradesCount=12 may include other accounts'
+    // fills, so we MUST NOT lock the account based on this alone.
+    const status = deriveStatus({ ...lockableTrades, tradeCountSource: "estimated" });
+    assert.equal(status, "allowed");
+  });
+
+  it("unavailable count + trades over limit → status stays 'allowed'", () => {
+    const status = deriveStatus({ ...lockableTrades, tradeCountSource: "unavailable" });
+    assert.equal(status, "allowed");
+  });
+
+  it("verified count + trades over limit → status is 'locked' (existing behavior)", () => {
+    const status = deriveStatus({ ...lockableTrades, tradeCountSource: "verified" });
+    assert.equal(status, "locked");
+  });
+
+  it("estimated count does NOT downgrade a daily-loss STOPPED state", () => {
+    // Daily loss enforcement uses an account-scoped balance endpoint and
+    // remains authoritative regardless of tradeCountSource.
+    const status = deriveStatus({
+      ...lockableTrades,
+      riskState: "STOPPED",
+      dailyLossUsedPct: 1.0,
+      tradeCountSource: "estimated",
+    });
+    assert.equal(status, "locked");
+  });
+
+  it("estimated count + warning threshold trades → no warning status", () => {
+    const status = deriveStatus({
+      ...lockableTrades,
+      tradesCount: 2,
+      maxTradesPerDay: 3,
+      tradeCountSource: "estimated",
+    });
+    assert.equal(status, "allowed");
+  });
+
+  it("breachReason returns null for trades-over-limit when source is estimated", () => {
+    const result = deriveBreachReason({
+      status: "locked",
+      riskState: null,
+      dailyLossUsedPct: null,
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+      consecutiveLosses: null,
+      stopAfterLosses: null,
+      tradeCountSource: "estimated",
+    });
+    // Status was passed as "locked" but if the helpers had been called together
+    // status would be "allowed" — either way, no trade-limit headline.
+    assert.ok(result === null || !result.headline.includes("Trade activity"));
+  });
+
+  it("breachReason still surfaces daily-loss headline when daily loss is at limit, even with estimated trade count", () => {
+    const result = deriveBreachReason({
+      status: "locked",
+      riskState: "STOPPED",
+      dailyLossUsedPct: 1.0,
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+      consecutiveLosses: null,
+      stopAfterLosses: null,
+      tradeCountSource: "estimated",
+    });
+    assert.ok(result !== null);
+    assert.equal(result.headline, "Daily loss limit reached");
+  });
+
+  it("breachReason returns null trade warning when count is estimated", () => {
+    const result = deriveBreachReason({
+      status: "warning",
+      riskState: null,
+      dailyLossUsedPct: 0.4,
+      tradesCount: 2,
+      maxTradesPerDay: 3,
+      consecutiveLosses: null,
+      stopAfterLosses: null,
+      tradeCountSource: "estimated",
+    });
+    // Warning status was passed but no eligible breach reason matches — the
+    // trade-warning branch is gated on "verified".
+    assert.equal(result, null);
+  });
+
+  it("backwards compat: omitting tradeCountSource defaults to 'verified' behavior", () => {
+    const status = deriveStatus(lockableTrades); // no tradeCountSource key
+    assert.equal(status, "locked");
+  });
+});
+
 // ── derivePropFirmSetupNeeded ──────────────────────────────────────────────────
 
 describe("derivePropFirmSetupNeeded", () => {

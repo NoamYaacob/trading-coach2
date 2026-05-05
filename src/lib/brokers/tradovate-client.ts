@@ -163,6 +163,13 @@ export type AutoLiqLockResult = {
   response: unknown;
 };
 
+/** How the most recent getFills() response was scoped to one account. */
+export type FillsScopingVerdict =
+  | "api_scoped"
+  | "field_scoped"
+  | "unscoped_suspect"
+  | "not_loaded";
+
 // ── Client ────────────────────────────────────────────────────────────────────
 
 /**
@@ -190,6 +197,16 @@ export class TradovateClient {
   #renewUrl: string | null = null;
   #clientId: string | null = null;
   #clientSecret: string | null = null;
+  /**
+   * Set by getFills() to record how the most recent fills response was scoped:
+   *   api_scoped       — fill/deps?masterid=X (account-scoped at the API)
+   *   field_scoped     — fill/list response carried per-row accountId/accountSpec
+   *   unscoped_suspect — fill/list with no per-row account IDs (multi-account
+   *                      OAuth tokens; fills may belong to other accounts)
+   *   not_loaded       — getFills() never ran on this client instance
+   * Read via getLastFillsScopingVerdict() to gate trade-limit enforcement.
+   */
+  #lastFillsScopingVerdict: FillsScopingVerdict = "not_loaded";
 
   constructor(accountId: string, userId: string) {
     this.#accountId = accountId;
@@ -881,6 +898,15 @@ export class TradovateClient {
       fills: todayFills as ReadonlyArray<Record<string, unknown>>,
     });
 
+    // Record the verdict so syncTradovateAccount can downgrade tradesCount to
+    // "estimated" and skip trade-limit enforcement when scoping is unreliable.
+    this.#lastFillsScopingVerdict =
+      endpoint === "fill/deps"
+        ? "api_scoped"
+        : accountScopingSuspect
+          ? "unscoped_suspect"
+          : "field_scoped";
+
     if (accountScopingSuspect) {
       console.warn("[tradovate/fills] account scoping suspect — fill/list returned items without accountId/accountSpec", {
         accountId: this.#accountId,
@@ -908,6 +934,16 @@ export class TradovateClient {
     });
 
     return filtered;
+  }
+
+  /**
+   * Returns the scoping verdict from the most recent getFills() call.
+   * Use this to decide whether tradesCount derived from those fills can be
+   * treated as authoritative (`api_scoped`/`field_scoped`) or only as an
+   * estimate (`unscoped_suspect`). Returns `not_loaded` before the first call.
+   */
+  getLastFillsScopingVerdict(): FillsScopingVerdict {
+    return this.#lastFillsScopingVerdict;
   }
 
   /**

@@ -724,12 +724,21 @@ function TradesCell({
   compact?: boolean;
 }) {
   // Broker account synced but fills never successfully fetched — count is unknown.
-  if (
+  const fillsFailed =
     account.platform !== "manual" &&
     account.fillsSyncedAt == null &&
-    account.lastSyncAt != null
-  ) {
-    return <p className="text-xs text-stone-400">Unavailable</p>;
+    account.lastSyncAt != null;
+  if (fillsFailed || account.tradeCountSource === "unavailable") {
+    return (
+      <div className={compact ? "" : "flex flex-col items-end gap-1"}>
+        <p className="text-xs text-stone-400">Unavailable</p>
+        {account.platform !== "manual" && (
+          <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
+            Trade count unavailable from broker report.
+          </p>
+        )}
+      </div>
+    );
   }
   const used = account.tradesCount ?? 0;
   if (account.maxTradesPerDay == null && account.tradesCount == null) {
@@ -739,6 +748,7 @@ function TradesCell({
   }
   const max = account.maxTradesPerDay;
   const pct = account.tradesUsedPct ?? 0;
+  const isEstimated = account.tradeCountSource === "estimated";
   return (
     <div className={compact ? "" : "flex flex-col items-end gap-1"}>
       <p className="font-mono text-sm font-semibold text-stone-900">
@@ -763,7 +773,9 @@ function TradesCell({
       )}
       {account.platform !== "manual" && account.tradesCount != null && account.tradesCount > 0 && (
         <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
-          Derived from fills — may differ from your broker&apos;s trade report.
+          {isEstimated
+            ? "Trade count estimated from broker fills — may include other accounts on this connection."
+            : "Derived from fills — may differ from your broker's trade report."}
         </p>
       )}
     </div>

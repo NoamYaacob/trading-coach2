@@ -514,6 +514,13 @@ model LiveSessionState {
   sessionDate       String
   dailyPnl          Decimal           @default(0) @db.Decimal(10, 2)
   tradesCount       Int               @default(0)
+  /// How tradesCount was derived this sync:
+  ///   verified    — account-scoped broker source we trust
+  ///   estimated   — derived from fills that may include other accounts
+  ///                 (multi-account OAuth tokens where fills lack account IDs)
+  ///   unavailable — fills could not be fetched at all this sync
+  /// Trade-limit enforcement is suppressed when this is not "verified".
+  tradeCountSource  String            @default("verified")
   consecutiveLosses Int               @default(0)
   lastTradeAt       DateTime?
   cooldownActive    Boolean           @default(false)
