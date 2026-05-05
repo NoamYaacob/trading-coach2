@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
+import { ArchiveAccountButton } from "./archive-account-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { getTradeCountDisplay } from "./data-helpers";
 import type {
@@ -460,12 +461,10 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
           >
             Refresh status
           </Link>
-          <Link
-            href={`/accounts/${account.id}/edit`}
+          <ArchiveAccountButton
+            accountId={account.id}
             className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
-          >
-            Archive
-          </Link>
+          />
         </div>
       </td>
     </tr>
@@ -609,12 +608,10 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           >
             Refresh status
           </Link>
-          <Link
-            href={`/accounts/${account.id}/edit`}
+          <ArchiveAccountButton
+            accountId={account.id}
             className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
-          >
-            Archive
-          </Link>
+          />
         </div>
       </div>
     );
