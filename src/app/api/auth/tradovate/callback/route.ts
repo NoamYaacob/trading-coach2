@@ -187,11 +187,14 @@ export async function GET(request: NextRequest) {
       rawJson !== null && typeof rawJson === "object" && !Array.isArray(rawJson)
         ? (rawJson as Record<string, unknown>)
         : null;
-    // Log response shape for diagnostics — field names only, never values.
+    // Log response shape for diagnostics — field names and safe OAuth error
+    // strings only; token values, codes, and secrets are never logged.
     console.info("[tradovate/callback] token response shape", {
       responseKeys: rawObj ? Object.keys(rawObj) : [],
       has_access_token: typeof rawObj?.access_token === "string",
       has_accessToken: typeof rawObj?.accessToken === "string",
+      tvError: typeof rawObj?.error === "string" ? rawObj.error : null,
+      tvErrorDesc: typeof rawObj?.error_description === "string" ? rawObj.error_description : null,
       token_type: typeof rawObj?.token_type === "string" ? rawObj.token_type : null,
       tokenType: typeof rawObj?.tokenType === "string" ? rawObj.tokenType : null,
       expiresField:
@@ -204,10 +207,19 @@ export async function GET(request: NextRequest) {
 
     const parsed = parseTvTokenResponse(rawJson);
     if (!parsed.ok) {
-      console.error("[tradovate/callback] token response missing access token", {
+      // Tradovate returns OAuth errors as HTTP 200 with { error, error_description }.
+      // Route through mapTvTokenError for specific codes; fall back to the generic
+      // missing-token code only when there is no OAuth error field at all.
+      const errorCode = parsed.tvError
+        ? mapTvTokenError(parsed.tvError)
+        : "oauth_token_response_missing_access_token";
+      console.error("[tradovate/callback] token response did not contain access token", {
         responseKeys: parsed.responseKeys,
+        tvError: parsed.tvError,
+        tvErrorDesc: parsed.tvErrorDesc,
+        errorCode,
       });
-      return backToConnectPage(request, "oauth_token_response_missing_access_token");
+      return backToConnectPage(request, errorCode);
     }
 
     token = parsed.token;

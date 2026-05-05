@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mapTvTokenError, parseTvTokenErrorBody, parseTvTokenResponse } from "./tradovate-token-exchange.ts";
+import {
+  mapTvTokenError,
+  parseTvTokenErrorBody,
+  parseTvTokenResponse,
+} from "./tradovate-token-exchange.ts";
 
 describe("mapTvTokenError", () => {
   it("maps invalid_grant", () => {
@@ -97,18 +101,21 @@ describe("parseTvTokenResponse", () => {
     assert.equal(result.token.accountId, "42");
   });
 
-  it("returns ok:false when access token absent", () => {
+  it("returns ok:false when access token absent — tvError null", () => {
     const result = parseTvTokenResponse({ token_type: "Bearer", expires_in: 3600 });
     assert.ok(!result.ok);
     assert.deepEqual(result.responseKeys, ["token_type", "expires_in"]);
+    assert.equal(result.tvError, null);
+    assert.equal(result.tvErrorDesc, null);
   });
 
-  it("returns ok:false for empty access_token string", () => {
+  it("returns ok:false for empty access_token string — tvError null", () => {
     const result = parseTvTokenResponse({ access_token: "" });
     assert.ok(!result.ok);
+    assert.equal(result.tvError, null);
   });
 
-  it("returns ok:false for non-object input", () => {
+  it("returns ok:false for non-object input — tvError null", () => {
     assert.ok(!parseTvTokenResponse(null).ok);
     assert.ok(!parseTvTokenResponse("string").ok);
     assert.ok(!parseTvTokenResponse([]).ok);
@@ -118,7 +125,6 @@ describe("parseTvTokenResponse", () => {
     const result = parseTvTokenResponse({ token_type: "Bearer" });
     assert.ok(!result.ok);
     assert.ok(result.responseKeys.includes("token_type"));
-    // responseKeys must be key names only, not values
     assert.ok(!result.responseKeys.includes("Bearer"));
   });
 
@@ -126,5 +132,69 @@ describe("parseTvTokenResponse", () => {
     const result = parseTvTokenResponse({ access_token: "t", expires_in: -1 });
     assert.ok(result.ok);
     assert.equal(result.token.expiresIn, null);
+  });
+
+  // ── OAuth error returned as HTTP 200 (Tradovate quirk) ────────────────────
+
+  it("exposes tvError/tvErrorDesc when Tradovate returns an error object", () => {
+    const result = parseTvTokenResponse({
+      error: "invalid_client",
+      error_description: "Client authentication failed",
+    });
+    assert.ok(!result.ok);
+    assert.equal(result.tvError, "invalid_client");
+    assert.equal(result.tvErrorDesc, "Client authentication failed");
+  });
+
+  it("invalid_client error maps to oauth_invalid_client via mapTvTokenError", () => {
+    const result = parseTvTokenResponse({
+      error: "invalid_client",
+      error_description: "Bad credentials",
+    });
+    assert.ok(!result.ok);
+    assert.equal(mapTvTokenError(result.tvError!), "oauth_invalid_client");
+  });
+
+  it("invalid_grant error maps to oauth_code_expired_or_reused via mapTvTokenError", () => {
+    const result = parseTvTokenResponse({
+      error: "invalid_grant",
+      error_description: "Authorization code expired",
+    });
+    assert.ok(!result.ok);
+    assert.equal(mapTvTokenError(result.tvError!), "oauth_code_expired_or_reused");
+  });
+
+  it("redirect_uri_mismatch error maps to oauth_redirect_uri_mismatch via mapTvTokenError", () => {
+    const result = parseTvTokenResponse({
+      error: "redirect_uri_mismatch",
+      error_description: "The redirect URI does not match",
+    });
+    assert.ok(!result.ok);
+    assert.equal(mapTvTokenError(result.tvError!), "oauth_redirect_uri_mismatch");
+  });
+
+  it("unknown error maps to token_exchange_failed via mapTvTokenError", () => {
+    const result = parseTvTokenResponse({ error: "server_error", error_description: "Oops" });
+    assert.ok(!result.ok);
+    assert.equal(mapTvTokenError(result.tvError!), "token_exchange_failed");
+  });
+
+  it("missing token without error field maps to oauth_token_response_missing_access_token", () => {
+    const result = parseTvTokenResponse({ token_type: "Bearer" });
+    assert.ok(!result.ok);
+    // No error field → tvError is null → caller should use fallback code
+    assert.equal(result.tvError, null);
+    // Verify the caller logic: null tvError → missing-access-token code
+    const errorCode = result.tvError
+      ? mapTvTokenError(result.tvError)
+      : "oauth_token_response_missing_access_token";
+    assert.equal(errorCode, "oauth_token_response_missing_access_token");
+  });
+
+  it("truncates long error_description", () => {
+    const long = "x".repeat(400);
+    const result = parseTvTokenResponse({ error: "invalid_client", error_description: long });
+    assert.ok(!result.ok);
+    assert.equal(result.tvErrorDesc!.length, 300);
   });
 });

@@ -60,7 +60,7 @@ export type TvParsedToken = {
 
 export type TvTokenParseResult =
   | { ok: true; token: TvParsedToken; responseKeys: string[] }
-  | { ok: false; responseKeys: string[] };
+  | { ok: false; tvError: string | null; tvErrorDesc: string | null; responseKeys: string[] };
 
 function pickString(primary: unknown, fallback: unknown): string | null {
   if (typeof primary === "string" && primary.length > 0) return primary;
@@ -79,17 +79,29 @@ function pickPositiveNumber(primary: unknown, fallback: unknown): number | null 
  * (access_token) and camelCase (accessToken) field names. Tradovate REST
  * APIs use camelCase; the OAuth token endpoint response shape is not
  * officially documented and may differ — both conventions are supported.
+ *
+ * Tradovate returns OAuth errors as HTTP 200 with { error, error_description }
+ * body. When no access token is found, tvError/tvErrorDesc are populated so
+ * the caller can map to a specific error code via mapTvTokenError().
  */
 export function parseTvTokenResponse(rawJson: unknown): TvTokenParseResult {
   if (rawJson === null || typeof rawJson !== "object" || Array.isArray(rawJson)) {
-    return { ok: false, responseKeys: [] };
+    return { ok: false, tvError: null, tvErrorDesc: null, responseKeys: [] };
   }
   const obj = rawJson as Record<string, unknown>;
   const responseKeys = Object.keys(obj);
 
+  // Extract safe OAuth error fields — these are diagnostic strings, not secrets.
+  const tvError =
+    typeof obj.error === "string" && obj.error.length > 0 ? obj.error : null;
+  const tvErrorDesc =
+    typeof obj.error_description === "string"
+      ? obj.error_description.slice(0, 300)
+      : null;
+
   const accessToken = pickString(obj.access_token, obj.accessToken);
   if (!accessToken) {
-    return { ok: false, responseKeys };
+    return { ok: false, tvError, tvErrorDesc, responseKeys };
   }
 
   const rawId = obj.account_id ?? obj.accountId;
