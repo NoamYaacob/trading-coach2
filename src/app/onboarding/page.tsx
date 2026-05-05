@@ -59,8 +59,8 @@ export default async function OnboardingPage() {
       done: isProtectionActive,
     },
     {
-      title: "Broker connection",
-      description: "Connect Tradovate to enable live broker trade monitoring and rule enforcement.",
+      title: "Connect Tradovate",
+      description: "Enable live account monitoring. Broker enforcement is available only when the account, connection type, and permissions support it.",
       cta: "Connect Tradovate",
       href: "/accounts/connect/tradovate",
       done: hasBroker,
@@ -96,7 +96,7 @@ export default async function OnboardingPage() {
             Finish your Guardrail setup.
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            Your trading profile is saved. Set your first rules, turn on protection, and connect Tradovate later when ready.
+            Your trading profile is saved. Set your rules, turn on Guardian, then connect Tradovate to activate live account monitoring.
           </p>
         </div>
 
@@ -105,8 +105,7 @@ export default async function OnboardingPage() {
             const status = getStatus(i);
             const { pill, label } = STATUS_PILL[status];
             const isDone = status === "done";
-            const isOptional = i === 2 && !isDone;
-            const isNext = status === "next" && !isOptional;
+            const isNext = status === "next";
 
             return (
               <Link
@@ -117,9 +116,7 @@ export default async function OnboardingPage() {
                     ? "border-2 border-stone-950 bg-white"
                     : isDone
                       ? "border border-stone-200 bg-white opacity-60"
-                      : isOptional
-                        ? "border border-dashed border-stone-200 bg-stone-50/60"
-                        : "border border-stone-200 bg-stone-50"
+                      : "border border-stone-200 bg-stone-50"
                 }`}
               >
                 {/* Step indicator */}
@@ -158,17 +155,11 @@ export default async function OnboardingPage() {
                 </div>
 
                 {/* Status pill */}
-                {isOptional ? (
-                  <span className="shrink-0 self-start rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
-                    Optional
-                  </span>
-                ) : (
-                  <span
-                    className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${pill}`}
-                  >
-                    {label}
-                  </span>
-                )}
+                <span
+                  className={`shrink-0 self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${pill}`}
+                >
+                  {label}
+                </span>
               </Link>
             );
           })}
@@ -183,7 +174,9 @@ export default async function OnboardingPage() {
                   ? "/rules"
                   : !isProtectionActive
                     ? "/rules#guardian-toggle"
-                    : "/dashboard"
+                    : !hasBroker
+                      ? "/accounts/connect/tradovate"
+                      : "/dashboard"
             }
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 sm:w-auto sm:px-8"
           >
@@ -193,19 +186,23 @@ export default async function OnboardingPage() {
                 ? "Set your first rules"
                 : !isProtectionActive
                   ? "Turn on Guardian"
-                  : "Continue to dashboard"}
+                  : !hasBroker
+                    ? "Connect Tradovate"
+                    : "Continue to dashboard"}
           </Link>
           {!hasBroker && (
             <Link
-              href="/accounts/connect/tradovate"
-              className="text-sm text-stone-500 underline-offset-2 hover:text-stone-950 hover:underline"
+              href="/dashboard"
+              className="text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
             >
-              Connect Tradovate
+              Skip for now — continue to dashboard without broker
             </Link>
           )}
-          <p className="text-xs text-stone-400">
-            Connect Tradovate to activate Guardrail.
-          </p>
+          {!hasBroker && (
+            <p className="text-xs text-stone-400">
+              Broker connection required for live account monitoring and enforcement.
+            </p>
+          )}
         </div>
       </main>
     </div>
