@@ -4,6 +4,15 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+export type DefaultRuleValues = {
+  maxDailyLoss: string;
+  riskPerTrade: string;
+  maxTradesPerDay: string;
+  stopAfterLosses: string;
+  allowedStartHour: string;
+  allowedEndHour: string;
+};
+
 export type AccountRulesValues = {
   maxDailyLoss: string;
   riskPerTrade: string;
@@ -31,6 +40,7 @@ type Props = {
   hasPropFirm: boolean;
   hasDefaultRules: boolean;
   timezone?: string | null;
+  defaultValues?: DefaultRuleValues;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -106,6 +116,7 @@ export function AccountRulesForm({
   hasPropFirm,
   hasDefaultRules,
   timezone,
+  defaultValues,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -113,6 +124,7 @@ export function AccountRulesForm({
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(hasExistingRules);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
@@ -195,6 +207,56 @@ export function AccountRulesForm({
     } finally {
       setRemoving(false);
     }
+  }
+
+  // No existing rules: show read-only inherited summary + CTA before revealing the form
+  if (!showForm) {
+    const summaryFields: { label: string; value: string; prefix?: string }[] = [
+      { label: "Daily loss limit", value: defaultValues?.maxDailyLoss ?? "", prefix: "$" },
+      { label: "Risk per trade", value: defaultValues?.riskPerTrade ?? "", prefix: "$" },
+      { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
+      { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
+      { label: "Session start", value: defaultValues?.allowedStartHour ?? "" },
+      { label: "Session end", value: defaultValues?.allowedEndHour ?? "" },
+    ];
+    return (
+      <div className="grid gap-4">
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          <p className="font-medium">Create account-specific override</p>
+          <p className="mt-0.5">
+            {hasDefaultRules
+              ? `This account currently uses the default template. Saving here will create rules only for ${accountLabel}.`
+              : `No default template is set. Saving here will create rules only for ${accountLabel}.`}
+          </p>
+        </div>
+
+        {hasDefaultRules && defaultValues && (
+          <div className="rounded-2xl border border-stone-100 bg-stone-50/50 px-4 py-4">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-stone-400">
+              Inherited from default template
+            </p>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+              {summaryFields.map(({ label, value, prefix }) => (
+                <div key={label}>
+                  <dt className="text-xs text-stone-400">{label}</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-stone-700">
+                    {value ? `${prefix ?? ""}${value}` : <span className="text-stone-300">—</span>}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="self-start rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          Create account-specific rules
+        </button>
+      </div>
+    );
   }
 
   return (

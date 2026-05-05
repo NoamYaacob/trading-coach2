@@ -11,7 +11,7 @@ import { getProtectionLockState } from "@/lib/account-protection";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
-import { AccountRulesForm, type AccountRulesValues } from "./_components/account-rules-form";
+import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
 import { buildRuleScopes } from "./_components/rule-scope-utils";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
 
@@ -152,6 +152,15 @@ export default async function RulesPage({
 
   const hasBroker = accounts.some((a) => a.platform !== "manual" && a.brokerConnectionId != null);
 
+  const accountDefaultValues: DefaultRuleValues = {
+    maxDailyLoss: decStr(riskRules?.maxDailyLoss),
+    riskPerTrade: decStr(riskRules?.riskPerTrade),
+    maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
+    stopAfterLosses: intStr(riskRules?.stopAfterLosses),
+    allowedStartHour: intStr(riskRules?.sessionStartHour),
+    allowedEndHour: intStr(riskRules?.sessionEndHour),
+  };
+
   // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)
   const enforcementInfo = computeEnforcementMode(
     scope === "account" && selectedAccount
@@ -271,6 +280,7 @@ export default async function RulesPage({
                   hasPropFirm={Boolean(selectedAccount.propFirm)}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
+                  defaultValues={accountDefaultValues}
                 />
               </SectionCard>
             ) : (
