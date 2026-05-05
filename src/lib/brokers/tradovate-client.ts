@@ -173,12 +173,10 @@ export type FillsScopingVerdict =
   | "unscoped_suspect"
   | "not_loaded";
 
-/** MM/DD/YYYY in UTC — the format Tradovate's reports endpoint expects. */
-function formatDateMMDDYYYY(d: Date): string {
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  const y = d.getUTCFullYear();
-  return `${m}/${day}/${y}`;
+/** MM/DD/YYYY — converts a YYYY-MM-DD trading-day key to the format Tradovate's reports endpoint expects. */
+function formatDateMMDDYYYY(tradingDayKey: string): string {
+  const [y, m, d] = tradingDayKey.split("-");
+  return `${m}/${d}/${y}`;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -891,11 +889,10 @@ export class TradovateClient {
    * Preferred over fill/list for trade counting because orders reliably
    * carry accountId as a direct field.
    */
-  async getCompletedOrdersToday(): Promise<TvOrder[]> {
+  async getCompletedOrdersToday(sessionStartMs: number): Promise<TvOrder[]> {
     const raw = await this.#request<unknown>("order/list");
     const all = parseSnapshotItems<TvOrder>(raw);
-    // 26-hour lookback covers futures sessions that start at 23:15 CT prior day
-    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
+    const lookbackMs = sessionStartMs;
 
     const recentCompleted = all.filter((o) => {
       if (o.ordStatus !== "Completed" && o.ordStatus !== "Filled") return false;
@@ -942,7 +939,7 @@ export class TradovateClient {
    * Date filter: checks timestamp, time, tradeTime, executionTime, tradeDate
    * (object or string). When none of those fields exist, includes the fill.
    */
-  async getFills(): Promise<TvFill[]> {
+  async getFills(sessionStartMs: number): Promise<TvFill[]> {
     let raw: unknown;
     let endpoint: "fill/deps" | "fill/list";
 
@@ -995,16 +992,12 @@ export class TradovateClient {
       });
     }
 
-    // 26-hour lookback covers CME futures sessions that open at 23:15 CT prior day
-    // and handles Tradovate local-time timestamps that may not match UTC date prefix.
-    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
-
     const todayFills = all.filter((f) => {
       const ts = extractFillTimestamp(f as Record<string, unknown>);
       if (ts == null) return true; // no date field — include it
       const d = new Date(ts);
       if (!Number.isFinite(d.getTime())) return true; // unparseable — include it
-      return d.getTime() >= lookbackMs;
+      return d.getTime() >= sessionStartMs;
     });
 
     const filtered =
@@ -1048,7 +1041,7 @@ export class TradovateClient {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       endpoint,
-      lookbackHours: 26,
+      sessionStartMs,
       responseShape: Array.isArray(raw)
         ? "bare_array"
         : raw !== null && typeof raw === "object"
@@ -1118,10 +1111,10 @@ export class TradovateClient {
    */
   async fetchPerformanceReport(input: {
     accountName: string;
-    date: Date;
+    tradingDayKey: string;
   }): Promise<{ status: number; body: string; contentType: string | null } | null> {
     if (!this.#reportsBaseUrl || !this.#accessToken) return null;
-    const dateStr = formatDateMMDDYYYY(input.date);
+    const dateStr = formatDateMMDDYYYY(input.tradingDayKey);
     const url = `${this.#reportsBaseUrl}/reports/requestreport`;
     const body = {
       name: "Performance",
@@ -1182,7 +1175,7 @@ export class TradovateClient {
    * level. We additionally verify that every kept order carries
    * accountId === this.#tvAccountId before reporting accountScopedAtApi.
    */
-  async fetchAccountScopedOrders(): Promise<{
+  async fetchAccountScopedOrders(sessionStartMs: number): Promise<{
     count: number;
     accountScopedAtApi: boolean;
     httpStatus?: number;
@@ -1205,14 +1198,12 @@ export class TradovateClient {
     }
 
     const all = parseSnapshotItems<{ accountId?: number; ordStatus?: string; timestamp?: string }>(raw);
-    // Today's window — 26h lookback to cover futures sessions starting prior day
-    const lookbackMs = Date.now() - 26 * 60 * 60 * 1000;
     const completed = all.filter((o) => {
       const status = o.ordStatus;
       if (status !== "Completed" && status !== "Filled") return false;
       if (!o.timestamp) return true;
       const t = new Date(o.timestamp).getTime();
-      return Number.isFinite(t) && t >= lookbackMs;
+      return Number.isFinite(t) && t >= sessionStartMs;
     });
     const allHaveAccountId = completed.every((o) => o.accountId === this.#tvAccountId);
 
@@ -1238,7 +1229,7 @@ export class TradovateClient {
    * one round-trip trade (entry+exit pair). Availability varies — many
    * Tradovate environments don't expose fillPair endpoints over OAuth.
    */
-  async fetchAccountScopedFillPairs(): Promise<{
+  async fetchAccountScopedFillPairs(sessionStartMs: number): Promise<{
     count: number;
     accountScopedAtApi: boolean;
     httpStatus?: number;
@@ -1260,19 +1251,27 @@ export class TradovateClient {
       return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
     }
 
-    const all = parseSnapshotItems<{ accountId?: number }>(raw);
+    const all = parseSnapshotItems<Record<string, unknown>>(raw);
+    const sessionFillPairs = all.filter((p) => {
+      const ts = extractFillTimestamp(p);
+      if (ts == null) return true;
+      const t = new Date(ts).getTime();
+      return !Number.isFinite(t) || t >= sessionStartMs;
+    });
     const allHaveAccountId =
-      all.length > 0 && all.every((p) => p.accountId === this.#tvAccountId);
+      sessionFillPairs.length > 0 &&
+      sessionFillPairs.every((p) => p.accountId === this.#tvAccountId);
 
     console.info("[tradovate/trade-count] fillPair/deps result", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       total: all.length,
+      sessionCount: sessionFillPairs.length,
       allRowsCarryMatchingAccountId: allHaveAccountId,
     });
 
     return {
-      count: all.length,
+      count: sessionFillPairs.length,
       accountScopedAtApi: allHaveAccountId,
       endpoint,
     };
@@ -1285,7 +1284,7 @@ export class TradovateClient {
    * accountId. If any fill lacks accountId or has a different one, we report
    * accountScopedAtApi=false and the resolver moves on.
    */
-  async fetchAccountScopedFills(): Promise<{
+  async fetchAccountScopedFills(sessionStartMs: number): Promise<{
     count: number;
     accountScopedAtApi: boolean;
     httpStatus?: number;
@@ -1308,20 +1307,27 @@ export class TradovateClient {
     }
 
     const all = parseSnapshotItems<TvFill>(raw);
+    const sessionFills = all.filter((f) => {
+      const ts = extractFillTimestamp(f as Record<string, unknown>);
+      if (ts == null) return true;
+      const t = new Date(ts).getTime();
+      return !Number.isFinite(t) || t >= sessionStartMs;
+    });
     // Strict: must carry accountId AND must match
     const allMatch =
-      all.length > 0 &&
-      all.every((f) => typeof f.accountId === "number" && f.accountId === this.#tvAccountId);
+      sessionFills.length > 0 &&
+      sessionFills.every((f) => typeof f.accountId === "number" && f.accountId === this.#tvAccountId);
 
     console.info("[tradovate/trade-count] fill/deps result", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
       total: all.length,
+      sessionCount: sessionFills.length,
       allRowsCarryMatchingAccountId: allMatch,
     });
 
     return {
-      count: all.length,
+      count: sessionFills.length,
       accountScopedAtApi: allMatch,
       endpoint,
     };
@@ -1601,8 +1607,8 @@ export class TradovateClient {
     );
   }
 
-  async toExecutions(): Promise<BrokerExecution[]> {
-    const fills = await this.getFills();
+  async toExecutions(sessionStartMs: number): Promise<BrokerExecution[]> {
+    const fills = await this.getFills(sessionStartMs);
     const ids = [...new Set(fills.map((f) => f.contractId))];
     const contractMap = await this.resolveContracts(ids);
 

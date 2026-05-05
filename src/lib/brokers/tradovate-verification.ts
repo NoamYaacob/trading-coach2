@@ -280,7 +280,7 @@ export async function runTradovateVerification(
       balancePromise,
       timed(() => client.toPositions()),
       timed(() => client.toOrders()),
-      timed(() => client.toExecutions()),
+      timed(() => client.toExecutions(Date.now() - 26 * 60 * 60 * 1000)),
     ]);
 
   // Balance check + snapshot.account assembly

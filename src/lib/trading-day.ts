@@ -238,6 +238,41 @@ export function getTradingDayWindow(input: TradingDayInput = {}): TradingDayWind
   };
 }
 
+// ── CME Globex trading day ─────────────────────────────────────────────────
+
+/**
+ * CME Globex daily futures sessions start at 17:00 America/Chicago (5 PM CT).
+ * Returns the UTC Date of the 5PM CT boundary that opened the current session.
+ *
+ * Examples (CDT = UTC-5):
+ *   now = 2026-05-05 18:00 CT (23:00 UTC) → session opened May 5 17:00 CT → 2026-05-05 22:00Z
+ *   now = 2026-05-06 03:00 CT (08:00 UTC) → same session              → 2026-05-05 22:00Z
+ *   now = 2026-05-06 18:00 CT (23:00 UTC) → next session opened        → 2026-05-06 22:00Z
+ */
+export function deriveCmeTradingDaySessionStart(now?: Date): Date {
+  return getTradingDayWindow({
+    timezone: "America/Chicago",
+    sessionStartHour: 17,
+    sessionEndHour: 17,
+    now,
+  }).start;
+}
+
+/**
+ * Returns the YYYY-MM-DD trading-day key for the current CME Globex session,
+ * expressed as the America/Chicago calendar date when that session opened.
+ * Changes at 17:00 CT, not at UTC midnight.
+ */
+export function deriveCmeTradingDayKey(now?: Date): string {
+  const sessionStart = deriveCmeTradingDaySessionStart(now);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(sessionStart);
+}
+
 export function getLocalCalendarDayWindow(input: {
   timezone?: string | null;
   now?: Date;

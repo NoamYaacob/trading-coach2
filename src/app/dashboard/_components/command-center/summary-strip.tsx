@@ -68,8 +68,8 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
       hint: !summary.hasRiskData
         ? "Set rules to track"
         : summary.counts.locked > 0
-          ? "Excludes locked accounts"
-          : "Based on configured rules",
+          ? "Across all accounts · Excludes locked"
+          : "Across all accounts",
     },
     {
       label: "Open issues",

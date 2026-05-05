@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getLocalCalendarDayWindow, getTradingDayWindow } from "./trading-day.ts";
+import {
+  deriveCmeTradingDayKey,
+  deriveCmeTradingDaySessionStart,
+  getLocalCalendarDayWindow,
+  getTradingDayWindow,
+} from "./trading-day.ts";
 
 // All "now" values are written in UTC for clarity. Comments describe the
 // equivalent local time in the relevant timezone.
@@ -170,6 +175,56 @@ test("label formats start, end, and timezone", () => {
   // Session is 16:00-23:00 Asia/Jerusalem on 2026-04-26.
   assert.match(w.label, /Apr 26/);
   assert.match(w.label, /Asia\/Jerusalem/);
+});
+
+// ── CME Globex trading day ────────────────────────────────────────────────────
+// CME Globex daily sessions start at 17:00 America/Chicago (5PM CT).
+// America/Chicago is CDT (UTC-5) during daylight saving (Mar–Nov).
+// 5PM CDT = 22:00 UTC. Israel (IDT, UTC+3) reads that as 01:00 next calendar day.
+
+test("CME key stays on session-open date before midnight CT", () => {
+  // 2026-05-05 18:00 CT (CDT=UTC-5) = 23:00 UTC = 01:00 IDT May 6.
+  // Session opened at 17:00 CT May 5 = 22:00 UTC. Key should be "2026-05-05".
+  const now = new Date("2026-05-05T23:00:00Z"); // 18:00 CT on May 5
+  assert.equal(deriveCmeTradingDayKey(now), "2026-05-05");
+});
+
+test("CME key stays on session-open date well past midnight CT", () => {
+  // 2026-05-06 03:00 CT = 08:00 UTC — still in May 5 session (open until 17:00 CT May 6).
+  const now = new Date("2026-05-06T08:00:00Z"); // 03:00 CT on May 6
+  assert.equal(deriveCmeTradingDayKey(now), "2026-05-05");
+});
+
+test("CME key advances at 17:00 CT (the session rollover)", () => {
+  // 2026-05-06 17:00 CT = 22:00 UTC. A new session has just opened.
+  const now = new Date("2026-05-06T22:00:00Z"); // exactly 17:00 CT May 6
+  assert.equal(deriveCmeTradingDayKey(now), "2026-05-06");
+});
+
+test("CME key at 01:00 Israel time uses PREVIOUS CT session date during US DST", () => {
+  // Israel is UTC+3 in summer (IDT). 01:00 IDT = 22:00 UTC previous day.
+  // 22:00 UTC on May 5 = exactly 17:00 CDT (UTC-5). New session JUST opened.
+  const oneAmIsrael = new Date("2026-05-05T22:00:00Z");
+  assert.equal(deriveCmeTradingDayKey(oneAmIsrael), "2026-05-05");
+});
+
+test("CME key at 00:59 Israel time is still the PRIOR session key", () => {
+  // 00:59 IDT = 21:59 UTC = 16:59 CDT — 1 minute before rollover. Still May 4 session.
+  const beforeRollover = new Date("2026-05-05T21:59:00Z"); // 16:59 CT on May 5
+  assert.equal(deriveCmeTradingDayKey(beforeRollover), "2026-05-04");
+});
+
+test("deriveCmeTradingDaySessionStart returns 17:00 CT in UTC", () => {
+  // During CDT (UTC-5), 17:00 CT = 22:00 UTC.
+  const now = new Date("2026-05-05T23:00:00Z"); // 18:00 CT May 5, session opened 17:00 CT
+  const sessionStart = deriveCmeTradingDaySessionStart(now);
+  assert.equal(sessionStart.toISOString(), "2026-05-05T22:00:00.000Z");
+});
+
+test("CME session start ms is always in the past relative to now", () => {
+  const now = new Date("2026-05-06T08:30:00Z"); // 03:30 CT — mid-session
+  const sessionStart = deriveCmeTradingDaySessionStart(now);
+  assert.ok(sessionStart.getTime() <= now.getTime());
 });
 
 test("local calendar day includes after-session manual entries", () => {

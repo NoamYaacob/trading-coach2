@@ -21,6 +21,7 @@ import {
 } from "./tradovate-discovery";
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
+import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
@@ -52,6 +53,20 @@ export async function syncTradovateAccount(
 
   try {
     await client.initialize();
+
+    // ── CME trading day key ───────────────────────────────────────────────
+    // CME Globex daily sessions start at 17:00 America/Chicago (5PM CT).
+    // Using the CT session date (not UTC or Israel local date) ensures that
+    // isStale correctly detects the session rollover at 5PM CT regardless of
+    // what timezone the server or user is in.
+    const now = new Date();
+    const tradingDayKey = deriveCmeTradingDayKey(now);
+    const sessionStartMs = deriveCmeTradingDaySessionStart(now).getTime();
+    console.info("[tradovate/sync] CME trading day", {
+      accountId,
+      tradingDayKey,
+      sessionStartUtc: new Date(sessionStartMs).toISOString(),
+    });
 
     // ── Balance & daily P&L (best-effort) ─────────────────────────────────
     let balance: number | null = null;
@@ -123,7 +138,7 @@ export async function syncTradovateAccount(
     // as a secondary signal — its count is only used when fills return fewer (which shouldn't
     // happen in practice, but avoids accidentally reducing the count on API inconsistencies).
     try {
-      const completedOrders = await client.getCompletedOrdersToday();
+      const completedOrders = await client.getCompletedOrdersToday(sessionStartMs);
       tradesCount = completedOrders.length;
       console.info("[tradovate/trades] count from completed orders", {
         accountId,
@@ -147,7 +162,7 @@ export async function syncTradovateAccount(
     } | null;
     let cachedFills: CachedFills = null;
     try {
-      const executions = await client.toExecutions();
+      const executions = await client.toExecutions(sessionStartMs);
       pnlFromFills = sumFillPnl(executions.map((ex) => ex.pnl));
       fillsSyncedAt = new Date();
 
@@ -212,10 +227,11 @@ export async function syncTradovateAccount(
     // See tradovate-trade-count.ts for the orchestration logic.
     const adapter: TradeCountAdapter = {
       getAccountName: () => client.getAccountName(),
-      fetchPerformanceReport: (input) => client.fetchPerformanceReport(input),
-      fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(),
-      fetchAccountScopedFillPairs: () => client.fetchAccountScopedFillPairs(),
-      fetchAccountScopedFills: () => client.fetchAccountScopedFills(),
+      fetchPerformanceReport: (input) =>
+        client.fetchPerformanceReport({ accountName: input.accountName, tradingDayKey }),
+      fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(sessionStartMs),
+      fetchAccountScopedFillPairs: () => client.fetchAccountScopedFillPairs(sessionStartMs),
+      fetchAccountScopedFills: () => client.fetchAccountScopedFills(sessionStartMs),
       fetchUnscopedFillsFallback: async () => {
         if (cachedFills == null) return null;
         const verdict = client.getLastFillsScopingVerdict();
@@ -230,7 +246,7 @@ export async function syncTradovateAccount(
         };
       },
     };
-    const resolved = await resolveTradeCount(adapter, { date: new Date() });
+    const resolved = await resolveTradeCount(adapter, { tradingDayKey });
     tradesCount = resolved.count ?? 0;
     tradeCountSource = resolved.trustLevel;
 
@@ -328,19 +344,21 @@ export async function syncTradovateAccount(
     }
 
     // ── LiveSessionState: update dailyPnl, tradesCount, and riskState ─────
-    const today = new Date().toISOString().slice(0, 10);
+    // tradingDayKey uses the CME Globex session date (rolls at 5PM America/Chicago),
+    // not the UTC or server calendar date. This ensures the session is correctly
+    // reset at the futures market session boundary rather than at UTC midnight.
     const existing = await prisma.liveSessionState.findUnique({
       where: { accountId },
       select: { id: true, sessionDate: true, riskState: true },
     });
     const prevRiskState = existing?.riskState ?? "NORMAL";
-    const isStale = existing ? existing.sessionDate !== today : false;
+    const isStale = existing ? existing.sessionDate !== tradingDayKey : false;
 
     if (existing) {
       await prisma.liveSessionState.update({
         where: { accountId },
         data: {
-          ...(isStale ? { sessionDate: today } : {}),
+          ...(isStale ? { sessionDate: tradingDayKey } : {}),
           tradesCount,
           tradeCountSource,
           riskState: newRiskState,
@@ -355,7 +373,7 @@ export async function syncTradovateAccount(
       await prisma.liveSessionState.create({
         data: {
           accountId,
-          sessionDate: today,
+          sessionDate: tradingDayKey,
           dailyPnl: resolvedDailyPnl ?? 0,
           tradesCount,
           tradeCountSource,

@@ -36,7 +36,7 @@ type StubBehaviour = {
 function stubAdapter(b: StubBehaviour): TradeCountAdapter {
   return {
     getAccountName: async () => b.accountName ?? null,
-    fetchPerformanceReport: async () => {
+    fetchPerformanceReport: async (_input: { accountName: string; tradingDayKey: string }) => {
       if (b.reportThrows) throw new Error("network down");
       if (b.reportBody == null) return null;
       return {
@@ -65,7 +65,7 @@ function stubAdapter(b: StubBehaviour): TradeCountAdapter {
   };
 }
 
-const TODAY = new Date("2026-05-05T16:00:00Z");
+const TRADING_DAY_KEY = "2026-05-05";
 
 // ── Source selection ──────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ describe("resolveTradeCount — source preference order", () => {
       ordersResult: { count: 99, accountScopedAtApi: true },
       unscopedFallback: { count: 12 },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "broker_report");
     assert.equal(result.count, 11);
     assert.equal(result.trustLevel, "verified");
@@ -92,7 +92,7 @@ describe("resolveTradeCount — source preference order", () => {
       ordersResult: { count: 11, accountScopedAtApi: true },
       unscopedFallback: { count: 12 },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_orders");
     assert.equal(result.count, 11);
     assert.equal(result.trustLevel, "verified");
@@ -105,7 +105,7 @@ describe("resolveTradeCount — source preference order", () => {
       reportStatus: 401,
       ordersResult: { count: 11, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_orders");
     assert.equal(result.count, 11);
     // Confirm the failed attempt is logged in the trail
@@ -121,7 +121,7 @@ describe("resolveTradeCount — source preference order", () => {
       ordersResult: { count: 99, accountScopedAtApi: false }, // unverified
       fillPairsResult: { count: 11, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_fill_pairs");
     assert.equal(result.count, 11);
   });
@@ -133,7 +133,7 @@ describe("resolveTradeCount — source preference order", () => {
       fillPairsResult: { count: 6, accountScopedAtApi: true },
       unscopedFallback: { count: 12 },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_fill_pairs");
     assert.equal(result.count, 6);
     assert.equal(result.trustLevel, "verified");
@@ -144,7 +144,7 @@ describe("resolveTradeCount — source preference order", () => {
       accountName: null,
       fillsResult: { count: 11, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_fills");
     assert.equal(result.count, 11);
     assert.equal(result.trustLevel, "verified");
@@ -165,7 +165,7 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
       fillsResult: null,
       unscopedFallback: { count: 12 },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "fills_unscoped_estimated");
     assert.equal(result.count, 12);
     assert.equal(result.trustLevel, "estimated");
@@ -179,7 +179,7 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
       fillsResult: null,
       unscopedFallback: null,
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "unavailable");
     assert.equal(result.count, null);
     assert.equal(result.trustLevel, "unavailable");
@@ -192,7 +192,7 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
       ordersThrows: true,
       fillsResult: { count: 6, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.source, "account_scoped_fills");
     assert.equal(result.count, 6);
   });
@@ -212,7 +212,7 @@ describe("resolveTradeCount — daily-loss enforcement contract", () => {
       ordersResult: null,
       unscopedFallback: null,
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     assert.equal(result.trustLevel, "unavailable");
     // No assertion on daily P&L — it is computed independently by the sync.
     // This test exists to document that the resolver knows nothing about it.
@@ -228,7 +228,7 @@ describe("resolveTradeCount — attempts trail", () => {
       accountName: null,
       ordersResult: { count: 5, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     const reportAttempt = result.attempts.find((a) => a.source === "broker_report");
     assert.ok(reportAttempt);
     assert.equal(reportAttempt.ok, false);
@@ -244,7 +244,7 @@ describe("resolveTradeCount — attempts trail", () => {
       fillPairsResult: null,
       fillsResult: { count: 8, accountScopedAtApi: true },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     const sources = result.attempts.map((a) => a.source);
     assert.deepEqual(sources, [
       "broker_report",
@@ -262,7 +262,7 @@ describe("resolveTradeCount — attempts trail", () => {
       reportContentType: "text/plain",
       unscopedFallback: { count: 12 },
     });
-    const result = await resolveTradeCount(adapter, { date: TODAY });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     const reportAttempt = result.attempts.find((a) => a.source === "broker_report");
     assert.equal(reportAttempt?.httpStatus, 403);
     assert.equal(reportAttempt?.ok, false);

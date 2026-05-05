@@ -97,7 +97,8 @@ export type TradeCountAdapter = {
   getAccountName(): Promise<string | null>;
   fetchPerformanceReport(input: {
     accountName: string;
-    date: Date;
+    /** YYYY-MM-DD CME trading day key (CT session date). */
+    tradingDayKey: string;
   }): Promise<ReportFetchResult | null>;
   fetchAccountScopedOrders(): Promise<ScopedOrdersFetchResult | null>;
   fetchAccountScopedFillPairs(): Promise<ScopedFillPairsFetchResult | null>;
@@ -106,7 +107,8 @@ export type TradeCountAdapter = {
 };
 
 export type ResolveTradeCountInput = {
-  date: Date;
+  /** YYYY-MM-DD CME Globex trading day key (America/Chicago session date). */
+  tradingDayKey: string;
 };
 
 /**
@@ -124,7 +126,7 @@ export async function resolveTradeCount(
   const accountName = await safeCall(adapter.getAccountName.bind(adapter));
   if (accountName) {
     const report = await safeCall(() =>
-      adapter.fetchPerformanceReport({ accountName, date: input.date }),
+      adapter.fetchPerformanceReport({ accountName, tradingDayKey: input.tradingDayKey }),
     );
     if (report) {
       const ok2xx = report.status >= 200 && report.status < 300;
