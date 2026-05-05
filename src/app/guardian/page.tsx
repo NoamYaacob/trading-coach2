@@ -31,6 +31,7 @@ import {
 import {
   DISPLAY_TIME_ZONE_COOKIE,
   resolveDisplayTimeZone,
+  isValidTimeZone,
 } from "@/lib/timezone";
 
 export const metadata: Metadata = {
@@ -38,6 +39,40 @@ export const metadata: Metadata = {
 };
 
 type Permission = "SAFE" | "WARNING" | "LOCKED" | "GUARDIAN_OFF";
+
+// Maps common IANA zones to trader-friendly location names.
+const TZ_CITY: Record<string, string> = {
+  "America/New_York":    "New York",
+  "America/Chicago":     "Chicago",
+  "America/Denver":      "Denver",
+  "America/Los_Angeles": "Los Angeles",
+  "America/Toronto":     "Toronto",
+  "America/Sao_Paulo":   "São Paulo",
+  "Europe/London":       "London",
+  "Europe/Berlin":       "Frankfurt",
+  "Europe/Paris":        "Paris",
+  "Europe/Amsterdam":    "Amsterdam",
+  "Europe/Madrid":       "Madrid",
+  "Europe/Rome":         "Rome",
+  "Europe/Zurich":       "Zurich",
+  "Asia/Jerusalem":      "Israel",
+  "Asia/Dubai":          "Dubai",
+  "Asia/Kolkata":        "India",
+  "Asia/Bangkok":        "Bangkok",
+  "Asia/Shanghai":       "China",
+  "Asia/Hong_Kong":      "Hong Kong",
+  "Asia/Singapore":      "Singapore",
+  "Asia/Seoul":          "Seoul",
+  "Asia/Tokyo":          "Tokyo",
+  "Australia/Sydney":    "Sydney",
+};
+
+function tzLabel(tz: string, hasSavedTz: boolean): string {
+  if (!hasSavedTz) return "session";
+  return TZ_CITY[tz] ?? new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" })
+    .formatToParts(new Date())
+    .find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
 
 function permissionStyles(p: Permission) {
   switch (p) {
@@ -93,21 +128,32 @@ export default async function GuardianPage() {
     onboardingTimeZone: user?.traderProfile?.timezone,
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
+  // True only when the user explicitly saved a timezone in their profile.
+  // Used to decide between "Israel time" and "session time" in UI labels.
+  const hasSavedTimezone = isValidTimeZone(user?.traderProfile?.timezone ?? null);
+
   const tradingDay = getTradingDayWindow({
     timezone: displayTimeZone,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
   });
-  const shortTradingDay = (() => {
-    const fmt = (d: Date) =>
-      new Intl.DateTimeFormat("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: displayTimeZone,
-      }).format(d);
-    return `Today · ${fmt(tradingDay.start)}–${fmt(tradingDay.end)}`;
-  })();
+
+  // "Protected session: 09:00–18:00 Israel time" / "session time" fallback
+  const fmtHHMM = (d: Date) =>
+    new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: displayTimeZone,
+    }).format(d);
+  const tz = tzLabel(displayTimeZone, hasSavedTimezone);
+  const sessionWindowLabel = tradingDay.hasSessionHours
+    ? `Protected session: ${fmtHHMM(tradingDay.start)}–${fmtHHMM(tradingDay.end)} ${tz} time`
+    : "No session hours configured";
+  // Compact version for mobile status strip
+  const shortTradingDay = tradingDay.hasSessionHours
+    ? `${fmtHHMM(tradingDay.start)}–${fmtHHMM(tradingDay.end)} ${tz} time`
+    : "No session hours";
 
   const [
     guardian,
@@ -131,6 +177,10 @@ export default async function GuardianPage() {
   );
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
   const onboardingComplete = Boolean(user?.traderProfile);
+
+  const sessionStarted = Boolean(todayGuardianSessionStart);
+  const sessionEnded = Boolean(todayGuardianSessionStart?.endedAt);
+
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete,
     sessionStart: todayGuardianSessionStart,
@@ -138,8 +188,8 @@ export default async function GuardianPage() {
   });
   const violationFeed = buildViolationFeed(
     buildRuleEngineInputFromGuardianSnapshot(guardian, {
-      sessionStarted: Boolean(todayGuardianSessionStart),
-      sessionEnded: Boolean(todayGuardianSessionStart?.endedAt),
+      sessionStarted,
+      sessionEnded,
       todaySessionStateKind: todaySessionState.kind,
       preNewsPolicy: economicCalendarPolicy.isActive
         ? {
@@ -175,9 +225,16 @@ export default async function GuardianPage() {
   const isLocked =
     guardian.evaluation.lockoutActive ||
     liveEnforcement?.riskState === "STOPPED";
+
+  // session_not_started is a session lifecycle notice, not a rule threshold warning.
+  // Filter it out before computing hasWarnings so it doesn't show "Trading is open — limits
+  // are close" when the only "warning" is that the session hasn't started yet.
+  const ruleWarnings = violationFeed.warningViolations.filter(
+    (v) => v.ruleType !== "session_not_started",
+  );
   const hasWarnings =
-    violationFeed.warningViolations.length > 0 ||
-    (liveEnforcement &&
+    ruleWarnings.length > 0 ||
+    (liveEnforcement != null &&
       ["soft_warning", "hard_warning", "cooldown"].includes(liveEnforcement.tier));
 
   const permission: Permission = guardianOff
@@ -190,21 +247,26 @@ export default async function GuardianPage() {
 
   const styles = permissionStyles(permission);
 
+  // Do not say "Trading is open" when the protected session hasn't started.
   const headline = guardianOff
     ? "Guardian is paused."
     : isLocked
       ? "Trading is locked for today."
-      : hasWarnings
-        ? "Trading is open — limits are close."
-        : "Trading is open. All limits clear.";
+      : !sessionStarted && !sessionEnded
+        ? "Protected session has not started yet."
+        : hasWarnings
+          ? "Trading is open — limits are close."
+          : "Trading is open. All limits clear.";
 
   const detail = guardianOff
     ? "Your rules are saved, but Guardian is not actively monitoring the session."
     : isLocked
       ? guardian.evaluation.primaryReasonLabel ?? "A daily limit was reached."
-      : hasWarnings
-        ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
-        : "No rule limits have been hit. Guardian is monitoring every trade event.";
+      : !sessionStarted && !sessionEnded
+        ? "Rule progress and warnings will appear once broker events begin syncing."
+        : hasWarnings
+          ? "One or more rules are approaching their thresholds. Review the warnings below before continuing."
+          : "No rule limits have been hit. Guardian is monitoring every trade event.";
 
   const triggeredLabels = guardian.evaluation.triggeredRuleLabels;
 
@@ -213,10 +275,17 @@ export default async function GuardianPage() {
   const stopAfterLosses =
     riskRules?.stopAfterLosses ?? guardian.profile.stopAfterConsecutiveLosses;
 
-  // On-breach actions configured by the user
-  const breachActions: Array<{ label: string; available: boolean; on: boolean }> = [
+  // On-breach actions configured by the user.
+  // "Mark account locked in Guardrail" replaces the old "Lock session for the day" label
+  // to clarify scope: read-only connections cannot block orders at the broker level.
+  const breachActions: Array<{ label: string; note?: string; available: boolean; on: boolean }> = [
     { label: "Send warning", available: true, on: riskRules?.onBreachWarn ?? true },
-    { label: "Lock session for the day", available: true, on: riskRules?.onBreachAppLock ?? true },
+    {
+      label: "Mark account locked in Guardrail",
+      note: "Read-only connections mark the account locked and send alerts. Orders placed directly in Tradovate are not blocked.",
+      available: true,
+      on: riskRules?.onBreachAppLock ?? true,
+    },
     { label: "Cancel broker orders", available: false, on: riskRules?.onBreachCancelOrders ?? false },
     { label: "Flatten broker positions", available: false, on: riskRules?.onBreachFlatten ?? false },
   ];
@@ -282,8 +351,8 @@ export default async function GuardianPage() {
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
-            <span className="font-medium text-stone-600">Trading day</span>
-            <span className="text-stone-700">{tradingDay.label}</span>
+            <span className="font-medium text-stone-600">Session</span>
+            <span className="text-stone-700">{sessionWindowLabel}</span>
           </span>
         </div>
 
@@ -353,38 +422,70 @@ export default async function GuardianPage() {
           </div>
         )}
 
-        {/* ── Rule progress today ─────────────────────────────────────────── */}
-        <SectionCard
-          title="Rule progress today"
-          description={hasBroker ? "Live numbers from broker events vs. configured limits." : "No broker data — connect an account to see live rule progress."}
-        >
-          <div className="grid gap-3 sm:grid-cols-3">
-            <ProgressTile
-              label="P&L today"
-              value={`$${guardian.evaluation.todayPnL}`}
-              limit={maxDailyLoss != null ? `Limit: −$${maxDailyLoss}` : "No limit set"}
-            />
-            <ProgressTile
-              label="Trades"
-              value={String(guardian.evaluation.todayTradesCount)}
-              limit={maxTradesPerDay != null ? `${maxTradesPerDay} max` : "No limit set"}
-            />
-            <ProgressTile
-              label="Loss streak"
-              value={String(guardian.evaluation.consecutiveLosses)}
-              limit={stopAfterLosses != null ? `Stop after ${stopAfterLosses}` : "No limit set"}
-            />
+        {/* ── Session status ──────────────────────────────────────────────── */}
+        {/* Shown when the session hasn't started — separate from rule warnings. */}
+        {!sessionStarted && !sessionEnded && hasBroker && (
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+              Session status
+            </p>
+            <p className="mt-2 text-sm font-medium text-stone-800">
+              Protected session has not started.
+            </p>
+            <p className="mt-1 text-sm text-stone-500">
+              No broker trade events have been received for today's session. Rule progress
+              and warnings will appear once syncing begins.
+            </p>
           </div>
-        </SectionCard>
+        )}
 
-        {/* ── Warnings (if any) ───────────────────────────────────────────── */}
-        {violationFeed.warningViolations.length > 0 && (
+        {/* ── Rule progress today ─────────────────────────────────────────── */}
+        {sessionStarted ? (
+          <SectionCard
+            title="Rule progress today"
+            description={hasBroker ? "Live numbers from broker events vs. configured limits." : "No broker data — connect an account to see live rule progress."}
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ProgressTile
+                label="P&L today"
+                value={`$${guardian.evaluation.todayPnL}`}
+                limit={maxDailyLoss != null ? `Limit: −$${maxDailyLoss}` : "No limit set"}
+              />
+              <ProgressTile
+                label="Trades"
+                value={String(guardian.evaluation.todayTradesCount)}
+                limit={maxTradesPerDay != null ? `${maxTradesPerDay} max` : "No limit set"}
+              />
+              <ProgressTile
+                label="Loss streak"
+                value={String(guardian.evaluation.consecutiveLosses)}
+                limit={stopAfterLosses != null ? `Stop after ${stopAfterLosses}` : "No limit set"}
+              />
+            </div>
+          </SectionCard>
+        ) : (
+          <SectionCard
+            title="Rule progress today"
+            description="No broker data received for this session yet."
+          >
+            <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-5 text-sm text-stone-500">
+              <p className="font-medium text-stone-700">No rule progress yet.</p>
+              <p className="mt-1">
+                Progress appears once the protected session starts and broker events are received.
+              </p>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* ── Active warnings (rule thresholds only) ──────────────────────── */}
+        {/* session_not_started is shown in "Session status" above, not here. */}
+        {ruleWarnings.length > 0 && (
           <SectionCard
             title="Active warnings"
             description="Rules approaching their thresholds."
           >
             <ul className="grid gap-2">
-              {violationFeed.warningViolations.map((v) => (
+              {ruleWarnings.map((v) => (
                 <li
                   key={v.ruleId + v.message}
                   className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-stone-800"
@@ -417,30 +518,35 @@ export default async function GuardianPage() {
             <p className="text-sm text-stone-600">
               When a rule is crossed, Guardrail does the following:
             </p>
-            {breachActions.map(({ label, available, on }) => (
+            {breachActions.map(({ label, note, available, on }) => (
               <div
                 key={label}
-                className={`flex items-start justify-between gap-4 rounded-xl border px-4 py-3 ${
+                className={`rounded-xl border px-4 py-3 ${
                   available ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-70"
                 }`}
               >
-                <p className="text-sm font-medium text-stone-950">{label}</p>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    !available
-                      ? "bg-stone-200 text-stone-600"
-                      : on
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-stone-100 text-stone-500"
-                  }`}
-                >
-                  {!available ? "Pending broker" : on ? "On" : "Off"}
-                </span>
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-sm font-medium text-stone-950">{label}</p>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      !available
+                        ? "bg-stone-200 text-stone-600"
+                        : on
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-stone-100 text-stone-500"
+                    }`}
+                  >
+                    {!available ? "Requires write permissions" : on ? "On" : "Off"}
+                  </span>
+                </div>
+                {note && (
+                  <p className="mt-1.5 text-xs text-stone-500">{note}</p>
+                )}
               </div>
             ))}
             <p className="mt-1 text-xs text-stone-500">
-              Broker order cancel/flatten requires a verified broker connection with order-write permissions.
-              Read-only broker connections can be monitored and alerted but cannot block orders in Tradovate.
+              Broker order cancel/flatten requires a verified broker connection with order-write
+              permissions. Read-only connections support account-level monitoring and alerts only.
             </p>
           </div>
         </details>
