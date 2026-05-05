@@ -298,6 +298,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                         lockState.isLocked &&
                         (acct.protectionStatus === "protected" || acct.protectionStatus === "monitor_only")
                       }
+                      lockedFromMs={lockState.lockedFrom?.getTime() ?? null}
                       lockedUntilMs={lockState.lockedUntil?.getTime() ?? null}
                       lockedUntilTz={traderProfile?.timezone ?? null}
                     />

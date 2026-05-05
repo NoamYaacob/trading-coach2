@@ -60,6 +60,9 @@ export type ProtectionLockState = {
   cutoffTime: Date | null;
   /** True when `now` is between the cutoff and the end of today's session. */
   isLocked: boolean;
+  /** When locked, the UTC datetime of the trading session start (the moment
+   *  the protected session opened). null when not locked or no session hours. */
+  lockedFrom: Date | null;
   /** When locked, the UTC datetime at which the lock lifts (session end).
    *  null when not locked or when session hours are not configured. */
   lockedUntil: Date | null;
@@ -131,6 +134,7 @@ export function getProtectionLockState(input: ProtectionLockInput): ProtectionLo
       nextTradingDayKey: addDaysToKey(todayKey, 1),
       cutoffTime: null,
       isLocked: false,
+      lockedFrom: null,
       lockedUntil: null,
       nextCutoffTime: null,
     };
@@ -160,6 +164,7 @@ export function getProtectionLockState(input: ProtectionLockInput): ProtectionLo
       nextTradingDayKey: addDaysToKey(tradingDayKey, 1),
       cutoffTime,
       isLocked: true,
+      lockedFrom: sessionStart,
       lockedUntil: sessionEnd,
       nextCutoffTime: null,
     };
@@ -174,6 +179,7 @@ export function getProtectionLockState(input: ProtectionLockInput): ProtectionLo
     nextTradingDayKey: addDaysToKey(tradingDayKey, 1),
     cutoffTime,
     isLocked: false,
+    lockedFrom: null,
     lockedUntil: null,
     nextCutoffTime: cutoffTime,
   };

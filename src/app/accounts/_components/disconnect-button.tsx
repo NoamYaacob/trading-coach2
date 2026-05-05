@@ -34,12 +34,20 @@ const TZ_CITY: Record<string, string> = {
 
 function tzCityName(tz: string): string {
   if (TZ_CITY[tz]) return TZ_CITY[tz]!;
-  // Fall back to the short abbreviation, e.g. "EST" or "GMT+3".
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     timeZoneName: "short",
   }).formatToParts(new Date());
   return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
+
+function formatHHMM(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(ms));
 }
 
 /**
@@ -50,33 +58,35 @@ function tzCityName(tz: string): string {
  * fallback timezone city which may be misleading) and only show relative time.
  */
 function formatUnlockLabel(lockedUntilMs: number, tz: string | null): string {
-  const now = Date.now();
-  const diffMin = Math.ceil((lockedUntilMs - now) / 60_000);
+  const diffMin = Math.ceil((lockedUntilMs - Date.now()) / 60_000);
 
   if (diffMin <= 0) return "soon";
-
-  if (diffMin <= 90) {
-    return `in ${diffMin} minute${diffMin !== 1 ? "s" : ""}`;
-  }
-
-  // No saved timezone — avoid showing a potentially wrong city.
+  if (diffMin <= 90) return `in ${diffMin} minute${diffMin !== 1 ? "s" : ""}`;
   if (!tz) return "after today's session ends";
 
-  const timeStr = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(lockedUntilMs));
+  return `after ${formatHHMM(lockedUntilMs, tz)} ${tzCityName(tz)} time`;
+}
 
-  return `after ${timeStr} ${tzCityName(tz)} time`;
+/**
+ * Returns a "HH:MM–HH:MM City time" session range string, or null when
+ * the timezone or either timestamp is unavailable.
+ */
+function formatSessionRange(
+  lockedFromMs: number | null,
+  lockedUntilMs: number | null,
+  tz: string | null,
+): string | null {
+  if (!tz || lockedFromMs == null || lockedUntilMs == null) return null;
+  return `${formatHHMM(lockedFromMs, tz)}–${formatHHMM(lockedUntilMs, tz)} ${tzCityName(tz)} time`;
 }
 
 function BlockedDialog({
+  lockedFromMs,
   lockedUntilMs,
   lockedUntilTz,
   onClose,
 }: {
+  lockedFromMs: number | null;
   lockedUntilMs: number | null;
   lockedUntilTz: string | null;
   onClose: () => void;
@@ -95,6 +105,7 @@ function BlockedDialog({
     closeRef.current?.focus();
   }, []);
 
+  const sessionRange = formatSessionRange(lockedFromMs, lockedUntilMs, lockedUntilTz);
   const unlockSuffix =
     lockedUntilMs != null
       ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
@@ -120,7 +131,9 @@ function BlockedDialog({
           id="disconnect-blocked-desc"
           className="mt-3 text-sm leading-6 text-stone-600"
         >
-          This account is protected during today&apos;s trading session.{" "}
+          {sessionRange
+            ? `This account is protected during today's trading session (${sessionRange}).`
+            : "This account is protected during today's trading session."}{" "}
           {unlockSuffix
             ? `You can disconnect ${unlockSuffix}.`
             : "You can disconnect after today's protected session ends."}
@@ -224,6 +237,7 @@ export function DisconnectButton({
   accountId,
   providerLabel,
   isBlocked = false,
+  lockedFromMs = null,
   lockedUntilMs = null,
   lockedUntilTz = null,
   redirectTo = "/accounts",
@@ -232,9 +246,11 @@ export function DisconnectButton({
   providerLabel: string;
   /** Pass true when the account is protected during an active trading session. */
   isBlocked?: boolean;
-  /** UTC millisecond timestamp of when the session lock lifts. */
+  /** UTC millisecond timestamp of the trading session start (when protection began). */
+  lockedFromMs?: number | null;
+  /** UTC millisecond timestamp of when the session lock lifts (session end). */
   lockedUntilMs?: number | null;
-  /** IANA timezone for formatting the unlock time. */
+  /** User's explicitly saved IANA timezone (from TraderProfile). */
   lockedUntilTz?: string | null;
   redirectTo?: string;
 }) {
@@ -278,6 +294,10 @@ export function DisconnectButton({
     }
   }
 
+  const sessionRange = isBlocked
+    ? formatSessionRange(lockedFromMs ?? null, lockedUntilMs ?? null, lockedUntilTz ?? null)
+    : null;
+
   const unlockLabel =
     isBlocked && lockedUntilMs != null
       ? formatUnlockLabel(lockedUntilMs, lockedUntilTz ?? null)
@@ -289,8 +309,12 @@ export function DisconnectButton({
 
       {isBlocked ? (
         <div className="flex flex-col items-end gap-1">
+          {sessionRange && (
+            <p className="text-xs text-amber-700">
+              Protected session: {sessionRange}.
+            </p>
+          )}
           <p className="text-xs text-amber-700">
-            Protected session active ·{" "}
             {unlockLabel
               ? `Disconnect available ${unlockLabel}.`
               : "Disconnect available after session ends."}
@@ -317,8 +341,9 @@ export function DisconnectButton({
 
       {dialogMode === "blocked" && (
         <BlockedDialog
-          lockedUntilMs={lockedUntilMs}
-          lockedUntilTz={lockedUntilTz}
+          lockedFromMs={lockedFromMs ?? null}
+          lockedUntilMs={lockedUntilMs ?? null}
+          lockedUntilTz={lockedUntilTz ?? null}
           onClose={closeDialog}
         />
       )}
