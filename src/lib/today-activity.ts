@@ -50,7 +50,7 @@ function humanizeSource(source: string) {
   }
 
   if (source === "manual") {
-    return "manual entry";
+    return "the dashboard";
   }
 
   return source;
@@ -65,11 +65,11 @@ type ManualEventDisplay = {
 };
 
 const MANUAL_EVENT_DISPLAY: Record<string, ManualEventDisplay> = {
-  trade_opened: { title: "Trade opened", badge: "Trade", tone: "info", defaultDetail: "Entry recorded manually." },
-  trade_closed: { title: "Trade closed", badge: "Trade", tone: "info", defaultDetail: "Exit recorded manually." },
+  trade_opened: { title: "Trade opened", badge: "Trade", tone: "info", defaultDetail: "Trade entry recorded." },
+  trade_closed: { title: "Trade closed", badge: "Trade", tone: "info", defaultDetail: "Trade exit recorded." },
   win:          { title: "Win logged",   badge: "Win",   tone: "success", defaultDetail: "Profitable trade." },
   loss:         { title: "Loss logged",  badge: "Loss",  tone: "warning", defaultDetail: "Losing trade." },
-  pnl_update:   { title: "P&L updated",  badge: "P&L",   tone: "neutral", defaultDetail: "P&L updated manually." },
+  pnl_update:   { title: "P&L updated",  badge: "P&L",   tone: "neutral", defaultDetail: "P&L updated." },
   rule_breach:  { title: "Rule breach logged", badge: "Rule", tone: "danger", defaultDetail: "Review if session limits were exceeded." },
   manual_note:  { title: "Note logged",  badge: "Note",  tone: "neutral", defaultDetail: "Session note." },
 };

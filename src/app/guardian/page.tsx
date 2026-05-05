@@ -77,7 +77,7 @@ export default async function GuardianPage() {
   if (!currentUser) redirect("/login");
 
   // Resolve user + risk rules first so we can compute the trading-day window
-  // before fetching today's manual trades.
+  // before fetching today's session data.
   const [user, riskRules] = await Promise.all([
     prisma.user.findUnique({
       where: { id: currentUser.id },
@@ -114,13 +114,16 @@ export default async function GuardianPage() {
     todayGuardianSessionStart,
     todaySessionEvents,
     liveEnforcement,
-    brokerCount,
+    connectedAccounts,
   ] = await Promise.all([
     getGuardianSnapshot(currentUser.id),
     getTodayGuardianSessionStart(currentUser.id),
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getLiveEnforcementState(currentUser.id),
-    prisma.connectedAccount.count({ where: { userId: currentUser.id, isActive: true } }),
+    prisma.connectedAccount.findMany({
+      where: { userId: currentUser.id, isActive: true },
+      select: { connectionStatus: true },
+    }),
   ]);
 
   const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
@@ -157,7 +160,17 @@ export default async function GuardianPage() {
     5,
   );
 
-  const hasBroker = brokerCount > 0;
+  const hasBroker = connectedAccounts.length > 0;
+  // "connected_live" accounts receive webhook events and can trigger broker autoLiq rules.
+  // All other statuses are read-only monitoring only.
+  const hasLiveConnection = connectedAccounts.some(
+    (a) => a.connectionStatus === "connected_live",
+  );
+  const brokerSourceLabel = !hasBroker
+    ? "No broker connected"
+    : hasLiveConnection
+      ? "Partial enforcement active"
+      : "Read-only monitoring";
   const guardianOff = !guardian.evaluation.guardianActive;
   const isLocked =
     guardian.evaluation.lockoutActive ||
@@ -212,7 +225,7 @@ export default async function GuardianPage() {
     <AppShell
       eyebrow="Status details · Secondary view"
       title="Why am I allowed, warned, or locked?"
-      description="Detailed explanation of your current trading permission and what triggered it."
+      description="Guardrail monitors your connected broker accounts for rule violations. Enforcement scope depends on your account connection type — read-only connections are monitored and alerted but cannot trigger broker-level blocking."
       actions={
         <Link
           href="/rules"
@@ -259,8 +272,8 @@ export default async function GuardianPage() {
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
-            <span className="font-medium text-stone-600">Source</span>
-            <span className="text-stone-700">{hasBroker ? "Broker connection" : "No broker"}</span>
+            <span className="font-medium text-stone-600">Enforcement</span>
+            <span className="text-stone-700">{brokerSourceLabel}</span>
           </span>
           <span className="h-3 w-px bg-stone-200" aria-hidden="true" />
           <span className="flex items-center gap-2">
@@ -323,10 +336,27 @@ export default async function GuardianPage() {
           )}
         </section>
 
+        {/* ── No-broker notice ────────────────────────────────────────────── */}
+        {!hasBroker && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-5 py-4 text-sm text-amber-900">
+            <p className="font-semibold">Guardrail monitoring is not active.</p>
+            <p className="mt-1 text-amber-800">
+              No broker account is connected. Connect Tradovate to activate live rule
+              monitoring and enforcement.
+            </p>
+            <Link
+              href="/accounts/connect/tradovate"
+              className="mt-3 inline-flex rounded-full bg-amber-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-800"
+            >
+              Connect Tradovate →
+            </Link>
+          </div>
+        )}
+
         {/* ── Rule progress today ─────────────────────────────────────────── */}
         <SectionCard
           title="Rule progress today"
-          description="Live numbers vs. configured limits."
+          description={hasBroker ? "Live numbers from broker events vs. configured limits." : "No broker data — connect an account to see live rule progress."}
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <ProgressTile
@@ -404,7 +434,8 @@ export default async function GuardianPage() {
               </div>
             ))}
             <p className="mt-1 text-xs text-stone-500">
-              Broker order cancel/flatten requires a verified broker connection.
+              Broker order cancel/flatten requires a verified broker connection with order-write permissions.
+              Read-only broker connections can be monitored and alerted but cannot block orders in Tradovate.
             </p>
           </div>
         </details>
