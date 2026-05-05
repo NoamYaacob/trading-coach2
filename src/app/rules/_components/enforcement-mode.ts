@@ -72,8 +72,8 @@ export function computeEnforcementMode(
       mode: "monitoring_only",
       label: "Default template · Monitoring only",
       detail:
-        "Applies only to accounts without account-specific rules. " +
-        "Broker actions require account-specific rules and verified broker permissions.",
+        "Applies to accounts that do not have their own rules. " +
+        "Broker actions require account-level rules and verified broker permissions.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
     };
   }

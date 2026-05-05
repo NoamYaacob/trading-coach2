@@ -197,7 +197,7 @@ export function RulesForm({ initial, hasBroker, timezone }: Props) {
           Protected session window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
         </legend>
         <p className="-mt-2 text-xs text-stone-500">
-          The hours when Guardian monitors this account&apos;s rules. Disconnect protection and daily rule progress use this window.
+          The hours when Guardian monitors accounts that use this default template. Disconnect protection and daily rule progress use this window.
           Use 24-hour format (0–23).
         </p>
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
