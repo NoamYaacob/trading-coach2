@@ -13,6 +13,7 @@ import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues } from "./_components/account-rules-form";
 import { buildRuleScopes } from "./_components/rule-scope-utils";
+import { computeEnforcementMode } from "./_components/enforcement-mode";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
@@ -31,56 +32,6 @@ function intStr(v: number | null | undefined): string {
 function parseTradingDays(v: string | null | undefined): string[] {
   if (!v) return [];
   return v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-}
-
-// ── Enforcement note helpers ───────────────────────────────────────────────────
-
-type EnforcementNote = { label: string; detail: string; cls: string };
-
-function defaultEnforcementNote(): EnforcementNote {
-  return {
-    label: "Monitoring only",
-    detail:
-      "These are the default limits used by any account without account-specific rules. Rule alerts fire in-app and via Telegram when limits are hit. Broker-side blocking is not active.",
-    cls: "border-stone-200 bg-stone-50 text-stone-600",
-  };
-}
-
-function accountEnforcementNote(
-  platform: string,
-  connectionStatus: string,
-  hasBrokerConnection: boolean,
-): EnforcementNote {
-  if (!hasBrokerConnection) {
-    return {
-      label: "App-level only",
-      detail:
-        "This account is not linked to a broker connection. Rules are evaluated from manually logged trades. No live broker data.",
-      cls: "border-stone-200 bg-stone-50 text-stone-600",
-    };
-  }
-  if (connectionStatus === "expired" || connectionStatus === "connection_error") {
-    return {
-      label: "Connection required",
-      detail:
-        "The broker connection for this account has expired. Reconnect to restore live rule monitoring.",
-      cls: "border-amber-200 bg-amber-50 text-amber-800",
-    };
-  }
-  if (platform === "tradovate") {
-    return {
-      label: "Read-only monitoring",
-      detail:
-        "Account data is synced and rules are evaluated in Guardrail. Rule alerts fire in-app and via Telegram. Broker-side blocking is not active on this connection.",
-      cls: "border-sky-200 bg-sky-50 text-sky-800",
-    };
-  }
-  return {
-    label: "Monitoring only",
-    detail:
-      "Rules are evaluated from synced account data. Rule alerts fire in-app and via Telegram.",
-    cls: "border-stone-200 bg-stone-50 text-stone-600",
-  };
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -200,15 +151,22 @@ export default async function RulesPage({
 
   const hasBroker = accounts.some((a) => a.platform !== "manual" && a.brokerConnectionId != null);
 
-  // Enforcement note for the current scope
-  const enforcementNote =
+  // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)
+  const enforcementInfo = computeEnforcementMode(
     scope === "account" && selectedAccount
-      ? accountEnforcementNote(
-          selectedAccount.platform,
-          selectedAccount.brokerConnection?.connectionStatus ?? selectedAccount.connectionStatus,
-          selectedAccount.brokerConnectionId != null,
-        )
-      : defaultEnforcementNote();
+      ? {
+          platform: selectedAccount.platform,
+          brokerConnectionId: selectedAccount.brokerConnectionId,
+          brokerConnection: selectedAccount.brokerConnection
+            ? {
+                platform: selectedAccount.brokerConnection.platform,
+                connectionStatus: selectedAccount.brokerConnection.connectionStatus,
+              }
+            : null,
+        }
+      : null,
+    scope !== "account",
+  );
 
   return (
     <AppShell
@@ -248,9 +206,16 @@ export default async function RulesPage({
           <ScopeContextHeader scope={scope} account={selectedAccount} />
 
           {/* Enforcement mode banner */}
-          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementNote.cls}`}>
-            <span className="font-semibold">{enforcementNote.label}. </span>
-            {enforcementNote.detail}
+          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="font-semibold">{enforcementInfo.label}. </span>
+                {enforcementInfo.detail}
+              </div>
+              <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
+                {enforcementInfo.mode}
+              </code>
+            </div>
           </div>
 
           {/* Lock / pending banners — default scope only */}
@@ -373,7 +338,7 @@ function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
       parts.push(`User ID ${uid}`);
     }
   } else {
-    parts.push("Manual account · App-level only");
+    parts.push("Manual account");
   }
   return parts.join(" · ");
 }
