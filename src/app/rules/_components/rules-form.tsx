@@ -247,8 +247,8 @@ export function RulesForm({ initial, hasBroker, timezone }: Props) {
             checked={values.onBreachAppLock}
             onChange={(v) => update("onBreachAppLock", v)}
             available
-            label="Lock session for the day"
-            description="Marks the session stopped in Guardian. Does not block orders at the broker."
+            label="Mark account locked in Guardrail"
+            description="Guardian status only — does not block orders placed directly in Tradovate on read-only connections."
           />
         </div>
       </fieldset>
@@ -312,24 +312,26 @@ export function RulesForm({ initial, hasBroker, timezone }: Props) {
       </details>
 
       {/* ── Submit ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-stone-100 pt-4 sm:pt-6">
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
-        >
-          {saving ? "Saving..." : "Save rules"}
-        </button>
-        <span className="text-xs text-stone-500">
-          Changes apply from the next protected session.
-        </span>
-        {savedAt && !pendingMessage && (
-          <span className="text-xs text-emerald-700">Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</span>
-        )}
-        {pendingMessage && (
-          <span className="text-xs text-amber-700">{pendingMessage}</span>
-        )}
-        {error && <span className="text-xs text-red-700">{error}</span>}
+      <div className="grid gap-2 border-t border-stone-100 pt-4 sm:pt-6">
+        <p className="text-[11px] text-stone-400">
+          Rules target: <span className="font-semibold text-stone-600">Default template</span>
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+          >
+            {saving ? "Saving..." : "Save rules"}
+          </button>
+          {savedAt && !pendingMessage && (
+            <span className="text-xs text-emerald-700">Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</span>
+          )}
+          {pendingMessage && (
+            <span className="text-xs text-amber-700">{pendingMessage}</span>
+          )}
+          {error && <span className="text-xs text-red-700">{error}</span>}
+        </div>
       </div>
     </form>
   );

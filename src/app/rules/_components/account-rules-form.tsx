@@ -239,10 +239,10 @@ export function AccountRulesForm({
       {/* Trading window */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">
-          Trading window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
+          Protected session window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
         </legend>
         <p className="-mt-2 text-xs text-stone-500">
-          Override the default session hours for this account. Use 24-hour format (0–23).
+          Override the default protected session hours for this account. Use 24-hour format (0–23).
         </p>
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Session start">

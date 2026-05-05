@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { RuleScopeGroup, RuleScopeAccount } from "./rule-scope-utils";
 
 const ENV_LABEL: Record<string, string> = {
-  live: "Live",
+  live: "Live account",
   demo: "Demo / Sim",
 };
 
@@ -91,7 +91,9 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-stone-700">{group.firmLabel}</p>
                 <p className="text-[10px] text-stone-400">
-                  {platformLabel} · {ENV_LABEL[group.env] ?? group.env}{userId}
+                  {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
+                  {group.connectionStatus === "connected_readonly" ? " · Read-only connection" : ""}
+                  {userId}
                 </p>
               </div>
               <span
