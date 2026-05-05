@@ -761,6 +761,11 @@ function TradesCell({
           Includes broker activity from today before Guardrail was connected.
         </p>
       )}
+      {account.platform !== "manual" && account.tradesCount != null && account.tradesCount > 0 && (
+        <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
+          Derived from fills — may differ from your broker&apos;s trade report.
+        </p>
+      )}
     </div>
   );
 }

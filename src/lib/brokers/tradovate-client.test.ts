@@ -21,6 +21,8 @@ import {
   sumFillPnl,
   extractFillTimestamp,
   fillMatchesAccount,
+  fillCarriesAccountId,
+  isAccountScopingSuspect,
   countEntryTrades,
   countEntryTradesSince,
   traceEntryTrades,
@@ -1028,6 +1030,85 @@ describe("countEntryTradesSince", () => {
   it("returns 0 when cutoff is after all fills", () => {
     const fills = [mkEx("ES", "LONG", 1, new Date(1000), "a")];
     assert.equal(countEntryTradesSince(fills, new Date(5000)), 0);
+  });
+});
+
+// ── fillCarriesAccountId ──────────────────────────────────────────────────────
+
+describe("fillCarriesAccountId", () => {
+  it("returns true when accountId is a number", () => {
+    assert.equal(fillCarriesAccountId({ accountId: 6248 }), true);
+  });
+
+  it("returns true when accountSpec is a string", () => {
+    assert.equal(fillCarriesAccountId({ accountSpec: "MFF/6248" }), true);
+  });
+
+  it("returns false when neither field is present", () => {
+    assert.equal(fillCarriesAccountId({ orderId: 1, contractId: 2 }), false);
+  });
+
+  it("returns false when accountId is a string (wrong type)", () => {
+    assert.equal(fillCarriesAccountId({ accountId: "6248" }), false);
+  });
+});
+
+// ── isAccountScopingSuspect ───────────────────────────────────────────────────
+
+describe("isAccountScopingSuspect", () => {
+  it("returns true when fill/list is used and fills have no account fields", () => {
+    // The exact bug pattern: multi-account token, unscoped endpoint, no per-fill IDs
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/list",
+      tvAccountId: 6248,
+      fills: [{ orderId: 1 }, { orderId: 2 }],
+    });
+    assert.equal(result, true);
+  });
+
+  it("returns false when fill/deps was used (API-scoped, trustworthy)", () => {
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/deps",
+      tvAccountId: 6248,
+      fills: [{ orderId: 1 }],
+    });
+    assert.equal(result, false);
+  });
+
+  it("returns false when at least one fill carries accountId (client-side filter works)", () => {
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/list",
+      tvAccountId: 6248,
+      fills: [{ orderId: 1, accountId: 6248 }, { orderId: 2 }],
+    });
+    assert.equal(result, false);
+  });
+
+  it("returns false when there are no fills (nothing to mix)", () => {
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/list",
+      tvAccountId: 6248,
+      fills: [],
+    });
+    assert.equal(result, false);
+  });
+
+  it("returns false when tvAccountId is null (not trying to scope)", () => {
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/list",
+      tvAccountId: null,
+      fills: [{ orderId: 1 }],
+    });
+    assert.equal(result, false);
+  });
+
+  it("returns false when at least one fill carries accountSpec", () => {
+    const result = isAccountScopingSuspect({
+      endpoint: "fill/list",
+      tvAccountId: 6248,
+      fills: [{ orderId: 1, accountSpec: "MFF/6248" }],
+    });
+    assert.equal(result, false);
   });
 });
 

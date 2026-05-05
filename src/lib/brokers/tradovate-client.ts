@@ -43,6 +43,8 @@ import {
   computeSnapshotBalance,
   extractFillTimestamp,
   fillMatchesAccount,
+  fillCarriesAccountId,
+  isAccountScopingSuspect,
   type TvTokenResponse,
 } from "./tradovate-client-helpers";
 
@@ -778,14 +780,48 @@ export class TradovateClient {
    * Today's fills, using the most permissive filters possible to avoid
    * silently dropping items when Tradovate omits account/date fields.
    *
-   * Account filter: checks accountId (number) → accountSpec (string ending
-   * with tvAccountId) → includes all (assumes already-scoped response).
+   * Endpoint preference:
+   *   1. `fill/deps?masterid={tvAccountId}` — account-scoped at the API level.
+   *      Required for multi-account OAuth tokens (one connection backing several
+   *      sub-accounts) where `fill/list` returns ALL fills mixed together AND
+   *      the per-fill `accountId`/`accountSpec` may be absent — in that case
+   *      our client-side `fillMatchesAccount` falls through to "include all"
+   *      and both accounts end up with the same inflated count.
+   *   2. `fill/list` — fallback when deps fails or `tvAccountId` is unknown.
+   *      Client-side `fillMatchesAccount` filter still applied.
+   *
+   * Account filter (defense-in-depth on the response): checks accountId
+   * (number) → accountSpec (string ending with tvAccountId) → includes all
+   * (assumes already-scoped response, e.g. from the deps endpoint).
    *
    * Date filter: checks timestamp, time, tradeTime, executionTime, tradeDate
    * (object or string). When none of those fields exist, includes the fill.
    */
   async getFills(): Promise<TvFill[]> {
-    const raw = await this.#request<unknown>("fill/list");
+    let raw: unknown;
+    let endpoint: "fill/deps" | "fill/list";
+
+    if (this.#tvAccountId !== null) {
+      try {
+        raw = await this.#request<unknown>(`fill/deps?masterid=${this.#tvAccountId}`);
+        endpoint = "fill/deps";
+      } catch (depsErr) {
+        const code = depsErr instanceof TradovateClientError ? depsErr.code : "unknown";
+        const status = depsErr instanceof TradovateClientError ? depsErr.statusCode : undefined;
+        console.warn("[tradovate/fills] fill/deps failed; falling back to fill/list", {
+          accountId: this.#accountId,
+          tvAccountId: this.#tvAccountId,
+          code,
+          status,
+        });
+        raw = await this.#request<unknown>("fill/list");
+        endpoint = "fill/list";
+      }
+    } else {
+      raw = await this.#request<unknown>("fill/list");
+      endpoint = "fill/list";
+    }
+
     const all = parseSnapshotItems<TvFill>(raw);
 
     // Log raw item fields for the first fill (and the second if present) so
@@ -833,9 +869,31 @@ export class TradovateClient {
           )
         : todayFills;
 
+    // Detect the silent-mixing case: fill/list was used (not deps), tvAccountId
+    // is set, and none of the fills carry account identifiers. In that case the
+    // client-side filter passes everything through and we can't trust the count.
+    const fillsCarryAccountIds = todayFills.some((f) =>
+      fillCarriesAccountId(f as Record<string, unknown>),
+    );
+    const accountScopingSuspect = isAccountScopingSuspect({
+      endpoint,
+      tvAccountId: this.#tvAccountId,
+      fills: todayFills as ReadonlyArray<Record<string, unknown>>,
+    });
+
+    if (accountScopingSuspect) {
+      console.warn("[tradovate/fills] account scoping suspect — fill/list returned items without accountId/accountSpec", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        todayCount: todayFills.length,
+        note: "Trade count may include fills from other accounts on the same OAuth token.",
+      });
+    }
+
     console.info("[tradovate/fills] summary", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
+      endpoint,
       lookbackHours: 26,
       responseShape: Array.isArray(raw)
         ? "bare_array"
@@ -845,6 +903,8 @@ export class TradovateClient {
       rawCount: all.length,
       todayCount: todayFills.length,
       filteredCount: filtered.length,
+      fillsCarryAccountIds,
+      accountScopingSuspect,
     });
 
     return filtered;

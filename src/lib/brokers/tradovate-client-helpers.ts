@@ -546,6 +546,43 @@ export function traceEntryTrades(executions: EntryFill[]): EntryTraceResult {
 // ── Fill account matching ─────────────────────────────────────────────────────
 
 /**
+ * Return true when a raw Tradovate fill carries an account identifier
+ * (`accountId` or `accountSpec`). Used to detect when `fill/list` returned
+ * fills without account fields — in that case our `fillMatchesAccount`
+ * filter falls through to "include all" and account isolation breaks.
+ */
+export function fillCarriesAccountId(fill: Record<string, unknown>): boolean {
+  return typeof fill.accountId === "number" || typeof fill.accountSpec === "string";
+}
+
+/**
+ * Decide whether the trade count derived from a `fill/list` response is
+ * suspect because the response wasn't account-scoped at the API level AND
+ * the fills don't carry per-row account identifiers.
+ *
+ * Returns true when ALL of:
+ *   - The unscoped `fill/list` endpoint was used (deps fallback wasn't tried
+ *     or failed).
+ *   - We know the target Tradovate account ID (so we *should* be filtering).
+ *   - At least one fill came back.
+ *   - None of the returned fills carry `accountId` or `accountSpec`, so the
+ *     client-side `fillMatchesAccount` filter cannot distinguish accounts.
+ *
+ * When this returns true, the same fill set is being returned for every
+ * account on a multi-account OAuth token and the trade count is unreliable.
+ */
+export function isAccountScopingSuspect(input: {
+  endpoint: "fill/deps" | "fill/list";
+  tvAccountId: number | null;
+  fills: ReadonlyArray<Record<string, unknown>>;
+}): boolean {
+  if (input.endpoint !== "fill/list") return false;
+  if (input.tvAccountId === null) return false;
+  if (input.fills.length === 0) return false;
+  return !input.fills.some(fillCarriesAccountId);
+}
+
+/**
  * Return true if a raw Tradovate fill item belongs to the given account.
  *
  * Tradovate fills carry account identity in three possible ways:
