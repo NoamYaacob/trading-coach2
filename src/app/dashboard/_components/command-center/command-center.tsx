@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
+import { getTradeCountDisplay } from "./data-helpers";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -723,34 +724,43 @@ function TradesCell({
   account: CommandCenterAccount;
   compact?: boolean;
 }) {
-  // Broker account synced but fills never successfully fetched — count is unknown.
-  const fillsFailed =
-    account.platform !== "manual" &&
-    account.fillsSyncedAt == null &&
-    account.lastSyncAt != null;
-  if (fillsFailed || account.tradeCountSource === "unavailable") {
+  const display = getTradeCountDisplay(account);
+  const wrapperClass = compact ? "" : "flex flex-col items-end gap-1";
+  const hintClass = `text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`;
+
+  if (display.kind === "no_data") {
+    return <p className={`font-mono text-sm text-stone-400`}>—</p>;
+  }
+
+  if (display.kind === "unavailable") {
     return (
-      <div className={compact ? "" : "flex flex-col items-end gap-1"}>
+      <div className={wrapperClass}>
         <p className="text-xs text-stone-400">Unavailable</p>
-        {account.platform !== "manual" && (
-          <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
-            Trade count unavailable from broker report.
-          </p>
+        {display.showHint && (
+          <p className={hintClass}>Trade count unavailable from broker report.</p>
         )}
       </div>
     );
   }
-  const used = account.tradesCount ?? 0;
-  if (account.maxTradesPerDay == null && account.tradesCount == null) {
+
+  if (display.kind === "estimated") {
+    // Deliberately no numeric "X / max" and no progress bar — the count cannot
+    // be attributed to this specific account, so showing it as a ratio is
+    // misleading and would imply a breach when the source is unreliable.
     return (
-      <p className={`font-mono ${compact ? "text-sm" : "text-sm"} text-stone-400`}>—</p>
+      <div className={wrapperClass}>
+        <p className="font-mono text-sm font-semibold text-stone-500">Estimated</p>
+        <p className={hintClass}>
+          Trade count estimated from broker fills — may include other accounts on this connection.
+        </p>
+      </div>
     );
   }
-  const max = account.maxTradesPerDay;
-  const pct = account.tradesUsedPct ?? 0;
-  const isEstimated = account.tradeCountSource === "estimated";
+
+  // Verified path: show "X / max" with the usual progress bar.
+  const { used, max, pct } = display;
   return (
-    <div className={compact ? "" : "flex flex-col items-end gap-1"}>
+    <div className={wrapperClass}>
       <p className="font-mono text-sm font-semibold text-stone-900">
         {used}
         {max != null ? <span className="text-stone-400"> / {max}</span> : null}
@@ -767,15 +777,13 @@ function TradesCell({
         </div>
       ) : null}
       {account.tradesMayIncludePreConnection && (
-        <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
+        <p className={hintClass}>
           Includes broker activity from today before Guardrail was connected.
         </p>
       )}
-      {account.platform !== "manual" && account.tradesCount != null && account.tradesCount > 0 && (
-        <p className={`text-[10px] text-stone-400 ${compact ? "mt-0.5" : "mt-1 text-right"}`}>
-          {isEstimated
-            ? "Trade count estimated from broker fills — may include other accounts on this connection."
-            : "Derived from fills — may differ from your broker's trade report."}
+      {account.platform !== "manual" && used > 0 && (
+        <p className={hintClass}>
+          Derived from fills — may differ from your broker&apos;s trade report.
         </p>
       )}
     </div>

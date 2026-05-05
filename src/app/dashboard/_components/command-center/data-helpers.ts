@@ -1,5 +1,58 @@
 import type { AccountStatus } from "./types";
 
+/**
+ * What the dashboard's TradesCell should render for a given account.
+ *
+ *  - "verified": show numeric "X / max" with the usual progress bar — the
+ *    count came from an account-scoped broker source we trust.
+ *  - "estimated": show the literal string "Estimated" with no numeric ratio
+ *    and no progress bar — the count was derived from fills that may include
+ *    other accounts on the same multi-account OAuth token. Showing "12 / 3"
+ *    in this case is misleading because the 12 isn't actually this account's.
+ *  - "unavailable": show "Unavailable" — fills couldn't be fetched.
+ *  - "no_data": show an em-dash — no count and no rule limit configured.
+ */
+export type TradeCountDisplay =
+  | { kind: "no_data" }
+  | { kind: "unavailable"; showHint: boolean }
+  | { kind: "estimated" }
+  | { kind: "verified"; used: number; max: number | null; pct: number };
+
+export function getTradeCountDisplay(account: {
+  platform: string;
+  fillsSyncedAt: Date | null;
+  lastSyncAt: Date | null;
+  tradeCountSource: "verified" | "estimated" | "unavailable";
+  tradesCount: number | null;
+  maxTradesPerDay: number | null;
+  tradesUsedPct: number | null;
+}): TradeCountDisplay {
+  // Broker account synced but fills never successfully fetched — count is unknown.
+  const fillsFailed =
+    account.platform !== "manual" &&
+    account.fillsSyncedAt == null &&
+    account.lastSyncAt != null;
+  if (fillsFailed || account.tradeCountSource === "unavailable") {
+    return { kind: "unavailable", showHint: account.platform !== "manual" };
+  }
+
+  if (account.tradeCountSource === "estimated") {
+    return { kind: "estimated" };
+  }
+
+  if (account.maxTradesPerDay == null && account.tradesCount == null) {
+    return { kind: "no_data" };
+  }
+
+  return {
+    kind: "verified",
+    used: account.tradesCount ?? 0,
+    max: account.maxTradesPerDay,
+    pct: account.tradesUsedPct ?? 0,
+  };
+}
+
+
 export function deriveBreachReason(input: {
   status: AccountStatus;
   riskState: "NORMAL" | "WARNING" | "STOPPED" | null;

@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deriveStatus, derivePropFirmSetupNeeded, deriveBreachReason } from "./data-helpers.ts";
+import {
+  deriveStatus,
+  derivePropFirmSetupNeeded,
+  deriveBreachReason,
+  getTradeCountDisplay,
+} from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
 
@@ -202,6 +207,117 @@ describe("deriveBreachReason", () => {
     });
     assert.ok(result !== null);
     assert.equal(result.headline, "Approaching daily loss limit");
+  });
+});
+
+// ── getTradeCountDisplay ─────────────────────────────────────────────────────
+
+describe("getTradeCountDisplay", () => {
+  const baseAccount = {
+    platform: "tradovate",
+    fillsSyncedAt: new Date("2026-05-05T12:00:00Z"),
+    lastSyncAt: new Date("2026-05-05T12:00:00Z"),
+    tradeCountSource: "verified" as "verified" | "estimated" | "unavailable",
+    tradesCount: 2 as number | null,
+    maxTradesPerDay: 3 as number | null,
+    tradesUsedPct: 2 / 3 as number | null,
+  };
+
+  it("verified count returns kind=verified with numeric data and pct", () => {
+    const display = getTradeCountDisplay(baseAccount);
+    assert.equal(display.kind, "verified");
+    if (display.kind === "verified") {
+      assert.equal(display.used, 2);
+      assert.equal(display.max, 3);
+      assert.equal(display.pct, 2 / 3);
+    }
+  });
+
+  it("estimated count returns kind=estimated and does NOT carry the numeric ratio", () => {
+    // Regression: previously the UI showed "12 / 3" for accounts whose count
+    // came from a multi-account fill/list dump. The display kind must drop
+    // the numeric data so the component cannot accidentally render the ratio
+    // or breach styling.
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      tradeCountSource: "estimated",
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+      tradesUsedPct: 1, // would otherwise drive a red bar
+    });
+    assert.equal(display.kind, "estimated");
+    // No numeric fields surfaced — the component cannot render "12 / 3".
+    assert.ok(!("used" in display), "estimated must not expose 'used'");
+    assert.ok(!("max" in display), "estimated must not expose 'max'");
+    assert.ok(!("pct" in display), "estimated must not expose 'pct' (no breach styling)");
+  });
+
+  it("unavailable source returns kind=unavailable", () => {
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      tradeCountSource: "unavailable",
+      tradesCount: 0,
+    });
+    assert.equal(display.kind, "unavailable");
+  });
+
+  it("broker account with fills never synced returns kind=unavailable", () => {
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      fillsSyncedAt: null,
+      lastSyncAt: new Date("2026-05-05T12:00:00Z"),
+    });
+    assert.equal(display.kind, "unavailable");
+  });
+
+  it("manual platform with no rule and no count returns kind=no_data", () => {
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      platform: "manual",
+      fillsSyncedAt: null,
+      lastSyncAt: null,
+      tradesCount: null,
+      maxTradesPerDay: null,
+    });
+    assert.equal(display.kind, "no_data");
+  });
+
+  it("estimated state takes precedence over a configured maxTradesPerDay", () => {
+    // Even if the rules engine has a per-day cap configured, the unreliable
+    // count must not be rendered as a ratio against that cap.
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      tradeCountSource: "estimated",
+      tradesCount: 5,
+      maxTradesPerDay: 3,
+      tradesUsedPct: 1,
+    });
+    assert.equal(display.kind, "estimated");
+  });
+
+  it("verified count with no rules-defined cap still renders verified (max=null)", () => {
+    const display = getTradeCountDisplay({
+      ...baseAccount,
+      tradesCount: 4,
+      maxTradesPerDay: null,
+      tradesUsedPct: null,
+    });
+    assert.equal(display.kind, "verified");
+    if (display.kind === "verified") {
+      assert.equal(display.used, 4);
+      assert.equal(display.max, null);
+    }
+  });
+
+  it("unavailable hint is shown for broker accounts but suppressed for manual", () => {
+    const broker = getTradeCountDisplay({ ...baseAccount, tradeCountSource: "unavailable" });
+    const manual = getTradeCountDisplay({
+      ...baseAccount,
+      platform: "manual",
+      tradeCountSource: "unavailable",
+    });
+    if (broker.kind === "unavailable") assert.equal(broker.showHint, true);
+    if (manual.kind === "unavailable") assert.equal(manual.showHint, false);
   });
 });
 
