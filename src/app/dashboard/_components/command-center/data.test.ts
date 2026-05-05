@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deriveStatus, derivePropFirmSetupNeeded } from "./data-helpers.ts";
+import { deriveStatus, derivePropFirmSetupNeeded, deriveBreachReason } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
 
@@ -101,6 +101,107 @@ describe("deriveStatus", () => {
       deriveStatus({ ...base, connectionStatus: "pending_webhook" }),
       "setup_needed",
     );
+  });
+});
+
+// ── deriveBreachReason ────────────────────────────────────────────────────────
+
+describe("deriveBreachReason", () => {
+  const base = {
+    status: "locked" as const,
+    riskState: "STOPPED" as const,
+    dailyLossUsedPct: 1.0,
+    tradesCount: null,
+    maxTradesPerDay: null,
+    consecutiveLosses: null,
+    stopAfterLosses: null,
+  };
+
+  it("returns null when status is allowed", () => {
+    assert.equal(
+      deriveBreachReason({ ...base, status: "allowed", riskState: null, dailyLossUsedPct: null }),
+      null,
+    );
+  });
+
+  it("returns null when status is setup_needed", () => {
+    assert.equal(
+      deriveBreachReason({ ...base, status: "setup_needed", riskState: null, dailyLossUsedPct: null }),
+      null,
+    );
+  });
+
+  it("daily loss limit reached — shows locked headline without trade count", () => {
+    const result = deriveBreachReason(base);
+    assert.ok(result !== null);
+    assert.equal(result.headline, "Daily loss limit reached");
+    assert.equal(result.detail, "This account is locked for the rest of the trading day.");
+    assert.ok(!result.headline.includes("/"), "headline must not show trade counts");
+  });
+
+  it("daily loss + trades at limit — still shows daily loss headline only (no 'Max trades exceeded')", () => {
+    const result = deriveBreachReason({
+      ...base,
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+    });
+    assert.ok(result !== null);
+    assert.equal(result.headline, "Daily loss limit reached");
+    assert.ok(!result.detail?.includes("Max trades"), "must not mention 'Max trades exceeded'");
+    assert.ok(!result.detail?.includes("12"), "must not show raw trade count in detail");
+  });
+
+  it("trade limit breach — softened copy, no raw count in headline", () => {
+    const result = deriveBreachReason({
+      ...base,
+      riskState: "STOPPED",
+      dailyLossUsedPct: null,
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+    });
+    assert.ok(result !== null);
+    assert.equal(result.headline, "Trade activity may exceed limit");
+    assert.ok(result.detail?.includes("Tradovate"), "detail should reference Tradovate report");
+    assert.ok(!result.headline.includes("12"), "headline must not show raw count");
+    assert.ok(!result.headline.includes("3"), "headline must not show limit");
+  });
+
+  it("trade warning (one trade left) — shows specific warning copy", () => {
+    const result = deriveBreachReason({
+      ...base,
+      status: "warning",
+      riskState: "WARNING",
+      dailyLossUsedPct: null,
+      tradesCount: 2,
+      maxTradesPerDay: 3,
+    });
+    assert.ok(result !== null);
+    assert.ok(result.headline.includes("2/3"), "warning headline shows count/limit");
+    assert.equal(result.detail, "One trade left today.");
+  });
+
+  it("loss streak breach — shows streak/limit ratio", () => {
+    const result = deriveBreachReason({
+      ...base,
+      riskState: null,
+      dailyLossUsedPct: null,
+      status: "locked",
+      consecutiveLosses: 3,
+      stopAfterLosses: 3,
+    });
+    assert.ok(result !== null);
+    assert.ok(result.headline.includes("3/3"), "should show consecutive losses ratio");
+  });
+
+  it("approaching daily loss (80% used, warning status) — specific headline", () => {
+    const result = deriveBreachReason({
+      ...base,
+      status: "warning",
+      riskState: "WARNING",
+      dailyLossUsedPct: 0.85,
+    });
+    assert.ok(result !== null);
+    assert.equal(result.headline, "Approaching daily loss limit");
   });
 });
 

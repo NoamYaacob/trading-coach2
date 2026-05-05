@@ -433,6 +433,116 @@ export function countEntryTradesSince(executions: EntryFill[], since: Date): num
   return countEntryTrades(executions.filter((ex) => ex.occurredAt.getTime() >= cutoff));
 }
 
+// ── Entry trade diagnostic trace ─────────────────────────────────────────────
+
+export type EntryTraceRow = {
+  orderId: string | null;
+  symbol: string;
+  side: "LONG" | "SHORT";
+  qty: number;
+  positionBefore: number;
+  positionAfter: number;
+  entry: boolean;
+  reason: "flat_open" | "reversal" | "scale_in" | "reduction";
+};
+
+export type EntryTraceResult = {
+  count: number;
+  uniqueOrderIds: number;
+  groupedCount: number;
+  rows: EntryTraceRow[];
+};
+
+/**
+ * Same counting logic as countEntryTrades, but also returns per-order diagnostics
+ * for server-side logging. Used in sync to emit positionBefore/positionAfter/reason
+ * rows so logs can be compared against Tradovate's Performance Report.
+ *
+ * Invariant: traceEntryTrades(ex).count === countEntryTrades(ex) for any input.
+ */
+export function traceEntryTrades(executions: EntryFill[]): EntryTraceResult {
+  type Group = {
+    orderId: string | null;
+    side: "LONG" | "SHORT";
+    quantity: number;
+    symbol: string;
+    occurredAt: Date;
+  };
+  const grouped = new Map<string, Group>();
+  const orderIdSet = new Set<string>();
+  let unkeyed = 0;
+
+  for (const ex of executions) {
+    if (ex.orderId != null && ex.orderId !== "") orderIdSet.add(ex.orderId);
+    const key =
+      ex.orderId != null && ex.orderId !== ""
+        ? `oid:${ex.orderId}:${ex.side}:${ex.symbol}`
+        : `unkeyed:${unkeyed++}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.quantity += ex.quantity;
+      if (ex.occurredAt.getTime() < existing.occurredAt.getTime()) {
+        existing.occurredAt = ex.occurredAt;
+      }
+    } else {
+      grouped.set(key, {
+        orderId: ex.orderId ?? null,
+        side: ex.side,
+        quantity: ex.quantity,
+        symbol: ex.symbol,
+        occurredAt: ex.occurredAt,
+      });
+    }
+  }
+
+  const sorted = [...grouped.values()].sort(
+    (a, b) => a.occurredAt.getTime() - b.occurredAt.getTime(),
+  );
+  const positions = new Map<string, number>();
+  let count = 0;
+  const rows: EntryTraceRow[] = [];
+
+  for (const ex of sorted) {
+    const prev = positions.get(ex.symbol) ?? 0;
+    const delta = ex.side === "LONG" ? ex.quantity : -ex.quantity;
+    const next = prev + delta;
+    positions.set(ex.symbol, next);
+
+    let entry = false;
+    let reason: EntryTraceRow["reason"] = "reduction";
+    if (prev === 0 && next !== 0) {
+      entry = true;
+      reason = "flat_open";
+      count++;
+    } else if (prev !== 0 && next !== 0 && Math.sign(prev) !== Math.sign(next)) {
+      entry = true;
+      reason = "reversal";
+      count++;
+    } else if (
+      prev !== 0 &&
+      Math.sign(prev) === Math.sign(next) &&
+      Math.abs(next) > Math.abs(prev)
+    ) {
+      entry = true;
+      reason = "scale_in";
+      count++;
+    }
+
+    rows.push({
+      orderId: ex.orderId ?? null,
+      symbol: ex.symbol,
+      side: ex.side,
+      qty: ex.quantity,
+      positionBefore: prev,
+      positionAfter: next,
+      entry,
+      reason,
+    });
+  }
+
+  return { count, uniqueOrderIds: orderIdSet.size, groupedCount: grouped.size, rows };
+}
+
 // ── Fill account matching ─────────────────────────────────────────────────────
 
 /**

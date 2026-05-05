@@ -23,6 +23,7 @@ import {
   fillMatchesAccount,
   countEntryTrades,
   countEntryTradesSince,
+  traceEntryTrades,
   TradovateClientError,
 } from "./tradovate-client-helpers.ts";
 
@@ -1027,6 +1028,183 @@ describe("countEntryTradesSince", () => {
   it("returns 0 when cutoff is after all fills", () => {
     const fills = [mkEx("ES", "LONG", 1, new Date(1000), "a")];
     assert.equal(countEntryTradesSince(fills, new Date(5000)), 0);
+  });
+});
+
+// ── traceEntryTrades ──────────────────────────────────────────────────────────
+
+describe("traceEntryTrades", () => {
+  function mkEx(
+    symbol: string,
+    side: "LONG" | "SHORT",
+    qty: number,
+    offsetMs = 0,
+    orderId: string | null = null,
+  ) {
+    return { symbol, side, quantity: qty, occurredAt: new Date(1_000_000 + offsetMs), orderId };
+  }
+
+  it("count matches countEntryTrades for a simple sequence", () => {
+    const ex = [
+      mkEx("ES", "LONG", 5, 0, "a"),
+      mkEx("ES", "SHORT", 5, 100, "b"),
+      mkEx("ES", "LONG", 3, 200, "c"),
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.count, countEntryTrades(ex));
+  });
+
+  it("emits one row per grouped order", () => {
+    // 2 entries: a single order (3 partial fills → 1 group) + a scale-in order
+    const ex = [
+      mkEx("ES", "LONG", 2, 0, "ord-1"),
+      mkEx("ES", "LONG", 3, 50, "ord-1"), // partial fill of same order
+      mkEx("ES", "LONG", 5, 100, "ord-2"), // scale-in
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.groupedCount, 2);
+    assert.equal(trace.rows.length, 2);
+    assert.equal(trace.count, 2);
+  });
+
+  it("uniqueOrderIds counts distinct non-null orderIds", () => {
+    const ex = [
+      mkEx("ES", "LONG", 1, 0, "ord-1"),
+      mkEx("ES", "LONG", 1, 50, "ord-1"), // duplicate orderId
+      mkEx("ES", "SHORT", 1, 100, "ord-2"),
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.uniqueOrderIds, 2);
+  });
+
+  it("labels flat_open, reduction correctly", () => {
+    const ex = [
+      mkEx("ES", "LONG", 1, 0, "a"),  // flat→long
+      mkEx("ES", "SHORT", 1, 100, "b"), // long→flat (close)
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.rows[0].reason, "flat_open");
+    assert.equal(trace.rows[0].entry, true);
+    assert.equal(trace.rows[1].reason, "reduction");
+    assert.equal(trace.rows[1].entry, false);
+  });
+
+  it("labels scale_in correctly", () => {
+    const ex = [
+      mkEx("ES", "LONG", 1, 0, "a"),
+      mkEx("ES", "LONG", 1, 100, "b"),
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.rows[1].reason, "scale_in");
+    assert.equal(trace.rows[1].entry, true);
+  });
+
+  it("labels reversal correctly", () => {
+    const ex = [
+      mkEx("ES", "LONG", 1, 0, "a"),
+      mkEx("ES", "SHORT", 2, 100, "b"), // crosses zero
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.rows[1].reason, "reversal");
+    assert.equal(trace.rows[1].entry, true);
+  });
+
+  it("positionBefore/positionAfter track net position correctly", () => {
+    const ex = [
+      mkEx("ES", "LONG", 3, 0, "a"),
+      mkEx("ES", "SHORT", 1, 100, "b"),
+    ];
+    const trace = traceEntryTrades(ex);
+    assert.equal(trace.rows[0].positionBefore, 0);
+    assert.equal(trace.rows[0].positionAfter, 3);
+    assert.equal(trace.rows[1].positionBefore, 3);
+    assert.equal(trace.rows[1].positionAfter, 2);
+  });
+});
+
+// ── account fill isolation — two MFF accounts ─────────────────────────────────
+
+describe("account fill isolation — two MFF accounts", () => {
+  type RawFill = {
+    accountId: number;
+    symbol: string;
+    side: "LONG" | "SHORT";
+    quantity: number;
+    occurredAt: Date;
+    orderId: string;
+  };
+
+  function mkFill(
+    accountId: number,
+    symbol: string,
+    side: "LONG" | "SHORT",
+    qty: number,
+    msOffset: number,
+    orderId: string,
+  ): RawFill {
+    return { accountId, symbol, side, quantity: qty, occurredAt: new Date(msOffset), orderId };
+  }
+
+  // Account 6248: 6 simple open/close sequences on ESM5
+  const fills6248: RawFill[] = Array.from({ length: 6 }, (_, i) => [
+    mkFill(6248, "ESM5", "LONG", 1, i * 200, `248-entry-${i}`),
+    mkFill(6248, "ESM5", "SHORT", 1, i * 200 + 100, `248-exit-${i}`),
+  ]).flat();
+
+  // Account 6249: 11 simple open/close sequences on ESM5
+  const fills6249: RawFill[] = Array.from({ length: 11 }, (_, i) => [
+    mkFill(6249, "ESM5", "LONG", 1, i * 200 + 1, `249-entry-${i}`),
+    mkFill(6249, "ESM5", "SHORT", 1, i * 200 + 101, `249-exit-${i}`),
+  ]).flat();
+
+  it("account 6248 isolated fills produce 6 entry trades", () => {
+    assert.equal(countEntryTrades(fills6248), 6);
+  });
+
+  it("account 6249 isolated fills produce 11 entry trades", () => {
+    assert.equal(countEntryTrades(fills6249), 11);
+  });
+
+  it("exits are not counted as entries", () => {
+    // The 6 SHORT closes in 6248 should not add to the trade count
+    const longOnlyFills = fills6248.filter((f) => f.side === "LONG");
+    const longOnlyCount = countEntryTrades(longOnlyFills);
+    // 6 opens from flat with nothing between them → each is still 6 opens
+    assert.equal(longOnlyCount, 6);
+    // The mixed open/close count must equal the long-only count
+    assert.equal(countEntryTrades(fills6248), longOnlyCount);
+  });
+
+  it("fillMatchesAccount isolates 6248 fills from mixed stream", () => {
+    const allFills = [...fills6248, ...fills6249];
+    const for6248 = allFills.filter((f) =>
+      fillMatchesAccount(f as unknown as Record<string, unknown>, 6248),
+    );
+    assert.equal(for6248.length, fills6248.length);
+    assert.equal(countEntryTrades(for6248), 6);
+  });
+
+  it("fillMatchesAccount isolates 6249 fills from mixed stream", () => {
+    const allFills = [...fills6248, ...fills6249];
+    const for6249 = allFills.filter((f) =>
+      fillMatchesAccount(f as unknown as Record<string, unknown>, 6249),
+    );
+    assert.equal(for6249.length, fills6249.length);
+    assert.equal(countEntryTrades(for6249), 11);
+  });
+
+  it("mixing both accounts' fills inflates the count beyond either account alone", () => {
+    const allFills = [...fills6248, ...fills6249];
+    const mixedCount = countEntryTrades(allFills);
+    // Mixed position tracking produces scale-ins that inflate the count
+    assert.ok(mixedCount > 6, `mixed count ${mixedCount} should exceed 6248's count of 6`);
+    assert.ok(mixedCount > 11, `mixed count ${mixedCount} should exceed 6249's count of 11`);
+  });
+
+  it("fills with no accountId/accountSpec pass through fillMatchesAccount (assume scoped)", () => {
+    const fill = { orderId: 1, contractId: 2 }; // no accountId or accountSpec
+    assert.equal(fillMatchesAccount(fill as Record<string, unknown>, 6248), true);
+    assert.equal(fillMatchesAccount(fill as Record<string, unknown>, 6249), true);
   });
 });
 

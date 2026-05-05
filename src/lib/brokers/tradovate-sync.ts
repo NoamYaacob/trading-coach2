@@ -21,7 +21,7 @@ import {
 } from "./tradovate-discovery";
 import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
-import { sumFillPnl, countEntryTrades } from "./tradovate-client-helpers";
+import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 
 export type SyncResult = {
@@ -145,14 +145,30 @@ export async function syncTradovateAccount(
       // Entry-based count: each symbol position opening from flat = 1 trade.
       // Always authoritative over Phase A (which counts all completed orders
       // and cannot distinguish entries from exits).
-      tradesCount = countEntryTrades(executions);
+      const trace = traceEntryTrades(executions);
+      tradesCount = trace.count;
 
-      console.info("[tradovate/trades] count from fills", {
+      console.info("[tradovate/trades] entry count diagnostic", {
         accountId,
         rawFillCount: executions.length,
-        entryBasedCount: tradesCount,
+        uniqueOrderIds: trace.uniqueOrderIds,
+        groupedOrderCount: trace.groupedCount,
+        derivedEntryTradeCount: trace.count,
         pnlFromFills,
       });
+      for (const row of trace.rows) {
+        console.info("[tradovate/trades] order row", {
+          accountId,
+          orderId: row.orderId,
+          symbol: row.symbol,
+          side: row.side,
+          qty: row.qty,
+          positionBefore: row.positionBefore,
+          positionAfter: row.positionAfter,
+          entry: row.entry,
+          reason: row.reason,
+        });
+      }
       for (const ex of executions) {
         const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
           where: { accountId, externalTradeId: ex.executionId },

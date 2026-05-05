@@ -1,5 +1,64 @@
 import type { AccountStatus } from "./types";
 
+export function deriveBreachReason(input: {
+  status: AccountStatus;
+  riskState: "NORMAL" | "WARNING" | "STOPPED" | null;
+  dailyLossUsedPct: number | null;
+  tradesCount: number | null;
+  maxTradesPerDay: number | null;
+  consecutiveLosses: number | null;
+  stopAfterLosses: number | null;
+}): { headline: string; detail?: string } | null {
+  if (input.status !== "warning" && input.status !== "locked") return null;
+
+  const { tradesCount, maxTradesPerDay, consecutiveLosses, stopAfterLosses } = input;
+  const tradesAtOrOverLimit =
+    tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay;
+
+  // Daily loss is definitively at the limit — always takes priority over trade count.
+  if (input.dailyLossUsedPct != null && input.dailyLossUsedPct >= 1) {
+    return {
+      headline: "Daily loss limit reached",
+      detail: "This account is locked for the rest of the trading day.",
+    };
+  }
+
+  // Trade count is at or over limit (may be the stop trigger, or running alongside a loss stop).
+  if (tradesAtOrOverLimit) {
+    return {
+      headline: "Trade activity may exceed limit",
+      detail: "Review your Tradovate Performance Report to confirm.",
+    };
+  }
+
+  // STOPPED but neither daily loss pct nor trade count pinpoints the cause —
+  // daily P&L may be unavailable; fall back to generic locked message.
+  if (input.riskState === "STOPPED") {
+    return {
+      headline: "Daily loss limit reached",
+      detail: "This account is locked for the rest of the trading day.",
+    };
+  }
+
+  if (consecutiveLosses != null && stopAfterLosses != null && consecutiveLosses >= stopAfterLosses) {
+    return { headline: `Loss streak: ${consecutiveLosses}/${stopAfterLosses}` };
+  }
+
+  if (input.dailyLossUsedPct != null && input.dailyLossUsedPct >= 0.8) {
+    return { headline: "Approaching daily loss limit" };
+  }
+
+  if (tradesCount != null && maxTradesPerDay != null && maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) {
+    return {
+      headline: `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`,
+      detail: "One trade left today.",
+    };
+  }
+
+  return null;
+}
+
+
 export function derivePropFirmSetupNeeded(input: {
   isPropFirm: boolean;
   hasAccountRules: boolean;

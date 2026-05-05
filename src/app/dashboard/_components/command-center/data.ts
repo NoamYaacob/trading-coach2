@@ -4,7 +4,7 @@ import { getProtectionLockState } from "@/lib/account-protection";
 import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
-import { derivePropFirmSetupNeeded, deriveStatus } from "./data-helpers";
+import { derivePropFirmSetupNeeded, deriveStatus, deriveBreachReason } from "./data-helpers";
 import type {
   CommandCenterAccount,
   CommandCenterData,
@@ -259,42 +259,15 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       }
     }
 
-    let breachReason: { headline: string; detail?: string } | null = null;
-    if (status === "warning" || status === "locked") {
-      const tradesAtOrOverLimit =
-        tradesCount != null && maxTradesPerDay != null && tradesCount >= maxTradesPerDay;
-      if (riskState === "STOPPED" || (dailyLossUsedPct != null && dailyLossUsedPct >= 1)) {
-        breachReason = {
-          headline: "Daily loss limit reached",
-          detail: tradesAtOrOverLimit
-            ? `Max trades exceeded: ${tradesCount} / ${maxTradesPerDay}.`
-            : "This account is locked for the rest of the trading day.",
-        };
-      } else if (tradesAtOrOverLimit) {
-        breachReason = {
-          headline: `Trade limit reached: ${tradesCount}/${maxTradesPerDay}`,
-          detail: "This account is locked for the rest of the trading day.",
-        };
-      } else if (
-        consecutiveLosses != null &&
-        stopAfterLosses != null &&
-        consecutiveLosses >= stopAfterLosses
-      ) {
-        breachReason = { headline: `Loss streak: ${consecutiveLosses}/${stopAfterLosses}` };
-      } else if (dailyLossUsedPct != null && dailyLossUsedPct >= 0.8) {
-        breachReason = { headline: "Approaching daily loss limit" };
-      } else if (
-        tradesCount != null &&
-        maxTradesPerDay != null &&
-        maxTradesPerDay > 1 &&
-        tradesCount === maxTradesPerDay - 1
-      ) {
-        breachReason = {
-          headline: `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`,
-          detail: "One trade left today.",
-        };
-      }
-    }
+    const breachReason = deriveBreachReason({
+      status,
+      riskState,
+      dailyLossUsedPct,
+      tradesCount,
+      maxTradesPerDay,
+      consecutiveLosses,
+      stopAfterLosses,
+    });
 
     const enforcementMode = deriveEnforcementMode({
       platform: account.platform,
