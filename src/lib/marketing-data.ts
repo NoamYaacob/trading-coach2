@@ -38,7 +38,7 @@ export const STEPS = [
     tagCls: "bg-red-100 text-red-700",
     title: "Session locks when a rule breaks",
     detail:
-      "When a limit is hit, the session locks inside the app. You see which rule fired and when the reset window opens. App-level enforcement today.",
+      "When a limit is hit, the session locks inside the app. You see which rule fired and when the reset window opens. Account-level monitoring today.",
   },
 ];
 
