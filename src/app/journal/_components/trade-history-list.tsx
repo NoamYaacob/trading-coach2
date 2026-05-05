@@ -168,8 +168,8 @@ export function TradeHistoryList({
   if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-stone-200 bg-stone-50 px-6 py-8 text-center">
-        <p className="text-base font-semibold text-stone-800">No synced trades found for this session</p>
-        <p className="mt-2 text-sm text-stone-600">Trades appear here once your broker account is connected and syncing.</p>
+        <p className="text-base font-semibold text-stone-800">No trades logged for this session</p>
+        <p className="mt-2 text-sm text-stone-600">Trades you log will appear here. Automated broker trade import is not yet available.</p>
       </div>
     );
   }

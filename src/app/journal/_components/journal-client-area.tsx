@@ -101,8 +101,8 @@ export function JournalClientArea({
         title="Today's trades"
         description={
           todayEntries.length > 0
-            ? `${todayEntries.length} trade${todayEntries.length === 1 ? "" : "s"} synced today. Newest first.`
-            : "No synced trades today."
+            ? `${todayEntries.length} trade${todayEntries.length === 1 ? "" : "s"} logged today. Newest first.`
+            : "No trades logged today."
         }
       >
         <TradeHistoryList entries={todayEntries} tz={tz} />

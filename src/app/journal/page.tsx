@@ -33,20 +33,53 @@ function fmtMoney(n: number): string {
   })}`;
 }
 
+function fmtRelativeTime(date: Date | null): string {
+  if (!date) return "Never";
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return `${Math.floor(diffHr / 24)}d ago`;
+}
+
+const CONNECTION_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  connected_live:            { label: "Live",            cls: "text-emerald-700" },
+  pending_webhook:           { label: "Pending",         cls: "text-amber-700" },
+  oauth_pending_storage:     { label: "Connecting…",     cls: "text-amber-700" },
+  connection_error:          { label: "Error",           cls: "text-red-700" },
+  expired:                   { label: "Expired",         cls: "text-red-700" },
+  not_connected:             { label: "Not connected",   cls: "text-stone-400" },
+};
+
 export default async function JournalPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [profile, riskRules, hasBroker] = await Promise.all([
+  const [profile, riskRules, accounts] = await Promise.all([
     prisma.traderProfile.findUnique({
       where: { userId: user.id },
       select: { timezone: true },
     }),
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
-    prisma.connectedAccount
-      .count({ where: { userId: user.id, isActive: true } })
-      .then((c) => c > 0),
+    prisma.connectedAccount.findMany({
+      where: { userId: user.id, isActive: true },
+      select: {
+        id: true,
+        label: true,
+        platform: true,
+        propFirm: true,
+        accountType: true,
+        connectionStatus: true,
+        lastSyncAt: true,
+        fillsSyncedAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
+
+  const hasBroker = accounts.length > 0;
 
   const cookieStore = await cookies();
   const tz = resolveDisplayTimeZone({
@@ -167,14 +200,14 @@ export default async function JournalPage() {
     <AppShell
       eyebrow="Trade Review"
       title="Trade history."
-      description="Trades sync automatically from your connected broker account. Rule violations are flagged by the Guardrail engine."
+      description="Review your logged trade history and rule compliance. Live rule enforcement runs against your connected broker accounts."
       note="Broker-side order blocking is not enabled yet."
     >
       <div className="grid gap-6">
         {!hasBroker && (
           <NextActionBanner
             variant="warning"
-            message="No broker connected — trade data is not yet syncing."
+            message="No broker connected — Guardrail rule enforcement is not active."
             cta={{ label: "Connect broker", href: "/accounts" }}
           />
         )}
@@ -198,6 +231,58 @@ export default async function JournalPage() {
             }
             cta={{ label: "View status", href: "/guardian" }}
           />
+        )}
+
+        {/* Broker account context */}
+        {hasBroker && (
+          <SectionCard
+            title="Broker accounts"
+            description="Guardrail monitors these accounts for rule violations in real time."
+          >
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {accounts.map((acct) => {
+                const statusInfo = CONNECTION_STATUS_LABEL[acct.connectionStatus] ??
+                  { label: acct.connectionStatus, cls: "text-stone-400" };
+                const syncTime = acct.fillsSyncedAt ?? acct.lastSyncAt;
+                const platformLabel = acct.platform === "tradovate" ? "Tradovate"
+                  : acct.platform === "tradingview" ? "TradingView"
+                  : acct.platform;
+
+                return (
+                  <div
+                    key={acct.id}
+                    className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm"
+                  >
+                    <p className="font-semibold text-stone-950">{acct.label}</p>
+                    <div className="mt-1.5 grid gap-1 text-xs text-stone-500">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Broker</span>
+                        <span className="font-medium text-stone-700">{platformLabel}</span>
+                      </div>
+                      {acct.propFirm && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Prop firm</span>
+                          <span className="font-medium text-stone-700">{acct.propFirm}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Account type</span>
+                        <span className="font-medium capitalize text-stone-700">{acct.accountType}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Status</span>
+                        <span className={`font-medium ${statusInfo.cls}`}>{statusInfo.label}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Last sync</span>
+                        <span className="font-medium text-stone-700">{fmtRelativeTime(syncTime)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
         )}
 
         <SectionCard
