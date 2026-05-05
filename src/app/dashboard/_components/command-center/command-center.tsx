@@ -443,7 +443,7 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
               {account.accountTypeLabel}
             </p>
             <p className="mt-1 text-xs font-medium text-amber-900">
-              Account no longer available in {account.platformLabel}
+              Account no longer active in {account.platformLabel}
             </p>
             <p className="mt-0.5 text-[11px] text-amber-800">
               This account may have been reset, closed, or removed by the prop firm.
@@ -455,10 +455,10 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
       <td className="px-4 py-3 text-right align-top">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <Link
-            href="/accounts/connect/tradovate"
+            href="/accounts"
             className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
           >
-            Reconnect
+            Refresh status
           </Link>
           <Link
             href={`/accounts/${account.id}/edit`}
@@ -597,17 +597,17 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           {account.accountTypeLabel}
         </p>
         <p className="mt-2 text-xs font-medium text-amber-900">
-          Account no longer available in {account.platformLabel}
+          Account no longer active in {account.platformLabel}
         </p>
         <p className="mt-0.5 text-[11px] text-amber-800">
           May have been reset, closed, or removed by the prop firm. Excluded from totals.
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <Link
-            href="/accounts/connect/tradovate"
+            href="/accounts"
             className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
           >
-            Reconnect
+            Refresh status
           </Link>
           <Link
             href={`/accounts/${account.id}/edit`}
