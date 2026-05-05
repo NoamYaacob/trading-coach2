@@ -4,7 +4,67 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-function BlockedDialog({ onClose }: { onClose: () => void }) {
+// Maps common IANA zones to trader-friendly city names.
+// Falls back to the short TZ abbreviation (e.g. "EST") for unlisted zones.
+const TZ_CITY: Record<string, string> = {
+  "America/New_York":    "New York",
+  "America/Chicago":     "Chicago",
+  "America/Denver":      "Denver",
+  "America/Los_Angeles": "Los Angeles",
+  "America/Toronto":     "Toronto",
+  "America/Sao_Paulo":   "São Paulo",
+  "Europe/London":       "London",
+  "Europe/Berlin":       "Frankfurt",
+  "Europe/Paris":        "Paris",
+  "Europe/Amsterdam":    "Amsterdam",
+  "Asia/Jerusalem":      "Tel Aviv",
+  "Asia/Dubai":          "Dubai",
+  "Asia/Tokyo":          "Tokyo",
+  "Asia/Hong_Kong":      "Hong Kong",
+  "Asia/Singapore":      "Singapore",
+  "Asia/Seoul":          "Seoul",
+  "Australia/Sydney":    "Sydney",
+};
+
+function tzCityName(tz: string): string {
+  if (TZ_CITY[tz]) return TZ_CITY[tz]!;
+  // Fall back to the short abbreviation, e.g. "EST" or "GMT+3".
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    timeZoneName: "short",
+  }).formatToParts(new Date());
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
+
+function formatUnlockLabel(lockedUntilMs: number, tz: string): string {
+  const now = Date.now();
+  const diffMin = Math.ceil((lockedUntilMs - now) / 60_000);
+
+  if (diffMin <= 0) return "soon";
+
+  if (diffMin <= 90) {
+    return `in ${diffMin} minute${diffMin !== 1 ? "s" : ""}`;
+  }
+
+  const timeStr = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(lockedUntilMs));
+
+  return `after ${timeStr} ${tzCityName(tz)} time`;
+}
+
+function BlockedDialog({
+  lockedUntilMs,
+  lockedUntilTz,
+  onClose,
+}: {
+  lockedUntilMs: number | null;
+  lockedUntilTz: string | null;
+  onClose: () => void;
+}) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -18,6 +78,11 @@ function BlockedDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
+
+  const unlockSuffix =
+    lockedUntilMs != null && lockedUntilTz
+      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
+      : null;
 
   return (
     <div
@@ -39,7 +104,10 @@ function BlockedDialog({ onClose }: { onClose: () => void }) {
           id="disconnect-blocked-desc"
           className="mt-3 text-sm leading-6 text-stone-600"
         >
-          This account is protected during today&apos;s trading session. You can disconnect after the session ends.
+          This account is protected during today&apos;s trading session.{" "}
+          {unlockSuffix
+            ? `You can disconnect ${unlockSuffix}.`
+            : "You can disconnect after today's protected session ends."}
         </p>
         <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Link
@@ -140,12 +208,18 @@ export function DisconnectButton({
   accountId,
   providerLabel,
   isBlocked = false,
+  lockedUntilMs = null,
+  lockedUntilTz = null,
   redirectTo = "/accounts",
 }: {
   accountId: string;
   providerLabel: string;
   /** Pass true when the account is protected during an active trading session. */
   isBlocked?: boolean;
+  /** UTC millisecond timestamp of when the session lock lifts. */
+  lockedUntilMs?: number | null;
+  /** IANA timezone for formatting the unlock time. */
+  lockedUntilTz?: string | null;
   redirectTo?: string;
 }) {
   const router = useRouter();
@@ -156,7 +230,6 @@ export function DisconnectButton({
 
   function closeDialog() {
     setDialogMode(null);
-    // Return focus to the trigger after modal closes.
     requestAnimationFrame(() => triggerRef.current?.focus());
   }
 
@@ -189,6 +262,11 @@ export function DisconnectButton({
     }
   }
 
+  const unlockLabel =
+    isBlocked && lockedUntilMs != null && lockedUntilTz
+      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
+      : null;
+
   return (
     <>
       {error && <p className="text-xs text-red-700">{error}</p>}
@@ -196,7 +274,10 @@ export function DisconnectButton({
       {isBlocked ? (
         <div className="flex flex-col items-end gap-1">
           <p className="text-xs text-amber-700">
-            Protected session active · Disconnect available after session ends.
+            Protected session active ·{" "}
+            {unlockLabel
+              ? `Disconnect available ${unlockLabel}.`
+              : "Disconnect available after session ends."}
           </p>
           <button
             ref={triggerRef}
@@ -219,7 +300,11 @@ export function DisconnectButton({
       )}
 
       {dialogMode === "blocked" && (
-        <BlockedDialog onClose={closeDialog} />
+        <BlockedDialog
+          lockedUntilMs={lockedUntilMs}
+          lockedUntilTz={lockedUntilTz}
+          onClose={closeDialog}
+        />
       )}
 
       {dialogMode === "destructive" && (

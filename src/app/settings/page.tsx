@@ -66,6 +66,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         tradingStyle: true,
         tradingSession: true,
         tradingExperience: true,
+        timezone: true,
       },
     }),
     prisma.connectedAccount.findMany({
@@ -87,6 +88,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   ]);
 
   const lockState = getProtectionLockState({
+    timezone: traderProfile?.timezone ?? null,
     sessionStartHour: userRules?.sessionStartHour ?? null,
     sessionEndHour: userRules?.sessionEndHour ?? null,
     cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
@@ -296,6 +298,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                         lockState.isLocked &&
                         (acct.protectionStatus === "protected" || acct.protectionStatus === "monitor_only")
                       }
+                      lockedUntilMs={lockState.lockedUntil?.getTime() ?? null}
+                      lockedUntilTz={lockState.timezone}
                     />
                   </div>
                 );
