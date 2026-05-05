@@ -24,7 +24,7 @@ export default function PrivacyPage() {
             <strong>Risk profile:</strong> trading rules and preferences you enter during onboarding (max daily loss, max trades, session hours, etc.).
           </li>
           <li>
-            <strong>Journal entries:</strong> trades you log in the journal — symbols, sides, prices, P&L, notes you write.
+            <strong>Broker trade events:</strong> when a broker account is connected, we store trade fill events received from your broker — symbols, sides, quantities, fill prices, and timestamps — to evaluate your rules in real time.
           </li>
           <li>
             <strong>Broker connection metadata:</strong> when you connect a broker (e.g., Tradovate), we store the connection state, account label, and an encrypted copy of OAuth tokens. See &ldquo;How we protect tokens&rdquo; below.
@@ -45,7 +45,7 @@ export default function PrivacyPage() {
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">How we use the data</h2>
         <ul className="mt-2 list-disc space-y-1 pl-6">
           <li>To authenticate you and keep your session active.</li>
-          <li>To evaluate your rules against your journal entries or broker reads (when connected and verified).</li>
+          <li>To evaluate your rules against broker trade events (when a broker account is connected and verified).</li>
           <li>To send you alerts you&rsquo;ve opted into (Telegram, email, in-app).</li>
           <li>To improve the product through aggregated, non-identifying analysis.</li>
         </ul>

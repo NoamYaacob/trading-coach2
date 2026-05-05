@@ -34,7 +34,12 @@ export default function RiskDisclaimerPage() {
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Broker-level enforcement depends on broker API support</h2>
           <p className="mt-2 text-stone-700">
-            Direct broker integrations (read-only and, in the future, action endpoints) depend on the broker&rsquo;s API exposing those capabilities, the user authorizing them, and Guardrail verifying each capability against a live account before enabling it. Where broker APIs do not support a capability — for example, true server-side order blocking — Guardrail does not pretend otherwise. The product status panel in your Accounts page reflects the current state.
+            Direct broker integrations (read-only and, in the future, action endpoints) depend on the broker&rsquo;s API exposing those capabilities, the user authorizing them, and Guardrail verifying each capability against a live account before enabling it. Enforcement availability varies by broker, prop firm, account type, connection type, and the permissions granted at connection time. A read-only connection can monitor account activity and trigger in-app alerts but cannot block, cancel, or modify orders at the broker. Where broker APIs do not support a capability — for example, true server-side order blocking — Guardrail does not pretend otherwise. The product status panel in your Accounts page reflects the current state.
+          </p>
+
+          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Enforcement may fail or be unavailable</h2>
+          <p className="mt-2 text-stone-700">
+            Even where broker enforcement is configured, it may be unavailable, delayed, rejected, or fail at the time of execution due to network issues, broker API outages, account status changes, permission revocations, or prop firm policy changes. Guardrail logs enforcement attempts but cannot guarantee the outcome of any broker-side action. You remain responsible for monitoring your account and taking manual action if automated enforcement does not complete as expected.
           </p>
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Destructive actions require explicit consent</h2>
@@ -58,7 +63,7 @@ export default function RiskDisclaimerPage() {
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">User responsibility</h2>
           <p className="mt-2 text-stone-700">
-            You remain solely responsible for your trading decisions and their outcomes. You are responsible for the accuracy of trades you log manually, for the rules you configure, and for following them. Guardrail is a tool that helps you hold yourself to your stated rules; it is not a substitute for risk management, capital preservation, or professional financial advice.
+            You remain solely responsible for your trading decisions and their outcomes. You are responsible for the accuracy of any data submitted through the Service, the rules you configure, the broker accounts you authorize, and for following your stated rules. Guardrail is a tool that helps you hold yourself to your stated rules; it is not a substitute for risk management, capital preservation, or professional financial advice.
           </p>
 
           <p className="mt-8 text-xs text-stone-400">

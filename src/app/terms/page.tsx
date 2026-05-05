@@ -37,7 +37,7 @@ export default function TermsPage() {
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">4. Your responsibilities</h2>
         <p className="mt-3">
-          You are responsible for: (a) the accuracy of journal entries you submit, (b) the rules you configure, (c) the broker accounts you authorize, (d) following the rules you set, and (e) any trading decisions you take. Guardrail is a tool that helps you hold yourself to your stated rules; it is not a substitute for capital preservation or professional advice.
+          You are responsible for: (a) the accuracy of any data you submit to the Service, (b) the rules you configure, (c) the broker accounts you authorize, (d) following the rules you set, and (e) any trading decisions you take. Guardrail is a tool that helps you hold yourself to your stated rules; it is not a substitute for capital preservation or professional advice.
         </p>
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">5. Service availability</h2>
