@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
+import { getProtectionLockState } from "@/lib/account-protection";
+
 import { getCurrentUser } from "@/lib/auth";
 
 function normalizeDisplay(raw: string | null | undefined, canonical: readonly string[]): string | null {
@@ -44,7 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams;
 
-  const [dbUser, telegramConnection, googleConnection, traderProfile, connectedAccounts] = await Promise.all([
+  const [dbUser, telegramConnection, googleConnection, traderProfile, connectedAccounts, userRules] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -74,10 +76,21 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         platform: true,
         connectionStatus: true,
         connectedAt: true,
+        protectionStatus: true,
       },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.riskRules.findUnique({
+      where: { userId: user.id },
+      select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },
+    }),
   ]);
+
+  const lockState = getProtectionLockState({
+    sessionStartHour: userRules?.sessionStartHour ?? null,
+    sessionEndHour: userRules?.sessionEndHour ?? null,
+    cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
+  });
 
   const hasPassword = Boolean(dbUser?.passwordHash);
   const googleConnected = Boolean(googleConnection);
@@ -279,6 +292,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       accountId={acct.id}
                       providerLabel={platformLabel}
                       redirectTo="/settings"
+                      isBlocked={
+                        lockState.isLocked &&
+                        (acct.protectionStatus === "protected" || acct.protectionStatus === "monitor_only")
+                      }
                     />
                   </div>
                 );

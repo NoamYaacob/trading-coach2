@@ -72,7 +72,7 @@ function ConfirmDialog({
           id="delete-dialog-desc"
           className="mt-3 text-sm leading-6 text-stone-600"
         >
-          This permanently deletes your account, rules, journal, alerts, and connected accounts. This action cannot be undone.
+          This permanently deletes your account, rules, alerts, broker connections, and stored trade event data. This action cannot be undone.
         </p>
 
         <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -141,7 +141,7 @@ export function DeleteAccount() {
     <>
       <div className="grid gap-4">
         <p className="text-sm leading-6 text-stone-600">
-          This permanently deletes your account, rules, journal, alerts, and connected accounts. This action cannot be undone.
+          This permanently deletes your account, rules, alerts, broker connections, and stored trade event data. This action cannot be undone.
         </p>
 
         <div className="grid gap-2">
