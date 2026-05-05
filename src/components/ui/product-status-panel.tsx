@@ -92,7 +92,7 @@ function buildItems(opts: {
       status: oauthConfigured ? "prepared" : "pending",
       detail: oauthConfigured
         ? "OAuth credentials configured. Read scope only — does not request order-write permissions. Connection lifecycle: not_connected → connected_readonly → expired."
-        : `Missing env vars: ${missingKeys.join(", ")}. The connect flow is unavailable until these are set. Manual journal (demo mode) is the fallback in the meantime.`,
+        : `Missing env vars: ${missingKeys.join(", ")}. The connect flow is unavailable until these are set.`,
     },
     {
       key: "endpoints",
@@ -108,7 +108,7 @@ function buildItems(opts: {
       mobileTitle: "Broker risk checks",
       status: "pending",
       detail:
-        "Dashboard and Guardian evaluate from the manual journal today. They will switch to broker-driven evaluation only after the read endpoints are verified.",
+        "Dashboard and Guardian will switch to broker-driven risk evaluation once the read endpoints are verified against a live Tradovate account.",
     },
     {
       key: "cancel_flatten",
