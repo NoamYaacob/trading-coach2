@@ -70,7 +70,11 @@ export default async function SelectAccountsPage({
       }));
   }
 
-  const envLabel = setup.env === "demo" ? "Demo / Sim" : "Live";
+  // Setup label is local metadata from the pre-OAuth form. It does not
+  // affect Tradovate URL routing — OAuth uses a single host that recognises
+  // Guardrail's CID and discovers all accounts (live, demo, prop) for the
+  // authenticated user.
+  const setupLabel = setup.env === "demo" ? "Demo / Sim" : "Live";
   const sourceLabel =
     setup.accountSource === "prop_firm"
       ? setup.propFirmName ?? "Prop firm"
@@ -79,6 +83,17 @@ export default async function SelectAccountsPage({
         : setup.accountSource === "demo"
           ? "Demo account"
           : "Other";
+
+  // Detected account type from Tradovate (uniform across discovered accounts).
+  const uniqueDetectedTypes = Array.from(
+    new Set(
+      discoveredAccounts
+        .map((a) => a.accountType)
+        .filter((t) => t && t.toLowerCase() !== "unknown"),
+    ),
+  );
+  const detectedTypeLabel =
+    uniqueDetectedTypes.length === 1 ? uniqueDetectedTypes[0] : null;
 
   return (
     <div className="w-full min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(113,63,18,0.12),_transparent_32%),linear-gradient(180deg,_#f8f5ef_0%,_#f4efe6_100%)] text-stone-950">
@@ -101,12 +116,19 @@ export default async function SelectAccountsPage({
             Broker Connections · Tradovate
           </p>
           <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl">
-            Select accounts to import
+            Select accounts to add
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-stone-600">
-            <span>
-              <span className="font-medium text-stone-800">Environment:</span> {envLabel}
-            </span>
+            {detectedTypeLabel ? (
+              <span>
+                <span className="font-medium text-stone-800">Detected account type:</span>{" "}
+                {detectedTypeLabel}
+              </span>
+            ) : (
+              <span>
+                <span className="font-medium text-stone-800">Setup label:</span> {setupLabel}
+              </span>
+            )}
             <span>
               <span className="font-medium text-stone-800">Account source:</span> {sourceLabel}
             </span>

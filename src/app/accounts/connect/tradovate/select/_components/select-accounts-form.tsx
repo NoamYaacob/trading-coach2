@@ -92,7 +92,7 @@ export function SelectAccountsForm({
 
     const selected = rows.filter((r) => r.selected);
     if (selected.length === 0) {
-      setError("Select at least one account to import.");
+      setError("Select at least one account to add.");
       return;
     }
 
@@ -148,7 +148,7 @@ export function SelectAccountsForm({
       }
       if (!data.ok || (data.count ?? 0) === 0) {
         setRetryError(
-          "Still no accounts found. Check that the correct environment (Demo or Live) is active for your Tradovate account.",
+          "Still no accounts found. Sign in to Tradovate to confirm the account is active, then try again.",
         );
         return;
       }
@@ -168,8 +168,8 @@ export function SelectAccountsForm({
           <p className="text-sm font-semibold text-amber-800">Account list not available yet</p>
           <p className="mt-1 text-sm text-amber-700">
             We connected Tradovate, but could not read your account list. This can happen if the
-            authorization hasn&rsquo;t fully synced yet, or if the{" "}
-            {env === "demo" ? "demo" : "live"} environment isn&rsquo;t activated for your account.
+            authorization hasn&rsquo;t fully synced yet, or if the account isn&rsquo;t active in
+            Tradovate.
           </p>
           {retryError && (
             <p className="mt-3 text-xs font-medium text-red-700">{retryError}</p>
@@ -304,8 +304,8 @@ export function SelectAccountsForm({
           className="inline-flex items-center justify-center rounded-full bg-stone-950 px-7 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:opacity-50"
         >
           {submitting
-            ? "Importing…"
-            : `Import ${selectedCount} account${selectedCount === 1 ? "" : "s"}`}
+            ? "Adding…"
+            : `Add ${selectedCount} account${selectedCount === 1 ? "" : "s"}`}
         </button>
         <Link
           href="/accounts"

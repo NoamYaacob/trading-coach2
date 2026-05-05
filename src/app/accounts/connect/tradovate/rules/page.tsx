@@ -71,7 +71,7 @@ export default async function RulesAssignmentPage({
           </h1>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             Choose how Guardrail evaluates rules for the{" "}
-            {accounts.length === 1 ? "imported account" : `${accounts.length} imported accounts`}.
+            {accounts.length === 1 ? "added account" : `${accounts.length} added accounts`}.
             You can change this at any time.
           </p>
         </div>
@@ -181,8 +181,8 @@ export default async function RulesAssignmentPage({
           <div className="rounded-2xl border border-stone-200 bg-stone-50 p-5">
             <p className="text-sm font-semibold text-stone-700">Monitor only</p>
             <p className="mt-1 text-sm text-stone-500">
-              No rule evaluation — Guardrail records your trades and syncs account data without
-              checking limits. You can add rules later.
+              Account data sync only — no rule alerts or Guardian lock status will be applied.
+              You can add rules later.
             </p>
             <div className="mt-4">
               <Link
@@ -197,8 +197,9 @@ export default async function RulesAssignmentPage({
         </div>
 
         <p className="text-xs leading-5 text-stone-500">
-          Guardrail evaluates rules locally — alerts fire when a limit is hit. Broker-side enforcement
-          (cancel, flatten, lockout) is not active and requires separate opt-in.
+          Guardrail evaluates rules in-app from connected broker data. Alerts fire when a limit
+          is hit. Broker-side enforcement (cancel, flatten, lockout) is not active and requires
+          separate opt-in.
         </p>
       </main>
     </div>
