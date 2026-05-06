@@ -32,8 +32,8 @@ export type AccountFormInitialData = {
 };
 
 type Props =
-  | { mode: "create"; lockedPlatform?: string; hideRules?: boolean }
-  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData; lockedPlatform?: string; hideRules?: boolean };
+  | { mode: "create"; lockedPlatform?: string; hideRules?: boolean; hideEventRouting?: boolean }
+  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData; lockedPlatform?: string; hideRules?: boolean; hideEventRouting?: boolean };
 
 function parseNumberOrNull(value: string): number | null {
   if (!value.trim()) return null;
@@ -60,6 +60,7 @@ export function AccountForm(props: Props) {
   const init = isEdit ? props.initialData : null;
   const lockedPlatform = props.lockedPlatform ?? null;
   const hideRules = props.hideRules ?? false;
+  const hideEventRouting = props.hideEventRouting ?? false;
 
   const [form, setForm] = useState({
     label: init?.label ?? "",
@@ -526,7 +527,7 @@ export function AccountForm(props: Props) {
         </button>
       </div>
 
-      {isTradovate && (
+      {isTradovate && !hideEventRouting && (
         <details className="group rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             Tradovate event routing setup

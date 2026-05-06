@@ -4,12 +4,49 @@ import {
   mapConnectionStatus,
   mapOutcome,
   mapRiskState,
+  buildWebhookUrl,
   CONNECTION_STATUS_LABEL,
   OUTCOME_LABEL,
   RISK_STATE_LABEL,
+  DIAGNOSTICS_DEFAULT_OPEN,
 } from "./diagnostics-helpers.ts";
 
 const FORBIDDEN = ["read_only", "connected_readonly", "monitoring_only", "dry_run", "READ-ONLY"];
+
+// ── DIAGNOSTICS_DEFAULT_OPEN ──────────────────────────────────────────────────
+
+describe("DIAGNOSTICS_DEFAULT_OPEN", () => {
+  it("is false — panel must be collapsed by default", () => {
+    assert.equal(DIAGNOSTICS_DEFAULT_OPEN, false);
+  });
+
+  it("is a boolean — used directly in useState()", () => {
+    assert.equal(typeof DIAGNOSTICS_DEFAULT_OPEN, "boolean");
+  });
+});
+
+// ── buildWebhookUrl ───────────────────────────────────────────────────────────
+
+describe("buildWebhookUrl", () => {
+  it("appends the tradovate webhook path to the base URL", () => {
+    assert.equal(buildWebhookUrl("https://app.example.com"), "https://app.example.com/api/tradovate/webhook");
+  });
+
+  it("works with the placeholder fallback base URL", () => {
+    const url = buildWebhookUrl("https://your-app-url");
+    assert.ok(url.includes("/api/tradovate/webhook"), `URL must include webhook path: ${url}`);
+  });
+
+  it("result never contains raw enum strings", () => {
+    const url = buildWebhookUrl("https://app.example.com");
+    for (const forbidden of FORBIDDEN) {
+      assert.ok(
+        !url.toLowerCase().includes(forbidden.toLowerCase()),
+        `webhook URL must not contain '${forbidden}'`,
+      );
+    }
+  });
+});
 
 // ── mapConnectionStatus ───────────────────────────────────────────────────────
 

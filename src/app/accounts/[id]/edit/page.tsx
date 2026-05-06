@@ -17,6 +17,7 @@ import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 import { DisconnectButton } from "./_components/disconnect-button";
 import { ReactivateButton } from "./_components/reactivate-button";
+import { mapRiskState, buildWebhookUrl } from "./_components/diagnostics-helpers";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
@@ -421,11 +422,73 @@ export default async function EditAccountPage({
           </div>
         </div>
 
+        {/* Session summary — surfaced for active accounts so traders see today's state */}
+        {account.sessionState && (
+          <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Today&rsquo;s session
+            </p>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-stone-500">Risk state</dt>
+                <dd
+                  className={`mt-0.5 font-semibold ${
+                    account.sessionState.riskState === "STOPPED"
+                      ? "text-red-700"
+                      : account.sessionState.riskState === "WARNING"
+                        ? "text-amber-700"
+                        : "text-emerald-700"
+                  }`}
+                >
+                  {mapRiskState(account.sessionState.riskState)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-500">Daily P&amp;L</dt>
+                <dd
+                  className={`mt-0.5 font-mono font-semibold ${
+                    Number(account.sessionState.dailyPnl) < 0
+                      ? "text-red-700"
+                      : Number(account.sessionState.dailyPnl) > 0
+                        ? "text-emerald-700"
+                        : "text-stone-900"
+                  }`}
+                >
+                  {Number(account.sessionState.dailyPnl) >= 0 ? "+" : ""}
+                  {Number(account.sessionState.dailyPnl).toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-500">Trades</dt>
+                <dd className="mt-0.5 font-semibold text-stone-900">
+                  {account.sessionState.tradesCount ?? 0}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-500">Loss streak</dt>
+                <dd className="mt-0.5 font-semibold text-stone-900">
+                  {account.sessionState.consecutiveLosses ?? 0}
+                </dd>
+              </div>
+              {account.sessionState.cooldownActive && (
+                <div className="col-span-2 sm:col-span-4">
+                  <dt className="text-xs text-stone-500">Cooldown</dt>
+                  <dd className="mt-0.5 font-medium text-amber-700">
+                    {account.sessionState.cooldownUntil
+                      ? `Active until ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(account.sessionState.cooldownUntil)}`
+                      : "Active"}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
         <SectionCard
           title="Account details"
           description="Update account identity and connection settings. Save to apply changes immediately."
         >
-          <AccountForm mode="edit" accountId={account.id} initialData={initialData} hideRules />
+          <AccountForm mode="edit" accountId={account.id} initialData={initialData} hideRules hideEventRouting />
         </SectionCard>
 
         {account.isActive && (
@@ -443,19 +506,6 @@ export default async function EditAccountPage({
             connectionStatus={account.connectionStatus}
             externalAccountId={account.externalAccountId}
             connectedAt={account.connectedAt?.toISOString() ?? null}
-            sessionSnapshot={
-              account.sessionState
-                ? {
-                    riskState: account.sessionState.riskState,
-                    dailyPnl: account.sessionState.dailyPnl.toString(),
-                    tradesCount: account.sessionState.tradesCount ?? 0,
-                    consecutiveLosses: account.sessionState.consecutiveLosses ?? 0,
-                    cooldownActive: account.sessionState.cooldownActive,
-                    cooldownUntil: account.sessionState.cooldownUntil?.toISOString() ?? null,
-                    sessionDate: account.sessionState.sessionDate,
-                  }
-                : null
-            }
             recentEvents={recentEvents.map((e) => ({
               eventType: e.eventType,
               occurredAt: e.occurredAt.toISOString(),
@@ -469,6 +519,8 @@ export default async function EditAccountPage({
               message: iv.message,
             }))}
             isDev={process.env.NODE_ENV !== "production"}
+            showEventRouting={readiness === "pending_first_event" || readiness === "not_connected"}
+            webhookUrl={buildWebhookUrl(process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app-url")}
           />
         )}
       </div>

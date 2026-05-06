@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mapConnectionStatus, mapOutcome, mapRiskState } from "./diagnostics-helpers";
+import { DIAGNOSTICS_DEFAULT_OPEN, mapConnectionStatus, mapOutcome } from "./diagnostics-helpers";
 
 export type DiagnosticsEvent = {
   eventType: string;
@@ -18,25 +18,16 @@ export type DiagnosticsIntervention = {
   message: string | null;
 };
 
-export type DiagnosticsSession = {
-  riskState: string;
-  dailyPnl: string;
-  tradesCount: number;
-  consecutiveLosses: number;
-  cooldownActive: boolean;
-  cooldownUntil: string | null;
-  sessionDate: string;
-} | null;
-
 type Props = {
   accountId: string;
   connectionStatus: string;
   externalAccountId: string | null;
   connectedAt: string | null;
-  sessionSnapshot: DiagnosticsSession;
   recentEvents: DiagnosticsEvent[];
   recentInterventions: DiagnosticsIntervention[];
   isDev: boolean;
+  showEventRouting: boolean;
+  webhookUrl: string;
 };
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -72,13 +63,14 @@ export function DiagnosticsPanel({
   connectionStatus,
   externalAccountId,
   connectedAt,
-  sessionSnapshot,
   recentEvents,
   recentInterventions,
   isDev,
+  showEventRouting,
+  webhookUrl,
 }: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(DIAGNOSTICS_DEFAULT_OPEN);
   const [firing, setFiring] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -98,8 +90,6 @@ export function DiagnosticsPanel({
         setTestError((data.error as string) ?? "Request failed");
       } else {
         setTestResult(data);
-        // Refresh server data so the panel immediately shows the new event,
-        // updated session state, and any new intervention.
         router.refresh();
       }
     } catch {
@@ -124,80 +114,71 @@ export function DiagnosticsPanel({
 
       {open && (
         <div className="grid gap-5 border-t border-stone-200 px-6 pb-6 pt-5">
-          {/* Connection + Session */}
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                Connection
-              </p>
-              <dl className="grid gap-1.5 text-sm">
-                <Row label="Status">
-                  <span className="text-stone-900">{mapConnectionStatus(connectionStatus)}</span>
-                </Row>
-                <Row label="Account ID">
-                  <span className="font-mono text-stone-900">{externalAccountId ?? "—"}</span>
-                </Row>
-                {connectedAt && (
-                  <Row label="Live since">
-                    <span className="text-stone-700">{shortDate(connectedAt)}</span>
-                  </Row>
-                )}
-              </dl>
-            </div>
 
+          {/* Tradovate event routing setup */}
+          {showEventRouting && (
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-                Session today
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                Event routing setup
               </p>
-              {sessionSnapshot ? (
-                <dl className="grid gap-1.5 text-sm">
-                  <Row label="Risk state">
-                    <span
-                      className={`font-semibold ${
-                        sessionSnapshot.riskState === "STOPPED"
-                          ? "text-red-700"
-                          : sessionSnapshot.riskState === "WARNING"
-                            ? "text-amber-700"
-                            : "text-emerald-700"
-                      }`}
-                    >
-                      {mapRiskState(sessionSnapshot.riskState)}
+              <ol className="grid gap-4">
+                <li className="flex gap-3 text-sm text-stone-700">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                    1
+                  </span>
+                  <span className="grid gap-1.5">
+                    <span>Configure Tradovate to send events to this endpoint:</span>
+                    <code className="block rounded-lg bg-stone-100 px-3 py-1.5 font-mono text-xs text-stone-800">
+                      {webhookUrl}
+                    </code>
+                  </span>
+                </li>
+                <li className="flex gap-3 text-sm text-stone-700">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                    2
+                  </span>
+                  <span className="grid gap-1.5">
+                    <span>Include this header on every request:</span>
+                    <code className="block rounded-lg bg-stone-100 px-3 py-1.5 font-mono text-xs text-stone-800">
+                      x-tradovate-secret: [your-webhook-secret]
+                    </code>
+                    <span className="text-xs text-stone-500">
+                      Use the webhook secret configured on this server. Ask your administrator for
+                      the correct value.
                     </span>
-                  </Row>
-                  <Row label="Daily P&L">
-                    <span
-                      className={`font-mono ${
-                        Number(sessionSnapshot.dailyPnl) < 0
-                          ? "text-red-700"
-                          : Number(sessionSnapshot.dailyPnl) > 0
-                            ? "text-emerald-700"
-                            : "text-stone-900"
-                      }`}
-                    >
-                      {Number(sessionSnapshot.dailyPnl) >= 0 ? "+" : ""}
-                      {Number(sessionSnapshot.dailyPnl).toFixed(2)}
-                    </span>
-                  </Row>
-                  <Row label="Trades">
-                    <span className="text-stone-900">{sessionSnapshot.tradesCount}</span>
-                  </Row>
-                  <Row label="Loss streak">
-                    <span className="text-stone-900">{sessionSnapshot.consecutiveLosses}</span>
-                  </Row>
-                  {sessionSnapshot.cooldownActive && (
-                    <Row label="Cooldown">
-                      <span className="text-amber-700">
-                        {sessionSnapshot.cooldownUntil
-                          ? `Until ${shortDate(sessionSnapshot.cooldownUntil)}`
-                          : "Active"}
-                      </span>
-                    </Row>
-                  )}
-                </dl>
-              ) : (
-                <p className="text-sm text-stone-400">No session data — no events yet today.</p>
-              )}
+                  </span>
+                </li>
+                <li className="flex gap-3 text-sm text-stone-700">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600">
+                    3
+                  </span>
+                  <span>
+                    Place a test trade. The <strong>connection readiness</strong> panel above will
+                    update once the first event arrives.
+                  </span>
+                </li>
+              </ol>
             </div>
+          )}
+
+          {/* Connection info */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Connection
+            </p>
+            <dl className="grid gap-1.5 text-sm">
+              <Row label="Status">
+                <span className="text-stone-900">{mapConnectionStatus(connectionStatus)}</span>
+              </Row>
+              <Row label="Account ID">
+                <span className="font-mono text-stone-900">{externalAccountId ?? "—"}</span>
+              </Row>
+              {connectedAt && (
+                <Row label="Live since">
+                  <span className="text-stone-700">{shortDate(connectedAt)}</span>
+                </Row>
+              )}
+            </dl>
           </div>
 
           {/* Recent events */}

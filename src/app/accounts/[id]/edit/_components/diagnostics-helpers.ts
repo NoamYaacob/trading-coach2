@@ -1,3 +1,6 @@
+/** Whether the Advanced diagnostics panel is open by default. */
+export const DIAGNOSTICS_DEFAULT_OPEN = false;
+
 export const CONNECTION_STATUS_LABEL: Record<string, string> = {
   connected_live: "Connected",
   connected_readonly: "Connected",
@@ -20,6 +23,14 @@ export const RISK_STATE_LABEL: Record<string, string> = {
   WARNING: "Warning",
   STOPPED: "Stopped",
 };
+
+/**
+ * Builds the Tradovate webhook URL from the app's base URL.
+ * Falls back to the placeholder string when the env var is absent.
+ */
+export function buildWebhookUrl(baseUrl: string): string {
+  return `${baseUrl}/api/tradovate/webhook`;
+}
 
 export function mapConnectionStatus(raw: string): string {
   return CONNECTION_STATUS_LABEL[raw] ?? raw.replace(/_/g, " ");
