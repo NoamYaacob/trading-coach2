@@ -17,27 +17,12 @@ import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 import { DisconnectButton } from "./_components/disconnect-button";
 import { ReactivateButton } from "./_components/reactivate-button";
-import { mapRiskState, buildWebhookUrl } from "./_components/diagnostics-helpers";
+import { EVENT_TYPE_LABEL, mapRiskState, buildWebhookUrl, shortDate } from "./_components/diagnostics-helpers";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
 };
 
-const EVENT_TYPE_LABEL: Record<string, string> = {
-  trade_closed: "Trade closed",
-  trade_opened: "Trade opened",
-  daily_pnl_updated: "P&L update",
-};
-
-function shortDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
 
 type ReadinessLevel =
   | "active"
@@ -140,7 +125,16 @@ export default async function EditAccountPage({
     where: { id, userId: currentUser.id },
     include: {
       riskRules: true,
-      sessionState: true,
+      sessionState: {
+        select: {
+          riskState: true,
+          dailyPnl: true,
+          tradesCount: true,
+          consecutiveLosses: true,
+          cooldownActive: true,
+          cooldownUntil: true,
+        },
+      },
       brokerConnection: { select: { permissionLevel: true, connectionStatus: true } },
     },
   });
@@ -312,6 +306,8 @@ export default async function EditAccountPage({
       : null,
   };
 
+  const sessionPnl = account.sessionState != null ? Number(account.sessionState.dailyPnl) : null;
+
   return (
     <AppShell
       eyebrow="Broker Connections"
@@ -422,8 +418,7 @@ export default async function EditAccountPage({
           </div>
         </div>
 
-        {/* Session summary — surfaced for active accounts so traders see today's state */}
-        {account.sessionState && (
+        {account.sessionState && sessionPnl != null && (
           <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
               Today&rsquo;s session
@@ -447,15 +442,11 @@ export default async function EditAccountPage({
                 <dt className="text-xs text-stone-500">Daily P&amp;L</dt>
                 <dd
                   className={`mt-0.5 font-mono font-semibold ${
-                    Number(account.sessionState.dailyPnl) < 0
-                      ? "text-red-700"
-                      : Number(account.sessionState.dailyPnl) > 0
-                        ? "text-emerald-700"
-                        : "text-stone-900"
+                    sessionPnl < 0 ? "text-red-700" : sessionPnl > 0 ? "text-emerald-700" : "text-stone-900"
                   }`}
                 >
-                  {Number(account.sessionState.dailyPnl) >= 0 ? "+" : ""}
-                  {Number(account.sessionState.dailyPnl).toFixed(2)}
+                  {sessionPnl >= 0 ? "+" : ""}
+                  {sessionPnl.toFixed(2)}
                 </dd>
               </div>
               <div>
@@ -475,7 +466,7 @@ export default async function EditAccountPage({
                   <dt className="text-xs text-stone-500">Cooldown</dt>
                   <dd className="mt-0.5 font-medium text-amber-700">
                     {account.sessionState.cooldownUntil
-                      ? `Active until ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(account.sessionState.cooldownUntil)}`
+                      ? `Active until ${shortDate(account.sessionState.cooldownUntil)}`
                       : "Active"}
                   </dd>
                 </div>

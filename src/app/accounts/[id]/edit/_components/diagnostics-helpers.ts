@@ -1,6 +1,12 @@
 /** Whether the Advanced diagnostics panel is open by default. */
 export const DIAGNOSTICS_DEFAULT_OPEN = false;
 
+export const EVENT_TYPE_LABEL: Record<string, string> = {
+  trade_closed: "Trade closed",
+  trade_opened: "Trade opened",
+  daily_pnl_updated: "P&L update",
+};
+
 export const CONNECTION_STATUS_LABEL: Record<string, string> = {
   connected_live: "Connected",
   connected_readonly: "Connected",
@@ -42,4 +48,14 @@ export function mapOutcome(raw: string): string {
 
 export function mapRiskState(raw: string): string {
   return RISK_STATE_LABEL[raw] ?? raw;
+}
+
+export function shortDate(date: string | Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(typeof date === "string" ? new Date(date) : date);
 }

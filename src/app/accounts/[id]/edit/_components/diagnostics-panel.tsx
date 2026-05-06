@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DIAGNOSTICS_DEFAULT_OPEN, mapConnectionStatus, mapOutcome } from "./diagnostics-helpers";
+import { DIAGNOSTICS_DEFAULT_OPEN, EVENT_TYPE_LABEL, mapConnectionStatus, mapOutcome, shortDate } from "./diagnostics-helpers";
 
 export type DiagnosticsEvent = {
   eventType: string;
@@ -30,12 +30,6 @@ type Props = {
   webhookUrl: string;
 };
 
-const EVENT_TYPE_LABEL: Record<string, string> = {
-  trade_closed: "Trade closed",
-  trade_opened: "Trade opened",
-  daily_pnl_updated: "P&L update",
-};
-
 const TRIGGER_LABEL: Record<string, string> = {
   daily_loss_limit: "Daily loss limit",
   consecutive_losses: "Consecutive losses",
@@ -46,15 +40,6 @@ const TRIGGER_LABEL: Record<string, string> = {
   outside_allowed_hours: "Outside trading hours",
 };
 
-function shortDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
 
 type TestResult = Record<string, unknown>;
 

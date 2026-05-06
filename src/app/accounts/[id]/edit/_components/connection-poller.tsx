@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EVENT_TYPE_LABEL, shortDate } from "./diagnostics-helpers";
 
 export type StaticCheck = {
   label: string;
@@ -13,22 +14,6 @@ type ActivatedEvent = {
   eventType: string;
   occurredAt: string;
 };
-
-const EVENT_TYPE_LABEL: Record<string, string> = {
-  trade_closed: "Trade closed",
-  trade_opened: "Trade opened",
-  daily_pnl_updated: "P&L update",
-};
-
-function shortDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
 
 type Props = {
   accountId: string;
