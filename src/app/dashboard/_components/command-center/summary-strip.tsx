@@ -1,5 +1,5 @@
 import type { CommandCenterSummary } from "./types";
-import { formatBreakdownHint } from "./summary-strip-helpers";
+import { formatBreakdownHint, TRADABLE_ACCOUNTS_TILE_LABEL } from "./summary-strip-helpers";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -34,7 +34,10 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
       value: summary.totalActive.toString(),
     },
     {
-      label: "Allowed",
+      // "Tradable accounts" instead of "Allowed" — the count alone could
+      // imply every allowed account has the same protection level. The
+      // breakdown subtext (live vs practice) makes the mix explicit.
+      label: TRADABLE_ACCOUNTS_TILE_LABEL,
       value: summary.counts.allowed.toString(),
       dotClass: "bg-emerald-500",
       hint: formatBreakdownHint(summary.breakdown.allowed),

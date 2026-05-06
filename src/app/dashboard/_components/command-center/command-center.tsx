@@ -17,7 +17,10 @@ import {
   getTradeCountDisplay,
   deriveBrokerEnforcementCopy,
   deriveStaleSyncWarning,
+  deriveFooterCopy,
+  DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
+  ESTIMATED_TRADE_COUNT_SHORT,
 } from "./data-helpers";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import type {
@@ -152,6 +155,12 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     return null;
   }
 
+  const isDryRunActive = data.accounts.some((a) => a.enforcementMode === "dry_run");
+  const footerCopy = deriveFooterCopy({
+    modes: data.accounts.map((a) => a.enforcementMode),
+    hasDryRunBanner: isDryRunActive,
+  });
+
   return (
     <div className="grid gap-4">
       {data.pendingAccounts.length > 0 && (
@@ -162,20 +171,24 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           aria-label="Risk command center"
           className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
         >
+          {isDryRunActive && <DryRunBanner />}
           {data.protectionLock.isLocked && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-700">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
               <span>Protection locked for today · Rule changes apply from {data.protectionLock.nextTradingDayKey}.</span>
             </div>
           )}
-          <SyncHeader summary={data.summary} accounts={data.accounts} />
+          <SectionHeader
+            summary={data.summary}
+            accounts={data.accounts}
+            firms={data.firms}
+            firmFilter={firmFilter}
+            onFirmChange={setFirmFilter}
+          />
           <FilterBar
             statusFilter={statusFilter}
-            firmFilter={firmFilter}
-            firms={data.firms}
             counts={data.summary.counts}
             onStatusChange={setStatusFilter}
-            onFirmChange={setFirmFilter}
           />
 
           <div className="mt-5 grid gap-5">
@@ -191,27 +204,46 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             )}
           </div>
 
-          <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] text-stone-400">
-            {data.accounts.some((a) => a.enforcementMode === "dry_run")
-              ? "Dry run mode · Simulated protection active · No broker writes are sent."
-              : data.accounts.some((a) => a.enforcementMode === "broker_active")
-                ? "Broker enforcement available · Automated lockout enabled for accounts with full permissions."
-                : "Monitoring only · Alerts and rule checks active · Broker blocking not active."}
-          </div>
+          {footerCopy ? (
+            <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] text-stone-400">
+              {footerCopy}
+            </div>
+          ) : null}
         </section>
       )}
     </div>
   );
 }
 
-// ─── Sync header (Sync all button + stale warning) ────────────────────────────
+// ─── Dry-run banner ────────────────────────────────────────────────────────────
 
-function SyncHeader({
+function DryRunBanner() {
+  return (
+    <div
+      role="status"
+      aria-label="Dry run mode"
+      className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[11px] text-sky-800"
+    >
+      <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
+      <span>{DRY_RUN_BANNER_COPY}</span>
+    </div>
+  );
+}
+
+// ─── Section header (title + stale chip + Sync all + Firm filter) ─────────────
+
+function SectionHeader({
   summary,
   accounts,
+  firms,
+  firmFilter,
+  onFirmChange,
 }: {
   summary: CommandCenterData["summary"];
   accounts: CommandCenterAccount[];
+  firms: { key: string; label: string }[];
+  firmFilter: string;
+  onFirmChange: (f: string) => void;
 }) {
   const hasBrokerAccounts = accounts.some((a) => a.platform !== "manual");
   const stale = deriveStaleSyncWarning({
@@ -220,12 +252,15 @@ function SyncHeader({
     freshnessMs: CRON_SYNC_FRESHNESS_MS,
   });
 
-  if (!hasBrokerAccounts) return null;
-
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <SyncAllButton />
-      {stale.isStale ? (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-sm font-semibold text-stone-950">Accounts</h2>
+        <span className="text-[11px] text-stone-500">
+          {summary.totalActive} {summary.totalActive === 1 ? "account" : "accounts"}
+        </span>
+      </div>
+      {hasBrokerAccounts && stale.isStale ? (
         <span
           role="status"
           className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-50/60 px-2.5 py-1 text-[11px] text-amber-700"
@@ -236,87 +271,76 @@ function SyncHeader({
             : "Data may be stale · No sync yet"}
         </span>
       ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {hasBrokerAccounts ? <SyncAllButton /> : null}
+        {firms.length > 1 ? (
+          <label className="flex items-center gap-1.5 text-xs text-stone-500">
+            <span className="font-medium uppercase tracking-[0.14em]">Firm</span>
+            <select
+              value={firmFilter}
+              onChange={(e) => onFirmChange(e.target.value)}
+              className="max-w-full rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
+            >
+              <option value="all">All firms</option>
+              {firms.map((firm) => (
+                <option key={firm.key} value={firm.key}>
+                  {firm.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-// ─── Filter bar ────────────────────────────────────────────────────────────────
+// ─── Filter bar (status chips only) ────────────────────────────────────────────
 
 type FilterBarProps = {
   statusFilter: AccountStatus | "all";
-  firmFilter: string;
-  firms: { key: string; label: string }[];
   counts: Record<AccountStatus, number>;
   onStatusChange: (s: AccountStatus | "all") => void;
-  onFirmChange: (f: string) => void;
 };
 
-function FilterBar({
-  statusFilter,
-  firmFilter,
-  firms,
-  counts,
-  onStatusChange,
-  onFirmChange,
-}: FilterBarProps) {
+function FilterBar({ statusFilter, counts, onStatusChange }: FilterBarProps) {
   const totalActive = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      {/* Scrollable chip row — no wrapping, hidden scrollbar, full bleed on mobile */}
-      <div
-        className="-mx-4 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        role="tablist"
-        aria-label="Status filter"
-      >
-        <div className="flex min-w-max items-center gap-1.5">
-          {STATUS_FILTERS.map((filter) => {
-            const active = statusFilter === filter.value;
-            const count =
-              filter.value === "all" ? totalActive : counts[filter.value as AccountStatus];
-            return (
-              <button
-                key={filter.value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => onStatusChange(filter.value)}
-                className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-medium transition md:h-8 md:px-3.5 ${
-                  active
-                    ? "bg-stone-950 text-stone-50"
-                    : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
+    <div
+      className="-mx-4 overflow-x-auto px-4 pb-0.5 sm:-mx-5 sm:px-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      role="tablist"
+      aria-label="Status filter"
+    >
+      <div className="flex min-w-max items-center gap-1.5">
+        {STATUS_FILTERS.map((filter) => {
+          const active = statusFilter === filter.value;
+          const count =
+            filter.value === "all" ? totalActive : counts[filter.value as AccountStatus];
+          return (
+            <button
+              key={filter.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onStatusChange(filter.value)}
+              className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-medium transition md:h-8 md:px-3.5 ${
+                active
+                  ? "bg-stone-950 text-stone-50"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
+              }`}
+            >
+              <span>{filter.label}</span>
+              <span
+                className={`min-w-[18px] rounded-md px-1 py-px text-center font-mono text-[10px] leading-4 ${
+                  active ? "bg-stone-800 text-stone-300" : "bg-white/70 text-stone-400"
                 }`}
               >
-                <span>{filter.label}</span>
-                <span
-                  className={`min-w-[18px] rounded-md px-1 py-px text-center font-mono text-[10px] leading-4 ${
-                    active ? "bg-stone-800 text-stone-300" : "bg-white/70 text-stone-400"
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
-
-      {firms.length > 1 ? (
-        <label className="flex items-center gap-2 text-xs text-stone-500">
-          <span className="font-medium uppercase tracking-[0.14em]">Firm</span>
-          <select
-            value={firmFilter}
-            onChange={(e) => onFirmChange(e.target.value)}
-            className="max-w-full rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
-          >
-            <option value="all">All firms</option>
-            {firms.map((firm) => (
-              <option key={firm.key} value={firm.key}>
-                {firm.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
     </div>
   );
 }
@@ -870,10 +894,12 @@ function TradesCell({
     // Deliberately no numeric "X / max" and no progress bar — the count cannot
     // be attributed to this specific account, so showing it as a ratio is
     // misleading and would imply a breach when the source is unreliable.
+    // Visible row copy stays short; the full explanation is in the tooltip
+    // (title attr) so screen-readers and hover users can still reach it.
     return (
-      <div className={wrapperClass}>
+      <div className={wrapperClass} title={ESTIMATED_TRADE_COUNT_HINT}>
         <p className="font-mono text-sm font-semibold text-stone-500">Estimated</p>
-        <p className={hintClass}>{ESTIMATED_TRADE_COUNT_HINT}</p>
+        <p className={hintClass}>{ESTIMATED_TRADE_COUNT_SHORT}</p>
       </div>
     );
   }
@@ -898,13 +924,11 @@ function TradesCell({
         </div>
       ) : null}
       {account.tradesMayIncludePreConnection && (
-        <p className={hintClass}>
-          Includes broker activity from today before Guardrail was connected.
-        </p>
-      )}
-      {account.platform !== "manual" && used > 0 && (
-        <p className={hintClass}>
-          Derived from fills — may differ from your broker&apos;s trade report.
+        <p
+          className={hintClass}
+          title="Trade count includes broker activity from today before Guardrail was connected to this account."
+        >
+          Includes pre-connection activity
         </p>
       )}
     </div>
@@ -933,14 +957,16 @@ function StatusBadge({
 }
 
 function EnforcementChip({ mode }: { mode: EnforcementMode }) {
+  // Dry-run is shown once at the top of the section via DryRunBanner — the
+  // per-account / per-group chip is intentionally suppressed to avoid the
+  // "Dry run mode" badge repeating in every group header and every row.
+  if (mode === "dry_run") return null;
   const tone =
     mode === "broker_active"
       ? "bg-emerald-50 text-emerald-700"
-      : mode === "dry_run"
-        ? "bg-sky-50 text-sky-700"
-        : mode === "broker_readonly"
-          ? "bg-stone-100 text-stone-500"
-          : "bg-stone-100 text-stone-400";
+      : mode === "broker_readonly"
+        ? "bg-stone-100 text-stone-500"
+        : "bg-stone-100 text-stone-400";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}

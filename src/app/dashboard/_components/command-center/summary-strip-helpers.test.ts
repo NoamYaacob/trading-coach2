@@ -1,7 +1,24 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatBreakdownHint } from "./summary-strip-helpers.ts";
+import {
+  formatBreakdownHint,
+  TRADABLE_ACCOUNTS_TILE_LABEL,
+} from "./summary-strip-helpers.ts";
+
+describe("TRADABLE_ACCOUNTS_TILE_LABEL", () => {
+  it("is the literal 'Tradable accounts' (not 'Allowed')", () => {
+    // Renamed from 'Allowed' — the count alone implied uniform protection.
+    assert.equal(TRADABLE_ACCOUNTS_TILE_LABEL, "Tradable accounts");
+  });
+
+  it("does not say 'Allowed' (regression: avoid the legacy label)", () => {
+    assert.ok(
+      !TRADABLE_ACCOUNTS_TILE_LABEL.toLowerCase().includes("allowed"),
+      `expected 'Allowed' to be removed from tile label, got: ${TRADABLE_ACCOUNTS_TILE_LABEL}`,
+    );
+  });
+});
 
 describe("formatBreakdownHint — Allowed/Warning/Locked breakdown shown to user", () => {
   it("zero total → no hint (no breakdown shown when nothing to count)", () => {

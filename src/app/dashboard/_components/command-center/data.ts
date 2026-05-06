@@ -7,6 +7,7 @@ import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-u
 import {
   deriveAccountKind,
   deriveBreachReason,
+  deriveConnectionStatusLabel,
   deriveEnforcementMode,
   derivePropFirmSetupNeeded,
   deriveStatus,
@@ -31,15 +32,6 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   funded: "Funded",
   personal: "Personal",
   demo: "Demo",
-};
-
-const CONNECTION_STATUS_LABEL: Record<string, string> = {
-  connected_live: "Connected",
-  pending_webhook: "Awaiting first event",
-  oauth_pending_storage: "OAuth pending",
-  not_connected: "Not connected",
-  connection_error: "Connection error",
-  expired: "Expired — re-authorize",
 };
 
 // Personal brokerage / personal-source accounts have no prop firm — they get
@@ -280,9 +272,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
     const accountTypeLabel = ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
-    const connectionStatusLabel =
-      CONNECTION_STATUS_LABEL[account.connectionStatus] ??
-      account.connectionStatus.replace(/_/g, " ");
+    const connectionStatusLabel = deriveConnectionStatusLabel(account.connectionStatus);
 
     const hasOpenIntervention = Boolean(
       lastIntervention &&

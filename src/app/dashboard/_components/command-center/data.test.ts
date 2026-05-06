@@ -10,7 +10,12 @@ import {
   deriveEnforcementMode,
   deriveAccountKind,
   deriveStaleSyncWarning,
+  deriveConnectionStatusLabel,
+  deriveFooterCopy,
+  shouldShowEnforcementChip,
+  DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
+  ESTIMATED_TRADE_COUNT_SHORT,
 } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
@@ -993,7 +998,7 @@ describe("deriveAccountKind", () => {
 
 // ── Estimated trade count copy ────────────────────────────────────────────────
 
-describe("ESTIMATED_TRADE_COUNT_HINT", () => {
+describe("ESTIMATED_TRADE_COUNT_HINT (long-form tooltip)", () => {
   it("explicitly states the count is estimated", () => {
     assert.ok(
       ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("estimated"),
@@ -1001,9 +1006,10 @@ describe("ESTIMATED_TRADE_COUNT_HINT", () => {
     );
   });
 
-  it("explicitly states Guardrail will not use the count for lockout", () => {
+  it("explicitly states Guardrail will not lock the account from this count", () => {
     assert.ok(
-      ESTIMATED_TRADE_COUNT_HINT.includes("will not use this count to lock"),
+      ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("will not use") &&
+        ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("lock"),
       `expected lockout disclaimer in copy, got: ${ESTIMATED_TRADE_COUNT_HINT}`,
     );
   });
@@ -1131,5 +1137,200 @@ describe("deriveStaleSyncWarning", () => {
     });
     assert.equal(result.isStale, false);
     assert.equal(result.minutesSinceOldestSync, 5);
+  });
+});
+
+// ── deriveConnectionStatusLabel — never leaks raw enum values ─────────────────
+
+describe("deriveConnectionStatusLabel", () => {
+  it("connected_live → 'Connected'", () => {
+    assert.equal(deriveConnectionStatusLabel("connected_live"), "Connected");
+  });
+
+  it("connected_readonly → 'Connected' (NOT 'connected readonly')", () => {
+    // Regression: the dashboard previously rendered the raw enum value
+    // ("connected readonly") because the label map didn't include this key.
+    // The capability nuance (limited vs full) is shown via the enforcement chip.
+    const label = deriveConnectionStatusLabel("connected_readonly");
+    assert.equal(label, "Connected");
+    assert.ok(!label.includes("readonly"), `'readonly' must not leak: ${label}`);
+  });
+
+  it("never returns the raw underscored enum form for any known value", () => {
+    const knownStatuses = [
+      "connected_live",
+      "connected_readonly",
+      "pending_webhook",
+      "oauth_pending_storage",
+      "not_connected",
+      "connection_error",
+      "expired",
+    ];
+    for (const status of knownStatuses) {
+      const label = deriveConnectionStatusLabel(status);
+      assert.ok(!label.includes("_"), `label for ${status} must not contain '_': ${label}`);
+    }
+  });
+
+  it("unknown status falls back to a safe label, not the raw value", () => {
+    const label = deriveConnectionStatusLabel("some_future_status");
+    assert.ok(!label.includes("_"), `unknown status leaked raw value: ${label}`);
+    assert.ok(label.length > 0);
+  });
+
+  it("not_connected and expired surface their distinct user-facing copy", () => {
+    assert.equal(deriveConnectionStatusLabel("not_connected"), "Not connected");
+    assert.ok(
+      deriveConnectionStatusLabel("expired").toLowerCase().includes("expired"),
+    );
+  });
+});
+
+// ── deriveFooterCopy — dynamic, non-repetitive footer ─────────────────────────
+
+describe("deriveFooterCopy", () => {
+  it("no accounts → null (nothing to say)", () => {
+    assert.equal(
+      deriveFooterCopy({ modes: [], hasDryRunBanner: false }),
+      null,
+    );
+  });
+
+  it("dry_run + banner showing → null (banner already says it; footer stays silent)", () => {
+    const copy = deriveFooterCopy({
+      modes: ["dry_run", "dry_run"],
+      hasDryRunBanner: true,
+    });
+    assert.equal(copy, null);
+  });
+
+  it("dry_run without banner → dry-run footer text", () => {
+    const copy = deriveFooterCopy({
+      modes: ["dry_run"],
+      hasDryRunBanner: false,
+    });
+    assert.ok(copy != null);
+    assert.ok(copy!.toLowerCase().includes("dry run"));
+    assert.ok(copy!.toLowerCase().includes("simulated"));
+  });
+
+  it("broker_active → 'Broker enforcement available where permissions support it.'", () => {
+    const copy = deriveFooterCopy({
+      modes: ["broker_active"],
+      hasDryRunBanner: false,
+    });
+    assert.equal(
+      copy,
+      "Broker enforcement available where permissions support it.",
+    );
+  });
+
+  it("broker_readonly only → limited-permissions footer", () => {
+    const copy = deriveFooterCopy({
+      modes: ["broker_readonly"],
+      hasDryRunBanner: false,
+    });
+    assert.ok(copy != null);
+    assert.ok(copy!.toLowerCase().includes("limited permissions"));
+    assert.ok(copy!.toLowerCase().includes("reconnect"));
+  });
+
+  it("permission_unverified only → limited-permissions footer", () => {
+    const copy = deriveFooterCopy({
+      modes: ["permission_unverified"],
+      hasDryRunBanner: false,
+    });
+    assert.ok(copy != null);
+    assert.ok(copy!.toLowerCase().includes("limited permissions"));
+  });
+
+  it("mixed broker_active + broker_readonly → broker_active wins (positive framing)", () => {
+    const copy = deriveFooterCopy({
+      modes: ["broker_active", "broker_readonly"],
+      hasDryRunBanner: false,
+    });
+    assert.equal(
+      copy,
+      "Broker enforcement available where permissions support it.",
+    );
+  });
+
+  it("only not_connected accounts → null (no useful footer)", () => {
+    const copy = deriveFooterCopy({
+      modes: ["not_connected"],
+      hasDryRunBanner: false,
+    });
+    assert.equal(copy, null);
+  });
+});
+
+// ── DRY_RUN_BANNER_COPY ───────────────────────────────────────────────────────
+
+describe("DRY_RUN_BANNER_COPY", () => {
+  it("declares dry run mode explicitly", () => {
+    assert.ok(
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("dry run mode"),
+      `expected 'Dry run mode' in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
+    );
+  });
+
+  it("explains what is simulated", () => {
+    assert.ok(
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("simulating"),
+    );
+  });
+
+  it("explicitly states no broker writes are sent", () => {
+    assert.ok(
+      DRY_RUN_BANNER_COPY.includes("No Tradovate write actions are sent"),
+      `expected the no-write disclaimer, got: ${DRY_RUN_BANNER_COPY}`,
+    );
+  });
+});
+
+// ── shouldShowEnforcementChip — dry-run suppression ───────────────────────────
+
+describe("shouldShowEnforcementChip", () => {
+  it("dry_run → false (banner is the single source)", () => {
+    assert.equal(shouldShowEnforcementChip("dry_run"), false);
+  });
+
+  it("broker_active → true", () => {
+    assert.equal(shouldShowEnforcementChip("broker_active"), true);
+  });
+
+  it("broker_readonly → true", () => {
+    assert.equal(shouldShowEnforcementChip("broker_readonly"), true);
+  });
+
+  it("permission_unverified → true", () => {
+    assert.equal(shouldShowEnforcementChip("permission_unverified"), true);
+  });
+
+  it("not_connected → true", () => {
+    assert.equal(shouldShowEnforcementChip("not_connected"), true);
+  });
+});
+
+// ── Estimated short copy ──────────────────────────────────────────────────────
+
+describe("ESTIMATED_TRADE_COUNT_SHORT (visible row copy)", () => {
+  it("is the literal 'Not used for lockout'", () => {
+    assert.equal(ESTIMATED_TRADE_COUNT_SHORT, "Not used for lockout");
+  });
+
+  it("is short — under 30 characters (must not bloat the table cell)", () => {
+    assert.ok(
+      ESTIMATED_TRADE_COUNT_SHORT.length < 30,
+      `short copy too long (${ESTIMATED_TRADE_COUNT_SHORT.length} chars): ${ESTIMATED_TRADE_COUNT_SHORT}`,
+    );
+  });
+
+  it("hint and short copy are distinct strings (short ≠ full)", () => {
+    assert.notEqual(ESTIMATED_TRADE_COUNT_SHORT, ESTIMATED_TRADE_COUNT_HINT);
+  });
+
+  it("the long-form hint mentions the verified condition (used as tooltip)", () => {
+    assert.ok(ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("verified"));
   });
 });

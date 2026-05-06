@@ -333,14 +333,82 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
   }
 }
 
+// ── Connection status label ───────────────────────────────────────────────────
+
+/** Public-facing labels for BrokerConnection.connectionStatus. Raw enum values
+ *  (e.g. "connected_readonly") are intentionally never exposed — the
+ *  enforcement chip carries the capability nuance. */
+const CONNECTION_STATUS_LABEL_MAP: Record<string, string> = {
+  connected_live: "Connected",
+  connected_readonly: "Connected",
+  pending_webhook: "Awaiting first event",
+  oauth_pending_storage: "OAuth pending",
+  not_connected: "Not connected",
+  connection_error: "Connection error",
+  expired: "Expired — re-authorize",
+};
+
+export function deriveConnectionStatusLabel(rawStatus: string): string {
+  return CONNECTION_STATUS_LABEL_MAP[rawStatus] ?? "Connection status unknown";
+}
+
+// ── Dry-run banner copy ───────────────────────────────────────────────────────
+
+export const DRY_RUN_BANNER_COPY =
+  "Dry run mode: Guardrail is simulating lockouts and position exits. No Tradovate write actions are sent.";
+
+// ── shouldShowEnforcementChip ─────────────────────────────────────────────────
+
+/** When the mode is "dry_run" the per-account chip is suppressed — the
+ *  top-level banner already communicates dry-run, so repeating the badge in
+ *  every group header and row is visual noise. */
+export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
+  return mode !== "dry_run";
+}
+
+// ── deriveFooterCopy ──────────────────────────────────────────────────────────
+
+/** The single line of disclosure text shown at the very bottom of the command
+ *  center. Returns null when there is nothing actionable to say (e.g. a top-
+ *  level dry-run banner is already shown — we don't repeat ourselves). */
+export function deriveFooterCopy(input: {
+  modes: ReadonlyArray<EnforcementMode>;
+  /** When the dry-run banner is shown at the top, the footer suppresses any
+   *  dry-run-related copy so the user sees the message exactly once. */
+  hasDryRunBanner: boolean;
+}): string | null {
+  const { modes, hasDryRunBanner } = input;
+  if (modes.length === 0) return null;
+
+  const anyDryRun = modes.includes("dry_run");
+  if (anyDryRun && hasDryRunBanner) {
+    // Banner says it; footer stays silent to avoid repetition.
+    return null;
+  }
+  if (anyDryRun) {
+    return "Dry run active · Simulated protection only · No broker writes are sent.";
+  }
+  if (modes.includes("broker_active")) {
+    return "Broker enforcement available where permissions support it.";
+  }
+  if (modes.includes("broker_readonly") || modes.includes("permission_unverified")) {
+    return "Some accounts have limited permissions and require reconnect for broker-side actions.";
+  }
+  return null;
+}
+
 // ── Estimated trade-count copy ────────────────────────────────────────────────
 
-/** Hint shown next to "Estimated" trade counts on the Dashboard. The wording
- *  is product-critical: it must explicitly tell the user the count will not
- *  trigger lockout — otherwise a user with multi-account OAuth tokens can be
- *  confused into thinking max-trades-per-day or stop-after-losses are active. */
+/** Long-form copy for the Estimated trade-count disclosure. Used as a
+ *  tooltip / aria-label so the full explanation is reachable but does not
+ *  bloat the row. The wording is product-critical: it explicitly states
+ *  the count will not trigger lockout. */
 export const ESTIMATED_TRADE_COUNT_HINT =
-  "Estimated trade count — Guardrail will not use this count to lock the account unless it's verified.";
+  "Guardrail will not use estimated trade count to lock the account unless it is verified.";
+
+/** Short-form copy displayed inline in the table cell. Pairs with
+ *  ESTIMATED_TRADE_COUNT_HINT (full text in the tooltip). */
+export const ESTIMATED_TRADE_COUNT_SHORT = "Not used for lockout";
 
 // ── deriveAccountKind ──────────────────────────────────────────────────────────
 
