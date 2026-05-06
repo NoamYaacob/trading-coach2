@@ -319,7 +319,7 @@ export function AccountRulesForm({
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
-          <Field label="Risk per trade ($)">
+          <Field label="Risk per trade ($)" hint="Warning fires when unrealized P&L on an open position exceeds this amount. Does not lock the account.">
             <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
           </Field>
           <Field label="Max trades per day">

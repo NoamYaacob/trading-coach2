@@ -165,7 +165,7 @@ export function RulesForm({ initial, timezone }: Props) {
           <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
-          <Field label="Max risk per trade ($)">
+          <Field label="Max risk per trade ($)" hint="Saved for reference. Guardrail does not enforce this limit — use daily loss limit for automated enforcement.">
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
@@ -244,7 +244,7 @@ export function RulesForm({ initial, timezone }: Props) {
           />
           <span>
             <span className="font-medium text-stone-950">Send alert when a rule is triggered</span>
-            <span className="mt-0.5 block text-stone-500">In-app banner and Telegram (if connected).</span>
+            <span className="mt-0.5 block text-stone-500">Planned — Guardrail will use this setting when in-app and Telegram alert delivery is enabled.</span>
           </span>
         </label>
       </div>

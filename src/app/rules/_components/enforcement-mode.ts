@@ -137,7 +137,7 @@ export function computeEnforcementMode(
       mode: "broker_enforcement_pending",
       label: "Partial broker enforcement",
       detail:
-        "Account data is synced. If a daily loss limit is set and breached, Guardrail will " +
+        "Account data is synced. If a daily loss limit or daily profit target is set and breached, Guardrail will " +
         "attempt to engage Tradovate’s risk engine — placing this account in " +
         "liquidation-only mode for that session. " +
         "Trade-count and loss-streak limits are alert-only: Tradovate’s API does not " +
