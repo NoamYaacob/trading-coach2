@@ -67,6 +67,7 @@ export default async function RulesPage({
             maxTradesPerDay: true, stopAfterLosses: true,
             allowedEndHour: true,
             sessionEndBehavior: true,
+            maxContracts: true,
             propFirmAccountSize: true, propFirmPhase: true,
             propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
             propFirmEODDrawdown: true, propFirmTrailingDrawdown: true,
@@ -130,6 +131,7 @@ export default async function RulesPage({
     stopAfterLosses: intStr(selectedAccount?.riskRules?.stopAfterLosses),
     allowedEndHour: intStr(selectedAccount?.riskRules?.allowedEndHour),
     sessionEndBehavior: selectedAccount?.riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
+    maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
     propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
     propFirmPhase: selectedAccount?.riskRules?.propFirmPhase ?? "",
     propFirmDailyLossLimit: decStr(selectedAccount?.riskRules?.propFirmDailyLossLimit),
@@ -147,6 +149,7 @@ export default async function RulesPage({
     maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
     stopAfterLosses: intStr(riskRules?.stopAfterLosses),
     allowedEndHour: intStr(riskRules?.sessionEndHour),
+    maxContracts: intStr(riskRules?.maxContracts),
   };
 
   // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)

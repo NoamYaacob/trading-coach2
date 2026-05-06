@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
+import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
 import {
   computeAccountRulesBanner,
   REVIEW_INHERITED_HINT,
@@ -16,6 +17,7 @@ export type DefaultRuleValues = {
   maxTradesPerDay: string;
   stopAfterLosses: string;
   allowedEndHour: string;
+  maxContracts?: string;
 };
 
 export type AccountRulesValues = {
@@ -25,6 +27,7 @@ export type AccountRulesValues = {
   stopAfterLosses: string;
   allowedEndHour: string;
   sessionEndBehavior: string;
+  maxContracts: string;
   propFirmAccountSize: string;
   propFirmPhase: string;
   propFirmDailyLossLimit: string;
@@ -187,6 +190,7 @@ export function AccountRulesForm({
           stopAfterLosses: int(values.stopAfterLosses),
           allowedEndHour: int(values.allowedEndHour),
           sessionEndBehavior: values.sessionEndBehavior || null,
+          maxContracts: int(values.maxContracts),
           propFirmAccountSize: num(values.propFirmAccountSize),
           propFirmPhase: values.propFirmPhase.trim() || null,
           propFirmDailyLossLimit: num(values.propFirmDailyLossLimit),
@@ -235,6 +239,7 @@ export function AccountRulesForm({
       { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
       { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
       { label: "Cutoff time (CME)", value: defaultValues?.allowedEndHour ?? "" },
+      { label: "Max position size", value: defaultValues?.maxContracts ?? "" },
     ];
     return (
       <div className="grid gap-4">
@@ -381,6 +386,19 @@ export function AccountRulesForm({
           ))}
         </div>
       </fieldset>
+
+      {/* Advanced settings */}
+      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+          Advanced
+          <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4">
+          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
+            <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+          </Field>
+        </div>
+      </details>
 
       {/* Prop firm parameters — collapsible */}
       {hasPropFirm && (
