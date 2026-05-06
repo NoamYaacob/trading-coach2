@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRuleScopes } from "./rule-scope-utils.ts";
+import { buildRuleScopes, parseRuleScopeParams, buildAccountRulesUrl } from "./rule-scope-utils.ts";
 import type { RuleScopeAccount } from "./rule-scope-utils.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -81,5 +81,81 @@ describe("buildRuleScopes", () => {
     ];
     const { groups } = buildRuleScopes(accounts);
     assert.equal(groups[0].firmLabel, "Tradovate");
+  });
+});
+
+// ── parseRuleScopeParams ──────────────────────────────────────────────────────
+
+describe("parseRuleScopeParams", () => {
+  it("no params → default scope, null accountId", () => {
+    const result = parseRuleScopeParams({});
+    assert.equal(result.scope, "default");
+    assert.equal(result.accountId, null);
+  });
+
+  it("scope=account + id → account scope with accountId", () => {
+    const result = parseRuleScopeParams({ scope: "account", id: "acc-123" });
+    assert.equal(result.scope, "account");
+    assert.equal(result.accountId, "acc-123");
+  });
+
+  it("scope=account without id → falls back to default", () => {
+    const result = parseRuleScopeParams({ scope: "account" });
+    assert.equal(result.scope, "default");
+    assert.equal(result.accountId, null);
+  });
+
+  it("scope=default ignores id", () => {
+    const result = parseRuleScopeParams({ scope: "default", id: "acc-123" });
+    assert.equal(result.scope, "default");
+    assert.equal(result.accountId, null);
+  });
+
+  it("unknown scope → default", () => {
+    const result = parseRuleScopeParams({ scope: "something_else", id: "acc-123" });
+    assert.equal(result.scope, "default");
+    assert.equal(result.accountId, null);
+  });
+});
+
+// ── buildAccountRulesUrl ──────────────────────────────────────────────────────
+
+describe("buildAccountRulesUrl", () => {
+  it("points to /rules, not /accounts/[id]/edit", () => {
+    const url = buildAccountRulesUrl("acc-123");
+    assert.ok(url.startsWith("/rules"), "must route to the Trading Plan page");
+    assert.ok(!url.includes("/edit"), "must not point to the broker connection edit page");
+    assert.ok(!url.match(/\/accounts\/[^/]+\/edit/), "must not use the accounts edit route");
+  });
+
+  it("includes scope=account query param", () => {
+    const url = buildAccountRulesUrl("acc-123");
+    assert.ok(url.includes("scope=account"), "must select account scope in the Trading Plan page");
+  });
+
+  it("includes the account id as a query param", () => {
+    const url = buildAccountRulesUrl("acc-123");
+    assert.ok(url.includes("id=acc-123"), "must pass the account id so the sidebar selects it");
+  });
+
+  it("embeds the correct account id", () => {
+    const id = "demo7433035";
+    const url = buildAccountRulesUrl(id);
+    assert.equal(url, `/rules?scope=account&id=${id}`);
+  });
+
+  it("different account ids produce different URLs", () => {
+    assert.notEqual(buildAccountRulesUrl("acc-a"), buildAccountRulesUrl("acc-b"));
+  });
+
+  it("round-trips through parseRuleScopeParams", () => {
+    const id = "acc-xyz";
+    const url = new URL(buildAccountRulesUrl(id), "http://x");
+    const result = parseRuleScopeParams({
+      scope: url.searchParams.get("scope") ?? undefined,
+      id: url.searchParams.get("id") ?? undefined,
+    });
+    assert.equal(result.scope, "account");
+    assert.equal(result.accountId, id);
   });
 });

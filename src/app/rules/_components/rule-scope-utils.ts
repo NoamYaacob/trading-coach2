@@ -1,3 +1,26 @@
+/**
+ * Parses the scope and id query params from the Trading Plan page URL.
+ * Returns scope="default" with accountId=null when params are absent or invalid.
+ */
+export function parseRuleScopeParams(params: { scope?: string; id?: string }): {
+  scope: "default" | "account";
+  accountId: string | null;
+} {
+  const isAccount = params.scope === "account" && Boolean(params.id);
+  return {
+    scope: isAccount ? "account" : "default",
+    accountId: isAccount ? params.id! : null,
+  };
+}
+
+/**
+ * Builds the URL that opens the Trading Plan editor with a specific account selected.
+ * Use this wherever an account-specific rule edit link is needed.
+ */
+export function buildAccountRulesUrl(accountId: string): string {
+  return `/rules?scope=account&id=${accountId}`;
+}
+
 const PLATFORM_LABEL: Record<string, string> = {
   tradovate: "Tradovate",
   tradingview: "TradingView",

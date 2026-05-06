@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { buildAccountRulesUrl } from "@/app/rules/_components/rule-scope-utils";
 
 type Props = {
   accountId: string;
@@ -90,7 +91,7 @@ export function SetupOptions({ accountId, hasDefaultRules, defaultRulesSummary }
         </p>
         <div className="mt-4">
           <Link
-            href={`/accounts/${accountId}/edit`}
+            href={buildAccountRulesUrl(accountId)}
             className="inline-flex h-10 items-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
           >
             Configure rules for this account

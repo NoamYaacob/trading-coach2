@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { buildAccountRulesUrl } from "@/app/rules/_components/rule-scope-utils";
 
 export const metadata: Metadata = {
   title: "Assign Rules — Guardrail",
@@ -161,14 +162,14 @@ export default async function RulesAssignmentPage({
             <div className="mt-4 flex flex-wrap gap-2">
               {accounts.length === 1 ? (
                 <Link
-                  href={`/accounts/${firstAccountId}/edit`}
+                  href={buildAccountRulesUrl(firstAccountId)}
                   className="inline-flex items-center rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
                 >
                   Set rules for this account →
                 </Link>
               ) : (
                 <Link
-                  href="/accounts"
+                  href="/rules"
                   className="inline-flex items-center rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
                 >
                   Set rules per account →
