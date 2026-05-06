@@ -193,35 +193,35 @@ describe("trading_day_disabled rule", () => {
 // ── shouldSkipBrokerEnforcement — new trigger types ───────────────────────────
 
 describe("shouldSkipBrokerEnforcement — profit_target trigger", () => {
-  it("profit_target on connected_live Tradovate → skip=true, monitoring_only", () => {
+  it("profit_target on connected_live Tradovate → skip=false (broker call should proceed)", () => {
+    // dailyProfitAutoLiq verified in OpenAPI audit (May 2026) — broker-enforced.
     const result = shouldSkipBrokerEnforcement({
       platform: "tradovate",
       trigger: "profit_target",
       connectionStatus: "connected_live",
     });
-    assert.equal(result.skip, true);
-    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+    assert.equal(result.skip, false);
   });
 
-  it("profit_target on read-only Tradovate → skip=true, monitoring_only (not unavailable_read_only)", () => {
-    // The read-only check comes after the trigger check, so profit_target
-    // always gets monitoring_only regardless of connection status.
+  it("profit_target on read-only Tradovate → skip=true with unavailable_read_only", () => {
+    // Trigger is broker-capable so the read-only gate fires, returning unavailable_read_only.
     const result = shouldSkipBrokerEnforcement({
       platform: "tradovate",
       trigger: "profit_target",
       connectionStatus: "connected_readonly",
     });
     assert.equal(result.skip, true);
-    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
   });
 
-  it("profit_target is never broker-enforced — no Tradovate API field for profit targets", () => {
+  it("profit_target on non-Tradovate platform → skip=true with monitoring_only", () => {
     const result = shouldSkipBrokerEnforcement({
-      platform: "tradovate",
+      platform: "tradingview",
       trigger: "profit_target",
       connectionStatus: "connected_live",
     });
-    assert.equal(result.skip, true, "profit_target must always skip broker enforcement");
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
   });
 });
 

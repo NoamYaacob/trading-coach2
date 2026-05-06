@@ -438,9 +438,10 @@ export async function syncTradovateAccount(
         userId,
         trigger: enforcementTrigger,
         reason,
-        // Pass current loss so the broker threshold is set exactly at the amount
-        // already lost — ensuring the account is immediately past the limit.
+        // Pass current loss/profit so the broker threshold is set exactly at the
+        // amount already earned/lost, ensuring the account is immediately past the limit.
         currentDailyLoss: lossUsed,
+        currentDailyPnl: resolvedDailyPnl,
       }).catch((err) => {
         console.error("[enforcement] trigger failed", { accountId, error: err });
       });

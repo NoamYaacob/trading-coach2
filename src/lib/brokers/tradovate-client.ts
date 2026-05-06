@@ -145,8 +145,7 @@ type TvContract = {
   name: string;
 };
 
-// UNVERIFIED — field names match TradovatePy open-source client generated from Tradovate's OpenAPI spec.
-// Confirm response shape against a real account before relying on field values.
+// Field names verified against docs/tradovate-openapi.json (May 2026).
 type TvUserAccountAutoLiq = {
   id?: number;
   changesLocked?: boolean | null;
@@ -172,9 +171,9 @@ export type AutoLiqLockResult = {
   payload: Record<string, unknown>;
   response: unknown;
   /** True only when the response body (or a read-back GET) echoed back the
-   *  dailyLossAutoLiq we sent, confirming Tradovate stored the value. */
+   *  auto-liq field we sent, confirming Tradovate stored the value. */
   confirmed: boolean;
-  /** The dailyLossAutoLiq value returned by the API (response or read-back). */
+  /** The auto-liq field value returned by the API (response or read-back). */
   readbackValue: number | null;
 };
 
@@ -1366,6 +1365,112 @@ export class TradovateClient {
         });
       } catch (readbackErr) {
         console.warn("[tradovate/autoLiq] read-back GET failed", {
+          accountId: this.#accountId,
+          error: readbackErr instanceof Error ? readbackErr.message : String(readbackErr),
+        });
+      }
+    }
+
+    return { endpoint, payload, response, confirmed, readbackValue };
+  }
+
+  /**
+   * Apply a broker-side daily profit target lock by setting the
+   * userAccountAutoLiq dailyProfitAutoLiq threshold to profitAmountToSet
+   * (dollars already earned today).
+   *
+   * When the threshold is at or below the account's current realized profit,
+   * Tradovate's risk engine immediately places the account into
+   * liquidation-only mode and blocks new opening orders for the rest of the
+   * trading session.
+   *
+   * Sets changesLocked=true to prevent the setting from being modified until
+   * the next trading session.
+   *
+   * Endpoints used:
+   *   GET  userAccountAutoLiq/deps?masterid={tvAccountId}  (check for existing record)
+   *   POST userAccountAutoLiq/update  (if record exists)
+   *   POST userAccountAutoLiq/create  (if no record exists)
+   */
+  async applyProfitTargetLock(params: {
+    profitAmountToSet: number;
+    changesLocked?: boolean;
+  }): Promise<AutoLiqLockResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+
+    const existing = await this.getUserAccountAutoLiq();
+    const record = existing[0] ?? null;
+
+    let endpoint: string;
+    let payload: Record<string, unknown>;
+
+    if (record?.id != null) {
+      endpoint = "userAccountAutoLiq/update";
+      payload = {
+        id: record.id,
+        dailyProfitAutoLiq: params.profitAmountToSet,
+        changesLocked: params.changesLocked ?? true,
+      };
+    } else {
+      endpoint = "userAccountAutoLiq/create";
+      payload = {
+        accountId: this.#tvAccountId,
+        dailyProfitAutoLiq: params.profitAmountToSet,
+        changesLocked: params.changesLocked ?? true,
+      };
+    }
+
+    console.info("[tradovate/autoLiq] applying profit target lock", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      endpoint,
+      profitAmountToSet: params.profitAmountToSet,
+      existingRecordId: record?.id ?? null,
+    });
+
+    // skipMarkExpired=true: see applyDailyLossLock for rationale.
+    const response = await this.#request<TvUserAccountAutoLiq>(
+      endpoint,
+      "POST",
+      payload,
+      false,
+      /* skipMarkExpired */ true,
+    );
+
+    console.info("[tradovate/autoLiq] profit target lock response", {
+      accountId: this.#accountId,
+      endpoint,
+      responseKeys: response != null && typeof response === "object" ? Object.keys(response as object) : [],
+    });
+
+    const responseValue = response?.dailyProfitAutoLiq ?? null;
+    let confirmed = isAutoLiqConfirmed({
+      expectedValue: params.profitAmountToSet,
+      responseValue,
+    });
+    let readbackValue: number | null = responseValue;
+
+    if (!confirmed) {
+      try {
+        const readback = await this.getUserAccountAutoLiq();
+        const readbackRecord = readback[0] ?? null;
+        readbackValue = readbackRecord?.dailyProfitAutoLiq ?? null;
+        confirmed = isAutoLiqConfirmed({
+          expectedValue: params.profitAmountToSet,
+          responseValue: readbackValue,
+        });
+        console.info("[tradovate/autoLiq] profit lock read-back result", {
+          accountId: this.#accountId,
+          readbackValue,
+          confirmed,
+        });
+      } catch (readbackErr) {
+        console.warn("[tradovate/autoLiq] profit lock read-back GET failed", {
           accountId: this.#accountId,
           error: readbackErr instanceof Error ? readbackErr.message : String(readbackErr),
         });

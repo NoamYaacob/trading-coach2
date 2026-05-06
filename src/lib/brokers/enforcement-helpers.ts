@@ -41,7 +41,7 @@ export type BrokerLockStatus =
 // ── Payload builders ──────────────────────────────────────────────────────────
 
 /**
- * Build the POST body for userAccountAutoLiq/update.
+ * Build the POST body for userAccountAutoLiq/update (daily loss lock).
  *
  * doNotUnlock is intentionally omitted — it would prevent Tradovate from
  * auto-unlocking the account at the next session open, trapping it permanently.
@@ -59,7 +59,7 @@ export function buildAutoLiqUpdatePayload(opts: {
 }
 
 /**
- * Build the POST body for userAccountAutoLiq/create.
+ * Build the POST body for userAccountAutoLiq/create (daily loss lock).
  *
  * doNotUnlock is intentionally omitted — see buildAutoLiqUpdatePayload.
  */
@@ -75,7 +75,41 @@ export function buildAutoLiqCreatePayload(opts: {
   };
 }
 
-// ── Loss amount computation ───────────────────────────────────────────────────
+/**
+ * Build the POST body for userAccountAutoLiq/update (profit target lock).
+ *
+ * doNotUnlock is intentionally omitted — see buildAutoLiqUpdatePayload.
+ */
+export function buildAutoLiqProfitUpdatePayload(opts: {
+  existingId: number;
+  dailyProfitAutoLiq: number;
+  changesLocked?: boolean;
+}): Record<string, unknown> {
+  return {
+    id: opts.existingId,
+    dailyProfitAutoLiq: opts.dailyProfitAutoLiq,
+    changesLocked: opts.changesLocked ?? true,
+  };
+}
+
+/**
+ * Build the POST body for userAccountAutoLiq/create (profit target lock).
+ *
+ * doNotUnlock is intentionally omitted — see buildAutoLiqUpdatePayload.
+ */
+export function buildAutoLiqProfitCreatePayload(opts: {
+  tvAccountId: number;
+  dailyProfitAutoLiq: number;
+  changesLocked?: boolean;
+}): Record<string, unknown> {
+  return {
+    accountId: opts.tvAccountId,
+    dailyProfitAutoLiq: opts.dailyProfitAutoLiq,
+    changesLocked: opts.changesLocked ?? true,
+  };
+}
+
+// ── Amount computation ────────────────────────────────────────────────────────
 
 /**
  * Compute the dailyLossAutoLiq threshold to send to Tradovate.
@@ -93,6 +127,20 @@ export function computeLossAmountToSet(
 ): number {
   if (currentDailyLoss == null || !Number.isFinite(currentDailyLoss)) return 0;
   return Math.max(0, Math.abs(currentDailyLoss));
+}
+
+/**
+ * Compute the dailyProfitAutoLiq threshold to send to Tradovate.
+ *
+ * currentDailyPnl is the raw daily P&L (positive on a profitable day).
+ * Setting dailyProfitAutoLiq at or below the current profit immediately
+ * places the account in liquidation-only mode for the rest of the session.
+ */
+export function computeProfitAmountToSet(
+  currentDailyPnl: number | null | undefined,
+): number {
+  if (currentDailyPnl == null || !Number.isFinite(currentDailyPnl)) return 0;
+  return Math.max(0, currentDailyPnl);
 }
 
 // ── Skip-enforcement gate ─────────────────────────────────────────────────────
@@ -121,11 +169,11 @@ export function shouldSkipBrokerEnforcement(opts: {
       reason: `Platform '${opts.platform}' does not support broker-side enforcement.`,
     };
   }
-  if (opts.trigger !== "daily_loss_limit") {
+  if (opts.trigger !== "daily_loss_limit" && opts.trigger !== "profit_target") {
     return {
       skip: true,
       lockStatus: "monitoring_only",
-      reason: `Trigger '${opts.trigger}' has no applicable Tradovate broker API with current permissions.`,
+      reason: `Trigger '${opts.trigger}' has no applicable Tradovate broker API.`,
     };
   }
   if (opts.connectionStatus === "connected_readonly") {

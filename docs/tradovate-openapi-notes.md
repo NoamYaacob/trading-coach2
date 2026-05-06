@@ -46,10 +46,35 @@ trade-limit enforcement is skipped.
 
 ---
 
+## `userAccountAutoLiq` field audit (May 2026)
+
+Verified against `docs/tradovate-openapi.json`. All fields are present in
+`UserAccountAutoLiq` schema and echoed in `/create`, `/update`, and `/deps`
+response bodies.
+
+| Field | Type | Description | Safe to write? |
+|---|---|---|---|
+| `dailyLossAutoLiq` | number | Daily loss threshold for auto-liq | ✅ Yes |
+| `dailyProfitAutoLiq` | number | Daily profit threshold for auto-liq | ✅ Yes |
+| `changesLocked` | boolean | Lock settings until next session | ✅ Yes |
+| `doNotUnlock` | boolean | Prevent auto-unlock after liq | ❌ NEVER — traps account permanently |
+| `weeklyLossAutoLiq` | number | Weekly loss threshold | Not currently used |
+| `weeklyProfitAutoLiq` | number | Weekly profit threshold | Not currently used |
+| `flattenTimestamp` | string | Session-end flatten time | Not currently used (needs scheduler) |
+| `trailingMaxDrawdown` | number | Trailing drawdown limit | Not currently used |
+
+**`doNotUnlock` must never be set.** Omitting it preserves Tradovate's
+default auto-unlock at the next session open. Setting it traps the
+account permanently until manually unlocked via the Tradovate UI.
+
+---
+
 ## Broker-side lockout — required sequence
 
 `broker_locked` status requires **all three steps** to complete
 successfully. Setting it after step 1 alone is incorrect.
+
+### Daily loss lock (`daily_loss_limit` trigger)
 
 ```
 Step 1 (read)   GET  userAccountAutoLiq/deps?masterid={tvAccountId}
@@ -65,13 +90,28 @@ Step 3 (confirm) check response.dailyLossAutoLiq ≈ sent value (ε = $0.01)
                  → set broker_lock_failed when confirmed = false
 ```
 
-**`doNotUnlock` must never be set.** Omitting it preserves Tradovate's
-default auto-unlock at the next session open. Setting it traps the
-account permanently until manually unlocked via the Tradovate UI.
+### Profit target lock (`profit_target` trigger)
 
-All three calls pass `skipMarkExpired=true` internally so a 401/403
-scoped to the risk endpoint does not expire the OAuth connection for
-other endpoints.
+```
+Step 1 (read)   GET  userAccountAutoLiq/deps?masterid={tvAccountId}
+                → find existing record id (or null for create path)
+
+Step 2 (write)  POST userAccountAutoLiq/update  { id, dailyProfitAutoLiq, changesLocked: true }
+                  or
+                POST userAccountAutoLiq/create  { accountId: tvAccountId, dailyProfitAutoLiq, changesLocked: true }
+
+Step 3 (confirm) check response.dailyProfitAutoLiq ≈ sent value (ε = $0.01)
+                 if absent: GET userAccountAutoLiq/deps?masterid={tvAccountId} again
+                 → set broker_locked ONLY when confirmed = true
+                 → set broker_lock_failed when confirmed = false
+```
+
+**Key rule:** never mix loss and profit fields in the same payload.
+A profit lock payload must contain `dailyProfitAutoLiq` only (not `dailyLossAutoLiq`),
+and vice versa.
+
+All steps pass `skipMarkExpired=true` internally so a 401/403 scoped to
+the risk endpoint does not expire the OAuth connection for other endpoints.
 
 ---
 

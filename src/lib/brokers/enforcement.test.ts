@@ -13,7 +13,10 @@ import assert from "node:assert/strict";
 import {
   buildAutoLiqUpdatePayload,
   buildAutoLiqCreatePayload,
+  buildAutoLiqProfitUpdatePayload,
+  buildAutoLiqProfitCreatePayload,
   computeLossAmountToSet,
+  computeProfitAmountToSet,
   shouldSkipBrokerEnforcement,
   classifyEnforcementError,
   isAutoLiqConfirmed,
@@ -388,7 +391,7 @@ describe("shouldSkipBrokerEnforcement — consecutive_losses trigger", () => {
   });
 
   it("consecutive_losses on read-only → monitoring_only, NOT unavailable_read_only (trigger gate fires first)", () => {
-    // The trigger check (consecutive_losses != daily_loss_limit) fires before the
+    // The trigger check (not daily_loss_limit/profit_target) fires before the
     // connection-status check, so read-only returns monitoring_only, not unavailable_read_only.
     const result = shouldSkipBrokerEnforcement({
       platform: "tradovate",
@@ -401,13 +404,11 @@ describe("shouldSkipBrokerEnforcement — consecutive_losses trigger", () => {
 });
 
 describe("shouldSkipBrokerEnforcement — all verified rule-breach triggers", () => {
-  // Only daily_loss_limit can be broker-enforced today (see enforcement.ts audit notes).
-  // Every other trigger must return skip=true / monitoring_only so no spurious
-  // broker API call is ever made.
+  // daily_loss_limit and profit_target can be broker-enforced via userAccountAutoLiq.
+  // All other triggers must return skip=true / monitoring_only.
   const NON_BROKER_TRIGGERS: EnforcementTrigger[] = [
     "trade_limit",
     "consecutive_losses",
-    "profit_target",
     "trading_day_disabled",
     "manual",
   ];
@@ -416,6 +417,15 @@ describe("shouldSkipBrokerEnforcement — all verified rule-breach triggers", ()
     const result = shouldSkipBrokerEnforcement({
       platform: "tradovate",
       trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("profit_target on connected_live Tradovate → skip=false (broker call should proceed)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "profit_target",
       connectionStatus: "connected_live",
     });
     assert.equal(result.skip, false);
@@ -483,5 +493,190 @@ describe("broker_locked requires read-back confirmation — applyBrokerDayLockou
   it("403 from broker → unavailable_permission, not broker_lock_failed", () => {
     const { lockStatus } = classifyEnforcementError({ statusCode: 403 });
     assert.equal(lockStatus, "unavailable_permission");
+  });
+});
+
+// ── buildAutoLiqProfitUpdatePayload ───────────────────────────────────────────
+
+describe("buildAutoLiqProfitUpdatePayload", () => {
+  it("includes id, dailyProfitAutoLiq, and changesLocked=true by default", () => {
+    const payload = buildAutoLiqProfitUpdatePayload({ existingId: 42, dailyProfitAutoLiq: 500 });
+    assert.equal(payload.id, 42);
+    assert.equal(payload.dailyProfitAutoLiq, 500);
+    assert.equal(payload.changesLocked, true);
+  });
+
+  it("does NOT include doNotUnlock — auto-unlock at next session open must be preserved", () => {
+    const payload = buildAutoLiqProfitUpdatePayload({ existingId: 99, dailyProfitAutoLiq: 300 });
+    assert.ok(
+      !("doNotUnlock" in payload),
+      "doNotUnlock must be absent — setting it would permanently trap the account",
+    );
+  });
+
+  it("does NOT include dailyLossAutoLiq — profit lock must not touch the loss field", () => {
+    const payload = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 250 });
+    assert.ok(
+      !("dailyLossAutoLiq" in payload),
+      "profit update payload must not include dailyLossAutoLiq",
+    );
+  });
+
+  it("payload contains exactly the expected keys", () => {
+    const payload = buildAutoLiqProfitUpdatePayload({ existingId: 5, dailyProfitAutoLiq: 200 });
+    const keys = Object.keys(payload).sort();
+    assert.deepEqual(keys, ["changesLocked", "dailyProfitAutoLiq", "id"]);
+  });
+
+  it("is generic — uses the provided existingId, not any hardcoded value", () => {
+    const p1 = buildAutoLiqProfitUpdatePayload({ existingId: 111, dailyProfitAutoLiq: 100 });
+    const p2 = buildAutoLiqProfitUpdatePayload({ existingId: 222, dailyProfitAutoLiq: 100 });
+    assert.equal(p1.id, 111);
+    assert.equal(p2.id, 222);
+    assert.notEqual(p1.id, p2.id);
+  });
+
+  it("changesLocked can be explicitly overridden to false", () => {
+    const payload = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 50, changesLocked: false });
+    assert.equal(payload.changesLocked, false);
+  });
+});
+
+// ── buildAutoLiqProfitCreatePayload ───────────────────────────────────────────
+
+describe("buildAutoLiqProfitCreatePayload", () => {
+  it("includes accountId, dailyProfitAutoLiq, and changesLocked=true by default", () => {
+    const payload = buildAutoLiqProfitCreatePayload({ tvAccountId: 6248, dailyProfitAutoLiq: 300 });
+    assert.equal(payload.accountId, 6248);
+    assert.equal(payload.dailyProfitAutoLiq, 300);
+    assert.equal(payload.changesLocked, true);
+  });
+
+  it("does NOT include doNotUnlock", () => {
+    const payload = buildAutoLiqProfitCreatePayload({ tvAccountId: 6248, dailyProfitAutoLiq: 100 });
+    assert.ok(
+      !("doNotUnlock" in payload),
+      "doNotUnlock must be absent from the create payload",
+    );
+  });
+
+  it("does NOT include dailyLossAutoLiq — profit lock must not touch the loss field", () => {
+    const payload = buildAutoLiqProfitCreatePayload({ tvAccountId: 6248, dailyProfitAutoLiq: 100 });
+    assert.ok(
+      !("dailyLossAutoLiq" in payload),
+      "profit create payload must not include dailyLossAutoLiq",
+    );
+  });
+
+  it("is generic — uses the provided tvAccountId, not any hardcoded account", () => {
+    const p1 = buildAutoLiqProfitCreatePayload({ tvAccountId: 1001, dailyProfitAutoLiq: 50 });
+    const p2 = buildAutoLiqProfitCreatePayload({ tvAccountId: 9999, dailyProfitAutoLiq: 50 });
+    assert.equal(p1.accountId, 1001);
+    assert.equal(p2.accountId, 9999);
+    assert.notEqual(p1.accountId, p2.accountId);
+  });
+
+  it("payload contains exactly the expected keys", () => {
+    const payload = buildAutoLiqProfitCreatePayload({ tvAccountId: 6248, dailyProfitAutoLiq: 200 });
+    const keys = Object.keys(payload).sort();
+    assert.deepEqual(keys, ["accountId", "changesLocked", "dailyProfitAutoLiq"]);
+  });
+});
+
+// ── computeProfitAmountToSet ──────────────────────────────────────────────────
+
+describe("computeProfitAmountToSet", () => {
+  it("returns the positive daily P&L directly (profit day)", () => {
+    assert.equal(computeProfitAmountToSet(500), 500);
+  });
+
+  it("returns 0 for a negative P&L — profit lock only fires when account is profitable", () => {
+    assert.equal(computeProfitAmountToSet(-100), 0);
+  });
+
+  it("returns 0 for exactly zero", () => {
+    assert.equal(computeProfitAmountToSet(0), 0);
+  });
+
+  it("returns 0 for null", () => {
+    assert.equal(computeProfitAmountToSet(null), 0);
+  });
+
+  it("returns 0 for undefined", () => {
+    assert.equal(computeProfitAmountToSet(undefined), 0);
+  });
+
+  it("returns 0 for NaN", () => {
+    assert.equal(computeProfitAmountToSet(NaN), 0);
+  });
+
+  it("preserves cent-level precision", () => {
+    assert.equal(computeProfitAmountToSet(347.82), 347.82);
+  });
+
+  it("uses account-specific profit — different amounts produce different thresholds", () => {
+    const a = computeProfitAmountToSet(800);
+    const b = computeProfitAmountToSet(400);
+    assert.equal(a, 800);
+    assert.equal(b, 400);
+    assert.notEqual(a, b);
+  });
+});
+
+// ── profit_target broker enforcement — shouldSkipBrokerEnforcement ────────────
+
+describe("shouldSkipBrokerEnforcement — profit_target trigger", () => {
+  it("profit_target on connected_live → skip=false (broker call should proceed)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "profit_target",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("profit_target on read-only → skip=true with unavailable_read_only", () => {
+    // Read-only gate fires after the trigger gate (profit_target is broker-capable),
+    // so the result is unavailable_read_only, not monitoring_only.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "profit_target",
+      connectionStatus: "connected_readonly",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+  });
+
+  it("profit_target on non-Tradovate platform → skip=true with monitoring_only", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradingview",
+      trigger: "profit_target",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+});
+
+// ── profit payload regression: daily loss payload is unchanged ────────────────
+
+describe("profit target builder regression — daily loss payloads unchanged", () => {
+  it("buildAutoLiqUpdatePayload still uses dailyLossAutoLiq, not dailyProfitAutoLiq", () => {
+    const payload = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 250 });
+    assert.ok("dailyLossAutoLiq" in payload, "loss update payload must contain dailyLossAutoLiq");
+    assert.ok(!("dailyProfitAutoLiq" in payload), "loss update payload must not contain dailyProfitAutoLiq");
+  });
+
+  it("buildAutoLiqCreatePayload still uses dailyLossAutoLiq, not dailyProfitAutoLiq", () => {
+    const payload = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 250 });
+    assert.ok("dailyLossAutoLiq" in payload, "loss create payload must contain dailyLossAutoLiq");
+    assert.ok(!("dailyProfitAutoLiq" in payload), "loss create payload must not contain dailyProfitAutoLiq");
+  });
+
+  it("profit and loss payloads use different fields — they must not be confused", () => {
+    const lossPayload = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 250 });
+    const profitPayload = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 500 });
+    assert.ok("dailyLossAutoLiq" in lossPayload && !("dailyProfitAutoLiq" in lossPayload));
+    assert.ok("dailyProfitAutoLiq" in profitPayload && !("dailyLossAutoLiq" in profitPayload));
   });
 });
