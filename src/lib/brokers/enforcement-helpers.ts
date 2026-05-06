@@ -11,6 +11,8 @@ export type EnforcementTrigger =
   | "daily_loss_limit"
   | "trade_limit"
   | "consecutive_losses"
+  | "profit_target"
+  | "trading_day_disabled"
   | "manual";
 
 /**

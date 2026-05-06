@@ -20,7 +20,9 @@ import type { GuardianSnapshot } from "@/lib/guardian";
 export type RuleType =
   | "max_trades_per_day"
   | "max_daily_loss"
+  | "daily_profit_target"
   | "stop_after_consecutive_losses"
+  | "trading_day_disabled"
   | "no_trade_before_major_news"
   | "session_not_started"
   | "session_closed"
@@ -77,8 +79,17 @@ export type RuleEngineInput = {
   todayTradesCount: number;
   maxDailyLoss: number | null;
   todayPnL: number;
+  /** Optional daily profit target. When set, reaching/exceeding it locks the account. */
+  dailyProfitTarget?: number | null;
   stopAfterConsecutiveLosses: number | null;
   consecutiveLosses: number;
+  /**
+   * Configured trading days as 3-letter codes: "MON"|"TUE"|"WED"|"THU"|"FRI".
+   * When set, today (derived from `now` in America/Chicago) must be in the list
+   * or trading is blocked for the day.
+   * null / empty array = no restriction.
+   */
+  tradingDays?: string[] | null;
   sessionStarted: boolean;
   sessionEnded: boolean;
   /** TodaySessionStateKind from guardian.ts */
@@ -116,6 +127,22 @@ export type ViolationFeed = {
   /** Highest-priority non-ok violation, or null if all ok */
   primaryViolation: RuleResult | null;
 };
+
+// ─── CME day helper ────────────────────────────────────────────────────────────
+
+const CME_TIMEZONE = "America/Chicago";
+
+/**
+ * Returns the 3-letter weekday code for `date` in America/Chicago.
+ * "Monday" → "MON", "Tuesday" → "TUE", ..., "Sunday" → "SUN".
+ * Matches the codes stored in RiskRules.tradingDays.
+ */
+function cmeDayCode(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: CME_TIMEZONE, weekday: "long" })
+    .format(date)
+    .toUpperCase()
+    .slice(0, 3);
+}
 
 // ─── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -268,6 +295,44 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
     }
   }
 
+  // ── daily_profit_target ─────────────────────────────────────────────────────
+  if (input.dailyProfitTarget !== null && input.dailyProfitTarget !== undefined) {
+    const target = input.dailyProfitTarget;
+    if (input.todayPnL >= target) {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "triggered",
+        reason: `Daily P&L ${input.todayPnL} reached or exceeded profit target of ${target}.`,
+        message: `Daily profit target reached ($${target}). Trading locked for the rest of the session.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Stop trading. You have hit your daily profit goal.",
+      });
+    } else if (target > 0 && input.todayPnL >= target * 0.9) {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "warning",
+        reason: `Daily P&L ${input.todayPnL} is within 10% of profit target ${target}.`,
+        message: `Approaching daily profit target ($${target}). Trade carefully.`,
+        severity: "medium",
+        timestamp: now,
+        recommendedAction: "Consider scaling down — one bad trade could erase the day.",
+      });
+    } else {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "ok",
+        reason: `Daily P&L ${input.todayPnL} is below profit target of ${target}.`,
+        message: `P&L: $${input.todayPnL}. Target: $${target}.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
   // ── stop_after_consecutive_losses ───────────────────────────────────────────
   if (
     input.stopAfterConsecutiveLosses !== null &&
@@ -309,6 +374,33 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
         status: "ok",
         reason: "No consecutive losses.",
         message: "No consecutive losses.",
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  // ── trading_day_disabled ────────────────────────────────────────────────────
+  if (input.tradingDays !== null && input.tradingDays !== undefined && input.tradingDays.length > 0) {
+    const today = cmeDayCode(now);
+    if (!input.tradingDays.includes(today)) {
+      results.push({
+        ruleId: "trading_day_disabled",
+        ruleType: "trading_day_disabled",
+        status: "blocked",
+        reason: `Today (${today}) is not in the configured trading days: ${input.tradingDays.join(", ")}.`,
+        message: `${today} is not a selected trading day. Trading is blocked for today.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "No trading today. Your plan only allows the selected days.",
+      });
+    } else {
+      results.push({
+        ruleId: "trading_day_disabled",
+        ruleType: "trading_day_disabled",
+        status: "ok",
+        reason: `Today (${today}) is in the configured trading days.`,
+        message: `${today} is a trading day.`,
         severity: "low",
         timestamp: now,
       });
@@ -521,12 +613,17 @@ export function buildRuleEngineInputFromGuardianSnapshot(
     ? Number(profile.maxDailyLoss.toString())
     : null;
 
+  const dailyProfitTarget = profile.dailyProfitTarget
+    ? Number(profile.dailyProfitTarget.toString())
+    : null;
+
   return {
     guardianEnabled: profile.guardianEnabled,
     maxTradesPerDay: profile.maxTradesPerDay ?? null,
     todayTradesCount: evaluation.todayTradesCount,
     maxDailyLoss,
     todayPnL: evaluation.todayPnL,
+    dailyProfitTarget,
     stopAfterConsecutiveLosses: profile.stopAfterConsecutiveLosses ?? null,
     consecutiveLosses: evaluation.consecutiveLosses,
     sessionStarted: options?.sessionStarted ?? false,

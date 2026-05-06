@@ -121,11 +121,12 @@ export function computeEnforcementMode(
     if (connStatus === "connected_readonly") {
       return {
         mode: "monitoring_only",
-        label: "Read-only monitoring",
+        label: "Not fully protected — alerts only",
         detail:
-          "Guardrail can evaluate rules and send alerts. " +
-          "Broker-side blocking is not active on this connection.",
-        cls: "border-sky-200 bg-sky-50 text-sky-800",
+          "This account is connected in read-only mode. " +
+          "Guardrail can evaluate rules and send alerts, but cannot lock the account or apply broker-side risk settings. " +
+          "To enable enforcement, re-authorize with Account Risk Settings: Full Access.",
+        cls: "border-amber-200 bg-amber-50 text-amber-800",
       };
     }
 

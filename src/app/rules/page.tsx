@@ -119,15 +119,10 @@ export default async function RulesPage({
     maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
     stopAfterLosses: intStr(riskRules?.stopAfterLosses),
     maxContracts: intStr(riskRules?.maxContracts),
-    allowedSymbols: riskRules?.allowedSymbols ?? "",
     sessionStartHour: intStr(riskRules?.sessionStartHour),
     sessionEndHour: intStr(riskRules?.sessionEndHour),
     tradingDays: parseTradingDays(riskRules?.tradingDays),
-    newsLockoutEnabled: riskRules?.newsLockoutEnabled ?? false,
     onBreachWarn: riskRules?.onBreachWarn ?? true,
-    onBreachAppLock: riskRules?.onBreachAppLock ?? true,
-    onBreachCancelOrders: riskRules?.onBreachCancelOrders ?? false,
-    onBreachFlatten: riskRules?.onBreachFlatten ?? false,
   };
 
   const hasPendingPayload = Boolean(riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate);
@@ -150,8 +145,6 @@ export default async function RulesPage({
     propFirmProfitTarget: decStr(selectedAccount?.riskRules?.propFirmProfitTarget),
     propFirmMinTradingDays: intStr(selectedAccount?.riskRules?.propFirmMinTradingDays),
   };
-
-  const hasBroker = accounts.some((a) => a.platform !== "manual" && a.brokerConnectionId != null);
 
   const accountDefaultValues: DefaultRuleValues = {
     maxDailyLoss: decStr(riskRules?.maxDailyLoss),
@@ -303,7 +296,7 @@ export default async function RulesPage({
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
               </div>
-              <RulesForm initial={defaultInitial} hasBroker={hasBroker} timezone={traderProfile?.timezone} />
+              <RulesForm initial={defaultInitial} timezone={traderProfile?.timezone} />
             </SectionCard>
           )}
 

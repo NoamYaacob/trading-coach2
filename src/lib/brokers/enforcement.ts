@@ -76,6 +76,18 @@ export const ENFORCEMENT_CAPABILITIES = {
       "No Tradovate API field maps to consecutive loss streaks. " +
       "Internal Guardrail lock only.",
   },
+  profit_target: {
+    capability: "internal_only" as const,
+    notes:
+      "Tradovate's userAccountAutoLiq has no profit-target field. " +
+      "Internal Guardrail lock only. Broker-side profit-target blocking is not available.",
+  },
+  trading_day_disabled: {
+    capability: "internal_only" as const,
+    notes:
+      "Session-day gate: today is not a selected trading day. " +
+      "Internal Guardrail lock only. No Tradovate API field maps to trading-day restrictions.",
+  },
   manual: {
     capability: "internal_only" as const,
     notes: "Manual interventions are Guardrail-internal only.",
