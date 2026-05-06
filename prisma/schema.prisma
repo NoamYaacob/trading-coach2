@@ -466,6 +466,7 @@ model AccountRiskRules {
   allowedStartHour Int?
   allowedEndHour   Int?
   sessionEndBehavior String?
+  maxContracts     Int?
   // Prop firm limits — only relevant for evaluation / funded accounts.
   // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,
   // propFirmDrawdownRemaining). Set propFirmDrawdownRemaining to the account's current

@@ -136,6 +136,15 @@ export const ENFORCEMENT_CAPABILITIES = {
       "a session-end mechanism but is unverified. Internal_only until a session-end " +
       "scheduler exists and flattenTimestamp is tested against a live account.",
   },
+  max_position_size: {
+    capability: "internal_only" as const,
+    notes:
+      "Mini-equivalent total exposure (sum of NQ+0.1·MNQ, ES+0.1·MES, …). " +
+      "Tradovate's UserAccountPositionLimit is per-product and cannot express " +
+      "the cross-product equivalence required for a unified mini-equivalent " +
+      "limit, so this is Guardrail-side monitoring only. May still flatten via " +
+      "order/liquidatepositions when broker permission and connection allow.",
+  },
   manual: {
     capability: "internal_only" as const,
     notes: "Manual interventions are Guardrail-internal only.",

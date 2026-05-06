@@ -138,6 +138,99 @@ export function computeMiniEquivalentExposure(
 }
 
 /**
+ * Decision result for the max-position-size enforcement check, combining
+ * exposure computation, breach detection, and unsupported-symbol policy.
+ */
+export type MaxPositionSizeDecision = {
+  /** Whether the sync should fire the max_position_size enforcement trigger. */
+  shouldTrigger: boolean;
+  /** Mini-equivalent exposure summed across known pairs (informational; 0 when no positions). */
+  totalMiniEquivalent: number;
+  /** True when at least one open position is in a symbol Guardrail can't classify. */
+  hasUnsupportedPositions: boolean;
+  /** List of unsupported symbols, populated only when hasUnsupportedPositions is true. */
+  unsupportedSymbols: string[];
+  /**
+   * Discriminator for the breach kind:
+   *   "exposure"     — mini-equivalent total exceeds the limit
+   *   "unsupported"  — at least one position is in a symbol we can't verify
+   *   null           — no breach (no trigger)
+   */
+  reasonKind: "exposure" | "unsupported" | null;
+  /** Human-readable reason string for GuardianIntervention.message; null when no breach. */
+  reason: string | null;
+};
+
+/**
+ * Decide whether the max_position_size enforcement trigger should fire.
+ *
+ * Pure function. No I/O. No broker calls. No DB.
+ *
+ * Policy:
+ *   - maxContracts null / ≤ 0 → no rule configured → never triggers.
+ *   - Any unsupported open position when a rule IS configured → trigger
+ *     ("unsupported"). Rationale: if Guardrail can't verify the exposure,
+ *     it cannot honestly enforce a max — and silently passing the breach
+ *     is the unsafe direction. This is the documented safer behavior.
+ *   - Otherwise compare totalMiniEquivalent > maxContracts (strict >).
+ */
+export function deriveMaxPositionSizeBreach(opts: {
+  positions: PositionExposureInput[];
+  maxContracts: number | null;
+}): MaxPositionSizeDecision {
+  const { positions, maxContracts } = opts;
+
+  if (maxContracts === null || maxContracts <= 0) {
+    return {
+      shouldTrigger: false,
+      totalMiniEquivalent: 0,
+      hasUnsupportedPositions: false,
+      unsupportedSymbols: [],
+      reasonKind: null,
+      reason: null,
+    };
+  }
+
+  const exposure = computeMiniEquivalentExposure(positions);
+  const unsupportedSymbols = exposure.unsupported.map((u) => u.symbol);
+
+  if (unsupportedSymbols.length > 0) {
+    return {
+      shouldTrigger: true,
+      totalMiniEquivalent: exposure.totalMiniEquivalent,
+      hasUnsupportedPositions: true,
+      unsupportedSymbols,
+      reasonKind: "unsupported",
+      reason:
+        `Position uses an unsupported symbol, so Guardrail cannot verify max position size safely ` +
+        `(${unsupportedSymbols.join(", ")}).`,
+    };
+  }
+
+  if (isMaxPositionSizeBreached(exposure.totalMiniEquivalent, maxContracts)) {
+    return {
+      shouldTrigger: true,
+      totalMiniEquivalent: exposure.totalMiniEquivalent,
+      hasUnsupportedPositions: false,
+      unsupportedSymbols: [],
+      reasonKind: "exposure",
+      reason:
+        `Max position size exceeded: ${exposure.totalMiniEquivalent} mini-equivalent ` +
+        `contracts open (limit: ${maxContracts}).`,
+    };
+  }
+
+  return {
+    shouldTrigger: false,
+    totalMiniEquivalent: exposure.totalMiniEquivalent,
+    hasUnsupportedPositions: false,
+    unsupportedSymbols: [],
+    reasonKind: null,
+    reason: null,
+  };
+}
+
+/**
  * Returns true if total mini-equivalent exposure strictly exceeds the
  * configured limit. Equality is allowed.
  *

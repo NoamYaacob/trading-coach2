@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import {
   computeMiniEquivalentExposure,
   isMaxPositionSizeBreached,
+  deriveMaxPositionSizeBreach,
 } from "./position-exposure.ts";
 
 describe("computeMiniEquivalentExposure — required cases from product spec", () => {
@@ -230,6 +231,206 @@ describe("isMaxPositionSizeBreached", () => {
   it("breaches at boundary + 1 tenth even after drift", () => {
     const drifted = 11 * 0.1; // 1.1...001
     assert.equal(isMaxPositionSizeBreached(drifted, 1.0), true);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — required scenarios from product spec", () => {
+  it("2 NQ with maxContracts=2 does NOT trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 2 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.reasonKind, null);
+    assert.equal(d.totalMiniEquivalent, 2);
+  });
+
+  it("20 MNQ with maxContracts=2 does NOT trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 20 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 2);
+  });
+
+  it("1 NQ + 10 MNQ with maxContracts=2 does NOT trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "NQH6", netPos: 1 },
+        { symbol: "MNQH6", netPos: 10 },
+      ],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 2);
+  });
+
+  it("21 MNQ with maxContracts=2 triggers max_position_size", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 21 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 2.1);
+    assert.match(d.reason ?? "", /Max position size exceeded/);
+    assert.match(d.reason ?? "", /2\.1/);
+    assert.match(d.reason ?? "", /limit: 2/);
+  });
+
+  it("3 NQ with maxContracts=2 triggers max_position_size", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 3 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 3);
+  });
+
+  it("1 NQ + 11 MNQ with maxContracts=2 triggers max_position_size", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "NQH6", netPos: 1 },
+        { symbol: "MNQH6", netPos: 11 },
+      ],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 2.1);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — boundary semantics", () => {
+  it("exact equality does not trigger (totalMiniEquivalent === maxContracts)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 2 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("one decimal above triggers (e.g. 2.1 vs 2)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 21 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("IEEE-754 drift at boundary does not falsely trigger", () => {
+    // 11 micros = 1.1 mini-equivalent, limit = 1.1
+    // 11 * 0.1 in floating point produces 1.1000000000000001 — must not breach.
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 11 }],
+      maxContracts: 1.1,
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — limit configuration", () => {
+  it("null maxContracts skips the check (no trigger)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 100 }],
+      maxContracts: null,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 0);
+  });
+
+  it("zero maxContracts skips the check (treated as unconfigured)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 1 }],
+      maxContracts: 0,
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("negative maxContracts skips the check", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 1 }],
+      maxContracts: -1,
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("no positions returns no trigger even with limit set", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 0);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — unsupported policy", () => {
+  it("unsupported symbol triggers with reasonKind=unsupported (NOT silently ignored)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "6EH6", netPos: 1 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "unsupported");
+    assert.equal(d.hasUnsupportedPositions, true);
+    assert.deepEqual(d.unsupportedSymbols, ["6EH6"]);
+    assert.match(d.reason ?? "", /unsupported symbol/i);
+  });
+
+  it("unsupported symbol does NOT trigger when limit is null (no rule configured)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "6EH6", netPos: 1 }],
+      maxContracts: null,
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("unsupported takes precedence over exposure when both could fire", () => {
+    // 21 MNQ would breach by exposure, but the unsupported 6E breach
+    // is reported first (Guardrail honestly cannot verify).
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "MNQH6", netPos: 21 },
+        { symbol: "6EH6", netPos: 1 },
+      ],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "unsupported");
+  });
+
+  it("supported positions alone (within limit) do not trigger even with no unsupported", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 1 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.hasUnsupportedPositions, false);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — selection of effective limit (sync responsibility)", () => {
+  // The pure helper takes a single maxContracts. Sync resolves
+  // `accountRules?.maxContracts ?? defaultRules?.maxContracts ?? null`
+  // before calling. These tests verify the helper accepts both override
+  // and inherited values transparently.
+  it("account-specific value overrides default (sync passes 3 instead of 5)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 4 }],
+      maxContracts: 3, // would be inherited as 5; account override = 3
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("default applies when account override is null (sync passes default)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 4 }],
+      maxContracts: 5,
+    });
+    assert.equal(d.shouldTrigger, false);
   });
 });
 

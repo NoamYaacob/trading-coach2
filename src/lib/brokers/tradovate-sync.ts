@@ -34,6 +34,10 @@ import {
   type SessionEndBehavior,
   type BrokerFlattenResult,
 } from "./enforcement-helpers";
+import {
+  deriveMaxPositionSizeBreach,
+  type PositionExposureInput,
+} from "./position-exposure";
 
 export type SyncResult = {
   ok: boolean;
@@ -102,14 +106,17 @@ export async function syncTradovateAccount(
     // ── Open positions → unrealised P&L ────────────────────────────────────
     // Prefer openPl from the snapshot; fall back to summing position data.
     // toPositions() returns only non-zero netPos positions (already filtered).
+    // Hoisted here (not scoped to the try block) so the same data feeds the
+    // max-position-size enforcement check below.
     let openPnl: number | null = openPnlFromSnapshot;
     let hasOpenPositions = false;
+    let openPositions: Awaited<ReturnType<typeof client.toPositions>> = [];
     try {
-      const positions = await client.toPositions();
-      hasOpenPositions = positions.length > 0;
+      openPositions = await client.toPositions();
+      hasOpenPositions = openPositions.length > 0;
       if (hasOpenPositions) {
-        const sum = positions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
-        const hasAnyPnl = positions.some((p) => p.unrealizedPnL !== null);
+        const sum = openPositions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
+        const hasAnyPnl = openPositions.some((p) => p.unrealizedPnL !== null);
         if (openPnl == null && hasAnyPnl) openPnl = sum;
       }
     } catch {
@@ -284,10 +291,17 @@ export async function syncTradovateAccount(
     });
 
     // ── Load risk rules for riskState computation ─────────────────────────
-    const [accountRules, defaultRules] = await Promise.all([
+    const [accountRules, defaultRules, accountConnInfo] = await Promise.all([
       prisma.accountRiskRules.findUnique({
         where: { accountId },
-        select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true, allowedEndHour: true, sessionEndBehavior: true },
+        select: {
+          maxDailyLoss: true,
+          maxTradesPerDay: true,
+          stopAfterLosses: true,
+          allowedEndHour: true,
+          sessionEndBehavior: true,
+          maxContracts: true,
+        },
       }),
       prisma.riskRules.findUnique({
         where: { userId },
@@ -298,9 +312,16 @@ export async function syncTradovateAccount(
           stopAfterLosses: true,
           sessionEndHour: true,
           sessionEndBehavior: true,
+          maxContracts: true,
         },
       }),
+      prisma.connectedAccount.findUnique({
+        where: { id: accountId },
+        select: { brokerConnection: { select: { connectionStatus: true } } },
+      }),
     ]);
+    const isReadOnlyConnection =
+      accountConnInfo?.brokerConnection?.connectionStatus === "connected_readonly";
     const effectiveMaxDailyLoss =
       accountRules?.maxDailyLoss != null
         ? Number(accountRules.maxDailyLoss)
@@ -360,30 +381,22 @@ export async function syncTradovateAccount(
       isPendingSessionEndLock,
     });
 
-    // For flatten_then_lock: execute the flatten step here in the sync
-    // so the result can be passed to triggerEnforcement as preFlattened.
-    let preFlattened: BrokerFlattenResult | undefined;
-    if (sessionEndAction === "flatten_then_lock") {
-      if (isEnforcementDryRun()) {
-        preFlattened = {
-          flattenStatus: "dry_run",
-          flattenMessage:
-            "Dry run · Session-end position exit simulated. No Tradovate write was sent.",
-          flattenPayload: { positions: ["(position IDs from position/deps)"], admin: false },
-          flattenResponse: null,
-        };
-      } else {
-        try {
-          preFlattened = await client.applyFlattenOpenPositions();
-        } catch (flattenErr) {
-          preFlattened = classifyFlattenError(flattenErr);
-          console.warn("[tradovate/sync] session-end flatten failed — proceeding to lock", {
-            accountId,
-            flattenStatus: preFlattened.flattenStatus,
-          });
-        }
-      }
-    }
+    // ── Max position size (mini-equivalent exposure) ─────────────────────
+    // Account-specific maxContracts overrides the user-level default.
+    // Tradovate cannot express the cross-product equivalence (1 NQ = 10 MNQ),
+    // so this is Guardrail-side monitoring only. UserAccountPositionLimit
+    // writes are intentionally NOT performed here — see ENFORCEMENT_CAPABILITIES
+    // for max_position_size capability classification.
+    const effectiveMaxContracts: number | null =
+      accountRules?.maxContracts ?? defaultRules?.maxContracts ?? null;
+    const exposureInputs: PositionExposureInput[] = openPositions.map((p) => ({
+      symbol: p.symbol,
+      netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
+    }));
+    const maxPositionSizeDecision = deriveMaxPositionSizeBreach({
+      positions: exposureInputs,
+      maxContracts: effectiveMaxContracts,
+    });
 
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
     let enforcementTrigger: EnforcementTrigger | null = null;
@@ -419,6 +432,12 @@ export async function syncTradovateAccount(
     ) {
       newRiskState = "STOPPED";
       enforcementTrigger = "consecutive_losses";
+    } else if (maxPositionSizeDecision.shouldTrigger) {
+      // Mini-equivalent exposure exceeds the configured max, OR an open
+      // position is in a symbol Guardrail can't classify (safer policy:
+      // lock when verification is impossible).
+      newRiskState = "STOPPED";
+      enforcementTrigger = "max_position_size";
     } else if (
       sessionEndAction === "lock_immediately" ||
       sessionEndAction === "flatten_then_lock" ||
@@ -434,6 +453,50 @@ export async function syncTradovateAccount(
         tradesCount === effectiveMaxTrades - 1)
     ) {
       newRiskState = "WARNING";
+    }
+
+    // ── Pre-flatten step ──────────────────────────────────────────────────
+    // Run BEFORE triggerEnforcement so the flatten outcome is recorded on
+    // GuardianIntervention atomically. Two triggers want flatten:
+    //   - session_end with behavior=flatten_at_session_end
+    //   - max_position_size with at least one open position
+    // Read-only connections skip the broker write but still record the
+    // intended action. Dry-run mode records a simulated payload without
+    // calling Tradovate.
+    let preFlattened: BrokerFlattenResult | undefined;
+    const wantsFlatten =
+      (enforcementTrigger === "session_end" && sessionEndAction === "flatten_then_lock") ||
+      (enforcementTrigger === "max_position_size" && hasOpenPositions);
+    if (wantsFlatten) {
+      const flattenContext =
+        enforcementTrigger === "max_position_size" ? "max-position-size" : "session-end";
+      if (isEnforcementDryRun()) {
+        preFlattened = {
+          flattenStatus: "dry_run",
+          flattenMessage: `Dry run · ${flattenContext} position exit simulated. No Tradovate write was sent.`,
+          flattenPayload: { positions: ["(position IDs from position/deps)"], admin: false },
+          flattenResponse: null,
+        };
+      } else if (isReadOnlyConnection) {
+        preFlattened = {
+          flattenStatus: "unavailable_read_only",
+          flattenMessage:
+            `Connection is read-only — ${flattenContext} flatten skipped. ` +
+            "Guardrail's internal lock still applies.",
+          flattenPayload: null,
+          flattenResponse: null,
+        };
+      } else {
+        try {
+          preFlattened = await client.applyFlattenOpenPositions();
+        } catch (flattenErr) {
+          preFlattened = classifyFlattenError(flattenErr);
+          console.warn(`[tradovate/sync] ${flattenContext} flatten failed — proceeding to lock`, {
+            accountId,
+            flattenStatus: preFlattened.flattenStatus,
+          });
+        }
+      }
     }
 
     // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──
@@ -485,9 +548,11 @@ export async function syncTradovateAccount(
             ? `Daily profit target reached: $${resolvedDailyPnl?.toFixed(2) ?? "unknown"}`
             : enforcementTrigger === "consecutive_losses"
               ? `Consecutive loss limit reached: ${consecutiveLossesFromState} consecutive losses`
-              : enforcementTrigger === "session_end"
-                ? `Session end reached (configured end hour: ${effectiveSessionEndHour ?? "unknown"} CT)`
-                : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
+              : enforcementTrigger === "max_position_size"
+                ? maxPositionSizeDecision.reason ?? "Max position size exceeded"
+                : enforcementTrigger === "session_end"
+                  ? `Session end reached (configured end hour: ${effectiveSessionEndHour ?? "unknown"} CT)`
+                  : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
       triggerEnforcement({
         accountId,
         userId,

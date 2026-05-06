@@ -14,6 +14,7 @@ export type EnforcementTrigger =
   | "profit_target"
   | "trading_day_disabled"
   | "session_end"
+  | "max_position_size"
   | "manual";
 
 /**
