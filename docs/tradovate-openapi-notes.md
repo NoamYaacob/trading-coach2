@@ -46,6 +46,31 @@ trade-limit enforcement is skipped.
 
 ---
 
+## Broker enforcement routing (per trigger)
+
+| Trigger | Broker-enforced? | Field | Status |
+|---|---|---|---|
+| `daily_loss_limit` | ✅ Yes | `dailyLossAutoLiq` | VERIFIED |
+| `profit_target` | ✅ Yes | `dailyProfitAutoLiq` | VERIFIED by OpenAPI; ⚠ LIVE QA REQUIRED on demo/sim |
+| `trade_limit` | ❌ No | — | No matching field in userAccountAutoLiq |
+| `consecutive_losses` | ❌ No | — | No matching field in userAccountAutoLiq |
+| `trading_day_disabled` | ❌ No | — | No matching field in userAccountAutoLiq |
+| `session_end` | ❌ Not yet | `flattenTimestamp`? | Needs scheduler + live test |
+| `manual` | ❌ No | — | Guardrail-internal only |
+
+**`applyBrokerDayLockout` uses an explicit switch on trigger.** A default
+branch returns `monitoring_only` without calling any broker endpoint, so a
+trigger added to the type without a corresponding case cannot accidentally
+invoke `applyDailyLossLock` or `applyProfitTargetLock`.
+
+**⚠ `profit_target` LIVE QA REQUIRED:** `dailyProfitAutoLiq` is confirmed
+present in the Tradovate OpenAPI schema and the read-back confirmation logic
+is in place, but the live broker behavior (immediate liq-only lock vs. soft
+alert) has not been validated against a real demo or sim account. Validate
+on a demo/sim account before treating this as fully production-ready.
+
+---
+
 ## `userAccountAutoLiq` field audit (May 2026)
 
 Verified against `docs/tradovate-openapi.json`. All fields are present in

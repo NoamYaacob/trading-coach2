@@ -26,6 +26,10 @@
  *                          liquidation-only mode. changesLocked=true prevents
  *                          removal mid-session.
  *                          Endpoint: userAccountAutoLiq/update (or /create).
+ *                          ⚠ LIVE QA REQUIRED: field confirmed by OpenAPI schema
+ *                          and read-back logic, but live broker behavior must be
+ *                          validated on a demo/sim account before treating this
+ *                          as fully broker-enforced in production.
  *
  *   trade_limit          → NO. NO MATCHING FIELD.
  *                          userAccountAutoLiq has no max-trades-per-day field.
@@ -110,7 +114,10 @@ export const ENFORCEMENT_CAPABILITIES = {
     notes:
       "Sets dailyProfitAutoLiq to the current daily profit so Tradovate's risk engine " +
       "immediately places the account in liquidation-only mode and blocks new opening " +
-      "orders for the rest of the trading session. Verified via OpenAPI audit (May 2026).",
+      "orders for the rest of the trading session. Verified via OpenAPI audit (May 2026). " +
+      "⚠ LIVE QA REQUIRED: dailyProfitAutoLiq confirmed by OpenAPI schema and read-back " +
+      "logic, but live broker behavior must be validated on a demo/sim account before " +
+      "marketing this as fully broker-enforced.",
   },
   trading_day_disabled: {
     capability: "internal_only" as const,
@@ -118,6 +125,14 @@ export const ENFORCEMENT_CAPABILITIES = {
       "Session-day gate: today is not a selected trading day. " +
       "No Tradovate API field maps to day-of-week trading restrictions. " +
       "Internal Guardrail lock only.",
+  },
+  session_end: {
+    capability: "internal_only" as const,
+    notes:
+      "Firing this trigger reliably requires a cron job timed to the CME session " +
+      "close (4:00 PM CT). TvUserAccountAutoLiq.flattenTimestamp may be usable as " +
+      "a session-end mechanism but is unverified. Internal_only until a session-end " +
+      "scheduler exists and flattenTimestamp is tested against a live account.",
   },
   manual: {
     capability: "internal_only" as const,
@@ -179,8 +194,9 @@ export type BrokerDayLockoutResult = {
  *   - A 403 from userAccountAutoLiq does not expire the OAuth connection
  *     (skipMarkExpired=true is set inside TradovateClient).
  *   - broker_locked is only returned when a read-back confirms the stored value.
- *   - trade_limit, consecutive_losses, trading_day_disabled, and manual return
- *     monitoring_only — no broker call is made for these triggers.
+ *   - Every trigger is routed through an explicit switch — the default branch
+ *     returns monitoring_only without calling any broker endpoint, so a future
+ *     trigger cannot accidentally reach applyDailyLossLock or applyProfitTargetLock.
  */
 export async function applyBrokerDayLockout(
   ctx: Pick<EnforcementContext, "accountId" | "userId" | "trigger" | "currentDailyLoss" | "currentDailyPnl">,
@@ -214,42 +230,92 @@ export async function applyBrokerDayLockout(
     };
   }
 
-  // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────────
-  // daily_loss_limit and profit_target reach this path.
+  // ── Explicit switch: one broker method per trigger ────────────────────────
+  // Only triggers with a proven Tradovate API field reach this code.
+  // shouldSkipBrokerEnforcement (above) gates all other triggers before
+  // TradovateClient is ever instantiated.
   //
-  // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
-  //   — finds any existing rule record; passes skipMarkExpired=true
-  // Step 2 (write): POST userAccountAutoLiq/update (or /create)
-  //   — sets the relevant auto-liq field, changesLocked = true
-  // Step 3 (confirm): read-back GET if response doesn't echo the field
-  //   — broker_locked only when read-back confirms the stored value
+  // The switch is exhaustive by design: every case that calls a broker write
+  // endpoint is named explicitly, and the default case is a defensive guard
+  // that returns monitoring_only without calling any endpoint — so a future
+  // trigger added to the type cannot accidentally reach applyDailyLossLock
+  // or applyProfitTargetLock.
+  //
+  // Three-step pattern for each broker-enforced case:
+  //   Step 1 (read):    GET  userAccountAutoLiq/deps?masterid={tvAccountId}
+  //   Step 2 (write):   POST userAccountAutoLiq/update (or /create)
+  //   Step 3 (confirm): read-back GET if response doesn't echo the field
+  //                     → broker_locked only when confirmed = true
   try {
     const brokerClient = new TradovateClient(accountId, userId);
     await brokerClient.initialize();
 
-    if (trigger === "profit_target") {
-      const profitAmountToSet = computeProfitAmountToSet(ctx.currentDailyPnl);
-      const result = await brokerClient.applyProfitTargetLock({ profitAmountToSet });
+    switch (trigger) {
+      case "daily_loss_limit": {
+        const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
+        const result = await brokerClient.applyDailyLossLock({ lossAmountToSet });
 
-      if (result.confirmed) {
-        console.info("[enforcement] profit target broker lock confirmed", {
+        if (result.confirmed) {
+          console.info("[enforcement] daily loss broker lock confirmed", {
+            accountId,
+            endpoint: result.endpoint,
+            lossAmountToSet,
+            readbackValue: result.readbackValue,
+          });
+          return {
+            status: "broker_locked",
+            message:
+              `Broker-side lock applied via ${result.endpoint}. ` +
+              `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
+              `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? lossAmountToSet).toFixed(2)}). ` +
+              `Tradovate will halt new opening orders for the rest of the trading session.`,
+            brokerEndpoint: result.endpoint,
+            brokerPayload: result.payload,
+            brokerResponse: result.response,
+          };
+        }
+        console.warn("[enforcement] daily loss broker lock unconfirmed — value mismatch", {
           accountId,
           endpoint: result.endpoint,
-          profitAmountToSet,
+          lossAmountToSet,
           readbackValue: result.readbackValue,
         });
         return {
-          status: "broker_locked",
+          status: "broker_lock_failed",
           message:
-            `Broker-side lock applied via ${result.endpoint}. ` +
-            `dailyProfitAutoLiq=$${profitAmountToSet.toFixed(2)}, changesLocked=true. ` +
-            `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? profitAmountToSet).toFixed(2)}). ` +
-            `Tradovate will halt new opening orders for the rest of the trading session.`,
+            `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
+            `Sent dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, ` +
+            `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
+            `Guardrail is monitoring and alerting only.`,
           brokerEndpoint: result.endpoint,
           brokerPayload: result.payload,
           brokerResponse: result.response,
         };
-      } else {
+      }
+
+      case "profit_target": {
+        const profitAmountToSet = computeProfitAmountToSet(ctx.currentDailyPnl);
+        const result = await brokerClient.applyProfitTargetLock({ profitAmountToSet });
+
+        if (result.confirmed) {
+          console.info("[enforcement] profit target broker lock confirmed", {
+            accountId,
+            endpoint: result.endpoint,
+            profitAmountToSet,
+            readbackValue: result.readbackValue,
+          });
+          return {
+            status: "broker_locked",
+            message:
+              `Broker-side lock applied via ${result.endpoint}. ` +
+              `dailyProfitAutoLiq=$${profitAmountToSet.toFixed(2)}, changesLocked=true. ` +
+              `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? profitAmountToSet).toFixed(2)}). ` +
+              `Tradovate will halt new opening orders for the rest of the trading session.`,
+            brokerEndpoint: result.endpoint,
+            brokerPayload: result.payload,
+            brokerResponse: result.response,
+          };
+        }
         console.warn("[enforcement] profit target broker lock unconfirmed — value mismatch", {
           accountId,
           endpoint: result.endpoint,
@@ -268,48 +334,28 @@ export async function applyBrokerDayLockout(
           brokerResponse: result.response,
         };
       }
-    }
 
-    // daily_loss_limit path
-    const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
-    const result = await brokerClient.applyDailyLossLock({ lossAmountToSet });
-
-    if (result.confirmed) {
-      console.info("[enforcement] broker lock confirmed", {
-        accountId,
-        endpoint: result.endpoint,
-        lossAmountToSet,
-        readbackValue: result.readbackValue,
-      });
-      return {
-        status: "broker_locked",
-        message:
-          `Broker-side lock applied via ${result.endpoint}. ` +
-          `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
-          `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? lossAmountToSet).toFixed(2)}). ` +
-          `Tradovate will halt new opening orders for the rest of the trading session.`,
-        brokerEndpoint: result.endpoint,
-        brokerPayload: result.payload,
-        brokerResponse: result.response,
-      };
-    } else {
-      console.warn("[enforcement] broker lock unconfirmed — value mismatch", {
-        accountId,
-        endpoint: result.endpoint,
-        lossAmountToSet,
-        readbackValue: result.readbackValue,
-      });
-      return {
-        status: "broker_lock_failed",
-        message:
-          `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
-          `Sent dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, ` +
-          `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
-          `Guardrail is monitoring and alerting only.`,
-        brokerEndpoint: result.endpoint,
-        brokerPayload: result.payload,
-        brokerResponse: result.response,
-      };
+      default: {
+        // shouldSkipBrokerEnforcement should have caught any trigger not listed
+        // above before we ever reached this code. This branch is a defense-in-depth
+        // guard: if it fires, it means a new trigger was added to EnforcementTrigger
+        // and wired through shouldSkipBrokerEnforcement without adding a case here.
+        // Return monitoring_only without calling any broker write endpoint.
+        console.error("[enforcement] unexpected trigger reached broker path — this is a code defect", {
+          accountId,
+          trigger,
+        });
+        return {
+          status: "monitoring_only",
+          message:
+            `Trigger '${trigger as string}' has no mapped broker endpoint. ` +
+            "shouldSkipBrokerEnforcement should have returned skip=true for this trigger. " +
+            "No broker write endpoint was called. Guardrail is monitoring and alerting only.",
+          brokerEndpoint: null,
+          brokerPayload: null,
+          brokerResponse: null,
+        };
+      }
     }
   } catch (err) {
     const { lockStatus, failureReason } = classifyEnforcementError(err);

@@ -13,6 +13,7 @@ export type EnforcementTrigger =
   | "consecutive_losses"
   | "profit_target"
   | "trading_day_disabled"
+  | "session_end"
   | "manual";
 
 /**

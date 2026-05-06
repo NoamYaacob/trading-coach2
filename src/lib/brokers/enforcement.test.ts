@@ -410,6 +410,7 @@ describe("shouldSkipBrokerEnforcement — all verified rule-breach triggers", ()
     "trade_limit",
     "consecutive_losses",
     "trading_day_disabled",
+    "session_end",
     "manual",
   ];
 
@@ -678,5 +679,94 @@ describe("profit target builder regression — daily loss payloads unchanged", (
     const profitPayload = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 500 });
     assert.ok("dailyLossAutoLiq" in lossPayload && !("dailyProfitAutoLiq" in lossPayload));
     assert.ok("dailyProfitAutoLiq" in profitPayload && !("dailyLossAutoLiq" in profitPayload));
+  });
+});
+
+// ── applyBrokerDayLockout — explicit trigger routing ─────────────────────────
+
+describe("applyBrokerDayLockout — explicit trigger routing", () => {
+  // applyBrokerDayLockout uses an explicit switch on trigger. These tests prove
+  // the routing via the two pure-function layers that control whether and how
+  // the broker is called:
+  //
+  //   Layer 1 — shouldSkipBrokerEnforcement:
+  //     Returns skip=true for every trigger that has no broker API. When
+  //     skip=true, applyBrokerDayLockout returns before TradovateClient is
+  //     instantiated, so applyDailyLossLock/applyProfitTargetLock cannot run.
+  //
+  //   Layer 2 — payload builders:
+  //     For the two broker-enforced triggers, the payload builder used is
+  //     specific to that trigger. daily_loss_limit uses dailyLossAutoLiq;
+  //     profit_target uses dailyProfitAutoLiq. The switch prevents either
+  //     builder from running for the other trigger.
+
+  // ── Layer 1: triggers that must not reach any broker write endpoint ─────
+
+  const INTERNAL_ONLY_TRIGGERS: EnforcementTrigger[] = [
+    "trade_limit",
+    "consecutive_losses",
+    "trading_day_disabled",
+    "session_end",
+    "manual",
+  ];
+
+  for (const trigger of INTERNAL_ONLY_TRIGGERS) {
+    it(`${trigger}: skip=true — TradovateClient never instantiated, applyDailyLossLock cannot be called`, () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger,
+        connectionStatus: "connected_live",
+      });
+      assert.equal(result.skip, true, `${trigger} must not enter the broker path`);
+      if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+    });
+  }
+
+  // ── Layer 2: broker-enforced triggers use the correct field ────────────
+
+  it("daily_loss_limit: skip=false and payload uses dailyLossAutoLiq — not dailyProfitAutoLiq", () => {
+    const skipResult = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(skipResult.skip, false, "daily_loss_limit must enter the broker path");
+
+    const updatePayload = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 250 });
+    const createPayload = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 250 });
+    assert.ok("dailyLossAutoLiq" in updatePayload, "update payload must contain dailyLossAutoLiq");
+    assert.ok(!("dailyProfitAutoLiq" in updatePayload), "update payload must not contain dailyProfitAutoLiq");
+    assert.ok("dailyLossAutoLiq" in createPayload, "create payload must contain dailyLossAutoLiq");
+    assert.ok(!("dailyProfitAutoLiq" in createPayload), "create payload must not contain dailyProfitAutoLiq");
+  });
+
+  it("profit_target: skip=false and payload uses dailyProfitAutoLiq — not dailyLossAutoLiq", () => {
+    const skipResult = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "profit_target",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(skipResult.skip, false, "profit_target must enter the broker path");
+
+    const updatePayload = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 500 });
+    const createPayload = buildAutoLiqProfitCreatePayload({ tvAccountId: 1, dailyProfitAutoLiq: 500 });
+    assert.ok("dailyProfitAutoLiq" in updatePayload, "update payload must contain dailyProfitAutoLiq");
+    assert.ok(!("dailyLossAutoLiq" in updatePayload), "update payload must not contain dailyLossAutoLiq");
+    assert.ok("dailyProfitAutoLiq" in createPayload, "create payload must contain dailyProfitAutoLiq");
+    assert.ok(!("dailyLossAutoLiq" in createPayload), "create payload must not contain dailyLossAutoLiq");
+  });
+
+  // ── Cross-field guard: the two fields are never mixed ─────────────────
+
+  it("loss and profit payloads never share the other trigger's field", () => {
+    const lossUpdate = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 100 });
+    const lossCreate = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 100 });
+    const profitUpdate = buildAutoLiqProfitUpdatePayload({ existingId: 1, dailyProfitAutoLiq: 200 });
+    const profitCreate = buildAutoLiqProfitCreatePayload({ tvAccountId: 1, dailyProfitAutoLiq: 200 });
+
+    assert.ok(!("dailyProfitAutoLiq" in lossUpdate), "loss update must not contain profit field");
+    assert.ok(!("dailyProfitAutoLiq" in lossCreate), "loss create must not contain profit field");
+    assert.ok(!("dailyLossAutoLiq" in profitUpdate), "profit update must not contain loss field");
+    assert.ok(!("dailyLossAutoLiq" in profitCreate), "profit create must not contain loss field");
   });
 });
