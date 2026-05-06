@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildArchiveRequest, ARCHIVE_CONFIRM_MSG } from "./archive-account-helpers";
+import {
+  buildArchiveRequest,
+  parseArchiveResponse,
+  ARCHIVE_CONFIRM_MSG,
+} from "./archive-account-helpers";
 
 type Props = {
   accountId: string;
@@ -34,15 +38,21 @@ export function ArchiveAccountButton({ accountId, className }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req.body),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; message?: string };
-      if (!res.ok || !data.ok) {
-        setError(data.message ?? data.error ?? "Could not archive account.");
-        setBusy(false);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        applied?: boolean;
+        error?: string;
+        message?: string;
+      };
+      const result = parseArchiveResponse({ ok: res.ok }, data);
+      if (!result.success) {
+        setError(result.errorMessage);
         return;
       }
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
+    } finally {
       setBusy(false);
     }
   }

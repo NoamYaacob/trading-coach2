@@ -57,12 +57,42 @@ export async function POST(
     select: { id: true, protectionStatus: true },
   });
   if (!account) {
+    console.warn("[account-protection] account not found", { accountId: id, userId: user.id });
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
   const currentStatus = account.protectionStatus as ProtectionStatus;
+
+  console.info("[account-protection] status change requested", {
+    accountId: account.id,
+    userId: user.id,
+    previousStatus: currentStatus,
+    newStatus,
+  });
+
   if (currentStatus === newStatus) {
     return NextResponse.json({ ok: true, applied: true, status: currentStatus });
+  }
+
+  // Archiving always applies immediately regardless of the protection lock.
+  // The lock exists to prevent accidental protection downgrade on live accounts
+  // during trading hours. Archiving is explicit cleanup for unavailable accounts
+  // and is reversible (restore by changing status back to protected/monitor_only).
+  if (newStatus === "archived") {
+    await prisma.connectedAccount.update({
+      where: { id: account.id },
+      data: {
+        protectionStatus: "archived",
+        pendingProtectionStatus: null,
+        pendingProtectionEffectiveDate: null,
+      },
+    });
+    console.info("[account-protection] archived immediately", {
+      accountId: account.id,
+      userId: user.id,
+      previousStatus: currentStatus,
+    });
+    return NextResponse.json({ ok: true, applied: true, status: "archived" });
   }
 
   // Compute lock state from the user's session config.
@@ -91,6 +121,13 @@ export async function POST(
         pendingProtectionEffectiveDate: decision.appliesOnTradingDay,
       },
     });
+    console.info("[account-protection] deferred (protection locked)", {
+      accountId: account.id,
+      userId: user.id,
+      previousStatus: currentStatus,
+      newStatus,
+      appliesOnTradingDay: decision.appliesOnTradingDay,
+    });
     return NextResponse.json({
       ok: true,
       applied: false,
@@ -112,6 +149,12 @@ export async function POST(
       pendingProtectionStatus: null,
       pendingProtectionEffectiveDate: null,
     },
+  });
+  console.info("[account-protection] applied immediately", {
+    accountId: account.id,
+    userId: user.id,
+    previousStatus: currentStatus,
+    newStatus,
   });
 
   return NextResponse.json({
