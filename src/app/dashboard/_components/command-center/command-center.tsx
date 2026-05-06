@@ -6,7 +6,12 @@ import { useMemo, useState } from "react";
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
-import { PILL_ROW_PRIMARY, PILL_ROW_SECONDARY } from "@/components/ui/pill-classes";
+import {
+  PILL_ROW_PRIMARY,
+  PILL_ROW_SECONDARY,
+  PILL_CARD_PRIMARY,
+  PILL_CARD_SECONDARY,
+} from "@/components/ui/pill-classes";
 import { getTradeCountDisplay, deriveBrokerEnforcementCopy } from "./data-helpers";
 import type {
   AccountStatus,
@@ -589,14 +594,14 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         <p className="mt-0.5 text-[11px] text-amber-800">
           May have been reset, closed, or removed by the prop firm. Excluded from totals.
         </p>
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <Link href="/accounts" className={PILL_ROW_PRIMARY}>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link href="/accounts" className={PILL_CARD_PRIMARY}>
             Refresh status
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
             accountLabel={account.label}
-            className={PILL_ROW_SECONDARY}
+            className={PILL_CARD_SECONDARY}
           />
         </div>
       </div>
@@ -700,31 +705,31 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           )}
         </div>
 
-        {/* Primary nav buttons — fixed height + min-width so Open and Rules are identical */}
-        <div className="mt-2.5 flex items-center gap-2">
+        {/* Action buttons row: Open, Rules, and optionally Reconnect */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <Link
             href={`/accounts/${account.id}/edit`}
-            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Open
           </Link>
           <Link
             href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Rules
           </Link>
           {reconnectNeeded && (
             <Link
               href="/accounts/connect/tradovate"
-              className="ml-auto inline-flex h-10 items-center justify-center rounded-full bg-stone-900 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-700"
+              className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full bg-stone-900 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-700"
             >
               Reconnect
             </Link>
           )}
         </div>
 
-        {/* Refresh icon-button + sync time on same row */}
+        {/* Sync status row */}
         {account.platform === "tradovate" && !reconnectNeeded && (
           <div className="mt-2">
             <SyncButton accountId={account.id} lastSyncAt={account.lastSyncAt} variant="compact" />

@@ -310,8 +310,8 @@ export function AccountRulesForm({
       )}
 
       {/* Account limits */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Account limits</legend>
+      <div role="group" aria-label="Account limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <p className="text-sm font-semibold text-stone-950">Account limits</p>
         {!hasExistingRules && (
           <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
         )}
@@ -329,17 +329,17 @@ export function AccountRulesForm({
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
         </div>
-      </fieldset>
+      </div>
 
       {/* Daily cutoff */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">
-          {SESSION_WINDOW_COPY.legend}
-        </legend>
-        <p className="-mt-2 text-xs text-stone-500">
-          Override the default daily cutoff for this account.{" "}
-          {SESSION_WINDOW_COPY.helperText}
-        </p>
+      <div role="group" aria-label="Daily cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
+          <p className="mt-1 text-xs text-stone-500">
+            Override the default daily cutoff for this account.{" "}
+            {SESSION_WINDOW_COPY.helperText}
+          </p>
+        </div>
         <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day.">
           <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
         </Field>
@@ -356,19 +356,21 @@ export function AccountRulesForm({
             </p>
           );
         })()}
-      </fieldset>
+      </div>
 
       {/* At cutoff */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</legend>
-        <p className="-mt-2 text-xs text-stone-500">
-          What Guardrail does if a position is open at the cutoff time.
-        </p>
+      <div role="group" aria-label="At cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</p>
+          <p className="mt-1 text-xs text-stone-500">
+            What Guardrail does if a position is open at the cutoff time.
+          </p>
+        </div>
         <div className="grid gap-2">
           {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
             <label
               key={value}
-              className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm cursor-pointer"
+              className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
             >
               <input
                 type="radio"
@@ -385,7 +387,7 @@ export function AccountRulesForm({
             </label>
           ))}
         </div>
-      </fieldset>
+      </div>
 
       {/* Advanced settings */}
       <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
@@ -460,7 +462,7 @@ export function AccountRulesForm({
           <button
             type="submit"
             disabled={saving || removing}
-            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {saving ? "Saving…" : "Save rules"}
           </button>
@@ -469,7 +471,7 @@ export function AccountRulesForm({
               type="button"
               onClick={handleRemove}
               disabled={saving || removing}
-              className="inline-flex items-center justify-center rounded-full border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50"
             >
               {removing ? "Removing…" : "Remove account-specific rules"}
             </button>

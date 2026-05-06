@@ -6,19 +6,28 @@
  *
  * Tiers:
  *   PILL_ROW_*    — compact inline table/card row actions (text-[11px], px-2.5 py-1)
+ *   PILL_CARD_*   — mobile card action buttons (h-9 px-4, touch-friendly)
  *   PILL_*        — standard form CTAs (text-sm, px-5 py-2.5)
  *   PILL_DIALOG_* — dialog confirm/cancel buttons (h-10 px-6)
  */
 
 const BASE = "inline-flex items-center justify-center whitespace-nowrap rounded-full transition";
 
-// ─── Compact row actions ──────────────────────────────────────────────────────
+// ─── Compact row actions (desktop table rows) ─────────────────────────────────
 
 export const PILL_ROW_PRIMARY =
   `${BASE} bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 hover:bg-stone-800`;
 
 export const PILL_ROW_SECONDARY =
   `${BASE} border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:border-stone-400 hover:text-stone-950`;
+
+// ─── Mobile card action buttons (touch-friendly, medium size) ─────────────────
+
+export const PILL_CARD_PRIMARY =
+  `${BASE} h-9 bg-stone-950 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800`;
+
+export const PILL_CARD_SECONDARY =
+  `${BASE} h-9 border border-stone-200 px-4 text-xs font-medium text-stone-700 hover:border-stone-400 hover:text-stone-950`;
 
 // ─── Standard form CTAs ───────────────────────────────────────────────────────
 
