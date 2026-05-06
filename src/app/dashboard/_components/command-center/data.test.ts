@@ -10,6 +10,7 @@ import {
   deriveEnforcementMode,
   deriveAccountKind,
   deriveStaleSyncWarning,
+  formatFreshnessLabel,
   deriveConnectionStatusLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
@@ -1604,6 +1605,59 @@ describe("deriveGroupStateSuffix", () => {
       ],
     });
     assert.equal(suffix, "Consent required");
+  });
+});
+
+// ── formatFreshnessLabel ──────────────────────────────────────────────────────
+
+describe("formatFreshnessLabel", () => {
+  it("no broker accounts (minutesSince=null, isStale=false) → null", () => {
+    assert.equal(
+      formatFreshnessLabel({ isStale: false, minutesSinceOldestSync: null }),
+      null,
+    );
+  });
+
+  it("never synced (minutesSince=null, isStale=true) → 'Data may be stale · No sync yet'", () => {
+    assert.equal(
+      formatFreshnessLabel({ isStale: true, minutesSinceOldestSync: null }),
+      "Data may be stale · No sync yet",
+    );
+  });
+
+  it("stale with known minutes → 'Data may be stale · Synced Xm ago'", () => {
+    assert.equal(
+      formatFreshnessLabel({ isStale: true, minutesSinceOldestSync: 6 }),
+      "Data may be stale · Synced 6m ago",
+    );
+  });
+
+  it("fresh, synced 0 minutes ago → 'Synced just now'", () => {
+    assert.equal(
+      formatFreshnessLabel({ isStale: false, minutesSinceOldestSync: 0 }),
+      "Synced just now",
+    );
+  });
+
+  it("fresh, synced 3 minutes ago → 'Synced 3m ago'", () => {
+    assert.equal(
+      formatFreshnessLabel({ isStale: false, minutesSinceOldestSync: 3 }),
+      "Synced 3m ago",
+    );
+  });
+
+  it("stale label always includes 'Data may be stale'", () => {
+    const withMinutes = formatFreshnessLabel({ isStale: true, minutesSinceOldestSync: 10 });
+    const withoutMinutes = formatFreshnessLabel({ isStale: true, minutesSinceOldestSync: null });
+    assert.ok(withMinutes?.includes("Data may be stale"));
+    assert.ok(withoutMinutes?.includes("Data may be stale"));
+  });
+
+  it("fresh labels never include 'stale'", () => {
+    const justNow = formatFreshnessLabel({ isStale: false, minutesSinceOldestSync: 0 });
+    const ago = formatFreshnessLabel({ isStale: false, minutesSinceOldestSync: 2 });
+    assert.ok(!justNow?.toLowerCase().includes("stale"));
+    assert.ok(!ago?.toLowerCase().includes("stale"));
   });
 });
 

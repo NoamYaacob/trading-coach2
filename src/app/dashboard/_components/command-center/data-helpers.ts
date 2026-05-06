@@ -559,6 +559,27 @@ export function deriveStaleSyncWarning(input: {
   return { isStale: diffMs > input.freshnessMs, minutesSinceOldestSync: minutes };
 }
 
+/**
+ * Human-readable freshness label for the Dashboard header.
+ *
+ *   null                                → (no broker accounts — caller hides the label)
+ *   isStale, minutesSince null          → "Data may be stale · No sync yet"
+ *   isStale, minutesSince 6             → "Data may be stale · Synced 6m ago"
+ *   !isStale, minutesSince 0            → "Synced just now"
+ *   !isStale, minutesSince 3            → "Synced 3m ago"
+ */
+export function formatFreshnessLabel(stale: StaleSyncWarning): string | null {
+  if (!stale.isStale && stale.minutesSinceOldestSync === null) return null;
+  if (stale.minutesSinceOldestSync === null) {
+    return "Data may be stale · No sync yet";
+  }
+  if (stale.isStale) {
+    return `Data may be stale · Synced ${stale.minutesSinceOldestSync}m ago`;
+  }
+  if (stale.minutesSinceOldestSync === 0) return "Synced just now";
+  return `Synced ${stale.minutesSinceOldestSync}m ago`;
+}
+
 // ── deriveProtectionStatusPanel ───────────────────────────────────────────────
 
 export type ProtectionStatusPanelData = {

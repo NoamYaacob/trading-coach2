@@ -17,6 +17,7 @@ import {
   getTradeCountDisplay,
   deriveBrokerEnforcementCopy,
   deriveStaleSyncWarning,
+  formatFreshnessLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
   derivePerAccountStateLabel,
@@ -267,6 +268,7 @@ function SectionHeader({
     hasBrokerAccounts,
     freshnessMs: CRON_SYNC_FRESHNESS_MS,
   });
+  const freshnessLabel = hasBrokerAccounts ? formatFreshnessLabel(stale) : null;
 
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -276,16 +278,20 @@ function SectionHeader({
           {summary.totalActive} {summary.totalActive === 1 ? "account" : "accounts"}
         </span>
       </div>
-      {hasBrokerAccounts && stale.isStale ? (
-        <span
-          role="status"
-          className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-50/60 px-2.5 py-1 text-[11px] text-amber-700"
-        >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
-          {stale.minutesSinceOldestSync != null
-            ? `Data may be stale · Synced ${stale.minutesSinceOldestSync}m ago`
-            : "Data may be stale · No sync yet"}
-        </span>
+      {freshnessLabel != null ? (
+        stale.isStale ? (
+          <span
+            role="status"
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-50/60 px-2.5 py-1 text-[11px] text-amber-700"
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+            {freshnessLabel}
+          </span>
+        ) : (
+          <span role="status" className="text-[11px] text-stone-400">
+            {freshnessLabel}
+          </span>
+        )
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {hasBrokerAccounts ? <SyncAllButton /> : null}

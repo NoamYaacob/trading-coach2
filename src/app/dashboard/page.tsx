@@ -10,6 +10,7 @@ import { loadCommandCenterData } from "@/app/dashboard/_components/command-cente
 import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
 import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
+import { DashboardAutoRefresh } from "@/app/dashboard/_components/dashboard-auto-refresh";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
@@ -240,7 +241,11 @@ export default async function DashboardPage() {
     >
       <div className="grid min-w-0 gap-8">
 
-        {/* ── Auto-sync stale Tradovate accounts in background ─────────────── */}
+        {/* ── Interval auto-refresh — keeps data live while tab is open ──────── */}
+        {/* Only active when there are real broker accounts (not the demo view). */}
+        {hasBrokerAccount && <DashboardAutoRefresh />}
+
+        {/* ── One-shot auto-sync for accounts that were stale at page load ───── */}
         {/* Connection-level sync runs discovery first (marks missing accounts). */}
         {(() => {
           const staleAccounts = commandCenter.accounts.filter(
