@@ -14,6 +14,7 @@ import {
   deriveFooterCopy,
   deriveGroupStateSuffix,
   derivePerAccountStateLabel,
+  deriveProtectionStatusPanel,
   deriveRowStatusLabel,
   shouldShowEnforcementChip,
   DRY_RUN_BANNER_COPY,
@@ -1603,5 +1604,85 @@ describe("deriveGroupStateSuffix", () => {
       ],
     });
     assert.equal(suffix, "Consent required");
+  });
+});
+
+// ── deriveProtectionStatusPanel ───────────────────────────────────────────────
+
+describe("deriveProtectionStatusPanel", () => {
+  it("returns null when nothing is active", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: false,
+    });
+    assert.equal(panel, null);
+  });
+
+  it("returns dry_run panel when test mode is active", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: true,
+      requiresConsentCount: 0,
+      isProtectionLocked: false,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "dry_run");
+    assert.equal(panel!.showConsentCta, false);
+  });
+
+  it("returns consent_required when only consent is needed", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 2,
+      isProtectionLocked: false,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "consent_required");
+    assert.equal(panel!.showConsentCta, true);
+  });
+
+  it("returns protection_locked when only protection is locked", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.showConsentCta, false);
+  });
+
+  it("dry_run wins over consent_required (priority: test mode > consent)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: true,
+      requiresConsentCount: 3,
+      isProtectionLocked: false,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "dry_run");
+    // Consent CTA is still shown even when dry_run wins the primary slot.
+    assert.equal(panel!.showConsentCta, true);
+  });
+
+  it("dry_run wins over protection_locked", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: true,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "dry_run");
+    assert.equal(panel!.showConsentCta, false);
+  });
+
+  it("consent_required wins over protection_locked when not in dry_run", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 1,
+      isProtectionLocked: true,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "consent_required");
+    assert.equal(panel!.showConsentCta, true);
   });
 });

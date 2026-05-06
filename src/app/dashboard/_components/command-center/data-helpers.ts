@@ -559,6 +559,34 @@ export function deriveStaleSyncWarning(input: {
   return { isStale: diffMs > input.freshnessMs, minutesSinceOldestSync: minutes };
 }
 
+// ── deriveProtectionStatusPanel ───────────────────────────────────────────────
+
+export type ProtectionStatusPanelData = {
+  kind: "dry_run" | "consent_required" | "protection_locked";
+  /** Whether to show the "Review Trading Plan" CTA (consent action is pending). */
+  showConsentCta: boolean;
+};
+
+/**
+ * Derives the single compact "Protection status" panel for the command center.
+ * Replaces three separate banners (dry-run / consent-required / protection-locked)
+ * with one panel; priority is most-actionable first: test mode → consent → locked.
+ */
+export function deriveProtectionStatusPanel(input: {
+  isDryRunActive: boolean;
+  requiresConsentCount: number;
+  isProtectionLocked: boolean;
+}): ProtectionStatusPanelData | null {
+  const { isDryRunActive, requiresConsentCount, isProtectionLocked } = input;
+  if (!isDryRunActive && requiresConsentCount === 0 && !isProtectionLocked) return null;
+  const kind: ProtectionStatusPanelData["kind"] = isDryRunActive
+    ? "dry_run"
+    : requiresConsentCount > 0
+    ? "consent_required"
+    : "protection_locked";
+  return { kind, showConsentCta: requiresConsentCount > 0 };
+}
+
 // ── deriveEnforcementMode ──────────────────────────────────────────────────────
 
 export function deriveEnforcementMode(input: {

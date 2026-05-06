@@ -233,49 +233,56 @@ export default async function RulesPage({
           {/* Scope context header */}
           <ScopeContextHeader scope={scope} account={selectedAccount} />
 
-          {/* Enforcement mode banner — also surfaces dry-run mode when ENFORCEMENT_DRY_RUN=true */}
-          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <span className="font-semibold">{enforcementInfo.label}. </span>
-                {enforcementInfo.detail}
+          {/* Enforcement mode banner — suppressed when dry-run (test mode shown below) */}
+          {!isDryRun && (
+            <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="font-semibold">{enforcementInfo.label}. </span>
+                  {enforcementInfo.detail}
+                </div>
+                <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
+                  {enforcementInfo.mode}
+                </code>
               </div>
-              <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
-                {enforcementInfo.mode}
-              </code>
-            </div>
-          </div>
-
-          {/* Lock / pending banners — default scope only */}
-          {scope !== "account" && protectionLock.isLocked && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
-              <p className="font-medium">Today&apos;s rules are locked.</p>
-              <p className="mt-1 text-[13px] text-amber-700">
-                Saved changes will apply at the next CME trading day start:{" "}
-                <span className="font-semibold">
-                  {formatPendingRuleActivation({
-                    nextTradingDayKey: protectionLock.nextTradingDayKey,
-                    sessionStartHour: riskRules?.sessionStartHour ?? null,
-                    userTimezone: traderProfile?.timezone ?? null,
-                  })}
-                </span>
-                .
-              </p>
             </div>
           )}
-          {scope !== "account" && hasPendingPayload && riskRules?.pendingEffectiveDate && (
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm text-sky-800">
-              <p>
-                You have rule changes pending — they apply at the next CME trading day start:{" "}
-                <span className="font-semibold">
-                  {formatPendingRuleActivation({
-                    nextTradingDayKey: riskRules.pendingEffectiveDate,
-                    sessionStartHour: riskRules?.sessionStartHour ?? null,
-                    userTimezone: traderProfile?.timezone ?? null,
-                  })}
-                </span>
-                .
-              </p>
+
+          {/* Compact test-mode notice — shown once, replaces full enforcement banner */}
+          {isDryRun && (
+            <div
+              role="status"
+              aria-label="Protection test mode"
+              className="flex items-center gap-2 rounded-lg border border-sky-200/70 bg-sky-50/70 px-3 py-1.5 text-[11px] text-sky-800"
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
+              <span>
+                <span className="font-medium">Protection test mode.</span> Enforcement is simulated — no broker writes are sent.
+              </span>
+            </div>
+          )}
+
+          {/* Changes pending panel — merges lock banner + pending banner into one */}
+          {scope !== "account" && (protectionLock.isLocked || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              <div className="min-w-0">
+                <p className="font-medium">Changes pending</p>
+                <p className="mt-0.5 text-[11px] text-amber-800">
+                  {protectionLock.isLocked ? "Today’s rules are locked. " : ""}
+                  Changes apply at{" "}
+                  <span className="font-semibold">
+                    {formatPendingRuleActivation({
+                      nextTradingDayKey: protectionLock.isLocked
+                        ? protectionLock.nextTradingDayKey
+                        : riskRules!.pendingEffectiveDate!,
+                      sessionStartHour: riskRules?.sessionStartHour ?? null,
+                      userTimezone: traderProfile?.timezone ?? null,
+                    })}
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
           )}
 

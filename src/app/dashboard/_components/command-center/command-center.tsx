@@ -20,12 +20,12 @@ import {
   deriveFooterCopy,
   deriveGroupStateSuffix,
   derivePerAccountStateLabel,
+  deriveProtectionStatusPanel,
   deriveRowStatusLabel,
-  DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
+  type ProtectionStatusPanelData,
 } from "./data-helpers";
-import { CONSENT_ACTION_REQUIRED_BANNER } from "@/lib/brokers/automated-actions-consent";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import type {
   AccountStatus,
@@ -139,6 +139,11 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   const requiresConsentAccountsCount = data.accounts.filter(
     (a) => a.requiresAutomatedActionsConsent,
   ).length;
+  const protectionPanel = deriveProtectionStatusPanel({
+    isDryRunActive,
+    requiresConsentCount: requiresConsentAccountsCount,
+    isProtectionLocked: data.protectionLock.isLocked,
+  });
   const footerCopy = deriveFooterCopy({
     modes: data.accounts.map((a) => a.enforcementMode),
     hasDryRunBanner: isDryRunActive,
@@ -154,15 +159,11 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           aria-label="Risk command center"
           className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
         >
-          {isDryRunActive && <DryRunBanner />}
-          {requiresConsentAccountsCount > 0 && (
-            <ConsentRequiredBanner count={requiresConsentAccountsCount} />
-          )}
-          {data.protectionLock.isLocked && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-700">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
-              <span>Protection locked for today · Rule changes apply from {data.protectionLock.nextTradingDayKey}.</span>
-            </div>
+          {protectionPanel && (
+            <ProtectionStatusPanel
+              panel={protectionPanel}
+              nextTradingDayKey={data.protectionLock.nextTradingDayKey}
+            />
           )}
           <SectionHeader
             summary={data.summary}
@@ -201,41 +202,46 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   );
 }
 
-// ─── Dry-run banner ────────────────────────────────────────────────────────────
+// ─── Protection status panel (replaces dry-run / consent / lock banners) ──────
 
-function DryRunBanner() {
+const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
+  dry_run:
+    "Protection test mode · Guardrail is watching but will not block or close trades.",
+  consent_required:
+    "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
+  protection_locked:
+    "Protection locked for today · Rule changes apply at the next session.",
+};
+
+function ProtectionStatusPanel({
+  panel,
+  nextTradingDayKey: _nextTradingDayKey,
+}: {
+  panel: ProtectionStatusPanelData;
+  nextTradingDayKey: string;
+}) {
+  const isAlert = panel.kind !== "dry_run";
+  const colorClass =
+    panel.kind === "dry_run"
+      ? "border-sky-200/70 bg-sky-50/70 text-sky-800"
+      : "border-amber-200/70 bg-amber-50/70 text-amber-900";
+  const dotClass = panel.kind === "dry_run" ? "bg-sky-400" : "bg-amber-500";
   return (
     <div
-      role="status"
-      aria-label="Protection test mode"
-      className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[11px] text-sky-800"
+      role={isAlert ? "alert" : "status"}
+      aria-label="Protection status"
+      className={`mb-3 flex flex-wrap items-start gap-2 rounded-lg border px-3 py-1.5 text-[11px] ${colorClass}`}
     >
-      <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
-      <span>{DRY_RUN_BANNER_COPY}</span>
-    </div>
-  );
-}
-
-function ConsentRequiredBanner({ count }: { count: number }) {
-  return (
-    <div
-      role="alert"
-      aria-label="Automated lockout consent required"
-      className="mb-3 flex flex-wrap items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-900"
-    >
-      <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
-      <span className="flex-1">
-        {CONSENT_ACTION_REQUIRED_BANNER}
-        {count > 1 ? (
-          <span className="ml-1 text-amber-700">({count} accounts)</span>
-        ) : null}
-      </span>
-      <Link
-        href="/rules"
-        className="shrink-0 rounded-full bg-amber-900 px-3 py-1 text-[10px] font-medium text-amber-50 transition hover:bg-amber-800"
-      >
-        Open Trading Plan
-      </Link>
+      <span className={`mt-px h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+      <span className="flex-1">{PANEL_BODY[panel.kind]}</span>
+      {panel.showConsentCta && (
+        <Link
+          href="/rules"
+          className="shrink-0 rounded-full bg-amber-900 px-3 py-1 text-[10px] font-medium text-amber-50 transition hover:bg-amber-800"
+        >
+          Review Trading Plan
+        </Link>
+      )}
     </div>
   );
 }
@@ -653,7 +659,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
       {/* Rules + Mode combined */}
       <td className="px-4 py-3 align-top">
         <p className="text-xs text-stone-600">{account.rulesLabel}</p>
-        <PerAccountStateLine account={account} />
+        {account.enforcementMode !== "dry_run" && <PerAccountStateLine account={account} />}
         {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
             Loss streak {account.consecutiveLosses}
@@ -800,13 +806,17 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         {/* Muted metadata row */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
           <span>{account.rulesLabel}</span>
-          <span aria-hidden>·</span>
-          <span>
-            {derivePerAccountStateLabel({
-              enforcementMode: account.enforcementMode,
-              requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
-            })}
-          </span>
+          {account.enforcementMode !== "dry_run" && (
+            <>
+              <span aria-hidden>·</span>
+              <span>
+                {derivePerAccountStateLabel({
+                  enforcementMode: account.enforcementMode,
+                  requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+                })}
+              </span>
+            </>
+          )}
           {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
             <>
               <span aria-hidden>·</span>
