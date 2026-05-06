@@ -1,12 +1,17 @@
 /**
- * Copy strings for the protected session window fieldset.
+ * Copy strings for the daily cutoff fieldset.
  * Centralised here so tests can assert on the exact wording.
+ *
+ * NOTE: Session start hour and trading-days selectors have been removed from
+ * the product surface. Broker-level time-window order rejection is not
+ * confirmed in the Tradovate API. The only time-based enforcement Guardrail
+ * currently supports is the daily cutoff (sessionEndHour).
  */
 export const SESSION_WINDOW_COPY = {
-  legend: "Protected session window · CME time",
+  legend: "Daily cutoff · CME time",
   helperText:
-    "Guardrail anchors this window to America/Chicago time so futures sessions stay aligned through US/Israel daylight-saving changes.",
-  startLabel: "Session start (CME hour 0–23)",
-  endLabel: "Session end (CME hour 0–23)",
+    "Set when Guardrail should stop trading for the day. This is anchored to CME / America/Chicago time so futures sessions stay aligned through daylight-saving changes.",
+  endLabel: "Stop trading at (CME hour 0–23)",
+  cutoffBehaviorLabel: "At cutoff",
   localPreviewPrefix: "Your local time:",
 } as const;

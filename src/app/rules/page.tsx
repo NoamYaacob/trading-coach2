@@ -29,11 +29,6 @@ function intStr(v: number | null | undefined): string {
   return v != null ? String(v) : "";
 }
 
-function parseTradingDays(v: string | null | undefined): string[] {
-  if (!v) return [];
-  return v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function RulesPage({
@@ -70,7 +65,7 @@ export default async function RulesPage({
           select: {
             maxDailyLoss: true, riskPerTrade: true,
             maxTradesPerDay: true, stopAfterLosses: true,
-            allowedStartHour: true, allowedEndHour: true,
+            allowedEndHour: true,
             sessionEndBehavior: true,
             propFirmAccountSize: true, propFirmPhase: true,
             propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
@@ -120,10 +115,8 @@ export default async function RulesPage({
     maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
     stopAfterLosses: intStr(riskRules?.stopAfterLosses),
     maxContracts: intStr(riskRules?.maxContracts),
-    sessionStartHour: intStr(riskRules?.sessionStartHour),
     sessionEndHour: intStr(riskRules?.sessionEndHour),
     sessionEndBehavior: riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
-    tradingDays: parseTradingDays(riskRules?.tradingDays),
     onBreachWarn: riskRules?.onBreachWarn ?? true,
   };
 
@@ -135,7 +128,6 @@ export default async function RulesPage({
     riskPerTrade: decStr(selectedAccount?.riskRules?.riskPerTrade),
     maxTradesPerDay: intStr(selectedAccount?.riskRules?.maxTradesPerDay),
     stopAfterLosses: intStr(selectedAccount?.riskRules?.stopAfterLosses),
-    allowedStartHour: intStr(selectedAccount?.riskRules?.allowedStartHour),
     allowedEndHour: intStr(selectedAccount?.riskRules?.allowedEndHour),
     sessionEndBehavior: selectedAccount?.riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
     propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
@@ -154,7 +146,6 @@ export default async function RulesPage({
     riskPerTrade: decStr(riskRules?.riskPerTrade),
     maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
     stopAfterLosses: intStr(riskRules?.stopAfterLosses),
-    allowedStartHour: intStr(riskRules?.sessionStartHour),
     allowedEndHour: intStr(riskRules?.sessionEndHour),
   };
 

@@ -295,7 +295,6 @@ export async function syncTradovateAccount(
           maxDailyLoss: true,
           maxTradesPerDay: true,
           dailyProfitTarget: true,
-          tradingDays: true,
           stopAfterLosses: true,
           sessionEndHour: true,
           sessionEndBehavior: true,
@@ -312,29 +311,11 @@ export async function syncTradovateAccount(
       accountRules?.maxTradesPerDay ?? defaultRules?.maxTradesPerDay ?? null;
     const effectiveStopAfterLosses =
       accountRules?.stopAfterLosses ?? defaultRules?.stopAfterLosses ?? null;
-    // Profit target and trading days are user-level settings only (no per-account override yet).
+    // Profit target is a user-level setting only (no per-account override yet).
     const effectiveProfitTarget =
       defaultRules?.dailyProfitTarget != null
         ? Number(defaultRules.dailyProfitTarget)
         : null;
-
-    // Determine whether today (in CME/Chicago time) is a configured trading day.
-    // tradingDays is stored as a comma-separated string of 3-letter codes: "MON,TUE,WED,THU,FRI".
-    // null or empty string means no restriction — any day is allowed.
-    const selectedTradingDays = defaultRules?.tradingDays
-      ? defaultRules.tradingDays.split(",").map((d) => d.trim()).filter(Boolean)
-      : null;
-    const cmeDayCode = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Chicago",
-      weekday: "long",
-    })
-      .format(now)
-      .toUpperCase()
-      .slice(0, 3); // "MON"|"TUE"|"WED"|"THU"|"FRI"|"SAT"|"SUN"
-    const isTradingDayDisabled =
-      selectedTradingDays !== null &&
-      selectedTradingDays.length > 0 &&
-      !selectedTradingDays.includes(cmeDayCode);
 
     const lossUsed =
       effectiveDailyPnl != null ? Math.abs(Math.min(effectiveDailyPnl, 0)) : null;
@@ -406,11 +387,7 @@ export async function syncTradovateAccount(
 
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
     let enforcementTrigger: EnforcementTrigger | null = null;
-    if (isTradingDayDisabled) {
-      // Today is not a selected trading day — lock immediately.
-      newRiskState = "STOPPED";
-      enforcementTrigger = "trading_day_disabled";
-    } else if (lossPct != null && lossPct >= 1.0) {
+    if (lossPct != null && lossPct >= 1.0) {
       newRiskState = "STOPPED";
       enforcementTrigger = "daily_loss_limit";
     } else if (
@@ -506,13 +483,11 @@ export async function syncTradovateAccount(
           ? "Daily loss limit reached"
           : enforcementTrigger === "profit_target"
             ? `Daily profit target reached: $${resolvedDailyPnl?.toFixed(2) ?? "unknown"}`
-            : enforcementTrigger === "trading_day_disabled"
-              ? `Today (${cmeDayCode}) is not a selected trading day`
-              : enforcementTrigger === "consecutive_losses"
-                ? `Consecutive loss limit reached: ${consecutiveLossesFromState} consecutive losses`
-                : enforcementTrigger === "session_end"
-                  ? `Session end reached (configured end hour: ${effectiveSessionEndHour ?? "unknown"} CT)`
-                  : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
+            : enforcementTrigger === "consecutive_losses"
+              ? `Consecutive loss limit reached: ${consecutiveLossesFromState} consecutive losses`
+              : enforcementTrigger === "session_end"
+                ? `Session end reached (configured end hour: ${effectiveSessionEndHour ?? "unknown"} CT)`
+                : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
       triggerEnforcement({
         accountId,
         userId,

@@ -13,10 +13,8 @@ export type RulesFormValues = {
   maxTradesPerDay: string;
   stopAfterLosses: string;
   maxContracts: string;
-  sessionStartHour: string;
   sessionEndHour: string;
   sessionEndBehavior: string;
-  tradingDays: string[];
   onBreachWarn: boolean;
 };
 
@@ -43,19 +41,16 @@ function tzLabel(tz: string | null | undefined): string | null {
   return city ? `${city} time` : null;
 }
 
-const DAYS = ["MON", "TUE", "WED", "THU", "FRI"] as const;
-type Day = (typeof DAYS)[number];
-
 const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "wait_for_exit_then_lock",
-    label: "Wait for trade exit, then lock",
-    hint: "New opening orders are blocked immediately. Guardrail won't interrupt an active trade.",
+    label: "Let open trade finish, then lock",
+    hint: "Guardrail will not force-close the open trade. After the position is closed, the account is locked for the rest of the day.",
   },
   {
     value: "flatten_at_session_end",
-    label: "Flatten at session end",
-    hint: "Guardrail will automatically close any open position at session end, then lock the account.",
+    label: "Flatten at cutoff, then lock",
+    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day.",
   },
 ] as const;
 
@@ -93,22 +88,11 @@ export function RulesForm({ initial, timezone }: Props) {
     setSavedAt(null);
   }
 
-  function toggleDay(day: Day) {
-    const next = values.tradingDays.includes(day)
-      ? values.tradingDays.filter((d) => d !== day)
-      : [...values.tradingDays, day];
-    update("tradingDays", next);
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
 
-    // Filter any legacy SAT/SUN that may be in stored data.
-    const weekdayTradingDays = values.tradingDays.filter((d) =>
-      (DAYS as readonly string[]).includes(d),
-    );
     const payload = {
       accountSize: numericOrNull(values.accountSize),
       maxDailyLoss: numericOrNull(values.maxDailyLoss),
@@ -117,10 +101,8 @@ export function RulesForm({ initial, timezone }: Props) {
       maxTradesPerDay: intOrNull(values.maxTradesPerDay),
       stopAfterLosses: intOrNull(values.stopAfterLosses),
       maxContracts: intOrNull(values.maxContracts),
-      sessionStartHour: intOrNull(values.sessionStartHour),
       sessionEndHour: intOrNull(values.sessionEndHour),
       sessionEndBehavior: values.sessionEndBehavior || null,
-      tradingDays: weekdayTradingDays.length > 0 ? weekdayTradingDays.join(",") : null,
       onBreachWarn: values.onBreachWarn,
     };
 
@@ -201,59 +183,30 @@ export function RulesForm({ initial, timezone }: Props) {
         </div>
       </div>
 
-      {/* ── Trading window ──────────────────────────────────────────────── */}
-      <div role="group" aria-label="Trading window" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      {/* ── Daily cutoff ─────────────────────────────────────────────────── */}
+      <div role="group" aria-label="Daily cutoff" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <div>
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
           <p className="mt-1 text-xs text-stone-500">{SESSION_WINDOW_COPY.helperText}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={SESSION_WINDOW_COPY.startLabel}>
-            <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
-          </Field>
-          <Field label={SESSION_WINDOW_COPY.endLabel}>
-            <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
-          </Field>
-        </div>
+        <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day. If a position is open, your selected cutoff behavior applies.">
+          <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
+        </Field>
         {(() => {
-          const s = intOrNull(values.sessionStartHour);
           const e = intOrNull(values.sessionEndHour);
           const label = tzLabel(timezone);
-          if (s === null || e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
-          const ls = cmeHourToLocalHour(s, timezone);
+          if (e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
           const le = cmeHourToLocalHour(e, timezone);
-          if (ls === null || le === null) return null;
+          if (le === null) return null;
           return (
             <p className="text-xs text-stone-400">
               {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
-              {String(ls).padStart(2, "0")}:00–{String(le).padStart(2, "0")}:00 {label}
+              {String(le).padStart(2, "0")}:00 {label}
             </p>
           );
         })()}
         <div>
-          <p className="text-xs font-medium text-stone-600">Trading days</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {DAYS.map((day) => {
-              const active = values.tradingDays.includes(day);
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => toggleDay(day)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    active
-                      ? "border-stone-950 bg-stone-950 text-stone-50"
-                      : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"
-                  }`}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-medium text-stone-600">At session end</p>
+          <p className="text-xs font-medium text-stone-600">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</p>
           <div className="mt-2 grid gap-2">
             {SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
               <label

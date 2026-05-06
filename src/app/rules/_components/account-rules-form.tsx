@@ -15,7 +15,6 @@ export type DefaultRuleValues = {
   riskPerTrade: string;
   maxTradesPerDay: string;
   stopAfterLosses: string;
-  allowedStartHour: string;
   allowedEndHour: string;
 };
 
@@ -24,7 +23,6 @@ export type AccountRulesValues = {
   riskPerTrade: string;
   maxTradesPerDay: string;
   stopAfterLosses: string;
-  allowedStartHour: string;
   allowedEndHour: string;
   sessionEndBehavior: string;
   propFirmAccountSize: string;
@@ -117,13 +115,13 @@ function Input({
 const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "wait_for_exit_then_lock",
-    label: "Wait for trade exit, then lock",
-    hint: "New opening orders are blocked immediately. Guardrail won't interrupt an active trade.",
+    label: "Let open trade finish, then lock",
+    hint: "Guardrail will not force-close the open trade. After the position is closed, the account is locked for the rest of the day.",
   },
   {
     value: "flatten_at_session_end",
-    label: "Flatten at session end",
-    hint: "Guardrail will automatically close any open position at session end, then lock the account.",
+    label: "Flatten at cutoff, then lock",
+    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day.",
   },
 ] as const;
 
@@ -187,7 +185,6 @@ export function AccountRulesForm({
           riskPerTrade: num(values.riskPerTrade),
           maxTradesPerDay: int(values.maxTradesPerDay),
           stopAfterLosses: int(values.stopAfterLosses),
-          allowedStartHour: int(values.allowedStartHour),
           allowedEndHour: int(values.allowedEndHour),
           sessionEndBehavior: values.sessionEndBehavior || null,
           propFirmAccountSize: num(values.propFirmAccountSize),
@@ -237,8 +234,7 @@ export function AccountRulesForm({
       { label: "Risk per trade", value: defaultValues?.riskPerTrade ?? "", prefix: "$" },
       { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
       { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
-      { label: "Session start", value: defaultValues?.allowedStartHour ?? "" },
-      { label: "Session end", value: defaultValues?.allowedEndHour ?? "" },
+      { label: "Cutoff time (CME)", value: defaultValues?.allowedEndHour ?? "" },
     ];
     return (
       <div className="grid gap-4">
@@ -330,45 +326,38 @@ export function AccountRulesForm({
         </div>
       </fieldset>
 
-      {/* Trading window */}
+      {/* Daily cutoff */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">
           {SESSION_WINDOW_COPY.legend}
         </legend>
         <p className="-mt-2 text-xs text-stone-500">
-          Override the default protected session hours for this account.{" "}
+          Override the default daily cutoff for this account.{" "}
           {SESSION_WINDOW_COPY.helperText}
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label={SESSION_WINDOW_COPY.startLabel}>
-            <Input value={values.allowedStartHour} onChange={(v) => update("allowedStartHour", v)} placeholder="9" integer />
-          </Field>
-          <Field label={SESSION_WINDOW_COPY.endLabel}>
-            <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
-          </Field>
-        </div>
+        <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day.">
+          <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
+        </Field>
         {(() => {
-          const s = int(values.allowedStartHour);
           const e = int(values.allowedEndHour);
           const label = tzLabel(timezone);
-          if (s === null || e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
-          const ls = cmeHourToLocalHour(s, timezone);
+          if (e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
           const le = cmeHourToLocalHour(e, timezone);
-          if (ls === null || le === null) return null;
+          if (le === null) return null;
           return (
             <p className="text-xs text-stone-400">
               {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
-              {String(ls).padStart(2, "0")}:00–{String(le).padStart(2, "0")}:00 {label}
+              {String(le).padStart(2, "0")}:00 {label}
             </p>
           );
         })()}
       </fieldset>
 
-      {/* Session end behavior */}
+      {/* At cutoff */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">At session end</legend>
+        <legend className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</legend>
         <p className="-mt-2 text-xs text-stone-500">
-          What Guardrail does when the session window closes and there are open positions.
+          What Guardrail does if a position is open at the cutoff time.
         </p>
         <div className="grid gap-2">
           {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
