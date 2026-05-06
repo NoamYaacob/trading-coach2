@@ -10,6 +10,10 @@ import {
   platformHasRevocationEndpoint,
 } from "@/lib/brokers/tradovate-disconnect";
 import { getProtectionLockState } from "@/lib/account-protection";
+import {
+  deriveRuleEditEligibility,
+  buildRuleEditLockMessage,
+} from "@/lib/rule-edit-eligibility";
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 
@@ -113,37 +117,49 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   });
 
   let rulesLockResult:
-    | { applied: false; reason: "protection_locked"; effectiveDate: string; message: string }
+    | { applied: false; reason: string; effectiveDate: string; message: string }
     | null = null;
 
   if (body.riskRules !== undefined) {
-    // Check the user's protection-lock state before mutating account rules.
-    const [userRules, existingAccountRules] = await Promise.all([
+    // Check the user's rule-edit eligibility before mutating account rules.
+    const [userRules, existingAccountRules, liveState] = await Promise.all([
       prisma.riskRules.findUnique({
         where: { userId: currentUser.id },
         select: {
           sessionStartHour: true,
           sessionEndHour: true,
-          protectionLockCutoffMinutes: true,
+          sessionTimezone: true,
+          ruleEditLockBufferMinutes: true,
         },
       }),
       prisma.accountRiskRules.findUnique({
         where: { accountId: id },
         select: { accountId: true },
       }),
+      prisma.liveSessionState.findUnique({
+        where: { accountId: id },
+        select: { riskState: true, cooldownActive: true },
+      }),
     ]);
-    const lock = getProtectionLockState({
+    const isFirstTimeSetup = !existingAccountRules;
+    const isAccountStopped =
+      liveState?.riskState === "STOPPED" || liveState?.cooldownActive === true;
+
+    const eligibility = deriveRuleEditEligibility({
       sessionStartHour: userRules?.sessionStartHour ?? null,
       sessionEndHour: userRules?.sessionEndHour ?? null,
-      cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
+      sessionTimezone: userRules?.sessionTimezone ?? null,
+      lockBufferMinutes: userRules?.ruleEditLockBufferMinutes ?? null,
+      // First-time setup bypasses state-based locks: no active rules to weaken.
+      isAccountStopped: isFirstTimeSetup ? false : isAccountStopped,
     });
-    // First-time setup (no existing account-specific rules) bypasses the lock:
-    // there are no active account rules to weaken, so the change is safe immediately.
-    const isFirstTimeSetup = !existingAccountRules;
 
-    if (lock.isLocked && !isFirstTimeSetup) {
+    if (!eligibility.canEditNow && !isFirstTimeSetup) {
       // Save the requested change as a pending payload that will apply on
       // the next trading day. Do NOT mutate AccountRiskRules columns now.
+      const nextDayKey = eligibility.nextAllowedAt
+        ? eligibility.nextAllowedAt.toISOString().slice(0, 10)
+        : new Date(Date.now() + 24 * 60 * 60_000).toISOString().slice(0, 10);
       const payload =
         body.riskRules === null ? { __delete: true } : riskRulesData(body.riskRules);
       await prisma.accountRiskRules.upsert({
@@ -151,18 +167,21 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         create: {
           accountId: id,
           pendingPayloadJson: payload as Prisma.InputJsonValue,
-          pendingEffectiveDate: lock.nextTradingDayKey,
+          pendingEffectiveDate: nextDayKey,
         },
         update: {
           pendingPayloadJson: payload as Prisma.InputJsonValue,
-          pendingEffectiveDate: lock.nextTradingDayKey,
+          pendingEffectiveDate: nextDayKey,
         },
       });
       rulesLockResult = {
         applied: false,
-        reason: "protection_locked",
-        effectiveDate: lock.nextTradingDayKey,
-        message: "Today's rules are locked. These changes will apply next trading day.",
+        reason: eligibility.reason,
+        effectiveDate: nextDayKey,
+        message: buildRuleEditLockMessage(
+          eligibility,
+          userRules?.sessionTimezone ?? null,
+        ),
       };
     } else if (body.riskRules === null) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });

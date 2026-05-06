@@ -165,6 +165,8 @@ model RiskRules {
   allowedSymbols        String?
   sessionStartHour      Int?
   sessionEndHour        Int?
+  sessionTimezone       String?
+  ruleEditLockBufferMinutes Int?
   tradingDays           String?
   sessionEndBehavior    String?
   newsLockoutEnabled    Boolean  @default(false)
@@ -479,6 +481,7 @@ model AccountRiskRules {
   stopAfterLosses  Int?
   allowedStartHour Int?
   allowedEndHour   Int?
+  sessionTimezone  String?
   sessionEndBehavior String?
   maxContracts     Int?
   // Prop firm limits — only relevant for evaluation / funded accounts.

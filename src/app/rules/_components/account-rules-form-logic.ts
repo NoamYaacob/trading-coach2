@@ -16,15 +16,23 @@ export const REVIEW_INHERITED_HINT = "Review these inherited limits before savin
  *
  * First-time setup (no existing account-specific rules) bypasses the session
  * lock — there is nothing to weaken, so the change applies immediately.
+ *
+ * @param lockMessage - Session-aware message from the server explaining why editing is locked.
  */
 export function computeAccountRulesBanner(
   hasExistingRules: boolean,
   isLocked: boolean,
   showForm: boolean,
+  lockMessage?: string | null,
 ): AccountRulesFormBanner {
   if (!showForm) return { kind: "none" };
   if (!hasExistingRules) return { kind: "first_time", message: FIRST_TIME_SETUP_BANNER };
-  if (isLocked) return { kind: "locked", message: LOCKED_BANNER };
+  if (isLocked) {
+    return {
+      kind: "locked",
+      message: lockMessage ?? LOCKED_BANNER,
+    };
+  }
   return { kind: "none" };
 }
 

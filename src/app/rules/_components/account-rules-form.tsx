@@ -49,6 +49,8 @@ type Props = {
   hasValidConsent: boolean;
   initial: AccountRulesValues;
   isLocked: boolean;
+  /** Human-readable message explaining the current lock reason (session-aware). */
+  lockMessage?: string | null;
   hasPropFirm: boolean;
   hasDefaultRules: boolean;
   timezone?: string | null;
@@ -139,6 +141,7 @@ export function AccountRulesForm({
   hasValidConsent,
   initial,
   isLocked,
+  lockMessage,
   hasPropFirm,
   hasDefaultRules,
   timezone,
@@ -231,9 +234,14 @@ export function AccountRulesForm({
     setRemoving(true);
     setError(null);
     try {
-      await sendPatch({ riskRules: null });
+      const data = await sendPatch({ riskRules: null });
       setIsDirty(false);
-      router.refresh();
+      if (data.rulesLock?.applied === false && data.rulesLock.message) {
+        setPendingMessage(`Removal scheduled: ${data.rulesLock.message}`);
+      } else {
+        setPendingMessage(null);
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove.");
     } finally {
@@ -291,7 +299,7 @@ export function AccountRulesForm({
     );
   }
 
-  const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm);
+  const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm, lockMessage);
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">

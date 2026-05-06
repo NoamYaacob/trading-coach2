@@ -4,7 +4,10 @@ import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getProtectionLockState } from "@/lib/account-protection";
+import {
+  deriveRuleEditEligibility,
+  buildRuleEditLockMessage,
+} from "@/lib/rule-edit-eligibility";
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
@@ -209,29 +212,37 @@ export async function POST(request: Request) {
     select: {
       sessionStartHour: true,
       sessionEndHour: true,
-      protectionLockCutoffMinutes: true,
+      sessionTimezone: true,
+      ruleEditLockBufferMinutes: true,
     },
   });
-  const lock = getProtectionLockState({
+  const eligibility = deriveRuleEditEligibility({
     sessionStartHour: existing?.sessionStartHour ?? null,
     sessionEndHour: existing?.sessionEndHour ?? null,
-    cutoffMinutes: existing?.protectionLockCutoffMinutes ?? null,
+    sessionTimezone: existing?.sessionTimezone ?? null,
+    lockBufferMinutes: existing?.ruleEditLockBufferMinutes ?? null,
   });
 
-  if (lock.isLocked) {
+  if (!eligibility.canEditNow) {
+    // Derive next trading day key for pending payload storage.
+    // Use session end date as the effective date, falling back to tomorrow.
+    const nextDayKey = eligibility.nextAllowedAt
+      ? eligibility.nextAllowedAt.toISOString().slice(0, 10)
+      : new Date(Date.now() + 24 * 60 * 60_000).toISOString().slice(0, 10);
+
     try {
       await prisma.riskRules.upsert({
         where: { userId: user.id },
         // Always have a row so we can store the pending payload, but never
-        // apply edited fields on lock.
+        // apply edited fields while locked.
         create: {
           userId: user.id,
           pendingPayloadJson: cleaned as Prisma.InputJsonValue,
-          pendingEffectiveDate: lock.nextTradingDayKey,
+          pendingEffectiveDate: nextDayKey,
         },
         update: {
           pendingPayloadJson: cleaned as Prisma.InputJsonValue,
-          pendingEffectiveDate: lock.nextTradingDayKey,
+          pendingEffectiveDate: nextDayKey,
         },
       });
     } catch (err) {
@@ -241,10 +252,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       applied: false,
-      reason: "protection_locked",
-      effectiveDate: lock.nextTradingDayKey,
-      message:
-        "Today's rules are locked. These changes will apply next trading day.",
+      reason: eligibility.reason,
+      effectiveDate: nextDayKey,
+      message: buildRuleEditLockMessage(eligibility, existing?.sessionTimezone ?? null),
     });
   }
 

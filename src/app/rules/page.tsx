@@ -8,6 +8,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
 import { getProtectionLockState } from "@/lib/account-protection";
+import {
+  deriveRuleEditEligibility,
+  buildRuleEditLockMessage,
+} from "@/lib/rule-edit-eligibility";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
@@ -92,6 +96,16 @@ export default async function RulesPage({
     sessionEndHour: riskRules?.sessionEndHour ?? null,
     cutoffMinutes: riskRules?.protectionLockCutoffMinutes ?? null,
   });
+
+  const ruleEditEligibility = deriveRuleEditEligibility({
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+    sessionTimezone: riskRules?.sessionTimezone ?? null,
+    lockBufferMinutes: riskRules?.ruleEditLockBufferMinutes ?? null,
+  });
+  const accountRuleLockMessage = ruleEditEligibility.canEditNow
+    ? null
+    : buildRuleEditLockMessage(ruleEditEligibility, riskRules?.sessionTimezone ?? null);
 
   const hasDefaultRules = Boolean(
     riskRules &&
@@ -284,24 +298,28 @@ export default async function RulesPage({
           )}
 
           {/* Changes pending panel — merges lock banner + pending banner into one */}
-          {scope !== "account" && (protectionLock.isLocked || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
+          {scope !== "account" && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
               <div className="min-w-0">
                 <p className="font-medium">Changes pending</p>
                 <p className="mt-0.5 text-[11px] text-amber-800">
-                  {protectionLock.isLocked ? "Today’s rules are locked. " : ""}
-                  Changes apply at{" "}
-                  <span className="font-semibold">
-                    {formatPendingRuleActivation({
-                      nextTradingDayKey: protectionLock.isLocked
-                        ? protectionLock.nextTradingDayKey
-                        : riskRules!.pendingEffectiveDate!,
-                      sessionStartHour: riskRules?.sessionStartHour ?? null,
-                      userTimezone: traderProfile?.timezone ?? null,
-                    })}
-                  </span>
-                  .
+                  {!ruleEditEligibility.canEditNow ? `${accountRuleLockMessage} ` : ""}
+                  {hasPendingPayload && riskRules?.pendingEffectiveDate && (
+                    <>
+                      Changes apply at{" "}
+                      <span className="font-semibold">
+                        {formatPendingRuleActivation({
+                          nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
+                            ? protectionLock.nextTradingDayKey
+                            : riskRules!.pendingEffectiveDate!,
+                          sessionStartHour: riskRules?.sessionStartHour ?? null,
+                          userTimezone: traderProfile?.timezone ?? null,
+                        })}
+                      </span>
+                      .
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -324,7 +342,8 @@ export default async function RulesPage({
                       selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
                   })}
                   initial={accountInitial}
-                  isLocked={protectionLock.isLocked}
+                  isLocked={!ruleEditEligibility.canEditNow}
+                  lockMessage={accountRuleLockMessage}
                   hasPropFirm={Boolean(selectedAccount.propFirm)}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
