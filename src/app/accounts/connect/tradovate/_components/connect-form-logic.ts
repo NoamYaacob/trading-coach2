@@ -10,6 +10,19 @@
 export type AccountSource = "prop_firm" | "personal" | "demo" | "other";
 export type TradovateEnv = "demo" | "live";
 
+// ── Prop firm phase ───────────────────────────────────────────────────────────
+
+export const PROP_FIRM_PHASES = [
+  { value: "evaluation", label: "Evaluation / Challenge / Combine" },
+  { value: "funded",     label: "Funded" },
+  { value: "sim_funded", label: "Sim funded" },
+  { value: "not_sure",   label: "Not sure" },
+] as const;
+
+export type PropFirmPhase = (typeof PROP_FIRM_PHASES)[number]["value"];
+
+export const DEFAULT_PROP_FIRM_PHASE: PropFirmPhase = "evaluation";
+
 // ── Environment defaults ──────────────────────────────────────────────────────
 
 /** The environment that should be pre-selected when the user first picks a source. */
@@ -51,7 +64,7 @@ export function getEnvHint(source: AccountSource, env: TradovateEnv): string | n
         : "Most personal brokerage accounts use Live.";
     case "prop_firm":
       return env === "demo"
-        ? "Most prop firm evaluation and simulated funded accounts use Demo/Simulation. Choose Live only if your prop firm account appears in Tradovate Live."
+        ? "Most prop firm evaluations, challenges, combines, and simulated funded accounts use Demo/Simulation. Choose Live only if your prop firm account appears in Tradovate Live."
         : "Use Live only if this prop firm account appears in Tradovate Live.";
     case "other":
       return "Choose the environment where the account appears in Tradovate.";

@@ -9,8 +9,11 @@ import {
   isEnvForced,
   getEnvHint,
   validateSourceEnv,
+  PROP_FIRM_PHASES,
+  DEFAULT_PROP_FIRM_PHASE,
   type AccountSource,
   type TradovateEnv,
+  type PropFirmPhase,
 } from "./connect-form-logic";
 
 const PROP_FIRMS = [
@@ -23,13 +26,6 @@ const PROP_FIRMS = [
   "Other",
 ] as const;
 
-const PROP_FIRM_PHASES = [
-  { value: "evaluation", label: "Evaluation" },
-  { value: "funded", label: "Funded" },
-  { value: "challenge", label: "Challenge / Combine" },
-  { value: "sim_funded", label: "Sim funded" },
-  { value: "not_sure", label: "Not sure" },
-] as const;
 
 const ACCOUNT_SOURCES: {
   value: AccountSource;
@@ -106,7 +102,7 @@ export function ConnectTradovateClient() {
   const [accountSource, setAccountSource] = useState<AccountSource>("prop_firm");
   const [propFirm, setPropFirm] = useState<string>("Apex Trader Funding");
   const [customFirm, setCustomFirm] = useState("");
-  const [propFirmPhase, setPropFirmPhase] = useState<string>("not_sure");
+  const [propFirmPhase, setPropFirmPhase] = useState<PropFirmPhase>(DEFAULT_PROP_FIRM_PHASE);
   const [env, setEnv] = useState<TradovateEnv>("demo");
   // Once the user manually picks an environment, source-change auto-defaults stop running.
   const [userHasOverriddenEnv, setUserHasOverriddenEnv] = useState(false);
@@ -311,7 +307,7 @@ export function ConnectTradovateClient() {
                 Prop firm phase
               </p>
               <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {PROP_FIRM_PHASES.map(({ value, label }) => (
                     <label
                       key={value}
@@ -333,6 +329,10 @@ export function ConnectTradovateClient() {
                     </label>
                   ))}
                 </div>
+                <p className="mt-3 text-xs leading-5 text-stone-500">
+                  Most new prop firm accounts start as an evaluation, challenge, or combine. You
+                  can change this if the account is already funded.
+                </p>
               </div>
             </div>
           )}
