@@ -11,7 +11,10 @@ import type { TradovateWebhookEvent } from "@/lib/tradovate/types";
 import {
   getOrCreateSessionState,
   applyTradeClose,
+  applyTradeEntry,
   applyTradeOpen,
+  classifyFill,
+  computeNetPosition,
   setCooldown,
   setRiskState,
 } from "@/lib/guardian-engine/session-state";
@@ -153,6 +156,7 @@ export async function POST(request: Request) {
       accountId: account.id,
       eventType: normalizedEvent.eventType,
       externalTradeId: normalizedEvent.externalTradeId ?? null,
+      contractId: normalizedEvent.contractId ?? null,
       side: normalizedEvent.side ?? null,
       quantity: normalizedEvent.quantity != null ? String(normalizedEvent.quantity) : null,
       price: normalizedEvent.price != null ? String(normalizedEvent.price) : null,
@@ -173,8 +177,33 @@ export async function POST(request: Request) {
   // Apply session state mutations. getOrCreateSessionState clears expired cooldowns.
   let state = await getOrCreateSessionState(account.id);
 
-  if (isTradeClose(normalizedEvent.eventType) && normalizedEvent.pnl != null) {
-    state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
+  if (isTradeClose(normalizedEvent.eventType)) {
+    const { contractId, side, quantity, externalTradeId } = normalizedEvent;
+
+    if (contractId != null && side != null && quantity != null && externalTradeId != null) {
+      // Position-aware classification: count a trade only when the fill represents
+      // a new position opening (flat→non-flat, scale-in, or reversal).
+      // This prevents exit fills — including Tradovate demo fills that carry profit: 0
+      // on the entry leg — from inflating tradesCount.
+      const netPos = await computeNetPosition(
+        account.id,
+        contractId,
+        state.sessionDate,
+        externalTradeId,
+      );
+      const cls = classifyFill(netPos, side, quantity);
+
+      if (cls === "entry" || cls === "scale_in" || cls === "reversal") {
+        state = await applyTradeEntry(account.id, normalizedEvent.occurredAt);
+      }
+      if ((cls === "reduction" || cls === "reversal") && normalizedEvent.pnl != null) {
+        state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
+      }
+    } else if (normalizedEvent.pnl != null) {
+      // Fallback for events without contractId (e.g. legacy or non-Tradovate fills).
+      // Apply P&L but do not increment tradesCount — can't classify without position context.
+      state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
+    }
   } else if (normalizedEvent.eventType === "trade_opened") {
     state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
   }

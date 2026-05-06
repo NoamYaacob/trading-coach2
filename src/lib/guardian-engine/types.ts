@@ -15,6 +15,8 @@ export type NormalizedEvent = {
   accountId: string;
   eventType: NormalizedEventType;
   externalTradeId?: string;
+  /** Broker contract/instrument ID — used for per-symbol position tracking. */
+  contractId?: number;
   side?: "BUY" | "SELL";
   quantity?: number;
   price?: number;

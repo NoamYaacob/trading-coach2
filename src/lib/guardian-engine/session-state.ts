@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { SessionState } from "./types";
+export { classifyFill } from "./fill-classifier";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -79,6 +80,60 @@ export async function getOrCreateSessionState(accountId: string): Promise<Sessio
   );
 }
 
+/**
+ * Query today's fills for the given account + contract (excluding the current
+ * fill by externalTradeId) and compute the net signed position.
+ *
+ * Positive = net long, negative = net short, 0 = flat.
+ */
+export async function computeNetPosition(
+  accountId: string,
+  contractId: number,
+  sessionDate: string,
+  excludeExternalTradeId: string,
+): Promise<number> {
+  const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  const fills = await prisma.normalizedTradeEvent.findMany({
+    where: {
+      accountId,
+      contractId,
+      externalTradeId: { not: excludeExternalTradeId },
+      occurredAt: { gte: dayStart },
+      eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
+    },
+    select: { side: true, quantity: true },
+    orderBy: { occurredAt: "asc" },
+  });
+
+  let position = 0;
+  for (const f of fills) {
+    const qty = Number(f.quantity ?? 0);
+    position += f.side === "BUY" ? qty : -qty;
+  }
+  return position;
+}
+
+/** Called when a fill opens a new position entry. Increments tradesCount only. */
+export async function applyTradeEntry(
+  accountId: string,
+  occurredAt: Date,
+): Promise<SessionState> {
+  return toSessionState(
+    await prisma.liveSessionState.update({
+      where: { accountId },
+      data: {
+        tradesCount: { increment: 1 },
+        lastTradeAt: occurredAt,
+      },
+    }),
+  );
+}
+
+/**
+ * Called when a fill closes a position (exit fill). Updates dailyPnl and
+ * consecutiveLosses. Does NOT increment tradesCount — entries are counted
+ * separately in applyTradeEntry so exits are not double-counted.
+ */
 export async function applyTradeClose(
   accountId: string,
   pnl: number,
@@ -90,7 +145,6 @@ export async function applyTradeClose(
       where: { accountId },
       data: {
         dailyPnl: { increment: pnl },
-        tradesCount: { increment: 1 },
         consecutiveLosses: isLoss ? { increment: 1 } : 0,
         lastTradeAt: occurredAt,
       },
