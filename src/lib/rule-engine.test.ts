@@ -255,3 +255,96 @@ describe("shouldSkipBrokerEnforcement — trading_day_disabled trigger", () => {
     assert.equal(result.skip, true, "trading_day_disabled must always skip broker enforcement");
   });
 });
+
+// ── shouldSkipBrokerEnforcement — non-live connection states ──────────────────
+// Live-readiness gate: regardless of permissionLevel, a broker write must not
+// be attempted on a connection that is expired, errored, never connected, or
+// in-flight OAuth. Upstream cron/webhook filters also gate these states; this
+// is the last-line defense inside applyBrokerDayLockout.
+
+describe("shouldSkipBrokerEnforcement — non-live connection states (live-readiness)", () => {
+  const NON_LIVE = [
+    "expired",
+    "connection_error",
+    "not_connected",
+    "pending_webhook",
+    "oauth_pending_storage",
+  ] as const;
+
+  for (const status of NON_LIVE) {
+    it(`connectionStatus='${status}' + permissionLevel='full_access' → skip=true (no write attempted)`, () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: status,
+        permissionLevel: "full_access",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) {
+        assert.equal(result.lockStatus, "broker_lock_failed");
+        assert.ok(
+          result.reason.includes(status),
+          `expected reason to mention status '${status}', got: ${result.reason}`,
+        );
+      }
+    });
+
+    it(`connectionStatus='${status}' + permissionLevel=null → skip=true`, () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: status,
+        permissionLevel: null,
+      });
+      assert.equal(result.skip, true);
+    });
+  }
+
+  it("connectionStatus='connected_live' + permissionLevel='full_access' → skip=false (the only happy path)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+      permissionLevel: "full_access",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("connectionStatus='connected_live' + permissionLevel='read_only' → skip=true (unavailable_read_only)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+      permissionLevel: "read_only",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+  });
+
+  it("connectionStatus='connected_live' + permissionLevel='unknown' → falls back to legacy (proceeds optimistically)", () => {
+    // 'unknown' is the probe's inconclusive verdict (5xx / network error). The
+    // legacy fallback proceeds when connectionStatus is connected_live; the
+    // broker call's 403 handler will record any actual permission gap.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+      permissionLevel: "unknown",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("dry-run is gated AFTER skip checks (skip wins) — read_only + dry-run still returns unavailable_read_only", () => {
+    // shouldSkipBrokerEnforcement does not consult ENFORCEMENT_DRY_RUN itself;
+    // the dry-run gate sits inside applyBrokerDayLockout, after the skip check.
+    // This test documents the order: skip first, dry-run second.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+      permissionLevel: "read_only",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+  });
+});

@@ -233,11 +233,35 @@ export async function applyBrokerDayLockout(
     select: {
       platform: true,
       externalAccountId: true,
+      isActive: true,
+      missingFromBrokerSince: true,
       brokerConnection: {
         select: { connectionStatus: true, permissionLevel: true },
       },
     },
   });
+
+  // Defense-in-depth: never write to the broker on behalf of an account that
+  // is inactive (archived/disabled) or has been removed from the broker's
+  // /account/list (missingFromBrokerSince != null). Upstream sync filters
+  // these accounts out, but applyBrokerDayLockout is the single shared path
+  // for every verified breach and must be self-contained.
+  if (account != null && (!account.isActive || account.missingFromBrokerSince != null)) {
+    const why = !account.isActive ? "inactive (archived)" : "no longer returned by Tradovate";
+    return {
+      status: "broker_lock_failed",
+      message:
+        `Broker-side enforcement skipped: account is ${why}. ` +
+        "No broker write is attempted on an unavailable account.",
+      brokerEndpoint: null,
+      brokerPayload: null,
+      brokerResponse: null,
+      flattenStatus: "not_needed",
+      flattenMessage: "Position exit not attempted: account is unavailable.",
+      flattenPayload: null,
+      flattenResponse: null,
+    };
+  }
 
   const platform = account?.platform ?? "unknown";
   const connStatus = account?.brokerConnection?.connectionStatus ?? "not_connected";

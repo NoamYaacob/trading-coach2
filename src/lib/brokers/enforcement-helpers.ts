@@ -259,6 +259,30 @@ export function shouldSkipBrokerEnforcement(opts: {
     };
   }
 
+  // Defense-in-depth: never call a broker write endpoint when the connection
+  // is in a non-live state (expired token, transport error, never connected,
+  // or in-flight OAuth handoff). Upstream callers (cron filter, webhook
+  // handler) also gate these states; this is the last-line check that
+  // guarantees a safety violation cannot slip through a future code path
+  // calling applyBrokerDayLockout directly.
+  const NON_LIVE_CONNECTION_STATUSES = new Set([
+    "expired",
+    "connection_error",
+    "not_connected",
+    "pending_webhook",
+    "oauth_pending_storage",
+  ]);
+  if (NON_LIVE_CONNECTION_STATUSES.has(opts.connectionStatus)) {
+    return {
+      skip: true,
+      lockStatus: "broker_lock_failed",
+      reason:
+        `Broker-side enforcement skipped: connection status is '${opts.connectionStatus}'. ` +
+        "No broker write is attempted on a non-live connection. " +
+        "Reconnect Tradovate to restore enforcement.",
+    };
+  }
+
   // Prefer the probed permission level when available. The probe calls
   // userAccountAutoLiq/deps; success means the user granted Account Risk
   // Settings, so writes will also be permitted.
