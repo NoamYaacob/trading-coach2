@@ -1777,6 +1777,7 @@ export class TradovateClient {
           executionId: String(f.id),
           orderId: String(f.orderId),
           symbol: contractMap.get(f.contractId) ?? String(f.contractId),
+          contractId: f.contractId,
           side: mapSide(action),
           quantity: qty,
           price,

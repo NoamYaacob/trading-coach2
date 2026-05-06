@@ -125,6 +125,8 @@ export type BrokerExecution = {
   executionId: string;
   orderId: string | null;
   symbol: string;
+  /** Numeric broker contract ID — available from Tradovate fills; enables per-contract position tracking. */
+  contractId?: number;
   side: BrokerSide;
   quantity: number;
   price: number;

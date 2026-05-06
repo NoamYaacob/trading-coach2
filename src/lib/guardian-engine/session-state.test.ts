@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { classifyFill } from "./fill-classifier.ts";
+import { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count.ts";
 
 // Simulate a sequence of fills and count how many are trade entries.
 // Mirrors the webhook's position-aware classification loop.
@@ -185,5 +186,125 @@ describe("classifyFill — edge cases", () => {
       ]),
       1,
     );
+  });
+});
+
+// ── deriveCanonicalEntryCount — deduplication and cross-path correctness ─────
+// Reproduces the DEMO7433035 live bug: one round trip was showing count=4
+// because the sync used fetchAccountScopedOrders() (counts completed orders,
+// not position entries) and overwrote the webhook's correct count of 1.
+// The canonical function uses fill records + position-aware classification.
+
+function t(offsetMs: number): Date {
+  return new Date(1_700_000_000_000 + offsetMs);
+}
+
+function fill(
+  externalTradeId: string | null,
+  contractId: number | null,
+  side: "BUY" | "SELL",
+  qty: number,
+  offsetMs: number,
+  rawPayload: unknown = null,
+): CanonicalFill {
+  return {
+    externalTradeId,
+    contractId,
+    side,
+    quantity: String(qty),
+    occurredAt: t(offsetMs),
+    rawPayload,
+  };
+}
+
+describe("deriveCanonicalEntryCount — canonical trade counting", () => {
+  it("1. one entry + one exit = 1 trade", () => {
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0),
+      fill("f2", 1, "SELL", 1, 1),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("2. same fill stored twice (same externalTradeId) is deduplicated to 1 trade", () => {
+    // Reproduces double-storage when sync and webhook both record the same fill.
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0),
+      fill("f1", 1, "BUY",  1, 0), // duplicate
+      fill("f2", 1, "SELL", 1, 1),
+      fill("f2", 1, "SELL", 1, 1), // duplicate
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("3. sync-before-webhook dedup: fill without contractId then fill with contractId = 1 trade", () => {
+    // Sync stores first (no contractId), then webhook stores the same fill with contractId.
+    // deriveCanonicalEntryCount prefers the entry with contractId for grouping.
+    const fills = [
+      fill("f1", null, "BUY",  1, 0, { symbol: "NQ" }), // sync version
+      fill("f1", 1234, "BUY",  1, 0),                   // webhook version
+      fill("f2", 1234, "SELL", 1, 1),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("4. position-aware count vs. order count: bracket round trip = 1 trade", () => {
+    // fetchAccountScopedOrders() would return 4 completed orders
+    // (entry + SL bracket + TP bracket + manual exit) = 4. Bug count.
+    // Canonical fill-based count: 1 entry fill + 1 exit fill = 1 trade. Correct.
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0), // entry fill
+      fill("f2", 1, "SELL", 1, 1), // exit fill (one bracket leg executed)
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1, "bracket round trip must count as 1 trade");
+  });
+
+  it("5. entry + partial exit + final exit = 1 trade", () => {
+    const fills = [
+      fill("f1", 1, "BUY",  2, 0),
+      fill("f2", 1, "SELL", 1, 1), // partial close
+      fill("f3", 1, "SELL", 1, 2), // full close
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("6. entry + exit + new entry + exit = 2 trades", () => {
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0),
+      fill("f2", 1, "SELL", 1, 1),
+      fill("f3", 1, "BUY",  1, 2), // second trade
+      fill("f4", 1, "SELL", 1, 3),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 2);
+  });
+
+  it("7. fills without externalTradeId (pre-connection activity) are counted as-is", () => {
+    // Legacy or pre-connection fills have no ID and cannot be deduped — included verbatim.
+    const fills = [
+      fill(null, 1, "BUY",  1, 0),
+      fill(null, 1, "SELL", 1, 1),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("8. fills for two different contracts are counted independently", () => {
+    // NQ entry/exit (contractId=100) + MNQ entry/exit (contractId=200) = 2 trades.
+    const fills = [
+      fill("f1", 100, "BUY",  1, 0),
+      fill("f2", 100, "SELL", 1, 1),
+      fill("f3", 200, "BUY",  1, 2),
+      fill("f4", 200, "SELL", 1, 3),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 2);
+  });
+
+  it("9. sync-only fills (no contractId, symbol in rawPayload) are counted correctly", () => {
+    // Sync-before-webhook scenario: "fill" events stored with symbol but no contractId.
+    // Should still count 1 entry for one round trip in the same symbol.
+    const fills = [
+      fill("f1", null, "BUY",  1, 0, { symbol: "NQ" }),
+      fill("f2", null, "SELL", 1, 1, { symbol: "NQ" }),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
   });
 });

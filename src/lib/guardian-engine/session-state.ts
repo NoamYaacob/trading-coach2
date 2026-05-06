@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import type { SessionState } from "./types";
 export { classifyFill } from "./fill-classifier";
+export { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count";
+import { deriveCanonicalEntryCount } from "./canonical-trade-count";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -85,6 +87,10 @@ export async function getOrCreateSessionState(accountId: string): Promise<Sessio
  * fill by externalTradeId) and compute the net signed position.
  *
  * Positive = net long, negative = net short, 0 = flat.
+ *
+ * Queries both "fill" (sync path) and "trade_closed*" (webhook path) events.
+ * Deduplicates by externalTradeId to avoid double-counting when both paths
+ * stored the same fill before the cross-path dedup fix was in place.
  */
 export async function computeNetPosition(
   accountId: string,
@@ -99,18 +105,60 @@ export async function computeNetPosition(
       contractId,
       externalTradeId: { not: excludeExternalTradeId },
       occurredAt: { gte: dayStart },
-      eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
+      eventType: { in: ["fill", "trade_closed", "trade_closed_win", "trade_closed_loss"] },
     },
-    select: { side: true, quantity: true },
+    select: { side: true, quantity: true, externalTradeId: true },
     orderBy: { occurredAt: "asc" },
   });
 
+  const seen = new Set<string>();
   let position = 0;
   for (const f of fills) {
+    if (f.externalTradeId) {
+      if (seen.has(f.externalTradeId)) continue;
+      seen.add(f.externalTradeId);
+    }
     const qty = Number(f.quantity ?? 0);
     position += f.side === "BUY" ? qty : -qty;
   }
   return position;
+}
+
+/**
+ * DB-backed canonical trade count for a session.
+ *
+ * Queries all fill-like events for the account+day (both "fill" from the sync
+ * path and "trade_closed*" from the webhook path), deduplicates them, and
+ * counts only position entries using position-aware classification.
+ *
+ * Always returns tradeCountSource "verified" — this is the single authoritative
+ * count that sync writes to LiveSessionState instead of the API-based resolver.
+ */
+export async function countCanonicalEntries(
+  accountId: string,
+  sessionDate: string,
+): Promise<{ count: number; tradeCountSource: "verified" }> {
+  const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  const fills = await prisma.normalizedTradeEvent.findMany({
+    where: {
+      accountId,
+      occurredAt: { gte: dayStart },
+      eventType: { in: ["fill", "trade_closed", "trade_closed_win", "trade_closed_loss"] },
+      side: { not: null },
+      quantity: { not: null },
+    },
+    select: {
+      externalTradeId: true,
+      contractId: true,
+      side: true,
+      quantity: true,
+      occurredAt: true,
+      rawPayload: true,
+    },
+    orderBy: { occurredAt: "asc" },
+  });
+
+  return { count: deriveCanonicalEntryCount(fills), tradeCountSource: "verified" };
 }
 
 /** Called when a fill opens a new position entry. Increments tradesCount only. */

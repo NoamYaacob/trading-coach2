@@ -24,6 +24,7 @@ import { parseAndDecrypt } from "@/lib/security/token-crypto";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
+import { countCanonicalEntries } from "@/lib/guardian-engine/session-state";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 import {
   computeEffectiveDailyPnl,
@@ -221,6 +222,7 @@ export async function syncTradovateAccount(
               accountId,
               eventType: "fill",
               externalTradeId: ex.executionId,
+              contractId: ex.contractId ?? null,
               side: ex.side,
               quantity: ex.quantity,
               price: ex.price,
@@ -236,38 +238,52 @@ export async function syncTradovateAccount(
       // remains null — the UI will show "Trades unavailable" instead of 0.
     }
 
-    // Phase C: resolve the authoritative per-account trade count by trying
-    // multiple sources in order of trustworthiness:
-    //   1. Tradovate Performance Report (broker_report)
-    //   2. order/deps?masterid={tvAccountId} (account-scoped at API; spec confirmed)
-    //   3. Cached fill/list count → marked "estimated" (no account-scoped fills endpoint)
-    // See tradovate-trade-count.ts for the orchestration logic.
-    const adapter: TradeCountAdapter = {
-      getAccountName: () => client.getAccountName(),
-      fetchPerformanceReport: (input) =>
-        client.fetchPerformanceReport({ accountName: input.accountName, tradingDayKey }),
-      fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(sessionStartMs),
-      fetchUnscopedFillsFallback: async () => {
-        if (cachedFills == null) return null;
-        const verdict = client.getLastFillsScopingVerdict();
-        return {
-          count: cachedFills.derivedCount,
-          endpoint: `fill/list (cached, verdict=${verdict})`,
-        };
-      },
-    };
-    const resolved = await resolveTradeCount(adapter, { tradingDayKey });
-    tradesCount = resolved.count ?? 0;
-    tradeCountSource = resolved.trustLevel;
+    // Phase C: canonical DB-based trade count.
+    // Counts position entries from all fill-like events in the DB (both "fill"
+    // from this sync path and "trade_closed*" from the webhook path), deduplicated
+    // by externalTradeId and classified via position-aware logic.
+    // This replaces the API-based resolver (resolveTradeCount / fetchAccountScopedOrders)
+    // which counted completed orders — not position entries — inflating the count
+    // to 4 for bracket-order round trips that are actually 1 trade.
+    const canonical = await countCanonicalEntries(accountId, tradingDayKey);
+    tradesCount = canonical.count;
+    tradeCountSource = canonical.tradeCountSource; // always "verified"
 
-    console.info("[tradovate/trades] resolver result", {
+    console.info("[tradovate/trades] canonical entry count", {
       accountId,
-      count: resolved.count,
-      source: resolved.source,
-      trustLevel: resolved.trustLevel,
-      finalTradeCountSource: tradeCountSource,
-      attempts: resolved.attempts,
+      count: canonical.count,
+      tradeCountSource: canonical.tradeCountSource,
+      rawFillCount: cachedFills?.executions.length ?? null,
     });
+
+    // Diagnostic: log the API-based resolver result without using it for enforcement.
+    // This lets us verify the resolver against the canonical count in production logs.
+    try {
+      const adapter: TradeCountAdapter = {
+        getAccountName: () => client.getAccountName(),
+        fetchPerformanceReport: (input) =>
+          client.fetchPerformanceReport({ accountName: input.accountName, tradingDayKey }),
+        fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(sessionStartMs),
+        fetchUnscopedFillsFallback: async () => {
+          if (cachedFills == null) return null;
+          const verdict = client.getLastFillsScopingVerdict();
+          return {
+            count: cachedFills.derivedCount,
+            endpoint: `fill/list (cached, verdict=${verdict})`,
+          };
+        },
+      };
+      const resolved = await resolveTradeCount(adapter, { tradingDayKey });
+      console.info("[tradovate/trades] resolver result (diagnostic only — not used for enforcement)", {
+        accountId,
+        count: resolved.count,
+        source: resolved.source,
+        trustLevel: resolved.trustLevel,
+        attempts: resolved.attempts,
+      });
+    } catch {
+      // Diagnostic failure must not abort the sync.
+    }
 
     // Persist fillsSyncedAt separately (it's set inside the try block above).
     if (fillsSyncedAt != null) {

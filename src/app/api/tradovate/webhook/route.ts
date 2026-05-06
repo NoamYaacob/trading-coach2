@@ -127,12 +127,14 @@ export async function POST(request: Request) {
   }
 
   // Deduplication: fills and orders carry a stable externalTradeId.
-  // Treat all trade_closed* variants as equivalent for dedup (a fill retry keeps the same ID).
+  // For trade_closed* events, also check "fill" events stored by the sync path
+  // (which uses the same externalTradeId / Tradovate fill ID) to prevent
+  // double-storage when sync runs before the webhook fires.
   if (normalizedEvent.externalTradeId) {
     const dupWhere = isTradeClose(normalizedEvent.eventType)
       ? {
           accountId: account.id,
-          eventType: { in: ["trade_closed", "trade_closed_win", "trade_closed_loss"] },
+          eventType: { in: ["fill", "trade_closed", "trade_closed_win", "trade_closed_loss"] },
           externalTradeId: normalizedEvent.externalTradeId,
         }
       : {
