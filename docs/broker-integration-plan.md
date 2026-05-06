@@ -411,6 +411,15 @@ test against a real account.
 
 ---
 
+## Tradovate endpoint reference
+
+See [`docs/tradovate-openapi-notes.md`](./tradovate-openapi-notes.md) for the
+authoritative list of `/deps?masterid` parent-entity rules, trade count source
+authority levels, and the required broker-side lockout sequence. Update that
+file before adding any new Tradovate endpoint.
+
+---
+
 ## Operational guardrails (non-negotiable)
 
 1. **No fake data in production code paths.** Demo data lives behind a
