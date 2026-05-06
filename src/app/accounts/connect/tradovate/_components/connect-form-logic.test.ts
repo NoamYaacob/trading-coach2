@@ -7,6 +7,8 @@ import {
   isEnvForced,
   getEnvHint,
   validateSourceEnv,
+  PROP_FIRM_PHASES,
+  DEFAULT_PROP_FIRM_PHASE,
 } from "./connect-form-logic.ts";
 
 // ── getDefaultEnv ─────────────────────────────────────────────────────────────
@@ -84,11 +86,13 @@ describe("getEnvHint", () => {
     assert.equal(getEnvHint("demo", "demo"), getEnvHint("demo", "live"));
   });
 
-  test("prop firm + Demo shows advisory about evaluation/sim accounts", () => {
+  test("prop firm + Demo shows advisory covering evaluations, challenges, combines, and simulated funded", () => {
     const hint = getEnvHint("prop_firm", "demo");
     assert.ok(hint != null);
-    assert.match(hint!, /prop firm/i);
-    assert.match(hint!, /demo|simulation/i);
+    assert.match(hint!, /evaluation/i);
+    assert.match(hint!, /challenge/i);
+    assert.match(hint!, /combine/i);
+    assert.match(hint!, /simulated funded|sim.*funded/i);
   });
 
   test("prop firm + Live shows a Live-only advisory", () => {
@@ -149,6 +153,41 @@ describe("validateSourceEnv", () => {
 
   test("not sure / other + Demo is valid", () => {
     assert.equal(validateSourceEnv("other", "demo"), null);
+  });
+});
+
+// ── PROP_FIRM_PHASES contract ─────────────────────────────────────────────────
+
+describe("PROP_FIRM_PHASES contract", () => {
+  test("default phase is evaluation", () => {
+    assert.equal(DEFAULT_PROP_FIRM_PHASE, "evaluation");
+  });
+
+  test("has Evaluation / Challenge / Combine as a single merged option", () => {
+    const option = PROP_FIRM_PHASES.find((p) => p.value === "evaluation");
+    assert.ok(option != null, "evaluation option must exist");
+    assert.match(option!.label, /evaluation/i);
+    assert.match(option!.label, /challenge/i);
+    assert.match(option!.label, /combine/i);
+  });
+
+  test("there is no separate Challenge / Combine option", () => {
+    const challengeOnly = PROP_FIRM_PHASES.find(
+      (p) => /challenge/i.test(p.label) && !/evaluation/i.test(p.label),
+    );
+    assert.equal(challengeOnly, undefined, "challenge must be merged into evaluation option");
+  });
+
+  test("user can choose Funded", () => {
+    assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "funded"));
+  });
+
+  test("user can choose Sim funded", () => {
+    assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "sim_funded"));
+  });
+
+  test("user can choose Not sure", () => {
+    assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "not_sure"));
   });
 });
 
