@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -50,45 +49,60 @@ function formatHHMM(ms: number, tz: string): string {
   }).format(new Date(ms));
 }
 
-/**
- * Returns a human-readable unlock label.
- *
- * `tz` is the user's explicitly saved IANA timezone — null means the user
- * hasn't set one. When null we omit the absolute time (it would show the
- * fallback timezone city which may be misleading) and only show relative time.
- */
-function formatUnlockLabel(lockedUntilMs: number, tz: string | null): string {
-  const diffMin = Math.ceil((lockedUntilMs - Date.now()) / 60_000);
-
-  if (diffMin <= 0) return "soon";
-  if (diffMin <= 90) return `in ${diffMin} minute${diffMin !== 1 ? "s" : ""}`;
-  if (!tz) return "after today's session ends";
-
-  return `after ${formatHHMM(lockedUntilMs, tz)} ${tzCityName(tz)} time`;
+function dateKeyInTz(date: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 /**
- * Returns a "HH:MM–HH:MM City time" session range string, or null when
- * the timezone or either timestamp is unavailable.
+ * Returns "today", "tomorrow", or a weekday name (lower-case) for the calendar
+ * day of `windowStartMs` in the user's timezone, relative to right now.
  */
-function formatSessionRange(
-  lockedFromMs: number | null,
-  lockedUntilMs: number | null,
-  tz: string | null,
-): string | null {
-  if (!tz || lockedFromMs == null || lockedUntilMs == null) return null;
-  return `${formatHHMM(lockedFromMs, tz)}–${formatHHMM(lockedUntilMs, tz)} ${tzCityName(tz)} time`;
+function windowDayLabel(windowStartMs: number, tz: string): string {
+  const now = new Date();
+  const todayKey = dateKeyInTz(now, tz);
+  const windowKey = dateKeyInTz(new Date(windowStartMs), tz);
+  if (windowKey === todayKey) return "today";
+  const tomorrowKey = dateKeyInTz(new Date(now.getTime() + 86_400_000), tz);
+  if (windowKey === tomorrowKey) return "tomorrow";
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" })
+    .format(new Date(windowStartMs))
+    .toLowerCase();
 }
+
+/**
+ * Formats the maintenance window for display in the user's local timezone.
+ * Example: "Available today: 22:00–02:00 Israel time."
+ * The end time may cross midnight, which reads naturally as "02:00".
+ */
+function formatWindowAvailableLabel(
+  windowStartMs: number,
+  windowEndMs: number,
+  userTz: string | null,
+): string {
+  const tz = userTz ?? "UTC";
+  const start = formatHHMM(windowStartMs, tz);
+  const end = formatHHMM(windowEndMs, tz);
+  const city = tzCityName(tz);
+  const day = windowDayLabel(windowStartMs, tz);
+  return `Available ${day}: ${start}–${end} ${city} time.`;
+}
+
+// ─── BlockedDialog ────────────────────────────────────────────────────────────
 
 function BlockedDialog({
-  lockedFromMs,
-  lockedUntilMs,
-  lockedUntilTz,
+  windowStartMs,
+  windowEndMs,
+  userTz,
   onClose,
 }: {
-  lockedFromMs: number | null;
-  lockedUntilMs: number | null;
-  lockedUntilTz: string | null;
+  windowStartMs: number | null;
+  windowEndMs: number | null;
+  userTz: string | null;
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -105,10 +119,9 @@ function BlockedDialog({
     closeRef.current?.focus();
   }, []);
 
-  const sessionRange = formatSessionRange(lockedFromMs, lockedUntilMs, lockedUntilTz);
-  const unlockSuffix =
-    lockedUntilMs != null
-      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz)
+  const availableLabel =
+    windowStartMs != null && windowEndMs != null
+      ? formatWindowAvailableLabel(windowStartMs, windowEndMs, userTz)
       : null;
 
   return (
@@ -131,20 +144,14 @@ function BlockedDialog({
           id="disconnect-blocked-desc"
           className="mt-3 text-sm leading-6 text-stone-600"
         >
-          {sessionRange
-            ? `This account is protected during today's trading session (${sessionRange}).`
-            : "This account is protected during today's trading session."}{" "}
-          {unlockSuffix
-            ? `You can disconnect ${unlockSuffix}.`
-            : "You can disconnect after today's protected session ends."}
+          Broker connections can only be disconnected during the futures
+          maintenance window, when the trading day is safely outside active
+          monitoring.
         </p>
-        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Link
-            href="/guardian"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-200 bg-white px-6 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
-          >
-            View Guardian status
-          </Link>
+        {availableLabel && (
+          <p className="mt-2 text-sm font-medium text-stone-700">{availableLabel}</p>
+        )}
+        <div className="mt-7 flex justify-end">
           <button
             ref={closeRef}
             type="button"
@@ -158,6 +165,8 @@ function BlockedDialog({
     </div>
   );
 }
+
+// ─── DisconnectDialog ─────────────────────────────────────────────────────────
 
 function DisconnectDialog({
   providerLabel,
@@ -233,25 +242,30 @@ function DisconnectDialog({
   );
 }
 
+// ─── DisconnectButton ─────────────────────────────────────────────────────────
+
 export function DisconnectButton({
   accountId,
   providerLabel,
   isBlocked = false,
-  lockedFromMs = null,
-  lockedUntilMs = null,
-  lockedUntilTz = null,
+  windowStartMs = null,
+  windowEndMs = null,
+  userTz = null,
   redirectTo = "/accounts",
 }: {
   accountId: string;
   providerLabel: string;
-  /** Pass true when the account is protected during an active trading session. */
+  /**
+   * Pass true when disconnect is outside the futures maintenance window.
+   * Driven by getBrokerDisconnectWindow() — NOT by the user's session hours.
+   */
   isBlocked?: boolean;
-  /** UTC millisecond timestamp of the trading session start (when protection began). */
-  lockedFromMs?: number | null;
-  /** UTC millisecond timestamp of when the session lock lifts (session end). */
-  lockedUntilMs?: number | null;
-  /** User's explicitly saved IANA timezone (from TraderProfile). */
-  lockedUntilTz?: string | null;
+  /** UTC milliseconds of the upcoming maintenance window start. */
+  windowStartMs?: number | null;
+  /** UTC milliseconds of the upcoming maintenance window end. */
+  windowEndMs?: number | null;
+  /** User's IANA timezone for displaying the window in local time. */
+  userTz?: string | null;
   redirectTo?: string;
 }) {
   const router = useRouter();
@@ -278,11 +292,6 @@ export function DisconnectButton({
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
       const data = (await res.json()) as { error?: string; message?: string };
       if (!res.ok) {
-        if (res.status === 409 && data.error === "protection_locked") {
-          setIsDisconnecting(false);
-          setDialogMode("blocked");
-          return;
-        }
         throw new Error(data.message ?? data.error ?? "Failed to disconnect.");
       }
       setDialogMode(null);
@@ -294,13 +303,9 @@ export function DisconnectButton({
     }
   }
 
-  const sessionRange = isBlocked
-    ? formatSessionRange(lockedFromMs ?? null, lockedUntilMs ?? null, lockedUntilTz ?? null)
-    : null;
-
-  const unlockLabel =
-    isBlocked && lockedUntilMs != null
-      ? formatUnlockLabel(lockedUntilMs, lockedUntilTz ?? null)
+  const availableLabel =
+    isBlocked && windowStartMs != null && windowEndMs != null
+      ? formatWindowAvailableLabel(windowStartMs, windowEndMs, userTz)
       : null;
 
   return (
@@ -309,16 +314,9 @@ export function DisconnectButton({
 
       {isBlocked ? (
         <div className="flex flex-col items-end gap-1">
-          {sessionRange && (
-            <p className="text-xs text-amber-700">
-              Protected session: {sessionRange}.
-            </p>
+          {availableLabel && (
+            <p className="text-xs text-amber-700">{availableLabel}</p>
           )}
-          <p className="text-xs text-amber-700">
-            {unlockLabel
-              ? `Disconnect available ${unlockLabel}.`
-              : "Disconnect available after session ends."}
-          </p>
           <button
             ref={triggerRef}
             type="button"
@@ -341,9 +339,9 @@ export function DisconnectButton({
 
       {dialogMode === "blocked" && (
         <BlockedDialog
-          lockedFromMs={lockedFromMs ?? null}
-          lockedUntilMs={lockedUntilMs ?? null}
-          lockedUntilTz={lockedUntilTz ?? null}
+          windowStartMs={windowStartMs}
+          windowEndMs={windowEndMs}
+          userTz={userTz}
           onClose={closeDialog}
         />
       )}

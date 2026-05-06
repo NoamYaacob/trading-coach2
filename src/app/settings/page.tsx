@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-import { getProtectionLockState } from "@/lib/account-protection";
+import { getBrokerDisconnectWindow } from "@/lib/broker-disconnect-window";
 
 import { getCurrentUser } from "@/lib/auth";
 
@@ -46,7 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams;
 
-  const [dbUser, telegramConnection, googleConnection, traderProfile, connectedAccounts, userRules] = await Promise.all([
+  const [dbUser, telegramConnection, googleConnection, traderProfile, connectedAccounts] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -81,18 +81,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.riskRules.findUnique({
-      where: { userId: user.id },
-      select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },
-    }),
   ]);
 
-  const lockState = getProtectionLockState({
-    timezone: traderProfile?.timezone ?? null,
-    sessionStartHour: userRules?.sessionStartHour ?? null,
-    sessionEndHour: userRules?.sessionEndHour ?? null,
-    cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
-  });
+  const disconnectWindow = getBrokerDisconnectWindow();
 
   const hasPassword = Boolean(dbUser?.passwordHash);
   const googleConnected = Boolean(googleConnection);
@@ -294,13 +285,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       accountId={acct.id}
                       providerLabel={platformLabel}
                       redirectTo="/settings"
-                      isBlocked={
-                        lockState.isLocked &&
-                        (acct.protectionStatus === "protected" || acct.protectionStatus === "monitor_only")
-                      }
-                      lockedFromMs={lockState.lockedFrom?.getTime() ?? null}
-                      lockedUntilMs={lockState.lockedUntil?.getTime() ?? null}
-                      lockedUntilTz={traderProfile?.timezone ?? null}
+                      isBlocked={disconnectWindow.isBlocked}
+                      windowStartMs={disconnectWindow.nextWindowStart.getTime()}
+                      windowEndMs={disconnectWindow.nextWindowEnd.getTime()}
+                      userTz={traderProfile?.timezone ?? null}
                     />
                   </div>
                 );
