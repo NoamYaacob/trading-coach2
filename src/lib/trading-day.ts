@@ -101,7 +101,7 @@ function tzOffsetMinutes(at: Date, tz: string): number {
  * Two-pass to handle DST transitions: the second pass corrects when the
  * naive offset shifts the candidate across a DST boundary.
  */
-function fromTzParts(
+export function fromTzParts(
   year: number,
   month: number,
   day: number,

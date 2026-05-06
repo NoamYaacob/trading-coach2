@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
 import { getProtectionLockState } from "@/lib/account-protection";
 import { hasValidConsent } from "@/lib/brokers/automated-actions-consent";
+import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
@@ -250,15 +251,30 @@ export default async function RulesPage({
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-sm text-amber-800">
               <p className="font-medium">Today&apos;s rules are locked.</p>
               <p className="mt-1 text-[13px] text-amber-700">
-                Saved changes will apply on the next trading day ({protectionLock.nextTradingDayKey}).
+                Saved changes will apply at the next CME trading day start:{" "}
+                <span className="font-semibold">
+                  {formatPendingRuleActivation({
+                    nextTradingDayKey: protectionLock.nextTradingDayKey,
+                    sessionStartHour: riskRules?.sessionStartHour ?? null,
+                    userTimezone: traderProfile?.timezone ?? null,
+                  })}
+                </span>
+                .
               </p>
             </div>
           )}
           {scope !== "account" && hasPendingPayload && riskRules?.pendingEffectiveDate && (
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm text-sky-800">
               <p>
-                You have rule changes pending — they apply on{" "}
-                <span className="font-semibold">{riskRules.pendingEffectiveDate}</span>.
+                You have rule changes pending — they apply at the next CME trading day start:{" "}
+                <span className="font-semibold">
+                  {formatPendingRuleActivation({
+                    nextTradingDayKey: riskRules.pendingEffectiveDate,
+                    sessionStartHour: riskRules?.sessionStartHour ?? null,
+                    userTimezone: traderProfile?.timezone ?? null,
+                  })}
+                </span>
+                .
               </p>
             </div>
           )}
