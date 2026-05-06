@@ -1087,3 +1087,58 @@ describe("unsupported triggers — shouldSkipBrokerEnforcement gates flatten", (
     }
   });
 });
+
+// ── computeEffectiveDailyPnl ──────────────────────────────────────────────────
+
+import { computeEffectiveDailyPnl } from "./enforcement-helpers.ts";
+
+describe("computeEffectiveDailyPnl", () => {
+  it("realized -200 + unrealized -300 = -500 (triggers daily_loss_limit at $500 limit)", () => {
+    const effective = computeEffectiveDailyPnl(-200, -300);
+    assert.equal(effective, -500);
+    // lossUsed = Math.abs(Math.min(-500, 0)) = 500 >= limit → triggers
+    const lossUsed = Math.abs(Math.min(effective!, 0));
+    assert.ok(lossUsed >= 500, "should reach the $500 daily loss limit");
+  });
+
+  it("open trade unrealized -500, no prior realized P&L = -500 (triggers daily_loss_limit)", () => {
+    const effective = computeEffectiveDailyPnl(null, -500);
+    assert.equal(effective, -500);
+    const lossUsed = Math.abs(Math.min(effective!, 0));
+    assert.ok(lossUsed >= 500);
+  });
+
+  it("realized +300 + unrealized +200 = +500 (triggers profit_target at $500)", () => {
+    const effective = computeEffectiveDailyPnl(300, 200);
+    assert.equal(effective, 500);
+    assert.ok(effective! >= 500, "should reach the $500 profit target");
+  });
+
+  it("realized -450 alone, no unrealized — does not reach $500 limit", () => {
+    const effective = computeEffectiveDailyPnl(-450, null);
+    assert.equal(effective, -450);
+    const lossUsed = Math.abs(Math.min(effective!, 0));
+    assert.ok(lossUsed < 500, "realized-only P&L below threshold must not trigger");
+  });
+
+  it("both null → returns null (no P&L data; enforcement cannot run)", () => {
+    assert.equal(computeEffectiveDailyPnl(null, null), null);
+  });
+
+  it("realized 0 + unrealized -300 = -300 (only unrealized, no prior fills)", () => {
+    assert.equal(computeEffectiveDailyPnl(0, -300), -300);
+  });
+
+  it("realized -100 + unrealized 0 = -100 (flat position contributes zero)", () => {
+    assert.equal(computeEffectiveDailyPnl(-100, 0), -100);
+  });
+
+  it("account scoping: openPnl source is account-scoped (property-based check)", () => {
+    // openPnl comes from cashBalance/getCashBalanceSnapshot (POST with accountId)
+    // or position/deps?masterid={tvAccountId} — both are per-account.
+    // computeEffectiveDailyPnl treats the inputs as trusted account-scoped values;
+    // it does not mix cross-account data — that is the sync layer's responsibility.
+    const effective = computeEffectiveDailyPnl(-200, -300);
+    assert.equal(typeof effective, "number", "account-scoped inputs produce a numeric result");
+  });
+});

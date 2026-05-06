@@ -186,6 +186,23 @@ export function computeLossAmountToSet(
 }
 
 /**
+ * Effective daily P&L for enforcement = realized P&L + open/unrealized P&L.
+ *
+ * openPnl is account-scoped: it comes from getCashBalanceSnapshot's `openPl`
+ * field (per-account POST with accountId) or from position/deps unrealizedPnL
+ * (per-account GET with masterid). Both sources are safe to include.
+ *
+ * Returns null only when both inputs are null — no P&L data at all.
+ */
+export function computeEffectiveDailyPnl(
+  resolvedDailyPnl: number | null,
+  openPnl: number | null,
+): number | null {
+  if (resolvedDailyPnl === null && openPnl === null) return null;
+  return (resolvedDailyPnl ?? 0) + (openPnl ?? 0);
+}
+
+/**
  * Compute the dailyProfitAutoLiq threshold to send to Tradovate.
  *
  * currentDailyPnl is the raw daily P&L (positive on a profitable day).

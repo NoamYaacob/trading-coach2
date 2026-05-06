@@ -25,6 +25,7 @@ import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/t
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
+import { computeEffectiveDailyPnl } from "./enforcement-helpers";
 
 export type SyncResult = {
   ok: boolean;
@@ -259,11 +260,16 @@ export async function syncTradovateAccount(
 
     // Use snapshot P&L when available; fall back to summing fill profits.
     const resolvedDailyPnl = dailyPnl ?? pnlFromFills;
+    // Effective P&L for threshold enforcement = realized + open/unrealized.
+    // openPnl is account-scoped (cashBalance snapshot openPl or position/deps).
+    const effectiveDailyPnl = computeEffectiveDailyPnl(resolvedDailyPnl, openPnl);
     console.info("[tradovate/pnl] resolved daily P&L", {
       accountId,
       fromSnapshot: dailyPnl,
       fromFills: pnlFromFills,
       resolved: resolvedDailyPnl,
+      unrealized: openPnl,
+      effective: effectiveDailyPnl,
     });
 
     // ── Load risk rules for riskState computation ─────────────────────────
@@ -318,7 +324,7 @@ export async function syncTradovateAccount(
       !selectedTradingDays.includes(cmeDayCode);
 
     const lossUsed =
-      resolvedDailyPnl != null ? Math.abs(Math.min(resolvedDailyPnl, 0)) : null;
+      effectiveDailyPnl != null ? Math.abs(Math.min(effectiveDailyPnl, 0)) : null;
     const lossPct =
       effectiveMaxDailyLoss != null && effectiveMaxDailyLoss > 0 && lossUsed != null
         ? Math.min(1, lossUsed / effectiveMaxDailyLoss)
@@ -354,8 +360,8 @@ export async function syncTradovateAccount(
     } else if (
       effectiveProfitTarget != null &&
       effectiveProfitTarget > 0 &&
-      resolvedDailyPnl != null &&
-      resolvedDailyPnl >= effectiveProfitTarget
+      effectiveDailyPnl != null &&
+      effectiveDailyPnl >= effectiveProfitTarget
     ) {
       // Profit target reached — lock for the day (internal lock only; no Tradovate API).
       newRiskState = "STOPPED";
