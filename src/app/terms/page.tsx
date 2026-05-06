@@ -32,7 +32,7 @@ export default function TermsPage() {
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">3. Broker integrations</h2>
         <p className="mt-3">
-          Where Guardrail integrates with a broker (e.g., Tradovate), it does so via the broker&rsquo;s API and only with scopes you explicitly authorize. Read-only capabilities require read scope; destructive capabilities (cancelling orders, flattening positions, broker-level lockout) require both broker API support and explicit per-capability user opt-in inside the Service. Until a capability has been verified end-to-end against the live broker and explicitly opted into, Guardrail will not invoke it.
+          Where Guardrail integrates with a broker (e.g., Tradovate), it does so via the broker&rsquo;s API and only with scopes you explicitly authorize. Read-only access enables account monitoring and in-app rule alerts. For Tradovate accounts authorized with full API permissions, Guardrail can also apply broker-side daily lockout (via the broker&rsquo;s risk settings) and close open positions when configured rules are breached (daily loss limit, daily profit target, session-end cutoff with flatten behavior). By configuring rules and granting full broker permissions, you authorize Guardrail to attempt these actions when your rules are met. These actions are logged in a per-account audit trail. Their execution depends on broker API availability, your permission grants, and network conditions — Guardrail cannot guarantee completion and is not liable for failures.
         </p>
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">4. Your responsibilities</h2>

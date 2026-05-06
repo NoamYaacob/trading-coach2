@@ -27,9 +27,9 @@ export default function RiskDisclaimerPage() {
             Guardrail enforces the rules you configure. It does not predict market behavior, recommend entries or exits, or prevent you from taking losses. It is your responsibility to define rules that match your risk tolerance and to follow them.
           </p>
 
-          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Guardrail does not block trades at the broker</h2>
+          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">What happens when a rule is breached</h2>
           <p className="mt-2 text-stone-700">
-            When a rule is breached, Guardrail transitions to a Locked state inside the application — it shows a lockout banner and (if configured) sends a Telegram alert. Guardrail <strong>does not</strong> place, cancel, modify, or block orders at your broker. You retain full control of order entry at all times.
+            When a configured rule is breached, Guardrail always locks the account internally — it sets the account to a Stopped state and (if configured) sends a Telegram alert. Additionally, for Tradovate accounts connected with full API permissions, Guardrail may attempt broker-side actions: applying a daily lockout via the broker&rsquo;s risk settings, and closing any open positions before or alongside the lockout, depending on the trigger and your configured cutoff behavior. Guardrail does <strong>not</strong> place new orders or block order entry at the exchange level. Your broker&rsquo;s native order-entry interface remains available regardless of Guardrail&rsquo;s state.
           </p>
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Broker-level enforcement depends on broker API support</h2>
@@ -42,18 +42,16 @@ export default function RiskDisclaimerPage() {
             Even where broker enforcement is configured, it may be unavailable, delayed, rejected, or fail at the time of execution due to network issues, broker API outages, account status changes, permission revocations, or prop firm policy changes. Guardrail logs enforcement attempts but cannot guarantee the outcome of any broker-side action. You remain responsible for monitoring your account and taking manual action if automated enforcement does not complete as expected.
           </p>
 
-          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Destructive actions require explicit consent</h2>
+          <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Automated account actions and position exit</h2>
           <p className="mt-2 text-stone-700">
-            Cancelling open orders, flattening positions, and broker-level lockout (collectively, &ldquo;destructive actions&rdquo;) are not enabled today. When and if such actions ship, they will require all of the following:
+            For Tradovate accounts connected with full API permissions, the following automated actions are active when your configured rules are breached:
           </p>
-          <ol className="mt-2 list-decimal space-y-1 pl-6 text-stone-700">
-            <li>Explicit user opt-in per capability inside Rules → On-breach actions.</li>
-            <li>End-to-end verification against the live broker before activation.</li>
-            <li>An audit log entry written before each invocation.</li>
-            <li>A confirmation step naming the exact action being taken.</li>
-          </ol>
+          <ul className="mt-2 list-disc space-y-1 pl-6 text-stone-700">
+            <li><strong>Broker-side daily lockout</strong> — Guardrail applies the broker&rsquo;s own risk settings (auto-liquidation threshold) to lock the account for the trading day.</li>
+            <li><strong>Position flatten</strong> — Guardrail attempts to close open positions before or alongside the lockout for daily loss, daily profit target, and configured session-end cutoff breaches.</li>
+          </ul>
           <p className="mt-2 text-stone-700">
-            Until those conditions are met for a given capability, Guardrail will not call the corresponding broker endpoint, and the user-facing copy will continue to mark the capability as &ldquo;Coming soon&rdquo;, &ldquo;Disabled&rdquo;, or &ldquo;Unverified&rdquo;.
+            These actions are authorized by configuring rules and connecting with full broker permissions. Every action is recorded in the audit log with the trigger, endpoint called, payload sent, and broker response received. These actions depend on broker API availability, your account&rsquo;s permission grants, and network conditions. Guardrail logs attempts but cannot guarantee completion. You remain responsible for monitoring your account and taking manual action if automated enforcement does not complete as expected.
           </p>
 
           <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Connection reliability</h2>

@@ -106,7 +106,7 @@ export function computeEnforcementMode(
   if (EXPIRED_STATUSES.has(connStatus)) {
     return {
       mode: "monitoring_only",
-      label: "Connection required",
+      label: "Unavailable — reconnect required",
       detail:
         "The broker connection for this account has expired or errored. " +
         "Reconnect to restore live rule monitoring. " +
@@ -121,7 +121,7 @@ export function computeEnforcementMode(
     if (connStatus === "connected_readonly") {
       return {
         mode: "monitoring_only",
-        label: "Not fully protected — alerts only",
+        label: "Limited permissions — alerts only",
         detail:
           "This account is connected in read-only mode. " +
           "Guardrail can evaluate rules and send alerts, but cannot lock the account or apply broker-side risk settings. " +
@@ -135,7 +135,7 @@ export function computeEnforcementMode(
     // remain monitoring-only (no Tradovate API field maps to those limits).
     return {
       mode: "broker_enforcement_pending",
-      label: "Partial broker enforcement",
+      label: "Broker enforcement available",
       detail:
         "Account data is synced. If a daily loss limit or daily profit target is set and breached, Guardrail will " +
         "attempt to engage Tradovate’s risk engine — placing this account in " +

@@ -267,6 +267,9 @@ export function RulesForm({ initial, timezone }: Props) {
         <p className="text-[11px] text-stone-400">
           Rules target: <span className="font-semibold text-stone-600">Default template</span>
         </p>
+        <p className="text-[11px] text-stone-500">
+          Protection rules may trigger automatic lockout according to the limits you set. For accounts with full broker permissions, Guardrail may also attempt to close open positions.
+        </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"

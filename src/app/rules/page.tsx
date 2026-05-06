@@ -152,6 +152,8 @@ export default async function RulesPage({
     maxContracts: intStr(riskRules?.maxContracts),
   };
 
+  const isDryRun = process.env.ENFORCEMENT_DRY_RUN === "true";
+
   // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)
   const enforcementInfo = computeEnforcementMode(
     scope === "account" && selectedAccount
@@ -223,6 +225,14 @@ export default async function RulesPage({
 
           {/* Scope context header */}
           <ScopeContextHeader scope={scope} account={selectedAccount} />
+
+          {/* Dry-run mode banner — shown when ENFORCEMENT_DRY_RUN=true */}
+          {isDryRun && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+              <span className="font-semibold">Dry run mode. </span>
+              Guardrail will simulate lockout and position exit. No Tradovate write will be sent.
+            </div>
+          )}
 
           {/* Enforcement mode banner */}
           <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>

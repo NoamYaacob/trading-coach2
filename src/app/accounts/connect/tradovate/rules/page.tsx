@@ -198,9 +198,10 @@ export default async function RulesAssignmentPage({
         </div>
 
         <p className="text-xs leading-5 text-stone-500">
-          Guardrail evaluates rules in-app from connected broker data. Alerts fire when a limit
-          is hit. Broker-side actions (cancel orders, flatten positions) are not active and
-          require separate opt-in.
+          Guardrail evaluates rules from connected broker data. When a rule is breached, Guardrail
+          locks the account internally and (for Tradovate accounts with full API permissions) may
+          apply a broker-side daily lockout and attempt to close open positions. These actions
+          are authorized by setting rules and connecting with the appropriate permissions.
         </p>
       </main>
     </div>

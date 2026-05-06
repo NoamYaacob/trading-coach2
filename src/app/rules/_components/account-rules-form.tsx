@@ -148,6 +148,7 @@ export function AccountRulesForm({
   const [showForm, setShowForm] = useState(hasExistingRules);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState(false);
 
   // Warn before unload/refresh when there are unsaved changes.
   useEffect(() => {
@@ -458,10 +459,26 @@ export function AccountRulesForm({
         <p className="text-[11px] text-stone-400">
           Rules target: <span className="font-semibold text-stone-600">{accountLabel}</span>
         </p>
+
+        {/* First-time consent — required before first save */}
+        {!hasExistingRules && (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <input
+              type="checkbox"
+              checked={consentChecked}
+              onChange={(e) => setConsentChecked(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
+            />
+            <span>
+              I understand that Guardrail may automatically lock this account and may attempt to close open positions when my configured rules are breached.
+            </span>
+          </label>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={saving || removing}
+            disabled={saving || removing || (!hasExistingRules && !consentChecked)}
             className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {saving ? "Saving…" : "Save rules"}
