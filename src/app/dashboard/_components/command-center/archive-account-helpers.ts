@@ -18,8 +18,9 @@ export function buildArchiveRequest(accountId: string): {
 
 /** Copy used by the in-app confirmation dialog. */
 export const ARCHIVE_DIALOG = {
-  title: "Archive unavailable account?",
-  body: "This hides the account from active monitoring views. It does not delete historical data.",
+  title: "Archive this account?",
+  body: "This hides the account from active monitoring views. Historical data is kept.",
+  note: "You can still review past activity later.",
   confirmLabel: "Archive account",
   cancelLabel: "Cancel",
 } as const;

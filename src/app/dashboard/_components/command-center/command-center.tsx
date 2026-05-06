@@ -452,6 +452,7 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
+            accountLabel={account.label}
             className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
           />
         </div>
@@ -599,6 +600,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
+            accountLabel={account.label}
             className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
           />
         </div>

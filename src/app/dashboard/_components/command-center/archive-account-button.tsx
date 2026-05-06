@@ -10,15 +10,18 @@ import {
 
 type Props = {
   accountId: string;
+  accountLabel?: string;
   className?: string;
 };
 
 function ArchiveConfirmDialog({
+  accountLabel,
   isArchiving,
   error,
   onConfirm,
   onCancel,
 }: {
+  accountLabel: string | undefined;
   isArchiving: boolean;
   error: string | null;
   onConfirm: () => void;
@@ -50,23 +53,33 @@ function ArchiveConfirmDialog({
         className="absolute inset-0 bg-stone-950/50 backdrop-blur-sm"
         onClick={isArchiving ? undefined : onCancel}
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-[0_32px_80px_-20px_rgba(28,25,23,0.5)]">
+      <div className="relative w-full max-w-[460px] rounded-2xl border border-stone-200 bg-white p-6 shadow-[0_24px_64px_-12px_rgba(28,25,23,0.3)]">
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-800">
+          Unavailable account
+        </span>
         <h2
           id="archive-dialog-title"
-          className="text-xl font-semibold tracking-[-0.03em] text-stone-950"
+          className="mt-3 text-[17px] font-semibold tracking-[-0.02em] text-stone-950"
         >
           {ARCHIVE_DIALOG.title}
         </h2>
         <p
           id="archive-dialog-desc"
-          className="mt-3 text-sm leading-6 text-stone-600"
+          className="mt-2 text-sm leading-6 text-stone-600"
         >
           {ARCHIVE_DIALOG.body}
         </p>
-        {error && (
-          <p className="mt-3 text-sm text-red-600">{error}</p>
+        {accountLabel && (
+          <p className="mt-3 text-sm text-stone-500">
+            Account:{" "}
+            <span className="font-medium text-stone-700">{accountLabel}</span>
+          </p>
         )}
-        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <p className="mt-2 text-xs text-stone-400">{ARCHIVE_DIALOG.note}</p>
+        {error && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        )}
+        <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
           <button
             ref={cancelRef}
             type="button"
@@ -80,7 +93,7 @@ function ArchiveConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={isArchiving}
-            className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-70"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-stone-800 px-6 text-sm font-medium text-white transition hover:bg-stone-950 disabled:pointer-events-none disabled:opacity-70"
           >
             {isArchiving ? "Archiving…" : ARCHIVE_DIALOG.confirmLabel}
           </button>
@@ -90,7 +103,7 @@ function ArchiveConfirmDialog({
   );
 }
 
-export function ArchiveAccountButton({ accountId, className }: Props) {
+export function ArchiveAccountButton({ accountId, accountLabel, className }: Props) {
   const router = useRouter();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -149,6 +162,7 @@ export function ArchiveAccountButton({ accountId, className }: Props) {
       </button>
       {showDialog && (
         <ArchiveConfirmDialog
+          accountLabel={accountLabel}
           isArchiving={busy}
           error={error}
           onConfirm={handleConfirm}

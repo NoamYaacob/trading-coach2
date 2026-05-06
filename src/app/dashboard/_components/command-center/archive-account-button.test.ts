@@ -111,12 +111,16 @@ describe("parseArchiveResponse", () => {
 
 describe("ARCHIVE_DIALOG", () => {
   test("title matches spec", () => {
-    assert.equal(ARCHIVE_DIALOG.title, "Archive unavailable account?");
+    assert.equal(ARCHIVE_DIALOG.title, "Archive this account?");
   });
 
-  test("body explains what happens without deleting data", () => {
+  test("body explains what happens and that data is kept", () => {
     assert.match(ARCHIVE_DIALOG.body, /hides/i);
-    assert.match(ARCHIVE_DIALOG.body, /does not delete/i);
+    assert.match(ARCHIVE_DIALOG.body, /historical data/i);
+  });
+
+  test("note reassures user that past activity is still accessible", () => {
+    assert.match(ARCHIVE_DIALOG.note, /past activity/i);
   });
 
   test("confirmLabel matches spec", () => {
