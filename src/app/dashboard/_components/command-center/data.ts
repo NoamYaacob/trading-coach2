@@ -360,6 +360,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         | "broker_locked"
         | "monitoring_only"
         | "broker_lock_failed"
+        | "dry_run"
         | null,
       brokerConnectionId: account.brokerConnectionId ?? null,
       lastInterventionTrigger: (lastIntervention?.triggerType ?? null) as EnforcementTrigger | null,

@@ -566,7 +566,7 @@ model GuardianIntervention {
   brokerPayloadJson  Json?
   /// Raw JSON response received from the broker API
   brokerResponseJson Json?
-  /// "broker_locked" | "monitoring_only" | "broker_lock_failed"
+  /// "broker_locked" | "monitoring_only" | "broker_lock_failed" | "unavailable_read_only" | "unavailable_permission" | "dry_run"
   brokerLockStatus   String?
 
   account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)

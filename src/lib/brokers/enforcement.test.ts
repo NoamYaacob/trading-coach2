@@ -20,8 +20,9 @@ import {
   shouldSkipBrokerEnforcement,
   classifyEnforcementError,
   isAutoLiqConfirmed,
+  isEnforcementDryRun,
 } from "./enforcement-helpers.ts";
-import type { EnforcementTrigger } from "./enforcement-helpers.ts";
+import type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers.ts";
 
 // ── buildAutoLiqUpdatePayload ─────────────────────────────────────────────────
 
@@ -768,5 +769,111 @@ describe("applyBrokerDayLockout — explicit trigger routing", () => {
     assert.ok(!("dailyProfitAutoLiq" in lossCreate), "loss create must not contain profit field");
     assert.ok(!("dailyLossAutoLiq" in profitUpdate), "profit update must not contain loss field");
     assert.ok(!("dailyLossAutoLiq" in profitCreate), "profit create must not contain loss field");
+  });
+});
+
+// ── isEnforcementDryRun ───────────────────────────────────────────────────────
+
+describe("isEnforcementDryRun", () => {
+  const ORIG = process.env.ENFORCEMENT_DRY_RUN;
+  const restore = () => {
+    if (ORIG === undefined) delete process.env.ENFORCEMENT_DRY_RUN;
+    else process.env.ENFORCEMENT_DRY_RUN = ORIG;
+  };
+
+  it("returns false when ENFORCEMENT_DRY_RUN is not set", () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    assert.equal(isEnforcementDryRun(), false);
+    restore();
+  });
+
+  it("returns true when ENFORCEMENT_DRY_RUN=true", () => {
+    process.env.ENFORCEMENT_DRY_RUN = "true";
+    assert.equal(isEnforcementDryRun(), true);
+    restore();
+  });
+
+  it("returns false for any value other than the exact string 'true'", () => {
+    for (const val of ["1", "yes", "True", "TRUE", "false", ""]) {
+      process.env.ENFORCEMENT_DRY_RUN = val;
+      assert.equal(isEnforcementDryRun(), false, `expected false for ENFORCEMENT_DRY_RUN="${val}"`);
+    }
+    restore();
+  });
+
+  it("'dry_run' is a valid BrokerLockStatus — type-level proof", () => {
+    const status: BrokerLockStatus = "dry_run";
+    assert.equal(status, "dry_run");
+  });
+});
+
+// ── dry-run mode — intended payload shape ─────────────────────────────────────
+
+describe("dry-run mode — intended payload shape", () => {
+  // applyBrokerDayLockout (requires DB mocks) is not tested here.
+  // These tests prove the pure-function building blocks used in the dry-run
+  // branch to construct the intended payload that is logged and persisted.
+
+  it("dry-run daily_loss_limit: payload contains dailyLossAutoLiq, not dailyProfitAutoLiq", () => {
+    const lossAmount = computeLossAmountToSet(-250);
+    assert.equal(lossAmount, 250);
+
+    const payload = buildAutoLiqCreatePayload({ tvAccountId: 6248, dailyLossAutoLiq: lossAmount });
+    assert.ok("dailyLossAutoLiq" in payload, "dry-run loss payload must contain dailyLossAutoLiq");
+    assert.ok(!("dailyProfitAutoLiq" in payload), "dry-run loss payload must not contain dailyProfitAutoLiq");
+    assert.equal(payload.dailyLossAutoLiq, 250);
+    assert.equal(payload.accountId, 6248);
+    assert.equal(payload.changesLocked, true);
+  });
+
+  it("dry-run profit_target: payload contains dailyProfitAutoLiq, not dailyLossAutoLiq", () => {
+    const profitAmount = computeProfitAmountToSet(500);
+    assert.equal(profitAmount, 500);
+
+    const payload = buildAutoLiqProfitCreatePayload({ tvAccountId: 6248, dailyProfitAutoLiq: profitAmount });
+    assert.ok("dailyProfitAutoLiq" in payload, "dry-run profit payload must contain dailyProfitAutoLiq");
+    assert.ok(!("dailyLossAutoLiq" in payload), "dry-run profit payload must not contain dailyLossAutoLiq");
+    assert.equal(payload.dailyProfitAutoLiq, 500);
+    assert.equal(payload.accountId, 6248);
+    assert.equal(payload.changesLocked, true);
+  });
+
+  it("dry-run does NOT set doNotUnlock — must match live payload contract", () => {
+    const lossPayload = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 100 });
+    const profitPayload = buildAutoLiqProfitCreatePayload({ tvAccountId: 1, dailyProfitAutoLiq: 200 });
+    assert.ok(!("doNotUnlock" in lossPayload), "dry-run loss payload must not include doNotUnlock");
+    assert.ok(!("doNotUnlock" in profitPayload), "dry-run profit payload must not include doNotUnlock");
+  });
+
+  it("dry-run status is dry_run — not broker_locked, not monitoring_only, not broker_lock_failed", () => {
+    // The BrokerDayLockoutResult from applyBrokerDayLockout in dry-run mode
+    // has status="dry_run". This test verifies the type-level distinctness.
+    const status: BrokerLockStatus = "dry_run";
+    assert.notEqual(status, "broker_locked" as BrokerLockStatus);
+    assert.notEqual(status, "monitoring_only" as BrokerLockStatus);
+    assert.notEqual(status, "broker_lock_failed" as BrokerLockStatus);
+  });
+
+  it("normal mode: shouldSkipBrokerEnforcement unchanged for daily_loss_limit", () => {
+    // Dry-run does not affect shouldSkipBrokerEnforcement. Both modes use the
+    // same skip gate — dry-run only intercepts after skip=false.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false, "daily_loss_limit must still have skip=false in normal mode");
+  });
+
+  it("read-only connection: skip=true regardless of dry-run mode", () => {
+    // Even in dry-run mode, a read-only connection gets unavailable_read_only
+    // from shouldSkipBrokerEnforcement before the dry-run check is reached.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_readonly",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
   });
 });

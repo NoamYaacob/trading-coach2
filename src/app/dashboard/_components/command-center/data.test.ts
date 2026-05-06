@@ -730,4 +730,54 @@ describe("deriveBrokerEnforcementCopy", () => {
     assert.notEqual(readOnly.kind, permission.kind);
     assert.notEqual(permission.kind, failed.kind);
   });
+
+  // ── dry_run ───────────────────────────────────────────────────────────────
+
+  it("dry_run → kind=dry_run", () => {
+    const { kind } = deriveBrokerEnforcementCopy("dry_run");
+    assert.equal(kind, "dry_run");
+  });
+
+  it("dry_run text contains 'Dry run'", () => {
+    const { text } = deriveBrokerEnforcementCopy("dry_run");
+    assert.ok(text.includes("Dry run"), `expected 'Dry run', got: ${text}`);
+  });
+
+  it("dry_run text says 'No Tradovate write was sent'", () => {
+    const { text } = deriveBrokerEnforcementCopy("dry_run");
+    assert.ok(
+      text.includes("No Tradovate write was sent"),
+      `expected 'No Tradovate write was sent', got: ${text}`,
+    );
+  });
+
+  it("dry_run text does NOT say 'Broker-side lock active' — no real lock was applied", () => {
+    const { text } = deriveBrokerEnforcementCopy("dry_run");
+    assert.ok(
+      !text.includes("Broker-side lock active"),
+      `'Broker-side lock active' must be absent for dry_run; got: ${text}`,
+    );
+  });
+
+  it("dry_run text does NOT say 'Guardrail lock active' — it is a simulation, not a Guardrail state message", () => {
+    // dry_run has its own distinct copy rather than sharing the 'Guardrail lock active' framing.
+    const { text } = deriveBrokerEnforcementCopy("dry_run");
+    assert.ok(
+      !text.includes("Guardrail lock active"),
+      `'Guardrail lock active' must be absent for dry_run; got: ${text}`,
+    );
+  });
+
+  it("dry_run kind is distinct from all other kinds", () => {
+    const otherKinds = [
+      deriveBrokerEnforcementCopy("broker_locked").kind,
+      deriveBrokerEnforcementCopy("unavailable_read_only").kind,
+      deriveBrokerEnforcementCopy("unavailable_permission").kind,
+      deriveBrokerEnforcementCopy("broker_lock_failed").kind,
+      deriveBrokerEnforcementCopy("monitoring_only").kind,
+    ];
+    for (const other of otherKinds) {
+      assert.notEqual("dry_run", other, `dry_run kind must differ from ${other}`);
+    }
+  });
 });

@@ -29,6 +29,9 @@ export type EnforcementTrigger =
  *   broker_locked        — Tradovate accepted the risk setting update
  *   monitoring_only      — no applicable broker API for this trigger or platform
  *   broker_lock_failed   — broker API was called but returned a non-permission error
+ *   dry_run              — ENFORCEMENT_DRY_RUN=true; broker write was simulated,
+ *                          no Tradovate endpoint was called; intended payload is
+ *                          persisted to GuardianIntervention for review
  */
 export type BrokerLockStatus =
   | "not_requested"
@@ -37,7 +40,24 @@ export type BrokerLockStatus =
   | "pending"
   | "broker_locked"
   | "monitoring_only"
-  | "broker_lock_failed";
+  | "broker_lock_failed"
+  | "dry_run";
+
+// ── Dry-run mode ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns true when ENFORCEMENT_DRY_RUN=true is set in the environment.
+ *
+ * In dry-run mode, applyBrokerDayLockout skips all Tradovate write endpoints
+ * (userAccountAutoLiq/create, userAccountAutoLiq/update) and instead persists
+ * the intended payload to GuardianIntervention with status=dry_run.
+ *
+ * Only the exact string "true" enables dry-run — any other value (including
+ * "1", "yes", "TRUE") leaves enforcement in normal mode.
+ */
+export function isEnforcementDryRun(): boolean {
+  return process.env.ENFORCEMENT_DRY_RUN === "true";
+}
 
 // ── Payload builders ──────────────────────────────────────────────────────────
 

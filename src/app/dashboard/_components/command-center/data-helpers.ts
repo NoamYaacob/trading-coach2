@@ -221,13 +221,15 @@ export function deriveStatus(input: {
  *   failed              → amber    (transient error — actionable)
  *   unavailable_readonly → stone   (read-only is expected — not an error)
  *   internal_only       → stone    (no broker API for this trigger)
+ *   dry_run             → blue     (ENFORCEMENT_DRY_RUN=true; QA simulation)
  */
 export type BrokerEnforcementKind =
   | "broker_active"
   | "unavailable_readonly"
   | "unavailable_permission"
   | "failed"
-  | "internal_only";
+  | "internal_only"
+  | "dry_run";
 
 export type BrokerEnforcementCopy = {
   text: string;
@@ -249,6 +251,11 @@ export function deriveBrokerEnforcementCopy(
   brokerLockStatus: BrokerLockStatus | null,
 ): BrokerEnforcementCopy {
   switch (brokerLockStatus) {
+    case "dry_run":
+      return {
+        text: "Dry run · Broker-side lockout was simulated. No Tradovate write was sent.",
+        kind: "dry_run",
+      };
     case "broker_locked":
       return {
         text: "Broker-side lock active · Tradovate risk settings applied.",

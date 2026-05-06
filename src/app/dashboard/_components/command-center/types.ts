@@ -85,6 +85,7 @@ export type CommandCenterAccount = {
     | "broker_locked"
     | "monitoring_only"
     | "broker_lock_failed"
+    | "dry_run"
     | null;
   /** OAuth broker connection ID — used to group accounts by connection */
   brokerConnectionId: string | null;

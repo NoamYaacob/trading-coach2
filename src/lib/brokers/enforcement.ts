@@ -69,6 +69,7 @@ import {
   classifyEnforcementError,
   computeLossAmountToSet,
   computeProfitAmountToSet,
+  isEnforcementDryRun,
 } from "./enforcement-helpers";
 
 export type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers";
@@ -207,6 +208,7 @@ export async function applyBrokerDayLockout(
     where: { id: accountId },
     select: {
       platform: true,
+      externalAccountId: true,
       brokerConnection: { select: { connectionStatus: true } },
     },
   });
@@ -226,6 +228,50 @@ export async function applyBrokerDayLockout(
       message,
       brokerEndpoint: null,
       brokerPayload: null,
+      brokerResponse: null,
+    };
+  }
+
+  // ── Dry-run mode ─────────────────────────────────────────────────────────
+  // When ENFORCEMENT_DRY_RUN=true, skip all broker write endpoints and return
+  // the intended payload so QA can verify what would have been sent.
+  // The Guardrail internal lock (riskState = STOPPED) still applies.
+  // No TradovateClient is instantiated and no broker API is called.
+  if (isEnforcementDryRun()) {
+    const tvAccountId =
+      account?.externalAccountId != null ? parseInt(account.externalAccountId, 10) : null;
+
+    let intendedEndpoint: string;
+    let intendedPayload: Record<string, unknown>;
+
+    if (trigger === "daily_loss_limit") {
+      const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
+      intendedEndpoint = "userAccountAutoLiq/update (or /create)";
+      intendedPayload = { accountId: tvAccountId, dailyLossAutoLiq: lossAmountToSet, changesLocked: true };
+    } else if (trigger === "profit_target") {
+      const profitAmountToSet = computeProfitAmountToSet(ctx.currentDailyPnl);
+      intendedEndpoint = "userAccountAutoLiq/update (or /create)";
+      intendedPayload = { accountId: tvAccountId, dailyProfitAutoLiq: profitAmountToSet, changesLocked: true };
+    } else {
+      intendedEndpoint = "none";
+      intendedPayload = {};
+    }
+
+    console.info("[enforcement/dry-run] broker write simulated — no Tradovate call made", {
+      accountId,
+      trigger,
+      tvAccountId,
+      intendedEndpoint,
+      intendedPayload,
+    });
+
+    return {
+      status: "dry_run",
+      message:
+        `Dry run · Broker-side lockout was simulated. No Tradovate write was sent. ` +
+        `Would have called ${intendedEndpoint} with payload: ${JSON.stringify(intendedPayload)}.`,
+      brokerEndpoint: intendedEndpoint,
+      brokerPayload: intendedPayload,
       brokerResponse: null,
     };
   }
