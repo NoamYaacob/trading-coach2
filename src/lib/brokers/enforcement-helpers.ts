@@ -233,6 +233,14 @@ export function shouldSkipBrokerEnforcement(opts: {
   platform: string;
   trigger: EnforcementTrigger;
   connectionStatus: string;
+  /**
+   * Probed permission level from `BrokerConnection.permissionLevel`. When
+   * present, this is the source of truth for capability — preferred over
+   * `connectionStatus`, which historically conflated webhook-arrival with
+   * permission. `null` means the probe has not yet run; in that case we
+   * fall back to the legacy `connectionStatus` check.
+   */
+  permissionLevel?: string | null;
 }):
   | { skip: true; lockStatus: BrokerLockStatus; reason: string }
   | { skip: false } {
@@ -250,14 +258,35 @@ export function shouldSkipBrokerEnforcement(opts: {
       reason: `Trigger '${opts.trigger}' has no applicable Tradovate broker API.`,
     };
   }
+
+  // Prefer the probed permission level when available. The probe calls
+  // userAccountAutoLiq/deps; success means the user granted Account Risk
+  // Settings, so writes will also be permitted.
+  if (opts.permissionLevel === "read_only") {
+    return {
+      skip: true,
+      lockStatus: "unavailable_read_only",
+      reason:
+        "Broker-side enforcement skipped: probed permission level is read_only. " +
+        "Account Risk Settings: Full Access is required for userAccountAutoLiq writes. " +
+        "Guardrail is monitoring and alerting only for this account.",
+    };
+  }
+  if (opts.permissionLevel === "full_access") {
+    return { skip: false };
+  }
+
+  // Legacy fallback when the probe has not yet run (permissionLevel === null
+  // or "unknown"). Treat the legacy connectionStatus as a hint, but proceed
+  // optimistically when the connection is live — the broker call's 403
+  // handler will record the permission gap.
   if (opts.connectionStatus === "connected_readonly") {
     return {
       skip: true,
       lockStatus: "unavailable_read_only",
       reason:
-        "Broker-side enforcement skipped: connection is read-only (connected_readonly). " +
-        "Account Risk Settings: Full Access is required for userAccountAutoLiq writes. " +
-        "Guardrail is monitoring and alerting only for this account.",
+        "Broker-side enforcement skipped: connection status is read-only and permission probe has not yet confirmed otherwise. " +
+        "Guardrail is monitoring and alerting only for this account until the probe runs.",
     };
   }
   return { skip: false };

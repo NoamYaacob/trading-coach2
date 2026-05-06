@@ -233,14 +233,22 @@ export async function applyBrokerDayLockout(
     select: {
       platform: true,
       externalAccountId: true,
-      brokerConnection: { select: { connectionStatus: true } },
+      brokerConnection: {
+        select: { connectionStatus: true, permissionLevel: true },
+      },
     },
   });
 
   const platform = account?.platform ?? "unknown";
   const connStatus = account?.brokerConnection?.connectionStatus ?? "not_connected";
+  const permissionLevel = account?.brokerConnection?.permissionLevel ?? null;
 
-  const skipResult = shouldSkipBrokerEnforcement({ platform, trigger, connectionStatus: connStatus });
+  const skipResult = shouldSkipBrokerEnforcement({
+    platform,
+    trigger,
+    connectionStatus: connStatus,
+    permissionLevel,
+  });
 
   if (skipResult.skip) {
     let message = skipResult.reason;

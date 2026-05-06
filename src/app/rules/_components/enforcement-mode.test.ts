@@ -3,14 +3,45 @@ import assert from "node:assert/strict";
 
 import { computeEnforcementMode } from "./enforcement-mode.ts";
 
-const tradovateAccount = (connStatus: string) => ({
+const tradovateAccount = (
+  connStatus: string,
+  permissionLevel: string | null = null,
+) => ({
   platform: "tradovate",
   brokerConnectionId: "conn-1",
-  brokerConnection: { platform: "tradovate", connectionStatus: connStatus },
+  brokerConnection: {
+    platform: "tradovate",
+    connectionStatus: connStatus,
+    permissionLevel,
+  },
+});
+
+describe("computeEnforcementMode — dry-run override", () => {
+  it("returns dry_run mode when isDryRun is true (default scope)", () => {
+    const result = computeEnforcementMode(null, true, { isDryRun: true });
+    assert.equal(result.mode, "dry_run");
+    assert.equal(result.label, "Dry run mode");
+  });
+
+  it("returns dry_run mode when isDryRun is true even with full permissions", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+      { isDryRun: true },
+    );
+    assert.equal(result.mode, "dry_run");
+    assert.equal(result.label, "Dry run mode");
+  });
+
+  it("dry-run detail mentions simulated lockout and position exit", () => {
+    const result = computeEnforcementMode(null, true, { isDryRun: true });
+    assert.ok(result.detail.includes("simulate lockout and position exit"));
+    assert.ok(result.detail.includes("No Tradovate write"));
+  });
 });
 
 describe("computeEnforcementMode — default template", () => {
-  it("returns monitoring_only mode for default scope", () => {
+  it("returns monitoring_only mode for default scope (no dry-run)", () => {
     const result = computeEnforcementMode(null, true);
     assert.equal(result.mode, "monitoring_only");
   });
@@ -46,73 +77,132 @@ describe("computeEnforcementMode — no broker connection", () => {
 
 describe("computeEnforcementMode — expired/errored connection", () => {
   it("returns monitoring_only for expired connection", () => {
-    const result = computeEnforcementMode(
-      { platform: "tradovate", brokerConnectionId: "conn-1", brokerConnection: { platform: "tradovate", connectionStatus: "expired" } },
-      false,
-    );
+    const result = computeEnforcementMode(tradovateAccount("expired", "full_access"), false);
     assert.equal(result.mode, "monitoring_only");
   });
 
   it("label says 'Unavailable — reconnect required' for expired connection", () => {
-    const result = computeEnforcementMode(
-      { platform: "tradovate", brokerConnectionId: "conn-1", brokerConnection: { platform: "tradovate", connectionStatus: "expired" } },
-      false,
-    );
+    const result = computeEnforcementMode(tradovateAccount("expired"), false);
     assert.equal(result.label, "Unavailable — reconnect required");
   });
 
   it("label says 'Unavailable — reconnect required' for connection_error", () => {
-    const result = computeEnforcementMode(
-      { platform: "tradovate", brokerConnectionId: "conn-1", brokerConnection: { platform: "tradovate", connectionStatus: "connection_error" } },
-      false,
-    );
+    const result = computeEnforcementMode(tradovateAccount("connection_error"), false);
     assert.equal(result.label, "Unavailable — reconnect required");
   });
 });
 
-describe("computeEnforcementMode — Tradovate read-only", () => {
-  it("returns monitoring_only for connected_readonly", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_readonly"), false);
+describe("computeEnforcementMode — Tradovate permission_level=read_only", () => {
+  it("returns monitoring_only when permissionLevel is read_only", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "read_only"),
+      false,
+    );
     assert.equal(result.mode, "monitoring_only");
   });
 
-  it("label says 'Limited permissions — alerts only'", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_readonly"), false);
+  it("label says 'Limited permissions — alerts only' when probed as read_only", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "read_only"),
+      false,
+    );
     assert.equal(result.label, "Limited permissions — alerts only");
   });
 
-  it("detail explains re-authorize path", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_readonly"), false);
-    assert.ok(result.detail.includes("re-authorize"));
+  it("detail mentions Account Risk Settings: Full Access requirement", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_readonly", "read_only"),
+      false,
+    );
+    assert.ok(result.detail.includes("Account Risk Settings: Full Access"));
   });
 });
 
-describe("computeEnforcementMode — Tradovate full access", () => {
-  it("returns broker_enforcement_pending for connected_live", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_live"), false);
+describe("computeEnforcementMode — Tradovate permission_level=full_access", () => {
+  it("returns broker_enforcement_pending when probed as full_access", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+    );
     assert.equal(result.mode, "broker_enforcement_pending");
   });
 
-  it("label says 'Broker enforcement available' for connected_live", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_live"), false);
+  it("label says 'Broker enforcement available' for probed full_access", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+    );
+    assert.equal(result.label, "Broker enforcement available");
+  });
+
+  it("upgrades label even when connection still labelled connected_readonly (probe overrides legacy status)", () => {
+    // This is the real-world bug case: the parent BrokerConnection.connectionStatus
+    // never flipped from "connected_readonly" because that field is set by the OAuth
+    // callback and only by the per-account webhook handler — not by the connection
+    // itself. With the probe, we can correctly classify these accounts.
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_readonly", "full_access"),
+      false,
+    );
+    assert.equal(result.mode, "broker_enforcement_pending");
     assert.equal(result.label, "Broker enforcement available");
   });
 
   it("detail mentions daily loss limit and daily profit target", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_live"), false);
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+    );
     assert.ok(result.detail.includes("daily loss limit or daily profit target"));
   });
+});
 
-  it("detail explains trade-count limits are alert-only", () => {
-    const result = computeEnforcementMode(tradovateAccount("connected_live"), false);
-    assert.ok(result.detail.includes("alert-only"));
+describe("computeEnforcementMode — Tradovate permission probe not yet run", () => {
+  it("returns permission_unverified when permissionLevel is null", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", null),
+      false,
+    );
+    assert.equal(result.mode, "permission_unverified");
+  });
+
+  it("label says 'Permission level not yet verified'", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", null),
+      false,
+    );
+    assert.equal(result.label, "Permission level not yet verified");
+  });
+
+  it("detail explains the probe will run on next sync", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", null),
+      false,
+    );
+    assert.ok(result.detail.includes("next sync"));
+  });
+
+  it("returns permission_unverified when permissionLevel is unknown string", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_readonly", "unknown"),
+      false,
+    );
+    assert.equal(result.mode, "permission_unverified");
   });
 });
 
 describe("computeEnforcementMode — non-Tradovate platform", () => {
   it("returns monitoring_only for non-Tradovate connected account", () => {
     const result = computeEnforcementMode(
-      { platform: "tradingview", brokerConnectionId: "conn-2", brokerConnection: { platform: "tradingview", connectionStatus: "connected_live" } },
+      {
+        platform: "tradingview",
+        brokerConnectionId: "conn-2",
+        brokerConnection: {
+          platform: "tradingview",
+          connectionStatus: "connected_live",
+          permissionLevel: null,
+        },
+      },
       false,
     );
     assert.equal(result.mode, "monitoring_only");
@@ -121,7 +211,15 @@ describe("computeEnforcementMode — non-Tradovate platform", () => {
 
   it("detail says broker-side blocking is not active for the platform", () => {
     const result = computeEnforcementMode(
-      { platform: "manual", brokerConnectionId: "conn-3", brokerConnection: { platform: "manual", connectionStatus: "connected_live" } },
+      {
+        platform: "manual",
+        brokerConnectionId: "conn-3",
+        brokerConnection: {
+          platform: "manual",
+          connectionStatus: "connected_live",
+          permissionLevel: null,
+        },
+      },
       false,
     );
     assert.ok(result.detail.includes("Broker-side blocking is not active for this platform"));

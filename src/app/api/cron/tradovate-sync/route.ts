@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncTradovateConnection } from "@/lib/brokers/tradovate-sync";
 import { needsSync, CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
+import { runPermissionProbe } from "@/lib/brokers/permission-probe-runner";
+
+// Re-probe broker permissions at most once every 24h per connection.
+const PROBE_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 /**
  * POST /api/cron/tradovate-sync
@@ -44,13 +48,14 @@ export async function POST(request: NextRequest) {
     select: {
       id: true,
       userId: true,
+      permissionsProbedAt: true,
       accounts: {
         where: {
           isActive: true,
           platform: "tradovate",
           protectionStatus: { in: ["protected", "monitor_only"] },
         },
-        select: { lastSyncAt: true },
+        select: { id: true, lastSyncAt: true },
       },
     },
   });
@@ -85,6 +90,19 @@ export async function POST(request: NextRequest) {
         ok: syncResults.every((r) => r.ok),
         accountCount: syncResults.length,
       });
+
+      // Refresh the permission probe at most once per 24h per connection.
+      // The probe is best-effort — it must not affect sync results.
+      const probeStale =
+        bc.permissionsProbedAt == null ||
+        Date.now() - bc.permissionsProbedAt.getTime() > PROBE_REFRESH_MS;
+      if (probeStale && bc.accounts.length > 0) {
+        await runPermissionProbe({
+          brokerConnectionId: bc.id,
+          accountId: bc.accounts[0].id,
+          userId: bc.userId,
+        });
+      }
     } catch (err) {
       const code = err instanceof Error ? err.message : "UNKNOWN";
       console.error("[cron/tradovate-sync] connection sync failed", {

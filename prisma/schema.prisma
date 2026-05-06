@@ -356,6 +356,13 @@ model BrokerConnection {
   refreshTokenEncrypted String?
   tokenExpiresAt        DateTime?
   errorMessage          String?
+  // Probed permission level — set by the capability probe that calls a
+  // safe Tradovate read endpoint requiring Account Risk Settings access.
+  // "full_access" = probe succeeded (write capability confirmed)
+  // "read_only"   = probe returned 401/403 (broker writes will fail)
+  // null          = not yet probed (treat conservatively in classification)
+  permissionLevel       String?
+  permissionsProbedAt   DateTime?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 

@@ -246,6 +246,83 @@ describe("shouldSkipBrokerEnforcement", () => {
       assert.equal(r.skip, false, "connected_live daily_loss_limit must never skip");
     }
   });
+
+  // Probed permission level overrides legacy connectionStatus
+  describe("permissionLevel takes precedence over connectionStatus", () => {
+    it("permissionLevel=full_access → skip=false even when status is connected_readonly", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: "connected_readonly",
+        permissionLevel: "full_access",
+      });
+      assert.equal(result.skip, false);
+    });
+
+    it("permissionLevel=read_only → skip=true even when status is connected_live", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: "connected_live",
+        permissionLevel: "read_only",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+    });
+
+    it("permissionLevel=read_only with profit_target trigger → skip=true", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "profit_target",
+        connectionStatus: "connected_live",
+        permissionLevel: "read_only",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+    });
+
+    it("permissionLevel=null falls back to connectionStatus check (legacy behavior)", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: "connected_readonly",
+        permissionLevel: null,
+      });
+      assert.equal(result.skip, true);
+    });
+
+    it("permissionLevel=null on connected_live falls back and proceeds", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "daily_loss_limit",
+        connectionStatus: "connected_live",
+        permissionLevel: null,
+      });
+      assert.equal(result.skip, false);
+    });
+
+    it("non-Tradovate platform short-circuits before permission check", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradingview",
+        trigger: "daily_loss_limit",
+        connectionStatus: "connected_live",
+        permissionLevel: "full_access",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+    });
+
+    it("non-broker-enforced trigger short-circuits before permission check", () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger: "trade_limit",
+        connectionStatus: "connected_live",
+        permissionLevel: "full_access",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+    });
+  });
 });
 
 // ── classifyEnforcementError ──────────────────────────────────────────────────

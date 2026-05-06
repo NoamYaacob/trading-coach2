@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { syncTradovateAccount } from "@/lib/brokers/tradovate-sync";
+import { runPermissionProbe } from "@/lib/brokers/permission-probe-runner";
 
 type SelectedAccount = {
   externalAccountId: string;
@@ -171,6 +172,17 @@ export async function POST(request: NextRequest) {
       }),
     ),
   );
+
+  // Run the permission probe once for the connection so the UI can classify
+  // capability immediately (broker enforcement available vs. limited permissions)
+  // rather than waiting for the next cron tick. Best-effort — never blocks.
+  if (createdAccountIds.length > 0) {
+    await runPermissionProbe({
+      brokerConnectionId: brokerConnection.id,
+      accountId: createdAccountIds[0],
+      userId: currentUser.id,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

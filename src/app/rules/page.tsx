@@ -59,6 +59,7 @@ export default async function RulesPage({
             env: true,
             brokerUserId: true,
             connectionStatus: true,
+            permissionLevel: true,
           },
         },
         riskRules: {
@@ -164,11 +165,13 @@ export default async function RulesPage({
             ? {
                 platform: selectedAccount.brokerConnection.platform,
                 connectionStatus: selectedAccount.brokerConnection.connectionStatus,
+                permissionLevel: selectedAccount.brokerConnection.permissionLevel,
               }
             : null,
         }
       : null,
     scope !== "account",
+    { isDryRun },
   );
 
   return (
@@ -226,15 +229,7 @@ export default async function RulesPage({
           {/* Scope context header */}
           <ScopeContextHeader scope={scope} account={selectedAccount} />
 
-          {/* Dry-run mode banner — shown when ENFORCEMENT_DRY_RUN=true */}
-          {isDryRun && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
-              <span className="font-semibold">Dry run mode. </span>
-              Guardrail will simulate lockout and position exit. No Tradovate write will be sent.
-            </div>
-          )}
-
-          {/* Enforcement mode banner */}
+          {/* Enforcement mode banner — also surfaces dry-run mode when ENFORCEMENT_DRY_RUN=true */}
           <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
