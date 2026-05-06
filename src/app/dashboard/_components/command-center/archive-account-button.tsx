@@ -53,7 +53,7 @@ function ArchiveConfirmDialog({
         className="absolute inset-0 bg-stone-950/50 backdrop-blur-sm"
         onClick={isArchiving ? undefined : onCancel}
       />
-      <div className="relative w-full max-w-[460px] rounded-2xl border border-stone-200 bg-white p-6 shadow-[0_24px_64px_-12px_rgba(28,25,23,0.3)]">
+      <div className="relative w-full max-w-[460px] rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-[0_24px_64px_-12px_rgba(28,25,23,0.3)]">
         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-800">
           Unavailable account
         </span>
@@ -65,7 +65,7 @@ function ArchiveConfirmDialog({
         </h2>
         <p
           id="archive-dialog-desc"
-          className="mt-2 text-sm leading-6 text-stone-600"
+          className="mx-auto mt-2 max-w-[340px] text-sm leading-6 text-stone-600"
         >
           {ARCHIVE_DIALOG.body}
         </p>
@@ -79,7 +79,7 @@ function ArchiveConfirmDialog({
         {error && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
-        <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col-reverse items-center gap-2.5 sm:flex-row sm:justify-center">
           <button
             ref={cancelRef}
             type="button"

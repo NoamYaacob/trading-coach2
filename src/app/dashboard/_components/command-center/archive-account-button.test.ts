@@ -115,7 +115,7 @@ describe("ARCHIVE_DIALOG", () => {
   });
 
   test("body explains what happens and that data is kept", () => {
-    assert.match(ARCHIVE_DIALOG.body, /hides/i);
+    assert.match(ARCHIVE_DIALOG.body, /hidden/i);
     assert.match(ARCHIVE_DIALOG.body, /historical data/i);
   });
 
