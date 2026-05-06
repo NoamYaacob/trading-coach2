@@ -4,13 +4,12 @@ import { getProtectionLockState } from "@/lib/account-protection";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
-import { derivePropFirmSetupNeeded, deriveStatus, deriveBreachReason } from "./data-helpers";
+import { derivePropFirmSetupNeeded, deriveStatus, deriveBreachReason, deriveEnforcementMode } from "./data-helpers";
 import type {
   CommandCenterAccount,
   CommandCenterData,
   CommandCenterFirmGroup,
   CommandCenterSummary,
-  EnforcementMode,
   PendingDiscoveredAccount,
   ProtectionStatus,
   RuleSource,
@@ -60,24 +59,6 @@ function deriveFirmKeyAndLabel(account: {
   return { key: FALLBACK_FIRM_KEY, label: FALLBACK_FIRM_LABEL };
 }
 
-function deriveEnforcementMode(input: {
-  platform: string;
-  connectionStatus: string;
-  isActive: boolean;
-}): EnforcementMode {
-  if (!input.isActive) return "not_connected";
-  // Both connected_live (full) and connected_readonly (post-OAuth import) count
-  // as "broker_readonly" mode for UI purposes — the chip/label is the same and
-  // we explicitly do not claim broker-side enforcement is active.
-  if (
-    input.connectionStatus === "connected_live" ||
-    input.connectionStatus === "connected_readonly"
-  ) {
-    return "broker_readonly";
-  }
-  return "not_connected";
-}
-
 export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
   const [accounts, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
@@ -95,7 +76,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
           orderBy: { createdAt: "desc" },
           take: 1,
         },
-        brokerConnection: { select: { createdAt: true } },
+        brokerConnection: { select: { createdAt: true, permissionLevel: true } },
       },
       orderBy: [{ propFirm: "asc" }, { label: "asc" }],
     }),
@@ -116,6 +97,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     },
     orderBy: { lastSeenInBrokerAt: "desc" },
   });
+
+  const isDryRun = process.env.ENFORCEMENT_DRY_RUN === "true";
 
   const protectionLock = getProtectionLockState({
     sessionStartHour: defaultRules?.sessionStartHour ?? null,
@@ -279,6 +262,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       platform: account.platform,
       connectionStatus: account.connectionStatus,
       isActive: account.isActive,
+      permissionLevel: account.brokerConnection?.permissionLevel ?? null,
+      isDryRun,
     });
 
     const { key: firmKey, label: firmLabel } = deriveFirmKeyAndLabel({

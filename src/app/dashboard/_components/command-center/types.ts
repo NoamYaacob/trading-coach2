@@ -12,7 +12,10 @@ export type AccountStatus =
   | "unavailable";
 
 export type EnforcementMode =
+  | "broker_active"
+  | "dry_run"
   | "broker_readonly"
+  | "permission_unverified"
   | "not_connected";
 
 export type RuleSource = "account" | "default" | "none";

@@ -1,4 +1,4 @@
-import type { AccountStatus } from "./types";
+import type { AccountStatus, EnforcementMode } from "./types";
 import type { BrokerLockStatus, FlattenStatus } from "@/lib/brokers/enforcement-helpers";
 
 /**
@@ -331,4 +331,26 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
     default:
       return { text: "Position exit not recorded.", kind: "internal_only" };
   }
+}
+
+// ── deriveEnforcementMode ──────────────────────────────────────────────────────
+
+export function deriveEnforcementMode(input: {
+  platform: string;
+  connectionStatus: string;
+  isActive: boolean;
+  permissionLevel: string | null | undefined;
+  isDryRun: boolean;
+}): EnforcementMode {
+  if (!input.isActive) return "not_connected";
+  if (
+    input.connectionStatus === "connected_live" ||
+    input.connectionStatus === "connected_readonly"
+  ) {
+    if (input.isDryRun) return "dry_run";
+    if (input.permissionLevel === "full_access") return "broker_active";
+    if (input.permissionLevel === "read_only") return "broker_readonly";
+    return "permission_unverified";
+  }
+  return "not_connected";
 }

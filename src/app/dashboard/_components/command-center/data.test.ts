@@ -7,6 +7,7 @@ import {
   getTradeCountDisplay,
   deriveBrokerEnforcementCopy,
   deriveFlattenCopy,
+  deriveEnforcementMode,
 } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
@@ -872,5 +873,91 @@ describe("deriveFlattenCopy", () => {
 
   it("dry_run kind is distinct from flattened kind", () => {
     assert.notEqual(deriveFlattenCopy("dry_run").kind, deriveFlattenCopy("flattened").kind);
+  });
+});
+
+// ── deriveEnforcementMode (Dashboard chip label source) ───────────────────────
+
+describe("deriveEnforcementMode", () => {
+  const base = {
+    platform: "tradovate",
+    connectionStatus: "connected_readonly",
+    isActive: true,
+    permissionLevel: null as string | null | undefined,
+    isDryRun: false,
+  };
+
+  it("full_access → broker_active", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, permissionLevel: "full_access" }),
+      "broker_active",
+    );
+  });
+
+  it("full_access + isDryRun → dry_run (dry-run overrides full access)", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, permissionLevel: "full_access", isDryRun: true }),
+      "dry_run",
+    );
+  });
+
+  it("read_only → broker_readonly", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, permissionLevel: "read_only" }),
+      "broker_readonly",
+    );
+  });
+
+  it("null permissionLevel → permission_unverified (probe not yet run)", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, permissionLevel: null }),
+      "permission_unverified",
+    );
+  });
+
+  it("unknown permissionLevel → permission_unverified (inconclusive probe result)", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, permissionLevel: "unknown" }),
+      "permission_unverified",
+    );
+  });
+
+  it("inactive account → not_connected regardless of permissionLevel", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, isActive: false, permissionLevel: "full_access" }),
+      "not_connected",
+    );
+  });
+
+  it("expired connectionStatus → not_connected", () => {
+    assert.equal(
+      deriveEnforcementMode({ ...base, connectionStatus: "expired", permissionLevel: "full_access" }),
+      "not_connected",
+    );
+  });
+
+  it("connected_live with full_access → broker_active (live webhook does not block enforcement)", () => {
+    assert.equal(
+      deriveEnforcementMode({
+        ...base,
+        connectionStatus: "connected_live",
+        permissionLevel: "full_access",
+      }),
+      "broker_active",
+    );
+  });
+
+  it("bug case: stale connected_readonly + full_access → broker_active (not broker_readonly)", () => {
+    // Regression guard: BrokerConnection.connectionStatus is often stuck at
+    // connected_readonly because the webhook only updates ConnectedAccount.
+    // The permissionLevel from the probe must determine the chip, not the stale status.
+    assert.equal(
+      deriveEnforcementMode({
+        ...base,
+        connectionStatus: "connected_readonly",
+        permissionLevel: "full_access",
+      }),
+      "broker_active",
+    );
   });
 });

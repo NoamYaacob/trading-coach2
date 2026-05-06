@@ -91,7 +91,10 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 };
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
+  broker_active: "Broker enforcement",
+  dry_run: "Dry run mode",
   broker_readonly: "Monitoring only",
+  permission_unverified: "Permission check pending",
   not_connected: "Not connected",
 };
 
@@ -181,7 +184,11 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           </div>
 
           <div className="mt-5 border-t border-stone-100 pt-3 text-[11px] text-stone-400">
-            Monitoring only · Alerts and rule checks active · Broker blocking not active.
+            {data.accounts.some((a) => a.enforcementMode === "dry_run")
+              ? "Dry run mode · Simulated protection active · No broker writes are sent."
+              : data.accounts.some((a) => a.enforcementMode === "broker_active")
+                ? "Broker enforcement available · Automated lockout enabled for accounts with full permissions."
+                : "Monitoring only · Alerts and rule checks active · Broker blocking not active."}
           </div>
         </section>
       )}
@@ -887,9 +894,13 @@ function StatusBadge({
 
 function EnforcementChip({ mode }: { mode: EnforcementMode }) {
   const tone =
-    mode === "broker_readonly"
-      ? "bg-sky-50 text-sky-700"
-      : "bg-stone-100 text-stone-500";
+    mode === "broker_active"
+      ? "bg-emerald-50 text-emerald-700"
+      : mode === "dry_run"
+        ? "bg-sky-50 text-sky-700"
+        : mode === "broker_readonly"
+          ? "bg-stone-100 text-stone-500"
+          : "bg-stone-100 text-stone-400";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}
