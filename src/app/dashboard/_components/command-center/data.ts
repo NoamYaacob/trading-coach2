@@ -353,6 +353,10 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       setupNeededReason,
       breachReason,
       brokerLockStatus: (lastIntervention?.brokerLockStatus ?? null) as
+        | "not_requested"
+        | "unavailable_read_only"
+        | "unavailable_permission"
+        | "pending"
         | "broker_locked"
         | "monitoring_only"
         | "broker_lock_failed"

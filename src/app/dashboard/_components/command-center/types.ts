@@ -77,7 +77,15 @@ export type CommandCenterAccount = {
   /** Explanation of the current breach, when status is warning or locked */
   breachReason: { headline: string; detail?: string } | null;
   /** Broker enforcement outcome from the most recent GuardianIntervention */
-  brokerLockStatus: "broker_locked" | "monitoring_only" | "broker_lock_failed" | null;
+  brokerLockStatus:
+    | "not_requested"
+    | "unavailable_read_only"
+    | "unavailable_permission"
+    | "pending"
+    | "broker_locked"
+    | "monitoring_only"
+    | "broker_lock_failed"
+    | null;
   /** OAuth broker connection ID — used to group accounts by connection */
   brokerConnectionId: string | null;
   /** triggerType from the most recent GuardianIntervention, for rule-specific UI copy */

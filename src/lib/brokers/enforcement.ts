@@ -31,20 +31,16 @@
  */
 
 import { prisma } from "@/lib/db";
-import { TradovateClient, TradovateClientError } from "./tradovate-client";
+import { TradovateClient } from "./tradovate-client";
 import type { Prisma } from "@prisma/client";
+import {
+  shouldSkipBrokerEnforcement,
+  classifyEnforcementError,
+  computeLossAmountToSet,
+} from "./enforcement-helpers";
 
-export type EnforcementTrigger =
-  | "daily_loss_limit"
-  | "trade_limit"
-  | "consecutive_losses"
-  | "manual";
-
-/** Values stored in GuardianIntervention.brokerLockStatus */
-export type BrokerLockStatus =
-  | "broker_locked"      // broker API accepted the lock
-  | "monitoring_only"    // no applicable broker API for this trigger
-  | "broker_lock_failed" // broker API was called but returned an error
+export type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers";
+import type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers";
 
 /**
  * Canonical enforcement capability per trigger type.
@@ -124,26 +120,30 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
   let brokerPayloadJson: Prisma.InputJsonValue | null = null;
   let brokerResponseJson: Prisma.InputJsonValue | null = null;
 
-  if (account?.platform === "tradovate" && trigger === "daily_loss_limit") {
-    const connStatus = account.brokerConnection?.connectionStatus ?? "not_connected";
+  const platform = account?.platform ?? "unknown";
+  const connStatus = account?.brokerConnection?.connectionStatus ?? "not_connected";
 
-    // connected_readonly tokens lack Account Risk Settings write access —
-    // the userAccountAutoLiq call would always fail with 403. Skip the attempt
-    // and record monitoring_only so the log is accurate and not misleading.
-    if (connStatus === "connected_readonly") {
-      brokerLockStatus = "monitoring_only";
-      outcome = "monitoring_only";
-      message =
-        "Broker-side enforcement skipped: connection is read-only (connected_readonly). " +
-        "Full-access permissions are required for userAccountAutoLiq writes. " +
-        "Guardrail is monitoring and alerting only for this account.";
-    } else {
+  const skipResult = shouldSkipBrokerEnforcement({ platform, trigger, connectionStatus: connStatus });
+
+  if (skipResult.skip) {
+    brokerLockStatus = skipResult.lockStatus;
+    outcome = skipResult.lockStatus;
+    message = skipResult.reason;
+
+    if (skipResult.lockStatus === "unavailable_read_only") {
+      message +=
+        " Guardrail is monitoring and alerting only for this account.";
+    }
+  } else {
     // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────
     // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
     //   — confirms Account Risk Settings read access and finds existing rule
     // Step 2 (write): POST userAccountAutoLiq/update or /create
     //   — sets dailyLossAutoLiq = lossAmountToSet, changesLocked = true
-    const lossAmountToSet = Math.max(0, currentDailyLoss ?? 0);
+    //
+    // Both calls pass skipMarkExpired=true internally so a 401/403 on the
+    // risk endpoint never expires the connection for other endpoints.
+    const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
 
     try {
       const brokerClient = new TradovateClient(accountId, userId);
@@ -167,31 +167,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
         lossAmountToSet,
       });
     } catch (err) {
-      const isClientError = err instanceof TradovateClientError;
-      const errCode = isClientError ? err.code : "UNKNOWN";
-      const statusCode = isClientError ? (err as TradovateClientError).statusCode : null;
-      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      const { lockStatus, failureReason } = classifyEnforcementError(err);
 
-      // Produce a specific failure reason so logs and UI are actionable.
-      let failureReason: string;
-      if (statusCode === 403) {
-        failureReason =
-          "Account Risk Settings permission denied (HTTP 403). " +
-          "Verify the OAuth token was issued with 'Account Risk Settings: Full Access'.";
-      } else if (statusCode === 401) {
-        failureReason = "OAuth token unauthorized (HTTP 401) — re-authorize to reconnect.";
-      } else if (errCode === "NO_ACCOUNT_ID") {
-        failureReason =
-          "Tradovate account ID not resolved. " +
-          "Ensure externalAccountId is saved (re-sync to refresh).";
-      } else if (errCode === "NETWORK_ERROR") {
-        failureReason = "Network error reaching Tradovate API.";
-      } else {
-        failureReason = `${errCode}: ${errMsg}`;
-      }
-
-      brokerLockStatus = "broker_lock_failed";
-      outcome = "broker_lock_failed";
+      brokerLockStatus = lockStatus;
+      outcome = lockStatus;
       message =
         `Broker lock attempt failed: ${failureReason} ` +
         "Guardrail is monitoring and alerting only.";
@@ -199,27 +178,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       console.error("[enforcement] broker lock failed", {
         accountId,
         trigger,
-        errCode,
-        statusCode,
+        lockStatus,
         failureReason,
       });
     }
-    } // end else (not connected_readonly)
-  } else if (account?.platform === "tradovate" && trigger === "trade_limit") {
-    // ── Trade limit: no account-wide order block in userAccountAutoLiq ────
-    brokerLockStatus = "monitoring_only";
-    outcome = "monitoring_only";
-    message =
-      "Broker-side enforcement not available for trade-count limits. " +
-      "Tradovate's userAccountAutoLiq API does not expose a max-trades-per-day field. " +
-      "Order cancellation (Orders Full Access) would be required for hard enforcement. " +
-      "Broker blocking is not active yet. Guardrail is monitoring and alerting only.";
-  } else {
-    // ── Non-Tradovate platform or unsupported trigger ─────────────────────
-    brokerLockStatus = "monitoring_only";
-    outcome = "monitoring_only";
-    message =
-      "Broker blocking is not active yet. Guardrail is monitoring and alerting only.";
   }
 
   await prisma.guardianIntervention.create({

@@ -158,6 +158,12 @@ type TvUserAccountAutoLiq = {
   flattenTimestamp?: string | null;
   trailingMaxDrawdown?: number | null;
   trailingMaxDrawdownLimit?: number | null;
+  /**
+   * When true, Tradovate does not auto-unlock after liquidation conditions are
+   * met. We never set this field — omitting it preserves the default
+   * (auto-unlock at next session open) so accounts are not permanently trapped.
+   */
+  doNotUnlock?: boolean | null;
 };
 
 export type AutoLiqLockResult = {
@@ -1382,8 +1388,15 @@ export class TradovateClient {
         "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
       );
     }
+    // skipMarkExpired=true: a 401 here means the OAuth token lacks Account Risk
+    // Settings read access, not that the connection credentials are globally
+    // broken. Do not expire the connection for a scope gap on this endpoint.
     const raw = await this.#request<unknown>(
       `userAccountAutoLiq/deps?masterid=${this.#tvAccountId}`,
+      "GET",
+      undefined,
+      false,
+      /* skipMarkExpired */ true,
     );
     return parseSnapshotItems<TvUserAccountAutoLiq>(raw);
   }
@@ -1448,7 +1461,17 @@ export class TradovateClient {
       existingRecordId: record?.id ?? null,
     });
 
-    const response = await this.#request<TvUserAccountAutoLiq>(endpoint, "POST", payload);
+    // skipMarkExpired=true: a 403 here means "Account Risk Settings: Full Access"
+    // is missing from the OAuth scope — a capability limit, not a global auth
+    // failure. A 401 post-renewal is also scope-specific. Neither should expire
+    // the connection, which remains usable for read-only operations.
+    const response = await this.#request<TvUserAccountAutoLiq>(
+      endpoint,
+      "POST",
+      payload,
+      false,
+      /* skipMarkExpired */ true,
+    );
 
     console.info("[tradovate/autoLiq] daily loss lock response", {
       accountId: this.#accountId,
