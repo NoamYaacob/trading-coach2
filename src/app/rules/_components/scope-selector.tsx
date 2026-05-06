@@ -8,7 +8,7 @@ const ENV_LABEL: Record<string, string> = {
 
 const CONN_STATUS: Record<string, { label: string; cls: string }> = {
   connected_live:        { label: "Connected", cls: "bg-emerald-100 text-emerald-700" },
-  connected_readonly:    { label: "Read-only", cls: "bg-sky-100 text-sky-700" },
+  connected_readonly:    { label: "RO", cls: "bg-sky-100 text-sky-700" },
   pending_webhook:       { label: "Pending", cls: "bg-amber-100 text-amber-700" },
   oauth_pending_storage: { label: "Setting up", cls: "bg-amber-100 text-amber-700" },
   not_connected:         { label: "Not connected", cls: "bg-stone-100 text-stone-500" },
@@ -109,7 +109,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
                 </p>
               </div>
               <span
-                className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${status.cls}`}
+                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${status.cls}`}
               >
                 {status.label}
               </span>
