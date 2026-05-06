@@ -1,30 +1,56 @@
 /**
  * Broker-side enforcement.
  *
- * When Guardrail locks an account it attempts to apply a matching server-side
- * risk rule via Tradovate's userAccountAutoLiq API so the broker's own risk
- * engine enforces the halt — not just our internal flag.
+ * All verified rule breaches flow through `applyBrokerDayLockout`, which is
+ * the single shared broker-lockout adapter. It determines whether a trigger
+ * supports broker-side enforcement, attempts the API call for supported
+ * triggers, and returns a structured result. `triggerEnforcement` wraps it
+ * to persist the GuardianIntervention audit record.
  *
- * Enforcement capability by trigger type:
+ * ── Tradovate userAccountAutoLiq API audit ────────────────────────────────
  *
- *   daily_loss_limit  → POST userAccountAutoLiq/update (or /create)
- *                        Sets dailyLossAutoLiq = current daily loss amount.
- *                        Tradovate's risk engine immediately places the account
- *                        into liquidation-only mode and blocks new opening orders.
- *                        Sets changesLocked=true so the setting cannot be removed
- *                        during the trading session.
+ * The question: can userAccountAutoLiq be used as a generic day-lockout for
+ * any trigger by setting dailyLossAutoLiq to the current loss amount?
  *
- *   trade_limit       → Monitoring only.
- *                        Tradovate's userAccountAutoLiq has no max-trades-per-day
- *                        field. userAccountRiskParameter has per-contract order
- *                        qty limits but not an account-wide trade count.
- *                        Orders/Positions Full Access would be required to cancel
- *                        orders or flatten positions as an alternative enforcement
- *                        path — that permission is currently Read Only.
+ *   daily_loss_limit     → YES. VERIFIED.
+ *                          Set dailyLossAutoLiq = current daily loss so the
+ *                          account is immediately at/past the limit. Tradovate's
+ *                          risk engine places it in liquidation-only mode.
+ *                          changesLocked=true prevents removal mid-session.
+ *                          Endpoint: userAccountAutoLiq/update (or /create).
  *
- *   consecutive_losses → Monitoring only (same limitation as trade_limit).
+ *   profit_target        → NOT YET. UNVERIFIED FIELD.
+ *                          TvUserAccountAutoLiq.dailyProfitAutoLiq exists in
+ *                          the Tradovate OpenAPI spec but its exact behaviour
+ *                          (immediate liq-only lock vs. soft alert) has not
+ *                          been confirmed against a live account. Wire when
+ *                          confirmed. Until then: internal_only.
  *
- *   manual            → Monitoring only unless caller upgrades to full access.
+ *   trade_limit          → NO. NO MATCHING FIELD.
+ *                          userAccountAutoLiq has no max-trades-per-day field.
+ *                          userAccountRiskParameter has per-contract
+ *                          maxOpeningOrderQty, not an account-wide trade count.
+ *                          Order cancellation would require Orders Full Access
+ *                          (currently Read Only). Internal_only.
+ *
+ *   consecutive_losses   → NO. NO MATCHING FIELD.
+ *                          No Tradovate API field maps to a consecutive loss
+ *                          streak limit. Internal_only.
+ *
+ *   trading_day_disabled → NO. NO MATCHING FIELD.
+ *                          No Tradovate API field restricts trading to specific
+ *                          days of the week. Internal_only.
+ *
+ *   session_end          → NOT YET IMPLEMENTED. NEEDS SCHEDULER.
+ *                          Firing this trigger reliably requires a cron job
+ *                          timed to the CME session close (4:00 PM CT). The
+ *                          existing /api/cron/tradovate-sync endpoint handles
+ *                          ongoing syncs but does not fire a session-end event.
+ *                          TvUserAccountAutoLiq.flattenTimestamp may be usable
+ *                          as a session-end mechanism but is unverified.
+ *                          Internal_only until a session-end scheduler exists.
+ *
+ *   manual               → Internal_only. Guardrail-internal state change only.
  *
  * All outcomes — including failures — are logged to GuardianIntervention with
  * the exact endpoint, payload, and broker response for audit purposes.
@@ -45,12 +71,11 @@ import type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers
 /**
  * Canonical enforcement capability per trigger type.
  *
- * "broker_enforced" means the trigger CAN be enforced server-side via
- * Tradovate's Account Risk Settings API (if the call succeeds).
- * "internal_only" means Guardrail locks the account internally but has
- * no proven Tradovate endpoint to enforce it at the broker level with
- * the current permission set (Account Risk Settings Full Access,
- * Orders/Positions Read Only).
+ * "broker_enforced" — can be enforced server-side via Tradovate's Account
+ *   Risk Settings API when the call succeeds.
+ * "internal_only" — Guardrail locks the account in its own state and sends
+ *   alerts, but has no proven Tradovate endpoint to enforce it at the broker
+ *   level with the current permission set.
  */
 export const ENFORCEMENT_CAPABILITIES = {
   daily_loss_limit: {
@@ -79,14 +104,16 @@ export const ENFORCEMENT_CAPABILITIES = {
   profit_target: {
     capability: "internal_only" as const,
     notes:
-      "Tradovate's userAccountAutoLiq has no profit-target field. " +
-      "Internal Guardrail lock only. Broker-side profit-target blocking is not available.",
+      "TvUserAccountAutoLiq.dailyProfitAutoLiq exists in the Tradovate OpenAPI spec " +
+      "but its exact lockout behaviour has not been confirmed against a live account. " +
+      "Wire to broker enforcement when confirmed. Internal Guardrail lock only until then.",
   },
   trading_day_disabled: {
     capability: "internal_only" as const,
     notes:
       "Session-day gate: today is not a selected trading day. " +
-      "Internal Guardrail lock only. No Tradovate API field maps to trading-day restrictions.",
+      "No Tradovate API field maps to day-of-week trading restrictions. " +
+      "Internal Guardrail lock only.",
   },
   manual: {
     capability: "internal_only" as const,
@@ -112,10 +139,42 @@ export type EnforcementContext = {
   currentDailyLoss?: number | null;
 };
 
-export async function triggerEnforcement(ctx: EnforcementContext): Promise<void> {
-  const { accountId, userId, trigger, reason, currentDailyLoss } = ctx;
+/**
+ * Result returned by `applyBrokerDayLockout`.
+ * Does not include the human reason for the trigger — that is the caller's context.
+ */
+export type BrokerDayLockoutResult = {
+  status: BrokerLockStatus;
+  /** Outcome message describing what the broker did (or why it was skipped). */
+  message: string;
+  brokerEndpoint: string | null;
+  /** Exact payload sent to the broker endpoint (null when no broker call was made). */
+  brokerPayload: Record<string, unknown> | null;
+  /** Raw response from the broker endpoint (null when no broker call was made). */
+  brokerResponse: unknown;
+};
 
-  console.info("[enforcement] trigger fired", { accountId, trigger, reason, currentDailyLoss });
+/**
+ * Attempt broker-side day lockout for a verified rule breach.
+ *
+ * This is the single shared path every verified rule breach flows through.
+ * It determines whether the trigger supports broker-side enforcement, attempts
+ * the API call for supported triggers, and returns a structured result.
+ *
+ * It does NOT write to GuardianIntervention — that is `triggerEnforcement`'s job.
+ *
+ * Safety invariants:
+ *   - Read-only connections never reach a write endpoint.
+ *   - A 403 from userAccountAutoLiq does not expire the OAuth connection
+ *     (skipMarkExpired=true is set inside TradovateClient).
+ *   - broker_locked is only returned when a read-back confirms the stored value.
+ *   - All other triggers (trade_limit, consecutive_losses, profit_target,
+ *     trading_day_disabled, manual) return monitoring_only — no broker call.
+ */
+export async function applyBrokerDayLockout(
+  ctx: Pick<EnforcementContext, "accountId" | "userId" | "trigger" | "currentDailyLoss">,
+): Promise<BrokerDayLockoutResult> {
+  const { accountId, userId, trigger, currentDailyLoss } = ctx;
 
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
@@ -125,109 +184,135 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
     },
   });
 
-  let outcome: string;
-  let message: string;
-  let brokerLockStatus: BrokerLockStatus;
-  let brokerEndpoint: string | null = null;
-  let brokerPayloadJson: Prisma.InputJsonValue | null = null;
-  let brokerResponseJson: Prisma.InputJsonValue | null = null;
-
   const platform = account?.platform ?? "unknown";
   const connStatus = account?.brokerConnection?.connectionStatus ?? "not_connected";
 
   const skipResult = shouldSkipBrokerEnforcement({ platform, trigger, connectionStatus: connStatus });
 
   if (skipResult.skip) {
-    brokerLockStatus = skipResult.lockStatus;
-    outcome = skipResult.lockStatus;
-    message = skipResult.reason;
-
+    let message = skipResult.reason;
     if (skipResult.lockStatus === "unavailable_read_only") {
-      message +=
-        " Guardrail is monitoring and alerting only for this account.";
+      message += " Guardrail is monitoring and alerting only for this account.";
     }
-  } else {
-    // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────
-    // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
-    //   — confirms Account Risk Settings read access and finds existing rule
-    // Step 2 (write): POST userAccountAutoLiq/update or /create
-    //   — sets dailyLossAutoLiq = lossAmountToSet, changesLocked = true
-    //
-    // Both calls pass skipMarkExpired=true internally so a 401/403 on the
-    // risk endpoint never expires the connection for other endpoints.
-    const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
+    return {
+      status: skipResult.lockStatus,
+      message,
+      brokerEndpoint: null,
+      brokerPayload: null,
+      brokerResponse: null,
+    };
+  }
 
-    try {
-      const brokerClient = new TradovateClient(accountId, userId);
-      await brokerClient.initialize();
+  // ── Attempt broker-side lock via userAccountAutoLiq ───────────────────────
+  // Only daily_loss_limit reaches this path (shouldSkipBrokerEnforcement gates all others).
+  //
+  // Step 1 (read): GET userAccountAutoLiq/deps?masterid={tvAccountId}
+  //   — finds any existing rule record; passes skipMarkExpired=true
+  // Step 2 (write): POST userAccountAutoLiq/update (or /create)
+  //   — sets dailyLossAutoLiq = lossAmountToSet, changesLocked = true
+  // Step 3 (confirm): read-back GET if response doesn't echo the field
+  //   — broker_locked only when read-back confirms the stored value
+  const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
 
-      const result = await brokerClient.applyDailyLossLock({ lossAmountToSet });
+  try {
+    const brokerClient = new TradovateClient(accountId, userId);
+    await brokerClient.initialize();
 
-      brokerEndpoint = result.endpoint;
-      brokerPayloadJson = result.payload as Prisma.InputJsonValue;
-      brokerResponseJson = result.response as Prisma.InputJsonValue;
+    const result = await brokerClient.applyDailyLossLock({ lossAmountToSet });
 
-      if (result.confirmed) {
-        brokerLockStatus = "broker_locked";
-        outcome = "broker_locked";
-        message =
+    if (result.confirmed) {
+      console.info("[enforcement] broker lock confirmed", {
+        accountId,
+        endpoint: result.endpoint,
+        lossAmountToSet,
+        readbackValue: result.readbackValue,
+      });
+      return {
+        status: "broker_locked",
+        message:
           `Broker-side lock applied via ${result.endpoint}. ` +
           `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
           `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? lossAmountToSet).toFixed(2)}). ` +
-          `Tradovate will halt new opening orders for the rest of the trading session.`;
-
-        console.info("[enforcement] broker lock confirmed", {
-          accountId,
-          endpoint: result.endpoint,
-          lossAmountToSet,
-          readbackValue: result.readbackValue,
-        });
-      } else {
-        brokerLockStatus = "broker_lock_failed";
-        outcome = "broker_lock_failed";
-        message =
+          `Tradovate will halt new opening orders for the rest of the trading session.`,
+        brokerEndpoint: result.endpoint,
+        brokerPayload: result.payload,
+        brokerResponse: result.response,
+      };
+    } else {
+      console.warn("[enforcement] broker lock unconfirmed — value mismatch", {
+        accountId,
+        endpoint: result.endpoint,
+        lossAmountToSet,
+        readbackValue: result.readbackValue,
+      });
+      return {
+        status: "broker_lock_failed",
+        message:
           `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
           `Sent dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, ` +
           `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
-          `Guardrail is monitoring and alerting only.`;
-
-        console.warn("[enforcement] broker lock unconfirmed — value mismatch", {
-          accountId,
-          endpoint: result.endpoint,
-          lossAmountToSet,
-          readbackValue: result.readbackValue,
-        });
-      }
-    } catch (err) {
-      const { lockStatus, failureReason } = classifyEnforcementError(err);
-
-      brokerLockStatus = lockStatus;
-      outcome = lockStatus;
-      message =
-        `Broker lock attempt failed: ${failureReason} ` +
-        "Guardrail is monitoring and alerting only.";
-
-      console.error("[enforcement] broker lock failed", {
-        accountId,
-        trigger,
-        lockStatus,
-        failureReason,
-      });
+          `Guardrail is monitoring and alerting only.`,
+        brokerEndpoint: result.endpoint,
+        brokerPayload: result.payload,
+        brokerResponse: result.response,
+      };
     }
+  } catch (err) {
+    const { lockStatus, failureReason } = classifyEnforcementError(err);
+
+    console.error("[enforcement] broker lock failed", {
+      accountId,
+      trigger,
+      lockStatus,
+      failureReason,
+    });
+
+    return {
+      status: lockStatus,
+      message:
+        `Broker lock attempt failed: ${failureReason} ` +
+        "Guardrail is monitoring and alerting only.",
+      brokerEndpoint: null,
+      brokerPayload: null,
+      brokerResponse: null,
+    };
   }
+}
+
+/**
+ * Fire enforcement for a verified rule breach.
+ *
+ * Calls `applyBrokerDayLockout` to attempt broker-side enforcement, then
+ * persists a GuardianIntervention audit record regardless of outcome.
+ *
+ * The caller is responsible for ensuring this is only called on the
+ * NORMAL → STOPPED transition (not on repeated syncs where the account
+ * is already STOPPED).
+ */
+export async function triggerEnforcement(ctx: EnforcementContext): Promise<void> {
+  const { accountId, userId, trigger, reason } = ctx;
+
+  console.info("[enforcement] trigger fired", {
+    accountId,
+    trigger,
+    reason,
+    currentDailyLoss: ctx.currentDailyLoss,
+  });
+
+  const result = await applyBrokerDayLockout(ctx);
 
   await prisma.guardianIntervention.create({
     data: {
       accountId,
       userId,
       triggerType: trigger,
-      outcome,
-      message,
+      outcome: result.status,
+      message: result.message,
       sentAt: new Date(),
-      ...(brokerEndpoint != null && { brokerEndpoint }),
-      ...(brokerPayloadJson != null && { brokerPayloadJson }),
-      ...(brokerResponseJson != null && { brokerResponseJson }),
-      brokerLockStatus,
+      ...(result.brokerEndpoint != null && { brokerEndpoint: result.brokerEndpoint }),
+      ...(result.brokerPayload != null && { brokerPayloadJson: result.brokerPayload as Prisma.InputJsonValue }),
+      ...(result.brokerResponse != null && { brokerResponseJson: result.brokerResponse as Prisma.InputJsonValue }),
+      brokerLockStatus: result.status,
     },
   });
 }

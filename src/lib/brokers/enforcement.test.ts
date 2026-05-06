@@ -18,6 +18,7 @@ import {
   classifyEnforcementError,
   isAutoLiqConfirmed,
 } from "./enforcement-helpers.ts";
+import type { EnforcementTrigger } from "./enforcement-helpers.ts";
 
 // ── buildAutoLiqUpdatePayload ─────────────────────────────────────────────────
 
@@ -370,5 +371,117 @@ describe("skipMarkExpired contract for risk endpoints", () => {
     const create = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 100 });
     assert.ok(!("doNotUnlock" in update), "update payload must not set doNotUnlock");
     assert.ok(!("doNotUnlock" in create), "create payload must not set doNotUnlock");
+  });
+});
+
+// ── shouldSkipBrokerEnforcement — broker day-lockout trigger coverage ─────────
+
+describe("shouldSkipBrokerEnforcement — consecutive_losses trigger", () => {
+  it("consecutive_losses → skip=true with monitoring_only (no Tradovate field for loss streaks)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "consecutive_losses",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+
+  it("consecutive_losses on read-only → monitoring_only, NOT unavailable_read_only (trigger gate fires first)", () => {
+    // The trigger check (consecutive_losses != daily_loss_limit) fires before the
+    // connection-status check, so read-only returns monitoring_only, not unavailable_read_only.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "consecutive_losses",
+      connectionStatus: "connected_readonly",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+});
+
+describe("shouldSkipBrokerEnforcement — all verified rule-breach triggers", () => {
+  // Only daily_loss_limit can be broker-enforced today (see enforcement.ts audit notes).
+  // Every other trigger must return skip=true / monitoring_only so no spurious
+  // broker API call is ever made.
+  const NON_BROKER_TRIGGERS: EnforcementTrigger[] = [
+    "trade_limit",
+    "consecutive_losses",
+    "profit_target",
+    "trading_day_disabled",
+    "manual",
+  ];
+
+  it("daily_loss_limit on connected_live Tradovate → skip=false (broker call should proceed)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  for (const trigger of NON_BROKER_TRIGGERS) {
+    it(`${trigger} on connected_live Tradovate → skip=true, monitoring_only`, () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger,
+        connectionStatus: "connected_live",
+      });
+      assert.equal(result.skip, true, `${trigger} must skip broker enforcement`);
+      if (result.skip) {
+        assert.equal(result.lockStatus, "monitoring_only", `${trigger} must return monitoring_only`);
+      }
+    });
+  }
+
+  it("estimated trade count: trade_limit is monitoring_only — sync enforces this at the caller level", () => {
+    // The sync layer (tradovate-sync.ts) guards trade_limit with
+    // tradeCountIsAuthoritative before calling triggerEnforcement. This test
+    // documents that shouldSkipBrokerEnforcement independently returns
+    // monitoring_only for trade_limit regardless of any caller-side guard.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "trade_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+});
+
+describe("broker_locked requires read-back confirmation — applyBrokerDayLockout contract", () => {
+  // These tests verify the pure-function building blocks that enforce
+  // the read-back confirmation requirement before broker_locked is returned.
+  // (The full applyBrokerDayLockout function requires DB + network mocks.)
+
+  it("isAutoLiqConfirmed=false when response is null → broker_locked must not be set", () => {
+    const confirmed = isAutoLiqConfirmed({ expectedValue: 500, responseValue: null });
+    assert.equal(confirmed, false, "null response must not confirm broker lock");
+  });
+
+  it("isAutoLiqConfirmed=false when response is undefined → broker_locked must not be set", () => {
+    const confirmed = isAutoLiqConfirmed({ expectedValue: 500, responseValue: undefined });
+    assert.equal(confirmed, false, "undefined response must not confirm broker lock");
+  });
+
+  it("isAutoLiqConfirmed=true only when read-back value is within 1 cent of sent value", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 250.005 }), true);
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 251 }), false);
+  });
+
+  it("read-only connection returns unavailable_read_only — write endpoint never called", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_readonly",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+  });
+
+  it("403 from broker → unavailable_permission, not broker_lock_failed", () => {
+    const { lockStatus } = classifyEnforcementError({ statusCode: 403 });
+    assert.equal(lockStatus, "unavailable_permission");
   });
 });

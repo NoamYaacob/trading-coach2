@@ -270,7 +270,7 @@ export async function syncTradovateAccount(
     const [accountRules, defaultRules] = await Promise.all([
       prisma.accountRiskRules.findUnique({
         where: { accountId },
-        select: { maxDailyLoss: true, maxTradesPerDay: true },
+        select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
       }),
       prisma.riskRules.findUnique({
         where: { userId },
@@ -279,6 +279,7 @@ export async function syncTradovateAccount(
           maxTradesPerDay: true,
           dailyProfitTarget: true,
           tradingDays: true,
+          stopAfterLosses: true,
         },
       }),
     ]);
@@ -290,6 +291,8 @@ export async function syncTradovateAccount(
           : null;
     const effectiveMaxTrades =
       accountRules?.maxTradesPerDay ?? defaultRules?.maxTradesPerDay ?? null;
+    const effectiveStopAfterLosses =
+      accountRules?.stopAfterLosses ?? defaultRules?.stopAfterLosses ?? null;
     // Profit target and trading days are user-level settings only (no per-account override yet).
     const effectiveProfitTarget =
       defaultRules?.dailyProfitTarget != null
@@ -327,6 +330,18 @@ export async function syncTradovateAccount(
     // accounts on the same OAuth token.
     const tradeCountIsAuthoritative = tradeCountSource === "verified";
 
+    // ── LiveSessionState: read before riskState computation ──────────────────
+    // Load first so consecutiveLosses is available for the consecutive_losses
+    // enforcement check below. tradingDayKey uses the CME Globex session date
+    // (rolls at 5PM America/Chicago), not UTC or server calendar date.
+    const existing = await prisma.liveSessionState.findUnique({
+      where: { accountId },
+      select: { id: true, sessionDate: true, riskState: true, consecutiveLosses: true },
+    });
+    const prevRiskState = existing?.riskState ?? "NORMAL";
+    const consecutiveLossesFromState = existing?.consecutiveLosses ?? 0;
+    const isStale = existing ? existing.sessionDate !== tradingDayKey : false;
+
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
     let enforcementTrigger: EnforcementTrigger | null = null;
     if (isTradingDayDisabled) {
@@ -353,6 +368,19 @@ export async function syncTradovateAccount(
       newRiskState = "STOPPED";
       enforcementTrigger = "trade_limit";
     } else if (
+      // Only enforce when trade count is authoritative — the same guard used for
+      // trade_limit. consecutiveLossesFromState is sourced from LiveSessionState,
+      // which is updated by guardian-engine on each trade_closed event. When the
+      // trade count source is "verified" (Performance Report or account-scoped
+      // orders), we can trust that the session state reflects real closed trades.
+      tradeCountIsAuthoritative &&
+      effectiveStopAfterLosses != null &&
+      effectiveStopAfterLosses > 0 &&
+      consecutiveLossesFromState >= effectiveStopAfterLosses
+    ) {
+      newRiskState = "STOPPED";
+      enforcementTrigger = "consecutive_losses";
+    } else if (
       (lossPct != null && lossPct >= 0.8) ||
       (tradeCountIsAuthoritative &&
         effectiveMaxTrades != null &&
@@ -362,16 +390,7 @@ export async function syncTradovateAccount(
       newRiskState = "WARNING";
     }
 
-    // ── LiveSessionState: update dailyPnl, tradesCount, and riskState ─────
-    // tradingDayKey uses the CME Globex session date (rolls at 5PM America/Chicago),
-    // not the UTC or server calendar date. This ensures the session is correctly
-    // reset at the futures market session boundary rather than at UTC midnight.
-    const existing = await prisma.liveSessionState.findUnique({
-      where: { accountId },
-      select: { id: true, sessionDate: true, riskState: true },
-    });
-    const prevRiskState = existing?.riskState ?? "NORMAL";
-    const isStale = existing ? existing.sessionDate !== tradingDayKey : false;
+    // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──
 
     if (existing) {
       await prisma.liveSessionState.update({
@@ -411,7 +430,9 @@ export async function syncTradovateAccount(
             ? `Daily profit target reached: $${resolvedDailyPnl?.toFixed(2) ?? "unknown"}`
             : enforcementTrigger === "trading_day_disabled"
               ? `Today (${cmeDayCode}) is not a selected trading day`
-              : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
+              : enforcementTrigger === "consecutive_losses"
+                ? `Consecutive loss limit reached: ${consecutiveLossesFromState} consecutive losses`
+                : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
       triggerEnforcement({
         accountId,
         userId,
