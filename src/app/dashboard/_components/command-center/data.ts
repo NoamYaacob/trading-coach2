@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 
 import { getProtectionLockState } from "@/lib/account-protection";
-import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
+import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
 import { derivePropFirmSetupNeeded, deriveStatus, deriveBreachReason } from "./data-helpers";
@@ -362,6 +362,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
         | "broker_lock_failed"
         | "dry_run"
         | null,
+      flattenStatus: (lastIntervention?.flattenStatus ?? null) as FlattenStatus | null,
       brokerConnectionId: account.brokerConnectionId ?? null,
       lastInterventionTrigger: (lastIntervention?.triggerType ?? null) as EnforcementTrigger | null,
       lastInterventionAt: lastIntervention?.createdAt ?? null,

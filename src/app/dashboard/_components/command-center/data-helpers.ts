@@ -1,5 +1,5 @@
 import type { AccountStatus } from "./types";
-import type { BrokerLockStatus } from "@/lib/brokers/enforcement-helpers";
+import type { BrokerLockStatus, FlattenStatus } from "@/lib/brokers/enforcement-helpers";
 
 /**
  * What the dashboard's TradesCell should render for a given account.
@@ -253,7 +253,7 @@ export function deriveBrokerEnforcementCopy(
   switch (brokerLockStatus) {
     case "dry_run":
       return {
-        text: "Dry run · Broker-side lockout was simulated. No Tradovate write was sent.",
+        text: "Dry run · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
         kind: "dry_run",
       };
     case "broker_locked":
@@ -287,5 +287,48 @@ export function deriveBrokerEnforcementCopy(
         text: "Guardrail lock active · No broker-side lock recorded.",
         kind: "internal_only",
       };
+  }
+}
+
+// ── Flatten enforcement note ──────────────────────────────────────────────────
+
+export type FlattenCopy = {
+  text: string;
+  /** same visual kind as BrokerEnforcementKind for consistent colouring */
+  kind: BrokerEnforcementKind;
+};
+
+/**
+ * Pure function: derive the position-exit note text and colour kind for the
+ * intervention display. Separate from deriveBrokerEnforcementCopy so each
+ * part of the enforcement can be presented independently.
+ */
+export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenCopy {
+  switch (flattenStatus) {
+    case "flattened":
+      return { text: "Position exit confirmed.", kind: "broker_active" };
+    case "not_needed":
+      return { text: "No open position found.", kind: "internal_only" };
+    case "attempted":
+      return { text: "Position exit sent — confirmation pending.", kind: "failed" };
+    case "unavailable_read_only":
+      return {
+        text: "Position exit unavailable: read-only connection.",
+        kind: "unavailable_readonly",
+      };
+    case "unavailable_permission":
+      return {
+        text: "Position exit unavailable: missing permission.",
+        kind: "unavailable_permission",
+      };
+    case "failed":
+      return { text: "Position exit failed.", kind: "failed" };
+    case "dry_run":
+      return {
+        text: "Dry run · Position exit simulated.",
+        kind: "dry_run",
+      };
+    default:
+      return { text: "Position exit not recorded.", kind: "internal_only" };
   }
 }

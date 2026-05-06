@@ -21,8 +21,11 @@ import {
   classifyEnforcementError,
   isAutoLiqConfirmed,
   isEnforcementDryRun,
+  buildLiquidatePositionsPayload,
+  isFlattenConfirmed,
+  classifyFlattenError,
 } from "./enforcement-helpers.ts";
-import type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers.ts";
+import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus } from "./enforcement-helpers.ts";
 
 // ── buildAutoLiqUpdatePayload ─────────────────────────────────────────────────
 
@@ -875,5 +878,212 @@ describe("dry-run mode — intended payload shape", () => {
     });
     assert.equal(result.skip, true);
     if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+  });
+});
+
+// ── buildLiquidatePositionsPayload ────────────────────────────────────────────
+
+describe("buildLiquidatePositionsPayload", () => {
+  it("sets positions to the provided IDs and admin=false", () => {
+    const payload = buildLiquidatePositionsPayload([101, 202, 303]);
+    assert.deepEqual(payload.positions, [101, 202, 303]);
+    assert.equal(payload.admin, false);
+  });
+
+  it("admin is always false — not an admin override", () => {
+    const payload = buildLiquidatePositionsPayload([42]);
+    assert.equal(payload.admin, false);
+  });
+
+  it("works for a single position", () => {
+    const payload = buildLiquidatePositionsPayload([9999]);
+    assert.deepEqual(payload.positions, [9999]);
+  });
+
+  it("works for an empty list (no-op liquidate)", () => {
+    const payload = buildLiquidatePositionsPayload([]);
+    assert.deepEqual(payload.positions, []);
+  });
+
+  it("payload contains exactly the expected keys", () => {
+    const payload = buildLiquidatePositionsPayload([1]);
+    const keys = Object.keys(payload).sort();
+    assert.deepEqual(keys, ["admin", "positions"]);
+  });
+
+  it("does NOT include doNotUnlock or any extra fields", () => {
+    const payload = buildLiquidatePositionsPayload([1, 2]);
+    assert.ok(!("doNotUnlock" in payload));
+    assert.ok(!("contractId" in payload));
+    assert.ok(!("accountId" in payload));
+  });
+});
+
+// ── isFlattenConfirmed ────────────────────────────────────────────────────────
+
+describe("isFlattenConfirmed", () => {
+  it("returns true for an empty array — no positions means already flat", () => {
+    assert.equal(isFlattenConfirmed([]), true);
+  });
+
+  it("returns true when all positions have netPos === 0", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: 0 }, { netPos: 0 }]), true);
+  });
+
+  it("returns true when all positions have netPos === null", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: null }, { netPos: null }]), true);
+  });
+
+  it("returns false when any position has netPos !== 0 and !== null", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: 0 }, { netPos: 1 }]), false);
+  });
+
+  it("returns false when a short position remains (netPos < 0)", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: -2 }]), false);
+  });
+
+  it("returns false for a single long position that is still open", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: 3 }]), false);
+  });
+
+  it("treats netPos=null as flat — null means no data, not open", () => {
+    assert.equal(isFlattenConfirmed([{ netPos: null }]), true);
+  });
+});
+
+// ── classifyFlattenError ──────────────────────────────────────────────────────
+
+describe("classifyFlattenError", () => {
+  it("HTTP 403 → unavailable_permission", () => {
+    const result = classifyFlattenError({ statusCode: 403 });
+    assert.equal(result.flattenStatus, "unavailable_permission");
+    assert.ok(result.flattenMessage.includes("403"));
+    assert.equal(result.flattenPayload, null);
+    assert.equal(result.flattenResponse, null);
+  });
+
+  it("HTTP 403 message mentions Orders permission", () => {
+    const result = classifyFlattenError({ statusCode: 403 });
+    assert.ok(
+      result.flattenMessage.toLowerCase().includes("orders") ||
+      result.flattenMessage.toLowerCase().includes("permission"),
+    );
+  });
+
+  it("non-403 error → failed", () => {
+    const result = classifyFlattenError(new Error("network timeout"));
+    assert.equal(result.flattenStatus, "failed");
+    assert.ok(result.flattenMessage.includes("network timeout"));
+  });
+
+  it("HTTP 401 → failed (not unavailable_permission)", () => {
+    const result = classifyFlattenError({ statusCode: 401 });
+    assert.equal(result.flattenStatus, "failed");
+  });
+
+  it("unknown error → failed with message", () => {
+    const result = classifyFlattenError("something broke");
+    assert.equal(result.flattenStatus, "failed");
+  });
+
+  it("flattenPayload and flattenResponse are null for all error paths", () => {
+    for (const err of [{ statusCode: 403 }, new Error("oops"), { statusCode: 500 }]) {
+      const r = classifyFlattenError(err);
+      assert.equal(r.flattenPayload, null);
+      assert.equal(r.flattenResponse, null);
+    }
+  });
+});
+
+// ── FlattenStatus type coverage ───────────────────────────────────────────────
+
+describe("FlattenStatus type — all values are distinct", () => {
+  const ALL_FLATTEN_STATUSES: FlattenStatus[] = [
+    "not_needed",
+    "attempted",
+    "flattened",
+    "unavailable_read_only",
+    "unavailable_permission",
+    "failed",
+    "dry_run",
+  ];
+
+  it("all 7 FlattenStatus values are defined", () => {
+    assert.equal(ALL_FLATTEN_STATUSES.length, 7);
+  });
+
+  it("each value is unique", () => {
+    const unique = new Set(ALL_FLATTEN_STATUSES);
+    assert.equal(unique.size, ALL_FLATTEN_STATUSES.length);
+  });
+
+  it("dry_run is distinct from flattened and failed", () => {
+    const s: FlattenStatus = "dry_run";
+    assert.notEqual(s, "flattened" as FlattenStatus);
+    assert.notEqual(s, "failed" as FlattenStatus);
+  });
+
+  it("flattened is distinct from attempted", () => {
+    const s: FlattenStatus = "flattened";
+    assert.notEqual(s, "attempted" as FlattenStatus);
+  });
+});
+
+// ── Unsupported triggers — flatten must not be called ─────────────────────────
+
+describe("unsupported triggers — shouldSkipBrokerEnforcement gates flatten", () => {
+  // flatten only applies after shouldSkipBrokerEnforcement returns skip=false.
+  // Only daily_loss_limit and profit_target have skip=false on tradovate + live.
+  const FLATTEN_UNSUPPORTED: EnforcementTrigger[] = [
+    "trade_limit",
+    "consecutive_losses",
+    "trading_day_disabled",
+    "session_end",
+    "manual",
+  ];
+
+  for (const trigger of FLATTEN_UNSUPPORTED) {
+    it(`${trigger}: shouldSkipBrokerEnforcement returns skip=true (no flatten path)`, () => {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger,
+        connectionStatus: "connected_live",
+      });
+      assert.equal(
+        result.skip,
+        true,
+        `${trigger} must not reach the broker path where flatten is called`,
+      );
+    });
+  }
+
+  it("daily_loss_limit: shouldSkipBrokerEnforcement returns skip=false (flatten applies)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "daily_loss_limit",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("profit_target: shouldSkipBrokerEnforcement returns skip=false (flatten applies)", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "profit_target",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("read-only connection: flatten is unavailable (skip=true with unavailable_read_only)", () => {
+    for (const trigger of ["daily_loss_limit", "profit_target"] as EnforcementTrigger[]) {
+      const result = shouldSkipBrokerEnforcement({
+        platform: "tradovate",
+        trigger,
+        connectionStatus: "connected_readonly",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) assert.equal(result.lockStatus, "unavailable_read_only");
+    }
   });
 });

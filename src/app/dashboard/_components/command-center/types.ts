@@ -1,4 +1,4 @@
-import type { EnforcementTrigger } from "@/lib/brokers/enforcement";
+import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 
 export type AccountStatus =
   | "allowed"
@@ -93,6 +93,8 @@ export type CommandCenterAccount = {
   lastInterventionTrigger: EnforcementTrigger | null;
   lastInterventionAt: Date | null;
   hasOpenIntervention: boolean;
+  /** flattenStatus from the most recent GuardianIntervention */
+  flattenStatus: FlattenStatus | null;
   protectionStatus: ProtectionStatus;
   pendingProtectionStatus: ProtectionStatus | null;
   pendingProtectionEffectiveDate: string | null;

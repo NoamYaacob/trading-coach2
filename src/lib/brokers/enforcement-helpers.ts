@@ -17,6 +17,41 @@ export type EnforcementTrigger =
   | "manual";
 
 /**
+ * Values for GuardianIntervention.flattenStatus — outcome of the position-exit
+ * step that precedes broker-side day lockout.
+ *
+ *   not_needed           — GET /position/deps returned no open positions; no
+ *                          liquidate call was made.
+ *   attempted            — POST /order/liquidatepositions was accepted but the
+ *                          read-back still shows open positions (order may still
+ *                          be working in the market).
+ *   flattened            — read-back via GET /position/deps confirmed all
+ *                          positions are flat (netPos === 0 for every record).
+ *   unavailable_read_only — connection is connected_readonly; flatten skipped to
+ *                           avoid a spurious 403 that could confuse audit logs.
+ *   unavailable_permission — POST /order/liquidatepositions returned HTTP 403
+ *                            (Orders: Full Access permission missing).
+ *   failed               — liquidate request or read-back failed unexpectedly.
+ *   dry_run              — ENFORCEMENT_DRY_RUN=true; flatten was simulated, no
+ *                          Tradovate write endpoint was called.
+ */
+export type FlattenStatus =
+  | "not_needed"
+  | "attempted"
+  | "flattened"
+  | "unavailable_read_only"
+  | "unavailable_permission"
+  | "failed"
+  | "dry_run";
+
+export type BrokerFlattenResult = {
+  flattenStatus: FlattenStatus;
+  flattenMessage: string;
+  flattenPayload: Record<string, unknown> | null;
+  flattenResponse: unknown;
+};
+
+/**
  * Values stored in GuardianIntervention.brokerLockStatus.
  *
  *   not_requested        — no enforcement was triggered for this account/trigger
@@ -228,6 +263,62 @@ export function isAutoLiqConfirmed(opts: {
   const { expectedValue, responseValue, epsilon = 0.01 } = opts;
   if (responseValue == null || !Number.isFinite(responseValue)) return false;
   return Math.abs(responseValue - expectedValue) <= epsilon;
+}
+
+// ── Flatten helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Build the POST body for order/liquidatepositions.
+ *
+ * `positions` is an array of Tradovate position IDs (not contract IDs).
+ * `admin=false` — this is an automated client action, not an admin override.
+ */
+export function buildLiquidatePositionsPayload(positionIds: number[]): Record<string, unknown> {
+  return { positions: positionIds, admin: false };
+}
+
+/**
+ * Returns true when a read-back of positions confirms all are flat
+ * (netPos === 0 or null for every record in the array).
+ *
+ * An empty array also returns true — no open positions means already flat.
+ */
+export function isFlattenConfirmed(positions: Array<{ netPos: number | null }>): boolean {
+  return positions.every((p) => p.netPos === null || p.netPos === 0);
+}
+
+/**
+ * Classify a flatten API error into a BrokerFlattenResult.
+ *
+ * 403 → unavailable_permission: Orders: Full Access is missing from the OAuth
+ *   scope. Same as the lockout convention: a capability limit, not global auth
+ *   failure. The connection must NOT be marked expired.
+ *
+ * All other errors → failed.
+ */
+export function classifyFlattenError(err: unknown): BrokerFlattenResult {
+  const obj =
+    err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
+  const statusCode =
+    typeof obj?.statusCode === "number" ? obj.statusCode : null;
+  const message = err instanceof Error ? err.message : "Unknown error";
+
+  if (statusCode === 403) {
+    return {
+      flattenStatus: "unavailable_permission",
+      flattenMessage:
+        "Position exit unavailable: missing permission (HTTP 403). " +
+        "Verify the OAuth token was issued with 'Orders: Full Access'.",
+      flattenPayload: null,
+      flattenResponse: null,
+    };
+  }
+  return {
+    flattenStatus: "failed",
+    flattenMessage: `Position exit failed: ${message}`,
+    flattenPayload: null,
+    flattenResponse: null,
+  };
 }
 
 // ── Error classification ──────────────────────────────────────────────────────

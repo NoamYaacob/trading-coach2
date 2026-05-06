@@ -6,6 +6,7 @@ import {
   deriveBreachReason,
   getTradeCountDisplay,
   deriveBrokerEnforcementCopy,
+  deriveFlattenCopy,
 } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
@@ -751,6 +752,18 @@ describe("deriveBrokerEnforcementCopy", () => {
     );
   });
 
+  it("dry_run text mentions both 'Position exit' and 'broker-side lockout' (combined simulation)", () => {
+    const { text } = deriveBrokerEnforcementCopy("dry_run");
+    assert.ok(
+      text.includes("Position exit") || text.includes("position exit"),
+      `expected 'Position exit' in dry_run text, got: ${text}`,
+    );
+    assert.ok(
+      text.toLowerCase().includes("lockout"),
+      `expected 'lockout' in dry_run text, got: ${text}`,
+    );
+  });
+
   it("dry_run text does NOT say 'Broker-side lock active' — no real lock was applied", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
     assert.ok(
@@ -779,5 +792,85 @@ describe("deriveBrokerEnforcementCopy", () => {
     for (const other of otherKinds) {
       assert.notEqual("dry_run", other, `dry_run kind must differ from ${other}`);
     }
+  });
+});
+
+// ── deriveFlattenCopy ─────────────────────────────────────────────────────────
+
+describe("deriveFlattenCopy", () => {
+  it("flattened → kind=broker_active", () => {
+    assert.equal(deriveFlattenCopy("flattened").kind, "broker_active");
+  });
+
+  it("flattened text says 'Position exit confirmed'", () => {
+    const { text } = deriveFlattenCopy("flattened");
+    assert.ok(text.includes("Position exit confirmed"), `got: ${text}`);
+  });
+
+  it("not_needed text says 'No open position'", () => {
+    const { text } = deriveFlattenCopy("not_needed");
+    assert.ok(text.toLowerCase().includes("no open position"), `got: ${text}`);
+  });
+
+  it("not_needed → kind=internal_only", () => {
+    assert.equal(deriveFlattenCopy("not_needed").kind, "internal_only");
+  });
+
+  it("attempted text mentions confirmation pending", () => {
+    const { text } = deriveFlattenCopy("attempted");
+    assert.ok(
+      text.toLowerCase().includes("pending") || text.toLowerCase().includes("sent"),
+      `got: ${text}`,
+    );
+  });
+
+  it("unavailable_read_only → kind=unavailable_readonly", () => {
+    assert.equal(deriveFlattenCopy("unavailable_read_only").kind, "unavailable_readonly");
+  });
+
+  it("unavailable_read_only text mentions read-only", () => {
+    const { text } = deriveFlattenCopy("unavailable_read_only");
+    assert.ok(text.toLowerCase().includes("read-only"), `got: ${text}`);
+  });
+
+  it("unavailable_permission → kind=unavailable_permission", () => {
+    assert.equal(deriveFlattenCopy("unavailable_permission").kind, "unavailable_permission");
+  });
+
+  it("unavailable_permission text mentions permission", () => {
+    const { text } = deriveFlattenCopy("unavailable_permission");
+    assert.ok(text.toLowerCase().includes("permission"), `got: ${text}`);
+  });
+
+  it("failed → kind=failed", () => {
+    assert.equal(deriveFlattenCopy("failed").kind, "failed");
+  });
+
+  it("failed text says 'Position exit failed'", () => {
+    const { text } = deriveFlattenCopy("failed");
+    assert.ok(text.includes("Position exit failed"), `got: ${text}`);
+  });
+
+  it("dry_run → kind=dry_run", () => {
+    assert.equal(deriveFlattenCopy("dry_run").kind, "dry_run");
+  });
+
+  it("dry_run text mentions 'Dry run' and 'simulated'", () => {
+    const { text } = deriveFlattenCopy("dry_run");
+    assert.ok(text.includes("Dry run"), `expected 'Dry run', got: ${text}`);
+    assert.ok(text.toLowerCase().includes("simulated"), `expected 'simulated', got: ${text}`);
+  });
+
+  it("null → safe fallback with kind=internal_only", () => {
+    const { kind } = deriveFlattenCopy(null);
+    assert.equal(kind, "internal_only");
+  });
+
+  it("flattened is distinct from failed", () => {
+    assert.notEqual(deriveFlattenCopy("flattened").kind, deriveFlattenCopy("failed").kind);
+  });
+
+  it("dry_run kind is distinct from flattened kind", () => {
+    assert.notEqual(deriveFlattenCopy("dry_run").kind, deriveFlattenCopy("flattened").kind);
   });
 });

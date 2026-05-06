@@ -67,13 +67,14 @@ import type { Prisma } from "@prisma/client";
 import {
   shouldSkipBrokerEnforcement,
   classifyEnforcementError,
+  classifyFlattenError,
   computeLossAmountToSet,
   computeProfitAmountToSet,
   isEnforcementDryRun,
 } from "./enforcement-helpers";
 
-export type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers";
-import type { EnforcementTrigger, BrokerLockStatus } from "./enforcement-helpers";
+export type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
+import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 
 /**
  * Canonical enforcement capability per trigger type.
@@ -169,6 +170,9 @@ export type EnforcementContext = {
 /**
  * Result returned by `applyBrokerDayLockout`.
  * Does not include the human reason for the trigger — that is the caller's context.
+ *
+ * For triggers that support position flattening (daily_loss_limit, profit_target),
+ * the flatten step runs before the day lockout step. Both outcomes are persisted.
  */
 export type BrokerDayLockoutResult = {
   status: BrokerLockStatus;
@@ -179,6 +183,11 @@ export type BrokerDayLockoutResult = {
   brokerPayload: Record<string, unknown> | null;
   /** Raw response from the broker endpoint (null when no broker call was made). */
   brokerResponse: unknown;
+  /** Outcome of the position-exit step (runs before day lockout for supported triggers). */
+  flattenStatus: FlattenStatus;
+  flattenMessage: string;
+  flattenPayload: Record<string, unknown> | null;
+  flattenResponse: unknown;
 };
 
 /**
@@ -223,12 +232,21 @@ export async function applyBrokerDayLockout(
     if (skipResult.lockStatus === "unavailable_read_only") {
       message += " Guardrail is monitoring and alerting only for this account.";
     }
+    const flattenSkipStatus: FlattenStatus =
+      skipResult.lockStatus === "unavailable_read_only" ? "unavailable_read_only" : "not_needed";
     return {
       status: skipResult.lockStatus,
       message,
       brokerEndpoint: null,
       brokerPayload: null,
       brokerResponse: null,
+      flattenStatus: flattenSkipStatus,
+      flattenMessage:
+        flattenSkipStatus === "unavailable_read_only"
+          ? "Position exit unavailable: connection is read-only."
+          : "Position exit not applicable for this trigger or platform.",
+      flattenPayload: null,
+      flattenResponse: null,
     };
   }
 
@@ -241,38 +259,55 @@ export async function applyBrokerDayLockout(
     const tvAccountId =
       account?.externalAccountId != null ? parseInt(account.externalAccountId, 10) : null;
 
-    let intendedEndpoint: string;
-    let intendedPayload: Record<string, unknown>;
+    let intendedLockoutEndpoint: string;
+    let intendedLockoutPayload: Record<string, unknown>;
+    const supportsFlatten = trigger === "daily_loss_limit" || trigger === "profit_target";
 
     if (trigger === "daily_loss_limit") {
       const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
-      intendedEndpoint = "userAccountAutoLiq/update (or /create)";
-      intendedPayload = { accountId: tvAccountId, dailyLossAutoLiq: lossAmountToSet, changesLocked: true };
+      intendedLockoutEndpoint = "userAccountAutoLiq/update (or /create)";
+      intendedLockoutPayload = { accountId: tvAccountId, dailyLossAutoLiq: lossAmountToSet, changesLocked: true };
     } else if (trigger === "profit_target") {
       const profitAmountToSet = computeProfitAmountToSet(ctx.currentDailyPnl);
-      intendedEndpoint = "userAccountAutoLiq/update (or /create)";
-      intendedPayload = { accountId: tvAccountId, dailyProfitAutoLiq: profitAmountToSet, changesLocked: true };
+      intendedLockoutEndpoint = "userAccountAutoLiq/update (or /create)";
+      intendedLockoutPayload = { accountId: tvAccountId, dailyProfitAutoLiq: profitAmountToSet, changesLocked: true };
     } else {
-      intendedEndpoint = "none";
-      intendedPayload = {};
+      intendedLockoutEndpoint = "none";
+      intendedLockoutPayload = {};
     }
 
-    console.info("[enforcement/dry-run] broker write simulated — no Tradovate call made", {
+    const intendedFlattenPayload = supportsFlatten
+      ? { positions: ["(open position IDs from position/deps read)"], admin: false }
+      : null;
+
+    console.info("[enforcement/dry-run] broker writes simulated — no Tradovate call made", {
       accountId,
       trigger,
       tvAccountId,
-      intendedEndpoint,
-      intendedPayload,
+      intendedFlattenEndpoint: supportsFlatten ? "order/liquidatepositions" : "none",
+      intendedFlattenPayload,
+      intendedLockoutEndpoint,
+      intendedLockoutPayload,
     });
+
+    const dryRunMessage =
+      supportsFlatten
+        ? "Dry run · Position exit and broker-side lockout were simulated. No Tradovate write was sent."
+        : `Dry run · Broker-side lockout was simulated. No Tradovate write was sent. Would have called ${intendedLockoutEndpoint} with payload: ${JSON.stringify(intendedLockoutPayload)}.`;
 
     return {
       status: "dry_run",
-      message:
-        `Dry run · Broker-side lockout was simulated. No Tradovate write was sent. ` +
-        `Would have called ${intendedEndpoint} with payload: ${JSON.stringify(intendedPayload)}.`,
-      brokerEndpoint: intendedEndpoint,
-      brokerPayload: intendedPayload,
+      message: dryRunMessage,
+      brokerEndpoint: intendedLockoutEndpoint,
+      brokerPayload: intendedLockoutPayload,
       brokerResponse: null,
+      flattenStatus: "dry_run",
+      flattenMessage:
+        supportsFlatten
+          ? "Dry run · Position exit simulated. Would have called order/liquidatepositions if open positions exist."
+          : "Position exit not applicable for this trigger.",
+      flattenPayload: intendedFlattenPayload,
+      flattenResponse: null,
     };
   }
 
@@ -298,6 +333,19 @@ export async function applyBrokerDayLockout(
 
     switch (trigger) {
       case "daily_loss_limit": {
+        // Step 1: flatten open positions (fail-safe — failure does not block lockout)
+        let flattenResult: BrokerFlattenResult;
+        try {
+          flattenResult = await brokerClient.applyFlattenOpenPositions();
+        } catch (flattenErr) {
+          flattenResult = classifyFlattenError(flattenErr);
+          console.warn("[enforcement] position flatten failed — proceeding to day lockout", {
+            accountId,
+            flattenStatus: flattenResult.flattenStatus,
+          });
+        }
+
+        // Step 2: apply broker-side day lockout
         const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
         const result = await brokerClient.applyDailyLossLock({ lossAmountToSet });
 
@@ -307,10 +355,12 @@ export async function applyBrokerDayLockout(
             endpoint: result.endpoint,
             lossAmountToSet,
             readbackValue: result.readbackValue,
+            flattenStatus: flattenResult.flattenStatus,
           });
           return {
             status: "broker_locked",
             message:
+              `${flattenResult.flattenMessage} ` +
               `Broker-side lock applied via ${result.endpoint}. ` +
               `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
               `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? lossAmountToSet).toFixed(2)}). ` +
@@ -318,6 +368,7 @@ export async function applyBrokerDayLockout(
             brokerEndpoint: result.endpoint,
             brokerPayload: result.payload,
             brokerResponse: result.response,
+            ...flattenResult,
           };
         }
         console.warn("[enforcement] daily loss broker lock unconfirmed — value mismatch", {
@@ -329,6 +380,7 @@ export async function applyBrokerDayLockout(
         return {
           status: "broker_lock_failed",
           message:
+            `${flattenResult.flattenMessage} ` +
             `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
             `Sent dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, ` +
             `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
@@ -336,10 +388,24 @@ export async function applyBrokerDayLockout(
           brokerEndpoint: result.endpoint,
           brokerPayload: result.payload,
           brokerResponse: result.response,
+          ...flattenResult,
         };
       }
 
       case "profit_target": {
+        // Step 1: flatten open positions (fail-safe — failure does not block lockout)
+        let flattenResult: BrokerFlattenResult;
+        try {
+          flattenResult = await brokerClient.applyFlattenOpenPositions();
+        } catch (flattenErr) {
+          flattenResult = classifyFlattenError(flattenErr);
+          console.warn("[enforcement] position flatten failed — proceeding to day lockout", {
+            accountId,
+            flattenStatus: flattenResult.flattenStatus,
+          });
+        }
+
+        // Step 2: apply broker-side day lockout
         const profitAmountToSet = computeProfitAmountToSet(ctx.currentDailyPnl);
         const result = await brokerClient.applyProfitTargetLock({ profitAmountToSet });
 
@@ -349,10 +415,12 @@ export async function applyBrokerDayLockout(
             endpoint: result.endpoint,
             profitAmountToSet,
             readbackValue: result.readbackValue,
+            flattenStatus: flattenResult.flattenStatus,
           });
           return {
             status: "broker_locked",
             message:
+              `${flattenResult.flattenMessage} ` +
               `Broker-side lock applied via ${result.endpoint}. ` +
               `dailyProfitAutoLiq=$${profitAmountToSet.toFixed(2)}, changesLocked=true. ` +
               `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? profitAmountToSet).toFixed(2)}). ` +
@@ -360,6 +428,7 @@ export async function applyBrokerDayLockout(
             brokerEndpoint: result.endpoint,
             brokerPayload: result.payload,
             brokerResponse: result.response,
+            ...flattenResult,
           };
         }
         console.warn("[enforcement] profit target broker lock unconfirmed — value mismatch", {
@@ -371,6 +440,7 @@ export async function applyBrokerDayLockout(
         return {
           status: "broker_lock_failed",
           message:
+            `${flattenResult.flattenMessage} ` +
             `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
             `Sent dailyProfitAutoLiq=$${profitAmountToSet.toFixed(2)}, ` +
             `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
@@ -378,6 +448,7 @@ export async function applyBrokerDayLockout(
           brokerEndpoint: result.endpoint,
           brokerPayload: result.payload,
           brokerResponse: result.response,
+          ...flattenResult,
         };
       }
 
@@ -400,6 +471,10 @@ export async function applyBrokerDayLockout(
           brokerEndpoint: null,
           brokerPayload: null,
           brokerResponse: null,
+          flattenStatus: "not_needed",
+          flattenMessage: "Position exit not applicable for this trigger.",
+          flattenPayload: null,
+          flattenResponse: null,
         };
       }
     }
@@ -421,6 +496,10 @@ export async function applyBrokerDayLockout(
       brokerEndpoint: null,
       brokerPayload: null,
       brokerResponse: null,
+      flattenStatus: "not_needed",
+      flattenMessage: "Position exit not attempted due to broker lock failure.",
+      flattenPayload: null,
+      flattenResponse: null,
     };
   }
 }
@@ -459,6 +538,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       ...(result.brokerPayload != null && { brokerPayloadJson: result.brokerPayload as Prisma.InputJsonValue }),
       ...(result.brokerResponse != null && { brokerResponseJson: result.brokerResponse as Prisma.InputJsonValue }),
       brokerLockStatus: result.status,
+      flattenStatus: result.flattenStatus,
+      flattenMessage: result.flattenMessage,
+      ...(result.flattenPayload != null && { flattenPayloadJson: result.flattenPayload as Prisma.InputJsonValue }),
+      ...(result.flattenResponse != null && { flattenResponseJson: result.flattenResponse as Prisma.InputJsonValue }),
     },
   });
 }

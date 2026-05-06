@@ -568,6 +568,14 @@ model GuardianIntervention {
   brokerResponseJson Json?
   /// "broker_locked" | "monitoring_only" | "broker_lock_failed" | "unavailable_read_only" | "unavailable_permission" | "dry_run"
   brokerLockStatus   String?
+  /// "not_needed" | "attempted" | "flattened" | "unavailable_read_only" | "unavailable_permission" | "failed" | "dry_run"
+  flattenStatus      String?
+  /// Human-readable description of the position-exit outcome
+  flattenMessage     String?
+  /// Exact JSON payload sent to order/liquidatepositions (null when no write was made)
+  flattenPayloadJson Json?
+  /// Raw JSON response from order/liquidatepositions (null when no write was made)
+  flattenResponseJson Json?
 
   account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 

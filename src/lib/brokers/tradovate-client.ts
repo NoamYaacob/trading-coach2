@@ -52,7 +52,8 @@ import {
 } from "./tradovate-client-helpers";
 
 export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
-import { isAutoLiqConfirmed } from "./enforcement-helpers";
+import { isAutoLiqConfirmed, buildLiquidatePositionsPayload, isFlattenConfirmed } from "./enforcement-helpers";
+import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
 
 // ── Raw Tradovate API shapes ──────────────────────────────────────────────────
@@ -1478,6 +1479,123 @@ export class TradovateClient {
     }
 
     return { endpoint, payload, response, confirmed, readbackValue };
+  }
+
+  /**
+   * Attempt to flatten (close) all open positions for this Tradovate account.
+   *
+   * Sequences:
+   *   Step 1 (read):    GET  position/deps?masterid={tvAccountId}  — account-scoped
+   *   Step 2 (write):   POST order/liquidatepositions              — if open positions exist
+   *   Step 3 (confirm): GET  position/deps?masterid={tvAccountId}  — read-back
+   *
+   * Returns:
+   *   not_needed   — no open positions found; no write endpoint called.
+   *   flattened    — read-back confirmed all positions are flat (netPos === 0).
+   *   attempted    — liquidatepositions accepted but read-back still shows open
+   *                  positions (order may still be working in the market).
+   *   failed       — request or read-back threw unexpectedly.
+   *
+   * skipMarkExpired=true for the write call: a 403 here means Orders: Full
+   * Access is missing from the OAuth scope — a capability limit, not a global
+   * auth failure. The connection must NOT be marked expired.
+   *
+   * ⚠ LIVE QA REQUIRED: order/liquidatepositions behavior must be validated on
+   *   a Tradovate demo/sim account before treating this as fully confirmed.
+   */
+  async applyFlattenOpenPositions(): Promise<BrokerFlattenResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+    const tvAccountId = this.#tvAccountId;
+
+    // Step 1: account-scoped position read
+    const allPositions = await this.#request<TvPosition[]>(
+      `position/deps?masterid=${tvAccountId}`,
+    );
+    const openPositions = (Array.isArray(allPositions) ? allPositions : []).filter(
+      (p) => p.netPos !== null && p.netPos !== 0,
+    );
+
+    if (openPositions.length === 0) {
+      console.info("[tradovate/flatten] no open positions — flatten not needed", {
+        accountId: this.#accountId,
+        tvAccountId,
+      });
+      return {
+        flattenStatus: "not_needed",
+        flattenMessage: "No open position found — no flatten required.",
+        flattenPayload: null,
+        flattenResponse: null,
+      };
+    }
+
+    const positionIds = openPositions.map((p) => p.id);
+    const payload = buildLiquidatePositionsPayload(positionIds);
+
+    console.info("[tradovate/flatten] applying flatten", {
+      accountId: this.#accountId,
+      tvAccountId,
+      positionCount: openPositions.length,
+      positionIds,
+    });
+
+    // Step 2: send liquidatepositions
+    const response = await this.#request<{ ok?: boolean; errorText?: string }>(
+      "order/liquidatepositions",
+      "POST",
+      payload,
+      false,
+      /* skipMarkExpired */ true,
+    );
+
+    console.info("[tradovate/flatten] liquidatepositions response", {
+      accountId: this.#accountId,
+      ok: response?.ok,
+      errorText: response?.errorText ?? null,
+    });
+
+    // Step 3: read-back to confirm positions are flat
+    let flattenStatus: FlattenStatus = "attempted";
+    let flattenMessage =
+      `Flatten sent for ${openPositions.length} position(s). ` +
+      "Read-back confirmation pending (order may still be working).";
+
+    try {
+      const readback = await this.#request<TvPosition[]>(
+        `position/deps?masterid=${tvAccountId}`,
+      );
+      const readbackPositions = Array.isArray(readback) ? readback : [];
+      const confirmed = isFlattenConfirmed(readbackPositions);
+
+      if (confirmed) {
+        flattenStatus = "flattened";
+        flattenMessage =
+          `Position exit confirmed: ${openPositions.length} position(s) flattened. ` +
+          "Read-back shows all positions flat (netPos === 0).";
+      } else {
+        const stillOpen = readbackPositions.filter((p) => p.netPos !== null && p.netPos !== 0);
+        flattenMessage =
+          `Flatten sent but ${stillOpen.length} position(s) may still be open. ` +
+          "Order may still be working in the market.";
+      }
+
+      console.info("[tradovate/flatten] read-back result", {
+        accountId: this.#accountId,
+        originalPositions: openPositions.length,
+        flattenStatus,
+      });
+    } catch (readbackErr) {
+      console.warn("[tradovate/flatten] read-back failed", {
+        accountId: this.#accountId,
+        error: readbackErr instanceof Error ? readbackErr.message : String(readbackErr),
+      });
+    }
+
+    return { flattenStatus, flattenMessage, flattenPayload: payload, flattenResponse: response };
   }
 
   // ── Normalized outputs (BrokerAdapter shapes) ────────────────────────────
