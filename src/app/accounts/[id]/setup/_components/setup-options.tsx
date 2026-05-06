@@ -75,7 +75,7 @@ export function SetupOptions({ accountId, hasDefaultRules, defaultRulesSummary }
             type="button"
             disabled={busy != null}
             onClick={() => activate("protected")}
-            className="inline-flex h-10 items-center rounded-full bg-stone-950 px-5 text-sm font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-60"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-60"
           >
             {busy === "default" ? "Activating…" : "Use default plan"}
           </button>
@@ -92,7 +92,7 @@ export function SetupOptions({ accountId, hasDefaultRules, defaultRulesSummary }
         <div className="mt-4">
           <Link
             href={buildAccountRulesUrl(accountId)}
-            className="inline-flex h-10 items-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 px-5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
           >
             Configure rules for this account
           </Link>
@@ -111,7 +111,7 @@ export function SetupOptions({ accountId, hasDefaultRules, defaultRulesSummary }
             type="button"
             disabled={busy != null}
             onClick={() => activate("ignored")}
-            className="inline-flex h-10 items-center rounded-full border border-stone-200 px-5 text-sm font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950 disabled:pointer-events-none disabled:opacity-60"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-200 px-5 text-sm font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950 disabled:pointer-events-none disabled:opacity-60"
           >
             {busy === "ignore" ? "Saving…" : "Ignore this account"}
           </button>

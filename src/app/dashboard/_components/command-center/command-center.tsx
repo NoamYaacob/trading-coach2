@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
+import { PILL_ROW_PRIMARY, PILL_ROW_SECONDARY } from "@/components/ui/pill-classes";
 import { getTradeCountDisplay, deriveBrokerEnforcementCopy } from "./data-helpers";
 import type {
   AccountStatus,
@@ -444,16 +445,13 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
       </td>
       <td className="px-4 py-3 text-right align-top">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <Link
-            href="/accounts"
-            className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
-          >
+          <Link href="/accounts" className={PILL_ROW_PRIMARY}>
             Refresh status
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
             accountLabel={account.label}
-            className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+            className={PILL_ROW_SECONDARY}
           />
         </div>
       </td>
@@ -592,16 +590,13 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           May have been reset, closed, or removed by the prop firm. Excluded from totals.
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <Link
-            href="/accounts"
-            className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
-          >
+          <Link href="/accounts" className={PILL_ROW_PRIMARY}>
             Refresh status
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
             accountLabel={account.label}
-            className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+            className={PILL_ROW_SECONDARY}
           />
         </div>
       </div>
@@ -908,23 +903,17 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Link
-        href={`/accounts/${account.id}/edit`}
-        className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
-      >
+      <Link href={`/accounts/${account.id}/edit`} className={PILL_ROW_SECONDARY}>
         Open
       </Link>
       <Link
         href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-        className="rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-950"
+        className={PILL_ROW_SECONDARY}
       >
         Rules
       </Link>
       {reconnectNeeded ? (
-        <Link
-          href="/accounts/connect/tradovate"
-          className="rounded-full bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 transition hover:bg-stone-800"
-        >
+        <Link href="/accounts/connect/tradovate" className={PILL_ROW_PRIMARY}>
           Reconnect
         </Link>
       ) : account.platform === "tradovate" ? (
@@ -946,13 +935,13 @@ function EmptyAccounts() {
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <Link
           href="/accounts/connect/tradovate"
-          className="rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
         >
           Connect Tradovate
         </Link>
         <Link
           href="/accounts"
-          className="rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
           Manage accounts
         </Link>

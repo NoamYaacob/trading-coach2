@@ -188,7 +188,7 @@ export default async function RulesPage({
       actions={
         <Link
           href="/guardian"
-          className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+          className="inline-flex items-center justify-center rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
           View status
         </Link>
@@ -317,7 +317,7 @@ export default async function RulesPage({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href="/accounts/connect/tradovate"
-                  className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
                 >
                   Connect Tradovate
                 </Link>

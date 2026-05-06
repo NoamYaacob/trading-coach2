@@ -409,7 +409,7 @@ export function DisconnectButton({
             ref={triggerRef}
             type="button"
             onClick={handleClick}
-            className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700"
           >
             Remove from Guardrail
           </button>
@@ -423,7 +423,7 @@ export function DisconnectButton({
             ref={triggerRef}
             type="button"
             onClick={handleClick}
-            className="inline-flex rounded-full border border-stone-100 px-4 py-2 text-xs font-medium text-stone-400 transition hover:border-stone-200 hover:text-stone-500"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-100 px-4 py-2 text-xs font-medium text-stone-400 transition hover:border-stone-200 hover:text-stone-500"
           >
             Disconnect
           </button>
@@ -433,7 +433,7 @@ export function DisconnectButton({
           ref={triggerRef}
           type="button"
           onClick={handleClick}
-          className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
         >
           Disconnect
         </button>

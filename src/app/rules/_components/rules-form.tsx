@@ -336,7 +336,7 @@ export function RulesForm({ initial, hasBroker, timezone }: Props) {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {saving ? "Saving..." : "Save rules"}
           </button>
