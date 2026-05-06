@@ -96,7 +96,7 @@ const ENV_LABEL: Record<string, string> = {
 
 const CONN_STATUS: Record<string, { label: string; cls: string }> = {
   connected_live:         { label: "Connected live", cls: "bg-emerald-100 text-emerald-700" },
-  connected_readonly:     { label: "Read-only", cls: "bg-sky-100 text-sky-700" },
+  connected_readonly:     { label: "Limited", cls: "bg-sky-100 text-sky-700" },
   pending_webhook:        { label: "Pending sync", cls: "bg-amber-100 text-amber-700" },
   oauth_pending_storage:  { label: "Setting up", cls: "bg-amber-100 text-amber-700" },
   not_connected:          { label: "Not connected", cls: "bg-stone-100 text-stone-600" },

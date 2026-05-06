@@ -109,7 +109,7 @@ export function ConnectionPoller({ accountId, staticChecks }: Props) {
   const badgeText = activated ? "text-emerald-700" : "text-amber-700";
   const status = activated ? "Account is now live" : "Webhook pending";
   const description = activated
-    ? "First event received. Guardian rules are now active for this account."
+    ? "First event received. Protection rules are now active for this account."
     : "Account ID and rules are configured — watching for the first broker event.";
   const badgeLabel = activated ? "Active" : "Pending";
 

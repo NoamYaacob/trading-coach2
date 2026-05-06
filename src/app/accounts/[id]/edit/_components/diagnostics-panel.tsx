@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { mapConnectionStatus, mapOutcome, mapRiskState } from "./diagnostics-helpers";
 
 export type DiagnosticsEvent = {
   eventType: string;
@@ -116,7 +117,7 @@ export function DiagnosticsPanel({
         className="flex w-full items-center justify-between px-6 py-4 text-left"
       >
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-          Diagnostics
+          Advanced diagnostics
         </span>
         <span className="text-xs text-stone-400">{open ? "Hide" : "Show"}</span>
       </button>
@@ -131,7 +132,7 @@ export function DiagnosticsPanel({
               </p>
               <dl className="grid gap-1.5 text-sm">
                 <Row label="Status">
-                  <span className="font-mono text-stone-900">{connectionStatus}</span>
+                  <span className="text-stone-900">{mapConnectionStatus(connectionStatus)}</span>
                 </Row>
                 <Row label="Account ID">
                   <span className="font-mono text-stone-900">{externalAccountId ?? "—"}</span>
@@ -160,7 +161,7 @@ export function DiagnosticsPanel({
                             : "text-emerald-700"
                       }`}
                     >
-                      {sessionSnapshot.riskState}
+                      {mapRiskState(sessionSnapshot.riskState)}
                     </span>
                   </Row>
                   <Row label="Daily P&L">
@@ -258,7 +259,7 @@ export function DiagnosticsPanel({
                             : "text-stone-500"
                       }`}
                     >
-                      {iv.outcome}
+                      {mapOutcome(iv.outcome)}
                     </span>
                   </div>
                 ))}
@@ -281,7 +282,7 @@ export function DiagnosticsPanel({
                 {firing ? "Firing…" : "Fire test trade (−$50)"}
               </button>
               <p className="mt-1.5 text-xs text-stone-400">
-                Persists a synthetic trade_closed event through the guardian pipeline. Telegram not
+                Persists a synthetic trade_closed event through the guardrail pipeline. Telegram not
                 sent.
               </p>
               {testError && (

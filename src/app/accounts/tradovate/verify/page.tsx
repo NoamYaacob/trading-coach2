@@ -34,7 +34,7 @@ const TOKEN_STATUS_COPY: Record<TokenStatus, { label: string; tone: string }> = 
 };
 
 const CONNECTION_STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  connected: { label: "Connected (read-only)", tone: "text-emerald-700" },
+  connected: { label: "Connected", tone: "text-emerald-700" },
   expired: { label: "Token expired — re-authorize", tone: "text-orange-700" },
   error: { label: "Connection error", tone: "text-red-700" },
   disconnected: { label: "Not connected", tone: "text-stone-600" },

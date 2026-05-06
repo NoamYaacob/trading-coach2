@@ -315,7 +315,7 @@ export default async function EditAccountPage({
     <AppShell
       eyebrow="Broker Connections"
       title={account.label}
-      description="Manage this broker connection and verify the live event feed."
+      description="Review this account's connection, protection status, and latest broker activity."
       actions={
         <Link
           href="/accounts"

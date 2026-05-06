@@ -452,7 +452,7 @@ function ScopeContextHeader({
 
   const conn = account.brokerConnection;
   const envLabel = conn?.env === "live" ? "Live account" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
-  const readOnlySuffix = conn?.connectionStatus === "connected_readonly" ? " · Read-only connection" : "";
+  const readOnlySuffix = conn?.connectionStatus === "connected_readonly" ? " · Limited permissions" : "";
   const firmLine = account.propFirm
     ? account.propFirm
     : conn
