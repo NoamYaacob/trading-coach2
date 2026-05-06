@@ -20,16 +20,6 @@ type StubBehaviour = {
     httpStatus?: number;
   } | null;
   ordersThrows?: boolean;
-  fillPairsResult?: {
-    count: number;
-    accountScopedAtApi: boolean;
-    httpStatus?: number;
-  } | null;
-  fillsResult?: {
-    count: number;
-    accountScopedAtApi: boolean;
-    httpStatus?: number;
-  } | null;
   unscopedFallback?: { count: number } | null;
 };
 
@@ -49,14 +39,6 @@ function stubAdapter(b: StubBehaviour): TradeCountAdapter {
       if (b.ordersThrows) throw new Error("orders 500");
       if (b.ordersResult == null) return null;
       return { ...b.ordersResult, endpoint: "order/deps?masterid=X" };
-    },
-    fetchAccountScopedFillPairs: async () => {
-      if (b.fillPairsResult == null) return null;
-      return { ...b.fillPairsResult, endpoint: "fillPair/deps?masterid=X" };
-    },
-    fetchAccountScopedFills: async () => {
-      if (b.fillsResult == null) return null;
-      return { ...b.fillsResult, endpoint: "fill/deps?masterid=X" };
     },
     fetchUnscopedFillsFallback: async () => {
       if (b.unscopedFallback == null) return null;
@@ -117,37 +99,26 @@ describe("resolveTradeCount — source preference order", () => {
 
   it("does NOT trust account_scoped_orders when accountScopedAtApi=false", async () => {
     const adapter = stubAdapter({
-      accountName: null, // skip report
-      ordersResult: { count: 99, accountScopedAtApi: false }, // unverified
-      fillPairsResult: { count: 11, accountScopedAtApi: true },
-    });
-    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
-    assert.equal(result.source, "account_scoped_fill_pairs");
-    assert.equal(result.count, 11);
-  });
-
-  it("falls through to fill_pairs when orders are not scoped", async () => {
-    const adapter = stubAdapter({
       accountName: null,
-      ordersResult: null,
-      fillPairsResult: { count: 6, accountScopedAtApi: true },
+      ordersResult: { count: 99, accountScopedAtApi: false }, // unverified
       unscopedFallback: { count: 12 },
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
-    assert.equal(result.source, "account_scoped_fill_pairs");
-    assert.equal(result.count, 6);
-    assert.equal(result.trustLevel, "verified");
+    assert.equal(result.source, "fills_unscoped_estimated");
+    assert.equal(result.count, 12);
+    assert.equal(result.trustLevel, "estimated");
   });
 
-  it("falls through to fill/deps when fill pairs aren't available", async () => {
+  it("falls through to estimated when orders return null", async () => {
     const adapter = stubAdapter({
       accountName: null,
-      fillsResult: { count: 11, accountScopedAtApi: true },
+      ordersResult: null,
+      unscopedFallback: { count: 12 },
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
-    assert.equal(result.source, "account_scoped_fills");
-    assert.equal(result.count, 11);
-    assert.equal(result.trustLevel, "verified");
+    assert.equal(result.source, "fills_unscoped_estimated");
+    assert.equal(result.count, 12);
+    assert.equal(result.trustLevel, "estimated");
   });
 });
 
@@ -161,8 +132,6 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
     const adapter = stubAdapter({
       accountName: null,
       ordersResult: null,
-      fillPairsResult: null,
-      fillsResult: null,
       unscopedFallback: { count: 12 },
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
@@ -175,8 +144,6 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
     const adapter = stubAdapter({
       accountName: null,
       ordersResult: null,
-      fillPairsResult: null,
-      fillsResult: null,
       unscopedFallback: null,
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
@@ -190,10 +157,10 @@ describe("resolveTradeCount — multi-account OAuth (the production bug)", () =>
       accountName: "MFFUEVBLDR133936248",
       reportThrows: true,
       ordersThrows: true,
-      fillsResult: { count: 6, accountScopedAtApi: true },
+      unscopedFallback: { count: 6 },
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
-    assert.equal(result.source, "account_scoped_fills");
+    assert.equal(result.source, "fills_unscoped_estimated");
     assert.equal(result.count, 6);
   });
 });
@@ -241,16 +208,14 @@ describe("resolveTradeCount — attempts trail", () => {
       reportBody: "no label",
       reportContentType: "text/html",
       ordersResult: null,
-      fillPairsResult: null,
-      fillsResult: { count: 8, accountScopedAtApi: true },
+      unscopedFallback: { count: 8 },
     });
     const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
     const sources = result.attempts.map((a) => a.source);
     assert.deepEqual(sources, [
       "broker_report",
       "account_scoped_orders",
-      "account_scoped_fill_pairs",
-      "account_scoped_fills",
+      "fills_unscoped_estimated",
     ]);
   });
 

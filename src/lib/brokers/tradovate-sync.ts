@@ -220,26 +220,17 @@ export async function syncTradovateAccount(
     // Phase C: resolve the authoritative per-account trade count by trying
     // multiple sources in order of trustworthiness:
     //   1. Tradovate Performance Report (broker_report)
-    //   2. order/deps?masterid={tvAccountId} (account-scoped at API)
-    //   3. fillPair/deps?masterid={tvAccountId}
-    //   4. fill/deps?masterid={tvAccountId} (verified per-row accountId)
-    //   5. Cached unscoped fills count → marked "estimated"
+    //   2. order/deps?masterid={tvAccountId} (account-scoped at API; spec confirmed)
+    //   3. Cached fill/list count → marked "estimated" (no account-scoped fills endpoint)
     // See tradovate-trade-count.ts for the orchestration logic.
     const adapter: TradeCountAdapter = {
       getAccountName: () => client.getAccountName(),
       fetchPerformanceReport: (input) =>
         client.fetchPerformanceReport({ accountName: input.accountName, tradingDayKey }),
       fetchAccountScopedOrders: () => client.fetchAccountScopedOrders(sessionStartMs),
-      fetchAccountScopedFillPairs: () => client.fetchAccountScopedFillPairs(sessionStartMs),
-      fetchAccountScopedFills: () => client.fetchAccountScopedFills(sessionStartMs),
       fetchUnscopedFillsFallback: async () => {
         if (cachedFills == null) return null;
         const verdict = client.getLastFillsScopingVerdict();
-        // If the fills response WAS account-scoped at the API (api_scoped) or
-        // every fill carried a matching accountId (field_scoped), the cached
-        // count is already trustworthy — surface it as the unscoped fallback
-        // but the resolver's earlier branches will normally have provided a
-        // verified source by then.
         return {
           count: cachedFills.derivedCount,
           endpoint: `fill/list (cached, verdict=${verdict})`,

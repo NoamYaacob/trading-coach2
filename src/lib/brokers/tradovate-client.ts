@@ -180,7 +180,6 @@ export type AutoLiqLockResult = {
 
 /** How the most recent getFills() response was scoped to one account. */
 export type FillsScopingVerdict =
-  | "api_scoped"
   | "field_scoped"
   | "unscoped_suspect"
   | "not_loaded";
@@ -221,12 +220,11 @@ export class TradovateClient {
   #clientId: string | null = null;
   #clientSecret: string | null = null;
   /**
-   * Set by getFills() to record how the most recent fills response was scoped:
-   *   api_scoped       — fill/deps?masterid=X (account-scoped at the API)
-   *   field_scoped     — fill/list response carried per-row accountId/accountSpec
-   *   unscoped_suspect — fill/list with no per-row account IDs (multi-account
-   *                      OAuth tokens; fills may belong to other accounts)
-   *   not_loaded       — getFills() never ran on this client instance
+   * Set by getFills() to record how the most recent fill/list response was scoped:
+   *   field_scoped     — response carried per-row accountId/accountSpec
+   *   unscoped_suspect — no per-row account IDs (multi-account OAuth tokens;
+   *                      fills may belong to other accounts on the same token)
+   *   not_loaded       — getFills() has not yet run on this client instance
    * Read via getLastFillsScopingVerdict() to gate trade-limit enforcement.
    */
   #lastFillsScopingVerdict: FillsScopingVerdict = "not_loaded";
@@ -947,47 +945,20 @@ export class TradovateClient {
    * Today's fills, using the most permissive filters possible to avoid
    * silently dropping items when Tradovate omits account/date fields.
    *
-   * Endpoint preference:
-   *   1. `fill/deps?masterid={tvAccountId}` — account-scoped at the API level.
-   *      Required for multi-account OAuth tokens (one connection backing several
-   *      sub-accounts) where `fill/list` returns ALL fills mixed together AND
-   *      the per-fill `accountId`/`accountSpec` may be absent — in that case
-   *      our client-side `fillMatchesAccount` falls through to "include all"
-   *      and both accounts end up with the same inflated count.
-   *   2. `fill/list` — fallback when deps fails or `tvAccountId` is unknown.
-   *      Client-side `fillMatchesAccount` filter still applied.
+   * Always uses `fill/list` (no account-scoping parameters exist for this
+   * endpoint per the Tradovate OpenAPI spec — `fill/deps` is order-scoped,
+   * not account-scoped). Client-side `fillMatchesAccount` filters by
+   * accountId → accountSpec → includes-all (assumes already-scoped).
    *
-   * Account filter (defense-in-depth on the response): checks accountId
-   * (number) → accountSpec (string ending with tvAccountId) → includes all
-   * (assumes already-scoped response, e.g. from the deps endpoint).
+   * When `fill/list` returns fills that carry no accountId/accountSpec and
+   * tvAccountId is set, the verdict is recorded as `unscoped_suspect` so
+   * the caller can downgrade the trade count to "estimated".
    *
    * Date filter: checks timestamp, time, tradeTime, executionTime, tradeDate
    * (object or string). When none of those fields exist, includes the fill.
    */
   async getFills(sessionStartMs: number): Promise<TvFill[]> {
-    let raw: unknown;
-    let endpoint: "fill/deps" | "fill/list";
-
-    if (this.#tvAccountId !== null) {
-      try {
-        raw = await this.#request<unknown>(`fill/deps?masterid=${this.#tvAccountId}`);
-        endpoint = "fill/deps";
-      } catch (depsErr) {
-        const code = depsErr instanceof TradovateClientError ? depsErr.code : "unknown";
-        const status = depsErr instanceof TradovateClientError ? depsErr.statusCode : undefined;
-        console.warn("[tradovate/fills] fill/deps failed; falling back to fill/list", {
-          accountId: this.#accountId,
-          tvAccountId: this.#tvAccountId,
-          code,
-          status,
-        });
-        raw = await this.#request<unknown>("fill/list");
-        endpoint = "fill/list";
-      }
-    } else {
-      raw = await this.#request<unknown>("fill/list");
-      endpoint = "fill/list";
-    }
+    const raw = await this.#request<unknown>("fill/list");
 
     const all = parseSnapshotItems<TvFill>(raw);
 
@@ -1032,26 +1003,18 @@ export class TradovateClient {
           )
         : todayFills;
 
-    // Detect the silent-mixing case: fill/list was used (not deps), tvAccountId
-    // is set, and none of the fills carry account identifiers. In that case the
-    // client-side filter passes everything through and we can't trust the count.
+    // Detect the silent-mixing case: tvAccountId is set and none of the fills
+    // carry account identifiers — the client-side filter passes everything
+    // through and we can't trust the count for a multi-account token.
     const fillsCarryAccountIds = todayFills.some((f) =>
       fillCarriesAccountId(f as Record<string, unknown>),
     );
     const accountScopingSuspect = isAccountScopingSuspect({
-      endpoint,
       tvAccountId: this.#tvAccountId,
       fills: todayFills as ReadonlyArray<Record<string, unknown>>,
     });
 
-    // Record the verdict so syncTradovateAccount can downgrade tradesCount to
-    // "estimated" and skip trade-limit enforcement when scoping is unreliable.
-    this.#lastFillsScopingVerdict =
-      endpoint === "fill/deps"
-        ? "api_scoped"
-        : accountScopingSuspect
-          ? "unscoped_suspect"
-          : "field_scoped";
+    this.#lastFillsScopingVerdict = accountScopingSuspect ? "unscoped_suspect" : "field_scoped";
 
     if (accountScopingSuspect) {
       console.warn("[tradovate/fills] account scoping suspect — fill/list returned items without accountId/accountSpec", {
@@ -1065,7 +1028,7 @@ export class TradovateClient {
     console.info("[tradovate/fills] summary", {
       accountId: this.#accountId,
       tvAccountId: this.#tvAccountId,
-      endpoint,
+      endpoint: "fill/list",
       sessionStartMs,
       responseShape: Array.isArray(raw)
         ? "bare_array"
@@ -1085,8 +1048,8 @@ export class TradovateClient {
   /**
    * Returns the scoping verdict from the most recent getFills() call.
    * Use this to decide whether tradesCount derived from those fills can be
-   * treated as authoritative (`api_scoped`/`field_scoped`) or only as an
-   * estimate (`unscoped_suspect`). Returns `not_loaded` before the first call.
+   * treated as authoritative (`field_scoped`) or only as an estimate
+   * (`unscoped_suspect`). Returns `not_loaded` before the first call.
    */
   getLastFillsScopingVerdict(): FillsScopingVerdict {
     return this.#lastFillsScopingVerdict;
@@ -1245,115 +1208,6 @@ export class TradovateClient {
       // Only trust the count when EVERY row was tagged with the right account
       // (otherwise the /deps endpoint may have been order-scoped, not account-scoped).
       accountScopedAtApi: completed.length > 0 && allHaveAccountId,
-      endpoint,
-    };
-  }
-
-  /**
-   * Try GET /fillPair/deps?masterid={tvAccountId}. Each fillPair represents
-   * one round-trip trade (entry+exit pair). Availability varies — many
-   * Tradovate environments don't expose fillPair endpoints over OAuth.
-   */
-  async fetchAccountScopedFillPairs(sessionStartMs: number): Promise<{
-    count: number;
-    accountScopedAtApi: boolean;
-    httpStatus?: number;
-    endpoint: string;
-  } | null> {
-    if (this.#tvAccountId === null) return null;
-    const endpoint = `fillPair/deps?masterid=${this.#tvAccountId}`;
-    let raw: unknown;
-    try {
-      raw = await this.#request<unknown>(endpoint, "GET", undefined, false, /* skipMarkExpired */ true);
-    } catch (err) {
-      const status =
-        err instanceof TradovateClientError ? err.statusCode : undefined;
-      console.warn("[tradovate/trade-count] fillPair/deps failed", {
-        accountId: this.#accountId,
-        tvAccountId: this.#tvAccountId,
-        status,
-      });
-      return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
-    }
-
-    const all = parseSnapshotItems<Record<string, unknown>>(raw);
-    const sessionFillPairs = all.filter((p) => {
-      const ts = extractFillTimestamp(p);
-      if (ts == null) return true;
-      const t = new Date(ts).getTime();
-      return !Number.isFinite(t) || t >= sessionStartMs;
-    });
-    const allHaveAccountId =
-      sessionFillPairs.length > 0 &&
-      sessionFillPairs.every((p) => p.accountId === this.#tvAccountId);
-
-    console.info("[tradovate/trade-count] fillPair/deps result", {
-      accountId: this.#accountId,
-      tvAccountId: this.#tvAccountId,
-      total: all.length,
-      sessionCount: sessionFillPairs.length,
-      allRowsCarryMatchingAccountId: allHaveAccountId,
-    });
-
-    return {
-      count: sessionFillPairs.length,
-      accountScopedAtApi: allHaveAccountId,
-      endpoint,
-    };
-  }
-
-  /**
-   * Try GET /fill/deps?masterid={tvAccountId}. Tradovate's `/deps` for fills
-   * is documented as order-scoped (`masterid` = order id), not account-scoped,
-   * so we verify the response by requiring every fill to carry the matching
-   * accountId. If any fill lacks accountId or has a different one, we report
-   * accountScopedAtApi=false and the resolver moves on.
-   */
-  async fetchAccountScopedFills(sessionStartMs: number): Promise<{
-    count: number;
-    accountScopedAtApi: boolean;
-    httpStatus?: number;
-    endpoint: string;
-  } | null> {
-    if (this.#tvAccountId === null) return null;
-    const endpoint = `fill/deps?masterid=${this.#tvAccountId}`;
-    let raw: unknown;
-    try {
-      raw = await this.#request<unknown>(endpoint, "GET", undefined, false, /* skipMarkExpired */ true);
-    } catch (err) {
-      const status =
-        err instanceof TradovateClientError ? err.statusCode : undefined;
-      console.warn("[tradovate/trade-count] fill/deps failed", {
-        accountId: this.#accountId,
-        tvAccountId: this.#tvAccountId,
-        status,
-      });
-      return { count: 0, accountScopedAtApi: false, httpStatus: status, endpoint };
-    }
-
-    const all = parseSnapshotItems<TvFill>(raw);
-    const sessionFills = all.filter((f) => {
-      const ts = extractFillTimestamp(f as Record<string, unknown>);
-      if (ts == null) return true;
-      const t = new Date(ts).getTime();
-      return !Number.isFinite(t) || t >= sessionStartMs;
-    });
-    // Strict: must carry accountId AND must match
-    const allMatch =
-      sessionFills.length > 0 &&
-      sessionFills.every((f) => typeof f.accountId === "number" && f.accountId === this.#tvAccountId);
-
-    console.info("[tradovate/trade-count] fill/deps result", {
-      accountId: this.#accountId,
-      tvAccountId: this.#tvAccountId,
-      total: all.length,
-      sessionCount: sessionFills.length,
-      allRowsCarryMatchingAccountId: allMatch,
-    });
-
-    return {
-      count: sessionFills.length,
-      accountScopedAtApi: allMatch,
       endpoint,
     };
   }

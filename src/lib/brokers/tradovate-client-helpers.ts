@@ -703,11 +703,9 @@ export function fillCarriesAccountId(fill: Record<string, unknown>): boolean {
  * account on a multi-account OAuth token and the trade count is unreliable.
  */
 export function isAccountScopingSuspect(input: {
-  endpoint: "fill/deps" | "fill/list";
   tvAccountId: number | null;
   fills: ReadonlyArray<Record<string, unknown>>;
 }): boolean {
-  if (input.endpoint !== "fill/list") return false;
   if (input.tvAccountId === null) return false;
   if (input.fills.length === 0) return false;
   return !input.fills.some(fillCarriesAccountId);

@@ -14,9 +14,14 @@
  *
  *   1. broker_report           — POST /reports/requestreport (Performance)
  *   2. account_scoped_orders   — GET /order/deps?masterid={tvAccountId}
- *   3. account_scoped_fill_pairs — GET /fillPair/deps?masterid={tvAccountId}
- *   4. account_scoped_fills    — GET /fill/deps?masterid={tvAccountId}
- *   5. fills_unscoped_estimated — last-resort fill/list (NOT authoritative)
+ *      (spec: masterid = Account entity ID — correctly account-scoped)
+ *   3. fills_unscoped_estimated — last-resort fill/list (NOT authoritative)
+ *
+ * NOTE: fill/deps and fillPair/deps are NOT used. Per the Tradovate OpenAPI
+ * spec, fill/deps takes masterid = Order entity ID and fillPair/deps takes
+ * masterid = Position entity ID. Neither is account-scoped; passing tvAccountId
+ * to them returns fills/pairs for a coincidental order/position with that
+ * numeric ID, not for the account.
  *
  * The resolver is built around an adapter so each source can be unit-tested
  * with stub fetchers and so the live network calls live in TradovateClient
@@ -28,8 +33,6 @@ import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser.ts"
 export type TradeCountSourceLabel =
   | "broker_report"
   | "account_scoped_orders"
-  | "account_scoped_fill_pairs"
-  | "account_scoped_fills"
   | "fills_unscoped_estimated"
   | "unavailable";
 
@@ -67,20 +70,6 @@ export type ScopedOrdersFetchResult = {
   endpoint: string;
 };
 
-export type ScopedFillPairsFetchResult = {
-  count: number;
-  accountScopedAtApi: boolean;
-  httpStatus?: number;
-  endpoint: string;
-};
-
-export type ScopedFillsFetchResult = {
-  count: number;
-  accountScopedAtApi: boolean;
-  httpStatus?: number;
-  endpoint: string;
-};
-
 export type UnscopedFillsFallbackResult = {
   count: number;
   endpoint: string;
@@ -101,8 +90,6 @@ export type TradeCountAdapter = {
     tradingDayKey: string;
   }): Promise<ReportFetchResult | null>;
   fetchAccountScopedOrders(): Promise<ScopedOrdersFetchResult | null>;
-  fetchAccountScopedFillPairs(): Promise<ScopedFillPairsFetchResult | null>;
-  fetchAccountScopedFills(): Promise<ScopedFillsFetchResult | null>;
   fetchUnscopedFillsFallback(): Promise<UnscopedFillsFallbackResult | null>;
 };
 
@@ -208,70 +195,7 @@ export async function resolveTradeCount(
     });
   }
 
-  // ── 3. Account-scoped fill pairs ───────────────────────────────────────────
-  const fillPairs = await safeCall(adapter.fetchAccountScopedFillPairs.bind(adapter));
-  if (fillPairs) {
-    attempts.push({
-      source: "account_scoped_fill_pairs",
-      endpoint: fillPairs.endpoint,
-      ok: fillPairs.accountScopedAtApi,
-      httpStatus: fillPairs.httpStatus,
-      derivedCount: fillPairs.count,
-      notes: fillPairs.accountScopedAtApi
-        ? undefined
-        : "Response not verifiably account-scoped.",
-    });
-    if (fillPairs.accountScopedAtApi) {
-      return {
-        count: fillPairs.count,
-        source: "account_scoped_fill_pairs",
-        trustLevel: "verified",
-        attempts,
-      };
-    }
-  } else {
-    attempts.push({
-      source: "account_scoped_fill_pairs",
-      endpoint: "fillPair/deps?masterid={tvAccountId}",
-      ok: false,
-      notes: "fetchAccountScopedFillPairs returned null.",
-    });
-  }
-
-  // ── 4. Account-scoped fills (fill/deps?masterid=…) ─────────────────────────
-  // NOTE: fill/deps with `masterid` may behave as order-scoped rather than
-  // account-scoped on some Tradovate environments. The adapter must verify
-  // that the response is genuinely account-scoped before reporting true.
-  const fills = await safeCall(adapter.fetchAccountScopedFills.bind(adapter));
-  if (fills) {
-    attempts.push({
-      source: "account_scoped_fills",
-      endpoint: fills.endpoint,
-      ok: fills.accountScopedAtApi,
-      httpStatus: fills.httpStatus,
-      derivedCount: fills.count,
-      notes: fills.accountScopedAtApi
-        ? undefined
-        : "Response not verifiably account-scoped.",
-    });
-    if (fills.accountScopedAtApi) {
-      return {
-        count: fills.count,
-        source: "account_scoped_fills",
-        trustLevel: "verified",
-        attempts,
-      };
-    }
-  } else {
-    attempts.push({
-      source: "account_scoped_fills",
-      endpoint: "fill/deps?masterid={tvAccountId}",
-      ok: false,
-      notes: "fetchAccountScopedFills returned null.",
-    });
-  }
-
-  // ── 5. Last resort: unscoped fill/list, marked as estimated ────────────────
+  // ── 3. Last resort: unscoped fill/list, marked as estimated ────────────────
   const fallback = await safeCall(adapter.fetchUnscopedFillsFallback.bind(adapter));
   if (fallback) {
     attempts.push({
