@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
-import { getTradeCountDisplay } from "./data-helpers";
+import { getTradeCountDisplay, deriveBrokerEnforcementCopy } from "./data-helpers";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -394,28 +394,20 @@ function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> })
 
 // ─── Broker enforcement note ───────────────────────────────────────────────────
 
+const BROKER_NOTE_COLOR: Record<string, string> = {
+  broker_active: "text-emerald-700",
+  unavailable_permission: "text-amber-700",
+  failed: "text-amber-700",
+  unavailable_readonly: "text-stone-400",
+  internal_only: "text-stone-400",
+};
+
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
-
-  if (account.brokerLockStatus === "broker_locked") {
-    return (
-      <p className="mt-0.5 text-[10px] text-emerald-700">
-        Broker-enforced lock · Tradovate risk settings active.
-      </p>
-    );
-  }
-
-  if (account.brokerLockStatus === "broker_lock_failed") {
-    return (
-      <p className="mt-0.5 text-[10px] text-amber-700">
-        Broker blocking failed · Guardrail is monitoring only.
-      </p>
-    );
-  }
-
+  const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus);
   return (
-    <p className="mt-0.5 text-[10px] text-stone-400">
-      Guardrail locked this account internally. Broker-side blocking is not active on this read-only connection.
+    <p className={`mt-0.5 text-[10px] ${BROKER_NOTE_COLOR[kind] ?? "text-stone-400"}`}>
+      {text}
     </p>
   );
 }

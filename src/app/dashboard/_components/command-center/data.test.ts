@@ -5,6 +5,7 @@ import {
   derivePropFirmSetupNeeded,
   deriveBreachReason,
   getTradeCountDisplay,
+  deriveBrokerEnforcementCopy,
 } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
@@ -534,5 +535,199 @@ describe("derivePropFirmSetupNeeded", () => {
 
   it("returns true only when prop firm account has truly no rule coverage", () => {
     assert.equal(derivePropFirmSetupNeeded(propFirmBase), true);
+  });
+});
+
+// ── deriveBrokerEnforcementCopy ───────────────────────────────────────────────
+
+describe("deriveBrokerEnforcementCopy", () => {
+  // ── broker_locked: Tradovate confirmed the lock ───────────────────────────
+
+  it("broker_locked → kind=broker_active", () => {
+    const { kind } = deriveBrokerEnforcementCopy("broker_locked");
+    assert.equal(kind, "broker_active");
+  });
+
+  it("broker_locked text says 'Broker-side lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy("broker_locked");
+    assert.ok(
+      text.includes("Broker-side lock active"),
+      `expected 'Broker-side lock active', got: ${text}`,
+    );
+  });
+
+  it("broker_locked text does NOT say 'Guardrail lock' — broker confirmed, no internal-only framing", () => {
+    const { text } = deriveBrokerEnforcementCopy("broker_locked");
+    assert.ok(
+      !text.includes("Guardrail lock"),
+      `'Guardrail lock' must be absent for broker_locked; got: ${text}`,
+    );
+  });
+
+  // ── unavailable_read_only: connection is connected_readonly ───────────────
+
+  it("unavailable_read_only → kind=unavailable_readonly", () => {
+    const { kind } = deriveBrokerEnforcementCopy("unavailable_read_only");
+    assert.equal(kind, "unavailable_readonly");
+  });
+
+  it("unavailable_read_only text says 'Guardrail lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy("unavailable_read_only");
+    assert.ok(
+      text.includes("Guardrail lock active"),
+      `expected 'Guardrail lock active', got: ${text}`,
+    );
+  });
+
+  it("unavailable_read_only text mentions 'read-only'", () => {
+    const { text } = deriveBrokerEnforcementCopy("unavailable_read_only");
+    assert.ok(
+      text.toLowerCase().includes("read-only"),
+      `expected 'read-only' in text, got: ${text}`,
+    );
+  });
+
+  it("unavailable_read_only text does NOT say 'Broker-side lock active' (lock is internal only)", () => {
+    const { text } = deriveBrokerEnforcementCopy("unavailable_read_only");
+    assert.ok(
+      !text.includes("Broker-side lock active"),
+      `'Broker-side lock active' must not appear for unavailable_read_only; got: ${text}`,
+    );
+  });
+
+  // ── unavailable_permission: HTTP 403 from risk endpoint ───────────────────
+
+  it("unavailable_permission → kind=unavailable_permission", () => {
+    const { kind } = deriveBrokerEnforcementCopy("unavailable_permission");
+    assert.equal(kind, "unavailable_permission");
+  });
+
+  it("unavailable_permission text says 'Guardrail lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy("unavailable_permission");
+    assert.ok(
+      text.includes("Guardrail lock active"),
+      `expected 'Guardrail lock active', got: ${text}`,
+    );
+  });
+
+  it("unavailable_permission text mentions Account Risk Settings", () => {
+    const { text } = deriveBrokerEnforcementCopy("unavailable_permission");
+    assert.ok(
+      text.includes("Account Risk Settings"),
+      `expected 'Account Risk Settings' in text, got: ${text}`,
+    );
+  });
+
+  it("unavailable_permission differs from unavailable_read_only text", () => {
+    const perm = deriveBrokerEnforcementCopy("unavailable_permission").text;
+    const ro = deriveBrokerEnforcementCopy("unavailable_read_only").text;
+    assert.notEqual(perm, ro, "permission-missing and read-only must have distinct copy");
+  });
+
+  // ── broker_lock_failed: non-permission error ──────────────────────────────
+
+  it("broker_lock_failed → kind=failed", () => {
+    const { kind } = deriveBrokerEnforcementCopy("broker_lock_failed");
+    assert.equal(kind, "failed");
+  });
+
+  it("broker_lock_failed text says 'Guardrail lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy("broker_lock_failed");
+    assert.ok(
+      text.includes("Guardrail lock active"),
+      `expected 'Guardrail lock active', got: ${text}`,
+    );
+  });
+
+  it("broker_lock_failed text mentions 'failed'", () => {
+    const { text } = deriveBrokerEnforcementCopy("broker_lock_failed");
+    assert.ok(
+      text.toLowerCase().includes("failed"),
+      `expected 'failed' in text, got: ${text}`,
+    );
+  });
+
+  // ── monitoring_only: no broker API for this trigger ───────────────────────
+
+  it("monitoring_only → kind=internal_only", () => {
+    const { kind } = deriveBrokerEnforcementCopy("monitoring_only");
+    assert.equal(kind, "internal_only");
+  });
+
+  it("monitoring_only text says 'Guardrail lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy("monitoring_only");
+    assert.ok(
+      text.includes("Guardrail lock active"),
+      `expected 'Guardrail lock active', got: ${text}`,
+    );
+  });
+
+  // ── null / not_requested / unknown ───────────────────────────────────────
+
+  it("null → kind=internal_only (no intervention recorded)", () => {
+    const { kind } = deriveBrokerEnforcementCopy(null);
+    assert.equal(kind, "internal_only");
+  });
+
+  it("null text says 'Guardrail lock active'", () => {
+    const { text } = deriveBrokerEnforcementCopy(null);
+    assert.ok(
+      text.includes("Guardrail lock active"),
+      `expected 'Guardrail lock active', got: ${text}`,
+    );
+  });
+
+  // ── Invariants across all non-broker-confirmed states ────────────────────
+
+  it("every non-broker-locked status text contains 'Guardrail lock active'", () => {
+    const nonBrokerStatuses = [
+      "unavailable_read_only",
+      "unavailable_permission",
+      "broker_lock_failed",
+      "monitoring_only",
+      "not_requested",
+      "pending",
+      null,
+    ] as const;
+    for (const status of nonBrokerStatuses) {
+      const { text } = deriveBrokerEnforcementCopy(status);
+      assert.ok(
+        text.includes("Guardrail lock active"),
+        `status=${status ?? "null"}: expected 'Guardrail lock active', got: ${text}`,
+      );
+    }
+  });
+
+  it("'Broker-side lock active' appears ONLY for broker_locked", () => {
+    const allStatuses = [
+      "unavailable_read_only",
+      "unavailable_permission",
+      "broker_lock_failed",
+      "monitoring_only",
+      "not_requested",
+      "pending",
+      null,
+    ] as const;
+    for (const status of allStatuses) {
+      const { text } = deriveBrokerEnforcementCopy(status);
+      assert.ok(
+        !text.includes("Broker-side lock active"),
+        `status=${status ?? "null"}: 'Broker-side lock active' must not appear; got: ${text}`,
+      );
+    }
+    // And it DOES appear for broker_locked.
+    assert.ok(deriveBrokerEnforcementCopy("broker_locked").text.includes("Broker-side lock active"));
+  });
+
+  it("each status produces a distinct kind (no two non-broker statuses are confused)", () => {
+    const readOnly = deriveBrokerEnforcementCopy("unavailable_read_only");
+    const permission = deriveBrokerEnforcementCopy("unavailable_permission");
+    const failed = deriveBrokerEnforcementCopy("broker_lock_failed");
+    // Kinds must be distinct where the causes are distinct.
+    assert.equal(readOnly.kind, "unavailable_readonly");
+    assert.equal(permission.kind, "unavailable_permission");
+    assert.equal(failed.kind, "failed");
+    assert.notEqual(readOnly.kind, permission.kind);
+    assert.notEqual(permission.kind, failed.kind);
   });
 });

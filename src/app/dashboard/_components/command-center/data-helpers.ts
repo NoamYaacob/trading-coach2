@@ -1,4 +1,5 @@
 import type { AccountStatus } from "./types";
+import type { BrokerLockStatus } from "@/lib/brokers/enforcement-helpers";
 
 /**
  * What the dashboard's TradesCell should render for a given account.
@@ -209,4 +210,75 @@ export function deriveStatus(input: {
   }
 
   return "allowed";
+}
+
+// ── Broker enforcement note ───────────────────────────────────────────────────
+
+/**
+ * Visual kind drives the text colour in BrokerEnforcementNote:
+ *   broker_active       → emerald  (Tradovate confirmed the lock)
+ *   unavailable_permission → amber (permission gap — actionable)
+ *   failed              → amber    (transient error — actionable)
+ *   unavailable_readonly → stone   (read-only is expected — not an error)
+ *   internal_only       → stone    (no broker API for this trigger)
+ */
+export type BrokerEnforcementKind =
+  | "broker_active"
+  | "unavailable_readonly"
+  | "unavailable_permission"
+  | "failed"
+  | "internal_only";
+
+export type BrokerEnforcementCopy = {
+  text: string;
+  kind: BrokerEnforcementKind;
+};
+
+/**
+ * Pure function: derive the enforcement note text and colour kind for a locked
+ * account row. Only called when account.status === "locked".
+ *
+ * Design invariants:
+ *  - "Broker-side lock active" appears ONLY when broker confirmed (broker_locked).
+ *  - "Guardrail lock active" appears for every non-broker-confirmed state so the
+ *    UI always distinguishes internal-only from broker-confirmed enforcement.
+ *  - The read-only and permission cases carry distinct copy so operators know
+ *    which action (re-authorize with full scope) resolves the gap.
+ */
+export function deriveBrokerEnforcementCopy(
+  brokerLockStatus: BrokerLockStatus | null,
+): BrokerEnforcementCopy {
+  switch (brokerLockStatus) {
+    case "broker_locked":
+      return {
+        text: "Broker-side lock active · Tradovate risk settings applied.",
+        kind: "broker_active",
+      };
+    case "unavailable_read_only":
+      return {
+        text: "Guardrail lock active · Broker-side lock unavailable: connection is read-only.",
+        kind: "unavailable_readonly",
+      };
+    case "unavailable_permission":
+      return {
+        text: "Guardrail lock active · Broker-side lock unavailable: Account Risk Settings permission missing.",
+        kind: "unavailable_permission",
+      };
+    case "broker_lock_failed":
+      return {
+        text: "Guardrail lock active · Broker-side lock attempt failed.",
+        kind: "failed",
+      };
+    case "monitoring_only":
+      return {
+        text: "Guardrail lock active · Broker-side blocking not applicable for this trigger.",
+        kind: "internal_only",
+      };
+    default:
+      // null, not_requested, pending, or any future value — safe fallback.
+      return {
+        text: "Guardrail lock active · No broker-side lock recorded.",
+        kind: "internal_only",
+      };
+  }
 }
