@@ -18,6 +18,9 @@ import {
   deriveBrokerEnforcementCopy,
   deriveStaleSyncWarning,
   deriveFooterCopy,
+  deriveGroupStateSuffix,
+  derivePerAccountStateLabel,
+  deriveRowStatusLabel,
   DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
@@ -48,31 +51,15 @@ const BALANCE_FORMATTER = new Intl.NumberFormat("en-US", {
 
 const STATUS_FILTERS: { value: AccountStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "allowed", label: "Allowed" },
+  // Filter still maps to the underlying "allowed" status; the user-facing
+  // chip says "Tradable" to match the row badges and SummaryStrip tile.
+  { value: "allowed", label: "Tradable" },
   { value: "warning", label: "Warning" },
   { value: "locked", label: "Locked" },
   { value: "setup_needed", label: "Setup needed" },
   { value: "not_connected", label: "Not connected" },
   { value: "unavailable", label: "Unavailable" },
 ];
-
-const STATUS_LABEL: Record<AccountStatus, string> = {
-  allowed: "Allowed",
-  warning: "Warning",
-  locked: "Locked",
-  setup_needed: "Setup needed",
-  not_connected: "Not connected",
-  unavailable: "Unavailable",
-};
-
-const SETUP_NEEDED_LABEL: Record<
-  "no_rules" | "pending_connection" | "prop_firm_rules_missing",
-  string
-> = {
-  no_rules: "Needs rules",
-  pending_connection: "Pending connection",
-  prop_firm_rules_missing: "Firm rules missing",
-};
 
 const SETUP_NEEDED_REASON_TEXT: Record<
   "no_rules" | "pending_connection" | "prop_firm_rules_missing",
@@ -99,15 +86,6 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
   setup_needed: "bg-stone-400",
   not_connected: "bg-stone-300",
   unavailable: "bg-amber-500",
-};
-
-const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
-  broker_active: "Broker enforcement",
-  // User-facing short badge — the technical enum value stays "dry_run".
-  dry_run: "Test mode",
-  broker_readonly: "Monitoring only",
-  permission_unverified: "Permission check pending",
-  not_connected: "Not connected",
 };
 
 const RULE_SOURCE_LABEL: Record<RuleSource, string> = {
@@ -394,6 +372,16 @@ const CONN_STATUS_CLASS: Record<string, string> = {
 function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
   const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
   const showBrokerMeta = group.platform !== "manual";
+  // The state suffix communicates important per-group capability info ("Test
+  // mode", "Consent required", "Limited permissions", "Broker enforcement
+  // ready") right next to the connection status — so the user never sees just
+  // "Connected" when something needs attention.
+  const groupStateSuffix = deriveGroupStateSuffix({
+    accounts: group.accounts.map((a) => ({
+      enforcementMode: a.enforcementMode,
+      requiresAutomatedActionsConsent: a.requiresAutomatedActionsConsent,
+    })),
+  });
 
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50/30">
@@ -413,6 +401,12 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
                 <span>{group.platformLabel}</span>
                 <span aria-hidden>·</span>
                 <span className={connClass}>{group.connectionStatusLabel}</span>
+                {groupStateSuffix && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className="text-stone-500">{groupStateSuffix}</span>
+                  </>
+                )}
                 {group.lastSyncAt && (
                   <>
                     <span aria-hidden>·</span>
@@ -423,7 +417,7 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
             )}
           </div>
 
-          {/* Right: financials + enforcement mode */}
+          {/* Right: financials only (state moved into the platform line above) */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500 sm:shrink-0 sm:gap-x-4">
             <span>
               P&L:{" "}
@@ -445,7 +439,6 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
                 <span className="font-medium text-stone-400">—</span>
               )}
             </span>
-            <EnforcementChip mode={group.enforcementMode} />
           </div>
         </div>
       </header>
@@ -578,7 +571,12 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
       {/* Account — status badge + name + platform + sync time */}
       <td className="px-4 py-3 align-top">
         <div className="flex min-w-0 items-start gap-2">
-          <StatusBadge status={account.status} setupNeededReason={account.setupNeededReason} />
+          <StatusBadge
+            status={account.status}
+            setupNeededReason={account.setupNeededReason}
+            enforcementMode={account.enforcementMode}
+            requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
+          />
           <div className="min-w-0">
             <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
             <p className="mt-0.5 text-[11px] text-stone-500">
@@ -655,9 +653,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
       {/* Rules + Mode combined */}
       <td className="px-4 py-3 align-top">
         <p className="text-xs text-stone-600">{account.rulesLabel}</p>
-        <div className="mt-1">
-          <EnforcementChip mode={account.enforcementMode} />
-        </div>
+        <PerAccountStateLine account={account} />
         {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
             Loss streak {account.consecutiveLosses}
@@ -719,7 +715,12 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
     <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
       {/* Header: status + name + platform/type */}
       <div className="flex min-w-0 items-center gap-2">
-        <StatusBadge status={account.status} setupNeededReason={account.setupNeededReason} />
+        <StatusBadge
+            status={account.status}
+            setupNeededReason={account.setupNeededReason}
+            enforcementMode={account.enforcementMode}
+            requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
+          />
         <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
       </div>
       <p className="mt-0.5 text-[11px] text-stone-500">
@@ -800,7 +801,12 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
           <span>{account.rulesLabel}</span>
           <span aria-hidden>·</span>
-          <EnforcementChip mode={account.enforcementMode} />
+          <span>
+            {derivePerAccountStateLabel({
+              enforcementMode: account.enforcementMode,
+              requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+            })}
+          </span>
           {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
             <>
               <span aria-hidden>·</span>
@@ -970,42 +976,55 @@ function TradesCell({
 function StatusBadge({
   status,
   setupNeededReason,
+  enforcementMode,
+  requiresAutomatedActionsConsent,
 }: {
   status: AccountStatus;
   setupNeededReason?: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
+  /** Optional — only the AccountRow / AccountCard pass these. The "unavailable"
+   *  fallback usages omit them because the label is already deterministic. */
+  enforcementMode?: EnforcementMode;
+  requiresAutomatedActionsConsent?: boolean;
 }) {
-  const label =
-    status === "setup_needed" && setupNeededReason
-      ? SETUP_NEEDED_LABEL[setupNeededReason]
-      : STATUS_LABEL[status];
+  const label = deriveRowStatusLabel({
+    status,
+    setupNeededReason: setupNeededReason ?? null,
+    enforcementMode: enforcementMode ?? "not_connected",
+    requiresAutomatedActionsConsent: requiresAutomatedActionsConsent ?? false,
+  });
+  // "Action required" is a refinement of "allowed" status — paint it amber
+  // to draw attention away from the default emerald "tradable" treatment.
+  const isActionRequired = label === "Action required";
+  const badgeClass = isActionRequired
+    ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+    : STATUS_BADGE_CLASS[status];
+  const dotClass = isActionRequired ? "bg-amber-500" : STATUS_DOT_CLASS[status];
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${STATUS_BADGE_CLASS[status]}`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${badgeClass}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_CLASS[status]}`} aria-hidden />
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} aria-hidden />
       {label}
     </span>
   );
 }
 
-function EnforcementChip({ mode }: { mode: EnforcementMode }) {
-  // Dry-run is shown once at the top of the section via DryRunBanner — the
-  // per-account / per-group chip is intentionally suppressed to avoid the
-  // "Dry run mode" badge repeating in every group header and every row.
-  if (mode === "dry_run") return null;
+function PerAccountStateLine({ account }: { account: CommandCenterAccount }) {
+  const label = derivePerAccountStateLabel({
+    enforcementMode: account.enforcementMode,
+    requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+  });
+  // Tone tracks the actionability of the state. The label itself carries the
+  // detail; the colour just lets the user spot capability gaps at a glance.
   const tone =
-    mode === "broker_active"
-      ? "bg-emerald-50 text-emerald-700"
-      : mode === "broker_readonly"
-        ? "bg-stone-100 text-stone-500"
-        : "bg-stone-100 text-stone-400";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}
-    >
-      {ENFORCEMENT_LABEL[mode]}
-    </span>
-  );
+    label === "Consent required"
+      ? "text-amber-700"
+      : label === "Limited permissions"
+        ? "text-amber-700"
+        : label === "Broker enforcement ready"
+          ? "text-emerald-700"
+          : "text-stone-500";
+  return <p className={`mt-0.5 text-[10px] ${tone}`}>{label}</p>;
 }
 
 // ─── Actions ───────────────────────────────────────────────────────────────────

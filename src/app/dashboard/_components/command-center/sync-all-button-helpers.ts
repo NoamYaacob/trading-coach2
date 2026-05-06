@@ -44,16 +44,19 @@ export function deriveSyncAllStatus(input: {
   return { kind: "success", syncedAccounts: synced, failedAccounts: failed };
 }
 
-/** Format a SyncAllStatus into the small text shown next to the button. */
+/** Format a SyncAllStatus into the small text shown next to the button.
+ *  Wording uses "Refreshed" / "Refreshing" to match the button label
+ *  ("Refresh all accounts"). Internal types still say "sync" because the
+ *  underlying broker API call is the same. */
 export function formatSyncAllStatus(status: SyncAllStatus): string | null {
   if (status.kind === "idle") return null;
-  if (status.kind === "syncing") return "Syncing…";
+  if (status.kind === "syncing") return "Refreshing…";
   if (status.kind === "error") return status.message;
   if (status.failedAccounts === 0 && status.syncedAccounts === 0) {
-    return "Nothing to sync.";
+    return "Nothing to refresh.";
   }
   if (status.failedAccounts === 0) {
-    return `Synced ${status.syncedAccounts}.`;
+    return `Refreshed ${status.syncedAccounts}.`;
   }
-  return `Synced ${status.syncedAccounts} · ${status.failedAccounts} failed.`;
+  return `Refreshed ${status.syncedAccounts} · ${status.failedAccounts} failed.`;
 }

@@ -93,28 +93,28 @@ describe("formatSyncAllStatus", () => {
     assert.equal(formatSyncAllStatus({ kind: "idle" }), null);
   });
 
-  it("syncing → 'Syncing…'", () => {
-    assert.equal(formatSyncAllStatus({ kind: "syncing" }), "Syncing…");
+  it("syncing → 'Refreshing…' (matches the 'Refresh all accounts' button label)", () => {
+    assert.equal(formatSyncAllStatus({ kind: "syncing" }), "Refreshing…");
   });
 
-  it("success with no failures → 'Synced N.'", () => {
+  it("success with no failures → 'Refreshed N.'", () => {
     assert.equal(
       formatSyncAllStatus({ kind: "success", syncedAccounts: 3, failedAccounts: 0 }),
-      "Synced 3.",
+      "Refreshed 3.",
     );
   });
 
-  it("success with failures → 'Synced X · Y failed.'", () => {
+  it("success with failures → 'Refreshed X · Y failed.'", () => {
     assert.equal(
       formatSyncAllStatus({ kind: "success", syncedAccounts: 2, failedAccounts: 1 }),
-      "Synced 2 · 1 failed.",
+      "Refreshed 2 · 1 failed.",
     );
   });
 
-  it("success with zero accounts → 'Nothing to sync.'", () => {
+  it("success with zero accounts → 'Nothing to refresh.'", () => {
     assert.equal(
       formatSyncAllStatus({ kind: "success", syncedAccounts: 0, failedAccounts: 0 }),
-      "Nothing to sync.",
+      "Nothing to refresh.",
     );
   });
 
@@ -123,5 +123,27 @@ describe("formatSyncAllStatus", () => {
       formatSyncAllStatus({ kind: "error", message: "Network error. Please try again." }),
       "Network error. Please try again.",
     );
+  });
+});
+
+// ── Button label refresh wording (regression) ─────────────────────────────────
+
+describe("formatSyncAllStatus — refresh wording (no 'sync all' / 'synced' user-facing)", () => {
+  it("syncing message uses 'Refreshing' not 'Syncing'", () => {
+    const m = formatSyncAllStatus({ kind: "syncing" });
+    assert.ok(m && !m.toLowerCase().includes("syncing"));
+    assert.ok(m && m.toLowerCase().includes("refresh"));
+  });
+
+  it("success message uses 'Refreshed' not 'Synced'", () => {
+    const m = formatSyncAllStatus({ kind: "success", syncedAccounts: 2, failedAccounts: 0 });
+    assert.ok(m && !m.toLowerCase().includes("synced"));
+    assert.ok(m && m.toLowerCase().includes("refreshed"));
+  });
+
+  it("empty success uses 'Nothing to refresh' not 'Nothing to sync'", () => {
+    const m = formatSyncAllStatus({ kind: "success", syncedAccounts: 0, failedAccounts: 0 });
+    assert.ok(m && !m.toLowerCase().includes("sync"));
+    assert.ok(m && m.toLowerCase().includes("refresh"));
   });
 });

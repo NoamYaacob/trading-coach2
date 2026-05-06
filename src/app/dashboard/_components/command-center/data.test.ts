@@ -12,6 +12,9 @@ import {
   deriveStaleSyncWarning,
   deriveConnectionStatusLabel,
   deriveFooterCopy,
+  deriveGroupStateSuffix,
+  derivePerAccountStateLabel,
+  deriveRowStatusLabel,
   shouldShowEnforcementChip,
   DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
@@ -1281,41 +1284,40 @@ describe("deriveFooterCopy", () => {
 
 // ── DRY_RUN_BANNER_COPY ───────────────────────────────────────────────────────
 
-describe("DRY_RUN_BANNER_COPY (user-facing primary phrase: 'Protection test mode')", () => {
-  it("uses 'Protection test mode' as the primary phrase", () => {
+describe("DRY_RUN_BANNER_COPY (user-facing 'Protection test mode' banner)", () => {
+  it("uses 'Protection test mode' as the title phrase", () => {
     assert.ok(
       DRY_RUN_BANNER_COPY.includes("Protection test mode"),
       `expected 'Protection test mode' in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("does NOT use the technical phrase 'Dry run mode' (regression: too jargon-heavy for users)", () => {
+  it("does NOT use the technical phrase 'Dry run' (regression: too jargon-heavy for users)", () => {
     assert.ok(
       !DRY_RUN_BANNER_COPY.toLowerCase().includes("dry run"),
       `'Dry run' must not appear in user-facing banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("explains what is simulated", () => {
+  it("uses plain language: 'watching' the accounts (instead of 'monitoring' / 'simulating')", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("simulating"),
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("watching your accounts"),
+      `expected 'watching your accounts' in copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("explicitly states no lockout or position-close actions are sent", () => {
-    const copy = DRY_RUN_BANNER_COPY.toLowerCase();
+  it("explicitly states it 'will not block or close trades' (the user-facing safety promise)", () => {
     assert.ok(
-      copy.includes("will not send") || copy.includes("not sent"),
-      `expected a 'will not send' / 'not sent' disclaimer, got: ${DRY_RUN_BANNER_COPY}`,
-    );
-    assert.ok(
-      copy.includes("lockout") && copy.includes("position-close"),
-      `expected 'lockout' and 'position-close' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.includes("will not block or close trades"),
+      `expected 'will not block or close trades' in copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("mentions Tradovate by name (so the user knows which broker is affected)", () => {
-    assert.ok(DRY_RUN_BANNER_COPY.includes("Tradovate"));
+  it("references the live-enforcement toggle so the user knows what changes when it's flipped", () => {
+    assert.ok(
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("live enforcement"),
+      `expected 'live enforcement' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+    );
   });
 });
 
@@ -1363,5 +1365,243 @@ describe("ESTIMATED_TRADE_COUNT_SHORT (visible row copy)", () => {
 
   it("the long-form hint mentions the verified condition (used as tooltip)", () => {
     assert.ok(ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("verified"));
+  });
+});
+
+// ── deriveRowStatusLabel — clearer trading/protection state for each row ──────
+
+describe("deriveRowStatusLabel", () => {
+  const baseAllowed = {
+    status: "allowed" as const,
+    setupNeededReason: null,
+    enforcementMode: "broker_active" as const,
+    requiresAutomatedActionsConsent: false,
+  };
+
+  it("status='allowed' + clean → 'Tradable' (legacy 'Allowed' label is gone)", () => {
+    const label = deriveRowStatusLabel(baseAllowed);
+    assert.equal(label, "Tradable");
+    // Regression: ALLOWED is the legacy label and must not leak.
+    assert.notEqual(label, "Allowed");
+  });
+
+  it("status='allowed' + requiresAutomatedActionsConsent=true → 'Action required'", () => {
+    const label = deriveRowStatusLabel({
+      ...baseAllowed,
+      requiresAutomatedActionsConsent: true,
+    });
+    assert.equal(label, "Action required");
+  });
+
+  it("status='allowed' + enforcementMode='broker_readonly' → 'Action required' (limited permissions need a fix)", () => {
+    const label = deriveRowStatusLabel({
+      ...baseAllowed,
+      enforcementMode: "broker_readonly",
+    });
+    assert.equal(label, "Action required");
+  });
+
+  it("status='allowed' + enforcementMode='dry_run' (test mode) → 'Tradable' (no per-row action needed)", () => {
+    // Test mode is communicated by the top-level banner; per-row label
+    // should not say "Action required" just because dry-run is on.
+    const label = deriveRowStatusLabel({
+      ...baseAllowed,
+      enforcementMode: "dry_run",
+    });
+    assert.equal(label, "Tradable");
+  });
+
+  it("status='locked' → 'Locked'", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...baseAllowed, status: "locked" }),
+      "Locked",
+    );
+  });
+
+  it("status='unavailable' → 'Unavailable' (broker no longer returns the account)", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...baseAllowed, status: "unavailable" }),
+      "Unavailable",
+    );
+  });
+
+  it("status='warning' → 'Warning'", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...baseAllowed, status: "warning" }),
+      "Warning",
+    );
+  });
+
+  it("status='not_connected' → 'Not connected'", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...baseAllowed, status: "not_connected" }),
+      "Not connected",
+    );
+  });
+
+  it("setup_needed maps to its specific reason", () => {
+    assert.equal(
+      deriveRowStatusLabel({
+        ...baseAllowed,
+        status: "setup_needed",
+        setupNeededReason: "no_rules",
+      }),
+      "Needs rules",
+    );
+    assert.equal(
+      deriveRowStatusLabel({
+        ...baseAllowed,
+        status: "setup_needed",
+        setupNeededReason: "pending_connection",
+      }),
+      "Pending",
+    );
+    assert.equal(
+      deriveRowStatusLabel({
+        ...baseAllowed,
+        status: "setup_needed",
+        setupNeededReason: "prop_firm_rules_missing",
+      }),
+      "Firm rules missing",
+    );
+  });
+});
+
+// ── derivePerAccountStateLabel — small label under plan name ──────────────────
+
+describe("derivePerAccountStateLabel", () => {
+  it("dry_run → 'Test mode only' (per-row reminder of the global banner)", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "dry_run",
+        requiresAutomatedActionsConsent: false,
+      }),
+      "Test mode only",
+    );
+  });
+
+  it("requiresAutomatedActionsConsent=true → 'Consent required' (highest non-dry-run priority)", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "broker_active",
+        requiresAutomatedActionsConsent: true,
+      }),
+      "Consent required",
+    );
+  });
+
+  it("broker_active + consent valid → 'Broker enforcement ready'", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "broker_active",
+        requiresAutomatedActionsConsent: false,
+      }),
+      "Broker enforcement ready",
+    );
+  });
+
+  it("broker_readonly → 'Limited permissions'", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "broker_readonly",
+        requiresAutomatedActionsConsent: false,
+      }),
+      "Limited permissions",
+    );
+  });
+
+  it("permission_unverified → 'Monitoring only' (probe still pending; nothing actionable yet)", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "permission_unverified",
+        requiresAutomatedActionsConsent: false,
+      }),
+      "Monitoring only",
+    );
+  });
+
+  it("not_connected → 'Monitoring only'", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "not_connected",
+        requiresAutomatedActionsConsent: false,
+      }),
+      "Monitoring only",
+    );
+  });
+
+  it("dry_run wins over consent missing (banner state is the dominant context)", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "dry_run",
+        requiresAutomatedActionsConsent: true,
+      }),
+      "Test mode only",
+    );
+  });
+});
+
+// ── deriveGroupStateSuffix — extra context next to "Connected" ────────────────
+
+describe("deriveGroupStateSuffix", () => {
+  it("empty group → null", () => {
+    assert.equal(deriveGroupStateSuffix({ accounts: [] }), null);
+  });
+
+  it("any account in dry_run → 'Test mode' (the dominant indicator)", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Test mode");
+  });
+
+  it("any account requires consent → 'Consent required'", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "broker_active", requiresAutomatedActionsConsent: true },
+      ],
+    });
+    assert.equal(suffix, "Consent required");
+  });
+
+  it("any account broker_readonly → 'Limited permissions'", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "broker_readonly", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Limited permissions");
+  });
+
+  it("all broker_active + valid consent → 'Broker enforcement ready'", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
+        { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Broker enforcement ready");
+  });
+
+  it("only permission_unverified → null (probe still pending; no actionable state to show)", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "permission_unverified", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, null);
+  });
+
+  it("priority: consent_required wins over broker_readonly (more actionable)", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "broker_active", requiresAutomatedActionsConsent: true },
+        { enforcementMode: "broker_readonly", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Consent required");
   });
 });

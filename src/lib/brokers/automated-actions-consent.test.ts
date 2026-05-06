@@ -149,7 +149,25 @@ describe("consent text constants", () => {
     );
   });
 
-  it("banner mentions the user must confirm consent", () => {
+  it("banner uses plain trader language: 'lock this account or close positions when rules are breached'", () => {
+    // Replaces the previous more-technical "automated lockout consent before
+    // broker-side protection can activate" wording.
+    assert.ok(
+      CONSENT_ACTION_REQUIRED_BANNER.includes("lock this account") ||
+        CONSENT_ACTION_REQUIRED_BANNER.includes("close positions"),
+      `expected user-friendly description, got: ${CONSENT_ACTION_REQUIRED_BANNER}`,
+    );
+    assert.ok(
+      CONSENT_ACTION_REQUIRED_BANNER.includes("close positions"),
+      `expected 'close positions' in copy, got: ${CONSENT_ACTION_REQUIRED_BANNER}`,
+    );
+    assert.ok(
+      CONSENT_ACTION_REQUIRED_BANNER.toLowerCase().includes("when rules are breached"),
+      `expected 'when rules are breached' in copy, got: ${CONSENT_ACTION_REQUIRED_BANNER}`,
+    );
+  });
+
+  it("banner mentions the user must confirm", () => {
     assert.ok(
       CONSENT_ACTION_REQUIRED_BANNER.toLowerCase().includes("confirm"),
     );

@@ -94,7 +94,7 @@ export const CONSENT_MISSING_MESSAGE =
  * account has full broker permissions but no valid consent on file.
  */
 export const CONSENT_ACTION_REQUIRED_BANNER =
-  "Action required · Confirm automated lockout consent before broker-side protection can activate.";
+  "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.";
 
 /**
  * Decide whether broker writes are allowed for an account, based purely on

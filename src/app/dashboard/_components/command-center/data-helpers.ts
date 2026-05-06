@@ -358,7 +358,7 @@ export function deriveConnectionStatusLabel(rawStatus: string): string {
  *  remains "dry_run" and the env var remains ENFORCEMENT_DRY_RUN — the rename
  *  only applies to copy that the user reads. */
 export const DRY_RUN_BANNER_COPY =
-  "Protection test mode: Guardrail is monitoring your account and simulating lockouts, but it will not send lockout or position-close actions to Tradovate until live enforcement is enabled.";
+  "Protection test mode: Guardrail is watching your accounts, but it will not block or close trades until live enforcement is enabled.";
 
 // ── shouldShowEnforcementChip ─────────────────────────────────────────────────
 
@@ -367,6 +367,110 @@ export const DRY_RUN_BANNER_COPY =
  *  every group header and row is visual noise. */
 export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
   return mode !== "dry_run";
+}
+
+// ── deriveRowStatusLabel ──────────────────────────────────────────────────────
+
+/** Visible badge label for an account row on the Dashboard.
+ *
+ * Refines the raw AccountStatus (which is a model concept) into a copy that
+ * a non-technical trader recognises:
+ *
+ *   TRADABLE        — active, no broker capability gap, no consent gap
+ *   ACTION REQUIRED — allowed but consent is missing OR broker permissions
+ *                     are limited (read-only). Guides the user to the fix.
+ *   WARNING         — approaching daily loss / trade limit
+ *   LOCKED          — Guardrail STOPPED for the rest of the session
+ *   UNAVAILABLE     — broker no longer returns this account
+ *   NOT CONNECTED   — connection expired/error/never connected
+ *   NEEDS RULES / PENDING / FIRM RULES MISSING — setup states
+ */
+export type RowStatusLabel =
+  | "Tradable"
+  | "Action required"
+  | "Warning"
+  | "Locked"
+  | "Unavailable"
+  | "Not connected"
+  | "Needs rules"
+  | "Pending"
+  | "Firm rules missing";
+
+export function deriveRowStatusLabel(input: {
+  status: AccountStatus;
+  setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
+  enforcementMode: EnforcementMode;
+  requiresAutomatedActionsConsent: boolean;
+}): RowStatusLabel {
+  if (input.status === "unavailable") return "Unavailable";
+  if (input.status === "locked") return "Locked";
+  if (input.status === "warning") return "Warning";
+  if (input.status === "not_connected") return "Not connected";
+  if (input.status === "setup_needed") {
+    if (input.setupNeededReason === "pending_connection") return "Pending";
+    if (input.setupNeededReason === "prop_firm_rules_missing") return "Firm rules missing";
+    return "Needs rules";
+  }
+  // status === "allowed" → refine based on consent + permission gaps.
+  if (input.requiresAutomatedActionsConsent) return "Action required";
+  if (input.enforcementMode === "broker_readonly") return "Action required";
+  return "Tradable";
+}
+
+// ── derivePerAccountStateLabel ────────────────────────────────────────────────
+
+/** Small state label rendered in the Rules / Mode column under the plan name.
+ *  Priority is most-actionable first so the user sees the thing that needs
+ *  attention before the positive/neutral states. */
+export type PerAccountStateLabel =
+  | "Test mode only"
+  | "Consent required"
+  | "Broker enforcement ready"
+  | "Limited permissions"
+  | "Monitoring only";
+
+export function derivePerAccountStateLabel(input: {
+  enforcementMode: EnforcementMode;
+  requiresAutomatedActionsConsent: boolean;
+}): PerAccountStateLabel {
+  if (input.enforcementMode === "dry_run") return "Test mode only";
+  if (input.requiresAutomatedActionsConsent) return "Consent required";
+  if (input.enforcementMode === "broker_active") return "Broker enforcement ready";
+  if (input.enforcementMode === "broker_readonly") return "Limited permissions";
+  return "Monitoring only";
+}
+
+// ── deriveGroupStateSuffix ────────────────────────────────────────────────────
+
+/** Short suffix appended to "Connected" in a firm-group header so the user
+ *  can see at a glance whether anything across the group needs attention.
+ *  Returns null when there's no useful state to highlight — the platform line
+ *  then shows just "Connected · Synced 2m ago". */
+export type GroupStateSuffix =
+  | "Test mode"
+  | "Consent required"
+  | "Limited permissions"
+  | "Broker enforcement ready"
+  | null;
+
+export function deriveGroupStateSuffix(input: {
+  accounts: ReadonlyArray<{
+    enforcementMode: EnforcementMode;
+    requiresAutomatedActionsConsent: boolean;
+  }>;
+}): GroupStateSuffix {
+  if (input.accounts.length === 0) return null;
+  if (input.accounts.some((a) => a.enforcementMode === "dry_run")) return "Test mode";
+  if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
+    return "Consent required";
+  }
+  if (input.accounts.some((a) => a.enforcementMode === "broker_readonly")) {
+    return "Limited permissions";
+  }
+  if (input.accounts.every((a) => a.enforcementMode === "broker_active")) {
+    return "Broker enforcement ready";
+  }
+  return null;
 }
 
 // ── deriveFooterCopy ──────────────────────────────────────────────────────────
