@@ -1,6 +1,19 @@
 /** Whether the Advanced diagnostics panel is open by default. */
 export const DIAGNOSTICS_DEFAULT_OPEN = false;
 
+/**
+ * Determines whether the Advanced diagnostics section should be rendered at
+ * all. In normal production it is hidden; it only appears in dev, when the
+ * server env flag is set, or when the ?debug=1 query param is present.
+ */
+export function shouldShowDiagnostics(opts: {
+  isDev: boolean;
+  envFlag: boolean;
+  debugParam: boolean;
+}): boolean {
+  return opts.isDev || opts.envFlag || opts.debugParam;
+}
+
 export const EVENT_TYPE_LABEL: Record<string, string> = {
   trade_closed: "Trade closed",
   trade_opened: "Trade opened",

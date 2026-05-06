@@ -34,7 +34,7 @@ export function DisconnectButton({ accountId }: Props) {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="inline-flex rounded-full border border-red-200 px-4 py-2 text-xs font-medium text-red-600 transition hover:border-red-400 hover:text-red-700"
+        className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-red-200 px-4 py-2 text-xs font-medium text-red-600 transition hover:border-red-400 hover:text-red-700"
       >
         Disconnect account
       </button>
@@ -51,7 +51,7 @@ export function DisconnectButton({ accountId }: Props) {
           type="button"
           onClick={handleRemove}
           disabled={removing}
-          className="inline-flex rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {removing ? "Disconnecting…" : "Yes, disconnect"}
         </button>
@@ -59,7 +59,7 @@ export function DisconnectButton({ accountId }: Props) {
           type="button"
           onClick={() => setConfirming(false)}
           disabled={removing}
-          className="inline-flex rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>

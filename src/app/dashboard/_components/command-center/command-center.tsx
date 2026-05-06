@@ -240,7 +240,7 @@ function ProtectionStatusPanel({
       {panel.showConsentCta && (
         <Link
           href="/rules"
-          className="shrink-0 rounded-full bg-amber-900 px-3 py-1 text-[10px] font-medium text-amber-50 transition hover:bg-amber-800"
+          className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-amber-900 px-3 py-1 text-[10px] font-medium text-amber-50 transition hover:bg-amber-800"
         >
           Review Trading Plan
         </Link>
@@ -842,7 +842,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
             href={deriveOpenHref(account.id)}
             className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
-            Open
+            Details
           </Link>
           <Link
             href={deriveRulesHref(account.id)}
@@ -1057,7 +1057,7 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
       <Link href={deriveOpenHref(account.id)} className={PILL_ROW_SECONDARY}>
-        Open
+        Details
       </Link>
       <Link href={deriveRulesHref(account.id)} className={PILL_ROW_SECONDARY}>
         Rules

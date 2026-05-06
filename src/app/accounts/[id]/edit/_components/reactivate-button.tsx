@@ -38,7 +38,7 @@ export function ReactivateButton({ accountId }: Props) {
         type="button"
         onClick={handleReactivate}
         disabled={saving}
-        className="inline-flex w-fit rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? "Reactivating…" : "Reactivate account"}
       </button>

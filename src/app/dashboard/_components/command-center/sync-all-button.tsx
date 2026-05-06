@@ -63,7 +63,7 @@ export function SyncAllButton() {
         onClick={handleClick}
         disabled={isSyncing}
         aria-label="Refresh all accounts"
-        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RotateIcon spinning={isSyncing} />
         {isSyncing ? "Refreshing…" : "Refresh all accounts"}

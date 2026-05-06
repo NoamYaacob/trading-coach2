@@ -142,6 +142,33 @@ describe("mapRiskState", () => {
   });
 });
 
+// ── shouldShowDiagnostics ─────────────────────────────────────────────────────
+
+import { shouldShowDiagnostics } from "./diagnostics-helpers.ts";
+
+describe("shouldShowDiagnostics", () => {
+  it("returns true in dev mode", () => {
+    assert.equal(shouldShowDiagnostics({ isDev: true, envFlag: false, debugParam: false }), true);
+  });
+
+  it("returns true when env flag is set", () => {
+    assert.equal(shouldShowDiagnostics({ isDev: false, envFlag: true, debugParam: false }), true);
+  });
+
+  it("returns true when ?debug=1 is present", () => {
+    assert.equal(shouldShowDiagnostics({ isDev: false, envFlag: false, debugParam: true }), true);
+  });
+
+  it("returns false in production with no overrides", () => {
+    assert.equal(shouldShowDiagnostics({ isDev: false, envFlag: false, debugParam: false }), false);
+  });
+
+  it("production users never see diagnostics unless explicitly overridden", () => {
+    const prodNoOverride = shouldShowDiagnostics({ isDev: false, envFlag: false, debugParam: false });
+    assert.equal(prodNoOverride, false, "production with no overrides must hide diagnostics");
+  });
+});
+
 // ── Regression: no forbidden raw strings in any label map ────────────────────
 
 describe("regression: no raw enum strings in any diagnostics label", () => {

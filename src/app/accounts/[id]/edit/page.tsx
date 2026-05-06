@@ -17,7 +17,7 @@ import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 import { DisconnectButton } from "./_components/disconnect-button";
 import { ReactivateButton } from "./_components/reactivate-button";
-import { EVENT_TYPE_LABEL, mapRiskState, buildWebhookUrl, shortDate } from "./_components/diagnostics-helpers";
+import { EVENT_TYPE_LABEL, mapRiskState, buildWebhookUrl, shortDate, shouldShowDiagnostics } from "./_components/diagnostics-helpers";
 
 export const metadata: Metadata = {
   title: "Manage Connection",
@@ -111,7 +111,7 @@ export default async function EditAccountPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ oauth?: string }>;
+  searchParams: Promise<{ oauth?: string; debug?: string }>;
 }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
@@ -119,7 +119,7 @@ export default async function EditAccountPage({
   }
 
   const { id } = await params;
-  const { oauth } = await searchParams;
+  const { oauth, debug } = await searchParams;
 
   const account = await prisma.connectedAccount.findFirst({
     where: { id, userId: currentUser.id },
@@ -187,6 +187,11 @@ export default async function EditAccountPage({
   const hasEvent = lastEvent != null;
 
   const isTradovate = account.platform === "tradovate";
+  const showDiagnostics = shouldShowDiagnostics({
+    isDev: process.env.NODE_ENV !== "production",
+    envFlag: process.env.SHOW_ADVANCED_DIAGNOSTICS === "true",
+    debugParam: debug === "1",
+  });
   const oauthConfigured = !!process.env.TRADOVATE_CLIENT_ID;
 
   const readiness: ReadinessLevel = !account.isActive
@@ -316,7 +321,7 @@ export default async function EditAccountPage({
       actions={
         <Link
           href="/accounts"
-          className="inline-flex rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
         >
           All connections
         </Link>
@@ -363,7 +368,7 @@ export default async function EditAccountPage({
               <div className="mb-4">
                 <a
                   href={`/api/auth/tradovate/connect?env=${oauthEnv}`}
-                  className="inline-flex w-fit rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
                   Connect Tradovate
                 </a>
@@ -372,7 +377,7 @@ export default async function EditAccountPage({
               <div className="mb-4">
                 <a
                   href={`/api/auth/tradovate/connect?env=${oauthEnv}`}
-                  className="inline-flex w-fit rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
                   Reconnect Tradovate
                 </a>
@@ -411,7 +416,7 @@ export default async function EditAccountPage({
           <div className="mt-3">
             <Link
               href={manageRulesHref}
-              className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
             >
               Manage protection rules
             </Link>
@@ -491,7 +496,7 @@ export default async function EditAccountPage({
           </div>
         )}
 
-        {isTradovate && (
+        {isTradovate && showDiagnostics && (
           <DiagnosticsPanel
             accountId={account.id}
             connectionStatus={account.connectionStatus}
