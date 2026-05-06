@@ -123,10 +123,8 @@ export function computeEnforcementMode(
         mode: "monitoring_only",
         label: "Read-only monitoring",
         detail:
-          "Account data is synced and rules are evaluated in Guardrail. " +
-          "Alerts fire in-app and via Telegram when limits are hit. " +
-          "This connection is read-only — broker-side order blocking requires " +
-          "full-access permissions and is not active.",
+          "Guardrail can evaluate rules and send alerts. " +
+          "Broker-side blocking is not active on this connection.",
         cls: "border-sky-200 bg-sky-50 text-sky-800",
       };
     }

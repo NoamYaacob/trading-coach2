@@ -140,21 +140,30 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
   if (body.riskRules !== undefined) {
     // Check the user's protection-lock state before mutating account rules.
-    const userRules = await prisma.riskRules.findUnique({
-      where: { userId: currentUser.id },
-      select: {
-        sessionStartHour: true,
-        sessionEndHour: true,
-        protectionLockCutoffMinutes: true,
-      },
-    });
+    const [userRules, existingAccountRules] = await Promise.all([
+      prisma.riskRules.findUnique({
+        where: { userId: currentUser.id },
+        select: {
+          sessionStartHour: true,
+          sessionEndHour: true,
+          protectionLockCutoffMinutes: true,
+        },
+      }),
+      prisma.accountRiskRules.findUnique({
+        where: { accountId: id },
+        select: { accountId: true },
+      }),
+    ]);
     const lock = getProtectionLockState({
       sessionStartHour: userRules?.sessionStartHour ?? null,
       sessionEndHour: userRules?.sessionEndHour ?? null,
       cutoffMinutes: userRules?.protectionLockCutoffMinutes ?? null,
     });
+    // First-time setup (no existing account-specific rules) bypasses the lock:
+    // there are no active account rules to weaken, so the change is safe immediately.
+    const isFirstTimeSetup = !existingAccountRules;
 
-    if (lock.isLocked) {
+    if (lock.isLocked && !isFirstTimeSetup) {
       // Save the requested change as a pending payload that will apply on
       // the next trading day. Do NOT mutate AccountRiskRules columns now.
       const payload =

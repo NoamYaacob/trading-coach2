@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
+import {
+  computeAccountRulesBanner,
+  REVIEW_INHERITED_HINT,
+} from "./account-rules-form-logic";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -261,6 +265,8 @@ export function AccountRulesForm({
     );
   }
 
+  const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm);
+
   return (
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
 
@@ -275,15 +281,24 @@ export function AccountRulesForm({
         </div>
       )}
 
-      {isLocked && (
+      {banner.kind === "first_time" && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-xs text-sky-800">
+          {banner.message}
+        </div>
+      )}
+
+      {banner.kind === "locked" && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          Today&apos;s rules are locked. Changes will apply on the next trading day.
+          {banner.message}
         </div>
       )}
 
       {/* Account limits */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">Account limits</legend>
+        {!hasExistingRules && (
+          <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
@@ -412,7 +427,7 @@ export function AccountRulesForm({
             href={`/accounts/${accountId}/edit`}
             className="text-xs text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline"
           >
-            Full account settings ↗
+            Broker connection settings ↗
           </Link>
           {isDirty && !saving && (
             <span className="text-xs text-amber-600">Unsaved changes</span>

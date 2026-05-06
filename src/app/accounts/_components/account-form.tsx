@@ -228,15 +228,6 @@ export function AccountForm(props: Props) {
             </Field>
           )}
 
-          <Field label="Prop firm">
-            <input
-              value={form.propFirm}
-              onChange={(e) => set("propFirm", e.target.value)}
-              placeholder="e.g. Apex, TopStep"
-              className={INPUT_CLASS}
-            />
-          </Field>
-
           <Field label="Account type">
             <select
               value={form.accountType}
@@ -249,6 +240,17 @@ export function AccountForm(props: Props) {
               <option value="demo">Demo</option>
             </select>
           </Field>
+
+          {isPropFirmAccount && (
+            <Field label="Prop firm">
+              <input
+                value={form.propFirm}
+                onChange={(e) => set("propFirm", e.target.value)}
+                placeholder="e.g. Apex, TopStep"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          )}
 
           <div className="grid gap-1.5 sm:col-span-2">
             <span className={LABEL_CLASS}>
