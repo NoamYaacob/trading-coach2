@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cmeHourToLocalHour,
   deriveCmeTradingDayKey,
   deriveCmeTradingDaySessionStart,
   getLocalCalendarDayWindow,
@@ -11,19 +12,19 @@ import {
 // All "now" values are written in UTC for clarity. Comments describe the
 // equivalent local time in the relevant timezone.
 
-test("default timezone is Asia/Jerusalem when none provided", () => {
+test("default timezone is America/Chicago (CME) when none provided", () => {
   const w = getTradingDayWindow({ now: new Date("2026-04-26T10:00:00Z") });
-  assert.equal(w.timezone, "Asia/Jerusalem");
+  assert.equal(w.timezone, "America/Chicago");
   assert.equal(w.hasSessionHours, false);
   assert.equal(w.isOvernight, false);
 });
 
-test("invalid timezone falls back to Asia/Jerusalem", () => {
+test("invalid timezone falls back to America/Chicago", () => {
   const w = getTradingDayWindow({
     timezone: "Not/A_Real_Timezone",
     now: new Date("2026-04-26T10:00:00Z"),
   });
-  assert.equal(w.timezone, "Asia/Jerusalem");
+  assert.equal(w.timezone, "America/Chicago");
 });
 
 test("no session hours: calendar day window in user's tz", () => {
@@ -225,6 +226,64 @@ test("CME session start ms is always in the past relative to now", () => {
   const now = new Date("2026-05-06T08:30:00Z"); // 03:30 CT — mid-session
   const sessionStart = deriveCmeTradingDaySessionStart(now);
   assert.ok(sessionStart.getTime() <= now.getTime());
+});
+
+// ── cmeHourToLocalHour ────────────────────────────────────────────────────────
+// US/Israel DST divergence calendar for 2026:
+//   US spring forward: March 8 (CDT starts, UTC-5)
+//   Israel spring forward: March 27 (IDT starts, UTC+3)
+//   Israel fall back: October 25 (IST resumes, UTC+2)
+//   US fall back: November 1 (CST resumes, UTC-6)
+//
+// Normal summer (both DST):   CME CDT (UTC-5) + IDT (UTC+3) = 8h diff. 9 CME = 17 Israel.
+// US CDT, Israel IST (7h gap): 9 CME = 16 Israel. Mismatch weeks: Mar 8–26 and Oct 25–31.
+
+test("cmeHourToLocalHour: normal summer — 9 CME = 17 Israel (IDT, both on DST)", () => {
+  // May 4 2026: CME CDT (UTC-5), Israel IDT (UTC+3). 9 CDT = 14 UTC = 17 IDT.
+  const local = cmeHourToLocalHour(9, "Asia/Jerusalem", new Date("2026-05-04T12:00:00Z"));
+  assert.equal(local, 17);
+});
+
+test("cmeHourToLocalHour: 9–16 CME in summer → 17:00–00:00 Israel", () => {
+  const at = new Date("2026-05-04T12:00:00Z");
+  assert.equal(cmeHourToLocalHour(9, "Asia/Jerusalem", at), 17);
+  // 16 CME CDT = 21 UTC = 00 IDT (next calendar hour wraps to 0).
+  assert.equal(cmeHourToLocalHour(16, "Asia/Jerusalem", at), 0);
+});
+
+test("cmeHourToLocalHour: US/Israel spring DST mismatch — 9 CME = 16 Israel (March)", () => {
+  // March 15 2026: US CDT (UTC-5, after Mar 8), Israel still IST (UTC+2, before Mar 27).
+  // Offset = 7h. 9 CDT = 14 UTC = 16 IST.
+  const local = cmeHourToLocalHour(9, "Asia/Jerusalem", new Date("2026-03-15T12:00:00Z"));
+  assert.equal(local, 16);
+});
+
+test("cmeHourToLocalHour: US/Israel autumn DST mismatch — 9 CME = 16 Israel (late October)", () => {
+  // October 27 2026: Israel back to IST (UTC+2, after Oct 25), US still CDT (UTC-5, before Nov 1).
+  // Offset = 7h. 9 CDT = 14 UTC = 16 IST.
+  const local = cmeHourToLocalHour(9, "Asia/Jerusalem", new Date("2026-10-27T12:00:00Z"));
+  assert.equal(local, 16);
+});
+
+test("cmeHourToLocalHour: both on winter time — 9 CME = 17 Israel (8h diff, same as summer)", () => {
+  // January 10 2026: CME CST (UTC-6), Israel IST (UTC+2). 9 CST = 15 UTC = 17 IST.
+  const local = cmeHourToLocalHour(9, "Asia/Jerusalem", new Date("2026-01-10T12:00:00Z"));
+  assert.equal(local, 17);
+});
+
+test("cmeHourToLocalHour: returns null for invalid timezone", () => {
+  assert.equal(cmeHourToLocalHour(9, "Not/A_Timezone"), null);
+});
+
+test("cmeHourToLocalHour: returns null for hour out of range", () => {
+  assert.equal(cmeHourToLocalHour(-1, "Asia/Jerusalem"), null);
+  assert.equal(cmeHourToLocalHour(24, "Asia/Jerusalem"), null);
+});
+
+test("cmeHourToLocalHour: same timezone as CME returns same hour", () => {
+  // CME hour in CME timezone is a no-op.
+  const local = cmeHourToLocalHour(9, "America/Chicago", new Date("2026-05-04T12:00:00Z"));
+  assert.equal(local, 9);
 });
 
 test("local calendar day includes after-session manual entries", () => {

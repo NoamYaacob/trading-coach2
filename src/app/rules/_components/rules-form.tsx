@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
+import { SESSION_WINDOW_COPY } from "./session-window-copy";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -194,20 +196,34 @@ export function RulesForm({ initial, hasBroker, timezone }: Props) {
       {/* ── Trading window ──────────────────────────────────────────────── */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">
-          Protected session window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
+          {SESSION_WINDOW_COPY.legend}
         </legend>
         <p className="-mt-2 text-xs text-stone-500">
-          The hours when Guardian monitors accounts that use this default template. Disconnect protection and daily rule progress use this window.
-          Use 24-hour format (0–23).
+          {SESSION_WINDOW_COPY.helperText}
         </p>
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
-          <Field label="Session start">
+          <Field label={SESSION_WINDOW_COPY.startLabel}>
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end">
+          <Field label={SESSION_WINDOW_COPY.endLabel}>
             <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
+        {(() => {
+          const s = intOrNull(values.sessionStartHour);
+          const e = intOrNull(values.sessionEndHour);
+          const label = tzLabel(timezone);
+          if (s === null || e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
+          const ls = cmeHourToLocalHour(s, timezone);
+          const le = cmeHourToLocalHour(e, timezone);
+          if (ls === null || le === null) return null;
+          return (
+            <p className="text-xs text-stone-400">
+              {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
+              {String(ls).padStart(2, "0")}:00–{String(le).padStart(2, "0")}:00 {label}
+            </p>
+          );
+        })()}
         <div>
           <p className="text-xs font-medium text-stone-600">Trading days</p>
           <div className="mt-2 flex flex-wrap gap-2">

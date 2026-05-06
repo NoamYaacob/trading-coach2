@@ -523,7 +523,7 @@ export function AccountCard({
               )}
               {riskRules!.allowedStartHour != null && riskRules!.allowedEndHour != null && (
                 <span>
-                  Hours: {riskRules!.allowedStartHour}:00–{riskRules!.allowedEndHour}:00 UTC
+                  Hours: {riskRules!.allowedStartHour}:00–{riskRules!.allowedEndHour}:00 CME
                 </span>
               )}
             </div>

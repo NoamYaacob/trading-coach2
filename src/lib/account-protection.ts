@@ -16,11 +16,10 @@
  */
 
 import {
-  FALLBACK_TIMEZONE,
+  SESSION_WINDOW_TIMEZONE,
   getTradingDayWindow,
   type TradingDayWindow,
 } from "./trading-day.ts";
-import { isValidTimeZone } from "./timezone.ts";
 
 export const DEFAULT_CUTOFF_MINUTES = 5;
 
@@ -38,6 +37,10 @@ export type RuleSource =
   | "none";
 
 export type ProtectionLockInput = {
+  /**
+   * @deprecated Session windows are anchored to America/Chicago (CME).
+   * This field is no longer used in lock computation.
+   */
   timezone?: string | null;
   sessionStartHour?: number | null;
   sessionEndHour?: number | null;
@@ -104,14 +107,20 @@ function addDaysToKey(key: string, days: number): string {
  * Compute the protection-lock state for a user, given session hours +
  * cutoff config.
  *
+ * Session hours are canonical in America/Chicago (CME) time. The lock window
+ * and trading-day keys are always computed in CME time so protection decisions
+ * stay aligned with the futures market regardless of the user's local timezone
+ * or US/Israel DST divergence.
+ *
  * Without session hours we treat protection as never locked (the user has
  * not configured a trading session and we have no anchor). The UI surfaces
  * a hint to set session hours so this feature can engage.
  */
 export function getProtectionLockState(input: ProtectionLockInput): ProtectionLockState {
   const now = input.now ?? new Date();
-  const timezone =
-    input.timezone && isValidTimeZone(input.timezone) ? input.timezone : FALLBACK_TIMEZONE;
+  // Session hours are stored as CME (America/Chicago) hours. Always compute
+  // the lock window in CME time — never in the user's local timezone.
+  const timezone = SESSION_WINDOW_TIMEZONE;
   const cutoffMinutes =
     input.cutoffMinutes != null && Number.isFinite(input.cutoffMinutes) && input.cutoffMinutes >= 0
       ? Math.floor(input.cutoffMinutes)

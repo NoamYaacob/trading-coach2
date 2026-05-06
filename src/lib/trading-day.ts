@@ -14,7 +14,14 @@
 
 import { isValidTimeZone } from "./timezone.ts";
 
-export const FALLBACK_TIMEZONE = "Asia/Jerusalem";
+/** Canonical timezone for futures session windows (CME Globex). */
+export const SESSION_WINDOW_TIMEZONE = "America/Chicago";
+/**
+ * Default fallback when no timezone is specified. Anchored to CME so all
+ * session-window math is consistent for futures traders regardless of
+ * whether a user timezone is configured.
+ */
+export const FALLBACK_TIMEZONE = SESSION_WINDOW_TIMEZONE;
 
 export type TradingDayInput = {
   /** IANA timezone, e.g. "Asia/Jerusalem", "America/New_York". */
@@ -271,6 +278,41 @@ export function deriveCmeTradingDayKey(now?: Date): string {
     month: "2-digit",
     day: "2-digit",
   }).format(sessionStart);
+}
+
+/**
+ * Converts a CME (America/Chicago) hour to the equivalent hour in `localTz`
+ * on the calendar day of `at` in Chicago.
+ *
+ * Useful for displaying "Your local time: HH:00–HH:00" next to CME-anchored
+ * session inputs. The result varies with DST — pass `at = new Date()` to
+ * reflect the current offset, including US/Israel DST mismatch weeks.
+ *
+ * Returns null when `cmeHour` is out of range or `localTz` is not valid.
+ */
+export function cmeHourToLocalHour(
+  cmeHour: number,
+  localTz: string,
+  at?: Date,
+): number | null {
+  const h = Math.floor(cmeHour);
+  if (!Number.isFinite(cmeHour) || h < 0 || h > 23) return null;
+  if (!isValidTimeZone(localTz)) return null;
+
+  const now = at ?? new Date();
+  // What calendar date is it in CME time right now?
+  const { year, month, day } = getCalendarDateInTz(now, SESSION_WINDOW_TIMEZONE);
+  // UTC instant of "that date at h:00 CME"
+  const utcInstant = fromTzParts(year, month, day, h, 0, SESSION_WINDOW_TIMEZONE);
+  // Read it back in the user's local timezone
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: localTz,
+    hour: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(utcInstant);
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  return Number(hourStr) % 24; // normalise "24" → 0
 }
 
 export function getLocalCalendarDayWindow(input: {

@@ -361,7 +361,7 @@ export function AccountForm(props: Props) {
             />
           </Field>
 
-          <Field label="Allowed from (UTC hour 0–23)">
+          <Field label="Allowed from (CME hour 0–23)">
             <input
               inputMode="numeric"
               value={form.allowedStartHour}
@@ -371,7 +371,7 @@ export function AccountForm(props: Props) {
             />
           </Field>
 
-          <Field label="Allowed until (UTC hour 0–23)">
+          <Field label="Allowed until (CME hour 0–23)">
             <input
               inputMode="numeric"
               value={form.allowedEndHour}

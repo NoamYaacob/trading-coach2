@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
+import { SESSION_WINDOW_COPY } from "./session-window-copy";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -301,19 +303,35 @@ export function AccountRulesForm({
       {/* Trading window */}
       <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <legend className="text-sm font-semibold text-stone-950">
-          Protected session window{timezone && tzLabel(timezone) ? ` · ${tzLabel(timezone)}` : ""}
+          {SESSION_WINDOW_COPY.legend}
         </legend>
         <p className="-mt-2 text-xs text-stone-500">
-          Override the default protected session hours for this account. Use 24-hour format (0–23).
+          Override the default protected session hours for this account.{" "}
+          {SESSION_WINDOW_COPY.helperText}
         </p>
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label="Session start">
+          <Field label={SESSION_WINDOW_COPY.startLabel}>
             <Input value={values.allowedStartHour} onChange={(v) => update("allowedStartHour", v)} placeholder="9" integer />
           </Field>
-          <Field label="Session end">
+          <Field label={SESSION_WINDOW_COPY.endLabel}>
             <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
           </Field>
         </div>
+        {(() => {
+          const s = int(values.allowedStartHour);
+          const e = int(values.allowedEndHour);
+          const label = tzLabel(timezone);
+          if (s === null || e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
+          const ls = cmeHourToLocalHour(s, timezone);
+          const le = cmeHourToLocalHour(e, timezone);
+          if (ls === null || le === null) return null;
+          return (
+            <p className="text-xs text-stone-400">
+              {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
+              {String(ls).padStart(2, "0")}:00–{String(le).padStart(2, "0")}:00 {label}
+            </p>
+          );
+        })()}
       </fieldset>
 
       {/* Prop firm parameters — collapsible */}
