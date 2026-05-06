@@ -2,6 +2,34 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { SyncButton } from "./sync-button";
 import { ProtectionControls } from "./protection-controls";
+
+// ── Pending-decision row ───────────────────────────────────────────────────────
+
+function PendingSetupRow({ account }: { account: AccountForConnectionCard }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 px-3.5 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-stone-900">{account.label}</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800">
+          Setup needed
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11px] text-amber-800">
+        New account detected. Choose rules before monitoring starts.
+      </p>
+      <div className="mt-3">
+        <Link
+          href={`/accounts/${account.id}/setup`}
+          className="inline-flex h-7 items-center rounded-full bg-stone-950 px-3 text-[11px] font-medium text-white transition hover:bg-stone-800"
+        >
+          Choose rules
+        </Link>
+      </div>
+    </div>
+  );
+}
 import {
   deriveEnforcementLabelValues,
   deriveRulesLabel,
@@ -160,6 +188,9 @@ function AccountCompactRow({
   defaultMaxDailyLoss: number | null;
   connectionStatus: string;
 }) {
+  if (account.protectionStatus === "pending_decision") {
+    return <PendingSetupRow account={account} />;
+  }
   const hasAccountRules = Boolean(
     account.riskRules &&
       (account.riskRules.maxDailyLoss != null ||

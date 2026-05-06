@@ -139,10 +139,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   return (
     <div className="grid gap-4">
       {data.pendingAccounts.length > 0 && (
-        <NewAccountsPanel
-          accounts={data.pendingAccounts}
-          isLocked={data.protectionLock.isLocked}
-        />
+        <NewAccountsPanel accounts={data.pendingAccounts} />
       )}
       {data.accounts.length > 0 && (
         <section
