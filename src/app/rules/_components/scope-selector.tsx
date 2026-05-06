@@ -1,25 +1,17 @@
 import Link from "next/link";
 import type { RuleScopeGroup, RuleScopeAccount } from "./rule-scope-utils";
+import { deriveScopeGroupBadge, deriveScopeAccountBadge } from "./scope-selector-helpers";
 
 const ENV_LABEL: Record<string, string> = {
   live: "Live account",
   demo: "Demo / Sim",
 };
 
-const CONN_STATUS: Record<string, { label: string; cls: string }> = {
-  connected_live:        { label: "Connected", cls: "bg-emerald-100 text-emerald-700" },
-  connected_readonly:    { label: "Read-only", cls: "bg-sky-100 text-sky-700" },
-  pending_webhook:       { label: "Pending", cls: "bg-amber-100 text-amber-700" },
-  oauth_pending_storage: { label: "Setting up", cls: "bg-amber-100 text-amber-700" },
-  not_connected:         { label: "Not connected", cls: "bg-stone-100 text-stone-500" },
-  expired:               { label: "Expired", cls: "bg-orange-100 text-orange-700" },
-  connection_error:      { label: "Error", cls: "bg-red-100 text-red-700" },
-};
-
 type Props = {
   groups: RuleScopeGroup[];
   currentScope: string;
   currentAccountId: string | null;
+  isDryRun: boolean;
 };
 
 function AccountItem({
@@ -29,7 +21,11 @@ function AccountItem({
   account: RuleScopeAccount;
   isSelected: boolean;
 }) {
-  const isUnavailable = account.missingFromBrokerSince != null;
+  const badge = deriveScopeAccountBadge({
+    isUnavailable: account.missingFromBrokerSince != null,
+    requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+    hasAccountRules: account.hasAccountRules,
+  });
 
   return (
     <Link
@@ -37,34 +33,26 @@ function AccountItem({
       className={`flex min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3.5 py-2 text-sm transition ${
         isSelected
           ? "bg-stone-950 text-stone-50"
-          : isUnavailable
+          : account.missingFromBrokerSince != null
             ? "text-stone-400 hover:bg-stone-100"
             : "text-stone-700 hover:bg-stone-100"
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{account.label}</span>
-      {isUnavailable ? (
+      {badge && (
         <span
           className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-            isSelected ? "bg-stone-700 text-stone-200" : "bg-amber-100 text-amber-700"
+            isSelected ? "bg-stone-700 text-stone-200" : badge.cls
           }`}
         >
-          inactive
+          {badge.label}
         </span>
-      ) : account.hasAccountRules ? (
-        <span
-          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-            isSelected ? "bg-stone-700 text-stone-200" : "bg-amber-100 text-amber-700"
-          }`}
-        >
-          custom
-        </span>
-      ) : null}
+      )}
     </Link>
   );
 }
 
-export function ScopeSelector({ groups, currentScope, currentAccountId }: Props) {
+export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun }: Props) {
   const isDefault = currentScope !== "account";
 
   return (
@@ -86,10 +74,15 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
 
       {/* Broker connection groups */}
       {groups.map((group) => {
-        const status = CONN_STATUS[group.connectionStatus] ?? {
-          label: group.connectionStatus.replace(/_/g, " "),
-          cls: "bg-stone-100 text-stone-500",
-        };
+        const requiresConsentInGroup = group.accounts.some(
+          (a) => a.requiresAutomatedActionsConsent,
+        );
+        const badge = deriveScopeGroupBadge({
+          isDryRun,
+          connectionStatus: group.connectionStatus,
+          permissionLevel: group.permissionLevel,
+          requiresConsentInGroup,
+        });
         const platformLabel = group.platform === "tradovate" ? "Tradovate"
           : group.platform === "tradingview" ? "TradingView"
           : group.platform;
@@ -104,14 +97,13 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
                 <p className="truncate text-xs font-semibold text-stone-700">{group.firmLabel}</p>
                 <p className="truncate text-[10px] text-stone-400">
                   {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
-                  {group.connectionStatus === "connected_readonly" ? " · Read-only" : ""}
                   {userId}
                 </p>
               </div>
               <span
-                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${status.cls}`}
+                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
               >
-                {status.label}
+                {badge.label}
               </span>
             </div>
             <div className="mt-0.5 grid gap-0.5 pl-1">

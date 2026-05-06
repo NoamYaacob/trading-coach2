@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
 import { getProtectionLockState } from "@/lib/account-protection";
-import { hasValidConsent } from "@/lib/brokers/automated-actions-consent";
+import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
@@ -101,11 +101,30 @@ export default async function RulesPage({
         riskRules.riskPerTrade != null),
   );
 
-  // Build scope selector data
-  const scopeAccounts = accounts.map((a) => ({
-    ...a,
-    hasAccountRules: a.riskRules !== null,
-  }));
+  // Build scope selector data — compute protection badge fields per account.
+  const scopeAccounts = accounts.map((a) => {
+    const consentGate = decideConsentGate({
+      accountRiskRules: a.riskRules
+        ? { consentAt: a.riskRules.automatedActionsConsentAt, consentVersion: a.riskRules.automatedActionsConsentVersion }
+        : null,
+      defaultRiskRules: riskRules
+        ? { consentAt: riskRules.automatedActionsConsentAt, consentVersion: riskRules.automatedActionsConsentVersion }
+        : null,
+    });
+    const requiresAutomatedActionsConsent =
+      a.brokerConnection?.permissionLevel === "full_access" && !consentGate.allowed;
+    return {
+      ...a,
+      hasAccountRules: a.riskRules !== null,
+      requiresAutomatedActionsConsent,
+      brokerConnection: a.brokerConnection
+        ? {
+            ...a.brokerConnection,
+            permissionLevel: a.brokerConnection.permissionLevel ?? null,
+          }
+        : null,
+    };
+  });
   const { groups } = buildRuleScopes(scopeAccounts);
 
   // Resolve selected account when scope=account
@@ -211,6 +230,7 @@ export default async function RulesPage({
               groups={groups}
               currentScope={scope}
               currentAccountId={id ?? null}
+              isDryRun={isDryRun}
             />
           </div>
         </details>
@@ -224,6 +244,7 @@ export default async function RulesPage({
             groups={groups}
             currentScope={scope}
             currentAccountId={id ?? null}
+            isDryRun={isDryRun}
           />
         </div>
 

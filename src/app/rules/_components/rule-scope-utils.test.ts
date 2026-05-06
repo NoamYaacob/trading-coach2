@@ -13,6 +13,7 @@ function conn(id: string, overrides?: Partial<RuleScopeAccount["brokerConnection
     env: "live",
     brokerUserId: null,
     connectionStatus: "connected_readonly",
+    permissionLevel: null,
     ...overrides,
   };
 }
@@ -27,6 +28,7 @@ function stub(overrides: Partial<RuleScopeAccount>): RuleScopeAccount {
     brokerConnectionId: "conn-a",
     hasAccountRules: false,
     missingFromBrokerSince: null,
+    requiresAutomatedActionsConsent: false,
     brokerConnection: conn("conn-a"),
     ...overrides,
   };

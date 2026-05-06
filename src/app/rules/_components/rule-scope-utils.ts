@@ -36,12 +36,17 @@ export type RuleScopeAccount = {
   brokerConnectionId: string | null;
   hasAccountRules: boolean;
   missingFromBrokerSince: Date | null;
+  /** True when the broker connection has full_access but the governing rule
+   *  record (account-specific or default) is missing automated-action consent. */
+  requiresAutomatedActionsConsent: boolean;
   brokerConnection: {
     id: string;
     platform: string;
     env: string;
     brokerUserId: string | null;
     connectionStatus: string;
+    /** "full_access" | "read_only" | "unknown" | null (probe not yet run). */
+    permissionLevel: string | null;
   } | null;
 };
 
@@ -53,6 +58,8 @@ export type RuleScopeGroup = {
   env: string;
   connectionStatus: string;
   brokerUserId: string | null;
+  /** Permission level of the broker connection serving this group. */
+  permissionLevel: string | null;
   accounts: RuleScopeAccount[];
 };
 
@@ -88,6 +95,7 @@ export function buildRuleScopes(accounts: RuleScopeAccount[]): RuleScopeResult {
         env: bc.env,
         connectionStatus: bc.connectionStatus,
         brokerUserId: bc.brokerUserId,
+        permissionLevel: bc.permissionLevel,
         accounts: [],
       };
       groupMap.set(groupKey, group);
