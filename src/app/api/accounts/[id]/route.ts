@@ -91,7 +91,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     : undefined;
 
   // Block deactivating a protected/monitor-only account while the session is locked.
-  if (body.isActive === false && (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only")) {
+  // Bypass for unavailable accounts (missingFromBrokerSince is set) and ignored accounts —
+  // there is no active monitoring to disrupt.
+  const isUnavailableForDeactivation =
+    existing.missingFromBrokerSince != null ||
+    existing.protectionStatus === "ignored" ||
+    existing.protectionStatus === "archived";
+  if (
+    !isUnavailableForDeactivation &&
+    body.isActive === false &&
+    (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only")
+  ) {
     const userRules = await prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
       select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },
@@ -221,9 +231,16 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   }
 
   // Block disconnecting a protected account while the trading session is locked.
-  // Doing so during active hours would remove live data from an account the user
-  // explicitly opted into protecting for today.
-  if (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only") {
+  // Bypass for unavailable accounts (no longer returned by the broker) and ignored accounts —
+  // there is nothing active to protect, so removal is safe immediately.
+  const canRemoveImmediately =
+    existing.missingFromBrokerSince != null ||
+    existing.protectionStatus === "ignored" ||
+    existing.protectionStatus === "archived";
+  if (
+    !canRemoveImmediately &&
+    (existing.protectionStatus === "protected" || existing.protectionStatus === "monitor_only")
+  ) {
     const userRules = await prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
       select: { sessionStartHour: true, sessionEndHour: true, protectionLockCutoffMinutes: true },

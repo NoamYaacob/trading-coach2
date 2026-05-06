@@ -166,6 +166,82 @@ function BlockedDialog({
   );
 }
 
+// ─── RemoveDialog ─────────────────────────────────────────────────────────────
+
+function RemoveDialog({
+  isRemoving,
+  onConfirm,
+  onCancel,
+}: {
+  isRemoving: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !isRemoving) onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isRemoving, onCancel]);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="remove-dialog-title"
+      aria-describedby="remove-dialog-desc"
+    >
+      <div
+        className="absolute inset-0 bg-stone-950/50 backdrop-blur-sm"
+        onClick={isRemoving ? undefined : onCancel}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-[0_32px_80px_-20px_rgba(28,25,23,0.5)]">
+        <h2
+          id="remove-dialog-title"
+          className="text-xl font-semibold tracking-[-0.03em] text-stone-950"
+        >
+          Remove from Guardrail?
+        </h2>
+        <p
+          id="remove-dialog-desc"
+          className="mt-3 text-sm leading-6 text-stone-600"
+        >
+          This account is no longer active in Tradovate. Removing it from
+          Guardrail will delete the connection record. Your rules and journal
+          entries will stay saved.
+        </p>
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onCancel}
+            disabled={isRemoving}
+            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-200 bg-white px-6 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isRemoving}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-70"
+          >
+            {isRemoving ? "Removing…" : "Remove from Guardrail"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DisconnectDialog ─────────────────────────────────────────────────────────
 
 function DisconnectDialog({
@@ -248,6 +324,7 @@ export function DisconnectButton({
   accountId,
   providerLabel,
   isBlocked = false,
+  isUnavailable = false,
   windowStartMs = null,
   windowEndMs = null,
   userTz = null,
@@ -258,8 +335,15 @@ export function DisconnectButton({
   /**
    * Pass true when disconnect is outside the futures maintenance window.
    * Driven by getBrokerDisconnectWindow() — NOT by the user's session hours.
+   * Ignored when isUnavailable=true.
    */
   isBlocked?: boolean;
+  /**
+   * Pass true when the account is no longer active in the broker
+   * (missingFromBrokerSince is set). Bypasses the disconnect window and
+   * shows "Remove from Guardrail" UI instead of the normal disconnect flow.
+   */
+  isUnavailable?: boolean;
   /** UTC milliseconds of the upcoming maintenance window start. */
   windowStartMs?: number | null;
   /** UTC milliseconds of the upcoming maintenance window end. */
@@ -270,7 +354,7 @@ export function DisconnectButton({
 }) {
   const router = useRouter();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [dialogMode, setDialogMode] = useState<"destructive" | "blocked" | null>(null);
+  const [dialogMode, setDialogMode] = useState<"destructive" | "blocked" | "remove" | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -281,7 +365,11 @@ export function DisconnectButton({
 
   function handleClick() {
     setError(null);
-    setDialogMode(isBlocked ? "blocked" : "destructive");
+    if (isUnavailable) {
+      setDialogMode("remove");
+    } else {
+      setDialogMode(isBlocked ? "blocked" : "destructive");
+    }
   }
 
   async function handleConfirm() {
@@ -304,7 +392,7 @@ export function DisconnectButton({
   }
 
   const availableLabel =
-    isBlocked && windowStartMs != null && windowEndMs != null
+    !isUnavailable && isBlocked && windowStartMs != null && windowEndMs != null
       ? formatWindowAvailableLabel(windowStartMs, windowEndMs, userTz)
       : null;
 
@@ -312,7 +400,21 @@ export function DisconnectButton({
     <>
       {error && <p className="text-xs text-red-700">{error}</p>}
 
-      {isBlocked ? (
+      {isUnavailable ? (
+        <div className="flex flex-col items-end gap-1">
+          <p className="text-xs text-stone-400">
+            No longer active in Tradovate · removable anytime
+          </p>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={handleClick}
+            className="inline-flex rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700"
+          >
+            Remove from Guardrail
+          </button>
+        </div>
+      ) : isBlocked ? (
         <div className="flex flex-col items-end gap-1">
           {availableLabel && (
             <p className="text-xs text-amber-700">{availableLabel}</p>
@@ -350,6 +452,16 @@ export function DisconnectButton({
         <DisconnectDialog
           providerLabel={providerLabel}
           isDisconnecting={isDisconnecting}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            if (!isDisconnecting) closeDialog();
+          }}
+        />
+      )}
+
+      {dialogMode === "remove" && (
+        <RemoveDialog
+          isRemoving={isDisconnecting}
           onConfirm={handleConfirm}
           onCancel={() => {
             if (!isDisconnecting) closeDialog();

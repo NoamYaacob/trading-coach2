@@ -130,6 +130,7 @@ export type DisconnectWindowState = {
  * via Intl.DateTimeFormat — the conversion is DST-aware automatically.
  */
 export function getBrokerDisconnectWindow(now: Date = new Date()): DisconnectWindowState {
+
   const ct = getZonedParts(now);
   const dayIdx = dayIndex(ct.weekday);
   const mins = ct.hour * 60 + ct.minute;
@@ -154,5 +155,36 @@ export function getBrokerDisconnectWindow(now: Date = new Date()): DisconnectWin
     isBlocked: true,
     nextWindowStart: zonedToUtc(target.year, target.month, target.day, WINDOW_START_HOUR, 0),
     nextWindowEnd: zonedToUtc(target.year, target.month, target.day, WINDOW_END_HOUR, 0),
+  };
+}
+
+// ─── Per-account disconnect availability ──────────────────────────────────────
+
+export type AccountDisconnectAvailability = {
+  /** True when the disconnect window blocks this account. Always false for unavailable accounts. */
+  isBlocked: boolean;
+  /** True when the account is no longer active in the broker (missingFromBrokerSince is set). */
+  isUnavailable: boolean;
+};
+
+/**
+ * Computes disconnect availability for a single account.
+ *
+ * The CME maintenance-window restriction applies only to actively connected,
+ * protected accounts. Unavailable, ignored, and archived accounts can be
+ * removed at any time — there is no active broker connection to protect.
+ */
+export function computeAccountDisconnectState(
+  account: { missingFromBrokerSince: Date | null; protectionStatus: string },
+  windowState: DisconnectWindowState,
+): AccountDisconnectAvailability {
+  const isUnavailable = account.missingFromBrokerSince != null;
+  const bypassWindow =
+    isUnavailable ||
+    account.protectionStatus === "ignored" ||
+    account.protectionStatus === "archived";
+  return {
+    isBlocked: bypassWindow ? false : windowState.isBlocked,
+    isUnavailable,
   };
 }

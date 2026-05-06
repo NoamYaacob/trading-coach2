@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-import { getBrokerDisconnectWindow } from "@/lib/broker-disconnect-window";
+import { getBrokerDisconnectWindow, computeAccountDisconnectState } from "@/lib/broker-disconnect-window";
 
 import { getCurrentUser } from "@/lib/auth";
 
@@ -78,6 +78,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         connectionStatus: true,
         connectedAt: true,
         protectionStatus: true,
+        missingFromBrokerSince: true,
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -285,7 +286,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       accountId={acct.id}
                       providerLabel={platformLabel}
                       redirectTo="/settings"
-                      isBlocked={disconnectWindow.isBlocked}
+                      {...computeAccountDisconnectState(acct, disconnectWindow)}
                       windowStartMs={disconnectWindow.nextWindowStart.getTime()}
                       windowEndMs={disconnectWindow.nextWindowEnd.getTime()}
                       userTz={traderProfile?.timezone ?? null}
