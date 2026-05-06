@@ -473,7 +473,7 @@ export async function syncTradovateAccount(
       if (isEnforcementDryRun()) {
         preFlattened = {
           flattenStatus: "dry_run",
-          flattenMessage: `Dry run · ${flattenContext} position exit simulated. No Tradovate write was sent.`,
+          flattenMessage: `Test mode · ${flattenContext} position exit simulated. No Tradovate write was sent.`,
           flattenPayload: { positions: ["(position IDs from position/deps)"], admin: false },
           flattenResponse: null,
         };

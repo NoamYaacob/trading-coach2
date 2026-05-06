@@ -748,9 +748,13 @@ describe("deriveBrokerEnforcementCopy", () => {
     assert.equal(kind, "dry_run");
   });
 
-  it("dry_run text contains 'Dry run'", () => {
+  it("dry_run text uses user-facing 'Test mode' prefix (not the technical 'Dry run')", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
-    assert.ok(text.includes("Dry run"), `expected 'Dry run', got: ${text}`);
+    assert.ok(text.includes("Test mode"), `expected 'Test mode' prefix, got: ${text}`);
+    assert.ok(
+      !text.includes("Dry run"),
+      `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
+    );
   });
 
   it("dry_run text says 'No Tradovate write was sent'", () => {
@@ -864,9 +868,13 @@ describe("deriveFlattenCopy", () => {
     assert.equal(deriveFlattenCopy("dry_run").kind, "dry_run");
   });
 
-  it("dry_run text mentions 'Dry run' and 'simulated'", () => {
+  it("dry_run text uses user-facing 'Test mode' prefix and mentions 'simulated'", () => {
     const { text } = deriveFlattenCopy("dry_run");
-    assert.ok(text.includes("Dry run"), `expected 'Dry run', got: ${text}`);
+    assert.ok(text.includes("Test mode"), `expected 'Test mode' prefix, got: ${text}`);
+    assert.ok(
+      !text.includes("Dry run"),
+      `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
+    );
     assert.ok(text.toLowerCase().includes("simulated"), `expected 'simulated', got: ${text}`);
   });
 
@@ -1204,14 +1212,21 @@ describe("deriveFooterCopy", () => {
     assert.equal(copy, null);
   });
 
-  it("dry_run without banner → dry-run footer text", () => {
+  it("dry_run without banner → 'Test mode' footer text (user-facing phrase, not 'Dry run')", () => {
     const copy = deriveFooterCopy({
       modes: ["dry_run"],
       hasDryRunBanner: false,
     });
     assert.ok(copy != null);
-    assert.ok(copy!.toLowerCase().includes("dry run"));
-    assert.ok(copy!.toLowerCase().includes("simulated"));
+    assert.ok(
+      copy!.includes("Test mode"),
+      `expected 'Test mode' in footer copy, got: ${copy}`,
+    );
+    assert.ok(
+      !copy!.toLowerCase().includes("dry run"),
+      `'Dry run' must not leak into user-facing footer, got: ${copy}`,
+    );
+    assert.ok(copy!.toLowerCase().includes("lockout"));
   });
 
   it("broker_active → 'Broker enforcement available where permissions support it.'", () => {
@@ -1266,11 +1281,18 @@ describe("deriveFooterCopy", () => {
 
 // ── DRY_RUN_BANNER_COPY ───────────────────────────────────────────────────────
 
-describe("DRY_RUN_BANNER_COPY", () => {
-  it("declares dry run mode explicitly", () => {
+describe("DRY_RUN_BANNER_COPY (user-facing primary phrase: 'Protection test mode')", () => {
+  it("uses 'Protection test mode' as the primary phrase", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("dry run mode"),
-      `expected 'Dry run mode' in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.includes("Protection test mode"),
+      `expected 'Protection test mode' in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
+    );
+  });
+
+  it("does NOT use the technical phrase 'Dry run mode' (regression: too jargon-heavy for users)", () => {
+    assert.ok(
+      !DRY_RUN_BANNER_COPY.toLowerCase().includes("dry run"),
+      `'Dry run' must not appear in user-facing banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
@@ -1280,11 +1302,20 @@ describe("DRY_RUN_BANNER_COPY", () => {
     );
   });
 
-  it("explicitly states no broker writes are sent", () => {
+  it("explicitly states no lockout or position-close actions are sent", () => {
+    const copy = DRY_RUN_BANNER_COPY.toLowerCase();
     assert.ok(
-      DRY_RUN_BANNER_COPY.includes("No Tradovate write actions are sent"),
-      `expected the no-write disclaimer, got: ${DRY_RUN_BANNER_COPY}`,
+      copy.includes("will not send") || copy.includes("not sent"),
+      `expected a 'will not send' / 'not sent' disclaimer, got: ${DRY_RUN_BANNER_COPY}`,
     );
+    assert.ok(
+      copy.includes("lockout") && copy.includes("position-close"),
+      `expected 'lockout' and 'position-close' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+    );
+  });
+
+  it("mentions Tradovate by name (so the user knows which broker is affected)", () => {
+    assert.ok(DRY_RUN_BANNER_COPY.includes("Tradovate"));
   });
 });
 

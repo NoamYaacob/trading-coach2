@@ -62,7 +62,7 @@ type AccountArg = {
 };
 
 export type ComputeEnforcementOptions = {
-  /** ENFORCEMENT_DRY_RUN env var. When true, overrides label to "Dry run mode". */
+  /** ENFORCEMENT_DRY_RUN env var. When true, overrides label to user-facing "Protection test mode". */
   isDryRun?: boolean;
 };
 
@@ -86,10 +86,11 @@ export function computeEnforcementMode(
   if (options.isDryRun) {
     return {
       mode: "dry_run",
-      label: "Dry run mode",
+      // User-facing label — internal enum value stays "dry_run".
+      label: "Protection test mode",
       detail:
-        "Guardrail will simulate lockout and position exit. " +
-        "No Tradovate write will be sent. " +
+        "Protection test mode: changes and rule breaches are simulated. " +
+        "No Tradovate write actions are sent. " +
         "Disable ENFORCEMENT_DRY_RUN on the server to engage real broker actions.",
       cls: "border-blue-200 bg-blue-50 text-blue-900",
     };

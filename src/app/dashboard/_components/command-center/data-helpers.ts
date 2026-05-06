@@ -253,7 +253,7 @@ export function deriveBrokerEnforcementCopy(
   switch (brokerLockStatus) {
     case "dry_run":
       return {
-        text: "Dry run · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
+        text: "Test mode · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
         kind: "dry_run",
       };
     case "broker_locked":
@@ -325,7 +325,7 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
       return { text: "Position exit failed.", kind: "failed" };
     case "dry_run":
       return {
-        text: "Dry run · Position exit simulated.",
+        text: "Test mode · Position exit simulated.",
         kind: "dry_run",
       };
     default:
@@ -354,8 +354,11 @@ export function deriveConnectionStatusLabel(rawStatus: string): string {
 
 // ── Dry-run banner copy ───────────────────────────────────────────────────────
 
+/** User-facing primary phrase: "Protection test mode". The internal enum value
+ *  remains "dry_run" and the env var remains ENFORCEMENT_DRY_RUN — the rename
+ *  only applies to copy that the user reads. */
 export const DRY_RUN_BANNER_COPY =
-  "Dry run mode: Guardrail is simulating lockouts and position exits. No Tradovate write actions are sent.";
+  "Protection test mode: Guardrail is monitoring your account and simulating lockouts, but it will not send lockout or position-close actions to Tradovate until live enforcement is enabled.";
 
 // ── shouldShowEnforcementChip ─────────────────────────────────────────────────
 
@@ -386,7 +389,7 @@ export function deriveFooterCopy(input: {
     return null;
   }
   if (anyDryRun) {
-    return "Dry run active · Simulated protection only · No broker writes are sent.";
+    return "Test mode active · No broker lockout or position-close actions are sent.";
   }
   if (modes.includes("broker_active")) {
     return "Broker enforcement available where permissions support it.";

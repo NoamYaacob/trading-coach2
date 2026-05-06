@@ -313,10 +313,11 @@ export async function applyBrokerDayLockout(
       intendedLockoutPayload,
     });
 
+    // User-facing message. The internal status enum stays "dry_run".
     const dryRunMessage =
       supportsFlatten
-        ? "Dry run · Position exit and broker-side lockout were simulated. No Tradovate write was sent."
-        : `Dry run · Broker-side lockout was simulated. No Tradovate write was sent. Would have called ${intendedLockoutEndpoint} with payload: ${JSON.stringify(intendedLockoutPayload)}.`;
+        ? "Test mode · Position exit and broker-side lockout were simulated. No Tradovate write was sent."
+        : `Test mode · Broker-side lockout was simulated. No Tradovate write was sent. Would have called ${intendedLockoutEndpoint} with payload: ${JSON.stringify(intendedLockoutPayload)}.`;
 
     return {
       status: "dry_run",
@@ -327,7 +328,7 @@ export async function applyBrokerDayLockout(
       flattenStatus: "dry_run",
       flattenMessage:
         supportsFlatten
-          ? "Dry run · Position exit simulated. Would have called order/liquidatepositions if open positions exist."
+          ? "Test mode · Position exit simulated. Would have called order/liquidatepositions if open positions exist."
           : "Position exit not applicable for this trigger.",
       flattenPayload: intendedFlattenPayload,
       flattenResponse: null,

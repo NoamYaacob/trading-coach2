@@ -16,11 +16,12 @@ const tradovateAccount = (
   },
 });
 
-describe("computeEnforcementMode — dry-run override", () => {
-  it("returns dry_run mode when isDryRun is true (default scope)", () => {
+describe("computeEnforcementMode — dry-run override (user-facing 'Protection test mode')", () => {
+  it("returns dry_run mode (internal enum) when isDryRun is true (default scope)", () => {
     const result = computeEnforcementMode(null, true, { isDryRun: true });
     assert.equal(result.mode, "dry_run");
-    assert.equal(result.label, "Dry run mode");
+    // Internal enum stays "dry_run"; user-facing label is "Protection test mode".
+    assert.equal(result.label, "Protection test mode");
   });
 
   it("returns dry_run mode when isDryRun is true even with full permissions", () => {
@@ -30,12 +31,24 @@ describe("computeEnforcementMode — dry-run override", () => {
       { isDryRun: true },
     );
     assert.equal(result.mode, "dry_run");
-    assert.equal(result.label, "Dry run mode");
+    assert.equal(result.label, "Protection test mode");
   });
 
-  it("dry-run detail mentions simulated lockout and position exit", () => {
+  it("user-facing label does NOT use the technical phrase 'Dry run mode'", () => {
     const result = computeEnforcementMode(null, true, { isDryRun: true });
-    assert.ok(result.detail.includes("simulate lockout and position exit"));
+    assert.ok(
+      !result.label.toLowerCase().includes("dry run"),
+      `'Dry run' must not appear in user-facing label, got: ${result.label}`,
+    );
+  });
+
+  it("dry-run detail uses 'Protection test mode:' prefix and mentions simulation", () => {
+    const result = computeEnforcementMode(null, true, { isDryRun: true });
+    assert.ok(
+      result.detail.includes("Protection test mode"),
+      `expected 'Protection test mode' in detail, got: ${result.detail}`,
+    );
+    assert.ok(result.detail.toLowerCase().includes("simulated"));
     assert.ok(result.detail.includes("No Tradovate write"));
   });
 });

@@ -102,7 +102,8 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 
 const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
   broker_active: "Broker enforcement",
-  dry_run: "Dry run mode",
+  // User-facing short badge — the technical enum value stays "dry_run".
+  dry_run: "Test mode",
   broker_readonly: "Monitoring only",
   permission_unverified: "Permission check pending",
   not_connected: "Not connected",
@@ -221,7 +222,7 @@ function DryRunBanner() {
   return (
     <div
       role="status"
-      aria-label="Dry run mode"
+      aria-label="Protection test mode"
       className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[11px] text-sky-800"
     >
       <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
