@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getProtectionLockState } from "@/lib/account-protection";
 
+const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
+
 type RulesPayload = {
   accountSize?: number | null;
   maxDailyLoss?: number | null;
@@ -17,6 +19,7 @@ type RulesPayload = {
   allowedSymbols?: string | null;
   sessionStartHour?: number | null;
   sessionEndHour?: number | null;
+  sessionEndBehavior?: string | null;
   tradingDays?: string | null;
   newsLockoutEnabled?: boolean;
   onBreachWarn?: boolean;
@@ -103,6 +106,12 @@ export async function POST(request: Request) {
       }
     }
   }
+  if (body.sessionEndBehavior != null && !VALID_SESSION_END_BEHAVIORS.includes(body.sessionEndBehavior as (typeof VALID_SESSION_END_BEHAVIORS)[number])) {
+    return NextResponse.json(
+      { error: "sessionEndBehavior must be 'flatten_at_session_end' or 'wait_for_exit_then_lock'." },
+      { status: 400 },
+    );
+  }
   if (body.allowedSymbols != null && body.allowedSymbols.length > 1000) {
     return NextResponse.json(
       { error: "allowedSymbols list is too long." },
@@ -160,6 +169,7 @@ export async function POST(request: Request) {
     allowedSymbols: body.allowedSymbols ?? undefined,
     sessionStartHour: toInt(body.sessionStartHour),
     sessionEndHour: toInt(body.sessionEndHour),
+    sessionEndBehavior: body.sessionEndBehavior !== undefined ? (body.sessionEndBehavior ?? null) : undefined,
     tradingDays: body.tradingDays ?? undefined,
     newsLockoutEnabled: body.newsLockoutEnabled,
     onBreachWarn: body.onBreachWarn,

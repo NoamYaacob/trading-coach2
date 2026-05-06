@@ -15,6 +15,7 @@ export type RulesFormValues = {
   maxContracts: string;
   sessionStartHour: string;
   sessionEndHour: string;
+  sessionEndBehavior: string;
   tradingDays: string[];
   onBreachWarn: boolean;
 };
@@ -44,6 +45,19 @@ function tzLabel(tz: string | null | undefined): string | null {
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI"] as const;
 type Day = (typeof DAYS)[number];
+
+const SESSION_END_BEHAVIOR_OPTIONS = [
+  {
+    value: "wait_for_exit_then_lock",
+    label: "Wait for trade exit, then lock",
+    hint: "New opening orders are blocked immediately. Guardrail won't interrupt an active trade.",
+  },
+  {
+    value: "flatten_at_session_end",
+    label: "Flatten at session end",
+    hint: "Guardrail will automatically close any open position at session end, then lock the account.",
+  },
+] as const;
 
 function numericOrNull(value: string): number | null {
   if (value.trim() === "") return null;
@@ -105,6 +119,7 @@ export function RulesForm({ initial, timezone }: Props) {
       maxContracts: intOrNull(values.maxContracts),
       sessionStartHour: intOrNull(values.sessionStartHour),
       sessionEndHour: intOrNull(values.sessionEndHour),
+      sessionEndBehavior: values.sessionEndBehavior || null,
       tradingDays: weekdayTradingDays.length > 0 ? weekdayTradingDays.join(",") : null,
       onBreachWarn: values.onBreachWarn,
     };
@@ -235,6 +250,30 @@ export function RulesForm({ initial, timezone }: Props) {
                 </button>
               );
             })}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-stone-600">At session end</p>
+          <div className="mt-2 grid gap-2">
+            {SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
+              <label
+                key={value}
+                className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="sessionEndBehavior"
+                  value={value}
+                  checked={values.sessionEndBehavior === value}
+                  onChange={() => update("sessionEndBehavior", value)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
+                />
+                <span>
+                  <span className="font-medium text-stone-950">{label}</span>
+                  <span className="mt-0.5 block text-stone-500">{hint}</span>
+                </span>
+              </label>
+            ))}
           </div>
         </div>
       </div>

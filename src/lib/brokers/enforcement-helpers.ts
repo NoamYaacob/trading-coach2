@@ -338,6 +338,103 @@ export function classifyFlattenError(err: unknown): BrokerFlattenResult {
   };
 }
 
+// ── Session-end helpers ───────────────────────────────────────────────────────
+
+/**
+ * What should happen at session end for accounts that still have open positions.
+ *
+ *   flatten_at_session_end   — Guardrail exits all open positions automatically,
+ *                              then locks the account.
+ *   wait_for_exit_then_lock  — New opening orders are blocked immediately, but
+ *                              Guardrail does not touch the active position. The
+ *                              account locks as soon as it goes flat.
+ *
+ * null in the DB is treated as "wait_for_exit_then_lock" (safe default).
+ */
+export type SessionEndBehavior =
+  | "flatten_at_session_end"
+  | "wait_for_exit_then_lock";
+
+/**
+ * What the sync should do upon detecting session end for a given account.
+ *
+ *   none             — session not ended, already stopped, or pending with positions still open
+ *   lock_immediately — session ended, no open positions — lock now
+ *   flatten_then_lock — session ended, open positions, behavior=flatten_at_session_end
+ *   await_flat       — session ended, open positions, behavior=wait_for_exit_then_lock
+ *                      → set pendingSessionEndLock=true; lock fires next sync when flat
+ *   lock_pending     — pendingSessionEndLock was true, now positions are flat — lock now
+ */
+export type SessionEndAction =
+  | "none"
+  | "lock_immediately"
+  | "flatten_then_lock"
+  | "await_flat"
+  | "lock_pending";
+
+/**
+ * Returns the current hour (0–23) in America/Chicago time.
+ *
+ * Midnight in Chicago is returned as 0, not 24.
+ */
+export function getCmeHour(now: Date): number {
+  const s = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    hour: "numeric",
+    hour12: false,
+  }).format(now);
+  const h = parseInt(s, 10);
+  return h === 24 ? 0 : h;
+}
+
+/**
+ * Returns true when the configured session end hour has been reached or passed
+ * for the current CME trading session.
+ *
+ * CME Globex sessions start at 17:00 CT. Hours 17–23 are the *beginning* of a
+ * session, so a session end of e.g. 16 (4 PM CT) can only be reached during
+ * hours 0–16 of the *following* calendar day. If cmeHour is 17–23 the session
+ * is just starting and can never be "at end" yet.
+ *
+ * sessionEndHour must be in [0, 16] to make practical sense. Values ≥ 17 would
+ * fire at session *start*, not end.
+ */
+export function isSessionEndReached(sessionEndHour: number, cmeHour: number): boolean {
+  if (cmeHour >= 17) return false; // session just started — cannot be at end
+  return cmeHour >= sessionEndHour;
+}
+
+/**
+ * Decide what the sync loop should do when approaching or past session end.
+ *
+ * Pure function — no I/O. All context is passed explicitly so the logic is
+ * fully unit-testable.
+ */
+export function deriveSessionEndAction(opts: {
+  sessionEndHour: number | null;
+  behavior: SessionEndBehavior;
+  cmeHour: number;
+  hasOpenPositions: boolean;
+  isAlreadyStopped: boolean;
+  isPendingSessionEndLock: boolean;
+}): SessionEndAction {
+  const { sessionEndHour, behavior, cmeHour, hasOpenPositions, isAlreadyStopped, isPendingSessionEndLock } = opts;
+
+  if (isAlreadyStopped) return "none";
+
+  // Pending state: we already detected session end and are waiting for positions to close.
+  if (isPendingSessionEndLock) {
+    return hasOpenPositions ? "none" : "lock_pending";
+  }
+
+  if (sessionEndHour === null) return "none";
+  if (!isSessionEndReached(sessionEndHour, cmeHour)) return "none";
+
+  // Session has ended — decide based on position state and configured behavior.
+  if (!hasOpenPositions) return "lock_immediately";
+  return behavior === "flatten_at_session_end" ? "flatten_then_lock" : "await_flat";
+}
+
 // ── Error classification ──────────────────────────────────────────────────────
 
 /**

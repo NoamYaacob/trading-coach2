@@ -71,6 +71,7 @@ export default async function RulesPage({
             maxDailyLoss: true, riskPerTrade: true,
             maxTradesPerDay: true, stopAfterLosses: true,
             allowedStartHour: true, allowedEndHour: true,
+            sessionEndBehavior: true,
             propFirmAccountSize: true, propFirmPhase: true,
             propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
             propFirmEODDrawdown: true, propFirmTrailingDrawdown: true,
@@ -121,6 +122,7 @@ export default async function RulesPage({
     maxContracts: intStr(riskRules?.maxContracts),
     sessionStartHour: intStr(riskRules?.sessionStartHour),
     sessionEndHour: intStr(riskRules?.sessionEndHour),
+    sessionEndBehavior: riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
     tradingDays: parseTradingDays(riskRules?.tradingDays),
     onBreachWarn: riskRules?.onBreachWarn ?? true,
   };
@@ -135,6 +137,7 @@ export default async function RulesPage({
     stopAfterLosses: intStr(selectedAccount?.riskRules?.stopAfterLosses),
     allowedStartHour: intStr(selectedAccount?.riskRules?.allowedStartHour),
     allowedEndHour: intStr(selectedAccount?.riskRules?.allowedEndHour),
+    sessionEndBehavior: selectedAccount?.riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
     propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
     propFirmPhase: selectedAccount?.riskRules?.propFirmPhase ?? "",
     propFirmDailyLossLimit: decStr(selectedAccount?.riskRules?.propFirmDailyLossLimit),

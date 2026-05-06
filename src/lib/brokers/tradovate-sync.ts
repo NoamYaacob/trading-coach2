@@ -25,7 +25,15 @@ import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/t
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
-import { computeEffectiveDailyPnl } from "./enforcement-helpers";
+import {
+  computeEffectiveDailyPnl,
+  getCmeHour,
+  deriveSessionEndAction,
+  isEnforcementDryRun,
+  classifyFlattenError,
+  type SessionEndBehavior,
+  type BrokerFlattenResult,
+} from "./enforcement-helpers";
 
 export type SyncResult = {
   ok: boolean;
@@ -93,10 +101,13 @@ export async function syncTradovateAccount(
 
     // ── Open positions → unrealised P&L ────────────────────────────────────
     // Prefer openPl from the snapshot; fall back to summing position data.
+    // toPositions() returns only non-zero netPos positions (already filtered).
     let openPnl: number | null = openPnlFromSnapshot;
+    let hasOpenPositions = false;
     try {
       const positions = await client.toPositions();
-      if (positions.length > 0) {
+      hasOpenPositions = positions.length > 0;
+      if (hasOpenPositions) {
         const sum = positions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
         const hasAnyPnl = positions.some((p) => p.unrealizedPnL !== null);
         if (openPnl == null && hasAnyPnl) openPnl = sum;
@@ -276,7 +287,7 @@ export async function syncTradovateAccount(
     const [accountRules, defaultRules] = await Promise.all([
       prisma.accountRiskRules.findUnique({
         where: { accountId },
-        select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
+        select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true, allowedEndHour: true, sessionEndBehavior: true },
       }),
       prisma.riskRules.findUnique({
         where: { userId },
@@ -286,6 +297,8 @@ export async function syncTradovateAccount(
           dailyProfitTarget: true,
           tradingDays: true,
           stopAfterLosses: true,
+          sessionEndHour: true,
+          sessionEndBehavior: true,
         },
       }),
     ]);
@@ -337,16 +350,59 @@ export async function syncTradovateAccount(
     const tradeCountIsAuthoritative = tradeCountSource === "verified";
 
     // ── LiveSessionState: read before riskState computation ──────────────────
-    // Load first so consecutiveLosses is available for the consecutive_losses
-    // enforcement check below. tradingDayKey uses the CME Globex session date
-    // (rolls at 5PM America/Chicago), not UTC or server calendar date.
+    // Load first so consecutiveLosses and pendingSessionEndLock are available
+    // for enforcement checks below. tradingDayKey uses the CME Globex session
+    // date (rolls at 5PM America/Chicago), not UTC or server calendar date.
     const existing = await prisma.liveSessionState.findUnique({
       where: { accountId },
-      select: { id: true, sessionDate: true, riskState: true, consecutiveLosses: true },
+      select: { id: true, sessionDate: true, riskState: true, consecutiveLosses: true, pendingSessionEndLock: true },
     });
     const prevRiskState = existing?.riskState ?? "NORMAL";
     const consecutiveLossesFromState = existing?.consecutiveLosses ?? 0;
     const isStale = existing ? existing.sessionDate !== tradingDayKey : false;
+    const isPendingSessionEndLock = !isStale && (existing?.pendingSessionEndLock ?? false);
+
+    // ── Session-end behavior ──────────────────────────────────────────────
+    // Account-specific hour/behavior take precedence over user-level defaults.
+    const effectiveSessionEndHour: number | null =
+      accountRules?.allowedEndHour ?? defaultRules?.sessionEndHour ?? null;
+    const effectiveSessionEndBehavior: SessionEndBehavior =
+      ((accountRules?.sessionEndBehavior ?? defaultRules?.sessionEndBehavior ?? null) as SessionEndBehavior | null) ??
+      "wait_for_exit_then_lock";
+    const cmeHour = getCmeHour(now);
+    const sessionEndAction = deriveSessionEndAction({
+      sessionEndHour: effectiveSessionEndHour,
+      behavior: effectiveSessionEndBehavior,
+      cmeHour,
+      hasOpenPositions,
+      isAlreadyStopped: prevRiskState === "STOPPED",
+      isPendingSessionEndLock,
+    });
+
+    // For flatten_then_lock: execute the flatten step here in the sync
+    // so the result can be passed to triggerEnforcement as preFlattened.
+    let preFlattened: BrokerFlattenResult | undefined;
+    if (sessionEndAction === "flatten_then_lock") {
+      if (isEnforcementDryRun()) {
+        preFlattened = {
+          flattenStatus: "dry_run",
+          flattenMessage:
+            "Dry run · Session-end position exit simulated. No Tradovate write was sent.",
+          flattenPayload: { positions: ["(position IDs from position/deps)"], admin: false },
+          flattenResponse: null,
+        };
+      } else {
+        try {
+          preFlattened = await client.applyFlattenOpenPositions();
+        } catch (flattenErr) {
+          preFlattened = classifyFlattenError(flattenErr);
+          console.warn("[tradovate/sync] session-end flatten failed — proceeding to lock", {
+            accountId,
+            flattenStatus: preFlattened.flattenStatus,
+          });
+        }
+      }
+    }
 
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";
     let enforcementTrigger: EnforcementTrigger | null = null;
@@ -387,6 +443,13 @@ export async function syncTradovateAccount(
       newRiskState = "STOPPED";
       enforcementTrigger = "consecutive_losses";
     } else if (
+      sessionEndAction === "lock_immediately" ||
+      sessionEndAction === "flatten_then_lock" ||
+      sessionEndAction === "lock_pending"
+    ) {
+      newRiskState = "STOPPED";
+      enforcementTrigger = "session_end";
+    } else if (
       (lossPct != null && lossPct >= 0.8) ||
       (tradeCountIsAuthoritative &&
         effectiveMaxTrades != null &&
@@ -398,6 +461,13 @@ export async function syncTradovateAccount(
 
     // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──
 
+    const nextPendingSessionEndLock =
+      sessionEndAction === "await_flat"
+        ? true
+        : sessionEndAction === "lock_pending"
+          ? false // resolved — lock fires this sync
+          : isPendingSessionEndLock; // no change
+
     if (existing) {
       await prisma.liveSessionState.update({
         where: { accountId },
@@ -406,6 +476,7 @@ export async function syncTradovateAccount(
           tradesCount,
           tradeCountSource,
           riskState: newRiskState,
+          pendingSessionEndLock: isStale ? false : nextPendingSessionEndLock,
           ...(resolvedDailyPnl != null
             ? { dailyPnl: resolvedDailyPnl }
             : isStale
@@ -423,6 +494,7 @@ export async function syncTradovateAccount(
           tradeCountSource,
           consecutiveLosses: 0,
           riskState: newRiskState,
+          pendingSessionEndLock: false,
         },
       });
     }
@@ -438,7 +510,9 @@ export async function syncTradovateAccount(
               ? `Today (${cmeDayCode}) is not a selected trading day`
               : enforcementTrigger === "consecutive_losses"
                 ? `Consecutive loss limit reached: ${consecutiveLossesFromState} consecutive losses`
-                : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
+                : enforcementTrigger === "session_end"
+                  ? `Session end reached (configured end hour: ${effectiveSessionEndHour ?? "unknown"} CT)`
+                  : `Trade limit reached: ${tradesCount}${effectiveMaxTrades != null ? `/${effectiveMaxTrades}` : ""}`;
       triggerEnforcement({
         accountId,
         userId,
@@ -448,6 +522,9 @@ export async function syncTradovateAccount(
         // amount already earned/lost, ensuring the account is immediately past the limit.
         currentDailyLoss: lossUsed,
         currentDailyPnl: resolvedDailyPnl,
+        // For session_end flatten_then_lock: pass the flatten result so it is
+        // stored in GuardianIntervention without re-running the flatten step.
+        ...(preFlattened !== undefined && { preFlattened }),
       }).catch((err) => {
         console.error("[enforcement] trigger failed", { accountId, error: err });
       });

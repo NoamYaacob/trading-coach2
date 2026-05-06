@@ -73,7 +73,7 @@ import {
   isEnforcementDryRun,
 } from "./enforcement-helpers";
 
-export type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
+export type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult, SessionEndBehavior, SessionEndAction } from "./enforcement-helpers";
 import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 
 /**
@@ -165,6 +165,12 @@ export type EnforcementContext = {
    * Required for profit_target trigger; ignored for other triggers.
    */
   currentDailyPnl?: number | null;
+  /**
+   * Pre-computed flatten result from the sync (used for session_end trigger).
+   * When provided, the flatten fields in GuardianIntervention are taken from
+   * this result instead of from applyBrokerDayLockout's internal flatten step.
+   */
+  preFlattened?: BrokerFlattenResult;
 };
 
 /**
@@ -526,6 +532,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
 
   const result = await applyBrokerDayLockout(ctx);
 
+  // Use caller-supplied flatten result (e.g. from sync-side session_end flatten)
+  // in preference to what applyBrokerDayLockout computed internally.
+  const flatten = ctx.preFlattened ?? result;
+
   await prisma.guardianIntervention.create({
     data: {
       accountId,
@@ -538,10 +548,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       ...(result.brokerPayload != null && { brokerPayloadJson: result.brokerPayload as Prisma.InputJsonValue }),
       ...(result.brokerResponse != null && { brokerResponseJson: result.brokerResponse as Prisma.InputJsonValue }),
       brokerLockStatus: result.status,
-      flattenStatus: result.flattenStatus,
-      flattenMessage: result.flattenMessage,
-      ...(result.flattenPayload != null && { flattenPayloadJson: result.flattenPayload as Prisma.InputJsonValue }),
-      ...(result.flattenResponse != null && { flattenResponseJson: result.flattenResponse as Prisma.InputJsonValue }),
+      flattenStatus: flatten.flattenStatus,
+      flattenMessage: flatten.flattenMessage,
+      ...(flatten.flattenPayload != null && { flattenPayloadJson: flatten.flattenPayload as Prisma.InputJsonValue }),
+      ...(flatten.flattenResponse != null && { flattenResponseJson: flatten.flattenResponse as Prisma.InputJsonValue }),
     },
   });
 }

@@ -23,6 +23,7 @@ type RiskRulesBody = {
   stopAfterLosses?: number | null;
   allowedStartHour?: number | null;
   allowedEndHour?: number | null;
+  sessionEndBehavior?: string | null;
   propFirmAccountSize?: number | null;
   propFirmPhase?: string | null;
   propFirmDailyLossLimit?: number | null;
@@ -42,6 +43,7 @@ function riskRulesData(r: RiskRulesBody) {
     stopAfterLosses: r.stopAfterLosses ?? null,
     allowedStartHour: r.allowedStartHour ?? null,
     allowedEndHour: r.allowedEndHour ?? null,
+    sessionEndBehavior: r.sessionEndBehavior ?? null,
     propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null,
     propFirmPhase: r.propFirmPhase ?? null,
     propFirmDailyLossLimit: r.propFirmDailyLossLimit != null ? String(r.propFirmDailyLossLimit) : null,

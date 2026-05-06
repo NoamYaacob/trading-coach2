@@ -24,8 +24,11 @@ import {
   buildLiquidatePositionsPayload,
   isFlattenConfirmed,
   classifyFlattenError,
+  getCmeHour,
+  isSessionEndReached,
+  deriveSessionEndAction,
 } from "./enforcement-helpers.ts";
-import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus } from "./enforcement-helpers.ts";
+import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, SessionEndBehavior, SessionEndAction } from "./enforcement-helpers.ts";
 
 // ── buildAutoLiqUpdatePayload ─────────────────────────────────────────────────
 
@@ -1258,4 +1261,160 @@ describe("effectiveDailyPnl threshold — profit_target (table-driven)", () => {
       );
     });
   }
+});
+
+// ── getCmeHour ────────────────────────────────────────────────────────────────
+
+describe("getCmeHour", () => {
+  // UTC midnight = 6 PM previous day CT (UTC-6 in CST) or 7 PM in CDT.
+  // Use known winter (CST = UTC-6) and summer (CDT = UTC-5) dates.
+
+  it("returns 18 for UTC midnight in January (CST = UTC-6)", () => {
+    // 2026-01-15 00:00 UTC = 2026-01-14 18:00 CST
+    const d = new Date("2026-01-15T00:00:00Z");
+    assert.equal(getCmeHour(d), 18);
+  });
+
+  it("returns 9 for 15:00 UTC in January (CST)", () => {
+    // 2026-01-15 15:00 UTC = 2026-01-15 09:00 CST
+    const d = new Date("2026-01-15T15:00:00Z");
+    assert.equal(getCmeHour(d), 9);
+  });
+
+  it("returns 16 for 22:00 UTC in January (CST)", () => {
+    // 2026-01-15 22:00 UTC = 2026-01-15 16:00 CST
+    const d = new Date("2026-01-15T22:00:00Z");
+    assert.equal(getCmeHour(d), 16);
+  });
+
+  it("returns 17 for 23:00 UTC in January (CST) — session start hour", () => {
+    // 2026-01-15 23:00 UTC = 2026-01-15 17:00 CST
+    const d = new Date("2026-01-15T23:00:00Z");
+    assert.equal(getCmeHour(d), 17);
+  });
+
+  it("returns 0 for midnight Chicago (06:00 UTC in January CST)", () => {
+    // 2026-01-15 06:00 UTC = 2026-01-15 00:00 CST
+    const d = new Date("2026-01-15T06:00:00Z");
+    assert.equal(getCmeHour(d), 0);
+  });
+});
+
+// ── isSessionEndReached ───────────────────────────────────────────────────────
+
+describe("isSessionEndReached", () => {
+  it("returns false when cmeHour is in the 17-23 range (session just started)", () => {
+    for (const h of [17, 18, 20, 23]) {
+      assert.equal(isSessionEndReached(16, h), false, `hour=${h}`);
+    }
+  });
+
+  it("returns true when cmeHour equals sessionEndHour", () => {
+    assert.equal(isSessionEndReached(16, 16), true);
+    assert.equal(isSessionEndReached(9, 9), true);
+    assert.equal(isSessionEndReached(0, 0), true);
+  });
+
+  it("returns true when cmeHour is past sessionEndHour (0-16 range)", () => {
+    assert.equal(isSessionEndReached(14, 15), true);
+    assert.equal(isSessionEndReached(9, 16), true);
+    assert.equal(isSessionEndReached(0, 5), true);
+  });
+
+  it("returns false when cmeHour is before sessionEndHour", () => {
+    assert.equal(isSessionEndReached(16, 15), false);
+    assert.equal(isSessionEndReached(9, 8), false);
+    assert.equal(isSessionEndReached(13, 12), false);
+  });
+
+  it("returns false for hour=16 when sessionEndHour=17 (17 is treated as start, not reachable in 0-16 range)", () => {
+    // sessionEndHour=17 would require cmeHour>=17, but that returns false
+    assert.equal(isSessionEndReached(17, 16), false);
+    assert.equal(isSessionEndReached(17, 17), false); // 17 blocked by the >= 17 guard
+  });
+});
+
+// ── deriveSessionEndAction ────────────────────────────────────────────────────
+
+describe("deriveSessionEndAction", () => {
+  function action(overrides: Partial<Parameters<typeof deriveSessionEndAction>[0]>): SessionEndAction {
+    return deriveSessionEndAction({
+      sessionEndHour: 16,
+      behavior: "wait_for_exit_then_lock",
+      cmeHour: 16,            // session end reached
+      hasOpenPositions: false,
+      isAlreadyStopped: false,
+      isPendingSessionEndLock: false,
+      ...overrides,
+    });
+  }
+
+  it("returns 'none' when account is already stopped", () => {
+    assert.equal(action({ isAlreadyStopped: true }), "none");
+  });
+
+  it("returns 'none' when sessionEndHour is null (no session end configured)", () => {
+    assert.equal(action({ sessionEndHour: null }), "none");
+  });
+
+  it("returns 'none' when session end has not been reached (cmeHour < sessionEndHour)", () => {
+    assert.equal(action({ cmeHour: 15, sessionEndHour: 16 }), "none");
+    assert.equal(action({ cmeHour: 8, sessionEndHour: 9 }), "none");
+  });
+
+  it("returns 'none' when cmeHour is in session-start range (17-23)", () => {
+    assert.equal(action({ cmeHour: 17 }), "none");
+    assert.equal(action({ cmeHour: 23 }), "none");
+  });
+
+  it("returns 'lock_immediately' when session ended and no open positions", () => {
+    assert.equal(action({ hasOpenPositions: false }), "lock_immediately");
+    assert.equal(action({ hasOpenPositions: false, behavior: "flatten_at_session_end" }), "lock_immediately");
+    assert.equal(action({ hasOpenPositions: false, cmeHour: 16, sessionEndHour: 9 }), "lock_immediately");
+  });
+
+  it("returns 'flatten_then_lock' when session ended + open positions + flatten behavior", () => {
+    assert.equal(
+      action({ hasOpenPositions: true, behavior: "flatten_at_session_end" }),
+      "flatten_then_lock",
+    );
+  });
+
+  it("returns 'await_flat' when session ended + open positions + wait behavior", () => {
+    assert.equal(
+      action({ hasOpenPositions: true, behavior: "wait_for_exit_then_lock" }),
+      "await_flat",
+    );
+  });
+
+  it("returns 'lock_pending' when isPendingSessionEndLock=true and positions are flat", () => {
+    // isPendingSessionEndLock takes precedence over session-end check
+    assert.equal(
+      action({ isPendingSessionEndLock: true, hasOpenPositions: false }),
+      "lock_pending",
+    );
+  });
+
+  it("returns 'none' when isPendingSessionEndLock=true but positions still open", () => {
+    assert.equal(
+      action({ isPendingSessionEndLock: true, hasOpenPositions: true }),
+      "none",
+    );
+  });
+
+  it("lock_pending fires even when session end hour is not currently reached (post-rollover)", () => {
+    // After CME day rolls at 17:00, cmeHour=17 → isSessionEndReached returns false.
+    // But pendingSessionEndLock should still resolve to lock_pending when flat.
+    assert.equal(
+      action({ isPendingSessionEndLock: true, hasOpenPositions: false, cmeHour: 17 }),
+      "lock_pending",
+    );
+  });
+
+  it("returns 'none' when isAlreadyStopped=true even if pendingSessionEndLock is set", () => {
+    assert.equal(
+      action({ isAlreadyStopped: true, isPendingSessionEndLock: true, hasOpenPositions: false }),
+      "none",
+    );
+  });
 });

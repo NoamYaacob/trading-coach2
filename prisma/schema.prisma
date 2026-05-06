@@ -166,6 +166,7 @@ model RiskRules {
   sessionStartHour      Int?
   sessionEndHour        Int?
   tradingDays           String?
+  sessionEndBehavior    String?
   newsLockoutEnabled    Boolean  @default(false)
   onBreachWarn          Boolean  @default(true)
   onBreachAppLock       Boolean  @default(true)
@@ -464,6 +465,7 @@ model AccountRiskRules {
   stopAfterLosses  Int?
   allowedStartHour Int?
   allowedEndHour   Int?
+  sessionEndBehavior String?
   // Prop firm limits — only relevant for evaluation / funded accounts.
   // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,
   // propFirmDrawdownRemaining). Set propFirmDrawdownRemaining to the account's current
@@ -525,9 +527,10 @@ model LiveSessionState {
   lastTradeAt       DateTime?
   cooldownActive    Boolean           @default(false)
   cooldownUntil     DateTime?
-  riskState         AccountRiskState  @default(NORMAL)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  riskState             AccountRiskState  @default(NORMAL)
+  pendingSessionEndLock Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   account           ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }

@@ -26,6 +26,7 @@ export type AccountRulesValues = {
   stopAfterLosses: string;
   allowedStartHour: string;
   allowedEndHour: string;
+  sessionEndBehavior: string;
   propFirmAccountSize: string;
   propFirmPhase: string;
   propFirmDailyLossLimit: string;
@@ -113,6 +114,19 @@ function Input({
   );
 }
 
+const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
+  {
+    value: "wait_for_exit_then_lock",
+    label: "Wait for trade exit, then lock",
+    hint: "New opening orders are blocked immediately. Guardrail won't interrupt an active trade.",
+  },
+  {
+    value: "flatten_at_session_end",
+    label: "Flatten at session end",
+    hint: "Guardrail will automatically close any open position at session end, then lock the account.",
+  },
+] as const;
+
 export function AccountRulesForm({
   accountId,
   accountLabel,
@@ -175,6 +189,7 @@ export function AccountRulesForm({
           stopAfterLosses: int(values.stopAfterLosses),
           allowedStartHour: int(values.allowedStartHour),
           allowedEndHour: int(values.allowedEndHour),
+          sessionEndBehavior: values.sessionEndBehavior || null,
           propFirmAccountSize: num(values.propFirmAccountSize),
           propFirmPhase: values.propFirmPhase.trim() || null,
           propFirmDailyLossLimit: num(values.propFirmDailyLossLimit),
@@ -347,6 +362,35 @@ export function AccountRulesForm({
             </p>
           );
         })()}
+      </fieldset>
+
+      {/* Session end behavior */}
+      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <legend className="text-sm font-semibold text-stone-950">At session end</legend>
+        <p className="-mt-2 text-xs text-stone-500">
+          What Guardrail does when the session window closes and there are open positions.
+        </p>
+        <div className="grid gap-2">
+          {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
+            <label
+              key={value}
+              className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm cursor-pointer"
+            >
+              <input
+                type="radio"
+                name="accountSessionEndBehavior"
+                value={value}
+                checked={values.sessionEndBehavior === value}
+                onChange={() => update("sessionEndBehavior", value)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
+              />
+              <span>
+                <span className="font-medium text-stone-950">{label}</span>
+                <span className="mt-0.5 block text-stone-500">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </fieldset>
 
       {/* Prop firm parameters — collapsible */}
