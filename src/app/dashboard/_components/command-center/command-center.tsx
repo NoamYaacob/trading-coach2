@@ -250,7 +250,7 @@ function FilterBar({
           <select
             value={firmFilter}
             onChange={(e) => onFirmChange(e.target.value)}
-            className="rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
+            className="max-w-full rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
           >
             <option value="all">All firms</option>
             {firms.map((firm) => (
@@ -704,20 +704,20 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         <div className="mt-2.5 flex items-center gap-2">
           <Link
             href={`/accounts/${account.id}/edit`}
-            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-xl border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Open
           </Link>
           <Link
             href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-xl border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+            className="inline-flex h-10 min-w-[96px] items-center justify-center rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Rules
           </Link>
           {reconnectNeeded && (
             <Link
               href="/accounts/connect/tradovate"
-              className="ml-auto inline-flex h-10 items-center justify-center rounded-xl bg-stone-900 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-700"
+              className="ml-auto inline-flex h-10 items-center justify-center rounded-full bg-stone-900 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-700"
             >
               Reconnect
             </Link>
@@ -818,7 +818,9 @@ function TradesCell({
       <div className={wrapperClass}>
         <p className="font-mono text-sm font-semibold text-stone-500">Estimated</p>
         <p className={hintClass}>
-          Trade count estimated from broker fills — may include other accounts on this connection.
+          {compact
+            ? "Estimated from broker data."
+            : "Trade count estimated from broker fills — may include other accounts on this connection."}
         </p>
       </div>
     );

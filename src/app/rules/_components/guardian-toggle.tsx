@@ -48,7 +48,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
   if (enabled) {
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-2.5">
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold text-white" aria-hidden>
               ✓
@@ -58,13 +58,13 @@ export function GuardianToggle({ initialEnabled }: Props) {
               <p className="mt-0.5 text-xs text-emerald-800/80">Guardrail is monitoring each session against your rules.</p>
             </div>
           </div>
-          <div className="shrink-0 text-right">
+          <div className="sm:shrink-0 sm:text-right">
             <button
               type="button"
               aria-pressed={true}
               onClick={handleDisable}
               disabled={loading}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 w-full items-center justify-center rounded-full border border-emerald-300 bg-white px-5 text-sm font-medium text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {loading ? "Turning off..." : "Turn off Guardian"}
             </button>
@@ -80,7 +80,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
 
   return (
     <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
           <div>
@@ -95,7 +95,7 @@ export function GuardianToggle({ initialEnabled }: Props) {
           aria-pressed={false}
           onClick={handleEnable}
           disabled={loading}
-          className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+          className="inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 sm:w-auto sm:shrink-0"
         >
           {loading ? "Enabling..." : "Turn on Guardian"}
         </button>

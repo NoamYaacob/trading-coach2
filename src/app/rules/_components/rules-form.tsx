@@ -147,12 +147,12 @@ export function RulesForm({ initial, timezone }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
+    <form onSubmit={handleSubmit} className="grid gap-6">
 
       {/* ── Money limits ────────────────────────────────────────────────── */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Money limits</legend>
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+      <div role="group" aria-label="Money limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+        <p className="text-sm font-semibold text-stone-950">Money limits</p>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
           </Field>
@@ -171,12 +171,12 @@ export function RulesForm({ initial, timezone }: Props) {
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
-      </fieldset>
+      </div>
 
       {/* ── Trading limits ──────────────────────────────────────────────── */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Trading limits</legend>
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+      <div role="group" aria-label="Trading limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+        <p className="text-sm font-semibold text-stone-950">Trading limits</p>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Max trades per day">
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
@@ -184,17 +184,15 @@ export function RulesForm({ initial, timezone }: Props) {
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
         </div>
-      </fieldset>
+      </div>
 
       {/* ── Trading window ──────────────────────────────────────────────── */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">
-          {SESSION_WINDOW_COPY.legend}
-        </legend>
-        <p className="-mt-2 text-xs text-stone-500">
-          {SESSION_WINDOW_COPY.helperText}
-        </p>
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+      <div role="group" aria-label="Trading window" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
+          <p className="mt-1 text-xs text-stone-500">{SESSION_WINDOW_COPY.helperText}</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label={SESSION_WINDOW_COPY.startLabel}>
             <NumberInput value={values.sessionStartHour} onChange={(v) => update("sessionStartHour", v)} placeholder="9" integer />
           </Field>
@@ -239,11 +237,11 @@ export function RulesForm({ initial, timezone }: Props) {
             })}
           </div>
         </div>
-      </fieldset>
+      </div>
 
       {/* ── Notifications ───────────────────────────────────────────────── */}
-      <fieldset className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <legend className="text-sm font-semibold text-stone-950">Notifications</legend>
+      <div role="group" aria-label="Notifications" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+        <p className="text-sm font-semibold text-stone-950">Notifications</p>
         <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm sm:py-3">
           <input
             type="checkbox"
@@ -256,15 +254,15 @@ export function RulesForm({ initial, timezone }: Props) {
             <span className="mt-0.5 block text-stone-500">In-app banner and Telegram (if connected).</span>
           </span>
         </label>
-      </fieldset>
+      </div>
 
       {/* ── Advanced settings — hidden by default ────────────────────────── */}
-      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
+      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
           Advanced
           <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
         </summary>
-        <div className="mt-3 grid gap-4 sm:mt-5 sm:gap-5">
+        <div className="mt-4 grid gap-4">
           <Field label="Max contracts / position size" hint="Saved but not yet broker-enforced. Future: sets Tradovate per-contract order limits.">
             <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
           </Field>
@@ -272,7 +270,7 @@ export function RulesForm({ initial, timezone }: Props) {
       </details>
 
       {/* ── Submit ──────────────────────────────────────────────────────── */}
-      <div className="grid gap-2 border-t border-stone-100 pt-4 sm:pt-6">
+      <div className="grid gap-2 border-t border-stone-100 pt-6">
         <p className="text-[11px] text-stone-400">
           Rules target: <span className="font-semibold text-stone-600">Default template</span>
         </p>
