@@ -49,6 +49,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     lastInterventionTrigger: null,
     lastInterventionAt: null,
     hasOpenIntervention: false,
+    flattenStatus: null,
     protectionStatus: "protected",
     pendingProtectionStatus: null,
     pendingProtectionEffectiveDate: null,
