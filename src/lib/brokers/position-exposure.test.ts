@@ -14,6 +14,7 @@ import {
   isMaxPositionSizeBreached,
   deriveMaxPositionSizeBreach,
 } from "./position-exposure.ts";
+import { MAX_POSITION_SIZE_COPY } from "../../app/rules/_components/position-size-copy.ts";
 
 describe("computeMiniEquivalentExposure — required cases from product spec", () => {
   it("2 NQ = 2 mini-equivalent", () => {
@@ -431,6 +432,139 @@ describe("deriveMaxPositionSizeBreach — selection of effective limit (sync res
       maxContracts: 5,
     });
     assert.equal(d.shouldTrigger, false);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — generic limits (1, 3, 10)", () => {
+  // maxContracts = 1
+  it("maxContracts=1: 1 NQ (1.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 1 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+  });
+
+  it("maxContracts=1: 10 MNQ (1.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 10 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+  });
+
+  it("maxContracts=1: 11 MNQ (1.1 mini-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 11 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 1.1);
+  });
+
+  it("maxContracts=1: 2 NQ (2.0 mini-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 2 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.totalMiniEquivalent, 2);
+  });
+
+  // maxContracts = 3
+  it("maxContracts=3: 3 NQ (3.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 3 }],
+      maxContracts: 3,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 3);
+  });
+
+  it("maxContracts=3: 30 MNQ (3.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 30 }],
+      maxContracts: 3,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 3);
+  });
+
+  it("maxContracts=3: 31 MNQ (3.1 mini-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 31 }],
+      maxContracts: 3,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 3.1);
+  });
+
+  // maxContracts = 10
+  it("maxContracts=10: 10 NQ (10.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 10 }],
+      maxContracts: 10,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 10);
+  });
+
+  it("maxContracts=10: 100 MNQ (10.0 mini-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 100 }],
+      maxContracts: 10,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 10);
+  });
+
+  it("maxContracts=10: 101 MNQ (10.1 mini-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 101 }],
+      maxContracts: 10,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 10.1);
+  });
+});
+
+describe("isMaxPositionSizeBreached — sub-tenth precision", () => {
+  it("2.1 (one micro above 2-mini limit) triggers", () => {
+    // 21 MNQ = 2.1 mini-equivalent. This is the minimum realizable breach
+    // above a limit of 2 since positions are whole contracts (1 micro = 0.1 mini).
+    assert.equal(isMaxPositionSizeBreached(2.1, 2), true);
+  });
+
+  it("sub-tenth float 2.0001 rounds to nearest tenth — does not falsely trigger at limit 2", () => {
+    // Positions are whole contracts; the minimum real increment is 0.1 (one micro).
+    // A sub-tenth value like 2.0001 is not achievable from positions and rounds to
+    // 2.0 tenths in the integer-tenths system, so it correctly does not breach.
+    assert.equal(isMaxPositionSizeBreached(2.0001, 2), false);
+  });
+});
+
+describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
+  it("label is 'Max position size' (not the old 'Max contracts / position size')", () => {
+    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size");
+    assert.ok(!MAX_POSITION_SIZE_COPY.label.includes("contracts"));
+  });
+
+  it("hint includes 'mini-equivalent exposure'", () => {
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /mini-equivalent exposure/);
+  });
+
+  it("hint does not imply fractional tradable contracts", () => {
+    // The hint must not describe fractional contract sizes (e.g. '0.5 NQ', 'half a
+    // contract', 'fractional') — actual trades are always placed as whole contracts.
+    assert.ok(!MAX_POSITION_SIZE_COPY.hint.includes("fractional"));
+    assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ NQ/));
+    assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ ES/));
+    assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ MNQ/));
   });
 });
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
+import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -255,7 +256,7 @@ export function RulesForm({ initial, timezone }: Props) {
           <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
         </summary>
         <div className="mt-4 grid gap-4">
-          <Field label="Max contracts / position size" hint="Guardrail monitors this by mini-equivalent exposure (1 NQ = 10 MNQ). Broker-side rejection is not active yet.">
+          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
             <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
           </Field>
         </div>
