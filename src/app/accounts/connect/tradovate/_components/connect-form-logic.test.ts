@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   getDefaultEnv,
+  getDefaultEnvForPhase,
   isLiveAllowed,
   isEnvForced,
   getEnvHint,
@@ -71,6 +72,26 @@ describe("isEnvForced", () => {
   });
 });
 
+// ── getDefaultEnvForPhase ─────────────────────────────────────────────────────
+
+describe("getDefaultEnvForPhase", () => {
+  test("evaluation defaults to Demo/Simulation", () => {
+    assert.equal(getDefaultEnvForPhase("evaluation"), "demo");
+  });
+
+  test("funded_sim defaults to Demo/Simulation", () => {
+    assert.equal(getDefaultEnvForPhase("funded_sim"), "demo");
+  });
+
+  test("live_funded defaults to Live", () => {
+    assert.equal(getDefaultEnvForPhase("live_funded"), "live");
+  });
+
+  test("not_sure defaults to Demo/Simulation", () => {
+    assert.equal(getDefaultEnvForPhase("not_sure"), "demo");
+  });
+});
+
 // ── getEnvHint ────────────────────────────────────────────────────────────────
 
 describe("getEnvHint", () => {
@@ -82,23 +103,41 @@ describe("getEnvHint", () => {
   });
 
   test("paper trading hint is the same regardless of env value", () => {
-    // env should not affect the hint for paper trading
     assert.equal(getEnvHint("demo", "demo"), getEnvHint("demo", "live"));
   });
 
-  test("prop firm + Demo shows advisory covering evaluations, challenges, combines, and simulated funded", () => {
-    const hint = getEnvHint("prop_firm", "demo");
+  test("prop firm evaluation phase shows hint covering evaluations, challenges, and combines", () => {
+    const hint = getEnvHint("prop_firm", "demo", "evaluation");
     assert.ok(hint != null);
     assert.match(hint!, /evaluation/i);
     assert.match(hint!, /challenge/i);
     assert.match(hint!, /combine/i);
-    assert.match(hint!, /simulated funded|sim.*funded/i);
   });
 
-  test("prop firm + Live shows a Live-only advisory", () => {
-    const hint = getEnvHint("prop_firm", "live");
+  test("prop firm funded_sim phase shows hint about simulated funded accounts", () => {
+    const hint = getEnvHint("prop_firm", "demo", "funded_sim");
+    assert.ok(hint != null);
+    assert.match(hint!, /simulated/i);
+    assert.match(hint!, /demo|simulation/i);
+  });
+
+  test("prop firm live_funded phase shows Live advisory", () => {
+    const hint = getEnvHint("prop_firm", "live", "live_funded");
     assert.ok(hint != null);
     assert.match(hint!, /live/i);
+    assert.match(hint!, /tradovate live/i);
+  });
+
+  test("prop firm not_sure phase shows neutral hint", () => {
+    const hint = getEnvHint("prop_firm", "demo", "not_sure");
+    assert.ok(hint != null);
+    assert.match(hint!, /tradovate/i);
+  });
+
+  test("prop firm with no phase falls back to neutral hint", () => {
+    const hint = getEnvHint("prop_firm", "demo");
+    assert.ok(hint != null);
+    assert.match(hint!, /tradovate/i);
   });
 
   test("personal brokerage + Live returns null (no warning needed)", () => {
@@ -175,19 +214,49 @@ describe("PROP_FIRM_PHASES contract", () => {
     const challengeOnly = PROP_FIRM_PHASES.find(
       (p) => /challenge/i.test(p.label) && !/evaluation/i.test(p.label),
     );
-    assert.equal(challengeOnly, undefined, "challenge must be merged into evaluation option");
+    assert.equal(challengeOnly, undefined, "challenge must be merged into the evaluation option");
   });
 
-  test("user can choose Funded", () => {
-    assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "funded"));
+  test("has Funded / Sim funded as a single merged option", () => {
+    const option = PROP_FIRM_PHASES.find((p) => p.value === "funded_sim");
+    assert.ok(option != null, "funded_sim option must exist");
+    assert.match(option!.label, /funded/i);
+    assert.match(option!.label, /sim/i);
   });
 
-  test("user can choose Sim funded", () => {
-    assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "sim_funded"));
+  test("there is no standalone Funded option", () => {
+    const standalone = PROP_FIRM_PHASES.find(
+      (p) => p.value === "funded" || (p.label === "Funded"),
+    );
+    assert.equal(standalone, undefined, "Funded must be merged into funded_sim option");
+  });
+
+  test("there is no standalone Sim funded option", () => {
+    const standalone = PROP_FIRM_PHASES.find((p) => p.value === "sim_funded");
+    assert.equal(standalone, undefined, "Sim funded must be merged into funded_sim option");
+  });
+
+  test("has Live funded option", () => {
+    const option = PROP_FIRM_PHASES.find((p) => p.value === "live_funded");
+    assert.ok(option != null, "live_funded option must exist");
+    assert.match(option!.label, /live/i);
+    assert.match(option!.label, /funded/i);
   });
 
   test("user can choose Not sure", () => {
     assert.ok(PROP_FIRM_PHASES.some((p) => p.value === "not_sure"));
+  });
+
+  test("selecting live_funded sets environment to Live", () => {
+    assert.equal(getDefaultEnvForPhase("live_funded"), "live");
+  });
+
+  test("switching back from live_funded to funded_sim sets environment to Demo", () => {
+    assert.equal(getDefaultEnvForPhase("funded_sim"), "demo");
+  });
+
+  test("switching back from live_funded to evaluation sets environment to Demo", () => {
+    assert.equal(getDefaultEnvForPhase("evaluation"), "demo");
   });
 });
 

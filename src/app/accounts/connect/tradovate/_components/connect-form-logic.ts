@@ -13,10 +13,10 @@ export type TradovateEnv = "demo" | "live";
 // ── Prop firm phase ───────────────────────────────────────────────────────────
 
 export const PROP_FIRM_PHASES = [
-  { value: "evaluation", label: "Evaluation / Challenge / Combine" },
-  { value: "funded",     label: "Funded" },
-  { value: "sim_funded", label: "Sim funded" },
-  { value: "not_sure",   label: "Not sure" },
+  { value: "evaluation",  label: "Evaluation / Challenge / Combine" },
+  { value: "funded_sim",  label: "Funded / Sim funded" },
+  { value: "live_funded", label: "Live funded" },
+  { value: "not_sure",    label: "Not sure" },
 ] as const;
 
 export type PropFirmPhase = (typeof PROP_FIRM_PHASES)[number]["value"];
@@ -28,6 +28,14 @@ export const DEFAULT_PROP_FIRM_PHASE: PropFirmPhase = "evaluation";
 /** The environment that should be pre-selected when the user first picks a source. */
 export function getDefaultEnv(source: AccountSource): TradovateEnv {
   return source === "personal" ? "live" : "demo";
+}
+
+/**
+ * The environment that should be applied when the user picks a prop firm phase.
+ * Live funded is the only phase that defaults to Live.
+ */
+export function getDefaultEnvForPhase(phase: PropFirmPhase): TradovateEnv {
+  return phase === "live_funded" ? "live" : "demo";
 }
 
 // ── Constraints ───────────────────────────────────────────────────────────────
@@ -51,10 +59,15 @@ export function isEnvForced(source: AccountSource): boolean {
 // ── Contextual hint ───────────────────────────────────────────────────────────
 
 /**
- * Returns the helper text shown below the environment selector for the given
- * source + env combination. Returns null when no extra guidance is needed.
+ * Returns the helper text shown below the environment selector.
+ * For prop firm accounts, pass the current phase for phase-specific copy.
+ * Returns null when no extra guidance is needed.
  */
-export function getEnvHint(source: AccountSource, env: TradovateEnv): string | null {
+export function getEnvHint(
+  source: AccountSource,
+  env: TradovateEnv,
+  phase?: PropFirmPhase,
+): string | null {
   switch (source) {
     case "demo":
       return "Paper trading accounts use the Demo/Simulation environment.";
@@ -63,9 +76,16 @@ export function getEnvHint(source: AccountSource, env: TradovateEnv): string | n
         ? null
         : "Most personal brokerage accounts use Live.";
     case "prop_firm":
-      return env === "demo"
-        ? "Most prop firm evaluations, challenges, combines, and simulated funded accounts use Demo/Simulation. Choose Live only if your prop firm account appears in Tradovate Live."
-        : "Use Live only if this prop firm account appears in Tradovate Live.";
+      switch (phase) {
+        case "evaluation":
+          return "Most prop firm evaluations, challenges, and combines use Demo/Simulation.";
+        case "funded_sim":
+          return "Most prop firm funded accounts are simulated and use Demo/Simulation.";
+        case "live_funded":
+          return "Live funded prop firm accounts use Tradovate Live. Choose this only if the account appears under Tradovate Live.";
+        default:
+          return "Choose the environment where the account appears in Tradovate.";
+      }
     case "other":
       return "Choose the environment where the account appears in Tradovate.";
   }

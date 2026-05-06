@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   getDefaultEnv,
+  getDefaultEnvForPhase,
   isLiveAllowed,
   isEnvForced,
   getEnvHint,
@@ -121,6 +122,14 @@ export function ConnectTradovateClient() {
     }
   }
 
+  function handlePhaseChange(phase: PropFirmPhase) {
+    setPropFirmPhase(phase);
+    // Live funded always forces Live; other phases default to Demo.
+    // Neither counts as a user override — switching phase again should re-default.
+    setEnv(getDefaultEnvForPhase(phase));
+    setUserHasOverriddenEnv(false);
+  }
+
   function handleEnvChange(newEnv: TradovateEnv) {
     if (!isLiveAllowed(accountSource) && newEnv === "live") return;
     setEnv(newEnv);
@@ -184,7 +193,11 @@ export function ConnectTradovateClient() {
 
   const liveAllowed = isLiveAllowed(accountSource);
   const envForced = isEnvForced(accountSource);
-  const envHint = getEnvHint(accountSource, env);
+  const envHint = getEnvHint(
+    accountSource,
+    env,
+    accountSource === "prop_firm" ? propFirmPhase : undefined,
+  );
 
   return (
     <div className="w-full min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(113,63,18,0.12),_transparent_32%),linear-gradient(180deg,_#f8f5ef_0%,_#f4efe6_100%)] text-stone-950">
@@ -322,7 +335,7 @@ export function ConnectTradovateClient() {
                         name="propFirmPhase"
                         value={value}
                         checked={propFirmPhase === value}
-                        onChange={() => setPropFirmPhase(value)}
+                        onChange={() => handlePhaseChange(value)}
                         className="shrink-0 accent-stone-950"
                       />
                       {label}
@@ -330,8 +343,8 @@ export function ConnectTradovateClient() {
                   ))}
                 </div>
                 <p className="mt-3 text-xs leading-5 text-stone-500">
-                  Most new prop firm accounts start as an evaluation, challenge, or combine. You
-                  can change this if the account is already funded.
+                  Most prop firm funded accounts are simulated. Choose Live funded only if your
+                  prop firm specifically gave you a real-money Tradovate Live account.
                 </p>
               </div>
             </div>
