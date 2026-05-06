@@ -16,8 +16,13 @@ export function buildArchiveRequest(accountId: string): {
   };
 }
 
-export const ARCHIVE_CONFIRM_MSG =
-  "Archive this unavailable account? It will be hidden from active monitoring views.";
+/** Copy used by the in-app confirmation dialog. */
+export const ARCHIVE_DIALOG = {
+  title: "Archive unavailable account?",
+  body: "This hides the account from active monitoring views. It does not delete historical data.",
+  confirmLabel: "Archive account",
+  cancelLabel: "Cancel",
+} as const;
 
 /**
  * Interprets the raw HTTP response from the archive API.

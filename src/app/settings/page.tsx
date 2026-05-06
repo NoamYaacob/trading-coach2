@@ -70,7 +70,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       },
     }),
     prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true },
+      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
       select: {
         id: true,
         label: true,

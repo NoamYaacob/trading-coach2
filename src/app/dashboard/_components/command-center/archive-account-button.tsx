@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildArchiveRequest,
   parseArchiveResponse,
-  ARCHIVE_CONFIRM_MSG,
+  ARCHIVE_DIALOG,
 } from "./archive-account-helpers";
 
 type Props = {
@@ -13,22 +13,101 @@ type Props = {
   className?: string;
 };
 
-/**
- * One-click Archive button for unavailable broker accounts.
- *
- * Shows a native confirm dialog, then POSTs to the protection endpoint with
- * protectionStatus="archived". On success the router is refreshed so the
- * account is removed from all active views without a full page reload.
- *
- * Generic: driven by accountId only, not hardcoded to any broker or prop firm.
- */
+function ArchiveConfirmDialog({
+  isArchiving,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  isArchiving: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !isArchiving) onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isArchiving, onCancel]);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="archive-dialog-title"
+      aria-describedby="archive-dialog-desc"
+    >
+      <div
+        className="absolute inset-0 bg-stone-950/50 backdrop-blur-sm"
+        onClick={isArchiving ? undefined : onCancel}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-[0_32px_80px_-20px_rgba(28,25,23,0.5)]">
+        <h2
+          id="archive-dialog-title"
+          className="text-xl font-semibold tracking-[-0.03em] text-stone-950"
+        >
+          {ARCHIVE_DIALOG.title}
+        </h2>
+        <p
+          id="archive-dialog-desc"
+          className="mt-3 text-sm leading-6 text-stone-600"
+        >
+          {ARCHIVE_DIALOG.body}
+        </p>
+        {error && (
+          <p className="mt-3 text-sm text-red-600">{error}</p>
+        )}
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onCancel}
+            disabled={isArchiving}
+            className="inline-flex h-10 items-center justify-center rounded-full border border-stone-200 bg-white px-6 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-50"
+          >
+            {ARCHIVE_DIALOG.cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isArchiving}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-70"
+          >
+            {isArchiving ? "Archiving…" : ARCHIVE_DIALOG.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ArchiveAccountButton({ accountId, className }: Props) {
   const router = useRouter();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [showDialog, setShowDialog] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleClick() {
-    if (!window.confirm(ARCHIVE_CONFIRM_MSG)) return;
+  function openDialog() {
+    setError(null);
+    setShowDialog(true);
+  }
+
+  function closeDialog() {
+    setShowDialog(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  async function handleConfirm() {
     setBusy(true);
     setError(null);
     try {
@@ -49,6 +128,7 @@ export function ArchiveAccountButton({ accountId, className }: Props) {
         setError(result.errorMessage);
         return;
       }
+      setShowDialog(false);
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
@@ -58,18 +138,25 @@ export function ArchiveAccountButton({ accountId, className }: Props) {
   }
 
   return (
-    <div className="contents">
+    <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={handleClick}
-        disabled={busy}
-        className={`${className ?? ""} disabled:opacity-50`}
+        onClick={openDialog}
+        className={className}
       >
-        {busy ? "Archiving…" : "Archive"}
+        Archive
       </button>
-      {error && (
-        <p className="w-full text-[10px] text-red-600">{error}</p>
+      {showDialog && (
+        <ArchiveConfirmDialog
+          isArchiving={busy}
+          error={error}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            if (!busy) closeDialog();
+          }}
+        />
       )}
-    </div>
+    </>
   );
 }

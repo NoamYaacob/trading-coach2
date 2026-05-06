@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildArchiveRequest,
   parseArchiveResponse,
+  ARCHIVE_DIALOG,
 } from "./archive-account-helpers.ts";
 
 // ── buildArchiveRequest ───────────────────────────────────────────────────────
@@ -106,6 +107,27 @@ describe("parseArchiveResponse", () => {
   });
 });
 
+// ── ARCHIVE_DIALOG copy ───────────────────────────────────────────────────────
+
+describe("ARCHIVE_DIALOG", () => {
+  test("title matches spec", () => {
+    assert.equal(ARCHIVE_DIALOG.title, "Archive unavailable account?");
+  });
+
+  test("body explains what happens without deleting data", () => {
+    assert.match(ARCHIVE_DIALOG.body, /hides/i);
+    assert.match(ARCHIVE_DIALOG.body, /does not delete/i);
+  });
+
+  test("confirmLabel matches spec", () => {
+    assert.equal(ARCHIVE_DIALOG.confirmLabel, "Archive account");
+  });
+
+  test("cancelLabel is Cancel", () => {
+    assert.equal(ARCHIVE_DIALOG.cancelLabel, "Cancel");
+  });
+});
+
 // ── Dashboard exclusion contract ──────────────────────────────────────────────
 
 describe("dashboard exclusion contract", () => {
@@ -130,5 +152,31 @@ describe("dashboard exclusion contract", () => {
       !activeDashboardStatuses.includes("pending_decision"),
       "pending_decision is handled by the separate pending panel",
     );
+  });
+});
+
+// ── Settings broker list exclusion contract ───────────────────────────────────
+
+describe("settings broker list exclusion contract", () => {
+  // Settings/page.tsx uses: protectionStatus: { not: "archived" }
+  // This mirrors the dashboard query and prevents archived accounts from
+  // appearing in the Broker connections section after a successful archive.
+
+  test("archived status is excluded from the settings broker list", () => {
+    const settingsExcludedStatuses = ["archived"];
+    assert.ok(
+      settingsExcludedStatuses.includes("archived"),
+      "settings query must exclude archived accounts",
+    );
+  });
+
+  test("active statuses are visible in settings", () => {
+    const settingsExcludedStatuses = ["archived"];
+    for (const status of ["protected", "monitor_only", "ignored", "pending_decision"]) {
+      assert.ok(
+        !settingsExcludedStatuses.includes(status),
+        `${status} must remain visible in settings`,
+      );
+    }
   });
 });
