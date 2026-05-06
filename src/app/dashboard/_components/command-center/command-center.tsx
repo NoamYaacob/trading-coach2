@@ -22,6 +22,7 @@ import {
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
 } from "./data-helpers";
+import { CONSENT_ACTION_REQUIRED_BANNER } from "@/lib/brokers/automated-actions-consent";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import type {
   AccountStatus,
@@ -157,6 +158,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   }
 
   const isDryRunActive = data.accounts.some((a) => a.enforcementMode === "dry_run");
+  const requiresConsentAccountsCount = data.accounts.filter(
+    (a) => a.requiresAutomatedActionsConsent,
+  ).length;
   const footerCopy = deriveFooterCopy({
     modes: data.accounts.map((a) => a.enforcementMode),
     hasDryRunBanner: isDryRunActive,
@@ -173,6 +177,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-5"
         >
           {isDryRunActive && <DryRunBanner />}
+          {requiresConsentAccountsCount > 0 && (
+            <ConsentRequiredBanner count={requiresConsentAccountsCount} />
+          )}
           {data.protectionLock.isLocked && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-700">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
@@ -227,6 +234,30 @@ function DryRunBanner() {
     >
       <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
       <span>{DRY_RUN_BANNER_COPY}</span>
+    </div>
+  );
+}
+
+function ConsentRequiredBanner({ count }: { count: number }) {
+  return (
+    <div
+      role="alert"
+      aria-label="Automated lockout consent required"
+      className="mb-3 flex flex-wrap items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-900"
+    >
+      <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+      <span className="flex-1">
+        {CONSENT_ACTION_REQUIRED_BANNER}
+        {count > 1 ? (
+          <span className="ml-1 text-amber-700">({count} accounts)</span>
+        ) : null}
+      </span>
+      <Link
+        href="/rules"
+        className="shrink-0 rounded-full bg-amber-900 px-3 py-1 text-[10px] font-medium text-amber-50 transition hover:bg-amber-800"
+      >
+        Open Trading Plan
+      </Link>
     </div>
   );
 }

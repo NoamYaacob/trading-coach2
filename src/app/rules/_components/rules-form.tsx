@@ -22,6 +22,11 @@ export type RulesFormValues = {
 type Props = {
   initial: RulesFormValues;
   timezone?: string | null;
+  /** True when the saved RiskRules row has a valid (current-version)
+   *  automated-actions consent. When false, the consent checkbox is shown
+   *  and required to submit — broker writes will not fire on accounts that
+   *  fall back to this default template until consent is captured. */
+  hasValidConsent: boolean;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -67,13 +72,14 @@ function intOrNull(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function RulesForm({ initial, timezone }: Props) {
+export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<RulesFormValues>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState(false);
 
   const parsedAccountSize = parseFloat(values.accountSize);
   const parsedMaxDailyLoss = parseFloat(values.maxDailyLoss);
@@ -105,6 +111,7 @@ export function RulesForm({ initial, timezone }: Props) {
       sessionEndHour: intOrNull(values.sessionEndHour),
       sessionEndBehavior: values.sessionEndBehavior || null,
       onBreachWarn: values.onBreachWarn,
+      automatedActionsConsentChecked: consentChecked,
     };
 
     try {
@@ -270,10 +277,28 @@ export function RulesForm({ initial, timezone }: Props) {
         <p className="text-[11px] text-stone-500">
           Protection rules may trigger automatic lockout according to the limits you set. For accounts with full broker permissions, Guardrail may also attempt to close open positions.
         </p>
+
+        {/* Automated-actions consent — required before broker writes can fire
+            on any account that uses this default template. Shown until the
+            saved record carries a current-version consent timestamp. */}
+        {!hasValidConsent && (
+          <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <input
+              type="checkbox"
+              checked={consentChecked}
+              onChange={(e) => setConsentChecked(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
+            />
+            <span>
+              I understand that Guardrail may automatically lock this account and may attempt to close open positions when my configured rules are breached.
+            </span>
+          </label>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (!hasValidConsent && !consentChecked)}
             className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {saving ? "Saving..." : "Save rules"}

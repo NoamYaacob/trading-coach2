@@ -10,6 +10,7 @@ import {
   platformHasRevocationEndpoint,
 } from "@/lib/brokers/tradovate-disconnect";
 import { getProtectionLockState } from "@/lib/account-protection";
+import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -41,6 +42,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     currency?: string;
     isActive?: boolean;
     riskRules?: RiskRulesBody | null;
+    /** When true, stamp automatedActionsConsentAt + Version on the saved
+     *  AccountRiskRules row. Required before broker-side automated actions
+     *  can fire on this account. */
+    automatedActionsConsentChecked?: boolean;
   };
 
   const platform = VALID_PLATFORMS.includes(body.platform as (typeof VALID_PLATFORMS)[number])
@@ -163,11 +168,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });
     } else {
       const data = riskRulesData(body.riskRules);
+      const consentFields = body.automatedActionsConsentChecked
+        ? {
+            automatedActionsConsentAt: new Date(),
+            automatedActionsConsentVersion: AUTOMATED_ACTIONS_CONSENT_VERSION,
+          }
+        : {};
       await prisma.accountRiskRules.upsert({
         where: { accountId: id },
-        create: { accountId: id, ...data },
+        create: { accountId: id, ...data, ...consentFields },
         update: {
           ...data,
+          ...consentFields,
           pendingPayloadJson: Prisma.JsonNull,
           pendingEffectiveDate: null,
         },

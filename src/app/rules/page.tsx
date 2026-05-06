@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
 import { getProtectionLockState } from "@/lib/account-protection";
+import { hasValidConsent } from "@/lib/brokers/automated-actions-consent";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
@@ -74,6 +75,8 @@ export default async function RulesPage({
             propFirmEODDrawdown: true, propFirmTrailingDrawdown: true,
             propFirmDrawdownRemaining: true, propFirmProfitTarget: true,
             propFirmMinTradingDays: true,
+            automatedActionsConsentAt: true,
+            automatedActionsConsentVersion: true,
           },
         },
       },
@@ -271,6 +274,11 @@ export default async function RulesPage({
                   accountId={selectedAccount.id}
                   accountLabel={selectedAccount.label}
                   hasExistingRules={selectedAccount.riskRules !== null}
+                  hasValidConsent={hasValidConsent({
+                    consentAt: selectedAccount.riskRules?.automatedActionsConsentAt ?? null,
+                    consentVersion:
+                      selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
+                  })}
                   initial={accountInitial}
                   isLocked={protectionLock.isLocked}
                   hasPropFirm={Boolean(selectedAccount.propFirm)}
@@ -298,7 +306,14 @@ export default async function RulesPage({
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
               </div>
-              <RulesForm initial={defaultInitial} timezone={traderProfile?.timezone} />
+              <RulesForm
+                initial={defaultInitial}
+                timezone={traderProfile?.timezone}
+                hasValidConsent={hasValidConsent({
+                  consentAt: riskRules?.automatedActionsConsentAt ?? null,
+                  consentVersion: riskRules?.automatedActionsConsentVersion ?? null,
+                })}
+              />
             </SectionCard>
           )}
 

@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 
 import { getProtectionLockState } from "@/lib/account-protection";
+import {
+  hasValidConsent,
+  resolveConsentForAccount,
+} from "@/lib/brokers/automated-actions-consent";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
@@ -354,6 +358,24 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       pendingProtectionEffectiveDate: account.pendingProtectionEffectiveDate ?? null,
       missingFromBrokerSince: account.missingFromBrokerSince,
       isLockedForToday: protectionLock.isLocked,
+      requiresAutomatedActionsConsent:
+        account.brokerConnection?.permissionLevel === "full_access" &&
+        !hasValidConsent(
+          resolveConsentForAccount({
+            accountRiskRules: accountRules
+              ? {
+                  consentAt: accountRules.automatedActionsConsentAt,
+                  consentVersion: accountRules.automatedActionsConsentVersion,
+                }
+              : null,
+            defaultRiskRules: defaultRules
+              ? {
+                  consentAt: defaultRules.automatedActionsConsentAt,
+                  consentVersion: defaultRules.automatedActionsConsentVersion,
+                }
+              : null,
+          }).state,
+        ),
     };
   });
 

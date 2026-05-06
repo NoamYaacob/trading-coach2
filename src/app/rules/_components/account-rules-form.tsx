@@ -43,6 +43,10 @@ type Props = {
   accountId: string;
   accountLabel: string;
   hasExistingRules: boolean;
+  /** True when the saved rule record has a valid (current-version) automated-
+   *  actions consent. When false, the consent checkbox is shown and required
+   *  to submit — broker-side enforcement will not fire without it. */
+  hasValidConsent: boolean;
   initial: AccountRulesValues;
   isLocked: boolean;
   hasPropFirm: boolean;
@@ -132,6 +136,7 @@ export function AccountRulesForm({
   accountId,
   accountLabel,
   hasExistingRules,
+  hasValidConsent,
   initial,
   isLocked,
   hasPropFirm,
@@ -202,6 +207,10 @@ export function AccountRulesForm({
           propFirmProfitTarget: num(values.propFirmProfitTarget),
           propFirmMinTradingDays: int(values.propFirmMinTradingDays),
         },
+        // Stamp consent only on submissions where the user explicitly checked
+        // the box. Re-saves of rules on already-consented accounts pass false
+        // and leave the existing consent timestamp intact server-side.
+        automatedActionsConsentChecked: consentChecked,
       });
       if (data.rulesLock?.applied === false && data.rulesLock.message) {
         setPendingMessage(data.rulesLock.message);
@@ -460,8 +469,11 @@ export function AccountRulesForm({
           Rules target: <span className="font-semibold text-stone-600">{accountLabel}</span>
         </p>
 
-        {/* First-time consent — required before first save */}
-        {!hasExistingRules && (
+        {/* Automated-actions consent — required before broker writes can fire.
+            Shown whenever consent is missing or its version is outdated, not
+            just on first save. Existing accounts that pre-date this feature
+            see the checkbox until they re-confirm. */}
+        {!hasValidConsent && (
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
             <input
               type="checkbox"
@@ -478,7 +490,7 @@ export function AccountRulesForm({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={saving || removing || (!hasExistingRules && !consentChecked)}
+            disabled={saving || removing || (!hasValidConsent && !consentChecked)}
             className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {saving ? "Saving…" : "Save rules"}

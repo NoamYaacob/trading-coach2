@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getProtectionLockState } from "@/lib/account-protection";
+import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
 
@@ -26,6 +27,13 @@ type RulesPayload = {
   onBreachAppLock?: boolean;
   onBreachCancelOrders?: boolean;
   onBreachFlatten?: boolean;
+  /**
+   * When true, the user just confirmed the automated-actions consent
+   * checkbox. Server stamps automatedActionsConsentAt = now and the current
+   * version constant. Omitted/false leaves prior consent intact (saving
+   * other rule fields does not implicitly re-confirm consent).
+   */
+  automatedActionsConsentChecked?: boolean;
 };
 
 function toDecimal(v: number | null | undefined): string | null | undefined {
@@ -157,6 +165,13 @@ export async function POST(request: Request) {
     );
   }
 
+  const consentFields = body.automatedActionsConsentChecked
+    ? {
+        automatedActionsConsentAt: new Date(),
+        automatedActionsConsentVersion: AUTOMATED_ACTIONS_CONSENT_VERSION,
+      }
+    : {};
+
   const data = {
     accountSize: toDecimal(body.accountSize),
     maxDailyLoss: toDecimal(body.maxDailyLoss),
@@ -176,6 +191,7 @@ export async function POST(request: Request) {
     onBreachAppLock: body.onBreachAppLock,
     onBreachCancelOrders: body.onBreachCancelOrders,
     onBreachFlatten: body.onBreachFlatten,
+    ...consentFields,
   };
 
   // Only pass through defined fields so undefined doesn't overwrite stored values

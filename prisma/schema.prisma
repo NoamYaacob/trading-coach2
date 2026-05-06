@@ -175,6 +175,13 @@ model RiskRules {
   // Protection-lock cutoff: how many minutes before session start the user can
   // still change account protection / rule limits for today's session.
   protectionLockCutoffMinutes Int @default(5)
+  // Persisted consent for automated broker actions (lockout + position close).
+  // Set when the user explicitly checks the consent checkbox while saving the
+  // default rule template. Null means consent has never been recorded; old
+  // versions block broker writes until the user re-confirms. Internal lock
+  // (Guardrail STOPPED state) does not require this consent.
+  automatedActionsConsentAt      DateTime?
+  automatedActionsConsentVersion String?
   // Pending rule changes saved after the cutoff — applied when the next trading
   // day starts. JSON payload mirrors the editable fields above.
   pendingPayloadJson    Json?
@@ -487,6 +494,12 @@ model AccountRiskRules {
   propFirmDrawdownRemaining Decimal?  @db.Decimal(10, 2)
   propFirmProfitTarget      Decimal?  @db.Decimal(10, 2)
   propFirmMinTradingDays    Int?
+  // Persisted consent for automated broker actions on this specific account.
+  // Set when the user explicitly checks the consent checkbox while saving
+  // account-specific rules. Null blocks broker writes; old versions also block.
+  // Internal lock (Guardrail STOPPED state) does not require this consent.
+  automatedActionsConsentAt      DateTime?
+  automatedActionsConsentVersion String?
   // Pending rule changes saved after the cutoff — applied when the next
   // trading day starts. JSON mirrors the editable fields above.
   pendingPayloadJson    Json?

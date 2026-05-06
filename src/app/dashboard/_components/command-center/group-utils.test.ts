@@ -55,6 +55,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
     ...overrides,
   };
 }

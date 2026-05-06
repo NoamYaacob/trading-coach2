@@ -72,6 +72,7 @@ import {
   computeProfitAmountToSet,
   isEnforcementDryRun,
 } from "./enforcement-helpers";
+import { decideConsentGate } from "./automated-actions-consent";
 
 export type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult, SessionEndBehavior, SessionEndAction } from "./enforcement-helpers";
 import type { EnforcementTrigger, BrokerLockStatus, FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
@@ -292,6 +293,64 @@ export async function applyBrokerDayLockout(
         flattenSkipStatus === "unavailable_read_only"
           ? "Position exit unavailable: connection is read-only."
           : "Position exit not applicable for this trigger or platform.",
+      flattenPayload: null,
+      flattenResponse: null,
+    };
+  }
+
+  // ── Persisted-consent gate ──────────────────────────────────────────────
+  // Even with full broker permissions, never send a real Tradovate write
+  // unless the user has explicitly consented to automated lockout and
+  // position-close on the rule record that governs this account. The
+  // Guardrail internal lock (riskState=STOPPED) is unaffected; only the
+  // broker write is gated.
+  //
+  // Order: consent runs AFTER the platform/trigger/permission gate (so the
+  // lockStatus surfaces the most-actionable cause: a read-only connection
+  // gets "unavailable_read_only", not "consent_missing") and BEFORE the
+  // dry-run gate (so audit logs and UI surface the consent gap explicitly
+  // even in QA — otherwise a missing consent would be hidden behind the
+  // dry-run "would have written X" simulation).
+  const [accountRulesForConsent, defaultRulesForConsent] = await Promise.all([
+    prisma.accountRiskRules.findUnique({
+      where: { accountId },
+      select: {
+        automatedActionsConsentAt: true,
+        automatedActionsConsentVersion: true,
+      },
+    }),
+    prisma.riskRules.findUnique({
+      where: { userId },
+      select: {
+        automatedActionsConsentAt: true,
+        automatedActionsConsentVersion: true,
+      },
+    }),
+  ]);
+  const consentDecision = decideConsentGate({
+    accountRiskRules: accountRulesForConsent
+      ? {
+          consentAt: accountRulesForConsent.automatedActionsConsentAt,
+          consentVersion: accountRulesForConsent.automatedActionsConsentVersion,
+        }
+      : null,
+    defaultRiskRules: defaultRulesForConsent
+      ? {
+          consentAt: defaultRulesForConsent.automatedActionsConsentAt,
+          consentVersion: defaultRulesForConsent.automatedActionsConsentVersion,
+        }
+      : null,
+  });
+  if (!consentDecision.allowed) {
+    return {
+      status: consentDecision.lockStatus,
+      message: consentDecision.message,
+      brokerEndpoint: null,
+      brokerPayload: null,
+      brokerResponse: null,
+      flattenStatus: consentDecision.flattenStatus,
+      flattenMessage:
+        "Position exit unavailable: automated-action consent required.",
       flattenPayload: null,
       flattenResponse: null,
     };

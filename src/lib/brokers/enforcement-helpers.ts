@@ -42,6 +42,7 @@ export type FlattenStatus =
   | "flattened"
   | "unavailable_read_only"
   | "unavailable_permission"
+  | "unavailable_consent_missing"
   | "failed"
   | "dry_run";
 
@@ -73,6 +74,7 @@ export type BrokerLockStatus =
   | "not_requested"
   | "unavailable_read_only"
   | "unavailable_permission"
+  | "unavailable_consent_missing"
   | "pending"
   | "broker_locked"
   | "monitoring_only"

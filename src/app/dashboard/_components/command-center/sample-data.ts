@@ -69,6 +69,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-mff-2",
@@ -119,6 +120,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-mff-3",
@@ -168,6 +170,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-mff-4",
@@ -221,6 +224,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     // Demo: locked, read-only connection — broker enforcement skipped.
@@ -274,6 +278,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     // Demo: locked, permission missing for Account Risk Settings.
@@ -327,6 +332,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-mff-5",
@@ -376,6 +382,7 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
 ];
 
@@ -430,6 +437,7 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-lucid-2",
@@ -479,6 +487,7 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
   {
     id: "demo-lucid-3",
@@ -529,6 +538,7 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
     pendingProtectionEffectiveDate: null,
     missingFromBrokerSince: null,
     isLockedForToday: false,
+    requiresAutomatedActionsConsent: false,
   },
 ];
 

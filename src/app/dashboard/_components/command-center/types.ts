@@ -103,6 +103,11 @@ export type CommandCenterAccount = {
   pendingProtectionEffectiveDate: string | null;
   missingFromBrokerSince: Date | null;
   isLockedForToday: boolean;
+  /** True when the account has full broker permissions but the rule record
+   *  governing it (account-specific or default) does not have a valid
+   *  automated-actions consent. Surfaces the "Action required" banner so
+   *  the user opens Trading Plan and confirms. */
+  requiresAutomatedActionsConsent: boolean;
 };
 
 export type PendingDiscoveredAccount = {
