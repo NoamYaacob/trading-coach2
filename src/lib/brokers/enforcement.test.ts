@@ -1092,169 +1092,169 @@ describe("unsupported triggers — shouldSkipBrokerEnforcement gates flatten", (
 
 import { computeEffectiveDailyPnl } from "./enforcement-helpers.ts";
 
-describe("computeEffectiveDailyPnl", () => {
-  it("realized -200 + unrealized -300 = -500 (triggers daily_loss_limit at $500 limit)", () => {
-    const effective = computeEffectiveDailyPnl(-200, -300);
-    assert.equal(effective, -500);
-    // lossUsed = Math.abs(Math.min(-500, 0)) = 500 >= limit → triggers
-    const lossUsed = Math.abs(Math.min(effective!, 0));
-    assert.ok(lossUsed >= 500, "should reach the $500 daily loss limit");
+describe("computeEffectiveDailyPnl — arithmetic", () => {
+  it("sums realized and unrealized: -200 + -300 = -500", () => {
+    assert.equal(computeEffectiveDailyPnl(-200, -300), -500);
   });
 
-  it("open trade unrealized -500, no prior realized P&L = -500 (triggers daily_loss_limit)", () => {
-    const effective = computeEffectiveDailyPnl(null, -500);
-    assert.equal(effective, -500);
-    const lossUsed = Math.abs(Math.min(effective!, 0));
-    assert.ok(lossUsed >= 500);
+  it("unrealized-only (null realized treated as 0): null + -500 = -500", () => {
+    assert.equal(computeEffectiveDailyPnl(null, -500), -500);
   });
 
-  it("realized +300 + unrealized +200 = +500 (triggers profit_target at $500)", () => {
-    const effective = computeEffectiveDailyPnl(300, 200);
-    assert.equal(effective, 500);
-    assert.ok(effective! >= 500, "should reach the $500 profit target");
+  it("realized-only (null unrealized treated as 0): -450 + null = -450", () => {
+    assert.equal(computeEffectiveDailyPnl(-450, null), -450);
   });
 
-  it("realized -450 alone, no unrealized — does not reach $500 limit", () => {
-    const effective = computeEffectiveDailyPnl(-450, null);
-    assert.equal(effective, -450);
-    const lossUsed = Math.abs(Math.min(effective!, 0));
-    assert.ok(lossUsed < 500, "realized-only P&L below threshold must not trigger");
+  it("profit side: +300 + +200 = +500", () => {
+    assert.equal(computeEffectiveDailyPnl(300, 200), 500);
   });
 
-  it("both null → returns null (no P&L data; enforcement cannot run)", () => {
+  it("both null → null (no P&L data; enforcement cannot run)", () => {
     assert.equal(computeEffectiveDailyPnl(null, null), null);
   });
 
-  it("realized 0 + unrealized -300 = -300 (only unrealized, no prior fills)", () => {
-    assert.equal(computeEffectiveDailyPnl(0, -300), -300);
+  it("unrealized-only positive: null + 300 = 300", () => {
+    assert.equal(computeEffectiveDailyPnl(null, 300), 300);
   });
 
-  it("realized -100 + unrealized 0 = -100 (flat position contributes zero)", () => {
+  it("flat position contributes zero: -100 + 0 = -100", () => {
     assert.equal(computeEffectiveDailyPnl(-100, 0), -100);
   });
 
-  it("account scoping: openPnl source is account-scoped (property-based check)", () => {
-    // openPnl comes from cashBalance/getCashBalanceSnapshot (POST with accountId)
-    // or position/deps?masterid={tvAccountId} — both are per-account.
-    // computeEffectiveDailyPnl treats the inputs as trusted account-scoped values;
-    // it does not mix cross-account data — that is the sync layer's responsibility.
-    const effective = computeEffectiveDailyPnl(-200, -300);
-    assert.equal(typeof effective, "number", "account-scoped inputs produce a numeric result");
+  it("account scoping: both inputs are trusted per-account values; result is a number", () => {
+    // openPnl source: cashBalance/getCashBalanceSnapshot (POST {accountId}) or
+    // position/deps?masterid={tvAccountId} — both are server-side per-account filters.
+    assert.equal(typeof computeEffectiveDailyPnl(-200, -300), "number");
   });
 });
 
-// ── effectiveDailyPnl threshold — table-driven ────────────────────────────────
+// ── effectiveDailyPnl threshold — table-driven ───────────────────────────────
 //
 // Threshold logic (mirrors tradovate-sync.ts exactly):
 //   lossUsed = Math.abs(Math.min(effective, 0))
-//   daily_loss_limit triggers when lossUsed >= limit
-//     → equivalent to: effective <= -limit
-//   profit_target triggers when effective >= target
+//   daily_loss_limit fires when lossUsed >= limit  (≡ effective <= -limit)
+//   profit_target   fires when effective >= target
 //
-// Both checks operate on the sum alone. The realized/unrealized split is
-// invisible to the threshold comparison.
+// The threshold is always a parameter (user-configured maxDailyLoss /
+// dailyProfitTarget). No value is hardcoded in the production code or here.
 
 describe("effectiveDailyPnl threshold — daily_loss_limit (table-driven)", () => {
-  const LIMIT = 500;
-
-  // The threshold function mirrors tradovate-sync.ts lossUsed/lossPct logic.
-  function lossTriggers(realized: number | null, unrealized: number | null): boolean {
+  function lossTriggers(
+    realized: number | null,
+    unrealized: number | null,
+    limit: number,
+  ): boolean {
     const effective = computeEffectiveDailyPnl(realized, unrealized);
     if (effective == null) return false;
-    const lossUsed = Math.abs(Math.min(effective, 0));
-    return lossUsed >= LIMIT;
+    return Math.abs(Math.min(effective, 0)) >= limit;
   }
 
-  const shouldTrigger: Array<[number | null, number | null]> = [
-    [0,    -500],
-    [-100, -400],
-    [-250, -250],
-    [-499, -1  ],
-    [-500,  0  ],  // realized alone exactly at limit
-    [null, -500],  // only unrealized, no realized fills yet
-    [-200, -300],  // already-tested canonical case
+  // [realized, unrealized, limit, shouldTrigger]
+  const cases: Array<[number | null, number | null, number, boolean]> = [
+    // ── limit = 75 ──────────────────────────────────────────────────────────
+    [0,     -75,    75,   true ],
+    [-50,   -25,    75,   true ],
+    [-74,   -1,     75,   true ],
+    [-75,    0,     75,   true ],   // realized alone exactly at limit
+    [null,  -75,    75,   true ],   // unrealized-only, no realized fills yet
+    [-74,    0,     75,   false],
+    [0,     -74,    75,   false],
+    [-74,   null,   75,   false],   // null unrealized treated as 0
+
+    // ── limit = 200 ─────────────────────────────────────────────────────────
+    [0,     -200,   200,  true ],
+    [-100,  -100,   200,  true ],
+    [-199,  -1,     200,  true ],
+    [-200,   0,     200,  true ],
+    [null,  -200,   200,  true ],
+    [-199,   0,     200,  false],
+    [0,     -199,   200,  false],
+    [-199,  null,   200,  false],
+
+    // ── limit = 1000 ────────────────────────────────────────────────────────
+    [0,     -1000,  1000, true ],
+    [-500,  -500,   1000, true ],
+    [-999,  -1,     1000, true ],
+    [-1000,  0,     1000, true ],
+    [null,  -1000,  1000, true ],
+    [-999,   0,     1000, false],
+    [0,     -999,   1000, false],
+    [-999,  null,   1000, false],
+
+    // ── cross-threshold checks (profit P&L never triggers loss) ──────────────
+    [0,      0,     75,   false],
+    [100,    200,   200,  false],   // positive effective — no loss
+    [null,   null,  1000, false],   // no data
   ];
 
-  const shouldNotTrigger: Array<[number | null, number | null]> = [
-    [-499,  0   ],
-    [-499, null ],  // null unrealized treated as 0 → -499 < limit
-    [0,    -499 ],
-    [-100, -399 ],
-    [-250, -249 ],
-    [-498, -1   ],
-    [0,     0   ],
-    [100,   200 ],  // profit side — no loss at all
-    [null,  null],  // no data → cannot trigger
-  ];
-
-  for (const [realized, unrealized] of shouldTrigger) {
-    it(`realized=${realized}, unrealized=${unrealized} → triggers (limit=$${LIMIT})`, () => {
+  for (const [realized, unrealized, limit, expected] of cases) {
+    const verb = expected ? "triggers" : "does not trigger";
+    it(`realized=${realized}, unrealized=${unrealized}, limit=${limit} → ${verb}`, () => {
       assert.equal(
-        lossTriggers(realized, unrealized),
-        true,
-        `expected lossUsed >= ${LIMIT} for effective=${computeEffectiveDailyPnl(realized, unrealized)}`,
-      );
-    });
-  }
-
-  for (const [realized, unrealized] of shouldNotTrigger) {
-    it(`realized=${realized}, unrealized=${unrealized} → does not trigger (limit=$${LIMIT})`, () => {
-      assert.equal(
-        lossTriggers(realized, unrealized),
-        false,
-        `expected lossUsed < ${LIMIT} for effective=${computeEffectiveDailyPnl(realized, unrealized)}`,
+        lossTriggers(realized, unrealized, limit),
+        expected,
+        `effective=${computeEffectiveDailyPnl(realized, unrealized)}, limit=${limit}`,
       );
     });
   }
 });
 
 describe("effectiveDailyPnl threshold — profit_target (table-driven)", () => {
-  const TARGET = 500;
-
-  function profitTriggers(realized: number | null, unrealized: number | null): boolean {
+  function profitTriggers(
+    realized: number | null,
+    unrealized: number | null,
+    target: number,
+  ): boolean {
     const effective = computeEffectiveDailyPnl(realized, unrealized);
     if (effective == null) return false;
-    return effective >= TARGET;
+    return effective >= target;
   }
 
-  const shouldTrigger: Array<[number | null, number | null]> = [
-    [0,    500],
-    [100,  400],
-    [250,  250],
-    [499,  1  ],
-    [500,  0  ],   // realized alone exactly at target
-    [null, 500],   // only unrealized, no realized fills yet
-    [300,  200],   // already-tested canonical case
+  // [realized, unrealized, target, shouldTrigger]
+  const cases: Array<[number | null, number | null, number, boolean]> = [
+    // ── target = 150 ────────────────────────────────────────────────────────
+    [0,     150,    150,  true ],
+    [75,    75,     150,  true ],
+    [149,   1,      150,  true ],
+    [150,   0,      150,  true ],   // realized alone exactly at target
+    [null,  150,    150,  true ],   // unrealized-only, no realized fills yet
+    [149,   0,      150,  false],
+    [0,     149,    150,  false],
+    [149,   null,   150,  false],   // null unrealized treated as 0
+
+    // ── target = 750 ────────────────────────────────────────────────────────
+    [0,     750,    750,  true ],
+    [375,   375,    750,  true ],
+    [749,   1,      750,  true ],
+    [750,   0,      750,  true ],
+    [null,  750,    750,  true ],
+    [749,   0,      750,  false],
+    [0,     749,    750,  false],
+    [749,   null,   750,  false],
+
+    // ── target = 2500 ───────────────────────────────────────────────────────
+    [0,     2500,   2500, true ],
+    [1250,  1250,   2500, true ],
+    [2499,  1,      2500, true ],
+    [2500,  0,      2500, true ],
+    [null,  2500,   2500, true ],
+    [2499,  0,      2500, false],
+    [0,     2499,   2500, false],
+    [2499,  null,   2500, false],
+
+    // ── cross-threshold checks (loss P&L never triggers profit) ─────────────
+    [0,     0,      150,  false],
+    [-100,  -200,   750,  false],   // negative effective — no profit
+    [null,  null,   2500, false],   // no data
   ];
 
-  const shouldNotTrigger: Array<[number | null, number | null]> = [
-    [499,  0   ],
-    [499,  null],  // null unrealized treated as 0 → 499 < target
-    [0,    499 ],
-    [100,  399 ],
-    [250,  249 ],
-    [498,  1   ],
-    [0,    0   ],
-    [-100, -200],  // loss side — nowhere near profit target
-    [null, null],  // no data → cannot trigger
-  ];
-
-  for (const [realized, unrealized] of shouldTrigger) {
-    it(`realized=${realized}, unrealized=${unrealized} → triggers (target=$${TARGET})`, () => {
+  for (const [realized, unrealized, target, expected] of cases) {
+    const verb = expected ? "triggers" : "does not trigger";
+    it(`realized=${realized}, unrealized=${unrealized}, target=${target} → ${verb}`, () => {
       assert.equal(
-        profitTriggers(realized, unrealized),
-        true,
-        `expected effective >= ${TARGET} for effective=${computeEffectiveDailyPnl(realized, unrealized)}`,
-      );
-    });
-  }
-
-  for (const [realized, unrealized] of shouldNotTrigger) {
-    it(`realized=${realized}, unrealized=${unrealized} → does not trigger (target=$${TARGET})`, () => {
-      assert.equal(
-        profitTriggers(realized, unrealized),
-        false,
-        `expected effective < ${TARGET} for effective=${computeEffectiveDailyPnl(realized, unrealized)}`,
+        profitTriggers(realized, unrealized, target),
+        expected,
+        `effective=${computeEffectiveDailyPnl(realized, unrealized)}, target=${target}`,
       );
     });
   }
