@@ -140,14 +140,33 @@ export type CommandCenterFirmGroup = {
   enforcementMode: EnforcementMode;
 };
 
+/** Account "kind" used for the Dashboard summary breakdown.
+ *   live     = funded, personal
+ *   practice = evaluation, demo
+ *  Mapping is intentionally simple and broad so the user can see at a glance
+ *  whether their "Allowed" total reflects real money or practice accounts. */
+export type AccountKind = "live" | "practice";
+
+export type StatusBreakdown = {
+  total: number;
+  live: number;
+  practice: number;
+};
+
 export type CommandCenterSummary = {
   totalActive: number;
+  /** Count by status (live + practice combined). */
   counts: Record<AccountStatus, number>;
+  /** Same counts split into live vs practice. */
+  breakdown: Record<AccountStatus, StatusBreakdown>;
   totalDailyPnl: number;
   totalRiskRemaining: number;
   openInterventions: number;
   hasPnlData: boolean;
   hasRiskData: boolean;
+  /** Oldest lastSyncAt across active accounts — drives "Data may be stale" warning.
+   *  null when no broker accounts have ever synced. */
+  oldestSyncAt: Date | null;
 };
 
 export type CommandCenterData = {

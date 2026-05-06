@@ -1,4 +1,4 @@
-import type { AccountStatus, EnforcementMode } from "./types";
+import type { AccountKind, AccountStatus, EnforcementMode } from "./types";
 import type { BrokerLockStatus, FlattenStatus } from "@/lib/brokers/enforcement-helpers";
 
 /**
@@ -331,6 +331,57 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
     default:
       return { text: "Position exit not recorded.", kind: "internal_only" };
   }
+}
+
+// ── Estimated trade-count copy ────────────────────────────────────────────────
+
+/** Hint shown next to "Estimated" trade counts on the Dashboard. The wording
+ *  is product-critical: it must explicitly tell the user the count will not
+ *  trigger lockout — otherwise a user with multi-account OAuth tokens can be
+ *  confused into thinking max-trades-per-day or stop-after-losses are active. */
+export const ESTIMATED_TRADE_COUNT_HINT =
+  "Estimated trade count — Guardrail will not use this count to lock the account unless it's verified.";
+
+// ── deriveAccountKind ──────────────────────────────────────────────────────────
+
+/** Map raw accountType to the Dashboard summary "kind" bucket.
+ *  funded + personal → "live"; everything else (evaluation, demo, unknown) → "practice".
+ *  This intentionally collapses sub-types so the user sees a clear two-way split
+ *  rather than four columns. */
+export function deriveAccountKind(accountType: string): AccountKind {
+  if (accountType === "funded" || accountType === "personal") return "live";
+  return "practice";
+}
+
+// ── deriveStaleSyncWarning ─────────────────────────────────────────────────────
+
+export type StaleSyncWarning = {
+  isStale: boolean;
+  /** Minutes since the oldest account's last sync. null when no sync has happened. */
+  minutesSinceOldestSync: number | null;
+};
+
+/** Returns whether the dashboard should show a "Data may be stale" warning.
+ *  Stale when the oldest active broker account hasn't synced within `freshnessMs`.
+ *  When `oldestSyncAt` is null (nothing has ever synced) we treat it as stale only
+ *  if there is at least one broker account expected to sync. The caller passes
+ *  `hasBrokerAccounts` to make that decision explicit. */
+export function deriveStaleSyncWarning(input: {
+  oldestSyncAt: Date | null;
+  hasBrokerAccounts: boolean;
+  freshnessMs: number;
+  now?: Date;
+}): StaleSyncWarning {
+  const now = input.now ?? new Date();
+  if (!input.hasBrokerAccounts) {
+    return { isStale: false, minutesSinceOldestSync: null };
+  }
+  if (input.oldestSyncAt == null) {
+    return { isStale: true, minutesSinceOldestSync: null };
+  }
+  const diffMs = now.getTime() - input.oldestSyncAt.getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  return { isStale: diffMs > input.freshnessMs, minutesSinceOldestSync: minutes };
 }
 
 // ── deriveEnforcementMode ──────────────────────────────────────────────────────

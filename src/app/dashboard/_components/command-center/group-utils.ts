@@ -1,4 +1,9 @@
-import type { AccountStatus, CommandCenterAccount, CommandCenterFirmGroup } from "./types";
+import type {
+  AccountStatus,
+  CommandCenterAccount,
+  CommandCenterFirmGroup,
+  StatusBreakdown,
+} from "./types";
 
 export function emptyCounts(): Record<AccountStatus, number> {
   return {
@@ -8,6 +13,17 @@ export function emptyCounts(): Record<AccountStatus, number> {
     setup_needed: 0,
     not_connected: 0,
     unavailable: 0,
+  };
+}
+
+export function emptyBreakdown(): Record<AccountStatus, StatusBreakdown> {
+  return {
+    allowed: { total: 0, live: 0, practice: 0 },
+    warning: { total: 0, live: 0, practice: 0 },
+    locked: { total: 0, live: 0, practice: 0 },
+    setup_needed: { total: 0, live: 0, practice: 0 },
+    not_connected: { total: 0, live: 0, practice: 0 },
+    unavailable: { total: 0, live: 0, practice: 0 },
   };
 }
 

@@ -3,8 +3,14 @@ import { prisma } from "@/lib/db";
 import { getProtectionLockState } from "@/lib/account-protection";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
-import { buildCommandCenterGroups, emptyCounts } from "./group-utils";
-import { derivePropFirmSetupNeeded, deriveStatus, deriveBreachReason, deriveEnforcementMode } from "./data-helpers";
+import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
+import {
+  deriveAccountKind,
+  deriveBreachReason,
+  deriveEnforcementMode,
+  derivePropFirmSetupNeeded,
+  deriveStatus,
+} from "./data-helpers";
 import type {
   CommandCenterAccount,
   CommandCenterData,
@@ -369,17 +375,20 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
   const summary: CommandCenterSummary = {
     totalActive: liveForSummary.length,
     counts: emptyCounts(),
+    breakdown: emptyBreakdown(),
     totalDailyPnl: 0,
     totalRiskRemaining: 0,
     openInterventions: 0,
     hasPnlData: false,
     hasRiskData: false,
+    oldestSyncAt: null,
   };
 
   for (const account of computed) {
-    // Count unavailable in its own bucket so the dashboard can show it in
-    // chips if needed, but do not include its stale numbers in totals.
     summary.counts[account.status] += 1;
+    const kind = deriveAccountKind(account.accountType);
+    summary.breakdown[account.status].total += 1;
+    summary.breakdown[account.status][kind] += 1;
     if (account.status === "unavailable") continue;
     if (account.dailyPnl != null) {
       summary.totalDailyPnl += account.dailyPnl;
@@ -390,6 +399,13 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       summary.hasRiskData = true;
     }
     if (account.hasOpenIntervention) summary.openInterventions += 1;
+    if (
+      account.platform !== "manual" &&
+      account.lastSyncAt != null &&
+      (summary.oldestSyncAt == null || account.lastSyncAt < summary.oldestSyncAt)
+    ) {
+      summary.oldestSyncAt = account.lastSyncAt;
+    }
   }
 
   const SINK_KEYS = new Set([PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);

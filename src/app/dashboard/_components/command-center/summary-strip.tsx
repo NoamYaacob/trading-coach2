@@ -1,4 +1,5 @@
 import type { CommandCenterSummary } from "./types";
+import { formatBreakdownHint } from "./summary-strip-helpers";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -36,16 +37,19 @@ export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
       label: "Allowed",
       value: summary.counts.allowed.toString(),
       dotClass: "bg-emerald-500",
+      hint: formatBreakdownHint(summary.breakdown.allowed),
     },
     {
       label: "Warning",
       value: summary.counts.warning.toString(),
       dotClass: "bg-amber-400",
+      hint: formatBreakdownHint(summary.breakdown.warning),
     },
     {
       label: "Locked",
       value: summary.counts.locked.toString(),
       dotClass: "bg-red-500",
+      hint: formatBreakdownHint(summary.breakdown.locked),
     },
     {
       label: "Setup needed",

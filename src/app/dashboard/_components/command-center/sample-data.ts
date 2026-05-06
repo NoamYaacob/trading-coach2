@@ -583,12 +583,21 @@ const ALL_ACCOUNTS = [...MFF_ACCOUNTS, ...LUCID_ACCOUNTS];
 const DEMO_SUMMARY: CommandCenterSummary = {
   totalActive: ALL_ACCOUNTS.length,
   counts: { allowed: 4, warning: 2, locked: 3, setup_needed: 1, not_connected: 0, unavailable: 0 },
+  breakdown: {
+    allowed: { total: 4, live: 2, practice: 2 },
+    warning: { total: 2, live: 1, practice: 1 },
+    locked: { total: 3, live: 2, practice: 1 },
+    setup_needed: { total: 1, live: 0, practice: 1 },
+    not_connected: { total: 0, live: 0, practice: 0 },
+    unavailable: { total: 0, live: 0, practice: 0 },
+  },
   // totalDailyPnl: MFF -4931 + LUCID -1091 = -6022
   totalDailyPnl: -6_022,
   totalRiskRemaining: 10_366,
   openInterventions: 3,
   hasPnlData: true,
   hasRiskData: true,
+  oldestSyncAt: null,
 };
 
 // ─── Export ────────────────────────────────────────────────────────────────────

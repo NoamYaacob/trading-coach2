@@ -8,6 +8,9 @@ import {
   deriveBrokerEnforcementCopy,
   deriveFlattenCopy,
   deriveEnforcementMode,
+  deriveAccountKind,
+  deriveStaleSyncWarning,
+  ESTIMATED_TRADE_COUNT_HINT,
 } from "./data-helpers.ts";
 
 // ── deriveStatus ──────────────────────────────────────────────────────────────
@@ -959,5 +962,174 @@ describe("deriveEnforcementMode", () => {
       }),
       "broker_active",
     );
+  });
+});
+
+// ── deriveAccountKind ─────────────────────────────────────────────────────────
+
+describe("deriveAccountKind", () => {
+  it("funded → live", () => {
+    assert.equal(deriveAccountKind("funded"), "live");
+  });
+
+  it("personal → live", () => {
+    assert.equal(deriveAccountKind("personal"), "live");
+  });
+
+  it("evaluation → practice", () => {
+    assert.equal(deriveAccountKind("evaluation"), "practice");
+  });
+
+  it("demo → practice", () => {
+    assert.equal(deriveAccountKind("demo"), "practice");
+  });
+
+  it("unknown accountType falls back to practice (never silently mis-counted as live)", () => {
+    // Better to under-report live accounts than to inflate the count and
+    // mislead the user into thinking demo/evaluation accounts are live.
+    assert.equal(deriveAccountKind("something_new"), "practice");
+  });
+});
+
+// ── Estimated trade count copy ────────────────────────────────────────────────
+
+describe("ESTIMATED_TRADE_COUNT_HINT", () => {
+  it("explicitly states the count is estimated", () => {
+    assert.ok(
+      ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("estimated"),
+      `expected 'estimated' in copy, got: ${ESTIMATED_TRADE_COUNT_HINT}`,
+    );
+  });
+
+  it("explicitly states Guardrail will not use the count for lockout", () => {
+    assert.ok(
+      ESTIMATED_TRADE_COUNT_HINT.includes("will not use this count to lock"),
+      `expected lockout disclaimer in copy, got: ${ESTIMATED_TRADE_COUNT_HINT}`,
+    );
+  });
+
+  it("mentions the verified condition", () => {
+    assert.ok(
+      ESTIMATED_TRADE_COUNT_HINT.toLowerCase().includes("verified"),
+      `expected 'verified' in copy, got: ${ESTIMATED_TRADE_COUNT_HINT}`,
+    );
+  });
+});
+
+// ── Estimated trade count is not used for lockout ─────────────────────────────
+// These tests already exist for deriveStatus/deriveBreachReason — this block
+// documents the product invariant: max trades and stop-after-losses MUST never
+// trigger lockout when tradeCountSource is "estimated".
+
+describe("estimated trade count never causes lockout (product invariant)", () => {
+  const accountAtTradeLimit = {
+    isActive: true,
+    platform: "tradovate",
+    connectionStatus: "connected_readonly",
+    hasAnyRules: true,
+    propFirmSetupNeeded: false,
+    riskState: null as "NORMAL" | "WARNING" | "STOPPED" | null,
+    dailyLossUsedPct: 0.5,
+    tradesCount: 12,
+    maxTradesPerDay: 3,
+  };
+
+  it("max trades exceeded → status remains 'allowed' when source is estimated", () => {
+    assert.equal(
+      deriveStatus({ ...accountAtTradeLimit, tradeCountSource: "estimated" }),
+      "allowed",
+    );
+  });
+
+  it("max trades exceeded → status is 'locked' when source is verified", () => {
+    assert.equal(
+      deriveStatus({ ...accountAtTradeLimit, tradeCountSource: "verified" }),
+      "locked",
+    );
+  });
+
+  it("breachReason returns null for trades-over-limit when source is estimated", () => {
+    const result = deriveBreachReason({
+      status: "locked",
+      riskState: null,
+      dailyLossUsedPct: null,
+      tradesCount: 12,
+      maxTradesPerDay: 3,
+      consecutiveLosses: null,
+      stopAfterLosses: null,
+      tradeCountSource: "estimated",
+    });
+    assert.ok(
+      result === null || !result.headline.includes("Trade activity"),
+      "trade-limit headline must not appear when source is estimated",
+    );
+  });
+});
+
+// ── deriveStaleSyncWarning ────────────────────────────────────────────────────
+
+describe("deriveStaleSyncWarning", () => {
+  const FRESHNESS_MS = 5 * 60_000; // 5 minutes
+  const NOW = new Date("2026-05-06T12:00:00Z");
+
+  it("no broker accounts → never stale", () => {
+    const result = deriveStaleSyncWarning({
+      oldestSyncAt: null,
+      hasBrokerAccounts: false,
+      freshnessMs: FRESHNESS_MS,
+      now: NOW,
+    });
+    assert.equal(result.isStale, false);
+    assert.equal(result.minutesSinceOldestSync, null);
+  });
+
+  it("broker accounts but oldestSyncAt is null → stale (nothing has synced yet)", () => {
+    const result = deriveStaleSyncWarning({
+      oldestSyncAt: null,
+      hasBrokerAccounts: true,
+      freshnessMs: FRESHNESS_MS,
+      now: NOW,
+    });
+    assert.equal(result.isStale, true);
+    assert.equal(result.minutesSinceOldestSync, null);
+  });
+
+  it("recent sync (< freshnessMs) → not stale, minutes accurate", () => {
+    // Synced 2 minutes ago.
+    const oldest = new Date(NOW.getTime() - 2 * 60_000);
+    const result = deriveStaleSyncWarning({
+      oldestSyncAt: oldest,
+      hasBrokerAccounts: true,
+      freshnessMs: FRESHNESS_MS,
+      now: NOW,
+    });
+    assert.equal(result.isStale, false);
+    assert.equal(result.minutesSinceOldestSync, 2);
+  });
+
+  it("old sync (> freshnessMs) → stale, minutes accurate", () => {
+    // Synced 7 minutes ago.
+    const oldest = new Date(NOW.getTime() - 7 * 60_000);
+    const result = deriveStaleSyncWarning({
+      oldestSyncAt: oldest,
+      hasBrokerAccounts: true,
+      freshnessMs: FRESHNESS_MS,
+      now: NOW,
+    });
+    assert.equal(result.isStale, true);
+    assert.equal(result.minutesSinceOldestSync, 7);
+  });
+
+  it("exactly at threshold → not stale (strict greater-than)", () => {
+    // Synced exactly 5 minutes ago.
+    const oldest = new Date(NOW.getTime() - FRESHNESS_MS);
+    const result = deriveStaleSyncWarning({
+      oldestSyncAt: oldest,
+      hasBrokerAccounts: true,
+      freshnessMs: FRESHNESS_MS,
+      now: NOW,
+    });
+    assert.equal(result.isStale, false);
+    assert.equal(result.minutesSinceOldestSync, 5);
   });
 });

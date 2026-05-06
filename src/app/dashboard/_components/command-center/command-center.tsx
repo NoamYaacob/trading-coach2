@@ -6,13 +6,20 @@ import { useMemo, useState } from "react";
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
 import { NewAccountsPanel } from "./new-accounts-panel";
+import { SyncAllButton } from "./sync-all-button";
 import {
   PILL_ROW_PRIMARY,
   PILL_ROW_SECONDARY,
   PILL_CARD_PRIMARY,
   PILL_CARD_SECONDARY,
 } from "@/components/ui/pill-classes";
-import { getTradeCountDisplay, deriveBrokerEnforcementCopy } from "./data-helpers";
+import {
+  getTradeCountDisplay,
+  deriveBrokerEnforcementCopy,
+  deriveStaleSyncWarning,
+  ESTIMATED_TRADE_COUNT_HINT,
+} from "./data-helpers";
+import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -161,6 +168,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
               <span>Protection locked for today · Rule changes apply from {data.protectionLock.nextTradingDayKey}.</span>
             </div>
           )}
+          <SyncHeader summary={data.summary} accounts={data.accounts} />
           <FilterBar
             statusFilter={statusFilter}
             firmFilter={firmFilter}
@@ -192,6 +200,42 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+// ─── Sync header (Sync all button + stale warning) ────────────────────────────
+
+function SyncHeader({
+  summary,
+  accounts,
+}: {
+  summary: CommandCenterData["summary"];
+  accounts: CommandCenterAccount[];
+}) {
+  const hasBrokerAccounts = accounts.some((a) => a.platform !== "manual");
+  const stale = deriveStaleSyncWarning({
+    oldestSyncAt: summary.oldestSyncAt,
+    hasBrokerAccounts,
+    freshnessMs: CRON_SYNC_FRESHNESS_MS,
+  });
+
+  if (!hasBrokerAccounts) return null;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <SyncAllButton />
+      {stale.isStale ? (
+        <span
+          role="status"
+          className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-50/60 px-2.5 py-1 text-[11px] text-amber-700"
+        >
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+          {stale.minutesSinceOldestSync != null
+            ? `Data may be stale · Synced ${stale.minutesSinceOldestSync}m ago`
+            : "Data may be stale · No sync yet"}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -829,11 +873,7 @@ function TradesCell({
     return (
       <div className={wrapperClass}>
         <p className="font-mono text-sm font-semibold text-stone-500">Estimated</p>
-        <p className={hintClass}>
-          {compact
-            ? "Estimated from broker data."
-            : "Trade count estimated from broker fills — may include other accounts on this connection."}
-        </p>
+        <p className={hintClass}>{ESTIMATED_TRADE_COUNT_HINT}</p>
       </div>
     );
   }
