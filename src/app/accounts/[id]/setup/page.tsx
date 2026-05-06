@@ -5,6 +5,8 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SetupOptions } from "./_components/setup-options";
+import { derivePropFirmNotice } from "./prop-firm-notice";
+import type { PropFirmNoticeData } from "./prop-firm-notice";
 
 export const metadata: Metadata = {
   title: "Set Up Account — Guardrail",
@@ -14,6 +16,35 @@ const PLATFORM_LABEL: Record<string, string> = {
   tradovate: "Tradovate",
   tradingview: "TradingView",
 };
+
+// ── PropFirmNotice ────────────────────────────────────────────────────────────
+
+function PropFirmNotice({ notice }: { notice: PropFirmNoticeData }) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+      <p className="text-sm font-semibold text-amber-900">
+        Confirm this account&apos;s rules before monitoring
+      </p>
+      <p className="mt-1.5 text-sm leading-6 text-amber-800">
+        This looks like a new {notice.contextLabel} account. Prop firm limits can change between
+        Evaluation, Funded, Sim, and Live accounts. Choose the rule set that matches this account
+        before Guardrail starts monitoring it.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span className="inline-flex items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-amber-800">
+          Detected phase: {notice.phaseLabel}
+        </span>
+        {notice.propFirmName && (
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-amber-800">
+            Prop firm: {notice.propFirmName}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   evaluation: "Evaluation",
@@ -69,6 +100,12 @@ export default async function AccountSetupPage({
         defaultRules.stopAfterLosses != null),
   );
 
+  const propFirmNotice = derivePropFirmNotice({
+    propFirm: account.propFirm,
+    accountType: account.accountType,
+    label: account.label,
+  });
+
   const defaultRulesSummary = hasDefaultRules && defaultRules
     ? [
         defaultRules.maxDailyLoss != null && `Max loss: $${Number(defaultRules.maxDailyLoss)}`,
@@ -123,6 +160,8 @@ export default async function AccountSetupPage({
             Setup needed
           </span>
         </div>
+
+        {propFirmNotice && <PropFirmNotice notice={propFirmNotice} />}
 
         <SetupOptions
           accountId={account.id}

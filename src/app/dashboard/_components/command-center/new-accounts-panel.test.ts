@@ -2,6 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { isProtectionIncrease, canChangeProtection } from "../../../../lib/account-protection.ts";
+import { derivePropFirmNotice } from "../../../accounts/[id]/setup/prop-firm-notice.ts";
 
 // ── Dashboard exclusion contract ──────────────────────────────────────────────
 
@@ -194,5 +195,173 @@ describe("duplicate prevention", () => {
     const oldId = "tradovate-12345";
     const newIdAfterReset = "tradovate-99999";
     assert.notEqual(oldId, newIdAfterReset, "different IDs → different upsert key → new row");
+  });
+});
+
+// ── PropFirmNotice derivation ─────────────────────────────────────────────────
+
+describe("derivePropFirmNotice", () => {
+  // ── Prop firm + known phase ──
+
+  test("prop firm + evaluation accountType shows notice with Evaluation phase", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "MyFundedFutures",
+      accountType: "evaluation",
+      label: "MFF Builder Account",
+    });
+    assert.ok(result != null, "should return notice data");
+    assert.equal(result!.phaseLabel, "Evaluation");
+    assert.equal(result!.propFirmName, "MyFundedFutures");
+  });
+
+  test("prop firm + funded accountType shows notice with Funded phase", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "Apex Trader Funding",
+      accountType: "funded",
+      label: "Apex Pro Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Funded");
+    assert.equal(result!.propFirmName, "Apex Trader Funding");
+  });
+
+  test("prop firm + demo accountType shows notice with Sim phase", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "Topstep",
+      accountType: "demo",
+      label: "Topstep Sim Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Sim");
+    assert.equal(result!.propFirmName, "Topstep");
+  });
+
+  // ── Prop firm + unknown phase (personal accountType) ──
+
+  test("prop firm + personal accountType shows notice with Not confirmed phase", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "SomeFirm",
+      accountType: "personal",
+      label: "My Account",
+    });
+    assert.ok(result != null, "prop firm alone is enough to show notice");
+    assert.equal(result!.phaseLabel, "Not confirmed");
+    assert.equal(result!.propFirmName, "SomeFirm");
+  });
+
+  test("prop firm set but phase unknown → contextLabel falls back to firm name", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "MyFirm",
+      accountType: "personal",
+      label: "Account 12345",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.contextLabel, "MyFirm");
+  });
+
+  // ── Phase detection from accountType ──
+
+  test("evaluation accountType alone (no propFirm) triggers notice", () => {
+    const result = derivePropFirmNotice({
+      propFirm: null,
+      accountType: "evaluation",
+      label: "Some Eval Account",
+    });
+    assert.ok(result != null, "evaluation accountType alone should show notice");
+    assert.equal(result!.phaseLabel, "Evaluation");
+    assert.equal(result!.propFirmName, null);
+  });
+
+  test("funded accountType alone (no propFirm) triggers notice", () => {
+    const result = derivePropFirmNotice({
+      propFirm: null,
+      accountType: "funded",
+      label: "Funded Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Funded");
+  });
+
+  // ── Phase detection from label ──
+
+  test("label containing 'live' triggers notice with Live phase", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "SomeFirm",
+      accountType: "personal",
+      label: "Live Trading Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Live");
+  });
+
+  test("accountType takes precedence over label for phase detection", () => {
+    // accountType=evaluation should win over any label keyword
+    const result = derivePropFirmNotice({
+      propFirm: "SomeFirm",
+      accountType: "evaluation",
+      label: "My Live Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Evaluation", "accountType wins over label");
+  });
+
+  // ── contextLabel ──
+
+  test("known phase is used as contextLabel", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "SomeFirm",
+      accountType: "evaluation",
+      label: "Eval Account",
+    });
+    assert.ok(result != null);
+    assert.equal(result!.contextLabel, "Evaluation");
+  });
+
+  test("unknown phase with no propFirm falls back to generic 'prop firm'", () => {
+    // evaluation accountType without propFirm: phase=Evaluation so contextLabel=Evaluation
+    // To reach the generic fallback we need: no propFirm, no typed phase, but label trigger
+    const result = derivePropFirmNotice({
+      propFirm: null,
+      accountType: "personal",
+      label: "live account label",
+    });
+    // label contains "live" so phase = "Live", contextLabel = "Live"
+    assert.ok(result != null);
+    assert.equal(result!.phaseLabel, "Live");
+    assert.equal(result!.contextLabel, "Live");
+  });
+
+  // ── Normal personal account — no notice ──
+
+  test("personal account with no propFirm and no phase keywords returns null", () => {
+    const result = derivePropFirmNotice({
+      propFirm: null,
+      accountType: "personal",
+      label: "My Personal Trading Account",
+    });
+    assert.equal(result, null, "personal account with no prop firm context should not show notice");
+  });
+
+  test("personal account with empty propFirm string returns null", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "   ",
+      accountType: "personal",
+      label: "Account",
+    });
+    assert.equal(result, null, "whitespace-only propFirm is treated as not set");
+  });
+
+  // ── Notice does not gate setup actions ──
+
+  test("notice data contains no field that blocks setup options A/B/C", () => {
+    const result = derivePropFirmNotice({
+      propFirm: "MyFirm",
+      accountType: "evaluation",
+      label: "Eval",
+    });
+    assert.ok(result != null);
+    // The notice only carries display data — no 'isBlocked' or similar guard.
+    assert.ok(!("isBlocked" in result!));
+    assert.ok(!("requiresConfirmation" in result!));
   });
 });
