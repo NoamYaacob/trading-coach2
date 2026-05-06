@@ -11,6 +11,8 @@ import {
   deriveAccountKind,
   deriveStaleSyncWarning,
   formatFreshnessLabel,
+  deriveOpenHref,
+  deriveRulesHref,
   deriveConnectionStatusLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
@@ -1605,6 +1607,57 @@ describe("deriveGroupStateSuffix", () => {
       ],
     });
     assert.equal(suffix, "Consent required");
+  });
+});
+
+// ── Dashboard action link helpers ─────────────────────────────────────────────
+
+describe("deriveOpenHref", () => {
+  it("points to the broker connection detail page for this account", () => {
+    const href = deriveOpenHref("acc-123");
+    assert.ok(href.startsWith("/accounts/"), "Open must use the /accounts/ route");
+    assert.ok(href.endsWith("/edit"), "Open must use the /edit sub-route");
+    assert.ok(href.includes("acc-123"), "Open must embed the account ID");
+  });
+
+  it("does NOT route to the Trading Plan page", () => {
+    const href = deriveOpenHref("acc-123");
+    assert.ok(!href.includes("/rules"), "Open must not use the /rules route");
+  });
+
+  it("each account gets its own URL", () => {
+    assert.notEqual(deriveOpenHref("acc-a"), deriveOpenHref("acc-b"));
+  });
+});
+
+describe("deriveRulesHref", () => {
+  it("routes to the Trading Plan page, not the broker edit page", () => {
+    const href = deriveRulesHref("acc-123");
+    assert.ok(href.startsWith("/rules"), "Rules must use the Trading Plan /rules route");
+    assert.ok(!href.includes("/accounts/"), "Rules must not use the /accounts/ route");
+    assert.ok(!href.includes("/edit"), "Rules must not use the broker edit route");
+  });
+
+  it("includes scope=account so the correct sidebar item is pre-selected", () => {
+    const href = deriveRulesHref("acc-123");
+    assert.ok(href.includes("scope=account"), "must select account scope in the Trading Plan");
+  });
+
+  it("embeds the account ID so the correct account is highlighted", () => {
+    const href = deriveRulesHref("acc-123");
+    assert.ok(href.includes("id=acc-123"), "must pass the account ID in the query string");
+  });
+
+  it("does not change scope based on ruleSource — always uses account scope", () => {
+    // Regression: old code went to /accounts/[id]/edit when ruleSource === "account"
+    // and to /rules (no id) when ruleSource === "default". Both were wrong.
+    // Rules always opens Trading Plan with this account pre-selected.
+    const href = deriveRulesHref("acc-xyz");
+    assert.equal(href, "/rules?scope=account&id=acc-xyz");
+  });
+
+  it("different accounts produce different URLs", () => {
+    assert.notEqual(deriveRulesHref("acc-a"), deriveRulesHref("acc-b"));
   });
 });
 

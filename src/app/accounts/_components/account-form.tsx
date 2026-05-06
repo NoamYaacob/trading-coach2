@@ -32,8 +32,8 @@ export type AccountFormInitialData = {
 };
 
 type Props =
-  | { mode: "create"; lockedPlatform?: string }
-  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData; lockedPlatform?: string };
+  | { mode: "create"; lockedPlatform?: string; hideRules?: boolean }
+  | { mode: "edit"; accountId: string; initialData: AccountFormInitialData; lockedPlatform?: string; hideRules?: boolean };
 
 function parseNumberOrNull(value: string): number | null {
   if (!value.trim()) return null;
@@ -59,6 +59,7 @@ export function AccountForm(props: Props) {
   const isEdit = props.mode === "edit";
   const init = isEdit ? props.initialData : null;
   const lockedPlatform = props.lockedPlatform ?? null;
+  const hideRules = props.hideRules ?? false;
 
   const [form, setForm] = useState({
     label: init?.label ?? "",
@@ -313,84 +314,86 @@ export function AccountForm(props: Props) {
         </div>
       </div>
 
-      <div>
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-          Guardian rules
-        </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Max daily loss">
-            <input
-              inputMode="decimal"
-              value={form.maxDailyLoss}
-              onChange={(e) => set("maxDailyLoss", e.target.value)}
-              placeholder="e.g. 500"
-              className={INPUT_CLASS}
-            />
-            {showBalanceWarning && (
-              <p className="text-xs text-amber-700">
-                Exceeds balance (${liveBalance!.toFixed(2)}). Saving will be blocked.
-              </p>
-            )}
-          </Field>
-
-          <Field label="Risk per trade">
-            <input
-              inputMode="decimal"
-              value={form.riskPerTrade}
-              onChange={(e) => set("riskPerTrade", e.target.value)}
-              placeholder="e.g. 100"
-              className={INPUT_CLASS}
-            />
-          </Field>
-
-          <Field label="Max trades per day">
-            <input
-              inputMode="numeric"
-              value={form.maxTradesPerDay}
-              onChange={(e) => set("maxTradesPerDay", e.target.value)}
-              placeholder="e.g. 5"
-              className={INPUT_CLASS}
-            />
-          </Field>
-
-          <Field label="Stop after consecutive losses">
-            <input
-              inputMode="numeric"
-              value={form.stopAfterLosses}
-              onChange={(e) => set("stopAfterLosses", e.target.value)}
-              placeholder="e.g. 3"
-              className={INPUT_CLASS}
-            />
-          </Field>
-
-          <Field label="Allowed from (CME hour 0–23)">
-            <input
-              inputMode="numeric"
-              value={form.allowedStartHour}
-              onChange={(e) => set("allowedStartHour", e.target.value)}
-              placeholder="e.g. 9"
-              className={INPUT_CLASS}
-            />
-          </Field>
-
-          <Field label="Allowed until (CME hour 0–23)">
-            <input
-              inputMode="numeric"
-              value={form.allowedEndHour}
-              onChange={(e) => set("allowedEndHour", e.target.value)}
-              placeholder="e.g. 16"
-              className={INPUT_CLASS}
-            />
-          </Field>
-        </div>
-
-        {allRulesEmpty && (
-          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-500">
-            No rules set — the guardian will receive and log events but cannot intervene. Add at
-            least one limit to enable protection.
+      {!hideRules && (
+        <div>
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+            Protection rules
           </p>
-        )}
-      </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Max daily loss">
+              <input
+                inputMode="decimal"
+                value={form.maxDailyLoss}
+                onChange={(e) => set("maxDailyLoss", e.target.value)}
+                placeholder="e.g. 500"
+                className={INPUT_CLASS}
+              />
+              {showBalanceWarning && (
+                <p className="text-xs text-amber-700">
+                  Exceeds balance (${liveBalance!.toFixed(2)}). Saving will be blocked.
+                </p>
+              )}
+            </Field>
+
+            <Field label="Risk per trade">
+              <input
+                inputMode="decimal"
+                value={form.riskPerTrade}
+                onChange={(e) => set("riskPerTrade", e.target.value)}
+                placeholder="e.g. 100"
+                className={INPUT_CLASS}
+              />
+            </Field>
+
+            <Field label="Max trades per day">
+              <input
+                inputMode="numeric"
+                value={form.maxTradesPerDay}
+                onChange={(e) => set("maxTradesPerDay", e.target.value)}
+                placeholder="e.g. 5"
+                className={INPUT_CLASS}
+              />
+            </Field>
+
+            <Field label="Stop after consecutive losses">
+              <input
+                inputMode="numeric"
+                value={form.stopAfterLosses}
+                onChange={(e) => set("stopAfterLosses", e.target.value)}
+                placeholder="e.g. 3"
+                className={INPUT_CLASS}
+              />
+            </Field>
+
+            <Field label="Allowed from (CME hour 0–23)">
+              <input
+                inputMode="numeric"
+                value={form.allowedStartHour}
+                onChange={(e) => set("allowedStartHour", e.target.value)}
+                placeholder="e.g. 9"
+                className={INPUT_CLASS}
+              />
+            </Field>
+
+            <Field label="Allowed until (CME hour 0–23)">
+              <input
+                inputMode="numeric"
+                value={form.allowedEndHour}
+                onChange={(e) => set("allowedEndHour", e.target.value)}
+                placeholder="e.g. 16"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </div>
+
+          {allRulesEmpty && (
+            <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-500">
+              No rules set — Guardrail will receive and log events but cannot intervene. Add at
+              least one limit to enable protection.
+            </p>
+          )}
+        </div>
+      )}
 
       {isPropFirmAccount && (
         <div>
@@ -398,7 +401,7 @@ export function AccountForm(props: Props) {
             Prop firm profile
           </p>
           <p className="mb-4 text-xs text-stone-500">
-            The effective daily loss budget is the tightest of your guardian limit and the prop firm limits below.
+            The effective daily loss budget is the tightest of your protection rules and the prop firm limits below.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Account size ($)">

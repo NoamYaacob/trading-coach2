@@ -20,9 +20,11 @@ import {
   formatFreshnessLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
+  deriveOpenHref,
   derivePerAccountStateLabel,
   deriveProtectionStatusPanel,
   deriveRowStatusLabel,
+  deriveRulesHref,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
   type ProtectionStatusPanelData,
@@ -837,13 +839,13 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         {/* Action buttons row: Open, Rules, and optionally Reconnect */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <Link
-            href={`/accounts/${account.id}/edit`}
+            href={deriveOpenHref(account.id)}
             className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Open
           </Link>
           <Link
-            href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
+            href={deriveRulesHref(account.id)}
             className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           >
             Rules
@@ -1054,13 +1056,10 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Link href={`/accounts/${account.id}/edit`} className={PILL_ROW_SECONDARY}>
+      <Link href={deriveOpenHref(account.id)} className={PILL_ROW_SECONDARY}>
         Open
       </Link>
-      <Link
-        href={account.ruleSource === "account" ? `/accounts/${account.id}/edit` : "/rules"}
-        className={PILL_ROW_SECONDARY}
-      >
+      <Link href={deriveRulesHref(account.id)} className={PILL_ROW_SECONDARY}>
         Rules
       </Link>
       {reconnectNeeded ? (

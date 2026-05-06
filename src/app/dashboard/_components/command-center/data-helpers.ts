@@ -580,6 +580,25 @@ export function formatFreshnessLabel(stale: StaleSyncWarning): string | null {
   return `Synced ${stale.minutesSinceOldestSync}m ago`;
 }
 
+// ── Dashboard account action hrefs ────────────────────────────────────────────
+
+/**
+ * Href for the "Open" action on a Dashboard account row.
+ * Opens the broker connection detail / readiness page for that account.
+ */
+export function deriveOpenHref(accountId: string): string {
+  return `/accounts/${accountId}/edit`;
+}
+
+/**
+ * Href for the "Rules" action on a Dashboard account row.
+ * Opens the Trading Plan editor with this exact account pre-selected
+ * in the left scope selector.
+ */
+export function deriveRulesHref(accountId: string): string {
+  return `/rules?scope=account&id=${accountId}`;
+}
+
 // ── deriveProtectionStatusPanel ───────────────────────────────────────────────
 
 export type ProtectionStatusPanelData = {

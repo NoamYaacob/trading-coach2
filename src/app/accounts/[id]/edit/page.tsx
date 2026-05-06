@@ -8,6 +8,11 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AccountForm } from "../../_components/account-form";
 import type { AccountFormInitialData } from "../../_components/account-form";
+import {
+  deriveRuleSource,
+  deriveRuleSourceLabel,
+  hasAnyCoverage,
+} from "../../_components/account-detail-helpers";
 import { ConnectionPoller } from "./_components/connection-poller";
 import { DiagnosticsPanel } from "./_components/diagnostics-panel";
 import { DisconnectButton } from "./_components/disconnect-button";
@@ -59,9 +64,9 @@ const READINESS_CONFIG: Record<
     badgeBg: "bg-emerald-100",
     badgeText: "text-emerald-700",
     badgeLabel: "Ready",
-    status: "Monitoring active",
+    status: "Active",
     description:
-      "Events are arriving and rules are in effect. Rule alerts fire when limits are hit. Broker-side enforcement is not active.",
+      "Broker events are arriving and protection rules are in effect.",
   },
   pending_first_event: {
     border: "border-amber-200",
@@ -71,17 +76,17 @@ const READINESS_CONFIG: Record<
     badgeLabel: "Pending sync",
     status: "Waiting for first event",
     description:
-      "Account ID and rules are configured. No events received yet — complete the webhook setup below.",
+      "Account ID and protection rules are configured. No events received yet — complete the webhook setup below.",
   },
   no_rules: {
     border: "border-amber-200",
     bg: "bg-amber-50",
     badgeBg: "bg-amber-100",
     badgeText: "text-amber-700",
-    badgeLabel: "Add rules",
-    status: "Monitoring only",
+    badgeLabel: "Set up rules",
+    status: "No protection rules",
     description:
-      "Events will be received and logged, but no intervention rules are set. Add at least one limit to enable protection.",
+      "No protection rules are configured. Add rules in Trading Plan to enable automatic enforcement.",
   },
   not_connected: {
     border: "border-red-200",
@@ -132,12 +137,22 @@ export default async function EditAccountPage({
 
   const account = await prisma.connectedAccount.findFirst({
     where: { id, userId: currentUser.id },
-    include: { riskRules: true, sessionState: true },
+    include: {
+      riskRules: true,
+      sessionState: true,
+      brokerConnection: { select: { permissionLevel: true, connectionStatus: true } },
+    },
   });
 
   if (!account) {
     notFound();
   }
+
+  // Fetch the user's default plan to determine rule coverage.
+  const defaultRulesRecord = await prisma.riskRules.findUnique({
+    where: { userId: currentUser.id },
+    select: { id: true },
+  });
 
   // Recent broker events — first row drives the readiness panel; full list feeds diagnostics.
   const recentEvents = await prisma.normalizedTradeEvent.findMany({
@@ -161,24 +176,20 @@ export default async function EditAccountPage({
   // Readiness checks
   const hasAccountId = !!account.externalAccountId;
   const rr = account.riskRules;
-  const hasRules =
+
+  // Account is "rule-covered" if it has its own rules OR the default plan exists.
+  const hasAccountRules =
     rr != null &&
     (rr.maxDailyLoss != null ||
       rr.riskPerTrade != null ||
       rr.maxTradesPerDay != null ||
       rr.stopAfterLosses != null ||
       (rr.allowedStartHour != null && rr.allowedEndHour != null));
+  const hasDefaultRules = defaultRulesRecord != null;
+  const ruleSource = deriveRuleSource({ hasAccountRules, hasDefaultRules });
+  const ruleSourceLabel = deriveRuleSourceLabel(ruleSource);
+  const hasRules = hasAnyCoverage({ hasAccountRules, hasDefaultRules });
   const hasEvent = lastEvent != null;
-
-  const rulesCount = rr
-    ? [
-        rr.maxDailyLoss,
-        rr.riskPerTrade,
-        rr.maxTradesPerDay != null ? rr.maxTradesPerDay : null,
-        rr.stopAfterLosses != null ? rr.stopAfterLosses : null,
-        rr.allowedStartHour != null && rr.allowedEndHour != null ? 1 : null,
-      ].filter((v) => v != null).length
-    : 0;
 
   const isTradovate = account.platform === "tradovate";
   const oauthConfigured = !!process.env.TRADOVATE_CLIENT_ID;
@@ -200,6 +211,9 @@ export default async function EditAccountPage({
   // OAuth env mirrors the account type — demo accounts authorize against demo.
   const oauthEnv = account.accountType === "demo" ? "demo" : "live";
 
+  // The rules URL pre-selects this account in Trading Plan.
+  const manageRulesHref = `/rules?scope=account&id=${account.id}`;
+
   // Static checks (account ID + rules) are passed to the client ConnectionPoller
   // when in pending state so it can render the full panel with live broker-events check.
   const staticChecks = [
@@ -213,11 +227,11 @@ export default async function EditAccountPage({
           : "Not configured",
     },
     {
-      label: "Guardian rules",
+      label: "Protection rules",
       pass: hasRules,
       detail: hasRules
-        ? `${rulesCount} rule${rulesCount !== 1 ? "s" : ""} configured`
-        : "None — add at least one limit",
+        ? ruleSourceLabel
+        : "None — set up rules in Trading Plan",
     },
   ];
 
@@ -301,7 +315,7 @@ export default async function EditAccountPage({
     <AppShell
       eyebrow="Broker Connections"
       title={account.label}
-      description="Manage this broker connection, update protection rules, and verify the live event feed."
+      description="Manage this broker connection and verify the live event feed."
       actions={
         <Link
           href="/accounts"
@@ -314,7 +328,11 @@ export default async function EditAccountPage({
       <div className="grid gap-6">
         {oauth === "connected" && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
-            Tradovate authorized. Set your guardian rules below, then complete webhook setup to go live.
+            Tradovate authorized. Go to{" "}
+            <Link href={manageRulesHref} className="font-medium underline underline-offset-2">
+              Trading Plan
+            </Link>{" "}
+            to set up protection rules, then complete webhook setup to go live.
           </div>
         )}
 
@@ -384,11 +402,30 @@ export default async function EditAccountPage({
           </div>
         )}
 
+        {/* Protection rules summary + CTA */}
+        <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 px-6 py-5">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+            Protection rules
+          </p>
+          <p className="mt-1 text-sm text-stone-700">{ruleSourceLabel}</p>
+          <p className="mt-0.5 text-xs text-stone-500">
+            Protection limits, session hours, and enforcement settings are managed in Trading Plan.
+          </p>
+          <div className="mt-3">
+            <Link
+              href={manageRulesHref}
+              className="inline-flex rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+            >
+              Manage protection rules
+            </Link>
+          </div>
+        </div>
+
         <SectionCard
-          title="Connection details"
-          description="Changes take effect immediately. Guardian rules apply to the next event processed."
+          title="Account details"
+          description="Update account identity and connection settings. Save to apply changes immediately."
         >
-          <AccountForm mode="edit" accountId={account.id} initialData={initialData} />
+          <AccountForm mode="edit" accountId={account.id} initialData={initialData} hideRules />
         </SectionCard>
 
         {account.isActive && (
