@@ -52,6 +52,7 @@ import {
 } from "./tradovate-client-helpers";
 
 export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
+import { isAutoLiqConfirmed } from "./enforcement-helpers";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
 
 // ── Raw Tradovate API shapes ──────────────────────────────────────────────────
@@ -170,6 +171,11 @@ export type AutoLiqLockResult = {
   endpoint: string;
   payload: Record<string, unknown>;
   response: unknown;
+  /** True only when the response body (or a read-back GET) echoed back the
+   *  dailyLossAutoLiq we sent, confirming Tradovate stored the value. */
+  confirmed: boolean;
+  /** The dailyLossAutoLiq value returned by the API (response or read-back). */
+  readbackValue: number | null;
 };
 
 /** How the most recent getFills() response was scoped to one account. */
@@ -1479,7 +1485,40 @@ export class TradovateClient {
       responseKeys: response != null && typeof response === "object" ? Object.keys(response as object) : [],
     });
 
-    return { endpoint, payload, response };
+    // Verify that Tradovate stored the value we sent by checking the response
+    // body first, then falling back to a read-back GET if the response doesn't
+    // echo the field.
+    const responseValue = response?.dailyLossAutoLiq ?? null;
+    let confirmed = isAutoLiqConfirmed({
+      expectedValue: params.lossAmountToSet,
+      responseValue,
+    });
+    let readbackValue: number | null = responseValue;
+
+    if (!confirmed) {
+      // Response didn't confirm — do a read-back GET to verify the stored value.
+      try {
+        const readback = await this.getUserAccountAutoLiq();
+        const readbackRecord = readback[0] ?? null;
+        readbackValue = readbackRecord?.dailyLossAutoLiq ?? null;
+        confirmed = isAutoLiqConfirmed({
+          expectedValue: params.lossAmountToSet,
+          responseValue: readbackValue,
+        });
+        console.info("[tradovate/autoLiq] read-back result", {
+          accountId: this.#accountId,
+          readbackValue,
+          confirmed,
+        });
+      } catch (readbackErr) {
+        console.warn("[tradovate/autoLiq] read-back GET failed", {
+          accountId: this.#accountId,
+          error: readbackErr instanceof Error ? readbackErr.message : String(readbackErr),
+        });
+      }
+    }
+
+    return { endpoint, payload, response, confirmed, readbackValue };
   }
 
   // ── Normalized outputs (BrokerAdapter shapes) ────────────────────────────

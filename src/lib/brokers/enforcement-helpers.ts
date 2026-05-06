@@ -139,6 +139,26 @@ export function shouldSkipBrokerEnforcement(opts: {
   return { skip: false };
 }
 
+// ── Response confirmation ─────────────────────────────────────────────────────
+
+/**
+ * Decide whether a Tradovate response (or read-back) confirms that the
+ * dailyLossAutoLiq was stored at the value we sent.
+ *
+ * The comparison uses an epsilon of 0.01 (1 cent) to tolerate floating-point
+ * round-trips through the API. When responseValue is null/undefined the result
+ * is false — the caller must fall back to a read-back GET.
+ */
+export function isAutoLiqConfirmed(opts: {
+  expectedValue: number;
+  responseValue: number | null | undefined;
+  epsilon?: number;
+}): boolean {
+  const { expectedValue, responseValue, epsilon = 0.01 } = opts;
+  if (responseValue == null || !Number.isFinite(responseValue)) return false;
+  return Math.abs(responseValue - expectedValue) <= epsilon;
+}
+
 // ── Error classification ──────────────────────────────────────────────────────
 
 /**

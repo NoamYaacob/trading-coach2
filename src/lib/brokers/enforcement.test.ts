@@ -16,6 +16,7 @@ import {
   computeLossAmountToSet,
   shouldSkipBrokerEnforcement,
   classifyEnforcementError,
+  isAutoLiqConfirmed,
 } from "./enforcement-helpers.ts";
 
 // ── buildAutoLiqUpdatePayload ─────────────────────────────────────────────────
@@ -294,6 +295,46 @@ describe("classifyEnforcementError", () => {
       failureReason.toLowerCase().includes("account risk settings"),
       `expected 'Account Risk Settings' in reason, got: ${failureReason}`,
     );
+  });
+});
+
+// ── isAutoLiqConfirmed ────────────────────────────────────────────────────────
+
+describe("isAutoLiqConfirmed", () => {
+  it("returns true when response value exactly matches expected", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 250 }), true);
+  });
+
+  it("returns true within the default 1-cent epsilon", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 250.005 }), true);
+  });
+
+  it("returns false when response value differs by more than epsilon", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 251 }), false);
+  });
+
+  it("returns false when responseValue is null (field absent from response)", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: null }), false);
+  });
+
+  it("returns false when responseValue is undefined", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: undefined }), false);
+  });
+
+  it("returns false when responseValue is NaN", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: NaN }), false);
+  });
+
+  it("respects a custom epsilon", () => {
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 250.5, epsilon: 1 }), true);
+    assert.equal(isAutoLiqConfirmed({ expectedValue: 250, responseValue: 250.5, epsilon: 0.1 }), false);
+  });
+
+  it("confirmed=true is required before UI shows broker_locked — null response is not confirmed", () => {
+    // Regression guard: broker_locked must never be set when response field is absent.
+    // The caller (enforcement.ts) must use confirmed=false → broker_lock_failed.
+    const unconfirmed = isAutoLiqConfirmed({ expectedValue: 500, responseValue: null });
+    assert.equal(unconfirmed, false, "absent responseValue must not confirm the lock");
   });
 });
 

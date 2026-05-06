@@ -154,18 +154,38 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       brokerEndpoint = result.endpoint;
       brokerPayloadJson = result.payload as Prisma.InputJsonValue;
       brokerResponseJson = result.response as Prisma.InputJsonValue;
-      brokerLockStatus = "broker_locked";
-      outcome = "broker_locked";
-      message =
-        `Broker-side lock applied via ${result.endpoint}. ` +
-        `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
-        `Tradovate will halt new opening orders for the rest of the trading session.`;
 
-      console.info("[enforcement] broker lock succeeded", {
-        accountId,
-        endpoint: result.endpoint,
-        lossAmountToSet,
-      });
+      if (result.confirmed) {
+        brokerLockStatus = "broker_locked";
+        outcome = "broker_locked";
+        message =
+          `Broker-side lock applied via ${result.endpoint}. ` +
+          `dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, changesLocked=true. ` +
+          `Tradovate confirmed the stored value (readback: $${(result.readbackValue ?? lossAmountToSet).toFixed(2)}). ` +
+          `Tradovate will halt new opening orders for the rest of the trading session.`;
+
+        console.info("[enforcement] broker lock confirmed", {
+          accountId,
+          endpoint: result.endpoint,
+          lossAmountToSet,
+          readbackValue: result.readbackValue,
+        });
+      } else {
+        brokerLockStatus = "broker_lock_failed";
+        outcome = "broker_lock_failed";
+        message =
+          `Broker lock via ${result.endpoint} accepted by API but value not confirmed. ` +
+          `Sent dailyLossAutoLiq=$${lossAmountToSet.toFixed(2)}, ` +
+          `read-back returned ${result.readbackValue != null ? `$${result.readbackValue.toFixed(2)}` : "null"}. ` +
+          `Guardrail is monitoring and alerting only.`;
+
+        console.warn("[enforcement] broker lock unconfirmed — value mismatch", {
+          accountId,
+          endpoint: result.endpoint,
+          lossAmountToSet,
+          readbackValue: result.readbackValue,
+        });
+      }
     } catch (err) {
       const { lockStatus, failureReason } = classifyEnforcementError(err);
 
