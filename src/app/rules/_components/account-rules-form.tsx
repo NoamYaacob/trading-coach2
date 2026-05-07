@@ -37,15 +37,7 @@ export type AccountRulesValues = {
   sessionTimezone: string;
   ruleEditLockBufferMinutes: string;
   maxContracts: string;
-  propFirmAccountSize: string;
-  propFirmPhase: string;
-  propFirmDailyLossLimit: string;
-  propFirmMaxDrawdown: string;
-  propFirmEODDrawdown: string;
-  propFirmTrailingDrawdown: boolean;
-  propFirmDrawdownRemaining: string;
-  propFirmProfitTarget: string;
-  propFirmMinTradingDays: string;
+  // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
 };
 
 type Props = {
@@ -60,7 +52,6 @@ type Props = {
   isLocked: boolean;
   /** Human-readable message explaining the current lock reason (session-aware). */
   lockMessage?: string | null;
-  hasPropFirm: boolean;
   hasDefaultRules: boolean;
   timezone?: string | null;
   defaultValues?: DefaultRuleValues;
@@ -154,7 +145,6 @@ export function AccountRulesForm({
   initial,
   isLocked,
   lockMessage,
-  hasPropFirm,
   hasDefaultRules,
   timezone,
   defaultValues,
@@ -229,15 +219,6 @@ export function AccountRulesForm({
           sessionTimezone: values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null,
           ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
           maxContracts: int(values.maxContracts),
-          propFirmAccountSize: num(values.propFirmAccountSize),
-          propFirmPhase: values.propFirmPhase.trim() || null,
-          propFirmDailyLossLimit: num(values.propFirmDailyLossLimit),
-          propFirmMaxDrawdown: num(values.propFirmMaxDrawdown),
-          propFirmEODDrawdown: num(values.propFirmEODDrawdown),
-          propFirmTrailingDrawdown: values.propFirmTrailingDrawdown,
-          propFirmDrawdownRemaining: num(values.propFirmDrawdownRemaining),
-          propFirmProfitTarget: num(values.propFirmProfitTarget),
-          propFirmMinTradingDays: int(values.propFirmMinTradingDays),
         },
         // Stamp consent only on submissions where the user explicitly checked
         // the box. Re-saves of rules on already-consented accounts pass false
@@ -456,57 +437,6 @@ export function AccountRulesForm({
           ))}
         </div>
       </div>
-
-      {/* Prop firm parameters — collapsible */}
-      {hasPropFirm && (
-        <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-            Prop firm parameters
-            <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-          </summary>
-          <div className="mt-3 grid gap-3 sm:mt-5 sm:grid-cols-2 sm:gap-4">
-            <Field label="Account size ($)">
-              <Input value={values.propFirmAccountSize} onChange={(v) => update("propFirmAccountSize", v)} placeholder="50000" />
-            </Field>
-            <Field label="Phase" hint="evaluation, funded, pa, sim">
-              <input
-                type="text"
-                value={values.propFirmPhase}
-                onChange={(e) => update("propFirmPhase", e.target.value)}
-                placeholder="evaluation"
-                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-              />
-            </Field>
-            <Field label="Daily loss limit ($)">
-              <Input value={values.propFirmDailyLossLimit} onChange={(v) => update("propFirmDailyLossLimit", v)} placeholder="500" />
-            </Field>
-            <Field label="Max drawdown ($)">
-              <Input value={values.propFirmMaxDrawdown} onChange={(v) => update("propFirmMaxDrawdown", v)} placeholder="2000" />
-            </Field>
-            <Field label="EOD drawdown ($)">
-              <Input value={values.propFirmEODDrawdown} onChange={(v) => update("propFirmEODDrawdown", v)} placeholder="1500" />
-            </Field>
-            <Field label="Drawdown remaining ($)">
-              <Input value={values.propFirmDrawdownRemaining} onChange={(v) => update("propFirmDrawdownRemaining", v)} placeholder="1800" />
-            </Field>
-            <Field label="Profit target ($)">
-              <Input value={values.propFirmProfitTarget} onChange={(v) => update("propFirmProfitTarget", v)} placeholder="3000" />
-            </Field>
-            <Field label="Min trading days">
-              <Input value={values.propFirmMinTradingDays} onChange={(v) => update("propFirmMinTradingDays", v)} placeholder="10" integer />
-            </Field>
-            <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input
-                type="checkbox"
-                checked={values.propFirmTrailingDrawdown}
-                onChange={(e) => update("propFirmTrailingDrawdown", e.target.checked)}
-                className="h-4 w-4 rounded border-stone-300 accent-stone-950"
-              />
-              <span className="font-medium text-stone-950">Trailing drawdown</span>
-            </label>
-          </div>
-        </details>
-      )}
 
       {/* Pending session panel — shown when a locked save introduced a pending preset change */}
       {localPendingPresets !== null && (

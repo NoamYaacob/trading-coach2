@@ -18,6 +18,7 @@ export type RiskRulesBody = {
   sessionEndTime?: string | null;
   sessionTimezone?: string | null;
   ruleEditLockBufferMinutes?: number | null;
+  // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   propFirmAccountSize?: number | null;
   propFirmPhase?: string | null;
   propFirmDailyLossLimit?: number | null;
@@ -45,14 +46,16 @@ export function riskRulesData(r: RiskRulesBody) {
     sessionTimezone: r.sessionTimezone ?? null,
     ruleEditLockBufferMinutes: r.ruleEditLockBufferMinutes ?? null,
     maxContracts: r.maxContracts ?? null,
-    propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null,
-    propFirmPhase: r.propFirmPhase ?? null,
-    propFirmDailyLossLimit: r.propFirmDailyLossLimit != null ? String(r.propFirmDailyLossLimit) : null,
-    propFirmMaxDrawdown: r.propFirmMaxDrawdown != null ? String(r.propFirmMaxDrawdown) : null,
-    propFirmEODDrawdown: r.propFirmEODDrawdown != null ? String(r.propFirmEODDrawdown) : null,
-    propFirmTrailingDrawdown: r.propFirmTrailingDrawdown ?? false,
-    propFirmDrawdownRemaining: r.propFirmDrawdownRemaining != null ? String(r.propFirmDrawdownRemaining) : null,
-    propFirmProfitTarget: r.propFirmProfitTarget != null ? String(r.propFirmProfitTarget) : null,
-    propFirmMinTradingDays: r.propFirmMinTradingDays ?? null,
+    // propFirm fields: only written when explicitly present in the payload so
+    // that saves from the Trading Plan (which omit them) preserve existing values.
+    ...(r.propFirmAccountSize !== undefined && { propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null }),
+    ...(r.propFirmPhase !== undefined && { propFirmPhase: r.propFirmPhase ?? null }),
+    ...(r.propFirmDailyLossLimit !== undefined && { propFirmDailyLossLimit: r.propFirmDailyLossLimit != null ? String(r.propFirmDailyLossLimit) : null }),
+    ...(r.propFirmMaxDrawdown !== undefined && { propFirmMaxDrawdown: r.propFirmMaxDrawdown != null ? String(r.propFirmMaxDrawdown) : null }),
+    ...(r.propFirmEODDrawdown !== undefined && { propFirmEODDrawdown: r.propFirmEODDrawdown != null ? String(r.propFirmEODDrawdown) : null }),
+    ...(r.propFirmTrailingDrawdown !== undefined && { propFirmTrailingDrawdown: r.propFirmTrailingDrawdown }),
+    ...(r.propFirmDrawdownRemaining !== undefined && { propFirmDrawdownRemaining: r.propFirmDrawdownRemaining != null ? String(r.propFirmDrawdownRemaining) : null }),
+    ...(r.propFirmProfitTarget !== undefined && { propFirmProfitTarget: r.propFirmProfitTarget != null ? String(r.propFirmProfitTarget) : null }),
+    ...(r.propFirmMinTradingDays !== undefined && { propFirmMinTradingDays: r.propFirmMinTradingDays ?? null }),
   };
 }

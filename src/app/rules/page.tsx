@@ -91,11 +91,6 @@ export default async function RulesPage({
             pendingPayloadJson: true,
             pendingEffectiveDate: true,
             maxContracts: true,
-            propFirmAccountSize: true, propFirmPhase: true,
-            propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
-            propFirmEODDrawdown: true, propFirmTrailingDrawdown: true,
-            propFirmDrawdownRemaining: true, propFirmProfitTarget: true,
-            propFirmMinTradingDays: true,
             automatedActionsConsentAt: true,
             automatedActionsConsentVersion: true,
           },
@@ -218,15 +213,7 @@ export default async function RulesPage({
     sessionTimezone: selectedAccount?.riskRules?.sessionTimezone ?? "",
     ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
-    propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
-    propFirmPhase: selectedAccount?.riskRules?.propFirmPhase ?? "",
-    propFirmDailyLossLimit: decStr(selectedAccount?.riskRules?.propFirmDailyLossLimit),
-    propFirmMaxDrawdown: decStr(selectedAccount?.riskRules?.propFirmMaxDrawdown),
-    propFirmEODDrawdown: decStr(selectedAccount?.riskRules?.propFirmEODDrawdown),
-    propFirmTrailingDrawdown: selectedAccount?.riskRules?.propFirmTrailingDrawdown ?? false,
-    propFirmDrawdownRemaining: decStr(selectedAccount?.riskRules?.propFirmDrawdownRemaining),
-    propFirmProfitTarget: decStr(selectedAccount?.riskRules?.propFirmProfitTarget),
-    propFirmMinTradingDays: intStr(selectedAccount?.riskRules?.propFirmMinTradingDays),
+    // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   };
 
   const accountDefaultValues: DefaultRuleValues = {
@@ -404,7 +391,6 @@ export default async function RulesPage({
                   lockMessage={accountRuleLockMessage}
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
-                  hasPropFirm={Boolean(selectedAccount.propFirm)}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}
