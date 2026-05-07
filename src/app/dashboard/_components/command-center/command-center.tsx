@@ -401,6 +401,12 @@ function SectionHeader({
         )
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/accounts/connect/tradovate"
+          className="inline-flex h-8 items-center rounded-full border border-stone-200 px-3.5 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
+        >
+          Add account
+        </Link>
         {hasBrokerAccounts ? <SyncAllButton /> : null}
         {firms.length > 1 ? (
           <label className="flex items-center gap-1.5 text-xs text-stone-500">

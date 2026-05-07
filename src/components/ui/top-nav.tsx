@@ -5,32 +5,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { LogoutButton } from "./logout-button";
-
-type AppNavItem = {
-  href: string;
-  label: string;
-  match: "exact" | "startsWith";
-};
+import { ALL_NAV, MORE_NAV, PRIMARY_NAV, type AppNavItem } from "./nav-config";
 
 type MarketingNavItem = {
   href: string;
   label: string;
 };
 
-const PRIMARY_NAV: AppNavItem[] = [
-  { href: "/dashboard", label: "Dashboard", match: "exact" },
-  { href: "/rules", label: "Trading Plan", match: "exact" },
-  { href: "/accounts", label: "Broker Connections", match: "startsWith" },
-];
-
-const MORE_NAV: AppNavItem[] = [
-  { href: "/guardian", label: "Status details", match: "exact" },
-  { href: "/alerts", label: "Alerts", match: "exact" },
-  { href: "/settings", label: "Settings", match: "exact" },
-  { href: "/onboarding", label: "Setup guide", match: "exact" },
-];
-
-const ALL_NAV: AppNavItem[] = [...PRIMARY_NAV, ...MORE_NAV];
 
 // Desktop: 5 items (Security lives in footer + mobile)
 const MARKETING_NAV_DESKTOP: MarketingNavItem[] = [
