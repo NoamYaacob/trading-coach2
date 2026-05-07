@@ -545,6 +545,7 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
 // ─── Groups ────────────────────────────────────────────────────────────────────
 
 const MFF_GROUP: CommandCenterFirmGroup = {
+  groupId: `${MFF_FIRM_KEY}::${MFF_CONN_ID}`,
   firmKey: MFF_FIRM_KEY,
   firmLabel: MFF_FIRM_LABEL,
   accounts: MFF_ACCOUNTS,
@@ -566,6 +567,7 @@ const MFF_GROUP: CommandCenterFirmGroup = {
 };
 
 const LUCID_GROUP: CommandCenterFirmGroup = {
+  groupId: `${LUCID_FIRM_KEY}::${LUCID_CONN_ID}`,
   firmKey: LUCID_FIRM_KEY,
   firmLabel: LUCID_FIRM_LABEL,
   accounts: LUCID_ACCOUNTS,

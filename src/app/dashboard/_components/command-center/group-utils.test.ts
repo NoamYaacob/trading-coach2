@@ -115,13 +115,13 @@ describe("buildCommandCenterGroups", () => {
   it("sinks personal/manual firm keys to the bottom of the sorted list", () => {
     const sinkKeys = new Set(["__personal_broker__"]);
     const accounts = [
-      stubAccount({ id: "p1", firmKey: "__personal_broker__", firmLabel: "Personal accounts", brokerConnectionId: null }),
+      stubAccount({ id: "p1", firmKey: "__personal_broker__", firmLabel: "Tradovate · Personal", brokerConnectionId: null }),
       stubAccount({ id: "a1", firmKey: "myfundedfutures", firmLabel: "MyFundedFutures", brokerConnectionId: "conn-a" }),
     ];
     const groups = buildCommandCenterGroups(accounts, sinkKeys);
     assert.equal(groups.length, 2);
     assert.equal(groups[0].firmLabel, "MyFundedFutures", "prop firm should sort before personal");
-    assert.equal(groups[1].firmLabel, "Personal accounts");
+    assert.equal(groups[1].firmLabel, "Tradovate · Personal");
   });
 
   it("aggregates daily P&L across accounts in the same group", () => {
@@ -268,27 +268,27 @@ const UNASSIGNED_KEY = "__unassigned__";
 const STANDARD_SINK_KEYS = new Set([PERSONAL_KEY, UNASSIGNED_KEY]);
 
 describe("generic grouping rules", () => {
-  // 1. personal live + personal demo → one "Personal accounts" group
-  it("personal-type live and demo-type accounts without prop firm group under 'Personal accounts'", () => {
+  // 1. personal live + personal demo → one platform-labelled group
+  it("personal-type live and demo-type accounts without prop firm group under one platform header", () => {
     const accounts = [
       stubAccount({
         id: "live-1",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "Tradovate · Personal",
         brokerConnectionId: "conn-a",
         accountType: "personal",
       }),
       stubAccount({
         id: "demo-1",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "Tradovate · Personal",
         brokerConnectionId: "conn-a",
         accountType: "demo",
       }),
     ];
     const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
     assert.equal(groups.length, 1, "live + demo → single group");
-    assert.equal(groups[0].firmLabel, "Personal accounts");
+    assert.equal(groups[0].firmLabel, "Tradovate · Personal");
     assert.equal(groups[0].accounts.length, 2, "both accounts are present as separate rows");
   });
 
@@ -370,32 +370,54 @@ describe("generic grouping rules", () => {
     assert.equal(group.firmLabel, "Unassigned firm");
   });
 
-  // 6. personal connections on different broker connections stay in separate groups
-  it("personal accounts on different broker connections stay in separate groups", () => {
+  // 6. personal accounts on different broker connections within the same platform merge
+  it("personal accounts on different broker connections for the same platform merge into one group", () => {
     const accounts = [
       stubAccount({
         id: "live-conn-a",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
+        brokerConnectionId: "conn-a",
+        accountType: "personal",
+      }),
+      stubAccount({
+        id: "demo-conn-b",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
+        brokerConnectionId: "conn-b",
+        accountType: "demo",
+      }),
+    ];
+    const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
+    assert.equal(groups.length, 1, "same platform, different connections → one group");
+    assert.equal(groups[0].accounts.length, 2, "both accounts remain as separate rows");
+    assert.equal(groups[0].firmLabel, "Tradovate · Personal");
+  });
+
+  // 6b. personal accounts on DIFFERENT platforms remain separate
+  it("personal accounts on different platforms stay in separate groups", () => {
+    const accounts = [
+      stubAccount({
+        id: "tv-account",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
         brokerConnectionId: "conn-a",
       }),
       stubAccount({
-        id: "demo-conn-a",
+        id: "tvw-account",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
-        brokerConnectionId: "conn-a",
-      }),
-      stubAccount({
-        id: "live-conn-b",
-        firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "TradingView · Personal",
+        platform: "tradingview",
         brokerConnectionId: "conn-b",
       }),
     ];
     const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
-    assert.equal(groups.length, 2, "two connections → two groups");
-    const sizes = groups.map((g) => g.accounts.length).sort((a, b) => a - b);
-    assert.deepEqual(sizes, [1, 2]);
+    assert.equal(groups.length, 2, "different platforms → separate groups");
+    const platforms = groups.map((g) => g.platform).sort();
+    assert.deepEqual(platforms, ["tradingview", "tradovate"]);
   });
 
   // 7. individual account data (P&L, trades, risk) is never merged across rows
@@ -435,30 +457,30 @@ describe("generic grouping rules", () => {
     assert.equal(b.consecutiveLosses, 2);
   });
 
-  // 8. personal + demo on DIFFERENT connections → two separate "Personal accounts" groups
-  it("personal and demo accounts on different broker connections are NOT merged", () => {
+  // 8. personal + demo on different connections but same platform → one merged group
+  it("personal live and demo on different broker connections for the same platform merge", () => {
     const accounts = [
       stubAccount({
         id: "personal-conn-a",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
         brokerConnectionId: "conn-a",
         accountType: "personal",
       }),
       stubAccount({
         id: "demo-conn-b",
         firmKey: PERSONAL_KEY,
-        firmLabel: "Personal accounts",
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
         brokerConnectionId: "conn-b",
         accountType: "demo",
       }),
     ];
     const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
-    assert.equal(groups.length, 2, "different connections → two distinct groups");
-    const connIds = groups.map((g) => g.brokerConnectionId).sort();
-    assert.deepEqual(connIds, ["conn-a", "conn-b"]);
-    assert.equal(groups[0].accounts.length, 1);
-    assert.equal(groups[1].accounts.length, 1);
+    assert.equal(groups.length, 1, "same platform → one merged group");
+    assert.equal(groups[0].accounts.length, 2, "both rows preserved");
+    assert.equal(groups[0].firmLabel, "Tradovate · Personal");
   });
 
   // 9. propFirm + funded → grouped under propFirm (propFirm wins regardless of accountType)

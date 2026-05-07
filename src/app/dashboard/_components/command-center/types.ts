@@ -122,7 +122,14 @@ export type PendingDiscoveredAccount = {
   lastSeenInBrokerAt: Date | null;
 };
 
+/** Stable key for this group — used as React key and for filter matching.
+ *  Prop-firm groups: "${firmKey}::${brokerConnectionId}"
+ *  Personal/unassigned groups: "${firmKey}::${platform}" (connection-agnostic) */
+export const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
+
 export type CommandCenterFirmGroup = {
+  /** @see PERSONAL_BROKER_FIRM_KEY */
+  groupId: string;
   firmKey: string;
   firmLabel: string;
   accounts: CommandCenterAccount[];

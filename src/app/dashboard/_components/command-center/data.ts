@@ -16,6 +16,7 @@ import {
   derivePropFirmSetupNeeded,
   deriveStatus,
 } from "./data-helpers";
+import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
   CommandCenterAccount,
   CommandCenterData,
@@ -38,12 +39,7 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   demo: "Demo",
 };
 
-// Personal brokerage / personal-source accounts have no prop firm — they get
-// their own group instead of being lumped under "Unassigned firm" (which is
-// reserved for prop-firm-style accounts that never had a firm selected).
 const FALLBACK_FIRM_LABEL = "Unassigned firm";
-const PERSONAL_BROKER_FIRM_LABEL = "Personal accounts";
-const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
 const FALLBACK_FIRM_KEY = "__unassigned__";
 
 function deriveFirmKeyAndLabel(account: {
@@ -55,12 +51,14 @@ function deriveFirmKeyAndLabel(account: {
     const label = account.propFirm.trim();
     return { key: label.toLowerCase(), label };
   }
-  // Personal brokerage and personal demo accounts (no prop firm) both land
-  // in the "Personal accounts" bucket. buildCommandCenterGroups further
-  // separates them by brokerConnectionId, so two different OAuth connections
-  // still produce two distinct groups even with the same firmKey.
+  // Personal brokerage and personal demo accounts (no prop firm) share a key
+  // so they land in the same group. The label prefixes the platform name so
+  // "Tradovate · Personal" appears as the group header on the dashboard.
+  // buildCommandCenterGroups further separates groups by platform, so a
+  // TradingView personal group stays distinct from a Tradovate personal group.
   if (account.accountType === "personal" || account.accountType === "demo") {
-    return { key: PERSONAL_BROKER_FIRM_KEY, label: PERSONAL_BROKER_FIRM_LABEL };
+    const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
+    return { key: PERSONAL_BROKER_FIRM_KEY, label: `${platformLabel} · Personal` };
   }
   return { key: FALLBACK_FIRM_KEY, label: FALLBACK_FIRM_LABEL };
 }

@@ -30,6 +30,7 @@ import {
   type ProtectionStatusPanelData,
 } from "./data-helpers";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
+import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
   AccountStatus,
   CommandCenterAccount,
@@ -187,7 +188,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             ) : (
               filteredGroups.map((group) => (
                 <FirmSection
-                  key={`${group.firmKey}::${group.brokerConnectionId ?? ""}`}
+                  key={group.groupId}
                   group={group}
                 />
               ))
@@ -386,6 +387,7 @@ const CONN_STATUS_CLASS: Record<string, string> = {
 function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
   const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
   const showBrokerMeta = group.platform !== "manual";
+  const isPersonalGroup = group.firmKey === PERSONAL_BROKER_FIRM_KEY;
   // The state suffix communicates important per-group capability info ("Test
   // mode", "Consent required", "Limited permissions", "Broker enforcement
   // ready") right next to the connection status — so the user never sees just
@@ -396,6 +398,14 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
       requiresAutomatedActionsConsent: a.requiresAutomatedActionsConsent,
     })),
   });
+  // For personal groups, surface how many accounts are live vs demo so users
+  // can see the breakdown at a glance without opening each row.
+  const liveCount = isPersonalGroup
+    ? group.accounts.filter((a) => a.accountType === "personal").length
+    : undefined;
+  const demoCount = isPersonalGroup
+    ? group.accounts.filter((a) => a.accountType === "demo").length
+    : undefined;
 
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50/30">
@@ -405,12 +415,22 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
           <div>
             <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
               <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
-              <FirmStatusInline accountCount={group.accounts.length} counts={group.counts} />
+              <FirmStatusInline
+                accountCount={group.accounts.length}
+                counts={group.counts}
+                liveCount={liveCount}
+                demoCount={demoCount}
+              />
             </div>
             {showBrokerMeta && (
               <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-stone-400">
-                <span>{group.platformLabel}</span>
-                <span aria-hidden>·</span>
+                {/* For personal groups the platform is already in the header label. */}
+                {!isPersonalGroup && (
+                  <>
+                    <span>{group.platformLabel}</span>
+                    <span aria-hidden>·</span>
+                  </>
+                )}
                 <span className={connClass}>{group.connectionStatusLabel}</span>
                 {groupStateSuffix && (
                   <>
@@ -489,12 +509,18 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
 function FirmStatusInline({
   accountCount,
   counts,
+  liveCount,
+  demoCount,
 }: {
   accountCount: number;
   counts: Record<AccountStatus, number>;
+  liveCount?: number;
+  demoCount?: number;
 }) {
   const tradable = counts.allowed ?? 0;
   const accountLabel = `${accountCount} account${accountCount === 1 ? "" : "s"}`;
+  const showBreakdown =
+    liveCount != null && demoCount != null && liveCount + demoCount > 1;
   return (
     <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-stone-500">
       <span aria-hidden>·</span>
@@ -503,6 +529,18 @@ function FirmStatusInline({
         <>
           <span aria-hidden>·</span>
           <span className="font-medium text-emerald-700">{tradable} tradable</span>
+        </>
+      )}
+      {showBreakdown && liveCount! > 0 && (
+        <>
+          <span aria-hidden>·</span>
+          <span>{liveCount} live</span>
+        </>
+      )}
+      {showBreakdown && demoCount! > 0 && (
+        <>
+          <span aria-hidden>·</span>
+          <span>{demoCount} demo</span>
         </>
       )}
     </p>

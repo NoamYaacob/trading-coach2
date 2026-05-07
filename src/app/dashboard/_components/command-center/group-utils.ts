@@ -43,10 +43,17 @@ export function buildCommandCenterGroups(
   const groupMap = new Map<string, CommandCenterFirmGroup>();
 
   for (const account of accounts) {
-    const mapKey = `${account.firmKey}::${account.brokerConnectionId ?? ""}`;
+    // Internal (non-prop-firm) keys start with "__". For these, group by platform
+    // so live and demo accounts on separate OAuth connections (e.g. Tradovate
+    // live vs Tradovate demo) land in the same section. Prop-firm keys group by
+    // connection so two distinct broker credentials for the same firm stay split.
+    const mapKey = account.firmKey.startsWith("__")
+      ? `${account.firmKey}::${account.platform}`
+      : `${account.firmKey}::${account.brokerConnectionId ?? ""}`;
     let group = groupMap.get(mapKey);
     if (!group) {
       group = {
+        groupId: mapKey,
         firmKey: account.firmKey,
         firmLabel: account.firmLabel,
         accounts: [],
