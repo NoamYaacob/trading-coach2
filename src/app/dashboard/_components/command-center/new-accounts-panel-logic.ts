@@ -1,11 +1,13 @@
 // Pure logic for the pending account confirm flow.
 // No React or browser dependencies — safe to import in node:test.
 
+import type { PendingDiscoveredAccount } from "./types";
+
 export const PREVIEW_CONFIRM_MESSAGE =
-  "Preview only — this is sample data. No account will be created.";
+  "Demo preview only — no account was created.";
 
 export const PREVIEW_CONFIRM_HINT =
-  "In a real import, Guardrail would add the account and then apply the selected rules setup.";
+  "In a real import, Guardrail would add the account and apply your selected setup.";
 
 export type FirmChoice = "MyFundedFutures" | "Apex Trader Funding" | "Topstep" | "personal" | "other";
 export type AccountTypeChoice = "evaluation" | "funded" | "personal" | "demo";
@@ -47,6 +49,39 @@ export function getDefaultTypeChoice(
   const t = inheritedAccountType ?? suggestedAccountType;
   if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
   return "evaluation";
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  demo: "Demo",
+};
+
+export function buildMetaParts(account: PendingDiscoveredAccount): string[] {
+  const parts: string[] = [];
+  parts.push(account.platformLabel);
+  if (account.envLabel) parts.push(account.envLabel);
+  const firmDisplay = account.inheritedPropFirm ?? account.suggestedPropFirm ?? account.propFirm;
+  parts.push(firmDisplay?.trim() ? firmDisplay.trim() : "Unassigned");
+  const typeToShow = firmDisplay
+    ? (account.inheritedAccountType ?? account.suggestedAccountType)
+    : null;
+  if (typeToShow && typeToShow !== "personal") {
+    const label = TYPE_LABEL[typeToShow];
+    if (label) parts.push(label);
+  }
+  // Skip broker IDs for preview accounts — they are fake and confuse users.
+  if (account.externalAccountId && !account.isPreview) {
+    parts.push(`ID ${account.externalAccountId}`);
+  }
+  return parts;
+}
+
+export function buildPanelHeading(firmLabel: string | null, count: number): string {
+  if (count === 1) {
+    return firmLabel ? `New ${firmLabel} account found` : "New broker account found";
+  }
+  return firmLabel ? `New ${firmLabel} accounts found` : "New broker accounts found";
 }
 
 export type ConfirmOutcome =

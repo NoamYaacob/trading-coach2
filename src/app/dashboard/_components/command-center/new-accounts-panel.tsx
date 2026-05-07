@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
+  buildMetaParts,
+  buildPanelHeading,
   resolveConfirmOutcome,
   PREVIEW_CONFIRM_MESSAGE,
   PREVIEW_CONFIRM_HINT,
   getDefaultFirmChoice,
   getDefaultOtherText,
   getDefaultTypeChoice,
-  KNOWN_PILL_FIRMS,
   type FirmChoice,
   type AccountTypeChoice,
 } from "./new-accounts-panel-logic";
@@ -39,19 +40,12 @@ export function NewAccountsPanel({ accounts }: Props) {
     ? firstPlatformLabel
     : "broker";
 
-  const heading =
-    accounts.length === 1
-      ? firmLabel
-        ? `New ${firmLabel} account detected`
-        : "New broker account detected"
-      : firmLabel
-        ? `New ${firmLabel} accounts detected`
-        : "New broker accounts detected";
+  const heading = buildPanelHeading(firmLabel, accounts.length);
 
   const subheading =
     accounts.length === 1
-      ? `We found a new ${platformName} account on your connected broker login.`
-      : `We found ${accounts.length} new ${platformName} accounts on your connected broker logins.`;
+      ? `Guardrail found a new ${platformName} account on your connected broker login. Review it before adding protection.`
+      : `Guardrail found ${accounts.length} new ${platformName} accounts on your connected broker logins. Review them before adding protection.`;
 
   return (
     <section
@@ -73,30 +67,6 @@ export function NewAccountsPanel({ accounts }: Props) {
       </ul>
     </section>
   );
-}
-
-// ── Meta subtitle ─────────────────────────────────────────────────────────────
-
-function buildMetaParts(account: PendingDiscoveredAccount): string[] {
-  const parts: string[] = [];
-  parts.push(account.platformLabel);
-  if (account.envLabel) parts.push(account.envLabel);
-  const firmDisplay = account.inheritedPropFirm ?? account.suggestedPropFirm ?? account.propFirm;
-  parts.push(firmDisplay?.trim() ? firmDisplay.trim() : "Unassigned");
-  const typeToShow = firmDisplay
-    ? (account.inheritedAccountType ?? account.suggestedAccountType)
-    : null;
-  if (typeToShow && typeToShow !== "personal") {
-    const TYPE_LABEL: Record<string, string> = {
-      evaluation: "Evaluation",
-      funded: "Funded",
-      demo: "Demo",
-    };
-    const label = TYPE_LABEL[typeToShow];
-    if (label) parts.push(label);
-  }
-  if (account.externalAccountId) parts.push(`ID ${account.externalAccountId}`);
-  return parts;
 }
 
 // ── Classification constants ──────────────────────────────────────────────────
@@ -139,12 +109,12 @@ function RulesCards({
           {
             value: "default" as RulesChoice,
             label: "Use Default trading plan",
-            detail: "Apply your existing global trading rules",
+            detail: "Use your default rules for this account.",
           },
           {
             value: "account_specific" as RulesChoice,
             label: "Create account-specific rules",
-            detail: "Set custom limits for this account",
+            detail: "Set custom limits after adding it.",
           },
         ] as const
       ).map((opt) => (
@@ -278,7 +248,7 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
             <p className="truncate text-sm font-medium text-stone-950">{account.label}</p>
             {account.isPreview && (
               <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-                Preview data
+                Demo preview
               </span>
             )}
           </div>
@@ -292,7 +262,7 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
               onClick={() => setMode("reviewing")}
               className="inline-flex h-8 items-center rounded-full bg-stone-950 px-3.5 text-xs font-medium text-white transition hover:bg-stone-800"
             >
-              Review &amp; add
+              Review setup
             </button>
             <button
               type="button"

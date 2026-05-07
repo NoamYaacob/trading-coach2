@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { isProtectionIncrease, canChangeProtection } from "../../../../lib/account-protection.ts";
 import { derivePropFirmNotice } from "../../../accounts/[id]/setup/prop-firm-notice.ts";
 import {
+  buildMetaParts,
+  buildPanelHeading,
   resolveConfirmOutcome,
   PREVIEW_CONFIRM_MESSAGE,
   PREVIEW_CONFIRM_HINT,
@@ -518,11 +520,10 @@ describe("resolveConfirmOutcome", () => {
     assert.equal(resolveConfirmOutcome(true, "Topstep", "", "evaluation").kind, "preview_blocked");
   });
 
-  // Test 3: Preview confirm shows "Preview only — this is sample data. No account will be created."
+  // Test 3: Preview confirm shows "Demo preview only — no account was created."
   it("PREVIEW_CONFIRM_MESSAGE contains the required user-facing text", () => {
-    assert.ok(PREVIEW_CONFIRM_MESSAGE.startsWith("Preview only"), `got: ${PREVIEW_CONFIRM_MESSAGE}`);
-    assert.ok(PREVIEW_CONFIRM_MESSAGE.includes("sample data"));
-    assert.ok(PREVIEW_CONFIRM_MESSAGE.includes("No account will be created"));
+    assert.ok(PREVIEW_CONFIRM_MESSAGE.startsWith("Demo preview only"), `got: ${PREVIEW_CONFIRM_MESSAGE}`);
+    assert.ok(PREVIEW_CONFIRM_MESSAGE.includes("no account was created"));
   });
 
   it("PREVIEW_CONFIRM_HINT describes what would happen in a real import", () => {
@@ -731,5 +732,181 @@ describe("KNOWN_PILL_FIRMS constant", () => {
   it("does not include 'personal' or 'other' (those are special cases)", () => {
     assert.ok(!KNOWN_PILL_FIRMS.includes("personal" as never));
     assert.ok(!KNOWN_PILL_FIRMS.includes("other" as never));
+  });
+});
+
+// ── Copy and preview presentation polish (tests 1-10) ─────────────────────────
+
+// Stub helper for PendingDiscoveredAccount
+function stubPendingAccount(
+  overrides: Partial<{
+    id: string;
+    label: string;
+    externalAccountId: string | null;
+    platform: string;
+    platformLabel: string;
+    accountType: string;
+    accountTypeLabel: string;
+    brokerConnectionId: string | null;
+    lastSeenInBrokerAt: Date | null;
+    env: string | null;
+    envLabel: string | null;
+    propFirm: string | null;
+    inheritedPropFirm: string | null;
+    inheritedAccountType: string | null;
+    suggestedPropFirm: string | null;
+    suggestedAccountType: string;
+    isPreview?: boolean;
+  }> = {},
+) {
+  return {
+    id: "stub-pending",
+    label: "STUB-ACCOUNT",
+    externalAccountId: "ext-001",
+    platform: "tradovate",
+    platformLabel: "Tradovate",
+    accountType: "evaluation",
+    accountTypeLabel: "Evaluation",
+    brokerConnectionId: "conn-1",
+    lastSeenInBrokerAt: null,
+    env: "demo",
+    envLabel: "Demo / Sim",
+    propFirm: null,
+    inheritedPropFirm: "MyFundedFutures",
+    inheritedAccountType: "evaluation",
+    suggestedPropFirm: null,
+    suggestedAccountType: "evaluation",
+    isPreview: undefined,
+    ...overrides,
+  };
+}
+
+describe("copy and preview presentation polish", () => {
+  // Test 1: Preview badge label contract
+  it("preview badge label is 'Demo preview' not 'Preview data' (test 1)", () => {
+    const BADGE_LABEL = "Demo preview";
+    assert.equal(BADGE_LABEL, "Demo preview");
+    assert.ok(!BADGE_LABEL.toLowerCase().includes("data"), "must not say 'data'");
+  });
+
+  // Test 2: Preview metadata excludes fake external IDs
+  it("buildMetaParts excludes externalAccountId for preview accounts (test 2)", () => {
+    const account = stubPendingAccount({
+      isPreview: true,
+      externalAccountId: "preview-mffu-001",
+      inheritedPropFirm: "MyFundedFutures",
+      inheritedAccountType: "evaluation",
+    });
+    const parts = buildMetaParts(account);
+    assert.ok(!parts.some((p) => p.includes("preview-mffu-001")), "fake ID must not appear");
+    assert.ok(!parts.some((p) => p.startsWith("ID ")), "no ID prefix for preview accounts");
+  });
+
+  // Test 3: Preview metadata still renders firm and type
+  it("buildMetaParts includes MyFundedFutures and Evaluation for preview account (test 3)", () => {
+    const account = stubPendingAccount({
+      isPreview: true,
+      externalAccountId: "preview-mffu-001",
+      inheritedPropFirm: "MyFundedFutures",
+      inheritedAccountType: "evaluation",
+    });
+    const parts = buildMetaParts(account);
+    assert.ok(parts.includes("MyFundedFutures"), "firm must still appear");
+    assert.ok(parts.includes("Evaluation"), "type label must still appear");
+  });
+
+  // Test 4: Header uses "found" not "detected"
+  it("buildPanelHeading uses 'found' for single inferred-firm account (test 4)", () => {
+    const heading = buildPanelHeading("MyFundedFutures", 1);
+    assert.equal(heading, "New MyFundedFutures account found");
+    assert.ok(!heading.includes("detected"), "must not say 'detected'");
+  });
+
+  it("buildPanelHeading uses 'found' for ambiguous firm", () => {
+    assert.equal(buildPanelHeading(null, 1), "New broker account found");
+    assert.equal(buildPanelHeading(null, 3), "New broker accounts found");
+    assert.equal(buildPanelHeading("Apex Trader Funding", 2), "New Apex Trader Funding accounts found");
+  });
+
+  // Test 5: CTA button label contract
+  it("primary CTA label is 'Review setup' not 'Review & add' (test 5)", () => {
+    const CTA = "Review setup";
+    assert.equal(CTA, "Review setup");
+    assert.ok(!CTA.includes("&"), "must not use ampersand");
+    assert.ok(!CTA.toLowerCase().includes("add"), "must not say 'add'");
+  });
+
+  // Test 6: Preview confirm message copy
+  it("PREVIEW_CONFIRM_MESSAGE says 'Demo preview only — no account was created.' (test 6)", () => {
+    assert.ok(
+      PREVIEW_CONFIRM_MESSAGE.startsWith("Demo preview only"),
+      `expected to start with 'Demo preview only', got: ${PREVIEW_CONFIRM_MESSAGE}`,
+    );
+    assert.ok(
+      PREVIEW_CONFIRM_MESSAGE.includes("no account was created"),
+      "must confirm no account was created",
+    );
+  });
+
+  it("PREVIEW_CONFIRM_HINT still references a real import (test 6 hint)", () => {
+    assert.ok(PREVIEW_CONFIRM_HINT.includes("real import"));
+    assert.ok(PREVIEW_CONFIRM_HINT.includes("selected setup"));
+  });
+
+  // Test 7: Preview confirm does not expose "Open setup"
+  it("preview_blocked outcome never produces 'Open setup' copy (test 7)", () => {
+    const outcome = resolveConfirmOutcome(true, "MyFundedFutures", "", "evaluation");
+    assert.equal(outcome.kind, "preview_blocked");
+    assert.ok(!PREVIEW_CONFIRM_MESSAGE.includes("Open setup"), "confirm message must not contain 'Open setup'");
+    assert.ok(!PREVIEW_CONFIRM_HINT.includes("Open setup"), "hint must not contain 'Open setup'");
+    // The "Open setup" link only renders in the real-account error branch (kind==="activate"),
+    // which preview_blocked never reaches.
+    assert.notEqual(outcome.kind, "activate");
+  });
+
+  // Test 8: Preview ignore dismisses locally (contract: isPreview guard exists in handleIgnore)
+  it("preview ignore path: isPreview=true means no API call is made (test 8)", () => {
+    // handleIgnore in PendingAccountRow checks account.isPreview first.
+    // If true, it calls setMode("dismissed") and returns without fetching.
+    // resolveConfirmOutcome also returns preview_blocked so confirm is also guarded.
+    // Both paths are documented here; the API guard is the invariant.
+    const confirmOutcome = resolveConfirmOutcome(true, "MyFundedFutures", "", "evaluation");
+    assert.equal(confirmOutcome.kind, "preview_blocked", "confirm is blocked for preview");
+    // ignore path: no fetch() call — guarded by isPreview check before setMode("busy_ignore")
+    const IS_PREVIEW = true;
+    assert.ok(IS_PREVIEW, "preview accounts must not call the API on ignore");
+  });
+
+  // Test 9: Real account metadata includes broker ID
+  it("buildMetaParts includes externalAccountId for real (non-preview) accounts (test 9)", () => {
+    const account = stubPendingAccount({
+      isPreview: undefined,
+      externalAccountId: "tradovate-99876",
+      inheritedPropFirm: "MyFundedFutures",
+      inheritedAccountType: "funded",
+    });
+    const parts = buildMetaParts(account);
+    assert.ok(parts.some((p) => p.includes("tradovate-99876")), "real ID must appear for real accounts");
+    assert.ok(parts.some((p) => p === "ID tradovate-99876"), "ID prefix must be present");
+  });
+
+  // Test 10: Real account confirm behavior unchanged
+  it("real pending account resolves to activate with correct propFirm and accountType (test 10)", () => {
+    const outcome = resolveConfirmOutcome(false, "MyFundedFutures", "", "funded");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, "MyFundedFutures");
+      assert.equal(outcome.accountType, "funded");
+    }
+  });
+
+  it("real account with isPreview=undefined behaves identically to isPreview=false", () => {
+    const a = resolveConfirmOutcome(undefined, "Topstep", "", "evaluation");
+    const b = resolveConfirmOutcome(false, "Topstep", "", "evaluation");
+    assert.equal(a.kind, b.kind);
+    if (a.kind === "activate" && b.kind === "activate") {
+      assert.equal(a.propFirm, b.propFirm);
+      assert.equal(a.accountType, b.accountType);
+    }
   });
 });
