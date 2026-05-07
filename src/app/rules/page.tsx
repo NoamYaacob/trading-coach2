@@ -381,8 +381,6 @@ export default async function RulesPage({
             selectedAccount ? (
               <SectionCard
                 key={selectedAccount.id}
-                title={selectedAccount.label}
-                description={buildAccountSubtitle(selectedAccount)}
               >
                 <AccountRulesForm
                   accountId={selectedAccount.id}
@@ -416,10 +414,7 @@ export default async function RulesPage({
             )
           ) : (
             /* Default template editor */
-            <SectionCard
-              title="Default template"
-              description="Applies to all connected accounts that don't have an account-specific override."
-            >
+            <SectionCard>
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} isDryRun={isDryRun} />
               </div>

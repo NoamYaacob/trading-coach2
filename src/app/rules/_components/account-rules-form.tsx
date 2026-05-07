@@ -294,11 +294,11 @@ export function AccountRulesForm({
     ];
     return (
       <div className="grid gap-4">
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          <p className="font-medium">Create account-specific override</p>
+        <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
+          <p className="font-medium text-stone-800">Inherited from default template</p>
           <p className="mt-0.5">
             {hasDefaultRules
-              ? `This account currently uses the default template. Saving here will create rules only for ${accountLabel}.`
+              ? "This account currently inherits the default template. Create an account-specific override to customize rules for this account only."
               : `No default template is set. Saving here will create rules only for ${accountLabel}.`}
           </p>
         </div>
@@ -338,11 +338,11 @@ export function AccountRulesForm({
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
 
       {!hasExistingRules && (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          <p className="font-medium">Create account-specific override</p>
+        <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
+          <p className="font-medium text-stone-800">Creating account-specific override</p>
           <p className="mt-0.5">
             {hasDefaultRules
-              ? `This account currently uses the default template. Saving here will create rules only for ${accountLabel}.`
+              ? `Saving will create rules specific to ${accountLabel} only. The default template will not change.`
               : `No default template is set. Saving here will create rules only for ${accountLabel}.`}
           </p>
         </div>
