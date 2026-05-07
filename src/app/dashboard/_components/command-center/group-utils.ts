@@ -43,13 +43,17 @@ export function buildCommandCenterGroups(
   const groupMap = new Map<string, CommandCenterFirmGroup>();
 
   for (const account of accounts) {
-    // Internal (non-prop-firm) keys start with "__". For these, group by platform
-    // so live and demo accounts on separate OAuth connections (e.g. Tradovate
-    // live vs Tradovate demo) land in the same section. Prop-firm keys group by
-    // connection so two distinct broker credentials for the same firm stay split.
-    const mapKey = account.firmKey.startsWith("__")
-      ? `${account.firmKey}::${account.platform}`
-      : `${account.firmKey}::${account.brokerConnectionId ?? ""}`;
+    // Group key always includes brokerConnectionId. This guarantees that:
+    //   • Two prop-firm OAuth connections for the same firm stay in distinct groups.
+    //   • Two distinct Tradovate logins (each its own BrokerConnection) — even
+    //     if both contain only personal/demo accounts — stay in distinct groups,
+    //     so hiding one cannot accidentally hide the other.
+    // The trade-off: live and demo of the SAME Tradovate user are also two
+    // BrokerConnections, so they appear as two visually separate cards. We
+    // accept that over the alternative (silently merging unrelated logins),
+    // since there's no reliable per-Tradovate-user identifier available across
+    // the two OAuth tokens to safely merge same-user-different-env.
+    const mapKey = `${account.firmKey}::${account.brokerConnectionId ?? ""}`;
     let group = groupMap.get(mapKey);
     if (!group) {
       group = {

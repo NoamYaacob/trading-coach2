@@ -370,33 +370,70 @@ describe("generic grouping rules", () => {
     assert.equal(group.firmLabel, "Unassigned firm");
   });
 
-  // 6. personal accounts on different broker connections within the same platform merge
-  it("personal accounts on different broker connections for the same platform merge into one group", () => {
+  // 6. SAFETY: personal accounts on different broker connections stay in separate
+  //    groups, regardless of platform. Without this, two distinct Tradovate
+  //    logins would silently merge into one "Tradovate · Personal" card and
+  //    hiding it would hide them all.
+  it("personal accounts on different broker connections stay in separate groups (multi-login safety)", () => {
     const accounts = [
       stubAccount({
-        id: "live-conn-a",
+        id: "login-a-account",
         firmKey: PERSONAL_KEY,
         firmLabel: "Tradovate · Personal",
         platform: "tradovate",
-        brokerConnectionId: "conn-a",
+        brokerConnectionId: "conn-login-a",
         accountType: "personal",
       }),
       stubAccount({
-        id: "demo-conn-b",
+        id: "login-b-account",
         firmKey: PERSONAL_KEY,
         firmLabel: "Tradovate · Personal",
         platform: "tradovate",
-        brokerConnectionId: "conn-b",
+        brokerConnectionId: "conn-login-b",
+        accountType: "personal",
+      }),
+    ];
+    const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
+    assert.equal(groups.length, 2, "two distinct logins → two distinct groups");
+    const groupIds = groups.map((g) => g.groupId).sort();
+    assert.deepEqual(
+      groupIds,
+      ["__personal_broker__::conn-login-a", "__personal_broker__::conn-login-b"],
+      "groupIds include brokerConnectionId so unrelated logins are never confused",
+    );
+  });
+
+  // 6b. personal live and demo on different connections also stay separate.
+  //     Tradovate authorises live and demo as separate OAuth grants, so each
+  //     is its own BrokerConnection. We do NOT silently merge them since
+  //     there is no reliable per-Tradovate-user identifier shared across
+  //     OAuth tokens to confirm "same human user".
+  it("personal live and demo (different broker connections) stay in separate groups", () => {
+    const accounts = [
+      stubAccount({
+        id: "live",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
+        brokerConnectionId: "live-conn",
+        accountType: "personal",
+      }),
+      stubAccount({
+        id: "demo",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Tradovate · Personal",
+        platform: "tradovate",
+        brokerConnectionId: "demo-conn",
         accountType: "demo",
       }),
     ];
     const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
-    assert.equal(groups.length, 1, "same platform, different connections → one group");
-    assert.equal(groups[0].accounts.length, 2, "both accounts remain as separate rows");
-    assert.equal(groups[0].firmLabel, "Tradovate · Personal");
+    assert.equal(groups.length, 2, "live + demo on separate connections → two groups");
+    const groupIds = new Set(groups.map((g) => g.groupId));
+    assert.equal(groupIds.size, 2, "groupIds are distinct");
   });
 
-  // 6b. personal accounts on DIFFERENT platforms remain separate
+  // 6c. personal accounts on DIFFERENT platforms remain separate.
   it("personal accounts on different platforms stay in separate groups", () => {
     const accounts = [
       stubAccount({
@@ -457,8 +494,10 @@ describe("generic grouping rules", () => {
     assert.equal(b.consecutiveLosses, 2);
   });
 
-  // 8. personal + demo on different connections but same platform → one merged group
-  it("personal live and demo on different broker connections for the same platform merge", () => {
+  // 8. SAFETY: personal + demo on different broker connections do NOT merge.
+  //    See test 6b for the same scenario; this test asserts the resulting
+  //    groupIds are deterministic and based on brokerConnectionId only.
+  it("personal live and demo on different broker connections produce distinct groupIds", () => {
     const accounts = [
       stubAccount({
         id: "personal-conn-a",
@@ -478,9 +517,12 @@ describe("generic grouping rules", () => {
       }),
     ];
     const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
-    assert.equal(groups.length, 1, "same platform → one merged group");
-    assert.equal(groups[0].accounts.length, 2, "both rows preserved");
-    assert.equal(groups[0].firmLabel, "Tradovate · Personal");
+    assert.equal(groups.length, 2);
+    const groupIds = groups.map((g) => g.groupId).sort();
+    assert.deepEqual(groupIds, [
+      "__personal_broker__::conn-a",
+      "__personal_broker__::conn-b",
+    ]);
   });
 
   // 9. propFirm + funded → grouped under propFirm (propFirm wins regardless of accountType)

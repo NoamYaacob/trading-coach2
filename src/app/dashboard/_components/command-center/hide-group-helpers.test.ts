@@ -120,16 +120,13 @@ describe("applyHide / applyUnhide", () => {
 // ─── partitionGroups ──────────────────────────────────────────────────────────
 
 describe("partitionGroups", () => {
-  it("requirement 1: hiding the Tradovate · Personal group hides both live and demo rows", () => {
-    // Mirrors the real-world scenario: live + demo accounts merged into one
-    // visual group via __personal_broker__::tradovate. Hiding the group
-    // removes both rows from the visible list — without merging or deleting them.
-    const personalGroup = stubGroup({
-      groupId: "__personal_broker__::tradovate",
-      accounts: [
-        stubAccount({ id: "live-row", accountType: "personal", dailyPnl: 100 }),
-        stubAccount({ id: "demo-row", accountType: "demo", dailyPnl: -50 }),
-      ],
+  it("requirement 1: hiding a personal group hides exactly that one rendered group", () => {
+    // groupId is "__personal_broker__::<brokerConnectionId>" — see
+    // group-utils.ts. Each rendered "Tradovate · Personal" card maps to one
+    // groupId, so hiding by that id removes exactly that card.
+    const personalLive = stubGroup({
+      groupId: "__personal_broker__::live-conn",
+      accounts: [stubAccount({ id: "live-row", accountType: "personal", dailyPnl: 100 })],
     });
     const propGroup = stubGroup({
       groupId: "acmeprop::conn-x",
@@ -137,15 +134,39 @@ describe("partitionGroups", () => {
       firmLabel: "AcmeProp",
     });
     const { visible, hidden } = partitionGroups(
-      [personalGroup, propGroup],
-      new Set(["__personal_broker__::tradovate"]),
+      [personalLive, propGroup],
+      new Set(["__personal_broker__::live-conn"]),
     );
     assert.equal(visible.length, 1, "only the prop firm group remains visible");
     assert.equal(visible[0].firmLabel, "AcmeProp");
     assert.equal(hidden.length, 1, "the personal group is in the hidden bucket");
-    assert.equal(hidden[0].accounts.length, 2, "both rows preserved inside hidden group");
-    const ids = hidden[0].accounts.map((a) => a.id).sort();
-    assert.deepEqual(ids, ["demo-row", "live-row"], "no account IDs were renamed or merged");
+    assert.equal(hidden[0].accounts.length, 1, "row preserved inside hidden group");
+    assert.equal(hidden[0].accounts[0].id, "live-row");
+  });
+
+  it("multi-login safety: hiding one Tradovate login's personal group does NOT hide another login's group", () => {
+    // Two distinct Tradovate authorisations — each its own BrokerConnection.
+    // Both render as "Tradovate · Personal" but their groupIds carry the
+    // broker connection id, so they are independent for hiding.
+    const loginAGroup = stubGroup({
+      groupId: "__personal_broker__::conn-login-a",
+      firmLabel: "Tradovate · Personal",
+      accounts: [stubAccount({ id: "login-a-account" })],
+    });
+    const loginBGroup = stubGroup({
+      groupId: "__personal_broker__::conn-login-b",
+      firmLabel: "Tradovate · Personal",
+      accounts: [stubAccount({ id: "login-b-account" })],
+    });
+    const { visible, hidden } = partitionGroups(
+      [loginAGroup, loginBGroup],
+      new Set(["__personal_broker__::conn-login-a"]),
+    );
+    assert.equal(visible.length, 1, "login B is still visible");
+    assert.equal(visible[0].groupId, "__personal_broker__::conn-login-b");
+    assert.equal(visible[0].accounts[0].id, "login-b-account");
+    assert.equal(hidden.length, 1, "only login A is hidden");
+    assert.equal(hidden[0].groupId, "__personal_broker__::conn-login-a");
   });
 
   it("requirement 2: a hidden group is restored by removing its id from the set", () => {
@@ -280,10 +301,10 @@ describe("filter interaction (requirement 10)", () => {
 
 describe("buildHideRequest / buildUnhideRequest", () => {
   it("hide POSTs to /api/dashboard/hidden-groups with groupId in JSON body", () => {
-    const req = buildHideRequest("__personal_broker__::tradovate");
+    const req = buildHideRequest("__personal_broker__::live-conn-x");
     assert.equal(req.method, "POST");
     assert.equal(req.url, "/api/dashboard/hidden-groups");
-    assert.deepEqual(req.body, { groupId: "__personal_broker__::tradovate" });
+    assert.deepEqual(req.body, { groupId: "__personal_broker__::live-conn-x" });
   });
 
   it("unhide DELETEs with groupId encoded in the query string", () => {
