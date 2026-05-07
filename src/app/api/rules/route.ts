@@ -9,8 +9,19 @@ import {
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
+import { isValidTimeZone } from "@/lib/timezone";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
+const VALID_SESSION_PRESETS = ["ny", "london", "asia", "custom"] as const;
+const HH_MM_RE = /^(\d{1,2}):(\d{2})$/;
+
+function isValidHHmm(v: string): boolean {
+  const m = v.match(HH_MM_RE);
+  if (!m) return false;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59;
+}
 
 type RulesPayload = {
   accountSize?: number | null;
@@ -30,6 +41,12 @@ type RulesPayload = {
   onBreachAppLock?: boolean;
   onBreachCancelOrders?: boolean;
   onBreachFlatten?: boolean;
+  /** Minute-precise session window for rule-edit locking. */
+  sessionPreset?: string | null;
+  sessionStartTime?: string | null;
+  sessionEndTime?: string | null;
+  sessionTimezone?: string | null;
+  ruleEditLockBufferMinutes?: number | null;
   /**
    * When true, the user just confirmed the automated-actions consent
    * checkbox. Server stamps automatedActionsConsentAt = now and the current
@@ -117,6 +134,38 @@ export async function POST(request: Request) {
       }
     }
   }
+  if (body.sessionPreset != null && !VALID_SESSION_PRESETS.includes(body.sessionPreset as (typeof VALID_SESSION_PRESETS)[number])) {
+    return NextResponse.json(
+      { error: "sessionPreset must be 'ny', 'london', 'asia', or 'custom'." },
+      { status: 400 },
+    );
+  }
+  for (const key of ["sessionStartTime", "sessionEndTime"] as const) {
+    const v = body[key];
+    if (v != null) {
+      if (typeof v !== "string" || !isValidHHmm(v)) {
+        return NextResponse.json(
+          { error: `${key} must be a valid time in HH:mm format (e.g. "09:30").` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  if (body.sessionTimezone != null && !isValidTimeZone(body.sessionTimezone)) {
+    return NextResponse.json(
+      { error: "sessionTimezone must be a valid IANA timezone (e.g. 'America/New_York')." },
+      { status: 400 },
+    );
+  }
+  if (body.ruleEditLockBufferMinutes != null) {
+    const v = body.ruleEditLockBufferMinutes;
+    if (!Number.isFinite(v) || v < 0 || v > 480) {
+      return NextResponse.json(
+        { error: "ruleEditLockBufferMinutes must be between 0 and 480." },
+        { status: 400 },
+      );
+    }
+  }
   if (body.sessionEndBehavior != null && !VALID_SESSION_END_BEHAVIORS.includes(body.sessionEndBehavior as (typeof VALID_SESSION_END_BEHAVIORS)[number])) {
     return NextResponse.json(
       { error: "sessionEndBehavior must be 'flatten_at_session_end' or 'wait_for_exit_then_lock'." },
@@ -157,16 +206,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (
-    body.sessionStartHour != null &&
-    body.sessionEndHour != null &&
-    body.sessionEndHour <= body.sessionStartHour
-  ) {
-    return NextResponse.json(
-      { error: "Session end hour must be after session start hour." },
-      { status: 400 },
-    );
-  }
+  // Note: overnight/cross-midnight sessions (end <= start) are valid — no rejection.
 
   const consentFields = body.automatedActionsConsentChecked
     ? {
@@ -194,6 +234,11 @@ export async function POST(request: Request) {
     onBreachAppLock: body.onBreachAppLock,
     onBreachCancelOrders: body.onBreachCancelOrders,
     onBreachFlatten: body.onBreachFlatten,
+    sessionPreset: body.sessionPreset !== undefined ? (body.sessionPreset ?? null) : undefined,
+    sessionStartTime: body.sessionStartTime !== undefined ? (body.sessionStartTime ?? null) : undefined,
+    sessionEndTime: body.sessionEndTime !== undefined ? (body.sessionEndTime ?? null) : undefined,
+    sessionTimezone: body.sessionTimezone !== undefined ? (body.sessionTimezone ?? null) : undefined,
+    ruleEditLockBufferMinutes: body.ruleEditLockBufferMinutes !== undefined ? (body.ruleEditLockBufferMinutes != null ? Math.floor(body.ruleEditLockBufferMinutes) : null) : undefined,
     ...consentFields,
   };
 
@@ -214,11 +259,15 @@ export async function POST(request: Request) {
       sessionEndHour: true,
       sessionTimezone: true,
       ruleEditLockBufferMinutes: true,
+      sessionStartTime: true,
+      sessionEndTime: true,
     },
   });
   const eligibility = deriveRuleEditEligibility({
     sessionStartHour: existing?.sessionStartHour ?? null,
     sessionEndHour: existing?.sessionEndHour ?? null,
+    sessionStartTime: existing?.sessionStartTime ?? null,
+    sessionEndTime: existing?.sessionEndTime ?? null,
     sessionTimezone: existing?.sessionTimezone ?? null,
     lockBufferMinutes: existing?.ruleEditLockBufferMinutes ?? null,
   });

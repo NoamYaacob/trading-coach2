@@ -237,9 +237,11 @@ export function AccountRulesForm({
       const data = await sendPatch({ riskRules: null });
       setIsDirty(false);
       if (data.rulesLock?.applied === false && data.rulesLock.message) {
-        setPendingMessage(`Removal scheduled: ${data.rulesLock.message}`);
+        setPendingMessage(
+          `Account-specific rule removal is locked during your active trading session. ${data.rulesLock.message}`,
+        );
       } else {
-        setPendingMessage(null);
+        setPendingMessage("Account-specific rules removed. This account now uses the Default Trading Plan.");
         router.refresh();
       }
     } catch (err) {

@@ -100,12 +100,18 @@ export default async function RulesPage({
   const ruleEditEligibility = deriveRuleEditEligibility({
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
+    sessionStartTime: riskRules?.sessionStartTime ?? null,
+    sessionEndTime: riskRules?.sessionEndTime ?? null,
     sessionTimezone: riskRules?.sessionTimezone ?? null,
     lockBufferMinutes: riskRules?.ruleEditLockBufferMinutes ?? null,
   });
   const accountRuleLockMessage = ruleEditEligibility.canEditNow
     ? null
-    : buildRuleEditLockMessage(ruleEditEligibility, riskRules?.sessionTimezone ?? null);
+    : buildRuleEditLockMessage(
+        ruleEditEligibility,
+        riskRules?.sessionTimezone ?? null,
+        traderProfile?.timezone ?? null,
+      );
 
   const hasDefaultRules = Boolean(
     riskRules &&
@@ -157,6 +163,11 @@ export default async function RulesPage({
     sessionEndHour: intStr(riskRules?.sessionEndHour),
     sessionEndBehavior: riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
     onBreachWarn: riskRules?.onBreachWarn ?? true,
+    sessionPreset: riskRules?.sessionPreset ?? "",
+    sessionStartTime: riskRules?.sessionStartTime ?? "",
+    sessionEndTime: riskRules?.sessionEndTime ?? "",
+    sessionTimezone: riskRules?.sessionTimezone ?? "",
+    ruleEditLockBufferMinutes: intStr(riskRules?.ruleEditLockBufferMinutes),
   };
 
   const hasPendingPayload = Boolean(riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate);

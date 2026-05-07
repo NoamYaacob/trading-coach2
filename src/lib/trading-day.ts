@@ -30,6 +30,10 @@ export type TradingDayInput = {
   sessionStartHour?: number | null;
   /** Optional session end hour in the user's timezone (0-23). */
   sessionEndHour?: number | null;
+  /** Minutes component of session start time (0-59). Defaults to 0 when omitted. */
+  sessionStartMinute?: number | null;
+  /** Minutes component of session end time (0-59). Defaults to 0 when omitted. */
+  sessionEndMinute?: number | null;
   /** Defaults to new Date(). */
   now?: Date;
 };
@@ -139,6 +143,13 @@ function clampHour(h: number | null | undefined): number | null {
   return n;
 }
 
+function clampMinute(m: number | null | undefined): number {
+  if (m === null || m === undefined) return 0;
+  if (!Number.isFinite(m)) return 0;
+  const n = Math.floor(m);
+  return Math.max(0, Math.min(59, n));
+}
+
 function formatLabel(start: Date, end: Date, tz: string): string {
   const dateFmt = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -216,11 +227,17 @@ export function getTradingDayWindow(input: TradingDayInput = {}): TradingDayWind
     };
   }
 
-  const isOvernight = endHour <= startHour;
-  const durationHours = isOvernight ? 24 - startHour + endHour : endHour - startHour;
+  const startMin = clampMinute(input.sessionStartMinute);
+  const endMin = clampMinute(input.sessionEndMinute);
+  const startTotalMin = startHour * 60 + startMin;
+  const endTotalMin = endHour * 60 + endMin;
+  const isOvernight = endTotalMin <= startTotalMin;
+  const durationMinutes = isOvernight
+    ? 24 * 60 - startTotalMin + endTotalMin
+    : endTotalMin - startTotalMin;
 
   const today = getCalendarDateInTz(now, tz);
-  const todayStart = fromTzParts(today.year, today.month, today.day, startHour, 0, tz);
+  const todayStart = fromTzParts(today.year, today.month, today.day, startHour, startMin, tz);
 
   // If we're at or past today's start, this is the active window.
   // Otherwise the active window is yesterday's session.
@@ -231,7 +248,7 @@ export function getTradingDayWindow(input: TradingDayInput = {}): TradingDayWind
     windowStart = new Date(todayStart.getTime() - 24 * 60 * 60_000);
   }
 
-  const windowEnd = new Date(windowStart.getTime() + durationHours * 60 * 60_000);
+  const windowEnd = new Date(windowStart.getTime() + durationMinutes * 60_000);
 
   return {
     start: windowStart,

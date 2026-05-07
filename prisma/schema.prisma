@@ -167,6 +167,11 @@ model RiskRules {
   sessionEndHour        Int?
   sessionTimezone       String?
   ruleEditLockBufferMinutes Int?
+  // Minute-precise rule-edit session window (replaces integer hour fields for new rows).
+  // sessionPreset: "ny" | "london" | "asia" | "custom" | null (null = not configured)
+  sessionPreset         String?
+  sessionStartTime      String?  // HH:mm in sessionTimezone, e.g. "09:30"
+  sessionEndTime        String?  // HH:mm in sessionTimezone, e.g. "16:00"
   tradingDays           String?
   sessionEndBehavior    String?
   newsLockoutEnabled    Boolean  @default(false)

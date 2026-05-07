@@ -79,7 +79,7 @@ test("deferred banner still appears for real rule changes (existing rules + lock
   const banner = computeAccountRulesBanner(true, true, true);
   assert.equal(banner.kind, "locked");
   assert.ok(banner.message.includes("locked"));
-  assert.ok(banner.message.includes("next trading day"));
+  assert.ok(banner.message.includes("edit window") || banner.message.includes("trading session"));
 });
 
 // ─── constants ────────────────────────────────────────────────────────────────

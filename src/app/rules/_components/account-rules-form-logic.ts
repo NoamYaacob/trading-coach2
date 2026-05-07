@@ -7,7 +7,7 @@ export const FIRST_TIME_SETUP_BANNER =
   "First-time setup · These account-specific rules will apply immediately after saving.";
 
 export const LOCKED_BANNER =
-  "Today's rules are locked. Changes will apply on the next trading day.";
+  "Rule changes are locked during your active trading session. Changes will apply at the next edit window.";
 
 export const REVIEW_INHERITED_HINT = "Review these inherited limits before saving.";
 
