@@ -142,7 +142,7 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day. Requires Tradovate full access — without it, Guardrail will alert only.",
+    hint: "If a trade is still open at the cutoff time, Guardrail will lock the account for the day. Broker-side position flattening is not yet active.",
   },
 ] as const;
 
@@ -562,7 +562,7 @@ export function AccountRulesForm({
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
             />
             <span>
-              I understand that Guardrail may automatically lock this account and may attempt to close open positions when my configured rules are breached.
+              I understand that Guardrail may automatically lock this account when my configured rules are breached.
             </span>
           </label>
         )}

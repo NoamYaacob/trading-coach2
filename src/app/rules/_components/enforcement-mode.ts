@@ -10,10 +10,9 @@
  *   internal_app_lock         – Guardrail sets riskState and sends Telegram alerts.
  *                               No broker connection exists, so no broker-side action.
  *
- *   broker_enforcement_pending – Broker enforcement path exists and will be attempted
- *                               when a qualifying rule is breached (e.g. daily_loss_limit
- *                               on an active full-access Tradovate connection), but has
- *                               not yet been confirmed working for this account.
+ *   broker_enforcement_pending – Full-access Tradovate connection is verified.
+ *                               Guardrail alerts on breach. Broker-side enforcement
+ *                               (liquidation-only, position flattening) is not yet active.
  *
  *   broker_enforced_active    – Broker enforcement was applied and confirmed at least once
  *                               for this account (GuardianIntervention.brokerLockStatus
@@ -23,8 +22,8 @@
  *                               the call (e.g. 403 permission denied, network error).
  *                               Shown on status/Guardian views.
  *
- *   dry_run                    – ENFORCEMENT_DRY_RUN=true. Guardrail simulates lockout
- *                               and position exit; no Tradovate writes are sent.
+ *   dry_run                    – ENFORCEMENT_DRY_RUN=true. Guardrail evaluates rules
+ *                               but no Tradovate writes are sent.
  *
  * Capability is determined by `BrokerConnection.permissionLevel`, populated by the
  * server-side permission probe (calls userAccountAutoLiq/deps which requires the
@@ -164,27 +163,24 @@ export function computeEnforcementMode(
     if (permissionLevel === "full_access") {
       return {
         mode: "broker_enforcement_pending",
-        label: "Broker enforcement available",
+        label: "Full access connection — alerts active",
         detail:
           "Tradovate connection verified with Account Risk Settings: Full Access. " +
-          "If a daily loss limit or daily profit target is set and breached, Guardrail will " +
-          "engage Tradovate’s risk engine — placing this account in liquidation-only mode for that session " +
-          "and attempting to close any open positions. " +
-          "Trade-count and loss-streak limits remain alert-only (no broker API field for those).",
+          "Guardrail evaluates daily loss and profit limits against this account and sends alerts when breached. " +
+          "Broker-side enforcement (liquidation-only mode, position flattening) is not yet active — " +
+          "Guardrail will alert only until broker writes are enabled.",
         cls: "border-sky-200 bg-sky-50 text-sky-800",
       };
     }
 
     // Permission probe has not yet run (or returned an inconclusive result).
-    // Be honest: we don't know the capability. The next sync will verify, and
-    // the first enforcement attempt will reveal the actual permission state.
     return {
       mode: "permission_unverified",
       label: "Permission level not yet verified",
       detail:
-        "Account data is syncing. Guardrail has not yet probed Tradovate to confirm whether broker-side enforcement is available. " +
+        "Account data is syncing. Guardrail has not yet confirmed whether this Tradovate connection has full broker permissions. " +
         "Capability will be verified automatically on the next sync. " +
-        "Until then, internal lock and alerts are active; broker-side actions will be attempted on first breach.",
+        "Until then, Guardrail will alert only.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
     };
   }

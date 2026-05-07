@@ -209,6 +209,57 @@ describe("deriveScopeAccountBadge", () => {
   });
 });
 
+// ── deriveScopeAccountBadge — per-account isolation ──────────────────────────
+
+describe("deriveScopeAccountBadge — per-account badge is independent", () => {
+  it("two accounts both hasAccountRules=false → both return null (no badge)", () => {
+    const badgeA = deriveScopeAccountBadge({
+      isUnavailable: false,
+      requiresAutomatedActionsConsent: false,
+      hasAccountRules: false,
+    });
+    const badgeB = deriveScopeAccountBadge({
+      isUnavailable: false,
+      requiresAutomatedActionsConsent: false,
+      hasAccountRules: false,
+    });
+    assert.equal(badgeA, null, "account A without override must return null");
+    assert.equal(badgeB, null, "account B without override must return null");
+  });
+
+  it("account A hasAccountRules=true, B hasAccountRules=false → A gets Custom, B gets null", () => {
+    const badgeA = deriveScopeAccountBadge({
+      isUnavailable: false,
+      requiresAutomatedActionsConsent: false,
+      hasAccountRules: true,
+    });
+    const badgeB = deriveScopeAccountBadge({
+      isUnavailable: false,
+      requiresAutomatedActionsConsent: false,
+      hasAccountRules: false,
+    });
+    assert.ok(badgeA !== null, "account A with override must have a badge");
+    assert.equal(badgeA!.label, "Custom");
+    assert.equal(badgeB, null, "account B without override must not inherit A's badge");
+  });
+
+  it("creating override for A does not affect B: B stays null regardless", () => {
+    const makeA = (hasRules: boolean) =>
+      deriveScopeAccountBadge({ isUnavailable: false, requiresAutomatedActionsConsent: false, hasAccountRules: hasRules });
+
+    const beforeA = makeA(false);
+    assert.equal(beforeA, null);
+
+    const afterA = makeA(true);
+    assert.ok(afterA !== null);
+    assert.equal(afterA!.label, "Custom");
+
+    // B is unchanged — its badge comes only from its own flags
+    const badgeB = deriveScopeAccountBadge({ isUnavailable: false, requiresAutomatedActionsConsent: false, hasAccountRules: false });
+    assert.equal(badgeB, null, "B must still be null after A gets an override");
+  });
+});
+
 // ── Regression: never render raw technical strings ────────────────────────────
 
 describe("deriveScopeGroupBadge — regression: no raw technical labels", () => {

@@ -65,7 +65,7 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day.",
+    hint: "If a trade is still open at the cutoff time, Guardrail will lock the account for the day. Broker-side position flattening is not yet active.",
   },
 ] as const;
 
@@ -307,7 +307,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           Rules target: <span className="font-semibold text-stone-600">Default template</span>
         </p>
         <p className="text-[11px] text-stone-500">
-          Protection rules may trigger automatic lockout according to the limits you set. For accounts with full broker permissions, Guardrail may also attempt to close open positions.
+          Protection rules may trigger an in-app lock according to the limits you set. Broker-side cancel, flatten, and lockout are not yet active.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire
@@ -322,7 +322,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
             />
             <span>
-              I understand that Guardrail may automatically lock this account and may attempt to close open positions when my configured rules are breached.
+              I understand that Guardrail may automatically lock this account when my configured rules are breached.
             </span>
           </label>
         )}

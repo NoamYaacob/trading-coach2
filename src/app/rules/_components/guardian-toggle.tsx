@@ -5,9 +5,10 @@ import { useState } from "react";
 
 type Props = {
   initialEnabled: boolean;
+  isDryRun?: boolean;
 };
 
-export function GuardianToggle({ initialEnabled }: Props) {
+export function GuardianToggle({ initialEnabled, isDryRun = false }: Props) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [loading, setLoading] = useState(false);
@@ -46,6 +47,11 @@ export function GuardianToggle({ initialEnabled }: Props) {
   }
 
   if (enabled) {
+    const title = isDryRun ? "Guardian active · Test mode" : "Guardian is active";
+    const subtitle = isDryRun
+      ? "Guardrail is checking this account against your rules, but will not block, cancel, flatten, or close trades."
+      : "Guardrail is monitoring each session against your rules.";
+
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -54,8 +60,8 @@ export function GuardianToggle({ initialEnabled }: Props) {
               ✓
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-emerald-900">Guardian is active</p>
-              <p className="mt-0.5 text-xs text-emerald-800/80">Guardrail is monitoring each session against your rules.</p>
+              <p className="text-sm font-semibold text-emerald-900">{title}</p>
+              <p className="mt-0.5 text-xs text-emerald-800/80">{subtitle}</p>
             </div>
           </div>
           <div className="sm:shrink-0 sm:text-right">

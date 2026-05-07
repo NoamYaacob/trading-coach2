@@ -421,7 +421,7 @@ export default async function RulesPage({
               description="Applies to all connected accounts that don't have an account-specific override."
             >
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
-                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
+                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} isDryRun={isDryRun} />
               </div>
               <RulesForm
                 initial={defaultInitial}

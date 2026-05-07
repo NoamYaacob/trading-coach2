@@ -86,6 +86,67 @@ describe("buildRuleScopes", () => {
   });
 });
 
+// ── per-account hasAccountRules independence ──────────────────────────────────
+
+describe("buildRuleScopes — per-account hasAccountRules is independent", () => {
+  it("two accounts both without overrides: neither has Custom badge data", () => {
+    const accounts = [
+      stub({ id: "acc-a", hasAccountRules: false }),
+      stub({ id: "acc-b", hasAccountRules: false }),
+    ];
+    const { groups } = buildRuleScopes(accounts);
+    const accs = groups[0].accounts;
+    assert.equal(accs.length, 2);
+    const a = accs.find((x) => x.id === "acc-a")!;
+    const b = accs.find((x) => x.id === "acc-b")!;
+    assert.equal(a.hasAccountRules, false, "acc-a must not have overrides");
+    assert.equal(b.hasAccountRules, false, "acc-b must not have overrides");
+  });
+
+  it("account A with override does not affect account B without override", () => {
+    const accounts = [
+      stub({ id: "acc-a", hasAccountRules: true }),
+      stub({ id: "acc-b", hasAccountRules: false }),
+    ];
+    const { groups } = buildRuleScopes(accounts);
+    const accs = groups[0].accounts;
+    const a = accs.find((x) => x.id === "acc-a")!;
+    const b = accs.find((x) => x.id === "acc-b")!;
+    assert.equal(a.hasAccountRules, true, "acc-a must have its override");
+    assert.equal(b.hasAccountRules, false, "acc-b must not be affected by acc-a's override");
+  });
+
+  it("account selection uses account.id, not index or firm name", () => {
+    const accounts = [
+      stub({ id: "acc-a", label: "Same Firm", hasAccountRules: false }),
+      stub({ id: "acc-b", label: "Same Firm", hasAccountRules: true }),
+    ];
+    const { groups } = buildRuleScopes(accounts);
+    const accs = groups[0].accounts;
+    const byIdA = accs.find((x) => x.id === "acc-a")!;
+    const byIdB = accs.find((x) => x.id === "acc-b")!;
+    assert.ok(byIdA, "must find acc-a by id");
+    assert.ok(byIdB, "must find acc-b by id");
+    assert.equal(byIdA.hasAccountRules, false);
+    assert.equal(byIdB.hasAccountRules, true);
+  });
+
+  it("switching between accounts exposes each account's own hasAccountRules flag", () => {
+    const accounts = [
+      stub({ id: "acc-1", hasAccountRules: true }),
+      stub({ id: "acc-2", hasAccountRules: false }),
+      stub({ id: "acc-3", hasAccountRules: true }),
+    ];
+    const { groups } = buildRuleScopes(accounts);
+    const accs = groups[0].accounts;
+    const expected: Record<string, boolean> = { "acc-1": true, "acc-2": false, "acc-3": true };
+    for (const [id, want] of Object.entries(expected)) {
+      const found = accs.find((x) => x.id === id)!;
+      assert.equal(found.hasAccountRules, want, `acc ${id}: expected hasAccountRules=${want}`);
+    }
+  });
+});
+
 // ── parseRuleScopeParams ──────────────────────────────────────────────────────
 
 describe("parseRuleScopeParams", () => {
