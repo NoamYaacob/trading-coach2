@@ -295,7 +295,7 @@ export default async function RulesPage({
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
               Rule Target
             </p>
-            <p className="mt-0.5 text-[10px] text-stone-400">
+            <p className="mt-1 text-xs leading-snug text-stone-500">
               Choose the default plan or an account-specific override.
             </p>
           </div>

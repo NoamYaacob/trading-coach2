@@ -26,26 +26,25 @@ function AccountItem({
     requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
     hasAccountRules: account.hasAccountRules,
   });
+  const isInactive = account.missingFromBrokerSince != null;
 
   return (
     <li>
       <Link
         href={`/rules?scope=account&id=${account.id}`}
         aria-current={isSelected ? "page" : undefined}
-        className={`flex min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3.5 py-2 text-sm transition ${
+        className={`flex min-w-0 items-center gap-2 overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 text-sm transition ${
           isSelected
-            ? "bg-stone-950 text-stone-50"
-            : account.missingFromBrokerSince != null
-              ? "text-stone-400 hover:bg-stone-100"
-              : "text-stone-700 hover:bg-stone-100"
+            ? "border-stone-950 bg-stone-100 font-semibold text-stone-900"
+            : isInactive
+              ? "border-transparent text-stone-400 hover:bg-stone-50"
+              : "border-transparent text-stone-700 hover:bg-stone-50"
         }`}
       >
         <span className="min-w-0 flex-1 truncate">{account.label}</span>
         {badge && (
           <span
-            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-              isSelected ? "bg-stone-700 text-stone-200" : badge.cls
-            }`}
+            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
           >
             {badge.label}
           </span>
@@ -66,21 +65,23 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
           <Link
             href="/rules"
             aria-current={isDefault ? "page" : undefined}
-            className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 transition ${
+            className={`flex items-start gap-2 overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
               isDefault
-                ? "bg-stone-950 text-stone-50"
-                : "text-stone-700 hover:bg-stone-100"
+                ? "border-stone-950 bg-stone-100 text-stone-900"
+                : "border-transparent text-stone-700 hover:bg-stone-50"
             }`}
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">Default template</p>
-              <p className={`text-xs leading-5 ${isDefault ? "text-stone-300" : "text-stone-500"}`}>
-                Applies to all accounts without account-specific rules
+              <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
+                Default template
+              </p>
+              <p className={`truncate text-[11px] ${isDefault ? "text-stone-600" : "text-stone-400"}`}>
+                Applies to accounts without overrides
               </p>
             </div>
             <span
               className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-                isDefault ? "bg-stone-700 text-stone-300" : "bg-stone-100 text-stone-500"
+                isDefault ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
               }`}
             >
               Default
@@ -110,10 +111,12 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
             : "";
 
           return (
-            <li key={group.groupKey} className="mt-2">
-              <div className="flex items-start justify-between gap-1.5 px-2 pb-0.5 pt-1">
+            <li key={group.groupKey} className="mt-2 border-t border-stone-100 pt-2">
+              <div className="flex items-start justify-between gap-1.5 px-2 pb-1">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-stone-700">{group.firmLabel}</p>
+                  <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-500">
+                    {group.firmLabel}
+                  </p>
                   <p className="truncate text-[10px] text-stone-400">
                     {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
                     {userId}
@@ -125,7 +128,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
                   {badge.label}
                 </span>
               </div>
-              <ul className="mt-0.5 grid gap-0.5 pl-1">
+              <ul className="grid gap-px">
                 {group.accounts.map((account) => (
                   <AccountItem
                     key={account.id}
