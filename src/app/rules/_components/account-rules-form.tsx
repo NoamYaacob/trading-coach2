@@ -166,6 +166,7 @@ export function AccountRulesForm({
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(hasExistingRules);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -269,6 +270,7 @@ export function AccountRulesForm({
     try {
       const data = await sendPatch({ riskRules: null });
       setIsDirty(false);
+      setConfirmingRemove(false);
       if (data.rulesLock?.applied === false && data.rulesLock.message) {
         setPendingMessage(data.rulesLock.message);
       } else {
@@ -379,6 +381,9 @@ export function AccountRulesForm({
           <Field label="Stop after consecutive losses">
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
+          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
+            <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+          </Field>
         </div>
       </div>
 
@@ -451,19 +456,6 @@ export function AccountRulesForm({
           ))}
         </div>
       </div>
-
-      {/* Advanced settings */}
-      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:p-5">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-          Advanced
-          <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-        </summary>
-        <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4">
-          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
-            <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-          </Field>
-        </div>
-      </details>
 
       {/* Prop firm parameters — collapsible */}
       {hasPropFirm && (
@@ -544,15 +536,13 @@ export function AccountRulesForm({
       )}
 
       {/* Submit row */}
-      <div className="grid gap-2 border-t border-stone-100 pt-4 sm:pt-6">
-        <p className="text-[11px] text-stone-400">
-          Rules target: <span className="font-semibold text-stone-600">{accountLabel}</span>
+      <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
+        <p className="text-[11px] text-stone-500">
+          Rules are saved in Guardrail only. Broker-side cancel, flatten, and lockout are not yet active.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.
-            Shown whenever consent is missing or its version is outdated, not
-            just on first save. Existing accounts that pre-date this feature
-            see the checkbox until they re-confirm. */}
+            Shown whenever consent is missing or its version is outdated. */}
         {!hasValidConsent && (
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
             <input
@@ -567,41 +557,91 @@ export function AccountRulesForm({
           </label>
         )}
 
+        {/* Primary save row */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving || removing || (!hasValidConsent && !consentChecked)}
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
-          >
-            {saving ? "Saving…" : "Save rules"}
-          </button>
-          {hasExistingRules && (
-            <button
-              type="button"
-              onClick={handleRemove}
-              disabled={saving || removing}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50"
-            >
-              {removing ? "Removing…" : "Remove account-specific rules"}
-            </button>
+          {(() => {
+            const hasSomethingToSave = isDirty || !hasExistingRules || (!hasValidConsent && consentChecked);
+            const saveDisabled = saving || removing || !hasSomethingToSave;
+            const saveLabel = saving ? "Saving…" : (!isDirty && savedAt && !pendingMessage && hasExistingRules ? "Saved" : "Save rules");
+            return (
+              <button
+                type="submit"
+                disabled={saveDisabled}
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+              >
+                {saveLabel}
+              </button>
+            );
+          })()}
+          {isDirty && !saving && (
+            <span className="text-xs text-amber-600">Unsaved changes</span>
           )}
+          {savedAt && !pendingMessage && !isDirty && (
+            <span className="text-xs text-emerald-700">
+              Saved in Guardrail.
+            </span>
+          )}
+          {pendingMessage && <span className="text-xs text-amber-700">{pendingMessage}</span>}
+          {error && <span className="text-xs text-red-700">{error}</span>}
+        </div>
+
+        {/* Remove override — only for accounts with existing rules */}
+        {hasExistingRules && (
+          <div className="border-t border-stone-100 pt-3">
+            {confirmingRemove ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm font-medium text-red-900">Remove account-specific rules for {accountLabel}?</p>
+                <p className="mt-1 text-xs text-red-800">
+                  This account will return to using the default template. Other accounts are not affected.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRemove}
+                    disabled={removing}
+                    className="inline-flex items-center justify-center rounded-full bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:opacity-50"
+                  >
+                    {removing ? "Removing…" : "Remove override"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRemove(false)}
+                    disabled={removing}
+                    className="inline-flex items-center justify-center rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-400 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingRemove(true)}
+                  disabled={saving || removing}
+                  className="text-xs text-stone-400 underline-offset-2 hover:text-red-600 hover:underline disabled:opacity-50"
+                >
+                  Remove account-specific rules
+                </button>
+                <Link
+                  href={`/accounts/${accountId}/edit`}
+                  className="text-xs text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline"
+                >
+                  Broker connection settings ↗
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!hasExistingRules && (
           <Link
             href={`/accounts/${accountId}/edit`}
             className="text-xs text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline"
           >
             Broker connection settings ↗
           </Link>
-          {isDirty && !saving && (
-            <span className="text-xs text-amber-600">Unsaved changes</span>
-          )}
-          {savedAt && !pendingMessage && !isDirty && (
-            <span className="text-xs text-emerald-700">
-              Saved {savedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.
-            </span>
-          )}
-          {pendingMessage && <span className="text-xs text-amber-700">{pendingMessage}</span>}
-          {error && <span className="text-xs text-red-700">{error}</span>}
-        </div>
+        )}
       </div>
     </form>
   );

@@ -49,7 +49,15 @@ export default async function RulesPage({
   const [riskRules, accounts, guardian, traderProfile, guardianStatus] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
+      where: {
+        userId: user.id,
+        isActive: true,
+        protectionStatus: { not: "archived" },
+        // Accounts missing from the broker's /account/list are stale/deleted at
+        // the broker level. They are preserved in DB for history but should not
+        // appear as configurable rule targets in the Trading Plan.
+        missingFromBrokerSince: null,
+      },
       select: {
         id: true,
         label: true,

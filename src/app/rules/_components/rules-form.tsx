@@ -84,6 +84,7 @@ function intOrNull(value: string): number | null {
 export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<RulesFormValues>(initial);
+  const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -101,6 +102,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
 
   function update<K extends keyof RulesFormValues>(key: K, value: RulesFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
     setSavedAt(null);
   }
 
@@ -155,13 +157,14 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
         throw new Error(data.error ?? "Failed to save rules.");
       }
       if (data.applied === false && data.message) {
-        // Saved as pending — surface the message to the user instead of
-        // pretending the change took effect today.
+        // Saved as pending — surface the server's activation message.
         setError(null);
         setPendingMessage(data.message);
+        setIsDirty(false);
       } else {
         setPendingMessage(null);
         setSavedAt(new Date());
+        setIsDirty(false);
       }
       router.refresh();
     } catch (err) {
@@ -170,6 +173,11 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       setSaving(false);
     }
   }
+
+  // Enabled when the form has changes, OR when consent needs to be captured.
+  const hasSomethingToSave = isDirty || (!hasValidConsent && consentChecked);
+  const saveDisabled = saving || !hasSomethingToSave;
+  const saveLabel = saving ? "Saving…" : (!isDirty && savedAt && !pendingMessage ? "Saved" : "Save rules");
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-6">
@@ -207,6 +215,9 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           </Field>
           <Field label="Stop after consecutive losses">
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
+          </Field>
+          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
+            <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
           </Field>
         </div>
       </div>
@@ -288,26 +299,10 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
         onChange={(key, val) => update(key as keyof RulesFormValues, val as RulesFormValues[keyof RulesFormValues])}
       />
 
-      {/* ── Advanced settings — hidden by default ────────────────────────── */}
-      <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-          Advanced
-          <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-        </summary>
-        <div className="mt-4 grid gap-4">
-          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
-            <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-          </Field>
-        </div>
-      </details>
-
       {/* ── Submit ──────────────────────────────────────────────────────── */}
       <div className="grid gap-2 border-t border-stone-100 pt-6">
-        <p className="text-[11px] text-stone-400">
-          Rules target: <span className="font-semibold text-stone-600">Default template</span>
-        </p>
         <p className="text-[11px] text-stone-500">
-          Protection rules may trigger an in-app lock according to the limits you set. Broker-side cancel, flatten, and lockout are not yet active.
+          Rules are saved in Guardrail only. Broker-side cancel, flatten, and lockout are not yet active.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire
@@ -327,16 +322,19 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           </label>
         )}
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 pt-1">
           <button
             type="submit"
-            disabled={saving || (!hasValidConsent && !consentChecked)}
+            disabled={saveDisabled}
             className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            {saving ? "Saving..." : "Save rules"}
+            {saveLabel}
           </button>
-          {savedAt && !pendingMessage && (
-            <span className="text-xs text-emerald-700">Saved. These rules apply at the next trading session.</span>
+          {isDirty && !saving && (
+            <span className="text-xs text-amber-600">Unsaved changes</span>
+          )}
+          {savedAt && !pendingMessage && !isDirty && (
+            <span className="text-xs text-emerald-700">Saved in Guardrail.</span>
           )}
           {pendingMessage && (
             <span className="text-xs text-amber-700">{pendingMessage}</span>
@@ -389,4 +387,3 @@ function NumberInput({
     />
   );
 }
-

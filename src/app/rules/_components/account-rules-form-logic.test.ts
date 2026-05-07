@@ -82,6 +82,25 @@ test("deferred banner still appears for real rule changes (existing rules + lock
   assert.ok(banner.message.includes("edit window") || banner.message.includes("trading session"));
 });
 
+test("locked banner uses server lockMessage when provided", () => {
+  const banner = computeAccountRulesBanner(true, true, true, "Changes apply at May 8, 2026, 5:00 PM CT");
+  assert.equal(banner.kind, "locked");
+  assert.equal(banner.message, "Changes apply at May 8, 2026, 5:00 PM CT");
+});
+
+test("locked banner falls back to LOCKED_BANNER when lockMessage is null", () => {
+  const banner = computeAccountRulesBanner(true, true, true, null);
+  assert.equal(banner.kind, "locked");
+  assert.equal(banner.message, LOCKED_BANNER);
+});
+
+test("first-time save never shows lock message even when lockMessage is provided", () => {
+  const banner = computeAccountRulesBanner(false, true, true, "Locked until session end");
+  assert.equal(banner.kind, "first_time");
+  assert.equal(banner.message, FIRST_TIME_SETUP_BANNER);
+  assert.ok(!banner.message.includes("Locked"), "first-time banner must not contain lock copy");
+});
+
 // ─── constants ────────────────────────────────────────────────────────────────
 
 test("REVIEW_INHERITED_HINT mentions reviewing limits", () => {
