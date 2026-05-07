@@ -114,3 +114,37 @@ export function buildCommandCenterGroups(
     return a.firmLabel.localeCompare(b.firmLabel);
   });
 }
+
+/**
+ * Recomputes group aggregate totals from a filtered subset of visible accounts.
+ *
+ * Called by the UI whenever a status filter hides some rows so the group header
+ * reflects only the accounts currently shown — not the full unfiltered group.
+ * Mirrors the same exclusion rule as buildCommandCenterGroups: unavailable
+ * accounts are kept in the list for visibility but their stale P&L / risk
+ * budget is excluded from totals.
+ */
+export function recomputeGroupAggregates(
+  group: CommandCenterFirmGroup,
+  visibleAccounts: CommandCenterAccount[],
+): CommandCenterFirmGroup {
+  const counts = emptyCounts();
+  let totalDailyPnl = 0;
+  let totalRiskRemaining = 0;
+  let hasPnlData = false;
+  let hasRiskData = false;
+  for (const a of visibleAccounts) {
+    counts[a.status] += 1;
+    if (a.status !== "unavailable") {
+      if (a.dailyPnl != null) {
+        totalDailyPnl += a.dailyPnl;
+        hasPnlData = true;
+      }
+      if (a.remainingDailyLoss != null) {
+        totalRiskRemaining += a.remainingDailyLoss;
+        hasRiskData = true;
+      }
+    }
+  }
+  return { ...group, accounts: visibleAccounts, counts, totalDailyPnl, totalRiskRemaining, hasPnlData, hasRiskData };
+}

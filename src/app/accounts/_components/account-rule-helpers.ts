@@ -47,18 +47,18 @@ export function formatPropFirmDescriptor(
  * Returns the rule-source label shown in the compact account row.
  *
  * Priority: account-specific rules > default plan > no rules.
- * When the account has a prop firm set, the label is generic ("Prop firm
- * rule" / "Default plan · prop firm preset") — we never claim a specific
- * program from propFirm metadata alone.
+ * Prop firm classification is shown separately as secondary metadata via
+ * formatPropFirmDescriptor — it must not appear in the rules label itself
+ * because having a propFirm set does not imply any rules are configured.
  */
 export function deriveRulesLabel(
   hasAccountRules: boolean,
   hasDefaultRules: boolean,
-  hasPropFirm: boolean,
+  _hasPropFirm?: boolean,
 ): string {
-  if (hasAccountRules) return hasPropFirm ? "Prop firm rule" : "Account-specific rule";
-  if (hasDefaultRules) return hasPropFirm ? "Default plan · prop firm preset" : "Default trading plan";
-  return "No rules";
+  if (hasAccountRules) return "Custom rules";
+  if (hasDefaultRules) return "Default trading plan";
+  return "No rules configured";
 }
 
 // ── Enforcement chip ──────────────────────────────────────────────────────────

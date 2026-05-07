@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
+import { formatPropFirmDescriptor } from "@/app/accounts/_components/account-rule-helpers";
 import { ArchiveAccountButton } from "./archive-account-button";
 import {
   COLLAPSED_GROUPS_STORAGE_KEY,
@@ -12,6 +13,7 @@ import {
   serializeCollapsedPayload,
   toggleCollapsedId,
 } from "./collapsed-state";
+import { recomputeGroupAggregates } from "./group-utils";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { ReclassifyPanel } from "./reclassify-panel";
 import { SyncAllButton } from "./sync-all-button";
@@ -180,13 +182,17 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   const filteredGroups = useMemo<CommandCenterFirmGroup[]>(() => {
     return data.groups
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
-      .map((group) => ({
-        ...group,
-        accounts:
+      .map((group) => {
+        const visibleAccounts =
           statusFilter === "all"
             ? group.accounts
-            : group.accounts.filter((a) => a.status === statusFilter),
-      }))
+            : group.accounts.filter((a) => a.status === statusFilter);
+        // When a status filter is active, recompute group header totals from
+        // the visible subset so the header P&L / budget only reflects the rows
+        // currently shown — not the full unfiltered group.
+        if (statusFilter === "all") return { ...group, accounts: visibleAccounts };
+        return recomputeGroupAggregates(group, visibleAccounts);
+      })
       .filter((group) => group.accounts.length > 0);
   }, [data.groups, statusFilter, firmFilter]);
 
@@ -721,6 +727,7 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
 
 function AccountRow({ account }: { account: CommandCenterAccount }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
+  const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   return (
     <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
       {/* Account — status badge + name + platform + sync time */}
@@ -808,6 +815,9 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
       {/* Rules + Mode combined */}
       <td className="px-4 py-3 align-top">
         <p className="text-xs text-stone-600">{account.rulesLabel}</p>
+        {propFirmDescriptor && (
+          <p className="mt-0.5 text-[10px] text-stone-400">{propFirmDescriptor}</p>
+        )}
         {account.enforcementMode !== "dry_run" && <PerAccountStateLine account={account} />}
         {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
@@ -828,6 +838,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 // ─── Mobile card ───────────────────────────────────────────────────────────────
 
 function AccountCard({ account }: { account: CommandCenterAccount }) {
+  const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   const reconnectNeeded =
     account.platform !== "manual" &&
     (account.status === "not_connected" ||
@@ -955,6 +966,12 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
         {/* Muted metadata row */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
           <span>{account.rulesLabel}</span>
+          {propFirmDescriptor && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{propFirmDescriptor}</span>
+            </>
+          )}
           {account.enforcementMode !== "dry_run" && (
             <>
               <span aria-hidden>·</span>

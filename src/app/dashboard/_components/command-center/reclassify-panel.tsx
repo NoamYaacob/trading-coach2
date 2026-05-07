@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -40,7 +41,7 @@ export function ReclassifyPanel({ accounts }: Props) {
 
 function ReclassifyRow({ account }: { account: ReclassifiableAccount }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"idle" | "busy" | "dismissed">("idle");
+  const [mode, setMode] = useState<"idle" | "busy" | "dismissed" | "success">("idle");
   const [error, setError] = useState<string | null>(null);
 
   if (mode === "dismissed") return null;
@@ -70,11 +71,39 @@ function ReclassifyRow({ account }: { account: ReclassifiableAccount }) {
         setMode("idle");
         return;
       }
-      router.refresh();
+      setMode("success");
     } catch {
       setError("Network error. Please try again.");
       setMode("idle");
     }
+  }
+
+  if (mode === "success") {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+        <p className="text-sm font-medium text-stone-950">
+          Moved to {account.inheritedPropFirm}.
+        </p>
+        <p className="mt-0.5 text-[11px] text-stone-600">
+          This account is currently using the Default trading plan.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link
+            href={`/rules?scope=account&id=${account.id}`}
+            className="inline-flex h-8 items-center rounded-full bg-stone-950 px-3.5 text-xs font-medium text-white transition hover:bg-stone-800"
+          >
+            Create custom rules
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.refresh()}
+            className="inline-flex h-8 items-center rounded-full border border-stone-200 px-3.5 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
+          >
+            Keep default plan
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

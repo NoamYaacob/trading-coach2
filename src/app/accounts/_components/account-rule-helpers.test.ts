@@ -39,34 +39,60 @@ describe("formatPropFirmDescriptor", () => {
 // ── deriveRulesLabel ──────────────────────────────────────────────────────────
 
 describe("deriveRulesLabel", () => {
-  it("uses 'Prop firm rule' when account has account-specific rules and a prop firm is set", () => {
-    assert.equal(deriveRulesLabel(true, true, true), "Prop firm rule");
-    assert.equal(deriveRulesLabel(true, false, true), "Prop firm rule");
+  // Test 2: Account with propFirm but no AccountRiskRules shows "Default trading plan"
+  it("shows 'Default trading plan' for a prop firm account with no account-specific rules", () => {
+    assert.equal(deriveRulesLabel(false, true, true), "Default trading plan");
   });
 
-  it("uses 'Account-specific rule' when account-specific rules are set and no prop firm", () => {
-    assert.equal(deriveRulesLabel(true, true, false), "Account-specific rule");
-    assert.equal(deriveRulesLabel(true, false, false), "Account-specific rule");
+  // Test 3: Account with propFirm and AccountRiskRules shows "Custom rules"
+  it("shows 'Custom rules' for a prop firm account with account-specific rules", () => {
+    assert.equal(deriveRulesLabel(true, true, true), "Custom rules");
+    assert.equal(deriveRulesLabel(true, false, true), "Custom rules");
   });
 
-  it("uses 'Default plan · prop firm preset' when default plan applies to a prop firm account", () => {
-    assert.equal(deriveRulesLabel(false, true, true), "Default plan · prop firm preset");
+  it("shows 'Custom rules' for a non-prop-firm account with account-specific rules", () => {
+    assert.equal(deriveRulesLabel(true, true, false), "Custom rules");
+    assert.equal(deriveRulesLabel(true, false, false), "Custom rules");
   });
 
-  it("uses 'Default trading plan' when default plan applies and no prop firm is set", () => {
+  it("shows 'Default trading plan' when default plan applies and no prop firm is set", () => {
     assert.equal(deriveRulesLabel(false, true, false), "Default trading plan");
   });
 
-  it("uses 'No rules' when neither account-specific nor default rules exist", () => {
-    assert.equal(deriveRulesLabel(false, false, true), "No rules");
-    assert.equal(deriveRulesLabel(false, false, false), "No rules");
+  it("shows 'No rules configured' when neither account-specific nor default rules exist", () => {
+    assert.equal(deriveRulesLabel(false, false, true), "No rules configured");
+    assert.equal(deriveRulesLabel(false, false, false), "No rules configured");
+  });
+
+  // Test 1: Dashboard must not render "prop firm preset" anywhere in rules labels
+  it("never produces 'prop firm preset' in the rules label regardless of inputs", () => {
+    for (const has of [true, false]) {
+      for (const def of [true, false]) {
+        for (const firm of [true, false]) {
+          const label = deriveRulesLabel(has, def, firm);
+          assert.ok(
+            !label.includes("prop firm preset"),
+            `unexpected 'prop firm preset' in label: "${label}"`,
+          );
+        }
+      }
+    }
   });
 
   it("never returns a program-specific label like 'MFF Builder' from metadata alone", () => {
-    // Regression guard: caller passes hasPropFirm=true (e.g. propFirm="MyFundedFutures",
-    // accountType="evaluation"). Output must remain generic.
-    assert.equal(deriveRulesLabel(true, true, true), "Prop firm rule");
-    assert.equal(deriveRulesLabel(false, true, true), "Default plan · prop firm preset");
+    const label = deriveRulesLabel(true, true, true);
+    assert.ok(!label.includes("Builder"), `must not include 'Builder': ${label}`);
+    assert.ok(!label.includes("MFF"), `must not include 'MFF': ${label}`);
+  });
+
+  // Test 4: prop firm / account type appear as secondary metadata via formatPropFirmDescriptor,
+  // not embedded in the rules label itself
+  it("does not embed propFirm or accountType text in the rules label", () => {
+    // The descriptor "MyFundedFutures · Evaluation" must come from formatPropFirmDescriptor,
+    // not from deriveRulesLabel. The rules label is classification-agnostic.
+    const label = deriveRulesLabel(false, true, true);
+    assert.ok(!label.includes("MyFundedFutures"), "firm name must not appear in rules label");
+    assert.ok(!label.includes("Evaluation"), "account type must not appear in rules label");
   });
 });
 

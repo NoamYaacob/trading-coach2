@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCommandCenterGroups } from "./group-utils.ts";
+import { buildCommandCenterGroups, recomputeGroupAggregates } from "./group-utils.ts";
 import type { CommandCenterAccount } from "./types.ts";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -658,5 +658,121 @@ describe("env disambiguation for sink groups", () => {
       STANDARD_SINK_KEYS,
     );
     assert.equal(group.firmLabel, "Tradovate · Personal");
+  });
+});
+
+// ── recomputeGroupAggregates — filtered group header totals ───────────────────
+// When a status filter hides some rows, the group header must reflect only
+// the accounts currently visible, not the full unfiltered group.
+// Tests 15-20 from the spec.
+
+describe("recomputeGroupAggregates", () => {
+  // Test 15: Unavailable filter hides locked account, group header must not include its P&L/budget
+  it("filtering to unavailable excludes locked-account P&L and budget from header", () => {
+    const lockedAccount = stubAccount({
+      id: "locked",
+      brokerConnectionId: "conn-a",
+      status: "locked",
+      dailyPnl: -1001,
+      remainingDailyLoss: 0,
+    });
+    const unavailableAccount = stubAccount({
+      id: "unavail",
+      brokerConnectionId: "conn-a",
+      status: "unavailable",
+      dailyPnl: -500, // stale — must be excluded (unavailable rule)
+      remainingDailyLoss: 200, // stale
+    });
+    const [group] = buildCommandCenterGroups([lockedAccount, unavailableAccount], NO_SINK_KEYS);
+
+    // Only the unavailable row is visible after filtering
+    const filtered = recomputeGroupAggregates(group, [unavailableAccount]);
+
+    // Test 15: locked account's -$1,001 must not appear in the unavailable-filtered header
+    assert.equal(filtered.totalDailyPnl, 0, "locked account P&L must be excluded from filter view");
+    assert.equal(filtered.hasPnlData, false, "unavailable account P&L is stale and excluded");
+    assert.equal(filtered.totalRiskRemaining, 0);
+    assert.equal(filtered.hasRiskData, false);
+  });
+
+  // Test 16: Filtering to Locked reflects only locked row's data
+  it("filtering to locked shows only the locked row's P&L and budget", () => {
+    const lockedAccount = stubAccount({
+      id: "locked",
+      brokerConnectionId: "conn-a",
+      status: "locked",
+      dailyPnl: -1001,
+      remainingDailyLoss: 0,
+    });
+    const unavailableAccount = stubAccount({
+      id: "unavail",
+      brokerConnectionId: "conn-a",
+      status: "unavailable",
+      dailyPnl: -500,
+      remainingDailyLoss: 200,
+    });
+    const [group] = buildCommandCenterGroups([lockedAccount, unavailableAccount], NO_SINK_KEYS);
+
+    const filtered = recomputeGroupAggregates(group, [lockedAccount]);
+
+    assert.equal(filtered.totalDailyPnl, -1001);
+    assert.equal(filtered.hasPnlData, true);
+    assert.equal(filtered.totalRiskRemaining, 0);
+  });
+
+  // Test 17: Group header account count equals visible rows
+  it("group header accounts length equals the visible rows after filtering", () => {
+    const a = stubAccount({ id: "a", brokerConnectionId: "conn-a", status: "allowed" });
+    const b = stubAccount({ id: "b", brokerConnectionId: "conn-a", status: "locked" });
+    const [group] = buildCommandCenterGroups([a, b], NO_SINK_KEYS);
+
+    const filtered = recomputeGroupAggregates(group, [b]);
+
+    assert.equal(filtered.accounts.length, 1, "header must count only the visible locked row");
+    assert.equal(filtered.counts.locked, 1);
+    assert.equal(filtered.counts.allowed, 0);
+  });
+
+  // Test 18: Group header shows P&L placeholder (hasPnlData=false) for unavailable-only filter
+  it("shows P&L placeholder for unavailable-only visible accounts", () => {
+    const unavailableAccount = stubAccount({
+      id: "unavail",
+      brokerConnectionId: "conn-a",
+      status: "unavailable",
+      dailyPnl: -300,
+      remainingDailyLoss: 500,
+    });
+    const [group] = buildCommandCenterGroups([unavailableAccount], NO_SINK_KEYS);
+
+    const filtered = recomputeGroupAggregates(group, [unavailableAccount]);
+
+    assert.equal(filtered.hasPnlData, false, "unavailable P&L is stale — header shows '—'");
+    assert.equal(filtered.hasRiskData, false, "unavailable budget is stale — header shows '—'");
+  });
+
+  // Test 20: "All" filter path — when statusFilter = "all", recompute is not called;
+  // original group totals (which equal a full recompute) remain accurate.
+  it("full group passed unchanged matches a fresh recompute (all-filter parity)", () => {
+    const a = stubAccount({ id: "a", brokerConnectionId: "conn-a", status: "allowed", dailyPnl: 400, remainingDailyLoss: 600 });
+    const b = stubAccount({ id: "b", brokerConnectionId: "conn-a", status: "locked", dailyPnl: -200, remainingDailyLoss: 0 });
+    const [group] = buildCommandCenterGroups([a, b], NO_SINK_KEYS);
+
+    const recomputed = recomputeGroupAggregates(group, [a, b]);
+
+    assert.equal(recomputed.totalDailyPnl, group.totalDailyPnl, "full recompute matches original");
+    assert.equal(recomputed.totalRiskRemaining, group.totalRiskRemaining, "full recompute matches original");
+    assert.equal(recomputed.hasPnlData, group.hasPnlData);
+  });
+
+  // Mixed: allowed + unavailable — only allowed contributes to totals
+  it("in a mixed visible set, only non-unavailable accounts contribute to totals", () => {
+    const a = stubAccount({ id: "a", brokerConnectionId: "conn-a", status: "allowed", dailyPnl: 100, remainingDailyLoss: 900 });
+    const u = stubAccount({ id: "u", brokerConnectionId: "conn-a", status: "unavailable", dailyPnl: -999, remainingDailyLoss: 0 });
+    const [group] = buildCommandCenterGroups([a, u], NO_SINK_KEYS);
+
+    const filtered = recomputeGroupAggregates(group, [a, u]);
+
+    assert.equal(filtered.totalDailyPnl, 100, "unavailable stale P&L excluded");
+    assert.equal(filtered.totalRiskRemaining, 900);
   });
 });
