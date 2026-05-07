@@ -1482,6 +1482,39 @@ export class TradovateClient {
   }
 
   /**
+   * Cancel a single open order by Tradovate order ID.
+   *
+   * POST /order/cancelorder with { orderId }
+   *
+   * skipMarkExpired=true: a 403 here means Orders: Full Access is missing from
+   * the OAuth scope — a capability limit, not a global auth failure. The
+   * connection must NOT be marked expired.
+   *
+   * Returns the raw Tradovate response. Callers should check for errorText to
+   * detect rejection (e.g. order already filled/cancelled).
+   */
+  async cancelOrder(orderId: number): Promise<{ ok?: boolean; errorText?: string }> {
+    console.info("[tradovate/cancel] sending cancelorder", {
+      accountId: this.#accountId,
+      orderId,
+    });
+    const response = await this.#request<{ ok?: boolean; errorText?: string }>(
+      "order/cancelorder",
+      "POST",
+      { orderId },
+      false,
+      /* skipMarkExpired */ true,
+    );
+    console.info("[tradovate/cancel] cancelorder response", {
+      accountId: this.#accountId,
+      orderId,
+      ok: response?.ok,
+      errorText: response?.errorText ?? null,
+    });
+    return response ?? {};
+  }
+
+  /**
    * Attempt to flatten (close) all open positions for this Tradovate account.
    *
    * Sequences:

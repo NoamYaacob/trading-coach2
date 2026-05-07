@@ -474,6 +474,7 @@ model ConnectedAccount {
   tradeEvents       NormalizedTradeEvent[]
   interventions     GuardianIntervention[]
   dailyProtections  DailyAccountProtection[]
+  orderActionLogs   BrokerOrderActionLog[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -624,6 +625,30 @@ model GuardianIntervention {
   account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model BrokerOrderActionLog {
+  id                 String   @id @default(cuid())
+  userId             String
+  connectedAccountId String
+  externalAccountId  String?
+  /// "cancel_orders" | "flatten_positions"
+  actionType         String
+  /// Human label for what triggered this action — e.g. "manual_test", "rule_breach"
+  triggerReason      String
+  dryRun             Boolean
+  /// JSON snapshot of what was requested (order IDs, position IDs, counts)
+  requestSummary     Json?
+  /// JSON snapshot of the structured result returned to the caller
+  responseSummary    Json?
+  success            Boolean
+  errorMessage       String?
+  createdAt          DateTime @default(now())
+
+  account     ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([connectedAccountId, createdAt])
   @@index([userId, createdAt])
 }
 
