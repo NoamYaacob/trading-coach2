@@ -406,7 +406,7 @@ function TradingPermissionBlock({ status }: { status: TradingPermissionStatus })
 
 const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
   dry_run:
-    "Test mode active: Guardrail is monitoring only. It will not block, cancel, or close trades.",
+    "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.",
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
   protection_locked:
@@ -1343,7 +1343,7 @@ function PerAccountStateLine({ account }: { account: CommandCenterAccount }) {
   const tone =
     label === "Consent required"
       ? "text-amber-700"
-      : label === "Limited permissions"
+      : label === "Read-only monitoring"
         ? "text-amber-700"
         : label === "Broker risk settings enabled"
           ? "text-emerald-700"

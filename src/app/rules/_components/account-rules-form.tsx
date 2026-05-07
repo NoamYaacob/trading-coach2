@@ -133,7 +133,7 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff time, Guardrail will lock the account for the day. Broker-side position flattening is not yet active.",
+    hint: "If a trade is still open at the cutoff time, Guardrail will lock the account for the day. Position flattening requires a full-access Tradovate connection.",
   },
 ] as const;
 
@@ -467,7 +467,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail only. Broker-side cancel, flatten, and lockout are not yet active.
+          Rules are saved in Guardrail only. Order cancel is not yet implemented.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.

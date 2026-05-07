@@ -328,7 +328,7 @@ export default async function RulesPage({
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
               <span>
-                <span className="font-medium">Test mode:</span> Guardrail is monitoring only. It will not block, cancel, flatten, or close trades.
+                <span className="font-medium">Protection test mode:</span> Guardrail is watching your accounts. No broker actions are sent.
               </span>
             </div>
           )}
@@ -341,7 +341,7 @@ export default async function RulesPage({
             </summary>
             <ul className="mt-3 grid gap-1.5 text-stone-600">
               <li>• Guardrail sends warnings when rules are crossed.</li>
-              <li>• In monitoring or test mode, Guardrail marks the account locked inside the app only.</li>
+              <li>• In app-level monitoring or protection test mode, Guardrail marks the account locked inside the app only.</li>
               <li>• Broker-side cancel, flatten, and blocking are not active unless the account has verified write permissions and the action is implemented.</li>
               <li>• Read-only connections support monitoring and alerts only.</li>
             </ul>

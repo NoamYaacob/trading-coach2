@@ -8,15 +8,15 @@ import {
 
 // ── deriveScopeGroupBadge ─────────────────────────────────────────────────────
 
-describe("deriveScopeGroupBadge — test mode", () => {
-  it("isDryRun=true → 'Test mode' regardless of permission level", () => {
+describe("deriveScopeGroupBadge — protection test mode", () => {
+  it("isDryRun=true → 'Protection test mode' regardless of permission level", () => {
     const badge = deriveScopeGroupBadge({
       isDryRun: true,
       connectionStatus: "connected_live",
       permissionLevel: "full_access",
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Test mode");
+    assert.equal(badge.label, "Protection test mode");
     assert.ok(badge.cls.includes("sky"), `expected sky colour, got: ${badge.cls}`);
   });
 
@@ -27,7 +27,7 @@ describe("deriveScopeGroupBadge — test mode", () => {
       permissionLevel: null,
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Test mode");
+    assert.equal(badge.label, "Protection test mode");
   });
 
   it("no user-facing copy contains 'dry_run'", () => {

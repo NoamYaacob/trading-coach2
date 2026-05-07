@@ -27,7 +27,7 @@ const PENDING_STATUSES = new Set([
 /**
  * Derives the connection-group badge for the sidebar header row.
  * Priority (highest → lowest):
- *   1. isDryRun           → "Test mode"    (env-wide, overrides everything)
+ *   1. isDryRun           → "Protection test mode"  (env-wide, overrides everything)
  *   2. Disconnected       → "Reconnect"    (connection broken, action needed)
  *   3. Pending setup      → "Setting up"   (OAuth completing)
  *   4. full_access + no consent → "Action required"
@@ -43,7 +43,7 @@ export function deriveScopeGroupBadge(input: {
   requiresConsentInGroup: boolean;
 }): ScopeBadge {
   if (input.isDryRun) {
-    return { label: "Test mode", cls: "bg-sky-100 text-sky-700" };
+    return { label: "Protection test mode", cls: "bg-sky-100 text-sky-700" };
   }
   if (DISCONNECTED_STATUSES.has(input.connectionStatus)) {
     return { label: "Reconnect", cls: "bg-orange-100 text-orange-700" };

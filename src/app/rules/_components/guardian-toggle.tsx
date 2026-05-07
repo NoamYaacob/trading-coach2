@@ -31,9 +31,9 @@ export function GuardianToggle({ initialEnabled, isDryRun = false }: Props) {
   }
 
   if (enabled) {
-    const title = isDryRun ? "Guardian active · Test mode" : "Guardian is active";
+    const title = isDryRun ? "Guardian active · Protection test mode" : "Guardian is active";
     const subtitle = isDryRun
-      ? "Guardrail is monitoring this account against your rules. In test mode, it will not block, cancel, flatten, or close trades."
+      ? "Guardrail is monitoring this account against your rules. Protection test mode: broker actions are simulated, no Tradovate writes are sent."
       : "Guardrail is monitoring each session against your rules.";
 
     return (

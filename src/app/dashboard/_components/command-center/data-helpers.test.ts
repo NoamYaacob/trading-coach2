@@ -126,7 +126,7 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     });
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
-    assert.equal(result.headline, "Test mode active");
+    assert.equal(result.headline, "Protection test mode");
     assert.ok(result.subline.includes("will not block"));
   });
 
@@ -145,7 +145,7 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
-    assert.ok(result.headline.includes("Test mode active"), `got: ${result.headline}`);
+    assert.ok(result.headline.includes("Protection test mode"), `got: ${result.headline}`);
   });
 
   it("test_mode with single locked account uses singular", () => {

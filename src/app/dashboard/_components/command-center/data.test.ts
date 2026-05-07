@@ -755,9 +755,9 @@ describe("deriveBrokerEnforcementCopy", () => {
     assert.equal(kind, "dry_run");
   });
 
-  it("dry_run text uses user-facing 'Test mode' prefix (not the technical 'Dry run')", () => {
+  it("dry_run text uses user-facing 'Protection test mode' prefix (not the technical 'Dry run')", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
-    assert.ok(text.includes("Test mode"), `expected 'Test mode' prefix, got: ${text}`);
+    assert.ok(text.includes("Protection test mode"), `expected 'Protection test mode' prefix, got: ${text}`);
     assert.ok(
       !text.includes("Dry run"),
       `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
@@ -875,9 +875,9 @@ describe("deriveFlattenCopy", () => {
     assert.equal(deriveFlattenCopy("dry_run").kind, "dry_run");
   });
 
-  it("dry_run text uses user-facing 'Test mode' prefix and mentions 'simulated'", () => {
+  it("dry_run text uses user-facing 'Protection test mode' prefix and mentions 'simulated'", () => {
     const { text } = deriveFlattenCopy("dry_run");
-    assert.ok(text.includes("Test mode"), `expected 'Test mode' prefix, got: ${text}`);
+    assert.ok(text.includes("Protection test mode"), `expected 'Protection test mode' prefix, got: ${text}`);
     assert.ok(
       !text.includes("Dry run"),
       `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
@@ -1219,21 +1219,21 @@ describe("deriveFooterCopy", () => {
     assert.equal(copy, null);
   });
 
-  it("dry_run without banner → 'Test mode' footer text (user-facing phrase, not 'Dry run')", () => {
+  it("dry_run without banner → 'Protection test mode' footer text (user-facing phrase, not 'Dry run')", () => {
     const copy = deriveFooterCopy({
       modes: ["dry_run"],
       hasDryRunBanner: false,
     });
     assert.ok(copy != null);
     assert.ok(
-      copy!.includes("Test mode"),
-      `expected 'Test mode' in footer copy, got: ${copy}`,
+      copy!.includes("Protection test mode"),
+      `expected 'Protection test mode' in footer copy, got: ${copy}`,
     );
     assert.ok(
       !copy!.toLowerCase().includes("dry run"),
       `'Dry run' must not leak into user-facing footer, got: ${copy}`,
     );
-    assert.ok(copy!.toLowerCase().includes("lockout"));
+    assert.ok(copy!.toLowerCase().includes("broker actions"));
   });
 
   it("broker_active → footer confirms broker risk settings enabled", () => {
@@ -1474,13 +1474,13 @@ describe("deriveRowStatusLabel", () => {
 // ── derivePerAccountStateLabel — small label under plan name ──────────────────
 
 describe("derivePerAccountStateLabel", () => {
-  it("dry_run → 'Test mode only' (per-row reminder of the global banner)", () => {
+  it("dry_run → 'Protection test mode' (per-row reminder of the global banner)", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "dry_run",
         requiresAutomatedActionsConsent: false,
       }),
-      "Test mode only",
+      "Protection test mode",
     );
   });
 
@@ -1504,33 +1504,33 @@ describe("derivePerAccountStateLabel", () => {
     );
   });
 
-  it("broker_readonly → 'Limited permissions'", () => {
+  it("broker_readonly → 'Read-only monitoring'", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "broker_readonly",
         requiresAutomatedActionsConsent: false,
       }),
-      "Limited permissions",
+      "Read-only monitoring",
     );
   });
 
-  it("permission_unverified → 'Monitoring only' (probe still pending; nothing actionable yet)", () => {
+  it("permission_unverified → 'App-level monitoring' (probe still pending; nothing actionable yet)", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "permission_unverified",
         requiresAutomatedActionsConsent: false,
       }),
-      "Monitoring only",
+      "App-level monitoring",
     );
   });
 
-  it("not_connected → 'Monitoring only'", () => {
+  it("not_connected → 'App-level monitoring'", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "not_connected",
         requiresAutomatedActionsConsent: false,
       }),
-      "Monitoring only",
+      "App-level monitoring",
     );
   });
 
@@ -1540,7 +1540,7 @@ describe("derivePerAccountStateLabel", () => {
         enforcementMode: "dry_run",
         requiresAutomatedActionsConsent: true,
       }),
-      "Test mode only",
+      "Protection test mode",
     );
   });
 });
@@ -1552,14 +1552,14 @@ describe("deriveGroupStateSuffix", () => {
     assert.equal(deriveGroupStateSuffix({ accounts: [] }), null);
   });
 
-  it("any account in dry_run → 'Test mode' (the dominant indicator)", () => {
+  it("any account in dry_run → 'Protection test mode' (the dominant indicator)", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
       ],
     });
-    assert.equal(suffix, "Test mode");
+    assert.equal(suffix, "Protection test mode");
   });
 
   it("any account requires consent → 'Consent required'", () => {
@@ -1571,13 +1571,13 @@ describe("deriveGroupStateSuffix", () => {
     assert.equal(suffix, "Consent required");
   });
 
-  it("any account broker_readonly → 'Limited permissions'", () => {
+  it("any account broker_readonly → 'Read-only monitoring'", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "broker_readonly", requiresAutomatedActionsConsent: false },
       ],
     });
-    assert.equal(suffix, "Limited permissions");
+    assert.equal(suffix, "Read-only monitoring");
   });
 
   it("all broker_active + valid consent → 'Broker risk settings enabled'", () => {

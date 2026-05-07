@@ -253,7 +253,7 @@ export function deriveBrokerEnforcementCopy(
   switch (brokerLockStatus) {
     case "dry_run":
       return {
-        text: "Test mode · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
+        text: "Protection test mode · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
         kind: "dry_run",
       };
     case "broker_locked":
@@ -325,7 +325,7 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
       return { text: "Position exit failed.", kind: "failed" };
     case "dry_run":
       return {
-        text: "Test mode · Position exit simulated.",
+        text: "Protection test mode · Position exit simulated.",
         kind: "dry_run",
       };
     default:
@@ -423,21 +423,21 @@ export function deriveRowStatusLabel(input: {
  *  Priority is most-actionable first so the user sees the thing that needs
  *  attention before the positive/neutral states. */
 export type PerAccountStateLabel =
-  | "Test mode only"
+  | "Protection test mode"
   | "Consent required"
   | "Broker risk settings enabled"
-  | "Limited permissions"
-  | "Monitoring only";
+  | "Read-only monitoring"
+  | "App-level monitoring";
 
 export function derivePerAccountStateLabel(input: {
   enforcementMode: EnforcementMode;
   requiresAutomatedActionsConsent: boolean;
 }): PerAccountStateLabel {
-  if (input.enforcementMode === "dry_run") return "Test mode only";
+  if (input.enforcementMode === "dry_run") return "Protection test mode";
   if (input.requiresAutomatedActionsConsent) return "Consent required";
   if (input.enforcementMode === "broker_active") return "Broker risk settings enabled";
-  if (input.enforcementMode === "broker_readonly") return "Limited permissions";
-  return "Monitoring only";
+  if (input.enforcementMode === "broker_readonly") return "Read-only monitoring";
+  return "App-level monitoring";
 }
 
 // ── deriveGroupStateSuffix ────────────────────────────────────────────────────
@@ -447,9 +447,9 @@ export function derivePerAccountStateLabel(input: {
  *  Returns null when there's no useful state to highlight — the platform line
  *  then shows just "Connected · Synced 2m ago". */
 export type GroupStateSuffix =
-  | "Test mode"
+  | "Protection test mode"
   | "Consent required"
-  | "Limited permissions"
+  | "Read-only monitoring"
   | "Broker risk settings enabled"
   | null;
 
@@ -460,12 +460,12 @@ export function deriveGroupStateSuffix(input: {
   }>;
 }): GroupStateSuffix {
   if (input.accounts.length === 0) return null;
-  if (input.accounts.some((a) => a.enforcementMode === "dry_run")) return "Test mode";
+  if (input.accounts.some((a) => a.enforcementMode === "dry_run")) return "Protection test mode";
   if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
     return "Consent required";
   }
   if (input.accounts.some((a) => a.enforcementMode === "broker_readonly")) {
-    return "Limited permissions";
+    return "Read-only monitoring";
   }
   if (input.accounts.every((a) => a.enforcementMode === "broker_active")) {
     return "Broker risk settings enabled";
@@ -493,7 +493,7 @@ export function deriveFooterCopy(input: {
     return null;
   }
   if (anyDryRun) {
-    return "Test mode active · No broker lockout or position-close actions are sent.";
+    return "Protection test mode · No broker actions are sent.";
   }
   if (modes.includes("broker_active")) {
     return "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.";
@@ -680,14 +680,14 @@ export function deriveTradingPermissionStatus(input: {
       const n = lockedCount;
       return {
         level: "test_mode",
-        headline: `Test mode active · ${n} account${n > 1 ? "s" : ""} locked`,
+        headline: `Protection test mode · ${n} account${n > 1 ? "s" : ""} locked`,
         subline:
           "Guardrail is monitoring only. It will not block, cancel, or close trades.",
       };
     }
     return {
       level: "test_mode",
-      headline: "Test mode active",
+      headline: "Protection test mode",
       subline:
         "Guardrail is monitoring only. It will not block, cancel, or close trades.",
     };
