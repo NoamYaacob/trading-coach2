@@ -275,7 +275,7 @@ export default async function RulesPage({
         <details className="rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-              Configure rules for…
+              Rule Target
             </span>
             <span className="text-stone-400 select-none">▾</span>
           </summary>
@@ -291,9 +291,14 @@ export default async function RulesPage({
 
         {/* Desktop: always-visible sticky sidebar */}
         <div className="hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
-          <p className="mb-2 px-3.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-            Configure rules for
-          </p>
+          <div className="mb-3 px-3.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+              Rule Target
+            </p>
+            <p className="mt-0.5 text-[10px] text-stone-400">
+              Choose the default plan or an account-specific override.
+            </p>
+          </div>
           <ScopeSelector
             groups={groups}
             currentScope={scope}
