@@ -35,8 +35,8 @@ function AccountItem({
   const subtitle =
     visibleBadge == null
       ? account.hasAccountRules
-        ? "Custom rules"
-        : "Default plan"
+        ? "Account override"
+        : "Default rules"
       : null;
 
   return (

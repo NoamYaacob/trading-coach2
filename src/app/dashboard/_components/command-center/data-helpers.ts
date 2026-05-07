@@ -249,6 +249,7 @@ export type BrokerEnforcementCopy = {
  */
 export function deriveBrokerEnforcementCopy(
   brokerLockStatus: BrokerLockStatus | null,
+  context?: { permissionLevel?: string | null },
 ): BrokerEnforcementCopy {
   switch (brokerLockStatus) {
     case "dry_run":
@@ -262,6 +263,15 @@ export function deriveBrokerEnforcementCopy(
         kind: "broker_active",
       };
     case "unavailable_read_only":
+      // When the account now has full_access but the intervention was stored
+      // as unavailable_read_only (probe hadn't run yet at lock time), show an
+      // accurate message about what's not implemented rather than "is read-only".
+      if (context?.permissionLevel === "full_access") {
+        return {
+          text: "Guardrail lock active · Broker-side order blocking is not active yet.",
+          kind: "unavailable_readonly",
+        };
+      }
       return {
         text: "Guardrail lock active · Broker-side lock unavailable: connection is read-only.",
         kind: "unavailable_readonly",
@@ -432,8 +442,13 @@ export type PerAccountStateLabel =
 export function derivePerAccountStateLabel(input: {
   enforcementMode: EnforcementMode;
   requiresAutomatedActionsConsent: boolean;
-}): PerAccountStateLabel {
-  if (input.enforcementMode === "dry_run") return "Protection test mode";
+  permissionLevel?: string | null;
+}): PerAccountStateLabel | null {
+  if (input.enforcementMode === "dry_run") {
+    // For full_access accounts show the capability label; the top-level banner
+    // handles test_mode messaging for accounts with unknown/limited permissions.
+    return input.permissionLevel === "full_access" ? "Broker risk settings enabled" : null;
+  }
   if (input.requiresAutomatedActionsConsent) return "Consent required";
   if (input.enforcementMode === "broker_active") return "Broker risk settings enabled";
   if (input.enforcementMode === "broker_readonly") return "Read-only monitoring";
@@ -457,10 +472,15 @@ export function deriveGroupStateSuffix(input: {
   accounts: ReadonlyArray<{
     enforcementMode: EnforcementMode;
     requiresAutomatedActionsConsent: boolean;
+    permissionLevel?: string | null;
   }>;
 }): GroupStateSuffix {
   if (input.accounts.length === 0) return null;
-  if (input.accounts.some((a) => a.enforcementMode === "dry_run")) return "Protection test mode";
+  const dryRunAccounts = input.accounts.filter((a) => a.enforcementMode === "dry_run");
+  if (dryRunAccounts.length > 0) {
+    const allFullAccess = dryRunAccounts.every((a) => a.permissionLevel === "full_access");
+    return allFullAccess ? "Broker risk settings enabled" : "Protection test mode";
+  }
   if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
     return "Consent required";
   }
@@ -618,12 +638,11 @@ export function deriveProtectionStatusPanel(input: {
   isProtectionLocked: boolean;
 }): ProtectionStatusPanelData | null {
   const { isDryRunActive, requiresConsentCount, isProtectionLocked } = input;
-  if (!isDryRunActive && requiresConsentCount === 0 && !isProtectionLocked) return null;
-  const kind: ProtectionStatusPanelData["kind"] = isDryRunActive
-    ? "dry_run"
-    : requiresConsentCount > 0
-    ? "consent_required"
-    : "protection_locked";
+  // Suppress dry_run — TradingPermissionBlock above the card already covers it.
+  if (isDryRunActive) return null;
+  if (requiresConsentCount === 0 && !isProtectionLocked) return null;
+  const kind: ProtectionStatusPanelData["kind"] =
+    requiresConsentCount > 0 ? "consent_required" : "protection_locked";
   return { kind, showConsentCta: requiresConsentCount > 0 };
 }
 
@@ -663,19 +682,39 @@ export function deriveTradingPermissionStatus(input: {
   accounts: ReadonlyArray<{
     status: AccountStatus;
     enforcementMode: EnforcementMode;
+    permissionLevel?: string | null;
   }>;
 }): TradingPermissionStatus | null {
   const { accounts } = input;
-  const activeCount = accounts.filter(
+  const activeAccounts = accounts.filter(
     (a) => a.status !== "unavailable" && a.status !== "not_connected",
-  ).length;
-  if (activeCount === 0) return null;
+  );
+  if (activeAccounts.length === 0) return null;
 
   const isDryRun = accounts.some((a) => a.enforcementMode === "dry_run");
   const lockedCount = accounts.filter((a) => a.status === "locked").length;
   const warningCount = accounts.filter((a) => a.status === "warning").length;
 
   if (isDryRun) {
+    const allActiveFullAccess = activeAccounts.every((a) => a.permissionLevel === "full_access");
+    if (allActiveFullAccess) {
+      // All accounts have full broker permissions — show capability-based headline.
+      if (lockedCount > 0) {
+        const n = lockedCount;
+        return {
+          level: "allowed",
+          headline: `Broker risk settings enabled · ${n} account${n > 1 ? "s" : ""} locked`,
+          subline:
+            "Daily loss protection can use Tradovate risk settings. Cancel, flatten, and order-blocking actions are not active yet.",
+        };
+      }
+      return {
+        level: "allowed",
+        headline: "Broker risk settings enabled",
+        subline:
+          "Daily loss protection can use Tradovate risk settings. Cancel, flatten, and order-blocking actions are not active yet.",
+      };
+    }
     if (lockedCount > 0) {
       const n = lockedCount;
       return {

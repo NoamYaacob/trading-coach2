@@ -113,8 +113,8 @@ const STATUS_DOT_CLASS: Record<AccountStatus, string> = {
 };
 
 const RULE_SOURCE_LABEL: Record<RuleSource, string> = {
-  account: "Account rules",
-  default: "Default trading plan",
+  account: "Account override",
+  default: "Default rules",
   none: "No rules configured",
 };
 
@@ -256,7 +256,13 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     hasDryRunBanner: isDryRunActive,
   });
 
-  const tradingPermissionStatus = deriveTradingPermissionStatus({ accounts: data.accounts });
+  const tradingPermissionStatus = deriveTradingPermissionStatus({
+    accounts: data.accounts.map((a) => ({
+      status: a.status,
+      enforcementMode: a.enforcementMode,
+      permissionLevel: a.permissionLevel,
+    })),
+  });
 
   return (
     <div className="grid gap-4">
@@ -626,6 +632,7 @@ function FirmSection({
     accounts: group.accounts.map((a) => ({
       enforcementMode: a.enforcementMode,
       requiresAutomatedActionsConsent: a.requiresAutomatedActionsConsent,
+      permissionLevel: a.permissionLevel,
     })),
   });
   const liveCount = isPersonalGroup
@@ -739,7 +746,7 @@ function FirmSection({
                   <th className="px-4 py-2 text-right font-semibold">Daily P&L</th>
                   <th className="px-4 py-2 text-right font-semibold">Loss budget left</th>
                   <th className="px-4 py-2 text-right font-semibold">Trades</th>
-                  <th className="px-4 py-2 font-semibold">Rules / Mode</th>
+                  <th className="px-4 py-2 font-semibold">Protection</th>
                   <th className="px-4 py-2 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -816,7 +823,9 @@ const BROKER_NOTE_COLOR: Record<string, string> = {
 
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
-  const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus);
+  const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus, {
+    permissionLevel: account.permissionLevel,
+  });
   return (
     <p className={`mt-0.5 text-[10px] ${BROKER_NOTE_COLOR[kind] ?? "text-stone-400"}`}>
       {text}
@@ -966,7 +975,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
         {propFirmDescriptor && (
           <p className="mt-0.5 text-[10px] text-stone-400">{propFirmDescriptor}</p>
         )}
-        {account.enforcementMode !== "dry_run" && <PerAccountStateLine account={account} />}
+        <PerAccountStateLine account={account} />
         {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
             Loss streak {account.consecutiveLosses}
@@ -987,6 +996,11 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 
 function AccountCard({ account }: { account: CommandCenterAccount }) {
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  const stateLabel = derivePerAccountStateLabel({
+    enforcementMode: account.enforcementMode,
+    requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+    permissionLevel: account.permissionLevel,
+  });
   const reconnectNeeded =
     account.platform !== "manual" &&
     (account.status === "not_connected" ||
@@ -1120,15 +1134,10 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
               <span>{propFirmDescriptor}</span>
             </>
           )}
-          {account.enforcementMode !== "dry_run" && (
+          {stateLabel && (
             <>
               <span aria-hidden>·</span>
-              <span>
-                {derivePerAccountStateLabel({
-                  enforcementMode: account.enforcementMode,
-                  requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
-                })}
-              </span>
+              <span>{stateLabel}</span>
             </>
           )}
           {account.consecutiveLosses != null && account.consecutiveLosses > 0 && (
@@ -1337,9 +1346,9 @@ function PerAccountStateLine({ account }: { account: CommandCenterAccount }) {
   const label = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
     requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
+    permissionLevel: account.permissionLevel,
   });
-  // Tone tracks the actionability of the state. The label itself carries the
-  // detail; the colour just lets the user spot capability gaps at a glance.
+  if (label === null) return null;
   const tone =
     label === "Consent required"
       ? "text-amber-700"

@@ -39,24 +39,24 @@ describe("formatPropFirmDescriptor", () => {
 // ── deriveRulesLabel ──────────────────────────────────────────────────────────
 
 describe("deriveRulesLabel", () => {
-  // Test 2: Account with propFirm but no AccountRiskRules shows "Default trading plan"
-  it("shows 'Default trading plan' for a prop firm account with no account-specific rules", () => {
-    assert.equal(deriveRulesLabel(false, true, true), "Default trading plan");
+  // Test 2: Account with propFirm but no AccountRiskRules shows "Default rules"
+  it("shows 'Default rules' for a prop firm account with no account-specific rules", () => {
+    assert.equal(deriveRulesLabel(false, true, true), "Default rules");
   });
 
-  // Test 3: Account with propFirm and AccountRiskRules shows "Custom rules"
-  it("shows 'Custom rules' for a prop firm account with account-specific rules", () => {
-    assert.equal(deriveRulesLabel(true, true, true), "Custom rules");
-    assert.equal(deriveRulesLabel(true, false, true), "Custom rules");
+  // Test 3: Account with propFirm and AccountRiskRules shows "Account override"
+  it("shows 'Account override' for a prop firm account with account-specific rules", () => {
+    assert.equal(deriveRulesLabel(true, true, true), "Account override");
+    assert.equal(deriveRulesLabel(true, false, true), "Account override");
   });
 
-  it("shows 'Custom rules' for a non-prop-firm account with account-specific rules", () => {
-    assert.equal(deriveRulesLabel(true, true, false), "Custom rules");
-    assert.equal(deriveRulesLabel(true, false, false), "Custom rules");
+  it("shows 'Account override' for a non-prop-firm account with account-specific rules", () => {
+    assert.equal(deriveRulesLabel(true, true, false), "Account override");
+    assert.equal(deriveRulesLabel(true, false, false), "Account override");
   });
 
-  it("shows 'Default trading plan' when default plan applies and no prop firm is set", () => {
-    assert.equal(deriveRulesLabel(false, true, false), "Default trading plan");
+  it("shows 'Default rules' when default plan applies and no prop firm is set", () => {
+    assert.equal(deriveRulesLabel(false, true, false), "Default rules");
   });
 
   it("shows 'No rules configured' when neither account-specific nor default rules exist", () => {

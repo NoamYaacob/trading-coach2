@@ -329,12 +329,12 @@ export default async function DashboardPage() {
               <NavCard
                 href="/rules"
                 title="Trading Plan"
-                description="Edit daily loss limits, trade caps, and breach actions."
+                description="Set or edit account risk rules."
               />
               <NavCard
                 href="/alerts"
                 title="Alerts"
-                description="Configure Telegram notifications for lockouts and warnings."
+                description="Configure Telegram and rule breach alerts."
               />
             </div>
           </div>

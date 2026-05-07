@@ -41,6 +41,11 @@ export type CommandCenterAccount = {
   connectionStatusLabel: string;
   status: AccountStatus;
   enforcementMode: EnforcementMode;
+  /** Raw permission level from the broker connection probe.
+   *  "full_access" | "read_only" | "unknown" | null (not yet probed).
+   *  Distinct from enforcementMode — used to show accurate labels even when
+   *  ENFORCEMENT_DRY_RUN overrides the enforcement mode to "dry_run". */
+  permissionLevel: string | null;
   ruleSource: RuleSource;
   rulesLabel: string;
   dailyPnl: number | null;

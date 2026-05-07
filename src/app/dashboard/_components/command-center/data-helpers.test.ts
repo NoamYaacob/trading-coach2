@@ -7,8 +7,9 @@ import type { AccountStatus, EnforcementMode } from "./types.ts";
 function makeAccount(
   status: AccountStatus,
   enforcementMode: EnforcementMode = "broker_active",
+  permissionLevel: string | null = null,
 ) {
-  return { status, enforcementMode };
+  return { status, enforcementMode, permissionLevel };
 }
 
 // ── Test 1: null when no active accounts ──────────────────────────────────────
@@ -176,5 +177,59 @@ describe("deriveTradingPermissionStatus active count includes setup_needed", () 
     });
     assert.ok(result !== null);
     assert.equal(result.level, "allowed");
+  });
+});
+
+// ── Test 7: dry_run + full_access shows broker capability headline ─────────────
+
+describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
+  it("all full_access → allowed level with broker headline", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run", "full_access")],
+    });
+    assert.ok(result !== null);
+    assert.equal(result.level, "allowed");
+    assert.ok(
+      result.headline.includes("Broker risk settings enabled"),
+      `got: ${result.headline}`,
+    );
+  });
+
+  it("full_access + locked → allowed level with compound headline", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [
+        makeAccount("locked", "dry_run", "full_access"),
+        makeAccount("allowed", "dry_run", "full_access"),
+      ],
+    });
+    assert.ok(result !== null);
+    assert.equal(result.level, "allowed");
+    assert.ok(
+      result.headline.includes("Broker risk settings enabled"),
+      `got: ${result.headline}`,
+    );
+    assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
+  });
+
+  it("mixed permissions (some null) → test_mode fallback", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [
+        makeAccount("allowed", "dry_run", "full_access"),
+        makeAccount("allowed", "dry_run", null),
+      ],
+    });
+    assert.ok(result !== null);
+    assert.equal(result.level, "test_mode");
+  });
+
+  it("full_access subline mentions Tradovate risk settings", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run", "full_access")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      result.subline.toLowerCase().includes("tradovate risk settings"),
+      `got: ${result.subline}`,
+    );
   });
 });

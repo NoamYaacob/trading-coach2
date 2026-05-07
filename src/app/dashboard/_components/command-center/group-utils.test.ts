@@ -21,6 +21,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     connectionStatusLabel: "Connected",
     status: "allowed",
     enforcementMode: "broker_readonly",
+    permissionLevel: null,
     ruleSource: "account",
     rulesLabel: "Account rules",
     balance: null,

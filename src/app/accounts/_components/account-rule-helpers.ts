@@ -56,8 +56,8 @@ export function deriveRulesLabel(
   hasDefaultRules: boolean,
   _hasPropFirm?: boolean,
 ): string {
-  if (hasAccountRules) return "Custom rules";
-  if (hasDefaultRules) return "Default trading plan";
+  if (hasAccountRules) return "Account override";
+  if (hasDefaultRules) return "Default rules";
   return "No rules configured";
 }
 

@@ -323,6 +323,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       connectionStatusLabel,
       status,
       enforcementMode,
+      permissionLevel: account.brokerConnection?.permissionLevel ?? null,
       ruleSource,
       rulesLabel,
       balance,
