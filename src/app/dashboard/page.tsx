@@ -101,7 +101,7 @@ export default async function DashboardPage() {
     getTodaySessionEvents(currentUser.id, undefined, "asc"),
     getGuardianSnapshot(currentUser.id),
     getTodayGuardianSessionStart(currentUser.id),
-    loadCommandCenterData(currentUser.id),
+    loadCommandCenterData(currentUser.id, currentUser.email),
     getSelectedEconomicCalendarSnapshot(user.coachingPreferences),
   ]);
 

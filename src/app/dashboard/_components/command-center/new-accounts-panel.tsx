@@ -215,6 +215,11 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   }
 
   async function handleConfirmAdd() {
+    if (account.isPreview) {
+      setError("Preview only — this is sample data. No account will be created.");
+      setMode("reviewing");
+      return;
+    }
     setMode("busy_add");
     setError(null);
     const { propFirm, accountType } = classificationPayload();
@@ -278,7 +283,14 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
       {/* Account label + meta */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-stone-950">{account.label}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-medium text-stone-950">{account.label}</p>
+            {account.isPreview && (
+              <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                Preview data
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 truncate text-[11px] text-stone-500">{metaParts.join(" · ")}</p>
         </div>
 

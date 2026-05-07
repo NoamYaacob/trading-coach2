@@ -18,6 +18,7 @@ import {
   derivePropFirmSetupNeeded,
   deriveStatus,
 } from "./data-helpers";
+import { isPreviewEnabled, buildPreviewPendingAccount } from "./discovery-preview";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
   CommandCenterAccount,
@@ -65,7 +66,7 @@ function deriveFirmKeyAndLabel(account: {
   return { key: FALLBACK_FIRM_KEY, label: FALLBACK_FIRM_LABEL };
 }
 
-export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
+export async function loadCommandCenterData(userId: string, userEmail?: string | null): Promise<CommandCenterData> {
   const [accounts, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
       where: {
@@ -480,6 +481,13 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       suggestedAccountType: namePattern.accountType,
     };
   });
+
+  // Inject a fake preview account for the feature owner only.
+  if (isPreviewEnabled(process.env.ENABLE_DISCOVERY_PREVIEW_FOR_NOAM, userEmail)) {
+    const mffConnectionId =
+      activeSiblings.find((s) => s.propFirm === "MyFundedFutures")?.brokerConnectionId ?? null;
+    pendingAccounts.unshift(buildPreviewPendingAccount(mffConnectionId));
+  }
 
   // Detect active accounts that were imported without classification but whose
   // broker connection has exactly one unambiguous propFirm from siblings.

@@ -144,6 +144,8 @@ export type PendingDiscoveredAccount = {
   suggestedPropFirm: string | null;
   /** Inferred account type from the label pattern. Defaults to "personal" when no match. */
   suggestedAccountType: string;
+  /** True for fake injected preview accounts — never persisted, activation blocked in UI. */
+  isPreview?: boolean;
 };
 
 export const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
