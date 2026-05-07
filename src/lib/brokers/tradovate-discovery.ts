@@ -21,6 +21,13 @@ import {
 } from "./discovery-decision";
 import { getTradovateConfig } from "./tradovate-env";
 
+export {
+  fetchTradovateAccountListWithDiagnostics,
+  tryRefreshToken,
+  type AccountListDiagnostic,
+  type TokenRefreshResult,
+} from "./tradovate-discovery-diagnostic";
+
 export type { DiscoveredAccount, LocalAccountForReconciliation, ReconcileDecision } from "./discovery-decision";
 export { decideReconciliation } from "./discovery-decision";
 
