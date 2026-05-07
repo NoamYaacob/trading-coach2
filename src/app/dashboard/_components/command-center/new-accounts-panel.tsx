@@ -8,6 +8,12 @@ import {
   resolveConfirmOutcome,
   PREVIEW_CONFIRM_MESSAGE,
   PREVIEW_CONFIRM_HINT,
+  getDefaultFirmChoice,
+  getDefaultOtherText,
+  getDefaultTypeChoice,
+  KNOWN_PILL_FIRMS,
+  type FirmChoice,
+  type AccountTypeChoice,
 } from "./new-accounts-panel-logic";
 import type { PendingDiscoveredAccount } from "./types";
 
@@ -95,8 +101,6 @@ function buildMetaParts(account: PendingDiscoveredAccount): string[] {
 
 // ── Classification constants ──────────────────────────────────────────────────
 
-type FirmChoice = "MyFundedFutures" | "Apex Trader Funding" | "Topstep" | "personal" | "other";
-
 const FIRM_PILLS: { value: FirmChoice; label: string }[] = [
   { value: "MyFundedFutures", label: "MyFundedFutures" },
   { value: "Apex Trader Funding", label: "Apex" },
@@ -105,40 +109,12 @@ const FIRM_PILLS: { value: FirmChoice; label: string }[] = [
   { value: "other", label: "Other…" },
 ];
 
-type AccountTypeChoice = "evaluation" | "funded" | "personal" | "demo";
-
 const ACCOUNT_TYPE_PILLS: { value: AccountTypeChoice; label: string }[] = [
   { value: "evaluation", label: "Evaluation" },
   { value: "funded", label: "Funded" },
-  { value: "personal", label: "Personal" },
+  { value: "personal", label: "Live / Personal" },
   { value: "demo", label: "Demo" },
 ];
-
-const KNOWN_PILL_FIRMS: FirmChoice[] = ["MyFundedFutures", "Apex Trader Funding", "Topstep"];
-
-function getDefaultFirmChoice(account: PendingDiscoveredAccount): FirmChoice {
-  const bestFirm = account.inheritedPropFirm ?? account.suggestedPropFirm;
-  if (bestFirm) {
-    return KNOWN_PILL_FIRMS.includes(bestFirm as FirmChoice)
-      ? (bestFirm as FirmChoice)
-      : "other";
-  }
-  return "personal";
-}
-
-function getDefaultOtherText(account: PendingDiscoveredAccount): string {
-  const bestFirm = account.inheritedPropFirm ?? account.suggestedPropFirm;
-  if (bestFirm && !KNOWN_PILL_FIRMS.includes(bestFirm as FirmChoice)) {
-    return bestFirm;
-  }
-  return "";
-}
-
-function getDefaultTypeChoice(account: PendingDiscoveredAccount): AccountTypeChoice {
-  const t = account.inheritedAccountType ?? account.suggestedAccountType;
-  if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
-  return "evaluation";
-}
 
 // ── Row mode ─────────────────────────────────────────────────────────────────
 
@@ -205,9 +181,15 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   const [error, setError] = useState<string | null>(null);
   const [rulesChoice, setRulesChoice] = useState<RulesChoice>("default");
 
-  const [firmChoice, setFirmChoice] = useState<FirmChoice>(() => getDefaultFirmChoice(account));
-  const [otherText, setOtherText] = useState(() => getDefaultOtherText(account));
-  const [typeChoice, setTypeChoice] = useState<AccountTypeChoice>(() => getDefaultTypeChoice(account));
+  const [firmChoice, setFirmChoice] = useState<FirmChoice>(() =>
+    getDefaultFirmChoice(account.inheritedPropFirm, account.suggestedPropFirm),
+  );
+  const [otherText, setOtherText] = useState(() =>
+    getDefaultOtherText(account.inheritedPropFirm, account.suggestedPropFirm),
+  );
+  const [typeChoice, setTypeChoice] = useState<AccountTypeChoice>(() =>
+    getDefaultTypeChoice(account.inheritedAccountType, account.suggestedAccountType),
+  );
   const [showManualPicker, setShowManualPicker] = useState(false);
 
   const firmIsInferred = !!account.inheritedPropFirm;
@@ -330,20 +312,33 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
       {/* Setup step */}
       {(mode === "reviewing" || mode === "busy_add") && (
         <div className="mt-3 border-t border-amber-100 pt-3">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+            Review account setup
+          </p>
 
-          {/* ── Inferred case: firm is known, ask only about rules ── */}
-          {!showPicker && (
-            <>
-              <p className="mb-2.5 text-xs font-medium text-stone-600">
-                How should Guardrail protect this account?
-              </p>
-              <RulesCards choice={rulesChoice} disabled={busy} onChange={setRulesChoice} />
-            </>
-          )}
-
-          {/* ── Ambiguous case: user must choose firm + type first ── */}
-          {showPicker && (
-            <>
+          {/* ── Firm: locked display (inferred) or picker (ambiguous / after "Change firm…") ── */}
+          {!showPicker ? (
+            <div className="mb-3">
+              <p className="mb-1 text-[11px] font-medium text-stone-500">Firm</p>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-stone-800">
+                  {firmChoice === "other"
+                    ? otherText.trim() || "Unknown"
+                    : firmChoice}
+                </span>
+                {!busy && (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualPicker(true)}
+                    className="text-[11px] text-stone-400 underline underline-offset-2 hover:text-stone-600"
+                  >
+                    Change firm…
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mb-3">
               <p className="mb-1.5 text-[11px] font-medium text-stone-500">
                 Which firm is this for?
               </p>
@@ -365,7 +360,6 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
                   </button>
                 ))}
               </div>
-
               {firmChoice === "other" && (
                 <input
                   type="text"
@@ -376,39 +370,39 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
                   className="mt-2 h-8 w-full rounded-lg border border-stone-200 px-3 text-xs text-stone-950 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none disabled:opacity-60"
                 />
               )}
-
-              {firmChoice !== "personal" && (
-                <>
-                  <p className="mb-1.5 mt-3 text-[11px] font-medium text-stone-500">
-                    Account type
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ACCOUNT_TYPE_PILLS.map((pill) => (
-                      <button
-                        key={pill.value}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setTypeChoice(pill.value)}
-                        className={[
-                          "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-medium transition disabled:pointer-events-none disabled:opacity-60",
-                          typeChoice === pill.value
-                            ? "bg-stone-950 text-white"
-                            : "border border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-950",
-                        ].join(" ")}
-                      >
-                        {pill.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <p className="mb-2.5 mt-3 text-[11px] font-medium text-stone-500">
-                How should Guardrail protect this account?
-              </p>
-              <RulesCards choice={rulesChoice} disabled={busy} onChange={setRulesChoice} />
-            </>
+            </div>
           )}
+
+          {/* ── Account type: always shown unless personal ── */}
+          {firmChoice !== "personal" && (
+            <div className="mb-3">
+              <p className="mb-1.5 text-[11px] font-medium text-stone-500">Account type</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ACCOUNT_TYPE_PILLS.map((pill) => (
+                  <button
+                    key={pill.value}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setTypeChoice(pill.value)}
+                    className={[
+                      "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-medium transition disabled:pointer-events-none disabled:opacity-60",
+                      typeChoice === pill.value
+                        ? "bg-stone-950 text-white"
+                        : "border border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-950",
+                    ].join(" ")}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Rules ── */}
+          <p className="mb-2.5 text-[11px] font-medium text-stone-500">
+            How should Guardrail protect this account?
+          </p>
+          <RulesCards choice={rulesChoice} disabled={busy} onChange={setRulesChoice} />
 
           {/* ── Confirm / Cancel ── */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -430,17 +424,6 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
               </button>
             )}
           </div>
-
-          {/* Change classification — secondary link, only shown for inferred case */}
-          {firmIsInferred && !showManualPicker && !busy && (
-            <button
-              type="button"
-              onClick={() => setShowManualPicker(true)}
-              className="mt-2 text-[11px] text-stone-400 underline underline-offset-2 hover:text-stone-600"
-            >
-              Change firm or type…
-            </button>
-          )}
         </div>
       )}
 

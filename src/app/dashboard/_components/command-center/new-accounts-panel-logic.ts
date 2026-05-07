@@ -7,17 +7,52 @@ export const PREVIEW_CONFIRM_MESSAGE =
 export const PREVIEW_CONFIRM_HINT =
   "In a real import, Guardrail would add the account and then apply the selected rules setup.";
 
+export type FirmChoice = "MyFundedFutures" | "Apex Trader Funding" | "Topstep" | "personal" | "other";
+export type AccountTypeChoice = "evaluation" | "funded" | "personal" | "demo";
+
+export const KNOWN_PILL_FIRMS: readonly FirmChoice[] = [
+  "MyFundedFutures",
+  "Apex Trader Funding",
+  "Topstep",
+];
+
+export function getDefaultFirmChoice(
+  inheritedPropFirm: string | null | undefined,
+  suggestedPropFirm: string | null | undefined,
+): FirmChoice {
+  const bestFirm = inheritedPropFirm ?? suggestedPropFirm;
+  if (bestFirm) {
+    return (KNOWN_PILL_FIRMS as readonly string[]).includes(bestFirm)
+      ? (bestFirm as FirmChoice)
+      : "other";
+  }
+  return "personal";
+}
+
+export function getDefaultOtherText(
+  inheritedPropFirm: string | null | undefined,
+  suggestedPropFirm: string | null | undefined,
+): string {
+  const bestFirm = inheritedPropFirm ?? suggestedPropFirm;
+  if (bestFirm && !(KNOWN_PILL_FIRMS as readonly string[]).includes(bestFirm)) {
+    return bestFirm;
+  }
+  return "";
+}
+
+export function getDefaultTypeChoice(
+  inheritedAccountType: string | null | undefined,
+  suggestedAccountType: string | null | undefined,
+): AccountTypeChoice {
+  const t = inheritedAccountType ?? suggestedAccountType;
+  if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
+  return "evaluation";
+}
+
 export type ConfirmOutcome =
   | { kind: "preview_blocked" }
   | { kind: "activate"; propFirm: string | null; accountType: string };
 
-/**
- * Determines what happens when the user clicks "Add this account to Guardrail".
- *
- * Returns "preview_blocked" for fake injected accounts — the caller must not
- * make any API call. Returns "activate" for real accounts with the
- * classification payload to send to the protection endpoint.
- */
 export function resolveConfirmOutcome(
   isPreview: boolean | undefined,
   firmChoice: string,

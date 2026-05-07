@@ -7,6 +7,10 @@ import {
   resolveConfirmOutcome,
   PREVIEW_CONFIRM_MESSAGE,
   PREVIEW_CONFIRM_HINT,
+  getDefaultFirmChoice,
+  getDefaultOtherText,
+  getDefaultTypeChoice,
+  KNOWN_PILL_FIRMS,
 } from "./new-accounts-panel-logic.ts";
 
 // ── Dashboard exclusion contract ──────────────────────────────────────────────
@@ -598,5 +602,134 @@ describe("resolveConfirmOutcome", () => {
     if (outcome.kind === "activate") {
       assert.equal(outcome.propFirm, null);
     }
+  });
+});
+
+// ── Review step default helpers ────────────────────────────────────────────────
+// Tests 1-8 for the "Review account setup" UX improvement.
+
+describe("getDefaultFirmChoice", () => {
+  // Test 1: known pill firm → returns that firm
+  it("returns the inherited prop firm when it is a known pill firm", () => {
+    assert.equal(getDefaultFirmChoice("MyFundedFutures", null), "MyFundedFutures");
+    assert.equal(getDefaultFirmChoice("Apex Trader Funding", null), "Apex Trader Funding");
+    assert.equal(getDefaultFirmChoice("Topstep", null), "Topstep");
+  });
+
+  // Test 2: unknown firm name → "other"
+  it("returns 'other' when inheritedPropFirm is not in the known pill list", () => {
+    assert.equal(getDefaultFirmChoice("Elite Trader Funding", null), "other");
+    assert.equal(getDefaultFirmChoice("SomeFirm", "MyFundedFutures"), "other"); // inherited wins
+  });
+
+  // Test 5: no firm at all → "personal"
+  it("returns 'personal' when both inheritedPropFirm and suggestedPropFirm are null/undefined", () => {
+    assert.equal(getDefaultFirmChoice(null, null), "personal");
+    assert.equal(getDefaultFirmChoice(undefined, undefined), "personal");
+    assert.equal(getDefaultFirmChoice(null, undefined), "personal");
+  });
+
+  it("falls back to suggestedPropFirm when inheritedPropFirm is null", () => {
+    assert.equal(getDefaultFirmChoice(null, "MyFundedFutures"), "MyFundedFutures");
+    assert.equal(getDefaultFirmChoice(null, "UnknownFirm"), "other");
+  });
+
+  it("inheritedPropFirm takes priority over suggestedPropFirm", () => {
+    assert.equal(getDefaultFirmChoice("Topstep", "MyFundedFutures"), "Topstep");
+  });
+});
+
+describe("getDefaultOtherText", () => {
+  // Test 6: unknown firm → other text pre-filled with the firm name
+  it("returns the firm name when it is not in the known pill list", () => {
+    assert.equal(getDefaultOtherText("Elite Trader Funding", null), "Elite Trader Funding");
+    assert.equal(getDefaultOtherText(null, "CustomFirm"), "CustomFirm");
+  });
+
+  // Test 7: known firms → empty string (pill handles it, no text input needed)
+  it("returns empty string for known pill firms", () => {
+    assert.equal(getDefaultOtherText("MyFundedFutures", null), "");
+    assert.equal(getDefaultOtherText("Apex Trader Funding", null), "");
+    assert.equal(getDefaultOtherText("Topstep", null), "");
+  });
+
+  it("returns empty string when no firm is available", () => {
+    assert.equal(getDefaultOtherText(null, null), "");
+    assert.equal(getDefaultOtherText(undefined, undefined), "");
+  });
+});
+
+describe("getDefaultTypeChoice", () => {
+  // Test 3: MFFUEV accounts inherit "evaluation" → pre-selects Evaluation pill
+  it("returns 'evaluation' when inherited type is 'evaluation'", () => {
+    assert.equal(getDefaultTypeChoice("evaluation", null), "evaluation");
+    assert.equal(getDefaultTypeChoice("evaluation", "funded"), "evaluation"); // inherited wins
+  });
+
+  it("returns 'funded' when inherited type is 'funded'", () => {
+    assert.equal(getDefaultTypeChoice("funded", null), "funded");
+  });
+
+  it("returns 'personal' when inherited type is 'personal'", () => {
+    assert.equal(getDefaultTypeChoice("personal", null), "personal");
+  });
+
+  it("returns 'demo' when inherited type is 'demo'", () => {
+    assert.equal(getDefaultTypeChoice("demo", null), "demo");
+  });
+
+  // Test 8: falls back to "evaluation" for unknown or missing types
+  it("falls back to 'evaluation' for null, undefined, or unrecognised type values", () => {
+    assert.equal(getDefaultTypeChoice(null, null), "evaluation");
+    assert.equal(getDefaultTypeChoice(undefined, undefined), "evaluation");
+    assert.equal(getDefaultTypeChoice(null, "monitor"), "evaluation"); // unrecognised
+  });
+
+  it("falls back to suggestedAccountType when inheritedAccountType is null", () => {
+    assert.equal(getDefaultTypeChoice(null, "funded"), "funded");
+    assert.equal(getDefaultTypeChoice(null, "evaluation"), "evaluation");
+  });
+});
+
+// Test 4: resolveConfirmOutcome uses the caller-supplied typeChoice (not hardcoded).
+// This confirms that when the user changes the account type pill before confirming,
+// the updated value flows through correctly.
+describe("resolveConfirmOutcome respects caller-supplied typeChoice (test 4)", () => {
+  it("uses 'funded' when the user has changed the pill from 'evaluation' to 'funded'", () => {
+    const outcome = resolveConfirmOutcome(false, "MyFundedFutures", "", "funded");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.accountType, "funded");
+    }
+  });
+
+  it("uses 'demo' when the user selects the Demo pill", () => {
+    const outcome = resolveConfirmOutcome(false, "MyFundedFutures", "", "demo");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.accountType, "demo");
+    }
+  });
+
+  it("uses updated 'other' firm text when user changes firm via picker and types a name", () => {
+    const outcome = resolveConfirmOutcome(false, "other", "My Prop Firm", "evaluation");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, "My Prop Firm");
+      assert.equal(outcome.accountType, "evaluation");
+    }
+  });
+});
+
+describe("KNOWN_PILL_FIRMS constant", () => {
+  it("contains the three standard prop firms shown as pills", () => {
+    assert.ok(KNOWN_PILL_FIRMS.includes("MyFundedFutures"));
+    assert.ok(KNOWN_PILL_FIRMS.includes("Apex Trader Funding"));
+    assert.ok(KNOWN_PILL_FIRMS.includes("Topstep"));
+  });
+
+  it("does not include 'personal' or 'other' (those are special cases)", () => {
+    assert.ok(!KNOWN_PILL_FIRMS.includes("personal" as never));
+    assert.ok(!KNOWN_PILL_FIRMS.includes("other" as never));
   });
 });
