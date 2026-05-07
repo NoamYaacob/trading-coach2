@@ -74,6 +74,12 @@ export default async function RulesPage({
             maxTradesPerDay: true, stopAfterLosses: true,
             allowedEndHour: true,
             sessionEndBehavior: true,
+            sessionPresetsJson: true,
+            sessionPreset: true,
+            sessionStartTime: true,
+            sessionEndTime: true,
+            sessionTimezone: true,
+            ruleEditLockBufferMinutes: true,
             maxContracts: true,
             propFirmAccountSize: true, propFirmPhase: true,
             propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
@@ -184,6 +190,10 @@ export default async function RulesPage({
   const hasPendingPayload = Boolean(riskRules?.pendingPayloadJson && riskRules?.pendingEffectiveDate);
 
   // Build account-specific initial values (only used when scope=account)
+  const accountSessionPresets = selectedAccount?.riskRules?.sessionPresetsJson
+    ? (JSON.parse(selectedAccount.riskRules.sessionPresetsJson) as string[])
+    : null;
+
   const accountInitial: AccountRulesValues = {
     maxDailyLoss: decStr(selectedAccount?.riskRules?.maxDailyLoss),
     riskPerTrade: decStr(selectedAccount?.riskRules?.riskPerTrade),
@@ -191,6 +201,12 @@ export default async function RulesPage({
     stopAfterLosses: intStr(selectedAccount?.riskRules?.stopAfterLosses),
     allowedEndHour: intStr(selectedAccount?.riskRules?.allowedEndHour),
     sessionEndBehavior: selectedAccount?.riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
+    sessionPresets: accountSessionPresets ?? [],
+    sessionIsCustom: !accountSessionPresets && selectedAccount?.riskRules?.sessionPreset === "custom",
+    sessionStartTime: selectedAccount?.riskRules?.sessionStartTime ?? "",
+    sessionEndTime: selectedAccount?.riskRules?.sessionEndTime ?? "",
+    sessionTimezone: selectedAccount?.riskRules?.sessionTimezone ?? "",
+    ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
     propFirmAccountSize: decStr(selectedAccount?.riskRules?.propFirmAccountSize),
     propFirmPhase: selectedAccount?.riskRules?.propFirmPhase ?? "",

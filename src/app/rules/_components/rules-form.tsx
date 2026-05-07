@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
 import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
-import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
+import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -68,40 +68,6 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
     hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day.",
   },
 ] as const;
-
-/** Converts "HH:mm" (24-hour) to "h:mm AM/PM" (12-hour) for display. */
-function fmt12h(hhmm: string): string {
-  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return hhmm;
-  let h = Number(m[1]);
-  const min = m[2];
-  const period = h < 12 ? "AM" : "PM";
-  if (h === 0) h = 12;
-  else if (h > 12) h -= 12;
-  return `${h}:${min} ${period}`;
-}
-
-/** Returns "HH:mm minus bufferMin minutes" as an HH:mm string, then formatted 12-hour. */
-function lockBufferStart12h(sessionStart: string, bufferMin: number): string {
-  const m = sessionStart.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return sessionStart;
-  const totalMin = Number(m[1]) * 60 + Number(m[2]) - bufferMin;
-  const clamped = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h = Math.floor(clamped / 60);
-  const min = String(clamped % 60).padStart(2, "0");
-  return fmt12h(`${String(h).padStart(2, "0")}:${min}`);
-}
-
-/** Returns "HH:mm minus bufferMin minutes" as an HH:mm string for display. */
-function lockBufferStart(sessionStart: string, bufferMin: number): string {
-  const m = sessionStart.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return sessionStart;
-  const totalMin = Number(m[1]) * 60 + Number(m[2]) - bufferMin;
-  const clamped = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h = Math.floor(clamped / 60);
-  const min = clamped % 60;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-}
 
 function numericOrNull(value: string): number | null {
   if (value.trim() === "") return null;
@@ -310,109 +276,17 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
         </label>
       </div>
 
-      {/* ── Trading session (rule-edit lock window) ────────────────────────── */}
-      <div role="group" aria-label="Trading session" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
-        <div>
-          <p className="text-sm font-semibold text-stone-950">Trading session</p>
-          <p className="mt-1 text-xs text-stone-500">
-            Guardrail locks rule editing 60 minutes before your session starts and keeps it locked until the session ends. Select one or more sessions to prevent weakening your own protections mid-session.
-          </p>
-          <p className="mt-1 text-xs text-stone-400">
-            Times are shown in Eastern Time (ET). Guardrail monitors session discipline only. Broker-level time blocking is not currently available.
-          </p>
-        </div>
-
-        {/* Multi-select preset buttons */}
-        <div className="flex flex-wrap gap-2">
-          {SESSION_PRESETS.map((preset) => {
-            const selected = values.sessionPresets.includes(preset.id);
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => {
-                  const next = selected
-                    ? values.sessionPresets.filter((id) => id !== preset.id)
-                    : [...values.sessionPresets, preset.id];
-                  update("sessionPresets", next);
-                  if (next.length > 0) update("sessionIsCustom", false);
-                }}
-                className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
-                  selected
-                    ? "border-stone-950 bg-stone-950 text-stone-50"
-                    : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"
-                }`}
-              >
-                {preset.label}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => {
-              update("sessionIsCustom", !values.sessionIsCustom);
-              if (!values.sessionIsCustom) update("sessionPresets", []);
-            }}
-            className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
-              values.sessionIsCustom
-                ? "border-stone-950 bg-stone-950 text-stone-50"
-                : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"
-            }`}
-          >
-            Custom
-          </button>
-        </div>
-
-        {/* Show selected preset times */}
-        {values.sessionPresets.length > 0 && (
-          <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-xs text-stone-600 space-y-1">
-            {SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id)).map((preset) => (
-              <p key={preset.id}>
-                <span className="font-medium">{preset.label}</span>{" — "}
-                {fmt12h(preset.sessionStartTime)}–{fmt12h(preset.sessionEndTime)} ET · Locks at{" "}
-                <span className="font-medium">{lockBufferStart12h(preset.sessionStartTime, 60)} ET</span>
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Custom session fields */}
-        {values.sessionIsCustom && (
-          <div className="grid gap-3">
-            <Field label="Timezone (IANA, e.g. America/New_York)">
-              <input
-                type="text"
-                value={values.sessionTimezone}
-                onChange={(e) => update("sessionTimezone", e.target.value)}
-                placeholder="America/New_York"
-                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-              />
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Session start (HH:mm)">
-                <input
-                  type="text"
-                  value={values.sessionStartTime}
-                  onChange={(e) => update("sessionStartTime", e.target.value)}
-                  placeholder="09:30"
-                  pattern="\d{1,2}:\d{2}"
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-                />
-              </Field>
-              <Field label="Session end (HH:mm)">
-                <input
-                  type="text"
-                  value={values.sessionEndTime}
-                  onChange={(e) => update("sessionEndTime", e.target.value)}
-                  placeholder="16:00"
-                  pattern="\d{1,2}:\d{2}"
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-                />
-              </Field>
-            </div>
-          </div>
-        )}
-      </div>
+      <TradingSessionSelector
+        values={{
+          sessionPresets: values.sessionPresets,
+          sessionIsCustom: values.sessionIsCustom,
+          sessionStartTime: values.sessionStartTime,
+          sessionEndTime: values.sessionEndTime,
+          sessionTimezone: values.sessionTimezone,
+          ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes,
+        }}
+        onChange={(key, val) => update(key as keyof RulesFormValues, val as RulesFormValues[keyof RulesFormValues])}
+      />
 
       {/* ── Advanced settings — hidden by default ────────────────────────── */}
       <details className="group rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
@@ -423,12 +297,6 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
         <div className="mt-4 grid gap-4">
           <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
             <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-          </Field>
-          <Field
-            label="Rule edit lock buffer (minutes)"
-            hint="How many minutes before the session starts rule editing locks. Default is 60."
-          >
-            <NumberInput value={values.ruleEditLockBufferMinutes} onChange={(v) => update("ruleEditLockBufferMinutes", v)} placeholder="60" integer />
           </Field>
         </div>
       </details>

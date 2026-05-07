@@ -12,6 +12,12 @@ export type RiskRulesBody = {
   allowedEndHour?: number | null;
   sessionEndBehavior?: string | null;
   maxContracts?: number | null;
+  selectedSessionPresets?: string[] | null;
+  sessionPreset?: string | null;
+  sessionStartTime?: string | null;
+  sessionEndTime?: string | null;
+  sessionTimezone?: string | null;
+  ruleEditLockBufferMinutes?: number | null;
   propFirmAccountSize?: number | null;
   propFirmPhase?: string | null;
   propFirmDailyLossLimit?: number | null;
@@ -32,6 +38,12 @@ export function riskRulesData(r: RiskRulesBody) {
     allowedStartHour: r.allowedStartHour ?? null,
     allowedEndHour: r.allowedEndHour ?? null,
     sessionEndBehavior: r.sessionEndBehavior ?? null,
+    sessionPresetsJson: r.selectedSessionPresets != null ? JSON.stringify(r.selectedSessionPresets) : null,
+    sessionPreset: r.sessionPreset ?? null,
+    sessionStartTime: r.sessionStartTime ?? null,
+    sessionEndTime: r.sessionEndTime ?? null,
+    sessionTimezone: r.sessionTimezone ?? null,
+    ruleEditLockBufferMinutes: r.ruleEditLockBufferMinutes ?? null,
     maxContracts: r.maxContracts ?? null,
     propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null,
     propFirmPhase: r.propFirmPhase ?? null,

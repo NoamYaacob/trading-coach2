@@ -491,6 +491,11 @@ model AccountRiskRules {
   allowedEndHour   Int?
   sessionTimezone  String?
   sessionEndBehavior String?
+  sessionPreset         String?
+  sessionStartTime      String?
+  sessionEndTime        String?
+  sessionPresetsJson    String?
+  ruleEditLockBufferMinutes Int?
   maxContracts     Int?
   // Prop firm limits — only relevant for evaluation / funded accounts.
   // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,

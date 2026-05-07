@@ -10,6 +10,7 @@ import {
   computeAccountRulesBanner,
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic";
+import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -27,6 +28,12 @@ export type AccountRulesValues = {
   stopAfterLosses: string;
   allowedEndHour: string;
   sessionEndBehavior: string;
+  sessionPresets: string[];
+  sessionIsCustom: boolean;
+  sessionStartTime: string;
+  sessionEndTime: string;
+  sessionTimezone: string;
+  ruleEditLockBufferMinutes: string;
   maxContracts: string;
   propFirmAccountSize: string;
   propFirmPhase: string;
@@ -191,6 +198,7 @@ export function AccountRulesForm({
     setSaving(true);
     setError(null);
     try {
+      const hasPresets = values.sessionPresets.length > 0;
       const data = await sendPatch({
         riskRules: {
           maxDailyLoss: num(values.maxDailyLoss),
@@ -199,6 +207,12 @@ export function AccountRulesForm({
           stopAfterLosses: int(values.stopAfterLosses),
           allowedEndHour: int(values.allowedEndHour),
           sessionEndBehavior: values.sessionEndBehavior || null,
+          selectedSessionPresets: hasPresets ? values.sessionPresets : (values.sessionIsCustom ? null : []),
+          sessionPreset: values.sessionIsCustom ? "custom" : null,
+          sessionStartTime: values.sessionIsCustom ? (values.sessionStartTime.trim() || null) : null,
+          sessionEndTime: values.sessionIsCustom ? (values.sessionEndTime.trim() || null) : null,
+          sessionTimezone: values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null,
+          ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
           maxContracts: int(values.maxContracts),
           propFirmAccountSize: num(values.propFirmAccountSize),
           propFirmPhase: values.propFirmPhase.trim() || null,
@@ -375,6 +389,18 @@ export function AccountRulesForm({
           );
         })()}
       </div>
+
+      <TradingSessionSelector
+        values={{
+          sessionPresets: values.sessionPresets,
+          sessionIsCustom: values.sessionIsCustom,
+          sessionStartTime: values.sessionStartTime,
+          sessionEndTime: values.sessionEndTime,
+          sessionTimezone: values.sessionTimezone,
+          ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes,
+        }}
+        onChange={(key, val) => update(key as keyof AccountRulesValues, val as AccountRulesValues[keyof AccountRulesValues])}
+      />
 
       {/* At cutoff */}
       <div role="group" aria-label="At cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
