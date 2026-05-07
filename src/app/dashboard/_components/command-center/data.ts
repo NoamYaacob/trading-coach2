@@ -88,6 +88,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
   ]);
 
   // Pending-decision rows: rendered in a separate "New accounts found" panel.
+  // We pull `propFirm` and the parent `brokerConnection.env` so the panel can
+  // disambiguate live vs demo and show prop-firm context for each discovered row.
   const pendingRows = await prisma.connectedAccount.findMany({
     where: { userId, isActive: true, protectionStatus: "pending_decision" },
     select: {
@@ -96,8 +98,10 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       externalAccountId: true,
       platform: true,
       accountType: true,
+      propFirm: true,
       brokerConnectionId: true,
       lastSeenInBrokerAt: true,
+      brokerConnection: { select: { env: true } },
     },
     orderBy: { lastSeenInBrokerAt: "desc" },
   });
@@ -431,17 +435,23 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
   const firmsMap = new Map(groups.map((g) => [g.firmKey, g.firmLabel]));
   const firms = [...firmsMap.entries()].map(([key, label]) => ({ key, label }));
 
-  const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => ({
-    id: p.id,
-    label: p.label,
-    externalAccountId: p.externalAccountId,
-    platform: p.platform,
-    platformLabel: PLATFORM_LABEL[p.platform] ?? p.platform,
-    accountType: p.accountType,
-    accountTypeLabel: ACCOUNT_TYPE_LABEL[p.accountType] ?? p.accountType,
-    brokerConnectionId: p.brokerConnectionId,
-    lastSeenInBrokerAt: p.lastSeenInBrokerAt,
-  }));
+  const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => {
+    const env = p.brokerConnection?.env ?? null;
+    return {
+      id: p.id,
+      label: p.label,
+      externalAccountId: p.externalAccountId,
+      platform: p.platform,
+      platformLabel: PLATFORM_LABEL[p.platform] ?? p.platform,
+      accountType: p.accountType,
+      accountTypeLabel: ACCOUNT_TYPE_LABEL[p.accountType] ?? p.accountType,
+      brokerConnectionId: p.brokerConnectionId,
+      lastSeenInBrokerAt: p.lastSeenInBrokerAt,
+      env,
+      envLabel: env === "live" ? "Live account" : env === "demo" ? "Demo / Sim" : null,
+      propFirm: p.propFirm ?? null,
+    };
+  });
 
   return {
     accounts: computed,

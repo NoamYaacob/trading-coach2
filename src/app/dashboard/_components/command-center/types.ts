@@ -126,6 +126,12 @@ export type PendingDiscoveredAccount = {
   accountTypeLabel: string;
   brokerConnectionId: string | null;
   lastSeenInBrokerAt: Date | null;
+  /** Tradovate environment of the broker connection ("live" | "demo" | null when unknown). */
+  env: string | null;
+  /** Human label for env, e.g. "Live account" or "Demo / Sim". */
+  envLabel: string | null;
+  /** Prop firm name on the discovered ConnectedAccount row, or null for unassigned/personal. */
+  propFirm: string | null;
 };
 
 export const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";

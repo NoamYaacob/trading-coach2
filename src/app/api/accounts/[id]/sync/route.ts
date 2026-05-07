@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncTradovateAccount } from "@/lib/brokers/tradovate-sync";
+import { runDiscoveryForConnection } from "@/lib/brokers/tradovate-discovery";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(
@@ -24,13 +25,21 @@ export async function POST(
 
   const account = await prisma.connectedAccount.findFirst({
     where: { id, userId: currentUser.id, platform: "tradovate", isActive: true },
-    select: { id: true },
+    select: { id: true, brokerConnectionId: true },
   });
   if (!account) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
   const result = await syncTradovateAccount(id, currentUser.id);
+
+  // Best-effort discovery for the account's broker connection — surfaces
+  // newly-purchased broker accounts in the dashboard's "New broker account
+  // detected" panel without requiring a separate "Refresh all accounts" click.
+  // Discovery failures are non-fatal: we never block the per-account sync result.
+  if (account.brokerConnectionId) {
+    await runDiscoveryForConnection(account.brokerConnectionId, currentUser.id);
+  }
 
   if (!result.ok) {
     return NextResponse.json(

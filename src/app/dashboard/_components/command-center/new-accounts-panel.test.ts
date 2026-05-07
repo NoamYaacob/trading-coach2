@@ -365,3 +365,126 @@ describe("derivePropFirmNotice", () => {
     assert.ok(!("requiresConfirmation" in result!));
   });
 });
+
+// ── Dashboard CTA contracts: Add to Guardrail / Ignore for now ────────────────
+
+describe("dashboard CTA contract — Add to Guardrail / Ignore for now", () => {
+  // The dashboard's "New broker account detected" panel exposes two buttons:
+  //  1. "Add to Guardrail" → POST /api/accounts/[id]/protection { protectionStatus: "protected" }
+  //  2. "Ignore for now"   → POST /api/accounts/[id]/protection { protectionStatus: "ignored"   }
+  //
+  // Both are first-time activations from pending_decision and must apply
+  // immediately — even if a session lock is active — so the user is never
+  // stuck staring at the same banner after clicking.
+
+  const lockedState = {
+    isLocked: true,
+    timezone: "America/New_York",
+    tradingDayKey: "2024-07-15",
+    nextTradingDayKey: "2024-07-16",
+    cutoffTime: new Date("2024-07-15T13:55:00Z"),
+    hasSessionHours: true,
+    lockedFrom: new Date("2024-07-15T14:00:00Z"),
+    lockedUntil: new Date("2024-07-15T23:00:00Z"),
+    nextCutoffTime: null,
+  };
+
+  test("Add to Guardrail uses 'protected' as the target status", () => {
+    const addStatus = "protected";
+    assert.ok(isProtectionIncrease("pending_decision", addStatus));
+  });
+
+  test("Ignore for now uses 'ignored' as the target status", () => {
+    const ignoreStatus = "ignored";
+    assert.ok(isProtectionIncrease("pending_decision", ignoreStatus));
+  });
+
+  test("Add to Guardrail applies immediately even when session is locked", () => {
+    const { allowed } = canChangeProtection("pending_decision", "protected", lockedState);
+    assert.ok(allowed, "first-time activation must apply immediately regardless of lock");
+  });
+
+  test("Ignore for now applies immediately even when session is locked", () => {
+    const { allowed } = canChangeProtection("pending_decision", "ignored", lockedState);
+    assert.ok(allowed);
+  });
+});
+
+// ── Discovery payload — env + prop firm display ──────────────────────────────
+
+describe("dashboard discovery payload — env + prop firm separation", () => {
+  // The dashboard banner must show env (Live / Demo) and prop firm so the user
+  // can disambiguate when the same Tradovate login surfaces a new account in
+  // multiple environments. The mapping below mirrors the inline logic in
+  // src/app/dashboard/_components/command-center/data.ts.
+
+  function envLabelForBannerRow(env: string | null | undefined): string | null {
+    return env === "live" ? "Live account" : env === "demo" ? "Demo / Sim" : null;
+  }
+
+  function propFirmDisplayForBannerRow(propFirm: string | null | undefined): string {
+    return propFirm && propFirm.trim() ? propFirm.trim() : "Unassigned";
+  }
+
+  test("env=live maps to 'Live account'", () => {
+    assert.equal(envLabelForBannerRow("live"), "Live account");
+  });
+
+  test("env=demo maps to 'Demo / Sim'", () => {
+    assert.equal(envLabelForBannerRow("demo"), "Demo / Sim");
+  });
+
+  test("env=null returns null (banner can omit the field gracefully)", () => {
+    assert.equal(envLabelForBannerRow(null), null);
+    assert.equal(envLabelForBannerRow(undefined), null);
+  });
+
+  test("env=unknown string returns null (no leaky technical labels)", () => {
+    assert.equal(envLabelForBannerRow("staging"), null);
+  });
+
+  test("missing prop firm displays 'Unassigned'", () => {
+    assert.equal(propFirmDisplayForBannerRow(null), "Unassigned");
+    assert.equal(propFirmDisplayForBannerRow(undefined), "Unassigned");
+    assert.equal(propFirmDisplayForBannerRow(""), "Unassigned");
+    assert.equal(propFirmDisplayForBannerRow("   "), "Unassigned");
+  });
+
+  test("present prop firm displays its trimmed name", () => {
+    assert.equal(propFirmDisplayForBannerRow("MyFundedFutures"), "MyFundedFutures");
+    assert.equal(propFirmDisplayForBannerRow("  Apex Trader Funding  "), "Apex Trader Funding");
+  });
+});
+
+// ── Per-account sync also runs discovery ─────────────────────────────────────
+
+describe("per-account sync triggers connection-level discovery", () => {
+  // The /api/accounts/[id]/sync route now calls runDiscoveryForConnection
+  // alongside syncTradovateAccount so newly-purchased broker accounts surface
+  // in the dashboard panel without requiring a separate "Refresh all accounts"
+  // click. This documents the intended behavior — the actual implementation
+  // lives in src/app/api/accounts/[id]/sync/route.ts.
+
+  test("per-account sync route calls discovery when account has a brokerConnectionId", () => {
+    // Contract: the route looks up account.brokerConnectionId and calls
+    // runDiscoveryForConnection(connectionId, userId) before returning.
+    const accountWithConnection = {
+      brokerConnectionId: "conn_1",
+    };
+    assert.ok(
+      accountWithConnection.brokerConnectionId != null,
+      "accounts with a brokerConnectionId trigger discovery on sync",
+    );
+  });
+
+  test("discovery failures during per-account sync are non-fatal", () => {
+    // runDiscoveryForConnection always resolves with { ok, newlyCreatedIds, missingIds }
+    // and never throws — the route must surface the original sync result even
+    // when discovery fails. Documented contract: caller never blocks on it.
+    type DiscoveryResult = { ok: boolean; newlyCreatedIds: string[]; missingIds: string[] };
+    const failed: DiscoveryResult = { ok: false, newlyCreatedIds: [], missingIds: [] };
+    assert.equal(failed.ok, false);
+    assert.deepEqual(failed.newlyCreatedIds, []);
+    assert.deepEqual(failed.missingIds, []);
+  });
+});

@@ -13,11 +13,13 @@
  */
 
 import { prisma } from "@/lib/db";
+import { parseAndDecrypt } from "@/lib/security/token-crypto";
 
 import {
   decideReconciliation,
   type DiscoveredAccount,
 } from "./discovery-decision";
+import { getTradovateConfig } from "./tradovate-env";
 
 export type { DiscoveredAccount, LocalAccountForReconciliation, ReconcileDecision } from "./discovery-decision";
 export { decideReconciliation } from "./discovery-decision";
@@ -240,4 +242,63 @@ export async function reconcileDiscoveredAccounts(input: {
     newlyCreatedIds,
     missingIds,
   };
+}
+
+/**
+ * Run discovery for a single broker connection: fetch /account/list, reconcile
+ * against the local DB, return what changed.
+ *
+ * This is the shared implementation used by:
+ *  - `syncTradovateConnection` (full connection sync)
+ *  - the per-account sync API route (so newly-purchased broker accounts surface
+ *    in the dashboard's "New broker account detected" panel without requiring
+ *    a separate "Refresh all" click).
+ *
+ * Discovery failures are non-fatal — callers should treat the returned `ok`
+ * flag as informational and continue with whatever else they were doing.
+ */
+export async function runDiscoveryForConnection(
+  connectionId: string,
+  userId: string,
+): Promise<{ ok: boolean; newlyCreatedIds: string[]; missingIds: string[] }> {
+  try {
+    const connection = await prisma.brokerConnection.findFirst({
+      where: { id: connectionId, userId },
+      select: { env: true, accessTokenEncrypted: true },
+    });
+    const cfg = getTradovateConfig();
+    if (!connection || cfg.state !== "ready") {
+      console.warn("[tradovate/discovery] preconditions not met", {
+        connectionId,
+        hasConnection: connection != null,
+        configReady: cfg.state === "ready",
+      });
+      return { ok: false, newlyCreatedIds: [], missingIds: [] };
+    }
+    const accessToken = parseAndDecrypt(connection.accessTokenEncrypted);
+    const env = connection.env as "live" | "demo";
+    const discovered = await fetchTradovateAccountList(
+      cfg.config.apiBaseUrl[env],
+      accessToken,
+    );
+    if (!discovered) {
+      return { ok: false, newlyCreatedIds: [], missingIds: [] };
+    }
+    const reconciled = await reconcileDiscoveredAccounts({
+      userId,
+      brokerConnectionId: connectionId,
+      discovered,
+    });
+    return {
+      ok: true,
+      newlyCreatedIds: reconciled.newlyCreatedIds,
+      missingIds: reconciled.missingIds,
+    };
+  } catch (err) {
+    console.error("[tradovate/discovery] runDiscoveryForConnection failed", {
+      connectionId,
+      msg: err instanceof Error ? err.message : "unknown",
+    });
+    return { ok: false, newlyCreatedIds: [], missingIds: [] };
+  }
 }

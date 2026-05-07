@@ -242,3 +242,70 @@ test("matching is case-insensitive and trims whitespace (defensive normalization
   assert.equal(d.matched[0]!.id, "la1");
   assert.equal(d.missing.length, 0);
 });
+
+// ─── Multi-connection isolation (live vs demo) ───────────────────────────
+
+test("live and demo broker connections are reconciled independently", () => {
+  // A user with both a live and a demo Tradovate connection should have the
+  // two reconciled in separate calls. A demo-only account never appears in
+  // the live connection's missing list, and vice versa.
+  const liveResult = decideReconciliation({
+    brokerConnectionId: "conn_live",
+    discovered: [discovered("live_1")],
+    localAccounts: [
+      local("la_live", "live_1", { brokerConnectionId: "conn_live" }),
+      local("la_demo", "demo_1", { brokerConnectionId: "conn_demo" }),
+    ],
+  });
+  assert.equal(liveResult.matched.length, 1);
+  assert.equal(liveResult.matched[0]!.id, "la_live");
+  assert.equal(
+    liveResult.missing.length,
+    0,
+    "demo-connection account must not be flagged when reconciling the live connection",
+  );
+});
+
+test("a new account discovered on demo does not appear in a separate live discovery pass", () => {
+  // Two consecutive discovery passes (one per connection) must produce
+  // independent newAccounts arrays. A new demo account in the demo pass
+  // must not appear as new on the live pass — it never reaches that pass.
+  const demoPass = decideReconciliation({
+    brokerConnectionId: "conn_demo",
+    discovered: [discovered("demo_new")],
+    localAccounts: [],
+  });
+  const livePass = decideReconciliation({
+    brokerConnectionId: "conn_live",
+    discovered: [discovered("live_existing")],
+    localAccounts: [local("la_live", "live_existing", { brokerConnectionId: "conn_live" })],
+  });
+  assert.equal(demoPass.newAccounts.length, 1);
+  assert.equal(demoPass.newAccounts[0]!.externalAccountId, "demo_new");
+  assert.equal(livePass.newAccounts.length, 0);
+});
+
+// ─── Safety: discovered accounts inherit nothing from siblings ───────────
+
+test("newAccounts entries carry only broker-supplied fields — no sibling state", () => {
+  // The reconciliation surface used to create new pending_decision rows is
+  // limited to externalAccountId/name/accountType/active. There is no field
+  // for inherited lockout state, trade count, balance, or any reference to
+  // other local accounts. This pins that contract — so adding a new account
+  // can never silently inherit risk state from a sibling.
+  const protectedSibling = local("sibling", "1001", {
+    protectionStatus: "protected",
+    missingFromBrokerSince: null,
+  });
+  const d = decideReconciliation({
+    brokerConnectionId: CONN,
+    discovered: [discovered("1001"), discovered("9999", "Brand new account")],
+    localAccounts: [protectedSibling],
+  });
+  assert.equal(d.newAccounts.length, 1);
+  const created = d.newAccounts[0]!;
+  // Exactly the four broker-supplied fields, nothing else.
+  const keys = Object.keys(created).sort();
+  assert.deepEqual(keys, ["accountType", "active", "externalAccountId", "name"]);
+  assert.equal(created.externalAccountId, "9999");
+});

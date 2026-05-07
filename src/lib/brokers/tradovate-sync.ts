@@ -15,12 +15,7 @@
 
 import { prisma } from "@/lib/db";
 import { TradovateClient, TradovateClientError } from "./tradovate-client";
-import {
-  fetchTradovateAccountList,
-  reconcileDiscoveredAccounts,
-} from "./tradovate-discovery";
-import { getTradovateConfig } from "./tradovate-env";
-import { parseAndDecrypt } from "@/lib/security/token-crypto";
+import { runDiscoveryForConnection } from "./tradovate-discovery";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, selectPhaseCTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
@@ -701,58 +696,10 @@ export async function syncTradovateConnection(
   discovery: { newlyCreatedIds: string[]; missingIds: string[]; ok: boolean };
 }> {
   // ── 1. Discovery + reconciliation ────────────────────────────────────────
-  let discoveryOk = true;
-  let newlyCreatedIds: string[] = [];
-  let missingIds: string[] = [];
-  try {
-    const connection = await prisma.brokerConnection.findFirst({
-      where: { id: connectionId, userId },
-      select: { env: true, accessTokenEncrypted: true },
-    });
-    const cfg = getTradovateConfig();
-    if (connection && cfg.state === "ready") {
-      const accessToken = parseAndDecrypt(connection.accessTokenEncrypted);
-      const env = connection.env as "live" | "demo";
-      const discovered = await fetchTradovateAccountList(
-        cfg.config.apiBaseUrl[env],
-        accessToken,
-      );
-      if (discovered) {
-        const reconciled = await reconcileDiscoveredAccounts({
-          userId,
-          brokerConnectionId: connectionId,
-          discovered,
-        });
-        newlyCreatedIds = reconciled.newlyCreatedIds;
-        missingIds = reconciled.missingIds;
-        console.info("[tradovate/sync] discovery + reconciliation succeeded", {
-          connectionId,
-          discoveredCount: discovered.length,
-          newlyCreatedCount: newlyCreatedIds.length,
-          missingCount: missingIds.length,
-        });
-      } else {
-        discoveryOk = false;
-        console.warn("[tradovate/sync] discovery returned null — skipping reconciliation", {
-          connectionId,
-          note: "Local missingFromBrokerSince flags are preserved from the previous successful sync.",
-        });
-      }
-    } else {
-      discoveryOk = false;
-      console.warn("[tradovate/sync] discovery preconditions not met", {
-        connectionId,
-        hasConnection: connection != null,
-        configReady: cfg.state === "ready",
-      });
-    }
-  } catch (err) {
-    discoveryOk = false;
-    console.error("[tradovate/sync] discovery failed", {
-      connectionId,
-      msg: err instanceof Error ? err.message : "unknown",
-    });
-  }
+  const discovery = await runDiscoveryForConnection(connectionId, userId);
+  const discoveryOk = discovery.ok;
+  const newlyCreatedIds = discovery.newlyCreatedIds;
+  const missingIds = discovery.missingIds;
 
   // ── 2. Sync only protected + monitor_only accounts ──────────────────────
   // Accounts the broker no longer returns are excluded — their cached state
