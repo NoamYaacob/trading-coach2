@@ -441,12 +441,7 @@ export function buildRuleEditLockMessage(
   const sessionTz = sessionTimezone ?? SESSION_WINDOW_TIMEZONE;
 
   function formatNextWindow(nextAt: Date): string {
-    const sessionFormatted = formatLocalTime(nextAt, sessionTz);
-    if (userTimezone && userTimezone !== sessionTz) {
-      const userFormatted = formatLocalTime(nextAt, userTimezone);
-      return `${sessionFormatted} / ${userFormatted}`;
-    }
-    return sessionFormatted;
+    return formatLocalTime(nextAt, sessionTz);
   }
 
   switch (eligibility.reason) {

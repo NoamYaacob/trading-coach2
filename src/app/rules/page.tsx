@@ -255,7 +255,7 @@ export default async function RulesPage({
     <AppShell
       eyebrow="Trading Plan"
       title="Set your trading plan."
-      description="Define the limits Guardrail enforces during each trading session."
+      description="Set session limits once in the default template, then override for individual accounts when needed."
       compactHero
       actions={
         <Link
@@ -311,7 +311,11 @@ export default async function RulesPage({
         <div className="grid min-w-0 gap-5">
 
           {/* Scope context header */}
-          <ScopeContextHeader scope={scope} account={selectedAccount} />
+          <ScopeContextHeader
+            scope={scope}
+            account={selectedAccount}
+            hasAccountRules={selectedAccount?.riskRules !== null}
+          />
 
           {/* Enforcement mode banner — suppressed when dry-run (test mode shown below) */}
           {!isDryRun && (
@@ -337,7 +341,7 @@ export default async function RulesPage({
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
               <span>
-                <span className="font-medium">Test mode:</span> Guardrail is monitoring only. It will not block or close trades.
+                <span className="font-medium">Test mode:</span> Guardrail is monitoring only. It will not block, cancel, flatten, or close trades.
               </span>
             </div>
           )}
@@ -376,6 +380,7 @@ export default async function RulesPage({
           {scope === "account" ? (
             selectedAccount ? (
               <SectionCard
+                key={selectedAccount.id}
                 title={selectedAccount.label}
                 description={buildAccountSubtitle(selectedAccount)}
               >
@@ -495,9 +500,11 @@ function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
 function ScopeContextHeader({
   scope,
   account,
+  hasAccountRules,
 }: {
   scope: string;
   account: SelectedAccount;
+  hasAccountRules?: boolean;
 }) {
   if (scope !== "account") {
     return (
@@ -505,11 +512,16 @@ function ScopeContextHeader({
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
           Trading Plan
         </p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
-          Default template
-        </h2>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold tracking-tight text-stone-950">
+            Default template
+          </h2>
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+            Default
+          </span>
+        </div>
         <p className="mt-0.5 text-sm text-stone-500">
-          These rules apply to any account that doesn't have an override. Select an account in the sidebar to configure it individually.
+          Applies to all accounts that don't have their own override. Select an account in the sidebar to configure it individually.
         </p>
       </div>
     );
@@ -529,12 +541,23 @@ function ScopeContextHeader({
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-        Trading Plan · Account override
+        Trading Plan · Account
       </p>
-      <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
-        {account.label}
-      </h2>
-      <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold tracking-tight text-stone-950">
+          {account.label}
+        </h2>
+        {hasAccountRules ? (
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
+            Account override
+          </span>
+        ) : (
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+            Inherited default
+          </span>
+        )}
+      </div>
+      {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
     </div>
   );
 }

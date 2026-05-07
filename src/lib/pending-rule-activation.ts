@@ -104,9 +104,5 @@ export function formatPendingRuleActivation(input: {
     dateKey: input.nextTradingDayKey,
     sessionStartHour: input.sessionStartHour,
   });
-  const ctText = `${formatWallClock(instant, SESSION_WINDOW_TIMEZONE)} CT`;
-  const userTz = input.userTimezone;
-  if (!userTz || userTz === SESSION_WINDOW_TIMEZONE) return ctText;
-  const userText = `${formatWallClock(instant, userTz)} ${localTzLabel(userTz)}`;
-  return `${ctText} / ${userText}`;
+  return `${formatWallClock(instant, SESSION_WINDOW_TIMEZONE)} CT`;
 }

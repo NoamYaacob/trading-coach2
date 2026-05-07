@@ -876,14 +876,13 @@ describe("deriveRuleEditEligibility — DST London fall-back 2026-10-25", () => 
   });
 });
 
-// ── Israel local time display alongside session timezone ──────────────────────
+// ── Lock message shows session timezone only (CT-anchored, no user tz appended) ─
 
-describe("buildRuleEditLockMessage — Israel local display", () => {
+describe("buildRuleEditLockMessage — session timezone only", () => {
   const TZ = "America/New_York";
   const USER_TZ = "Asia/Jerusalem";
 
-  it("within_session shows next edit window in both ET and Israel time", () => {
-    // NY session, 16:00 ET = 23:00 Israel time (UTC+3 in summer)
+  it("within_session shows next edit window in session tz only — Israel time not appended", () => {
     const now = tzDate(2026, 5, 6, 12, 0, TZ);
     const eligibility = deriveRuleEditEligibility({
       now,
@@ -892,10 +891,10 @@ describe("buildRuleEditLockMessage — Israel local display", () => {
       sessionTimezone: TZ,
     });
     const msg = buildRuleEditLockMessage(eligibility, TZ, USER_TZ);
-    // Message should contain both "ET" and "Israel time"
     assert.ok(msg.includes("ET"), `Expected 'ET' in: ${msg}`);
-    assert.ok(msg.includes("Israel time"), `Expected 'Israel time' in: ${msg}`);
     assert.ok(msg.includes("4:00 PM"), `Expected '4:00 PM' in: ${msg}`);
+    assert.ok(!msg.includes("Israel time"), `Must not show Israel time, got: ${msg}`);
+    assert.ok(!msg.includes(" / "), `Must not have slash separator, got: ${msg}`);
   });
 
   it("same timezone: shows single time (no duplication)", () => {
@@ -907,7 +906,6 @@ describe("buildRuleEditLockMessage — Israel local display", () => {
       sessionTimezone: TZ,
     });
     const msg = buildRuleEditLockMessage(eligibility, TZ, TZ);
-    // Single timezone, no "/" separator
     const slashCount = (msg.match(/\//g) ?? []).length;
     assert.equal(slashCount, 0, `Expected no '/' but got: ${msg}`);
   });

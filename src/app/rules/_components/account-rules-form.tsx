@@ -142,7 +142,7 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day.",
+    hint: "If a trade is still open at the cutoff time, Guardrail will attempt to exit the position and lock the account for the day. Requires Tradovate full access — without it, Guardrail will alert only.",
   },
 ] as const;
 

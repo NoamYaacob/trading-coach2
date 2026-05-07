@@ -95,53 +95,49 @@ describe("formatPendingRuleActivation — CT only (no user tz, or user is CT)", 
   });
 });
 
-describe("formatPendingRuleActivation — with user timezone", () => {
-  it("Asia/Jerusalem during CDT → shows 'Israel time' on the next calendar day", () => {
-    // 2026-05-07 17:00 CDT = 2026-05-08 01:00 IDT (UTC+3)
+describe("formatPendingRuleActivation — userTimezone is accepted but ignored (CT only)", () => {
+  it("Asia/Jerusalem user → still shows CT only (no dual-timezone)", () => {
     const text = formatPendingRuleActivation({
       nextTradingDayKey: "2026-05-07",
       sessionStartHour: null,
       userTimezone: "Asia/Jerusalem",
     });
-    assert.equal(text, "May 7, 2026, 5:00 PM CT / May 8, 2026, 1:00 AM Israel time");
+    assert.equal(text, "May 7, 2026, 5:00 PM CT");
+    assert.ok(!text.includes("Israel"), `must not show Israel time, got: ${text}`);
+    assert.ok(!text.includes(" / "), `must not have slash separator, got: ${text}`);
   });
 
-  it("America/New_York → shows 'New York time' (one hour ahead during CDT)", () => {
-    // 2026-05-07 17:00 CDT = 2026-05-07 18:00 EDT
+  it("America/New_York user → shows CT only", () => {
     const text = formatPendingRuleActivation({
       nextTradingDayKey: "2026-05-07",
       sessionStartHour: null,
       userTimezone: "America/New_York",
     });
-    assert.equal(text, "May 7, 2026, 5:00 PM CT / May 7, 2026, 6:00 PM New York time");
+    assert.equal(text, "May 7, 2026, 5:00 PM CT");
+    assert.ok(!text.includes("New York"), `must not show New York time, got: ${text}`);
   });
 
-  it("Unknown timezone falls back to 'local time' instead of leaking the IANA string", () => {
+  it("Unknown timezone user → shows CT only (no fallback local time appended)", () => {
     const text = formatPendingRuleActivation({
       nextTradingDayKey: "2026-05-07",
       sessionStartHour: null,
       userTimezone: "America/Phoenix",
     });
-    assert.ok(text.includes(" / "));
-    assert.ok(
-      text.endsWith("local time"),
-      `expected fallback 'local time', got: ${text}`,
-    );
-    assert.ok(
-      !text.includes("America/Phoenix"),
-      `IANA string must not appear in user-facing copy, got: ${text}`,
-    );
+    assert.equal(text, "May 7, 2026, 5:00 PM CT");
+    assert.ok(!text.includes(" / "), `must not have slash, got: ${text}`);
+    assert.ok(!text.includes("local time"), `must not show local time, got: ${text}`);
+    assert.ok(!text.includes("America/Phoenix"), `IANA string must not appear, got: ${text}`);
   });
 
-  it("Custom session start hour is reflected in BOTH the CT side and the user side", () => {
-    // 09:00 America/Chicago on 2026-05-07 = 17:00 Asia/Jerusalem (during DST)
+  it("Custom session start hour is reflected in the CT side only", () => {
     const text = formatPendingRuleActivation({
       nextTradingDayKey: "2026-05-07",
       sessionStartHour: 9,
       userTimezone: "Asia/Jerusalem",
     });
-    assert.ok(text.includes("9:00 AM CT"));
-    assert.ok(text.includes("Israel time"));
+    assert.ok(text.includes("9:00 AM CT"), `got: ${text}`);
+    assert.ok(!text.includes("Israel"), `must not show Israel time, got: ${text}`);
+    assert.ok(!text.includes(" / "), `must not have slash, got: ${text}`);
   });
 });
 
@@ -180,12 +176,12 @@ describe("formatPendingRuleActivation — regression: never returns date-only / 
     }
   });
 
-  it("output for non-CT user always contains a slash separator", () => {
+  it("output for non-CT user never contains a slash separator (CT only)", () => {
     const text = formatPendingRuleActivation({
       nextTradingDayKey: "2026-05-07",
       sessionStartHour: null,
       userTimezone: "Asia/Jerusalem",
     });
-    assert.ok(text.includes(" / "));
+    assert.ok(!text.includes(" / "), `must not have slash separator, got: ${text}`);
   });
 });
