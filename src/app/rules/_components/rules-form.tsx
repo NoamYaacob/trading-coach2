@@ -69,6 +69,29 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   },
 ] as const;
 
+/** Converts "HH:mm" (24-hour) to "h:mm AM/PM" (12-hour) for display. */
+function fmt12h(hhmm: string): string {
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return hhmm;
+  let h = Number(m[1]);
+  const min = m[2];
+  const period = h < 12 ? "AM" : "PM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${min} ${period}`;
+}
+
+/** Returns "HH:mm minus bufferMin minutes" as an HH:mm string, then formatted 12-hour. */
+function lockBufferStart12h(sessionStart: string, bufferMin: number): string {
+  const m = sessionStart.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return sessionStart;
+  const totalMin = Number(m[1]) * 60 + Number(m[2]) - bufferMin;
+  const clamped = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(clamped / 60);
+  const min = String(clamped % 60).padStart(2, "0");
+  return fmt12h(`${String(h).padStart(2, "0")}:${min}`);
+}
+
 /** Returns "HH:mm minus bufferMin minutes" as an HH:mm string for display. */
 function lockBufferStart(sessionStart: string, bufferMin: number): string {
   const m = sessionStart.match(/^(\d{1,2}):(\d{2})$/);
@@ -345,9 +368,9 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-xs text-stone-600 space-y-1">
             {SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id)).map((preset) => (
               <p key={preset.id}>
-                <span className="font-medium">{preset.label}:</span>{" "}
-                {preset.sessionStartTime}–{preset.sessionEndTime} ET · Locks at{" "}
-                <span className="font-medium">{lockBufferStart(preset.sessionStartTime, 60)} ET</span>
+                <span className="font-medium">{preset.label}</span>{" — "}
+                {fmt12h(preset.sessionStartTime)}–{fmt12h(preset.sessionEndTime)} ET · Locks at{" "}
+                <span className="font-medium">{lockBufferStart12h(preset.sessionStartTime, 60)} ET</span>
               </p>
             ))}
           </div>
