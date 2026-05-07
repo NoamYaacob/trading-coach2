@@ -7,6 +7,7 @@ import {
 } from "@/lib/brokers/automated-actions-consent";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
+import { inferAccountClassification } from "@/lib/brokers/account-classification";
 import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
 import {
   deriveAccountKind,
@@ -437,6 +438,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
 
   const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => {
     const env = p.brokerConnection?.env ?? null;
+    const classification = inferAccountClassification(p.label);
     return {
       id: p.id,
       label: p.label,
@@ -450,6 +452,8 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       env,
       envLabel: env === "live" ? "Live account" : env === "demo" ? "Demo / Sim" : null,
       propFirm: p.propFirm ?? null,
+      suggestedPropFirm: classification.propFirm,
+      suggestedAccountType: classification.accountType,
     };
   });
 

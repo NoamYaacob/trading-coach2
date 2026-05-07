@@ -132,6 +132,11 @@ export type PendingDiscoveredAccount = {
   envLabel: string | null;
   /** Prop firm name on the discovered ConnectedAccount row, or null for unassigned/personal. */
   propFirm: string | null;
+  /** Inferred prop firm from the account label pattern (e.g. MFFU→"MyFundedFutures").
+   *  null when the pattern didn't match. Used to pre-fill the classification selector. */
+  suggestedPropFirm: string | null;
+  /** Inferred account type from the label pattern. Defaults to "personal" when no match. */
+  suggestedAccountType: string;
 };
 
 export const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";

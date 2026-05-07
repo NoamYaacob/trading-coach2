@@ -18,7 +18,13 @@ const VALID_STATUSES: ProtectionStatus[] = [
   "pending_decision",
 ];
 
-type Body = { protectionStatus?: string };
+type Body = {
+  protectionStatus?: string;
+  /** Prop firm name to store on import. Only applied when activating a pending_decision account. */
+  propFirm?: string | null;
+  /** Account type to store on import. Only applied when activating a pending_decision account. */
+  accountType?: string;
+};
 
 export async function POST(
   request: NextRequest,
@@ -140,6 +146,24 @@ export async function POST(
     });
   }
 
+  // Classification metadata (propFirm + accountType) is only accepted when
+  // activating a pending_decision account — the import moment is the right
+  // place to set it. Ignored for all other transitions to prevent accidental
+  // overwriting of an existing account's classification.
+  const VALID_ACCOUNT_TYPES = ["evaluation", "funded", "personal", "demo"] as const;
+  type ValidAccountType = (typeof VALID_ACCOUNT_TYPES)[number];
+  const isImport = currentStatus === "pending_decision";
+  const classificationData: { propFirm?: string | null; accountType?: ValidAccountType } = {};
+  if (isImport) {
+    if (body.propFirm !== undefined) {
+      // Empty string or null → clear the prop firm (personal account).
+      classificationData.propFirm = body.propFirm?.trim() || null;
+    }
+    if (body.accountType && VALID_ACCOUNT_TYPES.includes(body.accountType as ValidAccountType)) {
+      classificationData.accountType = body.accountType as ValidAccountType;
+    }
+  }
+
   // Apply immediately. Clear any earlier pending change since the user has
   // now actively chosen a status.
   await prisma.connectedAccount.update({
@@ -148,6 +172,7 @@ export async function POST(
       protectionStatus: newStatus,
       pendingProtectionStatus: null,
       pendingProtectionEffectiveDate: null,
+      ...classificationData,
     },
   });
   console.info("[account-protection] applied immediately", {
@@ -155,6 +180,8 @@ export async function POST(
     userId: user.id,
     previousStatus: currentStatus,
     newStatus,
+    isImport,
+    classificationApplied: Object.keys(classificationData),
   });
 
   return NextResponse.json({
