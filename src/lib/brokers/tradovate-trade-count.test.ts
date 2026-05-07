@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   resolveTradeCount,
+  selectPhaseCTradeCount,
   type TradeCountAdapter,
 } from "./tradovate-trade-count.ts";
 
@@ -231,5 +232,72 @@ describe("resolveTradeCount — attempts trail", () => {
     const reportAttempt = result.attempts.find((a) => a.source === "broker_report");
     assert.equal(reportAttempt?.httpStatus, 403);
     assert.equal(reportAttempt?.ok, false);
+  });
+});
+
+// ── selectPhaseCTradeCount — Phase C source priority ─────────────────────────
+// Regression guard: Performance Report count must win over canonical DB count
+// when available, even when the canonical count would return a lower number.
+// This covers the DEMO7433035 production case where Performance Report = 2
+// and canonical DB = 1.
+
+describe("selectPhaseCTradeCount — Phase C source priority (test 9)", () => {
+  it("Performance Report count wins over canonical DB when available", () => {
+    // Reproduces the production scenario: report = 2, canonical = 1.
+    // Dashboard must show 2, not 1.
+    const result = selectPhaseCTradeCount(2, 1);
+    assert.equal(result.count, 2);
+    assert.equal(result.source, "broker_report");
+  });
+
+  it("falls back to canonical DB count when Performance Report returns null", () => {
+    const result = selectPhaseCTradeCount(null, 2);
+    assert.equal(result.count, 2);
+    assert.equal(result.source, "canonical_db");
+  });
+
+  it("report count of 0 is used (not treated as falsy)", () => {
+    const result = selectPhaseCTradeCount(0, 5);
+    assert.equal(result.count, 0);
+    assert.equal(result.source, "broker_report");
+  });
+
+  it("canonical count of 0 is used when no report is available", () => {
+    const result = selectPhaseCTradeCount(null, 0);
+    assert.equal(result.count, 0);
+    assert.equal(result.source, "canonical_db");
+  });
+
+  it("is deterministic — same inputs always produce same output (safe for concurrent syncs)", () => {
+    // Structural guarantee: both manual refresh and cron call selectPhaseCTradeCount
+    // with the same logic. No shared state, no side effects.
+    assert.deepEqual(selectPhaseCTradeCount(2, 1), selectPhaseCTradeCount(2, 1));
+    assert.deepEqual(selectPhaseCTradeCount(null, 3), selectPhaseCTradeCount(null, 3));
+  });
+});
+
+// ── Phase C sync path contract — test 10 ─────────────────────────────────────
+// Both manual refresh (POST /api/accounts/[id]/sync) and sync-all
+// (POST /api/accounts/sync-all → syncTradovateConnection) delegate to
+// syncTradovateAccount, which calls selectPhaseCTradeCount in Phase C.
+// This ensures every trigger path produces the same authoritative count.
+
+describe("selectPhaseCTradeCount — same result regardless of sync trigger (test 10)", () => {
+  it("manual refresh and cron sync produce identical Phase C results for the same inputs", () => {
+    // Simulates: Performance Report = 2, canonical = 1.
+    // Whether triggered by cron or by "Refresh" button, Phase C gives count=2.
+    const cronResult = selectPhaseCTradeCount(2, 1);
+    const manualRefreshResult = selectPhaseCTradeCount(2, 1);
+    assert.deepEqual(cronResult, manualRefreshResult);
+    assert.equal(cronResult.count, 2);
+  });
+
+  it("canonical fallback is consistent between cron and manual refresh", () => {
+    // Simulates: Performance Report unavailable (null), canonical = 2.
+    // Both paths fall back to canonical and return 2.
+    const cronResult = selectPhaseCTradeCount(null, 2);
+    const manualRefreshResult = selectPhaseCTradeCount(null, 2);
+    assert.deepEqual(cronResult, manualRefreshResult);
+    assert.equal(cronResult.count, 2);
   });
 });

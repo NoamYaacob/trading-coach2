@@ -1,39 +1,104 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { deriveCanonicalEntryCount } from "@/lib/guardian-engine/canonical-trade-count";
 import { classifyFill } from "@/lib/guardian-engine/fill-classifier";
+import { parsePerformanceReportTradeCount } from "@/lib/brokers/tradovate-reports-parser";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
 /**
  * Diagnostic endpoint for investigating trade-count discrepancies.
  *
- * Usage: GET /api/debug/trade-count-diagnostic?accountId=DEMO7433035
+ * Usage:
+ *   GET /api/debug/trade-count-diagnostic?accountId=DEMO7433035
+ *   GET /api/debug/trade-count-diagnostic?accountId=7433035
+ *   GET /api/debug/trade-count-diagnostic?accountId=<internal-cuid>
  *
- * Returns:
- *   rawFillCount      — total fill-like events in DB for today's session
- *   dedupedFillCount  — after externalTradeId / composite-key deduplication
- *   derivedEntryCount — position-aware entry count (what the dashboard should show)
- *   liveState         — current LiveSessionState values
- *   fillTrace         — per-fill breakdown: dedup key, position before/after, classification, counted
+ * Accepts: account label (e.g. DEMO7433035), externalAccountId (numeric
+ * Tradovate ID with or without DEMO/LIVE prefix), or internal ConnectedAccount.id.
+ *
+ * Returns a comprehensive trace including Performance Report count, canonical
+ * DB count, per-fill position trace, and current LiveSessionState values.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const externalAccountId = searchParams.get("accountId");
-  if (!externalAccountId) {
+  const accountParam = searchParams.get("accountId");
+  if (!accountParam) {
     return NextResponse.json({ error: "accountId query parameter required" }, { status: 400 });
   }
 
+  // Multi-field lookup:
+  // 1. label — the user-visible account name (e.g. "DEMO7433035")
+  // 2. externalAccountId — exact match (numeric Tradovate ID, e.g. "7433035")
+  // 3. externalAccountId — DEMO/LIVE prefix stripped (e.g. "7433035" from "DEMO7433035")
+  // 4. id — internal ConnectedAccount cuid
+  const stripped = accountParam.replace(/^(DEMO|LIVE)/i, "");
+  const orConditions = [
+    { label: accountParam },
+    { externalAccountId: accountParam },
+    { id: accountParam },
+    ...(stripped !== accountParam ? [{ externalAccountId: stripped }] : []),
+  ];
+
   const account = await prisma.connectedAccount.findFirst({
-    where: { externalAccountId, platform: "tradovate", isActive: true },
-    select: { id: true },
+    where: { isActive: true, OR: orConditions },
+    select: { id: true, userId: true, externalAccountId: true, label: true },
   });
+
   if (!account) {
-    return NextResponse.json({ error: "account not found" }, { status: 404 });
+    const available = await prisma.connectedAccount.findMany({
+      where: { isActive: true },
+      select: { id: true, label: true, externalAccountId: true, platform: true },
+      orderBy: [{ platform: "asc" }, { label: "asc" }],
+    });
+    return NextResponse.json(
+      {
+        error: "account not found",
+        received: accountParam,
+        searchedFields: ["label", "externalAccountId", "id"],
+        availableAccounts: available,
+      },
+      { status: 404 },
+    );
   }
 
   const sessionDate = deriveCmeTradingDayKey(new Date());
   const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  const dateRange = { tradingDayKey: sessionDate, start: dayStart.toISOString() };
 
+  // ── Performance Report (same path as Phase C in sync) ──────────────────────
+  let performanceReportTradeCount: number | null = null;
+  let performanceReportStatus = "not_attempted";
+  let performanceReportAccountName: string | null = null;
+  try {
+    const tvClient = new TradovateClient(account.id, account.userId);
+    await tvClient.initialize();
+    performanceReportAccountName = await tvClient.getAccountName();
+    if (performanceReportAccountName) {
+      const report = await tvClient.fetchPerformanceReport({
+        accountName: performanceReportAccountName,
+        tradingDayKey: sessionDate,
+      });
+      if (report == null) {
+        performanceReportStatus = "null_response";
+      } else if (report.status < 200 || report.status >= 300) {
+        performanceReportStatus = `http_${report.status}`;
+      } else {
+        const parsed = parsePerformanceReportTradeCount({
+          body: report.body,
+          contentType: report.contentType,
+        });
+        performanceReportTradeCount = parsed;
+        performanceReportStatus = parsed != null ? "parsed" : "unparseable";
+      }
+    } else {
+      performanceReportStatus = "no_account_name";
+    }
+  } catch (err) {
+    performanceReportStatus = `error:${err instanceof Error ? err.message : "unknown"}`;
+  }
+
+  // ── DB fills ───────────────────────────────────────────────────────────────
   const allFills = await prisma.normalizedTradeEvent.findMany({
     where: {
       accountId: account.id,
@@ -65,10 +130,9 @@ export async function GET(request: Request) {
     rawPayload: f.rawPayload,
   }));
 
-  const derivedEntryCount = deriveCanonicalEntryCount(canonicalFills);
+  const canonicalEntryCount = deriveCanonicalEntryCount(canonicalFills);
 
-  // Build per-fill trace by replicating the dedup + sort + classify pass.
-  // This mirrors deriveCanonicalEntryCount exactly so the trace matches the count.
+  // ── Per-fill position trace (mirrors deriveCanonicalEntryCount exactly) ────
   function compositeKey(f: (typeof canonicalFills)[number]): string {
     return [
       String(f.contractId ?? ""),
@@ -146,18 +210,26 @@ export async function GET(request: Request) {
     };
   });
 
+  // ── LiveSessionState ───────────────────────────────────────────────────────
   const liveState = await prisma.liveSessionState.findUnique({
     where: { accountId: account.id },
     select: { tradesCount: true, tradeCountSource: true, sessionDate: true, riskState: true },
   });
 
   return NextResponse.json({
-    accountId: externalAccountId,
+    accountId: account.label,
+    internalAccountId: account.id,
+    tvAccountId: account.externalAccountId,
     sessionDate,
+    dateRange,
+    performanceReport: {
+      status: performanceReportStatus,
+      accountName: performanceReportAccountName,
+      tradeCount: performanceReportTradeCount,
+    },
     rawFillCount,
     dedupedFillCount,
-    derivedEntryCount,
-    tradeCountSource: "verified",
+    canonicalEntryCount,
     liveState: liveState ?? null,
     fillTrace,
   });

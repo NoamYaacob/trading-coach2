@@ -99,6 +99,30 @@ export type ResolveTradeCountInput = {
 };
 
 /**
+ * Phase C authoritative trade count source selection.
+ *
+ * Priority 1 — Tradovate Performance Report (broker_report):
+ *   POST /v1/reports/requestreport is the same "# of Trades" shown in
+ *   Tradovate's own UI. Used when available.
+ *
+ * Priority 2 — Canonical DB count (canonical_db):
+ *   Position-aware fill count from NormalizedTradeEvent records. Used when
+ *   the Performance Report is unavailable or fails.
+ *
+ * This is the live production path. resolveTradeCount (below) is kept for
+ * diagnostic logging only and uses a different fallback chain (order/deps).
+ */
+export function selectPhaseCTradeCount(
+  performanceReportCount: number | null,
+  canonicalCount: number,
+): { count: number; source: "broker_report" | "canonical_db" } {
+  if (performanceReportCount !== null) {
+    return { count: performanceReportCount, source: "broker_report" };
+  }
+  return { count: canonicalCount, source: "canonical_db" };
+}
+
+/**
  * Run the source chain and return the first verified count, plus a full
  * trail of attempts for diagnostic logging. Never throws — adapter errors
  * are swallowed and recorded in the attempts list.

@@ -23,7 +23,7 @@ import { getTradovateConfig } from "./tradovate-env";
 import { parseAndDecrypt } from "@/lib/security/token-crypto";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
-import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
+import { resolveTradeCount, selectPhaseCTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser";
 import { countCanonicalEntries } from "@/lib/guardian-engine/session-state";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
@@ -285,17 +285,24 @@ export async function syncTradovateAccount(
       // Performance Report is best-effort; fall through to DB canonical count.
     }
 
-    if (reportCount != null) {
-      tradesCount = reportCount;
+    {
+      const canonical = reportCount == null
+        ? await countCanonicalEntries(accountId, tradingDayKey)
+        : null;
+      if (canonical != null) {
+        console.info("[tradovate/trades] canonical DB count (Performance Report unavailable)", {
+          accountId,
+          count: canonical.count,
+          rawFillCount: cachedFills?.executions.length ?? null,
+        });
+      }
+      const phaseC = selectPhaseCTradeCount(reportCount, canonical?.count ?? 0);
+      tradesCount = phaseC.count;
       tradeCountSource = "verified";
-    } else {
-      const canonical = await countCanonicalEntries(accountId, tradingDayKey);
-      tradesCount = canonical.count;
-      tradeCountSource = canonical.tradeCountSource; // always "verified"
-      console.info("[tradovate/trades] canonical DB count (Performance Report unavailable)", {
+      console.info("[tradovate/trades] Phase C resolved", {
         accountId,
-        count: canonical.count,
-        rawFillCount: cachedFills?.executions.length ?? null,
+        count: phaseC.count,
+        source: phaseC.source,
       });
     }
 
