@@ -2,7 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { fmt12h } from "./trading-session-utils.ts";
-import { SESSION_PRESETS } from "../../../lib/rule-edit-eligibility.ts";
+import { SESSION_PRESETS, buildRuleEditLockMessage } from "../../../lib/rule-edit-eligibility.ts";
 import { riskRulesData } from "../../api/accounts/[id]/risk-rules-data.ts";
 
 describe("fmt12h", () => {
@@ -96,6 +96,42 @@ describe("riskRulesData session fields", () => {
   test("ruleEditLockBufferMinutes undefined → null", () => {
     const result = riskRulesData({});
     assert.equal(result.ruleEditLockBufferMinutes, null);
+  });
+});
+
+// ── Lock message timezone: preset sessions use ET not CT ──────────────────────
+
+describe("buildRuleEditLockMessage timezone label", () => {
+  // within_session with a nextAllowedAt gives a message containing the tz label.
+  // nextAllowedAt at 2026-05-07 21:00 UTC = 5 PM ET / 4 PM CT — distinguishable.
+  const mockEligibility = {
+    canEditNow: false as const,
+    reason: "within_session" as const,
+    nextAllowedAt: new Date("2026-05-07T21:00:00Z"),
+    lockStartsAt: new Date("2026-05-07T12:30:00Z"),
+    sessionStartsAt: new Date("2026-05-07T13:30:00Z"),
+    sessionEndsAt: new Date("2026-05-07T21:00:00Z"),
+  };
+
+  test("null sessionTimezone defaults to CT (old behaviour without fix)", () => {
+    const msg = buildRuleEditLockMessage(mockEligibility, null);
+    assert.ok(msg.includes("CT"), `expected CT in: ${msg}`);
+    assert.ok(!msg.includes(" ET"), `did not expect ET in: ${msg}`);
+  });
+
+  test("America/New_York sessionTimezone shows ET in lock message", () => {
+    const msg = buildRuleEditLockMessage(mockEligibility, "America/New_York");
+    assert.ok(msg.includes("ET"), `expected ET in: ${msg}`);
+    assert.ok(!msg.includes("CT"), `did not expect CT in: ${msg}`);
+  });
+
+  test("preset sessions should use ET timezone in lock message", () => {
+    // Verifies the fix in both API routes: when presets are active, pass
+    // "America/New_York" instead of userRules.sessionTimezone (which is null
+    // for preset-based sessions, causing the default CT label to appear).
+    const presetTz = SESSION_PRESETS.length > 0 ? "America/New_York" : null;
+    const msg = buildRuleEditLockMessage(mockEligibility, presetTz);
+    assert.ok(msg.includes("ET"), `preset session lock message should show ET, got: ${msg}`);
   });
 });
 

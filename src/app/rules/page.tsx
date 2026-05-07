@@ -80,6 +80,8 @@ export default async function RulesPage({
             sessionEndTime: true,
             sessionTimezone: true,
             ruleEditLockBufferMinutes: true,
+            pendingPayloadJson: true,
+            pendingEffectiveDate: true,
             maxContracts: true,
             propFirmAccountSize: true, propFirmPhase: true,
             propFirmDailyLossLimit: true, propFirmMaxDrawdown: true,
@@ -382,6 +384,8 @@ export default async function RulesPage({
                   initial={accountInitial}
                   isLocked={!ruleEditEligibility.canEditNow}
                   lockMessage={accountRuleLockMessage}
+                  pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                  pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
                   hasPropFirm={Boolean(selectedAccount.propFirm)}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
@@ -469,7 +473,7 @@ function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
     const eLabel = conn.env === "live" ? "Live account" : conn.env === "demo" ? "Demo / Sim" : conn.env;
     parts.push(`${pLabel} · ${eLabel}`);
     if (conn.connectionStatus === "connected_readonly") {
-      parts.push("Read-only connection");
+      parts.push("Limited permissions");
     }
     if (conn.brokerUserId) {
       const uid = conn.brokerUserId.length > 14

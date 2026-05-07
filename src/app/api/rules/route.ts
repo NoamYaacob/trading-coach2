@@ -346,7 +346,10 @@ export async function POST(request: Request) {
       applied: false,
       reason: eligibility.reason,
       effectiveDate: nextDayKey,
-      message: buildRuleEditLockMessage(eligibility, existing?.sessionTimezone ?? null),
+      message: buildRuleEditLockMessage(
+        eligibility,
+        existingPresets?.length ? "America/New_York" : (existing?.sessionTimezone ?? null),
+      ),
     });
   }
 

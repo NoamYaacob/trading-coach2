@@ -11,6 +11,8 @@ import {
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
+import { fmt12h } from "./trading-session-utils";
+import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -62,6 +64,9 @@ type Props = {
   hasDefaultRules: boolean;
   timezone?: string | null;
   defaultValues?: DefaultRuleValues;
+  /** Pending payload stored for this account (not yet applied). */
+  pendingPayload?: Record<string, unknown> | null;
+  pendingEffectiveDate?: string | null;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -153,6 +158,8 @@ export function AccountRulesForm({
   hasDefaultRules,
   timezone,
   defaultValues,
+  pendingPayload,
+  pendingEffectiveDate,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -164,6 +171,13 @@ export function AccountRulesForm({
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [localPendingPresets, setLocalPendingPresets] = useState<string[] | null>(() => {
+    if (!pendingPayload) return null;
+    const j = pendingPayload.sessionPresetsJson;
+    if (typeof j === "string") return JSON.parse(j) as string[];
+    return null;
+  });
+  const [localPendingDate, setLocalPendingDate] = useState<string | null>(pendingEffectiveDate ?? null);
 
   // Warn before unload/refresh when there are unsaved changes.
   useEffect(() => {
@@ -186,7 +200,7 @@ export function AccountRulesForm({
       body: JSON.stringify(body),
     });
     const data = (await res.json()) as {
-      rulesLock?: { applied: boolean; message?: string };
+      rulesLock?: { applied: boolean; message?: string; effectiveDate?: string };
       error?: string;
     };
     if (!res.ok) throw new Error(data.error ?? "Failed to save.");
@@ -229,9 +243,14 @@ export function AccountRulesForm({
         // and leave the existing consent timestamp intact server-side.
         automatedActionsConsentChecked: consentChecked,
       });
-      if (data.rulesLock?.applied === false && data.rulesLock.message) {
-        setPendingMessage(data.rulesLock.message);
+      if (data.rulesLock?.applied === false) {
+        const pendingPresets = hasPresets ? values.sessionPresets.slice() : (values.sessionIsCustom ? null : []);
+        setLocalPendingPresets(pendingPresets);
+        setLocalPendingDate(data.rulesLock.effectiveDate ?? null);
+        setPendingMessage("Changes saved as pending — will apply at the next edit window.");
       } else {
+        setLocalPendingPresets(null);
+        setLocalPendingDate(null);
         setPendingMessage(null);
         setSavedAt(new Date());
       }
@@ -495,6 +514,33 @@ export function AccountRulesForm({
             </label>
           </div>
         </details>
+      )}
+
+      {/* Pending session panel — shown when a locked save introduced a pending preset change */}
+      {localPendingPresets !== null && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
+          <p className="font-medium">Session change pending</p>
+          <div className="grid gap-1">
+            <p className="text-[11px] text-amber-800">
+              <span className="font-medium">Active now: </span>
+              {values.sessionPresets.length > 0
+                ? SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id))
+                    .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
+                    .join(", ")
+                : values.sessionIsCustom
+                ? "Custom session"
+                : "None"}
+            </p>
+            <p className="text-[11px] text-amber-800">
+              <span className="font-medium">Pending{localPendingDate ? ` from ${localPendingDate}` : ""}: </span>
+              {localPendingPresets.length > 0
+                ? SESSION_PRESETS.filter((p) => localPendingPresets.includes(p.id))
+                    .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
+                    .join(", ")
+                : "None (presets cleared)"}
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Submit row */}

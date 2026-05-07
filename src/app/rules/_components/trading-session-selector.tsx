@@ -28,7 +28,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
           Select the sessions you normally trade. Guardrail uses them to detect off-session trades and lock rule editing during active sessions.
         </p>
         <p className="mt-1 text-xs text-stone-400">
-          Times are shown in Eastern Time (ET). Broker-level time blocking is not currently available.
+          Times are shown in Eastern Time (ET). Guardrail uses sessions for discipline monitoring and rule-edit protection. Broker-level time blocking is not currently available.
         </p>
       </div>
 

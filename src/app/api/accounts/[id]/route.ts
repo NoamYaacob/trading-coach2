@@ -188,14 +188,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           pendingEffectiveDate: nextDayKey,
         },
       });
+      const userExistingPresets: string[] | null = userRulesPresetsJson
+        ? (JSON.parse(userRulesPresetsJson) as string[])
+        : null;
+      const lockMsgTz = userExistingPresets?.length
+        ? "America/New_York"
+        : (userRules?.sessionTimezone ?? null);
       rulesLockResult = {
         applied: false,
         reason: eligibility.reason,
         effectiveDate: nextDayKey,
-        message: buildRuleEditLockMessage(
-          eligibility,
-          userRules?.sessionTimezone ?? null,
-        ),
+        message: buildRuleEditLockMessage(eligibility, lockMsgTz),
       };
     } else if (body.riskRules === null) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });
