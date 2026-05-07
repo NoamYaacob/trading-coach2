@@ -226,7 +226,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       <div role="group" aria-label="Daily cutoff" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <div>
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
-          <p className="mt-1 text-xs text-stone-500">{SESSION_WINDOW_COPY.helperText}</p>
+          <p className="mt-1 text-xs text-stone-500">Set when Guardrail should stop trading for the day. {SESSION_WINDOW_COPY.helperText}</p>
         </div>
         <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day. If a position is open, your selected cutoff behavior applies.">
           <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />

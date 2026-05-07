@@ -353,7 +353,7 @@ export function AccountRulesForm({
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
-          <Field label="Risk per trade ($)" hint="Fires a warning when unrealized loss on an open position exceeds this amount. Does not lock the account.">
+          <Field label="Risk per trade ($)" hint="Warning only — does not lock the account.">
             <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
           </Field>
           <Field label="Max trades per day">
@@ -373,8 +373,7 @@ export function AccountRulesForm({
         <div>
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
           <p className="mt-1 text-xs text-stone-500">
-            Override the default daily cutoff for this account.{" "}
-            {SESSION_WINDOW_COPY.helperText}
+            Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
           </p>
         </div>
         <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day.">

@@ -12,8 +12,9 @@ describe("SESSION_WINDOW_COPY", () => {
     assert.match(SESSION_WINDOW_COPY.legend, /CME time/);
   });
 
-  test("helperText references America/Chicago", () => {
-    assert.match(SESSION_WINDOW_COPY.helperText, /America\/Chicago/);
+  test("helperText references CME time without exposing America/Chicago to users", () => {
+    assert.match(SESSION_WINDOW_COPY.helperText, /CME time/);
+    assert.ok(!/America\/Chicago/.test(SESSION_WINDOW_COPY.helperText), "America/Chicago must not appear in user-facing copy");
   });
 
   test("helperText mentions daylight-saving alignment", () => {
