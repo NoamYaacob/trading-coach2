@@ -19,102 +19,153 @@ function pnlClass(amount: number): string {
   return "text-stone-900";
 }
 
-type Tile = {
-  label: string;
-  value: string;
-  hint?: string;
-  valueClass?: string;
-  dotClass?: string;
-};
-
 export function SummaryStrip({ summary }: { summary: CommandCenterSummary }) {
-  const tiles: Tile[] = [
-    {
-      label: "Active accounts",
-      value: summary.totalActive.toString(),
-    },
-    {
-      // "Tradable accounts" instead of "Allowed" — the count alone could
-      // imply every allowed account has the same protection level. The
-      // breakdown subtext (live vs practice) makes the mix explicit.
-      label: TRADABLE_ACCOUNTS_TILE_LABEL,
-      value: summary.counts.allowed.toString(),
-      dotClass: "bg-emerald-500",
-      hint: formatBreakdownHint(summary.breakdown.allowed),
-    },
-    {
-      label: "Warning",
-      value: summary.counts.warning.toString(),
-      dotClass: "bg-amber-400",
-      hint: formatBreakdownHint(summary.breakdown.warning),
-    },
-    {
-      label: "Locked",
-      value: summary.counts.locked.toString(),
-      dotClass: "bg-red-500",
-      hint: formatBreakdownHint(summary.breakdown.locked),
-    },
-    {
-      label: "Setup needed",
-      value: (summary.counts.setup_needed + summary.counts.not_connected).toString(),
-      dotClass: "bg-stone-400",
-      hint:
-        summary.counts.not_connected > 0
-          ? `${summary.counts.not_connected} not connected`
-          : undefined,
-    },
-    {
-      label: "Daily P&L",
-      value: summary.hasPnlData ? formatSignedCurrency(summary.totalDailyPnl) : "—",
-      valueClass: summary.hasPnlData ? pnlClass(summary.totalDailyPnl) : undefined,
-      hint: summary.hasPnlData ? "Across synced accounts" : "Awaiting first sync",
-    },
-    {
-      label: "Loss budget left",
-      value: summary.hasRiskData ? CURRENCY_FORMATTER.format(summary.totalRiskRemaining) : "—",
-      hint: !summary.hasRiskData
-        ? "Set rules to track"
-        : summary.counts.locked > 0
-          ? "Across all accounts · Excludes locked"
-          : "Across all accounts",
-    },
-    {
-      label: "Open issues",
-      value: summary.openInterventions.toString(),
-      dotClass: summary.openInterventions > 0 ? "bg-red-500" : "bg-stone-300",
-      hint: summary.openInterventions > 0 ? "Last 24h" : undefined,
-    },
-  ];
+  const setupNeededCount = summary.counts.setup_needed + summary.counts.not_connected;
 
   return (
     <section
       aria-label="Account risk summary"
-      className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 p-2.5 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)] sm:p-4"
+      className="overflow-x-hidden rounded-2xl border border-stone-200 bg-white/95 shadow-[0_4px_20px_-8px_rgba(28,25,23,0.08)]"
     >
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-8 lg:gap-3">
-        {tiles.map((tile) => (
-          <div
-            key={tile.label}
-            className="rounded-xl border border-stone-100 bg-stone-50/60 px-2.5 py-2 sm:px-3.5 sm:py-3"
+      {/* Featured financial row — Daily P&L and Loss Budget Left */}
+      <div className="grid grid-cols-2 divide-x divide-stone-100 border-b border-stone-100">
+        {/* Daily P&L */}
+        <div className="px-4 py-4 sm:px-6 sm:py-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+            Daily P&L
+          </p>
+          <p
+            className={`mt-1.5 font-mono text-2xl font-semibold tracking-tight sm:text-3xl ${
+              summary.hasPnlData ? pnlClass(summary.totalDailyPnl) : "text-stone-300"
+            }`}
           >
-            <div className="flex items-center gap-1.5">
-              {tile.dotClass ? (
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tile.dotClass}`} aria-hidden />
-              ) : null}
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-                {tile.label}
-              </p>
-            </div>
-            <p
-              className={`mt-1 font-mono text-base font-semibold tracking-tight sm:mt-1.5 sm:text-lg ${tile.valueClass ?? "text-stone-950"}`}
-            >
-              {tile.value}
+            {summary.hasPnlData ? formatSignedCurrency(summary.totalDailyPnl) : "—"}
+          </p>
+          <p className="mt-1 text-[11px] text-stone-400">
+            {summary.hasPnlData ? "Across synced accounts" : "Awaiting first sync"}
+          </p>
+        </div>
+
+        {/* Loss budget left */}
+        <div className="px-4 py-4 sm:px-6 sm:py-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+            Loss budget left
+          </p>
+          <p className="mt-1.5 font-mono text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
+            {summary.hasRiskData ? CURRENCY_FORMATTER.format(summary.totalRiskRemaining) : "—"}
+          </p>
+          <p className="mt-1 text-[11px] text-stone-400">
+            {!summary.hasRiskData
+              ? "Set rules to track"
+              : summary.counts.locked > 0
+                ? "Across all accounts · Excludes locked"
+                : "Across all accounts"}
+          </p>
+        </div>
+      </div>
+
+      {/* Compact count row */}
+      <div className="grid grid-cols-3 divide-x divide-stone-100 sm:grid-cols-6">
+        {/* Active */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+            Active
+          </p>
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {summary.totalActive}
+          </p>
+        </div>
+
+        {/* Tradable */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              {TRADABLE_ACCOUNTS_TILE_LABEL}
             </p>
-            {tile.hint ? (
-              <p className="mt-0.5 text-[10px] text-stone-400">{tile.hint}</p>
-            ) : null}
           </div>
-        ))}
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {summary.counts.allowed}
+          </p>
+          {formatBreakdownHint(summary.breakdown.allowed) ? (
+            <p className="mt-0.5 text-[10px] text-stone-400">
+              {formatBreakdownHint(summary.breakdown.allowed)}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Warning */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              Warning
+            </p>
+          </div>
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {summary.counts.warning}
+          </p>
+          {formatBreakdownHint(summary.breakdown.warning) ? (
+            <p className="mt-0.5 text-[10px] text-stone-400">
+              {formatBreakdownHint(summary.breakdown.warning)}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Locked */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" aria-hidden />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              Locked
+            </p>
+          </div>
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {summary.counts.locked}
+          </p>
+          {formatBreakdownHint(summary.breakdown.locked) ? (
+            <p className="mt-0.5 text-[10px] text-stone-400">
+              {formatBreakdownHint(summary.breakdown.locked)}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Setup needed */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" aria-hidden />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              Setup
+            </p>
+          </div>
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {setupNeededCount}
+          </p>
+          {summary.counts.not_connected > 0 ? (
+            <p className="mt-0.5 text-[10px] text-stone-400">
+              {summary.counts.not_connected} not connected
+            </p>
+          ) : null}
+        </div>
+
+        {/* Open issues */}
+        <div className="px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${summary.openInterventions > 0 ? "bg-red-500" : "bg-stone-300"}`}
+              aria-hidden
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              Issues
+            </p>
+          </div>
+          <p className="mt-0.5 font-mono text-base font-semibold text-stone-950">
+            {summary.openInterventions}
+          </p>
+          {summary.openInterventions > 0 ? (
+            <p className="mt-0.5 text-[10px] text-stone-400">Last 24h</p>
+          ) : null}
+        </div>
       </div>
     </section>
   );

@@ -648,3 +648,72 @@ export function deriveEnforcementMode(input: {
   }
   return "not_connected";
 }
+
+// ── deriveTradingPermissionStatus ─────────────────────────────────────────────
+
+export type TradingPermissionLevel = "locked" | "warning" | "test_mode" | "allowed";
+
+export type TradingPermissionStatus = {
+  level: TradingPermissionLevel;
+  headline: string;
+  subline: string;
+};
+
+export function deriveTradingPermissionStatus(input: {
+  accounts: ReadonlyArray<{
+    status: AccountStatus;
+    enforcementMode: EnforcementMode;
+  }>;
+}): TradingPermissionStatus | null {
+  const { accounts } = input;
+  const activeCount = accounts.filter(
+    (a) => a.status !== "unavailable" && a.status !== "not_connected",
+  ).length;
+  if (activeCount === 0) return null;
+
+  const isDryRun = accounts.some((a) => a.enforcementMode === "dry_run");
+  const lockedCount = accounts.filter((a) => a.status === "locked").length;
+  const warningCount = accounts.filter((a) => a.status === "warning").length;
+
+  if (isDryRun) {
+    if (lockedCount > 0) {
+      const n = lockedCount;
+      return {
+        level: "test_mode",
+        headline: `Test mode active · ${n} account${n > 1 ? "s" : ""} locked`,
+        subline:
+          "Guardrail is monitoring only. It will not block, cancel, or close trades.",
+      };
+    }
+    return {
+      level: "test_mode",
+      headline: "Test mode active",
+      subline:
+        "Guardrail is monitoring only. It will not block, cancel, or close trades.",
+    };
+  }
+
+  if (lockedCount > 0) {
+    const n = lockedCount;
+    return {
+      level: "locked",
+      headline: n === 1 ? "1 account locked" : `${n} accounts locked`,
+      subline: "Daily loss limit reached. Trading is stopped for the rest of the session.",
+    };
+  }
+
+  if (warningCount > 0) {
+    const n = warningCount;
+    return {
+      level: "warning",
+      headline: n === 1 ? "1 account in warning" : `${n} accounts in warning`,
+      subline: "Approaching the daily loss limit. Monitor your positions closely.",
+    };
+  }
+
+  return {
+    level: "allowed",
+    headline: "Allowed to trade",
+    subline: "All monitored accounts are within their limits.",
+  };
+}

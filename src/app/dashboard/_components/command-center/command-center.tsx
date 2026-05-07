@@ -35,9 +35,11 @@ import {
   deriveProtectionStatusPanel,
   deriveRowStatusLabel,
   deriveRulesHref,
+  deriveTradingPermissionStatus,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
   type ProtectionStatusPanelData,
+  type TradingPermissionStatus,
 } from "./data-helpers";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
@@ -254,8 +256,13 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     hasDryRunBanner: isDryRunActive,
   });
 
+  const tradingPermissionStatus = deriveTradingPermissionStatus({ accounts: data.accounts });
+
   return (
     <div className="grid gap-4">
+      {tradingPermissionStatus && (
+        <TradingPermissionBlock status={tradingPermissionStatus} />
+      )}
       {data.pendingAccounts.length > 0 && (
         <NewAccountsPanel accounts={data.pendingAccounts} />
       )}
@@ -346,11 +353,60 @@ function ExpiredConnectionBanner({ group }: { group: CommandCenterFirmGroup }) {
   );
 }
 
+// ─── Trading permission status block ──────────────────────────────────────────
+
+const PERMISSION_COLORS: Record<
+  TradingPermissionStatus["level"],
+  { bg: string; dot: string; headlineCls: string; sublineCls: string }
+> = {
+  locked: {
+    bg: "border-red-200 bg-red-50/80",
+    dot: "bg-red-500",
+    headlineCls: "text-red-900",
+    sublineCls: "text-red-700",
+  },
+  warning: {
+    bg: "border-amber-200 bg-amber-50/70",
+    dot: "bg-amber-400",
+    headlineCls: "text-amber-900",
+    sublineCls: "text-amber-700",
+  },
+  test_mode: {
+    bg: "border-sky-200 bg-sky-50/70",
+    dot: "bg-sky-400",
+    headlineCls: "text-sky-900",
+    sublineCls: "text-sky-700",
+  },
+  allowed: {
+    bg: "border-emerald-200 bg-emerald-50/60",
+    dot: "bg-emerald-500",
+    headlineCls: "text-emerald-900",
+    sublineCls: "text-emerald-700",
+  },
+};
+
+function TradingPermissionBlock({ status }: { status: TradingPermissionStatus }) {
+  const colors = PERMISSION_COLORS[status.level];
+  return (
+    <div
+      role={status.level === "locked" || status.level === "warning" ? "alert" : "status"}
+      aria-label="Trading permission status"
+      className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${colors.bg}`}
+    >
+      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} aria-hidden />
+      <div>
+        <p className={`text-sm font-semibold ${colors.headlineCls}`}>{status.headline}</p>
+        <p className={`mt-0.5 text-xs leading-5 ${colors.sublineCls}`}>{status.subline}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Protection status panel (replaces dry-run / consent / lock banners) ──────
 
 const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
   dry_run:
-    "Protection test mode · Guardrail is watching but will not block or close trades.",
+    "Test mode active: Guardrail is monitoring only. It will not block, cancel, or close trades.",
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
   protection_locked:
@@ -579,15 +635,28 @@ function FirmSection({
     ? group.accounts.filter((a) => a.accountType === "demo").length
     : undefined;
 
+  const hasLocked = group.counts.locked > 0;
+  const hasWarning = !hasLocked && group.counts.warning > 0;
+  const articleBorder = hasLocked
+    ? "border-red-200/70"
+    : hasWarning
+      ? "border-amber-200/70"
+      : "border-stone-200";
+  const buttonHover = hasLocked
+    ? "hover:bg-red-50/30"
+    : hasWarning
+      ? "hover:bg-amber-50/30"
+      : "hover:bg-stone-50";
+
   return (
-    <article className="rounded-xl border border-stone-200 bg-stone-50/30">
+    <article className={`rounded-xl border bg-stone-50/30 ${articleBorder}`}>
       <h3 className="m-0">
         <button
           type="button"
           onClick={onToggleCollapsed}
           aria-expanded={expanded}
           aria-controls={panelId}
-          className={`flex w-full flex-col gap-2 px-3 py-2.5 text-left transition hover:bg-stone-50 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-3 ${expanded ? "border-b border-stone-100" : ""}`}
+          className={`flex w-full flex-col gap-2 px-3 py-2.5 text-left transition sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-3 ${buttonHover} ${expanded ? "border-b border-stone-100" : ""}`}
         >
           {/* Left: firm identity + broker meta */}
           <span className="flex min-w-0 flex-1 flex-col">
@@ -790,8 +859,8 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
       </td>
       <td className="px-4 py-3 text-right align-top">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <Link href="/accounts" className={PILL_ROW_PRIMARY}>
-            Refresh status
+          <Link href="/settings" className={PILL_ROW_PRIMARY}>
+            Manage connections
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
@@ -943,8 +1012,8 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
           May have been reset, closed, or removed by the prop firm. Excluded from totals.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link href="/accounts" className={PILL_CARD_PRIMARY}>
-            Refresh status
+          <Link href="/settings" className={PILL_CARD_PRIMARY}>
+            Manage connections
           </Link>
           <ArchiveAccountButton
             accountId={account.id}
@@ -1327,10 +1396,10 @@ function EmptyAccounts() {
           Connect Tradovate
         </Link>
         <Link
-          href="/accounts"
+          href="/settings"
           className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-300 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
         >
-          Manage accounts
+          Manage connections
         </Link>
       </div>
     </section>
