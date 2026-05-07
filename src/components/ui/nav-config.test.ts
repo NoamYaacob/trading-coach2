@@ -49,16 +49,16 @@ describe("MORE_NAV", () => {
     );
   });
 
-  it("retains existing More nav items: Status details, Alerts, Settings, Setup guide", () => {
+  it("retains existing More nav items: Alerts, Settings, Setup guide", () => {
     const hrefs = MORE_NAV.map((i) => i.href);
-    assert.ok(hrefs.includes("/guardian"), "Status details must remain");
+    assert.ok(!hrefs.includes("/guardian"), "Status details (/guardian) must not appear in nav — standalone page was removed");
     assert.ok(hrefs.includes("/alerts"), "Alerts must remain");
     assert.ok(hrefs.includes("/settings"), "Settings must remain");
     assert.ok(hrefs.includes("/onboarding"), "Setup guide must remain");
   });
 
-  it("has exactly 4 items (Status details, Alerts, Settings, Setup guide)", () => {
-    assert.equal(MORE_NAV.length, 4, "MORE_NAV should have exactly 4 items");
+  it("has exactly 3 items (Alerts, Settings, Setup guide)", () => {
+    assert.equal(MORE_NAV.length, 3, "MORE_NAV should have exactly 3 items");
   });
 });
 

@@ -10,7 +10,6 @@ export type PostSessionReview = {
   endedAt: Date;
   meaningfulEventCount: number;
   guardianIntervened: boolean;
-  showGuardianLinkout: boolean;
   bullets: string[];
   takeaway: string;
 };
@@ -140,7 +139,6 @@ export function buildPostSessionReview(input: {
     endedAt: session.endedAt,
     meaningfulEventCount,
     guardianIntervened,
-    showGuardianLinkout: guardianIntervened,
     bullets,
     takeaway,
   };

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { SectionCard } from "@/components/ui/section-card";
 import type { PostSessionReview } from "@/lib/post-session-review";
 
@@ -77,14 +75,6 @@ export function PostSessionReviewPanel({
             Main takeaway
           </p>
           <p className="mt-2 text-base font-medium">{review.takeaway}</p>
-          {review.showGuardianLinkout ? (
-            <Link
-              href="/guardian"
-              className="mt-4 inline-flex rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-stone-200"
-            >
-              Review in Guardian
-            </Link>
-          ) : null}
         </div>
       </div>
     </SectionCard>

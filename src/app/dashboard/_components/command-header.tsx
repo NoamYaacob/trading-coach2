@@ -96,8 +96,8 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
       label: "Locked",
       chipClass: "bg-red-600 text-white",
       reason: "A rule was breached. Trading is paused in this app.",
-      nextHref: "/guardian",
-      nextLabel: "View lockout details →",
+      nextHref: "/rules",
+      nextLabel: "Edit rules →",
     };
   }
   if (liveRiskState === "WARNING") {
@@ -105,8 +105,8 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
       label: "Warning",
       chipClass: "bg-amber-500 text-white",
       reason: "A rule threshold is near. Review before your next trade.",
-      nextHref: "/guardian",
-      nextLabel: "Review status →",
+      nextHref: "/rules",
+      nextLabel: "Review rules →",
     };
   }
   if (todaySessionKind === "RESET_PENDING") {
@@ -114,8 +114,8 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
       label: "Reset pending",
       chipClass: "bg-orange-500 text-white",
       reason: "Locked — waiting for daily reset window.",
-      nextHref: "/guardian",
-      nextLabel: "View reset details →",
+      nextHref: "/rules",
+      nextLabel: "Edit rules →",
     };
   }
   if (sessionEnded) {
@@ -123,8 +123,8 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
       label: "Allowed",
       chipClass: "bg-emerald-600 text-white",
       reason: "Session ended for today. Rules clear.",
-      nextHref: "/guardian",
-      nextLabel: "View today's recap →",
+      nextHref: "/rules",
+      nextLabel: "Review rules →",
     };
   }
   if (sessionStarted) {
@@ -132,16 +132,16 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
       label: "Allowed",
       chipClass: "bg-emerald-600 text-white",
       reason: "Session active. Guardian is monitoring your limits.",
-      nextHref: "/guardian",
-      nextLabel: "View Guardian status →",
+      nextHref: "/rules",
+      nextLabel: "View rules →",
     };
   }
   return {
     label: "Allowed",
     chipClass: "bg-emerald-600 text-white",
     reason: "All rules clear. Start a session when ready to trade.",
-    nextHref: "/guardian",
-    nextLabel: "Start session →",
+    nextHref: "/rules",
+    nextLabel: "Set rules →",
   };
 }
 

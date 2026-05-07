@@ -252,14 +252,6 @@ export default async function RulesPage({
       title="Set your trading plan."
       description="Set session limits once in the default template, then override for individual accounts when needed."
       compactHero
-      actions={
-        <Link
-          href="/guardian"
-          className="inline-flex items-center justify-center rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-        >
-          View status
-        </Link>
-      }
     >
       {/* Two-column layout: selector sidebar + editor */}
       <div className="grid gap-5 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-8">
@@ -340,6 +332,20 @@ export default async function RulesPage({
               </span>
             </div>
           )}
+
+          {/* How enforcement works — compact collapsible */}
+          <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
+              How enforcement works
+              <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <ul className="mt-3 grid gap-1.5 text-stone-600">
+              <li>• Guardrail sends warnings when rules are crossed.</li>
+              <li>• In monitoring or test mode, Guardrail marks the account locked inside the app only.</li>
+              <li>• Broker-side cancel, flatten, and blocking are not active unless the account has verified write permissions and the action is implemented.</li>
+              <li>• Read-only connections support monitoring and alerts only.</li>
+            </ul>
+          </details>
 
           {/* Changes pending panel — merges lock banner + pending banner into one */}
           {scope !== "account" && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (

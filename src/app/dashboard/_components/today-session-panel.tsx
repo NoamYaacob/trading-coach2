@@ -138,13 +138,13 @@ export function TodaySessionPanel({
       ? { label: "Continue setup →", href: "/onboarding" }
       : sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted
         ? isPreNewsStartBlocked
-          ? { label: "Review status", href: "/guardian" }
+          ? { label: "Review rules", href: "/rules" }
           : isPreNewsCaution
-            ? { label: "Start session with caution", href: "/guardian" }
-            : { label: "Start session", href: "/guardian" }
+            ? { label: "Start session with caution", href: "/rules" }
+            : { label: "Start session", href: "/rules" }
         : sessionState.kind === "GUARDIAN_DISABLED"
           ? { label: "Enable protection", href: "/rules#guardian-toggle" }
-          : { label: "Open Guardian", href: "/guardian" };
+          : { label: "Edit rules", href: "/rules" };
   const resetText =
     sessionState.resetMode === "DAILY"
       ? formatGuardianDate(sessionState.nextResetAt, displayTimeZone)

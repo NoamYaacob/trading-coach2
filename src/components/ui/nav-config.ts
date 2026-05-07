@@ -13,7 +13,6 @@ export const PRIMARY_NAV: readonly AppNavItem[] = [
 ];
 
 export const MORE_NAV: readonly AppNavItem[] = [
-  { href: "/guardian", label: "Status details", match: "exact" },
   { href: "/alerts", label: "Alerts", match: "exact" },
   { href: "/settings", label: "Settings", match: "exact" },
   { href: "/onboarding", label: "Setup guide", match: "exact" },
