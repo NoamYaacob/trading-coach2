@@ -4,7 +4,8 @@ import { classifyFill } from "./fill-classifier.ts";
 import { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count.ts";
 
 // Simulate a sequence of fills and count how many are trade entries.
-// Mirrors the webhook's position-aware classification loop.
+// Mirrors the webhook's position-aware classification loop: only entry and
+// reversal count — scale_in does NOT count (matches Tradovate's "# of Trades").
 function simulateEntryCount(
   fills: Array<{ side: "BUY" | "SELL"; qty: number }>,
 ): number {
@@ -12,7 +13,7 @@ function simulateEntryCount(
   let entries = 0;
   for (const fill of fills) {
     const cls = classifyFill(position, fill.side, fill.qty);
-    if (cls !== "reduction") entries++;
+    if (cls === "entry" || cls === "reversal") entries++;
     position += fill.side === "BUY" ? fill.qty : -fill.qty;
   }
   return entries;
@@ -118,14 +119,14 @@ describe("trade entry counting — round-trip scenarios", () => {
     );
   });
 
-  it("6. scale-in counts as an additional trade entry", () => {
+  it("6. scale-in does NOT count as a trade entry (matches Tradovate '# of Trades')", () => {
     assert.equal(
       simulateEntryCount([
         { side: "BUY", qty: 1 }, // entry: flat → long 1
-        { side: "BUY", qty: 1 }, // scale-in: long 1 → long 2 (adding to position = new entry)
+        { side: "BUY", qty: 1 }, // scale-in: long 1 → long 2 (adds to position, NOT a new trade)
         { side: "SELL", qty: 2 }, // close all
       ]),
-      2,
+      1,
     );
   });
 
@@ -206,12 +207,14 @@ function fill(
   qty: number,
   offsetMs: number,
   rawPayload: unknown = null,
+  price: string | null = null,
 ): CanonicalFill {
   return {
     externalTradeId,
     contractId,
     side,
     quantity: String(qty),
+    price,
     occurredAt: t(offsetMs),
     rawPayload,
   };
@@ -306,5 +309,65 @@ describe("deriveCanonicalEntryCount — canonical trade counting", () => {
       fill("f2", null, "SELL", 1, 1, { symbol: "NQ" }),
     ];
     assert.equal(deriveCanonicalEntryCount(fills), 1);
+  });
+
+  it("10. two round trips on same contract with same-ms timestamps = 2 trades (sort stability)", () => {
+    // THE KEY BUG scenario for DEMO7433035: two separate round trips executed in the
+    // same millisecond get Tradovate fill IDs 101→102→103→104 (monotonically increasing).
+    // Without stable sort, same-timestamp fills can arrive as [BUY1,BUY2,SELL1,SELL2]
+    // and the second BUY is mis-classified as scale_in → count=1 (wrong).
+    // With secondary sort by numeric fill ID the order is [101:BUY,102:SELL,103:BUY,104:SELL]
+    // → two entries → count=2 (correct).
+    const T = 0; // all four fills share the same millisecond timestamp
+    const fills = [
+      fill("101", 1, "BUY",  1, T),
+      fill("102", 1, "SELL", 1, T),
+      fill("103", 1, "BUY",  1, T),
+      fill("104", 1, "SELL", 1, T),
+    ];
+    assert.equal(
+      deriveCanonicalEntryCount(fills),
+      2,
+      "two same-ms round trips must show 2 trades via stable fill-ID sort",
+    );
+  });
+
+  it("11. two round trips same qty/contract but different timestamps and prices = 2 trades", () => {
+    // Confirms that fills with the same quantity are NOT falsely deduplicated —
+    // dedup only applies within the same externalTradeId, not by shape similarity.
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0,    null, "5000.00"),
+      fill("f2", 1, "SELL", 1, 1000, null, "5005.00"),
+      fill("f3", 1, "BUY",  1, 5000, null, "5010.00"),
+      fill("f4", 1, "SELL", 1, 6000, null, "5015.00"),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 2);
+  });
+
+  it("12. reversal (long→short in one fill) counts as a new trade", () => {
+    // Sell 2 while long 1: closes 1 long AND opens 1 short in the same fill.
+    // Canonical count: original entry + reversal = 2 trades.
+    const fills = [
+      fill("f1", 1, "BUY",  1, 0), // entry: flat → long 1
+      fill("f2", 1, "SELL", 2, 1), // reversal: long 1 → short 1
+      fill("f3", 1, "BUY",  1, 2), // exit short
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 2, "reversal must count as a new trade entry");
+  });
+
+  it("13. null-ID fills with different timestamps/prices are NOT collapsed", () => {
+    // Composite dedup key includes occurredAt + price, so two physically distinct
+    // fills without an externalTradeId are kept separate and counted independently.
+    const fills = [
+      fill(null, 1, "BUY",  1, 0,    null, "5000"),
+      fill(null, 1, "SELL", 1, 1000, null, "5005"),
+      fill(null, 1, "BUY",  1, 5000, null, "4995"), // different time + price → new fill
+      fill(null, 1, "SELL", 1, 6000, null, "5000"),
+    ];
+    assert.equal(
+      deriveCanonicalEntryCount(fills),
+      2,
+      "null-ID fills with distinct composite keys must each be counted",
+    );
   });
 });

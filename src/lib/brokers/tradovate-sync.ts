@@ -24,6 +24,7 @@ import { parseAndDecrypt } from "@/lib/security/token-crypto";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
+import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser";
 import { countCanonicalEntries } from "@/lib/guardian-engine/session-state";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 import {
@@ -238,26 +239,68 @@ export async function syncTradovateAccount(
       // remains null — the UI will show "Trades unavailable" instead of 0.
     }
 
-    // Phase C: canonical DB-based trade count.
-    // Counts position entries from all fill-like events in the DB (both "fill"
-    // from this sync path and "trade_closed*" from the webhook path), deduplicated
-    // by externalTradeId and classified via position-aware logic.
-    // This replaces the API-based resolver (resolveTradeCount / fetchAccountScopedOrders)
-    // which counted completed orders — not position entries — inflating the count
-    // to 4 for bracket-order round trips that are actually 1 trade.
-    const canonical = await countCanonicalEntries(accountId, tradingDayKey);
-    tradesCount = canonical.count;
-    tradeCountSource = canonical.tradeCountSource; // always "verified"
+    // Phase C: authoritative trade count.
+    //
+    // Priority 1 — Tradovate Performance Report (broker_report):
+    //   POST /v1/reports/requestreport returns the same "# of Trades" shown in
+    //   Tradovate's own UI. It is account-scoped, position-lifecycle-based, and
+    //   matches the product definition exactly. Used when available.
+    //
+    // Priority 2 — Canonical DB count (fallback):
+    //   Queries all fill-like events in the DB (both "fill" from sync and
+    //   "trade_closed*" from the webhook), deduplicates by externalTradeId,
+    //   sorts by (occurredAt, fillId) for stability, and counts only flat→nonflat
+    //   position openings. Does NOT count scale-ins, matching Tradovate's report.
+    //
+    // Intentionally skipped: fetchAccountScopedOrders / order/deps — it counts
+    // completed orders, not position lifecycle entries, inflating bracket-order
+    // round trips to 4 instead of 1.
+    let reportCount: number | null = null;
+    try {
+      const accountName = await client.getAccountName();
+      if (accountName) {
+        const report = await client.fetchPerformanceReport({ accountName, tradingDayKey });
+        if (report && report.status >= 200 && report.status < 300) {
+          const parsed = parsePerformanceReportTradeCount({
+            body: report.body,
+            contentType: report.contentType,
+          });
+          if (parsed != null) {
+            reportCount = parsed;
+            console.info("[tradovate/trades] Performance Report count (authoritative)", {
+              accountId,
+              count: parsed,
+              source: "broker_report",
+            });
+          } else {
+            console.warn("[tradovate/trades] Performance Report returned no parseable trade count", {
+              accountId,
+              httpStatus: report.status,
+              bodyLength: report.body.length,
+            });
+          }
+        }
+      }
+    } catch {
+      // Performance Report is best-effort; fall through to DB canonical count.
+    }
 
-    console.info("[tradovate/trades] canonical entry count", {
-      accountId,
-      count: canonical.count,
-      tradeCountSource: canonical.tradeCountSource,
-      rawFillCount: cachedFills?.executions.length ?? null,
-    });
+    if (reportCount != null) {
+      tradesCount = reportCount;
+      tradeCountSource = "verified";
+    } else {
+      const canonical = await countCanonicalEntries(accountId, tradingDayKey);
+      tradesCount = canonical.count;
+      tradeCountSource = canonical.tradeCountSource; // always "verified"
+      console.info("[tradovate/trades] canonical DB count (Performance Report unavailable)", {
+        accountId,
+        count: canonical.count,
+        rawFillCount: cachedFills?.executions.length ?? null,
+      });
+    }
 
-    // Diagnostic: log the API-based resolver result without using it for enforcement.
-    // This lets us verify the resolver against the canonical count in production logs.
+    // Diagnostic: compare the API-based resolver (broker_report → order/deps fallback)
+    // against the winning count above, for production log analysis only.
     try {
       const adapter: TradeCountAdapter = {
         getAccountName: () => client.getAccountName(),
@@ -274,11 +317,12 @@ export async function syncTradovateAccount(
         },
       };
       const resolved = await resolveTradeCount(adapter, { tradingDayKey });
-      console.info("[tradovate/trades] resolver result (diagnostic only — not used for enforcement)", {
+      console.info("[tradovate/trades] resolver result (diagnostic only)", {
         accountId,
         count: resolved.count,
         source: resolved.source,
         trustLevel: resolved.trustLevel,
+        finalUsedCount: tradesCount,
         attempts: resolved.attempts,
       });
     } catch {

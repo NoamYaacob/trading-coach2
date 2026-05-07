@@ -152,6 +152,7 @@ export async function countCanonicalEntries(
       contractId: true,
       side: true,
       quantity: true,
+      price: true,
       occurredAt: true,
       rawPayload: true,
     },
@@ -163,6 +164,7 @@ export async function countCanonicalEntries(
     contractId: row.contractId,
     side: row.side,
     quantity: row.quantity == null ? null : row.quantity.toString(),
+    price: row.price == null ? null : row.price.toString(),
     occurredAt: row.occurredAt,
     rawPayload: row.rawPayload,
   }));

@@ -195,7 +195,7 @@ export async function POST(request: Request) {
       );
       const cls = classifyFill(netPos, side, quantity);
 
-      if (cls === "entry" || cls === "scale_in" || cls === "reversal") {
+      if (cls === "entry" || cls === "reversal") {
         state = await applyTradeEntry(account.id, normalizedEvent.occurredAt);
       }
       if ((cls === "reduction" || cls === "reversal") && normalizedEvent.pnl != null) {
