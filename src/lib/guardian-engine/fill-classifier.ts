@@ -13,6 +13,23 @@
  *   reversal — position flipped sign without a flat stop in between
  *   reduction — position shrank or closed (exit fill, not a new entry)
  */
+
+/**
+ * Normalize any side string from the database to a canonical "BUY" | "SELL".
+ *
+ * Tradovate and some prop-firm wrappers store side direction as "LONG"/"SHORT"
+ * (position direction) rather than "BUY"/"SELL" (order action). Both forms mean
+ * the same thing: LONG/BUY increases net position, SHORT/SELL decreases it.
+ *
+ * Use this before position arithmetic whenever reading side from the DB, to
+ * prevent "LONG" from being silently treated as "SELL" by the === "BUY" check.
+ */
+export function normalizeSide(side: string | null | undefined): "BUY" | "SELL" {
+  if (side == null) return "SELL";
+  const s = side.toUpperCase();
+  return s === "BUY" || s === "LONG" ? "BUY" : "SELL";
+}
+
 export function classifyFill(
   netPositionBefore: number,
   side: "BUY" | "SELL",

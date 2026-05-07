@@ -1,4 +1,4 @@
-import { classifyFill } from "./fill-classifier.ts";
+import { classifyFill, normalizeSide } from "./fill-classifier.ts";
 
 /** Minimal fill shape consumed by deriveCanonicalEntryCount. */
 export type CanonicalFill = {
@@ -108,7 +108,7 @@ export function deriveCanonicalEntryCount(fills: CanonicalFill[]): number {
   for (const [, group] of byContract) {
     let position = 0;
     for (const fill of group) {
-      const side = fill.side as "BUY" | "SELL";
+      const side = normalizeSide(fill.side);
       const qty = Number(fill.quantity);
       const cls = classifyFill(position, side, qty);
       if (cls === "entry" || cls === "reversal") entryCount++;

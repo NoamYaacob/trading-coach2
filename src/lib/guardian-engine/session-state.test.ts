@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { classifyFill } from "./fill-classifier.ts";
+import { classifyFill, normalizeSide } from "./fill-classifier.ts";
 import { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count.ts";
 
 // Simulate a sequence of fills and count how many are trade entries.
@@ -203,7 +203,7 @@ function t(offsetMs: number): Date {
 function fill(
   externalTradeId: string | null,
   contractId: number | null,
-  side: "BUY" | "SELL",
+  side: "BUY" | "SELL" | "LONG" | "SHORT",
   qty: number,
   offsetMs: number,
   rawPayload: unknown = null,
@@ -369,5 +369,76 @@ describe("deriveCanonicalEntryCount — canonical trade counting", () => {
       2,
       "null-ID fills with distinct composite keys must each be counted",
     );
+  });
+});
+
+// ── normalizeSide — DB side value normalization ───────────────────────────────
+
+describe("normalizeSide — maps LONG/SHORT to BUY/SELL", () => {
+  it("BUY → BUY", () => { assert.equal(normalizeSide("BUY"), "BUY"); });
+  it("SELL → SELL", () => { assert.equal(normalizeSide("SELL"), "SELL"); });
+  it("LONG → BUY (Tradovate position direction)", () => { assert.equal(normalizeSide("LONG"), "BUY"); });
+  it("SHORT → SELL (Tradovate position direction)", () => { assert.equal(normalizeSide("SHORT"), "SELL"); });
+  it("case-insensitive: long → BUY", () => { assert.equal(normalizeSide("long"), "BUY"); });
+  it("case-insensitive: short → SELL", () => { assert.equal(normalizeSide("short"), "SELL"); });
+  it("null → SELL (conservative default)", () => { assert.equal(normalizeSide(null), "SELL"); });
+});
+
+// ── Production regression: DEMO7433035 — LONG/SHORT side labels ───────────────
+// Root cause of count=1 bug: DB stored "LONG"/"SHORT" instead of "BUY"/"SELL"
+// for some fills. The === "BUY" check treated "LONG" as "SELL", making a LONG
+// fill look like another short, inflating position to -10 and mis-classifying
+// the second entry as scale_in.
+
+describe("deriveCanonicalEntryCount — LONG/SHORT side labels (DEMO7433035 regression)", () => {
+  it("SHORT 5, LONG 5, SHORT 5, LONG 5 on same contract = 2 trades, trace 0→-5→0→-5→0", () => {
+    // Exact production trace from DEMO7433035.
+    const fills = [
+      fill("f1", 1, "SHORT", 5, 0),    // entry: 0 → -5
+      fill("f2", 1, "LONG",  5, 1000), // exit:  -5 → 0
+      fill("f3", 1, "SHORT", 5, 2000), // entry: 0 → -5
+      fill("f4", 1, "LONG",  5, 3000), // exit:  -5 → 0
+    ];
+    assert.equal(
+      deriveCanonicalEntryCount(fills),
+      2,
+      "two SHORT/LONG round trips must count as 2 trades",
+    );
+  });
+
+  it("LONG 5, SHORT 5, LONG 5, SHORT 5 on same contract = 2 trades, trace 0→5→0→5→0", () => {
+    const fills = [
+      fill("f1", 1, "LONG",  5, 0),
+      fill("f2", 1, "SHORT", 5, 1000),
+      fill("f3", 1, "LONG",  5, 2000),
+      fill("f4", 1, "SHORT", 5, 3000),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 2);
+  });
+
+  it("mixed BUY/SELL and LONG/SHORT labels on same contract = treated identically", () => {
+    // Ensures normalization works regardless of which label convention is used.
+    const withBuySell = [
+      fill("f1", 1, "BUY",  5, 0),
+      fill("f2", 1, "SELL", 5, 1000),
+      fill("f3", 1, "BUY",  5, 2000),
+      fill("f4", 1, "SELL", 5, 3000),
+    ];
+    const withLongShort = [
+      fill("g1", 1, "LONG",  5, 0),
+      fill("g2", 1, "SHORT", 5, 1000),
+      fill("g3", 1, "LONG",  5, 2000),
+      fill("g4", 1, "SHORT", 5, 3000),
+    ];
+    assert.equal(deriveCanonicalEntryCount(withBuySell), 2);
+    assert.equal(deriveCanonicalEntryCount(withLongShort), 2);
+  });
+
+  it("single SHORT + LONG round trip = 1 trade (not 0 or 2)", () => {
+    const fills = [
+      fill("f1", 1, "SHORT", 5, 0),
+      fill("f2", 1, "LONG",  5, 1000),
+    ];
+    assert.equal(deriveCanonicalEntryCount(fills), 1);
   });
 });

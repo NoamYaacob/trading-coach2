@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { deriveCanonicalEntryCount } from "@/lib/guardian-engine/canonical-trade-count";
-import { classifyFill } from "@/lib/guardian-engine/fill-classifier";
+import { classifyFill, normalizeSide } from "@/lib/guardian-engine/fill-classifier";
 import { parsePerformanceReportTradeCount } from "@/lib/brokers/tradovate-reports-parser";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
@@ -70,32 +70,59 @@ export async function GET(request: Request) {
   let performanceReportTradeCount: number | null = null;
   let performanceReportStatus = "not_attempted";
   let performanceReportAccountName: string | null = null;
+  let performanceReportDebug: Record<string, unknown> = {};
   try {
     const tvClient = new TradovateClient(account.id, account.userId);
     await tvClient.initialize();
     performanceReportAccountName = await tvClient.getAccountName();
     if (performanceReportAccountName) {
+      // Capture what would be sent to Tradovate for debugging the 400
+      const [y, m, d] = sessionDate.split("-");
+      const dateFormatted = `${m}/${d}/${y}`;
+      performanceReportDebug = {
+        endpoint: "POST /reports/requestreport",
+        accountNameUsed: performanceReportAccountName,
+        tvAccountId: account.externalAccountId,
+        dateFormatted,
+        tradingDayKey: sessionDate,
+        requestBodyShape: {
+          name: "Performance",
+          params: ["startDate", "endDate", "startTime", "endTime", "account"],
+          representationType: "html",
+          template: "Flex.html",
+        },
+      };
       const report = await tvClient.fetchPerformanceReport({
         accountName: performanceReportAccountName,
         tradingDayKey: sessionDate,
       });
       if (report == null) {
         performanceReportStatus = "null_response";
-      } else if (report.status < 200 || report.status >= 300) {
-        performanceReportStatus = `http_${report.status}`;
+        performanceReportDebug.note = "fetchPerformanceReport returned null — reports URL not configured or network error";
       } else {
-        const parsed = parsePerformanceReportTradeCount({
-          body: report.body,
-          contentType: report.contentType,
-        });
-        performanceReportTradeCount = parsed;
-        performanceReportStatus = parsed != null ? "parsed" : "unparseable";
+        performanceReportDebug.httpStatus = report.status;
+        performanceReportDebug.contentType = report.contentType;
+        // Always expose the raw body (up to 500 chars) to debug 4xx/5xx errors
+        performanceReportDebug.responseBodyPreview = report.body.slice(0, 500);
+        if (report.status < 200 || report.status >= 300) {
+          performanceReportStatus = `http_${report.status}`;
+        } else {
+          const parsed = parsePerformanceReportTradeCount({
+            body: report.body,
+            contentType: report.contentType,
+          });
+          performanceReportTradeCount = parsed;
+          performanceReportStatus = parsed != null ? "parsed" : "unparseable";
+        }
       }
     } else {
       performanceReportStatus = "no_account_name";
+      performanceReportDebug.note = "getAccountName() returned null — check /account/list API response and tvAccountId";
+      performanceReportDebug.tvAccountId = account.externalAccountId;
     }
   } catch (err) {
     performanceReportStatus = `error:${err instanceof Error ? err.message : "unknown"}`;
+    performanceReportDebug.errorMessage = err instanceof Error ? err.message : String(err);
   }
 
   // ── DB fills ───────────────────────────────────────────────────────────────
@@ -184,7 +211,7 @@ export async function GET(request: Request) {
     }
 
     const positionBefore = contractPositions.get(contractKey) ?? 0;
-    const side = fill.side as "BUY" | "SELL";
+    const side = normalizeSide(fill.side);
     const qty = Number(fill.quantity ?? 0);
     const classification = classifyFill(positionBefore, side, qty);
     const counted = classification === "entry" || classification === "reversal";
@@ -198,7 +225,8 @@ export async function GET(request: Request) {
     return {
       externalTradeId: fill.externalTradeId,
       contractKey,
-      side: fill.side,
+      sideRaw: fill.side,
+      sideNormalized: side,
       quantity: fill.quantity,
       price: fill.price,
       occurredAt: fill.occurredAt.toISOString(),
@@ -224,8 +252,8 @@ export async function GET(request: Request) {
     dateRange,
     performanceReport: {
       status: performanceReportStatus,
-      accountName: performanceReportAccountName,
       tradeCount: performanceReportTradeCount,
+      debug: performanceReportDebug,
     },
     rawFillCount,
     dedupedFillCount,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { SessionState } from "./types";
-export { classifyFill } from "./fill-classifier";
+export { classifyFill, normalizeSide } from "./fill-classifier";
+import { normalizeSide } from "./fill-classifier";
 export { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count";
 import { deriveCanonicalEntryCount } from "./canonical-trade-count";
 
@@ -119,7 +120,8 @@ export async function computeNetPosition(
       seen.add(f.externalTradeId);
     }
     const qty = Number(f.quantity ?? 0);
-    position += f.side === "BUY" ? qty : -qty;
+    const side = normalizeSide(f.side);
+    position += side === "BUY" ? qty : -qty;
   }
   return position;
 }
