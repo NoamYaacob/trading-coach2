@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import type { PendingDiscoveredAccount } from "./types";
 
@@ -13,25 +13,45 @@ type Props = {
 export function NewAccountsPanel({ accounts }: Props) {
   if (accounts.length === 0) return null;
 
+  // Use the inherited firm name in the header when every account
+  // belongs to the same unambiguously inferred firm.
+  const firstFirm = accounts[0]!.inheritedPropFirm ?? accounts[0]!.suggestedPropFirm;
+  const allSameFirm =
+    firstFirm != null &&
+    accounts.every(
+      (a) => (a.inheritedPropFirm ?? a.suggestedPropFirm) === firstFirm,
+    );
+  const firmLabel = allSameFirm ? firstFirm : null;
+
   const firstPlatformLabel = accounts[0]!.platformLabel;
   const platformName = accounts.every((a) => a.platformLabel === firstPlatformLabel)
     ? firstPlatformLabel
     : "broker";
 
+  const heading =
+    accounts.length === 1
+      ? firmLabel
+        ? `New ${firmLabel} account detected`
+        : "New broker account detected"
+      : firmLabel
+        ? `New ${firmLabel} accounts detected`
+        : "New broker accounts detected";
+
+  const subheading =
+    accounts.length === 1
+      ? `We found a new ${platformName} account on your connected broker login.`
+      : `We found ${accounts.length} new ${platformName} accounts on your connected broker logins.`;
+
   return (
     <section
-      aria-label="New broker account detected"
+      aria-label={heading}
       className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:p-5"
     >
       <header>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
-          {accounts.length === 1 ? "New broker account detected" : "New broker accounts detected"}
+          {heading}
         </p>
-        <p className="mt-1 text-sm text-amber-900">
-          {accounts.length === 1
-            ? `We found a new ${platformName} account on your connected broker login.`
-            : `We found ${accounts.length} new ${platformName} accounts on your connected broker logins.`}
-        </p>
+        <p className="mt-1 text-sm text-amber-900">{subheading}</p>
       </header>
       <ul className="mt-4 grid gap-2">
         {accounts.map((a) => (
@@ -50,20 +70,19 @@ function buildMetaParts(account: PendingDiscoveredAccount): string[] {
   const parts: string[] = [];
   parts.push(account.platformLabel);
   if (account.envLabel) parts.push(account.envLabel);
-  // Priority: connection-inherited > name-pattern suggestion > stored propFirm
   const firmDisplay = account.inheritedPropFirm ?? account.suggestedPropFirm ?? account.propFirm;
   parts.push(firmDisplay?.trim() ? firmDisplay.trim() : "Unassigned");
   const typeToShow = firmDisplay
     ? (account.inheritedAccountType ?? account.suggestedAccountType)
     : null;
   if (typeToShow && typeToShow !== "personal") {
-    const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+    const TYPE_LABEL: Record<string, string> = {
       evaluation: "Evaluation",
       funded: "Funded",
       demo: "Demo",
     };
-    const typeLabel = ACCOUNT_TYPE_LABEL[typeToShow];
-    if (typeLabel) parts.push(typeLabel);
+    const label = TYPE_LABEL[typeToShow];
+    if (label) parts.push(label);
   }
   if (account.externalAccountId) parts.push(`ID ${account.externalAccountId}`);
   return parts;
@@ -89,13 +108,6 @@ const ACCOUNT_TYPE_PILLS: { value: AccountTypeChoice; label: string }[] = [
   { value: "personal", label: "Personal" },
   { value: "demo", label: "Demo" },
 ];
-
-const ACCOUNT_TYPE_LABELS: Record<AccountTypeChoice, string> = {
-  evaluation: "Evaluation",
-  funded: "Funded",
-  personal: "Personal",
-  demo: "Demo",
-};
 
 const KNOWN_PILL_FIRMS: FirmChoice[] = ["MyFundedFutures", "Apex Trader Funding", "Topstep"];
 
@@ -128,11 +140,61 @@ function getDefaultTypeChoice(account: PendingDiscoveredAccount): AccountTypeCho
 type RowMode = "idle" | "reviewing" | "busy_add" | "busy_ignore";
 type RulesChoice = "default" | "account_specific";
 
+// ── Rules card buttons ────────────────────────────────────────────────────────
+
+function RulesCards({
+  choice,
+  disabled,
+  onChange,
+}: {
+  choice: RulesChoice;
+  disabled: boolean;
+  onChange: (v: RulesChoice) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      {(
+        [
+          {
+            value: "default" as RulesChoice,
+            label: "Use Default trading plan",
+            detail: "Apply your existing global trading rules",
+          },
+          {
+            value: "account_specific" as RulesChoice,
+            label: "Create account-specific rules",
+            detail: "Set custom limits for this account",
+          },
+        ] as const
+      ).map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(opt.value)}
+          className={[
+            "rounded-xl border px-3 py-2.5 text-left transition disabled:pointer-events-none disabled:opacity-60",
+            choice === opt.value
+              ? "border-stone-800 bg-stone-950 text-white"
+              : "border-stone-200 hover:border-stone-400 hover:bg-stone-50",
+          ].join(" ")}
+        >
+          <p className={`text-xs font-semibold ${choice === opt.value ? "text-white" : "text-stone-800"}`}>
+            {opt.label}
+          </p>
+          <p className={`mt-0.5 text-[11px] ${choice === opt.value ? "text-stone-300" : "text-stone-500"}`}>
+            {opt.detail}
+          </p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── PendingAccountRow ─────────────────────────────────────────────────────────
 
 function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   const router = useRouter();
-  const radioName = useId();
 
   const [mode, setMode] = useState<RowMode>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -141,25 +203,15 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   const [firmChoice, setFirmChoice] = useState<FirmChoice>(() => getDefaultFirmChoice(account));
   const [otherText, setOtherText] = useState(() => getDefaultOtherText(account));
   const [typeChoice, setTypeChoice] = useState<AccountTypeChoice>(() => getDefaultTypeChoice(account));
-  // When firm is safely inferred, show locked view. User can reveal manual picker via "Change…".
   const [showManualPicker, setShowManualPicker] = useState(false);
 
   const firmIsInferred = !!account.inheritedPropFirm;
   const busy = mode === "busy_add" || mode === "busy_ignore";
 
-  // Derive propFirm/accountType values for the API call
   function classificationPayload(): { propFirm: string | null; accountType: string } {
     if (firmChoice === "personal") return { propFirm: null, accountType: "personal" };
-    if (firmChoice === "other") {
-      return { propFirm: otherText.trim() || null, accountType: typeChoice };
-    }
+    if (firmChoice === "other") return { propFirm: otherText.trim() || null, accountType: typeChoice };
     return { propFirm: firmChoice, accountType: typeChoice };
-  }
-
-  function firmDisplayLabel(): string {
-    if (firmChoice === "personal") return "Personal";
-    if (firmChoice === "other") return otherText.trim() || "Other";
-    return firmChoice;
   }
 
   async function handleConfirmAdd() {
@@ -218,6 +270,7 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   }
 
   const metaParts = buildMetaParts(account);
+  // Show the manual picker when firm is ambiguous OR after user clicks "Change…"
   const showPicker = !firmIsInferred || showManualPicker;
 
   return (
@@ -253,39 +306,21 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
         )}
       </div>
 
-      {/* Setup confirmation step */}
+      {/* Setup step */}
       {(mode === "reviewing" || mode === "busy_add") && (
         <div className="mt-3 border-t border-amber-100 pt-3">
-          <p className="mb-3 text-xs font-semibold text-stone-800">Add this account to Guardrail</p>
 
-          {/* ── Inferred: show locked firm/type ── */}
+          {/* ── Inferred case: firm is known, ask only about rules ── */}
           {!showPicker && (
-            <div className="mb-3 rounded-lg bg-stone-50 px-3 py-2.5">
-              <div className="flex items-baseline gap-3 text-[11px]">
-                <span className="w-10 shrink-0 font-medium text-stone-400">Firm</span>
-                <span className="font-medium text-stone-800">{firmDisplayLabel()}</span>
-              </div>
-              {firmChoice !== "personal" && (
-                <div className="mt-1 flex items-baseline gap-3 text-[11px]">
-                  <span className="w-10 shrink-0 font-medium text-stone-400">Type</span>
-                  <span className="font-medium text-stone-800">
-                    {ACCOUNT_TYPE_LABELS[typeChoice]}
-                  </span>
-                </div>
-              )}
-              {!busy && (
-                <button
-                  type="button"
-                  onClick={() => setShowManualPicker(true)}
-                  className="mt-2 text-[11px] text-stone-400 underline underline-offset-2 hover:text-stone-600"
-                >
-                  Change…
-                </button>
-              )}
-            </div>
+            <>
+              <p className="mb-2.5 text-xs font-medium text-stone-600">
+                How should Guardrail protect this account?
+              </p>
+              <RulesCards choice={rulesChoice} disabled={busy} onChange={setRulesChoice} />
+            </>
           )}
 
-          {/* ── Manual picker: shown when firm is ambiguous or user clicked Change… ── */}
+          {/* ── Ambiguous case: user must choose firm + type first ── */}
           {showPicker && (
             <>
               <p className="mb-1.5 text-[11px] font-medium text-stone-500">
@@ -346,39 +381,13 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
                   </div>
                 </>
               )}
+
+              <p className="mb-2.5 mt-3 text-[11px] font-medium text-stone-500">
+                How should Guardrail protect this account?
+              </p>
+              <RulesCards choice={rulesChoice} disabled={busy} onChange={setRulesChoice} />
             </>
           )}
-
-          {/* ── Rules choice ── */}
-          <div className="mt-3">
-            <p className="mb-1.5 text-[11px] font-medium text-stone-500">Rules</p>
-            <div className="grid gap-1.5">
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name={radioName}
-                  value="default"
-                  checked={rulesChoice === "default"}
-                  disabled={busy}
-                  onChange={() => setRulesChoice("default")}
-                  className="mt-0.5 accent-stone-950 disabled:opacity-60"
-                />
-                <span className="text-[11px] text-stone-700">Use Default trading plan</span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name={radioName}
-                  value="account_specific"
-                  checked={rulesChoice === "account_specific"}
-                  disabled={busy}
-                  onChange={() => setRulesChoice("account_specific")}
-                  className="mt-0.5 accent-stone-950 disabled:opacity-60"
-                />
-                <span className="text-[11px] text-stone-700">Create account-specific rules</span>
-              </label>
-            </div>
-          </div>
 
           {/* ── Confirm / Cancel ── */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -400,6 +409,17 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
               </button>
             )}
           </div>
+
+          {/* Change classification — secondary link, only shown for inferred case */}
+          {firmIsInferred && !showManualPicker && !busy && (
+            <button
+              type="button"
+              onClick={() => setShowManualPicker(true)}
+              className="mt-2 text-[11px] text-stone-400 underline underline-offset-2 hover:text-stone-600"
+            >
+              Change firm or type…
+            </button>
+          )}
         </div>
       )}
 
