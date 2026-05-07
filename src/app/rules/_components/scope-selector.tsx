@@ -29,11 +29,11 @@ function AccountItem({
   const isInactive = account.missingFromBrokerSince != null;
 
   return (
-    <li>
+    <li className="min-w-0">
       <Link
         href={`/rules?scope=account&id=${account.id}`}
         aria-current={isSelected ? "page" : undefined}
-        className={`flex min-w-0 items-center gap-2 overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 text-sm transition ${
+        className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 text-sm transition ${
           isSelected
             ? "border-stone-950 bg-stone-100 font-semibold text-stone-900"
             : isInactive
@@ -41,14 +41,16 @@ function AccountItem({
               : "border-transparent text-stone-700 hover:bg-stone-50"
         }`}
       >
-        <span className="min-w-0 flex-1 truncate">{account.label}</span>
-        {badge && (
-          <span
-            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
-          >
-            {badge.label}
-          </span>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate">{account.label}</span>
+          {badge && (
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
+            >
+              {badge.label}
+            </span>
+          )}
+        </div>
       </Link>
     </li>
   );
@@ -58,34 +60,36 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
   const isDefault = currentScope !== "account";
 
   return (
-    <nav aria-label="Rule scope">
-      <ul className="grid gap-0.5">
+    <nav aria-label="Rule scope" className="min-w-0">
+      <ul className="grid grid-cols-1 gap-0.5">
         {/* Default template */}
-        <li>
+        <li className="min-w-0">
           <Link
             href="/rules"
             aria-current={isDefault ? "page" : undefined}
-            className={`flex items-start gap-2 overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
+            className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
               isDefault
                 ? "border-stone-950 bg-stone-100 text-stone-900"
                 : "border-transparent text-stone-700 hover:bg-stone-50"
             }`}
           >
-            <div className="min-w-0 flex-1">
-              <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
-                Default template
-              </p>
-              <p className={`truncate text-[11px] ${isDefault ? "text-stone-600" : "text-stone-400"}`}>
-                Applies to accounts without overrides
-              </p>
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
+                  Default template
+                </p>
+                <p className={`truncate text-[11px] ${isDefault ? "text-stone-600" : "text-stone-400"}`}>
+                  Applies to accounts without overrides
+                </p>
+              </div>
+              <span
+                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
+                  isDefault ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                Default
+              </span>
             </div>
-            <span
-              className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-                isDefault ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
-              }`}
-            >
-              Default
-            </span>
           </Link>
         </li>
 
@@ -111,9 +115,9 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
             : "";
 
           return (
-            <li key={group.groupKey} className="mt-2 border-t border-stone-100 pt-2">
-              <div className="flex items-start justify-between gap-1.5 px-2 pb-1">
-                <div className="min-w-0">
+            <li key={group.groupKey} className="mt-2 min-w-0 border-t border-stone-100 pt-2">
+              <div className="flex min-w-0 items-start justify-between gap-1.5 px-2 pb-1">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-500">
                     {group.firmLabel}
                   </p>
@@ -128,7 +132,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
                   {badge.label}
                 </span>
               </div>
-              <ul className="grid gap-px">
+              <ul className="grid grid-cols-1 gap-px">
                 {group.accounts.map((account) => (
                   <AccountItem
                     key={account.id}
@@ -142,7 +146,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
         })}
 
         {groups.length === 0 && (
-          <li>
+          <li className="min-w-0">
             <p className="mt-3 px-3.5 text-xs text-stone-400">
               No broker accounts connected yet.{" "}
               <Link href="/accounts/connect/tradovate" className="underline-offset-2 hover:underline">

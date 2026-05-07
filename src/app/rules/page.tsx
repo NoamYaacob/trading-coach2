@@ -272,7 +272,7 @@ export default async function RulesPage({
         {/* ── Scope selector ──────────────────────────────────────────────── */}
 
         {/* Mobile: collapsible — collapses after scope selection so editor is visible */}
-        <details className="rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
+        <details className="overflow-hidden rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
               Rule Target
@@ -290,7 +290,7 @@ export default async function RulesPage({
         </details>
 
         {/* Desktop: always-visible sticky sidebar */}
-        <div className="hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
+        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
           <div className="mb-3 px-3.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
               Rule Target
@@ -308,7 +308,7 @@ export default async function RulesPage({
         </div>
 
         {/* ── Rule editor ─────────────────────────────────────────────────── */}
-        <div className="grid gap-5">
+        <div className="grid min-w-0 gap-5">
 
           {/* Scope context header */}
           <ScopeContextHeader scope={scope} account={selectedAccount} />
