@@ -434,4 +434,88 @@ describe("generic grouping rules", () => {
     assert.equal(a.consecutiveLosses, 1);
     assert.equal(b.consecutiveLosses, 2);
   });
+
+  // 8. personal + demo on DIFFERENT connections → two separate "Personal accounts" groups
+  it("personal and demo accounts on different broker connections are NOT merged", () => {
+    const accounts = [
+      stubAccount({
+        id: "personal-conn-a",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Personal accounts",
+        brokerConnectionId: "conn-a",
+        accountType: "personal",
+      }),
+      stubAccount({
+        id: "demo-conn-b",
+        firmKey: PERSONAL_KEY,
+        firmLabel: "Personal accounts",
+        brokerConnectionId: "conn-b",
+        accountType: "demo",
+      }),
+    ];
+    const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
+    assert.equal(groups.length, 2, "different connections → two distinct groups");
+    const connIds = groups.map((g) => g.brokerConnectionId).sort();
+    assert.deepEqual(connIds, ["conn-a", "conn-b"]);
+    assert.equal(groups[0].accounts.length, 1);
+    assert.equal(groups[1].accounts.length, 1);
+  });
+
+  // 9. propFirm + funded → grouped under propFirm (propFirm wins regardless of accountType)
+  it("funded account with propFirm is grouped under the prop firm, not Unassigned", () => {
+    const accounts = [
+      stubAccount({
+        id: "eval-1",
+        firmKey: "acmeprop",
+        firmLabel: "AcmeProp",
+        brokerConnectionId: "conn-a",
+        accountType: "evaluation",
+      }),
+      stubAccount({
+        id: "funded-1",
+        firmKey: "acmeprop",
+        firmLabel: "AcmeProp",
+        brokerConnectionId: "conn-a",
+        accountType: "funded",
+      }),
+    ];
+    const groups = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].firmLabel, "AcmeProp");
+    assert.equal(groups[0].accounts.length, 2);
+  });
+
+  // 10. funded/evaluation with no propFirm → "Unassigned firm", never "Personal accounts"
+  it("funded account with no propFirm falls into 'Unassigned firm', not 'Personal accounts'", () => {
+    const accounts = [
+      stubAccount({
+        id: "orphan-funded",
+        firmKey: UNASSIGNED_KEY,
+        firmLabel: "Unassigned firm",
+        propFirm: null,
+        brokerConnectionId: null,
+        accountType: "funded",
+      }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
+    assert.equal(group.firmLabel, "Unassigned firm");
+    assert.notEqual(group.firmLabel, "Personal accounts");
+  });
+
+  // 11. unknown/future accountType with no propFirm → "Unassigned firm" (safe fallthrough)
+  it("unrecognised accountType with no propFirm falls into 'Unassigned firm'", () => {
+    const accounts = [
+      stubAccount({
+        id: "unknown-type",
+        firmKey: UNASSIGNED_KEY,
+        firmLabel: "Unassigned firm",
+        propFirm: null,
+        brokerConnectionId: null,
+        accountType: "something_new",
+      }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
+    assert.equal(group.firmLabel, "Unassigned firm");
+    assert.notEqual(group.firmLabel, "Personal accounts");
+  });
 });
