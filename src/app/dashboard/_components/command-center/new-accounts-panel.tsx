@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { PendingDiscoveredAccount } from "./types";
 
@@ -44,6 +44,8 @@ export function NewAccountsPanel({ accounts }: Props) {
   );
 }
 
+// ── Meta subtitle ─────────────────────────────────────────────────────────────
+
 function buildMetaParts(account: PendingDiscoveredAccount): string[] {
   const parts: string[] = [];
   parts.push(account.platformLabel);
@@ -51,7 +53,6 @@ function buildMetaParts(account: PendingDiscoveredAccount): string[] {
   // Priority: connection-inherited > name-pattern suggestion > stored propFirm
   const firmDisplay = account.inheritedPropFirm ?? account.suggestedPropFirm ?? account.propFirm;
   parts.push(firmDisplay?.trim() ? firmDisplay.trim() : "Unassigned");
-  // Show inherited account type when a firm is known
   const typeToShow = firmDisplay
     ? (account.inheritedAccountType ?? account.suggestedAccountType)
     : null;
@@ -89,10 +90,16 @@ const ACCOUNT_TYPE_PILLS: { value: AccountTypeChoice; label: string }[] = [
   { value: "demo", label: "Demo" },
 ];
 
+const ACCOUNT_TYPE_LABELS: Record<AccountTypeChoice, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  personal: "Personal",
+  demo: "Demo",
+};
+
 const KNOWN_PILL_FIRMS: FirmChoice[] = ["MyFundedFutures", "Apex Trader Funding", "Topstep"];
 
 function getDefaultFirmChoice(account: PendingDiscoveredAccount): FirmChoice {
-  // Connection context wins over name-pattern inference
   const bestFirm = account.inheritedPropFirm ?? account.suggestedPropFirm;
   if (bestFirm) {
     return KNOWN_PILL_FIRMS.includes(bestFirm as FirmChoice)
@@ -111,69 +118,107 @@ function getDefaultOtherText(account: PendingDiscoveredAccount): string {
 }
 
 function getDefaultTypeChoice(account: PendingDiscoveredAccount): AccountTypeChoice {
-  // Connection context wins over name-pattern inference
   const t = account.inheritedAccountType ?? account.suggestedAccountType;
   if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
   return "evaluation";
 }
 
-// ── Row modes ─────────────────────────────────────────────────────────────────
+// ── Row mode ─────────────────────────────────────────────────────────────────
 
-type RowMode = "idle" | "classifying" | "busy_add" | "busy_ignore";
+type RowMode = "idle" | "reviewing" | "busy_add" | "busy_ignore";
+type RulesChoice = "default" | "account_specific";
 
 // ── PendingAccountRow ─────────────────────────────────────────────────────────
 
 function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   const router = useRouter();
+  const radioName = useId();
+
   const [mode, setMode] = useState<RowMode>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [rulesChoice, setRulesChoice] = useState<RulesChoice>("default");
 
   const [firmChoice, setFirmChoice] = useState<FirmChoice>(() => getDefaultFirmChoice(account));
   const [otherText, setOtherText] = useState(() => getDefaultOtherText(account));
   const [typeChoice, setTypeChoice] = useState<AccountTypeChoice>(() => getDefaultTypeChoice(account));
+  // When firm is safely inferred, show locked view. User can reveal manual picker via "Change…".
+  const [showManualPicker, setShowManualPicker] = useState(false);
 
+  const firmIsInferred = !!account.inheritedPropFirm;
   const busy = mode === "busy_add" || mode === "busy_ignore";
 
-  async function callProtectionApi(protectionStatus: "protected" | "ignored") {
-    const busyMode: RowMode = protectionStatus === "protected" ? "busy_add" : "busy_ignore";
-    setMode(busyMode);
-    setError(null);
-
-    let propFirm: string | null = null;
-    let accountType: string = "personal";
-    if (protectionStatus === "protected") {
-      if (firmChoice === "personal") {
-        propFirm = null;
-        accountType = "personal";
-      } else if (firmChoice === "other") {
-        propFirm = otherText.trim() || null;
-        accountType = typeChoice;
-      } else {
-        propFirm = firmChoice;
-        accountType = typeChoice;
-      }
+  // Derive propFirm/accountType values for the API call
+  function classificationPayload(): { propFirm: string | null; accountType: string } {
+    if (firmChoice === "personal") return { propFirm: null, accountType: "personal" };
+    if (firmChoice === "other") {
+      return { propFirm: otherText.trim() || null, accountType: typeChoice };
     }
+    return { propFirm: firmChoice, accountType: typeChoice };
+  }
 
+  function firmDisplayLabel(): string {
+    if (firmChoice === "personal") return "Personal";
+    if (firmChoice === "other") return otherText.trim() || "Other";
+    return firmChoice;
+  }
+
+  async function handleConfirmAdd() {
+    setMode("busy_add");
+    setError(null);
+    const { propFirm, accountType } = classificationPayload();
     try {
       const res = await fetch(`/api/accounts/${account.id}/protection`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ protectionStatus, propFirm, accountType }),
+        body: JSON.stringify({ protectionStatus: "protected", propFirm, accountType }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok || !data.ok) {
+        setError(data.message ?? data.error ?? "Could not add account.");
+        setMode("reviewing");
+        return;
+      }
+      if (rulesChoice === "account_specific") {
+        router.push(`/rules?scope=account&id=${account.id}`);
+      } else {
+        router.refresh();
+      }
+    } catch {
+      setError("Network error. Please try again.");
+      setMode("reviewing");
+    }
+  }
+
+  async function handleIgnore() {
+    setMode("busy_ignore");
+    setError(null);
+    try {
+      const res = await fetch(`/api/accounts/${account.id}/protection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ protectionStatus: "ignored" }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; message?: string };
       if (!res.ok || !data.ok) {
         setError(data.message ?? data.error ?? "Could not update account.");
-        setMode("classifying");
+        setMode("idle");
         return;
       }
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
-      setMode("classifying");
+      setMode("idle");
     }
   }
 
+  function handleCancel() {
+    setMode("idle");
+    setError(null);
+    setShowManualPicker(false);
+  }
+
   const metaParts = buildMetaParts(account);
+  const showPicker = !firmIsInferred || showManualPicker;
 
   return (
     <div className="rounded-xl border border-amber-200 bg-white px-4 py-3">
@@ -188,14 +233,14 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setMode("classifying")}
+              onClick={() => setMode("reviewing")}
               className="inline-flex h-8 items-center rounded-full bg-stone-950 px-3.5 text-xs font-medium text-white transition hover:bg-stone-800"
             >
-              Add to Guardrail
+              Review &amp; add
             </button>
             <button
               type="button"
-              onClick={() => callProtectionApi("ignored")}
+              onClick={handleIgnore}
               className="inline-flex h-8 items-center rounded-full border border-stone-200 px-3.5 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
             >
               Ignore for now
@@ -208,55 +253,54 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
         )}
       </div>
 
-      {/* Classification step */}
-      {(mode === "classifying" || mode === "busy_add") && (
+      {/* Setup confirmation step */}
+      {(mode === "reviewing" || mode === "busy_add") && (
         <div className="mt-3 border-t border-amber-100 pt-3">
-          {/* Firm selector */}
-          <p className="mb-1.5 text-[11px] font-medium text-stone-500">Which firm is this for?</p>
-          <div className="flex flex-wrap gap-1.5">
-            {FIRM_PILLS.map((pill) => (
-              <button
-                key={pill.value}
-                type="button"
-                disabled={busy}
-                onClick={() => setFirmChoice(pill.value)}
-                className={[
-                  "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-medium transition disabled:pointer-events-none disabled:opacity-60",
-                  firmChoice === pill.value
-                    ? "bg-stone-950 text-white"
-                    : "border border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-950",
-                ].join(" ")}
-              >
-                {pill.label}
-              </button>
-            ))}
-          </div>
+          <p className="mb-3 text-xs font-semibold text-stone-800">Add this account to Guardrail</p>
 
-          {firmChoice === "other" && (
-            <input
-              type="text"
-              placeholder="Firm name…"
-              value={otherText}
-              disabled={busy}
-              onChange={(e) => setOtherText(e.target.value)}
-              className="mt-2 h-8 w-full rounded-lg border border-stone-200 px-3 text-xs text-stone-950 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none disabled:opacity-60"
-            />
+          {/* ── Inferred: show locked firm/type ── */}
+          {!showPicker && (
+            <div className="mb-3 rounded-lg bg-stone-50 px-3 py-2.5">
+              <div className="flex items-baseline gap-3 text-[11px]">
+                <span className="w-10 shrink-0 font-medium text-stone-400">Firm</span>
+                <span className="font-medium text-stone-800">{firmDisplayLabel()}</span>
+              </div>
+              {firmChoice !== "personal" && (
+                <div className="mt-1 flex items-baseline gap-3 text-[11px]">
+                  <span className="w-10 shrink-0 font-medium text-stone-400">Type</span>
+                  <span className="font-medium text-stone-800">
+                    {ACCOUNT_TYPE_LABELS[typeChoice]}
+                  </span>
+                </div>
+              )}
+              {!busy && (
+                <button
+                  type="button"
+                  onClick={() => setShowManualPicker(true)}
+                  className="mt-2 text-[11px] text-stone-400 underline underline-offset-2 hover:text-stone-600"
+                >
+                  Change…
+                </button>
+              )}
+            </div>
           )}
 
-          {/* Account type selector (hidden for personal) */}
-          {firmChoice !== "personal" && (
+          {/* ── Manual picker: shown when firm is ambiguous or user clicked Change… ── */}
+          {showPicker && (
             <>
-              <p className="mb-1.5 mt-3 text-[11px] font-medium text-stone-500">Account type</p>
+              <p className="mb-1.5 text-[11px] font-medium text-stone-500">
+                Which firm is this for?
+              </p>
               <div className="flex flex-wrap gap-1.5">
-                {ACCOUNT_TYPE_PILLS.map((pill) => (
+                {FIRM_PILLS.map((pill) => (
                   <button
                     key={pill.value}
                     type="button"
                     disabled={busy}
-                    onClick={() => setTypeChoice(pill.value)}
+                    onClick={() => setFirmChoice(pill.value)}
                     className={[
                       "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-medium transition disabled:pointer-events-none disabled:opacity-60",
-                      typeChoice === pill.value
+                      firmChoice === pill.value
                         ? "bg-stone-950 text-white"
                         : "border border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-950",
                     ].join(" ")}
@@ -265,23 +309,91 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
                   </button>
                 ))}
               </div>
+
+              {firmChoice === "other" && (
+                <input
+                  type="text"
+                  placeholder="Firm name…"
+                  value={otherText}
+                  disabled={busy}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  className="mt-2 h-8 w-full rounded-lg border border-stone-200 px-3 text-xs text-stone-950 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none disabled:opacity-60"
+                />
+              )}
+
+              {firmChoice !== "personal" && (
+                <>
+                  <p className="mb-1.5 mt-3 text-[11px] font-medium text-stone-500">
+                    Account type
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ACCOUNT_TYPE_PILLS.map((pill) => (
+                      <button
+                        key={pill.value}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setTypeChoice(pill.value)}
+                        className={[
+                          "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-medium transition disabled:pointer-events-none disabled:opacity-60",
+                          typeChoice === pill.value
+                            ? "bg-stone-950 text-white"
+                            : "border border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-950",
+                        ].join(" ")}
+                      >
+                        {pill.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
 
-          {/* Confirm / Cancel */}
-          <div className="mt-3 flex items-center gap-2">
+          {/* ── Rules choice ── */}
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] font-medium text-stone-500">Rules</p>
+            <div className="grid gap-1.5">
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="radio"
+                  name={radioName}
+                  value="default"
+                  checked={rulesChoice === "default"}
+                  disabled={busy}
+                  onChange={() => setRulesChoice("default")}
+                  className="mt-0.5 accent-stone-950 disabled:opacity-60"
+                />
+                <span className="text-[11px] text-stone-700">Use Default trading plan</span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="radio"
+                  name={radioName}
+                  value="account_specific"
+                  checked={rulesChoice === "account_specific"}
+                  disabled={busy}
+                  onChange={() => setRulesChoice("account_specific")}
+                  className="mt-0.5 accent-stone-950 disabled:opacity-60"
+                />
+                <span className="text-[11px] text-stone-700">Create account-specific rules</span>
+              </label>
+            </div>
+          </div>
+
+          {/* ── Confirm / Cancel ── */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={busy}
-              onClick={() => callProtectionApi("protected")}
+              onClick={handleConfirmAdd}
               className="inline-flex h-8 items-center rounded-full bg-stone-950 px-3.5 text-xs font-medium text-white transition hover:bg-stone-800 disabled:pointer-events-none disabled:opacity-60"
             >
-              {mode === "busy_add" ? "Adding…" : "Confirm — Add to Guardrail"}
+              {mode === "busy_add" ? "Adding…" : "Add this account to Guardrail"}
             </button>
             {mode !== "busy_add" && (
               <button
                 type="button"
-                onClick={() => { setMode("idle"); setError(null); }}
+                onClick={handleCancel}
                 className="inline-flex h-8 items-center rounded-full border border-stone-200 px-3.5 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
               >
                 Cancel

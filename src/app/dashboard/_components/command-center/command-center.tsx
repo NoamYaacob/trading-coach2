@@ -13,6 +13,7 @@ import {
   toggleCollapsedId,
 } from "./collapsed-state";
 import { NewAccountsPanel } from "./new-accounts-panel";
+import { ReclassifyPanel } from "./reclassify-panel";
 import { SyncAllButton } from "./sync-all-button";
 import {
   PILL_ROW_PRIMARY,
@@ -230,6 +231,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     <div className="grid gap-4">
       {data.pendingAccounts.length > 0 && (
         <NewAccountsPanel accounts={data.pendingAccounts} />
+      )}
+      {data.reclassifiableAccounts.length > 0 && (
+        <ReclassifyPanel accounts={data.reclassifiableAccounts} />
       )}
       {data.accounts.length > 0 && (
         <section

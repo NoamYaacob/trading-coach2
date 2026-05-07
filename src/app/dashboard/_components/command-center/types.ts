@@ -208,12 +208,26 @@ export type CommandCenterSummary = {
   oldestSyncAt: Date | null;
 };
 
+/** Active account whose propFirm is null but whose brokerConnectionId has
+ *  exactly one sibling propFirm — eligible for one-click classification repair. */
+export type ReclassifiableAccount = {
+  id: string;
+  label: string;
+  /** The single unambiguous propFirm inferred from connection siblings. */
+  inheritedPropFirm: string;
+  /** accountType inferred from siblings, or null when ambiguous. */
+  inheritedAccountType: string | null;
+};
+
 export type CommandCenterData = {
   accounts: CommandCenterAccount[];
   groups: CommandCenterFirmGroup[];
   summary: CommandCenterSummary;
   firms: { key: string; label: string }[];
   pendingAccounts: PendingDiscoveredAccount[];
+  /** Active accounts that were imported without classification but can be
+   *  safely repaired from their broker connection's sibling context. */
+  reclassifiableAccounts: ReclassifiableAccount[];
   protectionLock: {
     isLocked: boolean;
     cutoffTime: string | null;

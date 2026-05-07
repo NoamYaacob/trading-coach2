@@ -635,6 +635,7 @@ export const DEMO_COMMAND_CENTER_DATA: CommandCenterData = {
     { key: LUCID_FIRM_KEY, label: LUCID_FIRM_LABEL },
   ],
   pendingAccounts: [],
+  reclassifiableAccounts: [],
   protectionLock: {
     isLocked: false,
     cutoffTime: null,

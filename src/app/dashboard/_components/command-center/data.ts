@@ -445,10 +445,22 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     accountType: a.accountType,
   }));
 
+  // Cache connection classification results so we don't recompute per-account.
+  const connectionClassCache = new Map<string, ReturnType<typeof inferConnectionClassification>>();
+  function getConnectionClass(connectionId: string | null) {
+    if (!connectionId) return { inheritedPropFirm: null, inheritedAccountType: null };
+    let cached = connectionClassCache.get(connectionId);
+    if (!cached) {
+      cached = inferConnectionClassification(connectionId, activeSiblings);
+      connectionClassCache.set(connectionId, cached);
+    }
+    return cached;
+  }
+
   const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => {
     const env = p.brokerConnection?.env ?? null;
     const namePattern = inferAccountClassification(p.label);
-    const connectionCtx = inferConnectionClassification(p.brokerConnectionId, activeSiblings);
+    const connectionCtx = getConnectionClass(p.brokerConnectionId);
     return {
       id: p.id,
       label: p.label,
@@ -469,12 +481,31 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     };
   });
 
+  // Detect active accounts that were imported without classification but whose
+  // broker connection has exactly one unambiguous propFirm from siblings.
+  // These are surfaced in the dashboard as a one-click repair suggestion.
+  const reclassifiableAccounts: import("./types").ReclassifiableAccount[] = [];
+  for (const a of computed) {
+    if (a.propFirm !== null && a.propFirm.trim() !== "") continue;
+    if (!a.brokerConnectionId) continue;
+    const ctx = getConnectionClass(a.brokerConnectionId);
+    if (ctx.inheritedPropFirm) {
+      reclassifiableAccounts.push({
+        id: a.id,
+        label: a.label,
+        inheritedPropFirm: ctx.inheritedPropFirm,
+        inheritedAccountType: ctx.inheritedAccountType,
+      });
+    }
+  }
+
   return {
     accounts: computed,
     groups,
     summary,
     firms,
     pendingAccounts,
+    reclassifiableAccounts,
     protectionLock: {
       isLocked: protectionLock.isLocked,
       cutoffTime: protectionLock.cutoffTime ? protectionLock.cutoffTime.toISOString() : null,
