@@ -490,22 +490,12 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
 }
 
 function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> }) {
-  const items: { status: AccountStatus; count: number }[] = (
-    Object.entries(counts) as [AccountStatus, number][]
-  )
-    .filter(([, count]) => count > 0)
-    .map(([status, count]) => ({ status, count }));
-
-  if (items.length === 0) return null;
+  const tradable = counts.allowed ?? 0;
+  if (tradable === 0) return null;
   return (
-    <div className="flex items-center gap-2 text-[10px] text-stone-500">
-      {items.map(({ status, count }) => (
-        <span key={status} className="inline-flex items-center gap-1">
-          <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_CLASS[status]}`} aria-hidden />
-          <span>{count}</span>
-        </span>
-      ))}
-    </div>
+    <span className="text-[11px] font-medium text-emerald-700">
+      {tradable} tradable
+    </span>
   );
 }
 

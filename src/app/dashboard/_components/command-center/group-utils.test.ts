@@ -195,3 +195,65 @@ describe("buildCommandCenterGroups", () => {
     assert.equal(group.totalRiskRemaining, 0);
   });
 });
+
+// ── Group header display: tradable count ──────────────────────────────────────
+// Verifies that counts.allowed is the value driving the "N tradable" label in
+// the firm group header. These tests cover the data layer; the view renders
+// counts.allowed as "{n} tradable" (singular, no plural needed for the word
+// "tradable" itself) and "{n} account(s)" for the account count.
+
+describe("group header tradable count (counts.allowed)", () => {
+  it("single allowed account → counts.allowed = 1 ('1 tradable')", () => {
+    const accounts = [
+      stubAccount({ id: "a1", brokerConnectionId: "conn-a", status: "allowed" }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.accounts.length, 1);
+    assert.equal(group.counts.allowed, 1, "1 account = 1 tradable");
+  });
+
+  it("two allowed accounts → counts.allowed = 2 ('2 tradable')", () => {
+    const accounts = [
+      stubAccount({ id: "a1", brokerConnectionId: "conn-a", status: "allowed" }),
+      stubAccount({ id: "a2", brokerConnectionId: "conn-a", status: "allowed" }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.accounts.length, 2);
+    assert.equal(group.counts.allowed, 2, "2 accounts = 2 tradable");
+  });
+
+  it("locked account does not count as tradable", () => {
+    const accounts = [
+      stubAccount({ id: "a1", brokerConnectionId: "conn-a", status: "allowed" }),
+      stubAccount({ id: "a2", brokerConnectionId: "conn-a", status: "locked" }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.accounts.length, 2);
+    assert.equal(group.counts.allowed, 1, "only allowed accounts are tradable");
+    assert.equal(group.counts.locked, 1);
+  });
+
+  it("no allowed accounts → counts.allowed = 0 (header shows no tradable label)", () => {
+    const accounts = [
+      stubAccount({ id: "a1", brokerConnectionId: "conn-a", status: "locked" }),
+    ];
+    const [group] = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(group.counts.allowed, 0, "0 tradable — header must not show tradable label");
+  });
+
+  it("account pluralization: 1 account vs 2 accounts (separate from tradable)", () => {
+    const one = buildCommandCenterGroups(
+      [stubAccount({ id: "a1", brokerConnectionId: "conn-a" })],
+      NO_SINK_KEYS,
+    );
+    const two = buildCommandCenterGroups(
+      [
+        stubAccount({ id: "b1", brokerConnectionId: "conn-b" }),
+        stubAccount({ id: "b2", brokerConnectionId: "conn-b" }),
+      ],
+      NO_SINK_KEYS,
+    );
+    assert.equal(one[0].accounts.length, 1, "singular: 1 account");
+    assert.equal(two[0].accounts.length, 2, "plural: 2 accounts");
+  });
+});
