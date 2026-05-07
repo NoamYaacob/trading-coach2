@@ -116,6 +116,18 @@ export function buildCommandCenterGroups(
 }
 
 /**
+ * Filters accounts to those matching the given accountType.
+ * Returns the full list unchanged when typeFilter is "all".
+ */
+export function filterAccountsByType(
+  accounts: CommandCenterAccount[],
+  typeFilter: string,
+): CommandCenterAccount[] {
+  if (typeFilter === "all") return accounts;
+  return accounts.filter((a) => a.accountType === typeFilter);
+}
+
+/**
  * Recomputes group aggregate totals from a filtered subset of visible accounts.
  *
  * Called by the UI whenever a status filter hides some rows so the group header

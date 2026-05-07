@@ -13,7 +13,7 @@ import {
   serializeCollapsedPayload,
   toggleCollapsedId,
 } from "./collapsed-state";
-import { recomputeGroupAggregates } from "./group-utils";
+import { filterAccountsByType, recomputeGroupAggregates } from "./group-utils";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { ReclassifyPanel } from "./reclassify-panel";
 import { SyncAllButton } from "./sync-all-button";
@@ -62,6 +62,14 @@ const BALANCE_FORMATTER = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const TYPE_FILTERS: { value: string; label: string }[] = [
+  { value: "all", label: "All types" },
+  { value: "evaluation", label: "Evaluation" },
+  { value: "funded", label: "Funded" },
+  { value: "personal", label: "Live / Personal" },
+  { value: "demo", label: "Demo" },
+];
 
 const STATUS_FILTERS: { value: AccountStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -131,6 +139,7 @@ function progressBarClass(pct: number | null): string {
 export function CommandCenter({ data }: { data: CommandCenterData }) {
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [firmFilter, setFirmFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   // Collapsed-groups preference: groupIds the user has explicitly collapsed.
   // Lives in localStorage so it survives refresh, navigation, and filter
@@ -183,18 +192,22 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     return data.groups
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
       .map((group) => {
-        const visibleAccounts =
-          statusFilter === "all"
-            ? group.accounts
-            : group.accounts.filter((a) => a.status === statusFilter);
-        // When a status filter is active, recompute group header totals from
-        // the visible subset so the header P&L / budget only reflects the rows
-        // currently shown — not the full unfiltered group.
-        if (statusFilter === "all") return { ...group, accounts: visibleAccounts };
+        let visibleAccounts = group.accounts;
+        if (statusFilter !== "all") {
+          visibleAccounts = visibleAccounts.filter((a) => a.status === statusFilter);
+        }
+        if (typeFilter !== "all") {
+          visibleAccounts = filterAccountsByType(visibleAccounts, typeFilter);
+        }
+        // When any filter narrows the visible set, recompute group header totals
+        // so P&L / budget only reflects the accounts currently shown.
+        if (statusFilter === "all" && typeFilter === "all") {
+          return { ...group, accounts: visibleAccounts };
+        }
         return recomputeGroupAggregates(group, visibleAccounts);
       })
       .filter((group) => group.accounts.length > 0);
-  }, [data.groups, statusFilter, firmFilter]);
+  }, [data.groups, statusFilter, firmFilter, typeFilter]);
 
   // Status-chip counts reflect every group — collapsing a group is local UI
   // state only and never affects monitoring or filter math.
@@ -258,6 +271,8 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             firms={data.firms}
             firmFilter={firmFilter}
             onFirmChange={setFirmFilter}
+            typeFilter={typeFilter}
+            onTypeChange={setTypeFilter}
           />
           <FilterBar
             statusFilter={statusFilter}
@@ -343,12 +358,16 @@ function SectionHeader({
   firms,
   firmFilter,
   onFirmChange,
+  typeFilter,
+  onTypeChange,
 }: {
   summary: CommandCenterData["summary"];
   accounts: CommandCenterAccount[];
   firms: { key: string; label: string }[];
   firmFilter: string;
   onFirmChange: (f: string) => void;
+  typeFilter: string;
+  onTypeChange: (t: string) => void;
 }) {
   const hasBrokerAccounts = accounts.some((a) => a.platform !== "manual");
   const stale = deriveStaleSyncWarning({
@@ -400,6 +419,20 @@ function SectionHeader({
             </select>
           </label>
         ) : null}
+        <label className="flex items-center gap-1.5 text-xs text-stone-500">
+          <span className="font-medium uppercase tracking-[0.14em]">Type</span>
+          <select
+            value={typeFilter}
+            onChange={(e) => onTypeChange(e.target.value)}
+            className="max-w-full rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-300"
+          >
+            {TYPE_FILTERS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     </div>
   );

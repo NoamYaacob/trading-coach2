@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCommandCenterGroups, recomputeGroupAggregates } from "./group-utils.ts";
+import { buildCommandCenterGroups, filterAccountsByType, recomputeGroupAggregates } from "./group-utils.ts";
 import type { CommandCenterAccount } from "./types.ts";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -774,5 +774,188 @@ describe("recomputeGroupAggregates", () => {
 
     assert.equal(filtered.totalDailyPnl, 100, "unavailable stale P&L excluded");
     assert.equal(filtered.totalRiskRemaining, 900);
+  });
+});
+
+// ── Account type filter — filterAccountsByType ────────────────────────────────
+// Tests 1-10 from the "Add dashboard filtering by account type" spec.
+
+describe("filterAccountsByType", () => {
+  // Test 1: TYPE_FILTERS option labels contract — no raw enum values exposed in the UI.
+  // These are the exact user-facing strings the TYPE select must show.
+  it("TYPE_FILTERS option labels use display strings, not raw enum values (test 1 + 9)", () => {
+    const EXPECTED_OPTIONS = [
+      { value: "all", label: "All types" },
+      { value: "evaluation", label: "Evaluation" },
+      { value: "funded", label: "Funded" },
+      { value: "personal", label: "Live / Personal" },
+      { value: "demo", label: "Demo" },
+    ];
+    const labels = EXPECTED_OPTIONS.map((o) => o.label);
+    assert.ok(labels.includes("All types"), "must have 'All types'");
+    assert.ok(labels.includes("Evaluation"), "must have 'Evaluation'");
+    assert.ok(labels.includes("Funded"), "must have 'Funded'");
+    assert.ok(labels.includes("Live / Personal"), "must use 'Live / Personal', not raw 'personal'");
+    assert.ok(labels.includes("Demo"), "must have 'Demo'");
+    // Test 9: raw enum values are not used as labels
+    assert.ok(!labels.includes("personal"), "must not show raw 'personal'");
+    assert.ok(!labels.includes("demo"), "must not show raw 'demo'");
+    assert.ok(!labels.includes("evaluation"), "must not show raw 'evaluation'");
+    assert.ok(!labels.includes("funded"), "must not show raw 'funded'");
+  });
+
+  // Test 2: Type = Evaluation shows only evaluation accounts
+  it("'evaluation' filter returns only evaluation accounts (test 2)", () => {
+    const accounts = [
+      stubAccount({ id: "e1", accountType: "evaluation" }),
+      stubAccount({ id: "f1", accountType: "funded" }),
+      stubAccount({ id: "p1", accountType: "personal" }),
+      stubAccount({ id: "d1", accountType: "demo" }),
+    ];
+    const result = filterAccountsByType(accounts, "evaluation");
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, "e1");
+    assert.ok(result.every((a) => a.accountType === "evaluation"));
+  });
+
+  // Test 3: Type = Demo shows only demo accounts
+  it("'demo' filter returns only demo accounts (test 3)", () => {
+    const accounts = [
+      stubAccount({ id: "e1", accountType: "evaluation" }),
+      stubAccount({ id: "d1", accountType: "demo" }),
+      stubAccount({ id: "d2", accountType: "demo" }),
+    ];
+    const result = filterAccountsByType(accounts, "demo");
+    assert.equal(result.length, 2);
+    assert.ok(result.every((a) => a.accountType === "demo"));
+  });
+
+  // Test 4: Type = Live / Personal shows only personal accounts (value = "personal")
+  it("'personal' filter returns only personal-type accounts (test 4)", () => {
+    const accounts = [
+      stubAccount({ id: "p1", accountType: "personal" }),
+      stubAccount({ id: "p2", accountType: "personal" }),
+      stubAccount({ id: "f1", accountType: "funded" }),
+    ];
+    const result = filterAccountsByType(accounts, "personal");
+    assert.equal(result.length, 2);
+    assert.ok(result.every((a) => a.accountType === "personal"));
+  });
+
+  it("'all' filter returns all accounts unchanged", () => {
+    const accounts = [
+      stubAccount({ id: "e1", accountType: "evaluation" }),
+      stubAccount({ id: "f1", accountType: "funded" }),
+      stubAccount({ id: "p1", accountType: "personal" }),
+    ];
+    const result = filterAccountsByType(accounts, "all");
+    assert.equal(result.length, 3);
+    assert.equal(result, accounts, "same reference when no filtering needed");
+  });
+
+  it("returns empty array when no accounts match the type filter", () => {
+    const accounts = [
+      stubAccount({ id: "e1", accountType: "evaluation" }),
+      stubAccount({ id: "f1", accountType: "funded" }),
+    ];
+    const result = filterAccountsByType(accounts, "demo");
+    assert.equal(result.length, 0);
+  });
+
+  // Test 5: Type filter combines with status filter
+  // Simulates the compound filtering in filteredGroups memo:
+  // first status filter, then type filter on the resulting subset.
+  it("type filter compounds with status filter — only matching rows survive both (test 5)", () => {
+    const accounts = [
+      stubAccount({ id: "eval-allowed", accountType: "evaluation", status: "allowed" }),
+      stubAccount({ id: "eval-locked", accountType: "evaluation", status: "locked" }),
+      stubAccount({ id: "funded-allowed", accountType: "funded", status: "allowed" }),
+      stubAccount({ id: "funded-locked", accountType: "funded", status: "locked" }),
+    ];
+    // statusFilter = "locked", typeFilter = "evaluation"
+    const afterStatus = accounts.filter((a) => a.status === "locked");
+    const afterType = filterAccountsByType(afterStatus, "evaluation");
+    assert.equal(afterType.length, 1);
+    assert.equal(afterType[0].id, "eval-locked");
+  });
+
+  // Test 6: Type filter combines with firm filter
+  // Firm filter operates at the group level (drops whole groups); type filter
+  // then narrows within the remaining groups.
+  it("type filter within a firm-filtered group yields only matching accounts (test 6)", () => {
+    const mffAccounts = [
+      stubAccount({ id: "mff-eval", firmKey: "myfundedfutures", accountType: "evaluation", brokerConnectionId: "conn-a" }),
+      stubAccount({ id: "mff-funded", firmKey: "myfundedfutures", accountType: "funded", brokerConnectionId: "conn-a" }),
+    ];
+    const apexAccounts = [
+      stubAccount({ id: "apex-eval", firmKey: "apextraderfunding", accountType: "evaluation", brokerConnectionId: "conn-b" }),
+    ];
+    const groups = buildCommandCenterGroups([...mffAccounts, ...apexAccounts], NO_SINK_KEYS);
+
+    // Simulate: firmFilter = "myfundedfutures", typeFilter = "funded"
+    const firmFiltered = groups.filter((g) => g.firmKey === "myfundedfutures");
+    const result = firmFiltered.map((g) => filterAccountsByType(g.accounts, "funded")).flat();
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, "mff-funded");
+  });
+
+  // Test 7: Group aggregates recompute from visible accounts after type filtering
+  it("group aggregates reflect only the type-filtered accounts (test 7)", () => {
+    const evalAccount = stubAccount({
+      id: "eval",
+      brokerConnectionId: "conn-a",
+      accountType: "evaluation",
+      status: "allowed",
+      dailyPnl: -500,
+      remainingDailyLoss: 500,
+    });
+    const fundedAccount = stubAccount({
+      id: "funded",
+      brokerConnectionId: "conn-a",
+      accountType: "funded",
+      status: "allowed",
+      dailyPnl: 200,
+      remainingDailyLoss: 800,
+    });
+    const [group] = buildCommandCenterGroups([evalAccount, fundedAccount], NO_SINK_KEYS);
+    assert.equal(group.totalDailyPnl, -300, "original group sums both accounts");
+
+    const typeFiltered = filterAccountsByType(group.accounts, "evaluation");
+    const recomputed = recomputeGroupAggregates(group, typeFiltered);
+
+    assert.equal(recomputed.accounts.length, 1, "only evaluation account visible");
+    assert.equal(recomputed.totalDailyPnl, -500, "P&L from funded account excluded");
+    assert.equal(recomputed.totalRiskRemaining, 500, "risk budget from funded account excluded");
+  });
+
+  // Test 8: Unavailable + type filter: locked account P&L must not bleed into group header
+  it("unavailable filter + type filter does not include locked-account P&L in group header (test 8)", () => {
+    const lockedEval = stubAccount({
+      id: "locked-eval",
+      brokerConnectionId: "conn-a",
+      accountType: "evaluation",
+      status: "locked",
+      dailyPnl: -1200,
+      remainingDailyLoss: 0,
+    });
+    const unavailFunded = stubAccount({
+      id: "unavail-funded",
+      brokerConnectionId: "conn-a",
+      accountType: "funded",
+      status: "unavailable",
+      dailyPnl: -300, // stale — excluded by unavailable rule
+      remainingDailyLoss: 100,
+    });
+    const [group] = buildCommandCenterGroups([lockedEval, unavailFunded], NO_SINK_KEYS);
+
+    // statusFilter = "unavailable", typeFilter = "funded"
+    const afterStatus = group.accounts.filter((a) => a.status === "unavailable");
+    const afterType = filterAccountsByType(afterStatus, "funded");
+    const recomputed = recomputeGroupAggregates(group, afterType);
+
+    // locked eval P&L (-$1,200) must NOT appear; unavail funded P&L is stale (excluded by rule)
+    assert.equal(recomputed.totalDailyPnl, 0, "locked P&L excluded; unavailable P&L is stale");
+    assert.equal(recomputed.hasPnlData, false, "no data for unavailable-filtered group");
+    assert.equal(recomputed.accounts.length, 1, "only the unavailable funded row is visible");
   });
 });
