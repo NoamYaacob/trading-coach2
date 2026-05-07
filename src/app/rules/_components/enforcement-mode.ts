@@ -11,8 +11,10 @@
  *                               No broker connection exists, so no broker-side action.
  *
  *   broker_enforcement_pending – Full-access Tradovate connection is verified.
- *                               Guardrail alerts on breach. Broker-side enforcement
- *                               (liquidation-only, position flattening) is not yet active.
+ *                               Daily loss and profit target breaches apply a Tradovate
+ *                               risk setting (userAccountAutoLiq) that places the account
+ *                               in liquidation-only mode. Trade count and consecutive-loss
+ *                               limits use app-level locking only — no matching broker field.
  *
  *   broker_enforced_active    – Broker enforcement was applied and confirmed at least once
  *                               for this account (GuardianIntervention.brokerLockStatus
@@ -163,13 +165,13 @@ export function computeEnforcementMode(
     if (permissionLevel === "full_access") {
       return {
         mode: "broker_enforcement_pending",
-        label: "Full access connection — alerts active",
+        label: "Broker risk settings enabled",
         detail:
-          "Tradovate connection verified with Account Risk Settings: Full Access. " +
-          "Guardrail evaluates daily loss and profit limits against this account and sends alerts when breached. " +
-          "Broker-side enforcement (liquidation-only mode, position flattening) is not yet active — " +
-          "Guardrail will alert only until broker writes are enabled.",
-        cls: "border-sky-200 bg-sky-50 text-sky-800",
+          "Account Risk Settings: Full Access verified. When the daily loss limit or daily profit target is breached, " +
+          "Guardrail applies a Tradovate risk setting that places the account in liquidation-only mode. " +
+          "Trade count and consecutive-loss limits use an app-level lock only — no matching broker field exists for these rules. " +
+          "Order cancel and broker-level order blocking are not yet implemented.",
+        cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
       };
     }
 

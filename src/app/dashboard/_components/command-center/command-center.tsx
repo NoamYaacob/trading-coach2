@@ -1345,7 +1345,7 @@ function PerAccountStateLine({ account }: { account: CommandCenterAccount }) {
       ? "text-amber-700"
       : label === "Limited permissions"
         ? "text-amber-700"
-        : label === "Broker enforcement ready"
+        : label === "Broker risk settings enabled"
           ? "text-emerald-700"
           : "text-stone-500";
   return <p className={`mt-0.5 text-[10px] ${tone}`}>{label}</p>;

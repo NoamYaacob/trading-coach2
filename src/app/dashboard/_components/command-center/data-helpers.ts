@@ -425,7 +425,7 @@ export function deriveRowStatusLabel(input: {
 export type PerAccountStateLabel =
   | "Test mode only"
   | "Consent required"
-  | "Broker enforcement ready"
+  | "Broker risk settings enabled"
   | "Limited permissions"
   | "Monitoring only";
 
@@ -435,7 +435,7 @@ export function derivePerAccountStateLabel(input: {
 }): PerAccountStateLabel {
   if (input.enforcementMode === "dry_run") return "Test mode only";
   if (input.requiresAutomatedActionsConsent) return "Consent required";
-  if (input.enforcementMode === "broker_active") return "Broker enforcement ready";
+  if (input.enforcementMode === "broker_active") return "Broker risk settings enabled";
   if (input.enforcementMode === "broker_readonly") return "Limited permissions";
   return "Monitoring only";
 }
@@ -450,7 +450,7 @@ export type GroupStateSuffix =
   | "Test mode"
   | "Consent required"
   | "Limited permissions"
-  | "Broker enforcement ready"
+  | "Broker risk settings enabled"
   | null;
 
 export function deriveGroupStateSuffix(input: {
@@ -468,7 +468,7 @@ export function deriveGroupStateSuffix(input: {
     return "Limited permissions";
   }
   if (input.accounts.every((a) => a.enforcementMode === "broker_active")) {
-    return "Broker enforcement ready";
+    return "Broker risk settings enabled";
   }
   return null;
 }
@@ -496,7 +496,7 @@ export function deriveFooterCopy(input: {
     return "Test mode active · No broker lockout or position-close actions are sent.";
   }
   if (modes.includes("broker_active")) {
-    return "Broker enforcement available where permissions support it.";
+    return "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.";
   }
   if (modes.includes("broker_readonly") || modes.includes("permission_unverified")) {
     return "Some accounts have limited permissions and require reconnect for broker-side actions.";

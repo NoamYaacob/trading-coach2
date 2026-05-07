@@ -1236,14 +1236,14 @@ describe("deriveFooterCopy", () => {
     assert.ok(copy!.toLowerCase().includes("lockout"));
   });
 
-  it("broker_active → 'Broker enforcement available where permissions support it.'", () => {
+  it("broker_active → footer confirms broker risk settings enabled", () => {
     const copy = deriveFooterCopy({
       modes: ["broker_active"],
       hasDryRunBanner: false,
     });
     assert.equal(
       copy,
-      "Broker enforcement available where permissions support it.",
+      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
     );
   });
 
@@ -1273,7 +1273,7 @@ describe("deriveFooterCopy", () => {
     });
     assert.equal(
       copy,
-      "Broker enforcement available where permissions support it.",
+      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
     );
   });
 
@@ -1494,13 +1494,13 @@ describe("derivePerAccountStateLabel", () => {
     );
   });
 
-  it("broker_active + consent valid → 'Broker enforcement ready'", () => {
+  it("broker_active + consent valid → 'Broker risk settings enabled'", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "broker_active",
         requiresAutomatedActionsConsent: false,
       }),
-      "Broker enforcement ready",
+      "Broker risk settings enabled",
     );
   });
 
@@ -1580,14 +1580,14 @@ describe("deriveGroupStateSuffix", () => {
     assert.equal(suffix, "Limited permissions");
   });
 
-  it("all broker_active + valid consent → 'Broker enforcement ready'", () => {
+  it("all broker_active + valid consent → 'Broker risk settings enabled'", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
       ],
     });
-    assert.equal(suffix, "Broker enforcement ready");
+    assert.equal(suffix, "Broker risk settings enabled");
   });
 
   it("only permission_unverified → null (probe still pending; no actionable state to show)", () => {
