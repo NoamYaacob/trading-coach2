@@ -158,7 +158,15 @@ export async function countCanonicalEntries(
     orderBy: { occurredAt: "asc" },
   });
 
-  return { count: deriveCanonicalEntryCount(fills), tradeCountSource: "verified" };
+  const canonical = fills.map((row) => ({
+    externalTradeId: row.externalTradeId,
+    contractId: row.contractId,
+    side: row.side,
+    quantity: row.quantity == null ? null : row.quantity.toString(),
+    occurredAt: row.occurredAt,
+    rawPayload: row.rawPayload,
+  }));
+  return { count: deriveCanonicalEntryCount(canonical), tradeCountSource: "verified" };
 }
 
 /** Called when a fill opens a new position entry. Increments tradesCount only. */
