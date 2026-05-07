@@ -64,7 +64,7 @@ function deriveFirmKeyAndLabel(account: {
 }
 
 export async function loadCommandCenterData(userId: string): Promise<CommandCenterData> {
-  const [accounts, defaultRules, hiddenRows] = await Promise.all([
+  const [accounts, defaultRules] = await Promise.all([
     prisma.connectedAccount.findMany({
       where: {
         userId,
@@ -85,12 +85,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       orderBy: [{ propFirm: "asc" }, { label: "asc" }],
     }),
     prisma.riskRules.findUnique({ where: { userId } }),
-    prisma.hiddenDashboardGroup.findMany({
-      where: { userId },
-      select: { groupId: true },
-    }),
   ]);
-  const hiddenGroupIds = hiddenRows.map((row) => row.groupId);
 
   // Pending-decision rows: rendered in a separate "New accounts found" panel.
   const pendingRows = await prisma.connectedAccount.findMany({
@@ -453,7 +448,6 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     summary,
     firms,
     pendingAccounts,
-    hiddenGroupIds,
     protectionLock: {
       isLocked: protectionLock.isLocked,
       cutoffTime: protectionLock.cutoffTime ? protectionLock.cutoffTime.toISOString() : null,

@@ -122,13 +122,12 @@ export type PendingDiscoveredAccount = {
   lastSeenInBrokerAt: Date | null;
 };
 
-/** Stable key for this group — used as React key and for filter matching.
- *  Prop-firm groups: "${firmKey}::${brokerConnectionId}"
- *  Personal/unassigned groups: "${firmKey}::${platform}" (connection-agnostic) */
 export const PERSONAL_BROKER_FIRM_KEY = "__personal_broker__";
 
 export type CommandCenterFirmGroup = {
-  /** @see PERSONAL_BROKER_FIRM_KEY */
+  /** Stable React key for this group — `${firmKey}::${brokerConnectionId ?? ""}`.
+   *  One broker connection = one group; live and demo accounts that share a
+   *  connection appear together, while distinct OAuth grants stay separate. */
   groupId: string;
   firmKey: string;
   firmLabel: string;
@@ -187,11 +186,6 @@ export type CommandCenterData = {
   summary: CommandCenterSummary;
   firms: { key: string; label: string }[];
   pendingAccounts: PendingDiscoveredAccount[];
-  /** Per-user dashboard preference: group IDs the user has hidden from the
-   *  main account list. UI-only — does not affect sync, enforcement, or
-   *  any account data. The hidden groups themselves still appear in `groups`
-   *  so the dashboard can offer an "Unhide" affordance. */
-  hiddenGroupIds: string[];
   protectionLock: {
     isLocked: boolean;
     cutoffTime: string | null;

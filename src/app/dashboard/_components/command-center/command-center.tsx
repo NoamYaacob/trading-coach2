@@ -1,18 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
-import { HiddenGroupsPanel } from "./hidden-groups-panel";
-import {
-  applyHide,
-  applyUnhide,
-  buildHideRequest,
-  buildUnhideRequest,
-  partitionGroups,
-} from "./hide-group-helpers";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { SyncAllButton } from "./sync-all-button";
 import {
@@ -129,20 +121,9 @@ function progressBarClass(pct: number | null): string {
 export function CommandCenter({ data }: { data: CommandCenterData }) {
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [firmFilter, setFirmFilter] = useState<string>("all");
-  // Hidden-groups state: server-loaded then mutated optimistically. The set
-  // mirrors data.hiddenGroupIds at first render; later updates come from the
-  // hide/unhide handlers below. Top-line summary cards keep using data.summary
-  // (computed from ALL accounts) so hidden groups stay counted in monitoring.
-  const [hiddenIds, setHiddenIds] = useState<readonly string[]>(() => data.hiddenGroupIds);
-
-  const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
-  const { visible: visibleGroups, hidden: hiddenGroups } = useMemo(
-    () => partitionGroups(data.groups, hiddenSet),
-    [data.groups, hiddenSet],
-  );
 
   const filteredGroups = useMemo<CommandCenterFirmGroup[]>(() => {
-    return visibleGroups
+    return data.groups
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
       .map((group) => ({
         ...group,
@@ -152,10 +133,10 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             : group.accounts.filter((a) => a.status === statusFilter),
       }))
       .filter((group) => group.accounts.length > 0);
-  }, [visibleGroups, statusFilter, firmFilter]);
+  }, [data.groups, statusFilter, firmFilter]);
 
-  // Status-chip counts reflect only visible groups. Hidden groups remain in
-  // data.summary for top-of-page totals.
+  // Status-chip counts reflect every group — collapsing a group is local UI
+  // state only and never affects monitoring or filter math.
   const visibleCounts = useMemo(() => {
     const counts: Record<AccountStatus, number> = {
       allowed: 0,
@@ -165,41 +146,13 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       not_connected: 0,
       unavailable: 0,
     };
-    for (const group of visibleGroups) {
+    for (const group of data.groups) {
       for (const status of Object.keys(counts) as AccountStatus[]) {
         counts[status] += group.counts[status] ?? 0;
       }
     }
     return counts;
-  }, [visibleGroups]);
-
-  async function handleHide(groupId: string) {
-    const previous = hiddenIds;
-    setHiddenIds(applyHide(previous, groupId));
-    try {
-      const req = buildHideRequest(groupId);
-      const res = await fetch(req.url, {
-        method: req.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      if (!res.ok) throw new Error("hide failed");
-    } catch {
-      setHiddenIds(previous);
-    }
-  }
-
-  async function handleUnhide(groupId: string) {
-    const previous = hiddenIds;
-    setHiddenIds(applyUnhide(previous, groupId));
-    try {
-      const req = buildUnhideRequest(groupId);
-      const res = await fetch(req.url, { method: req.method });
-      if (!res.ok) throw new Error("unhide failed");
-    } catch {
-      setHiddenIds(previous);
-    }
-  }
+  }, [data.groups]);
 
   if (data.accounts.length === 0 && data.pendingAccounts.length === 0) {
     return null;
@@ -248,25 +201,12 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             onStatusChange={setStatusFilter}
           />
 
-          {hiddenGroups.length > 0 && (
-            <HiddenGroupsPanel
-              groups={hiddenGroups}
-              onUnhide={handleUnhide}
-            />
-          )}
-
           <div className="mt-5 grid gap-5">
             {filteredGroups.length === 0 ? (
               <EmptyFilterMatch />
             ) : (
               filteredGroups.map((group) => (
-                <FirmSection
-                  key={group.groupId}
-                  group={group}
-                  isHidden={hiddenSet.has(group.groupId)}
-                  onHide={handleHide}
-                  onUnhide={handleUnhide}
-                />
+                <FirmSection key={group.groupId} group={group} />
               ))
             )}
           </div>
@@ -460,32 +400,21 @@ const CONN_STATUS_CLASS: Record<string, string> = {
 
 // ─── Firm section ──────────────────────────────────────────────────────────────
 
-function FirmSection({
-  group,
-  isHidden,
-  onHide,
-  onUnhide,
-}: {
-  group: CommandCenterFirmGroup;
-  isHidden: boolean;
-  onHide: (groupId: string) => void;
-  onUnhide: (groupId: string) => void;
-}) {
+function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
+  // Default expanded so risk-relevant detail is visible without an extra
+  // click; collapsing is purely local UI state and does not affect monitoring,
+  // sync, enforcement, or any totals.
+  const [expanded, setExpanded] = useState(true);
+  const panelId = useId();
   const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
   const showBrokerMeta = group.platform !== "manual";
   const isPersonalGroup = group.firmKey === PERSONAL_BROKER_FIRM_KEY;
-  // The state suffix communicates important per-group capability info ("Test
-  // mode", "Consent required", "Limited permissions", "Broker enforcement
-  // ready") right next to the connection status — so the user never sees just
-  // "Connected" when something needs attention.
   const groupStateSuffix = deriveGroupStateSuffix({
     accounts: group.accounts.map((a) => ({
       enforcementMode: a.enforcementMode,
       requiresAutomatedActionsConsent: a.requiresAutomatedActionsConsent,
     })),
   });
-  // For personal groups, surface how many accounts are live vs demo so users
-  // can see the breakdown at a glance without opening each row.
   const liveCount = isPersonalGroup
     ? group.accounts.filter((a) => a.accountType === "personal").length
     : undefined;
@@ -495,21 +424,27 @@ function FirmSection({
 
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50/30">
-      <header className="border-b border-stone-100 px-3 py-2.5 sm:px-4 sm:py-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <h3 className="m-0">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className={`flex w-full flex-col gap-2 px-3 py-2.5 text-left transition hover:bg-stone-50 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-3 ${expanded ? "border-b border-stone-100" : ""}`}
+        >
           {/* Left: firm identity + broker meta */}
-          <div>
-            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-              <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+              <span className="text-sm font-semibold text-stone-950">{group.firmLabel}</span>
               <FirmStatusInline
                 accountCount={group.accounts.length}
                 counts={group.counts}
                 liveCount={liveCount}
                 demoCount={demoCount}
               />
-            </div>
+            </span>
             {showBrokerMeta && (
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-stone-400">
+              <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-stone-400">
                 {/* For personal groups the platform is already in the header label. */}
                 {!isPersonalGroup && (
                   <>
@@ -530,12 +465,12 @@ function FirmSection({
                     <span>Synced {SYNC_DATE_FORMAT.format(group.lastSyncAt)}</span>
                   </>
                 )}
-              </p>
+              </span>
             )}
-          </div>
+          </span>
 
-          {/* Right: financials only (state moved into the platform line above) */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500 sm:shrink-0 sm:gap-x-4">
+          {/* Right: financials + +/− affordance */}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500 sm:shrink-0 sm:gap-x-4">
             <span>
               P&L:{" "}
               {group.hasPnlData ? (
@@ -556,46 +491,48 @@ function FirmSection({
                 <span className="font-medium text-stone-400">—</span>
               )}
             </span>
-            <button
-              type="button"
-              onClick={() => (isHidden ? onUnhide(group.groupId) : onHide(group.groupId))}
-              className="inline-flex h-6 items-center rounded-full border border-stone-200 bg-white px-2.5 text-[10px] font-medium text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
-              aria-label={isHidden ? `Unhide ${group.firmLabel}` : `Hide ${group.firmLabel}`}
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-[12px] leading-none text-stone-500"
+              aria-hidden
             >
-              {isHidden ? "Unhide group" : "Hide group"}
-            </button>
+              {expanded ? "−" : "+"}
+            </span>
+          </span>
+        </button>
+      </h3>
+
+      {expanded && (
+        <div id={panelId}>
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <table className="w-full text-left text-sm">
+              <thead className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
+                <tr className="border-b border-stone-100">
+                  <th className="px-4 py-2 font-semibold">Account</th>
+                  <th className="px-4 py-2 text-right font-semibold">Balance</th>
+                  <th className="px-4 py-2 text-right font-semibold">Daily P&L</th>
+                  <th className="px-4 py-2 text-right font-semibold">Loss budget left</th>
+                  <th className="px-4 py-2 text-right font-semibold">Trades</th>
+                  <th className="px-4 py-2 font-semibold">Rules / Mode</th>
+                  <th className="px-4 py-2 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.accounts.map((account) => (
+                  <AccountRow key={account.id} account={account} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile/tablet cards */}
+          <div className="grid gap-2 p-2.5 lg:hidden sm:p-3">
+            {group.accounts.map((account) => (
+              <AccountCard key={account.id} account={account} />
+            ))}
           </div>
         </div>
-      </header>
-
-      {/* Desktop table */}
-      <div className="hidden lg:block">
-        <table className="w-full text-left text-sm">
-          <thead className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">
-            <tr className="border-b border-stone-100">
-              <th className="px-4 py-2 font-semibold">Account</th>
-              <th className="px-4 py-2 text-right font-semibold">Balance</th>
-              <th className="px-4 py-2 text-right font-semibold">Daily P&L</th>
-              <th className="px-4 py-2 text-right font-semibold">Loss budget left</th>
-              <th className="px-4 py-2 text-right font-semibold">Trades</th>
-              <th className="px-4 py-2 font-semibold">Rules / Mode</th>
-              <th className="px-4 py-2 text-right font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.accounts.map((account) => (
-              <AccountRow key={account.id} account={account} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile/tablet cards */}
-      <div className="grid gap-2 p-2.5 lg:hidden sm:p-3">
-        {group.accounts.map((account) => (
-          <AccountCard key={account.id} account={account} />
-        ))}
-      </div>
+      )}
     </article>
   );
 }
@@ -616,7 +553,7 @@ function FirmStatusInline({
   const showBreakdown =
     liveCount != null && demoCount != null && liveCount + demoCount > 1;
   return (
-    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-stone-500">
+    <span className="flex flex-wrap items-center gap-x-1.5 text-[11px] font-normal text-stone-500">
       <span aria-hidden>·</span>
       <span>{accountLabel}</span>
       {tradable > 0 && (
@@ -637,7 +574,7 @@ function FirmStatusInline({
           <span>{demoCount} demo</span>
         </>
       )}
-    </p>
+    </span>
   );
 }
 

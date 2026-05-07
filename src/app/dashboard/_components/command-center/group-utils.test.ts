@@ -373,7 +373,7 @@ describe("generic grouping rules", () => {
   // 6. SAFETY: personal accounts on different broker connections stay in separate
   //    groups, regardless of platform. Without this, two distinct Tradovate
   //    logins would silently merge into one "Tradovate · Personal" card and
-  //    hiding it would hide them all.
+  //    individual account rows would lose their broker-login provenance.
   it("personal accounts on different broker connections stay in separate groups (multi-login safety)", () => {
     const accounts = [
       stubAccount({
@@ -494,38 +494,7 @@ describe("generic grouping rules", () => {
     assert.equal(b.consecutiveLosses, 2);
   });
 
-  // 8. SAFETY: personal + demo on different broker connections do NOT merge.
-  //    See test 6b for the same scenario; this test asserts the resulting
-  //    groupIds are deterministic and based on brokerConnectionId only.
-  it("personal live and demo on different broker connections produce distinct groupIds", () => {
-    const accounts = [
-      stubAccount({
-        id: "personal-conn-a",
-        firmKey: PERSONAL_KEY,
-        firmLabel: "Tradovate · Personal",
-        platform: "tradovate",
-        brokerConnectionId: "conn-a",
-        accountType: "personal",
-      }),
-      stubAccount({
-        id: "demo-conn-b",
-        firmKey: PERSONAL_KEY,
-        firmLabel: "Tradovate · Personal",
-        platform: "tradovate",
-        brokerConnectionId: "conn-b",
-        accountType: "demo",
-      }),
-    ];
-    const groups = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
-    assert.equal(groups.length, 2);
-    const groupIds = groups.map((g) => g.groupId).sort();
-    assert.deepEqual(groupIds, [
-      "__personal_broker__::conn-a",
-      "__personal_broker__::conn-b",
-    ]);
-  });
-
-  // 9. propFirm + funded → grouped under propFirm (propFirm wins regardless of accountType)
+  // 8. propFirm + funded → grouped under propFirm (propFirm wins regardless of accountType)
   it("funded account with propFirm is grouped under the prop firm, not Unassigned", () => {
     const accounts = [
       stubAccount({
