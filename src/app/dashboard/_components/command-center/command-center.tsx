@@ -5,6 +5,14 @@ import { useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
+import { HiddenGroupsPanel } from "./hidden-groups-panel";
+import {
+  applyHide,
+  applyUnhide,
+  buildHideRequest,
+  buildUnhideRequest,
+  partitionGroups,
+} from "./hide-group-helpers";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { SyncAllButton } from "./sync-all-button";
 import {
@@ -121,9 +129,22 @@ function progressBarClass(pct: number | null): string {
 export function CommandCenter({ data }: { data: CommandCenterData }) {
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [firmFilter, setFirmFilter] = useState<string>("all");
+  // Hidden-groups state: server-loaded then mutated optimistically. The set
+  // mirrors data.hiddenGroupIds at first render; later updates come from the
+  // hide/unhide handlers below. Top-line summary cards keep using data.summary
+  // (computed from ALL accounts) so hidden groups stay counted in monitoring.
+  const [hiddenIds, setHiddenIds] = useState<readonly string[]>(() => data.hiddenGroupIds);
+  const [showHidden, setShowHidden] = useState(false);
+
+  const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
+  const { visible: visibleGroups, hidden: hiddenGroups } = useMemo(
+    () => partitionGroups(data.groups, hiddenSet),
+    [data.groups, hiddenSet],
+  );
 
   const filteredGroups = useMemo<CommandCenterFirmGroup[]>(() => {
-    return data.groups
+    const source = showHidden ? data.groups : visibleGroups;
+    return source
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
       .map((group) => ({
         ...group,
@@ -133,7 +154,56 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             : group.accounts.filter((a) => a.status === statusFilter),
       }))
       .filter((group) => group.accounts.length > 0);
-  }, [data.groups, statusFilter, firmFilter]);
+  }, [data.groups, visibleGroups, showHidden, statusFilter, firmFilter]);
+
+  // Status-chip counts reflect only the currently visible groups so the user
+  // can scan "Tradable / Warning / Locked" for the active dashboard. Hidden
+  // groups are still counted in data.summary for the top-of-page totals.
+  const visibleCounts = useMemo(() => {
+    const counts: Record<AccountStatus, number> = {
+      allowed: 0,
+      warning: 0,
+      locked: 0,
+      setup_needed: 0,
+      not_connected: 0,
+      unavailable: 0,
+    };
+    const source = showHidden ? data.groups : visibleGroups;
+    for (const group of source) {
+      for (const status of Object.keys(counts) as AccountStatus[]) {
+        counts[status] += group.counts[status] ?? 0;
+      }
+    }
+    return counts;
+  }, [data.groups, visibleGroups, showHidden]);
+
+  async function handleHide(groupId: string) {
+    const previous = hiddenIds;
+    setHiddenIds(applyHide(previous, groupId));
+    try {
+      const req = buildHideRequest(groupId);
+      const res = await fetch(req.url, {
+        method: req.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      if (!res.ok) throw new Error("hide failed");
+    } catch {
+      setHiddenIds(previous);
+    }
+  }
+
+  async function handleUnhide(groupId: string) {
+    const previous = hiddenIds;
+    setHiddenIds(applyUnhide(previous, groupId));
+    try {
+      const req = buildUnhideRequest(groupId);
+      const res = await fetch(req.url, { method: req.method });
+      if (!res.ok) throw new Error("unhide failed");
+    } catch {
+      setHiddenIds(previous);
+    }
+  }
 
   if (data.accounts.length === 0 && data.pendingAccounts.length === 0) {
     return null;
@@ -178,9 +248,18 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           />
           <FilterBar
             statusFilter={statusFilter}
-            counts={data.summary.counts}
+            counts={visibleCounts}
             onStatusChange={setStatusFilter}
           />
+
+          {hiddenGroups.length > 0 && (
+            <HiddenGroupsPanel
+              groups={hiddenGroups}
+              showHidden={showHidden}
+              onToggleShow={() => setShowHidden((v) => !v)}
+              onUnhide={handleUnhide}
+            />
+          )}
 
           <div className="mt-5 grid gap-5">
             {filteredGroups.length === 0 ? (
@@ -190,6 +269,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
                 <FirmSection
                   key={group.groupId}
                   group={group}
+                  isHidden={hiddenSet.has(group.groupId)}
+                  onHide={handleHide}
+                  onUnhide={handleUnhide}
                 />
               ))
             )}
@@ -384,7 +466,17 @@ const CONN_STATUS_CLASS: Record<string, string> = {
 
 // ─── Firm section ──────────────────────────────────────────────────────────────
 
-function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
+function FirmSection({
+  group,
+  isHidden,
+  onHide,
+  onUnhide,
+}: {
+  group: CommandCenterFirmGroup;
+  isHidden: boolean;
+  onHide: (groupId: string) => void;
+  onUnhide: (groupId: string) => void;
+}) {
   const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
   const showBrokerMeta = group.platform !== "manual";
   const isPersonalGroup = group.firmKey === PERSONAL_BROKER_FIRM_KEY;
@@ -470,6 +562,14 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
                 <span className="font-medium text-stone-400">—</span>
               )}
             </span>
+            <button
+              type="button"
+              onClick={() => (isHidden ? onUnhide(group.groupId) : onHide(group.groupId))}
+              className="inline-flex h-6 items-center rounded-full border border-stone-200 bg-white px-2.5 text-[10px] font-medium text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
+              aria-label={isHidden ? `Unhide ${group.firmLabel}` : `Hide ${group.firmLabel}`}
+            >
+              {isHidden ? "Unhide group" : "Hide group"}
+            </button>
           </div>
         </div>
       </header>

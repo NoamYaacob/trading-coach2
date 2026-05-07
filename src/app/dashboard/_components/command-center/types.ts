@@ -187,6 +187,11 @@ export type CommandCenterData = {
   summary: CommandCenterSummary;
   firms: { key: string; label: string }[];
   pendingAccounts: PendingDiscoveredAccount[];
+  /** Per-user dashboard preference: group IDs the user has hidden from the
+   *  main account list. UI-only — does not affect sync, enforcement, or
+   *  any account data. The hidden groups themselves still appear in `groups`
+   *  so the dashboard can offer an "Unhide" affordance. */
+  hiddenGroupIds: string[];
   protectionLock: {
     isLocked: boolean;
     cutoffTime: string | null;

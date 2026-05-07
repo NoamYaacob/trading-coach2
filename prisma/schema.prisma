@@ -80,6 +80,7 @@ model User {
   manualTradeEntries ManualTradeEntry[]
   alertPreferences   AlertPreferences?
   passwordResetTokens PasswordResetToken[]
+  hiddenDashboardGroups HiddenDashboardGroup[]
 }
 
 model Session {
@@ -684,4 +685,20 @@ model AlertPreferences {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Per-user list of dashboard group IDs the user has chosen to hide from the
+// main account list. UI-only — does not affect sync, enforcement, trade
+// counting, or any data on ConnectedAccount. groupId is the stable identifier
+// produced by buildCommandCenterGroups (e.g. "myfundedfutures::conn-x" for
+// prop firm groups, "__personal_broker__::tradovate" for personal groups).
+model HiddenDashboardGroup {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([userId])
 }
