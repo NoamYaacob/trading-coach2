@@ -1,8 +1,13 @@
-import test, { describe } from "node:test";
+import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { isProtectionIncrease, canChangeProtection } from "../../../../lib/account-protection.ts";
 import { derivePropFirmNotice } from "../../../accounts/[id]/setup/prop-firm-notice.ts";
+import {
+  resolveConfirmOutcome,
+  PREVIEW_CONFIRM_MESSAGE,
+  PREVIEW_CONFIRM_HINT,
+} from "./new-accounts-panel-logic.ts";
 
 // ── Dashboard exclusion contract ──────────────────────────────────────────────
 
@@ -486,5 +491,112 @@ describe("per-account sync triggers connection-level discovery", () => {
     assert.equal(failed.ok, false);
     assert.deepEqual(failed.newlyCreatedIds, []);
     assert.deepEqual(failed.missingIds, []);
+  });
+});
+
+// ── resolveConfirmOutcome — preview account confirm guard ─────────────────────
+// Tests 1-7 from the fix spec.
+
+describe("resolveConfirmOutcome", () => {
+  // Test 1: Preview confirm with Default trading plan does not call the API.
+  // The caller checks outcome.kind === "preview_blocked" before making any fetch.
+  it("preview account resolves to preview_blocked regardless of firm/type choice", () => {
+    const outcome = resolveConfirmOutcome(true, "MyFundedFutures", "", "evaluation");
+    assert.equal(outcome.kind, "preview_blocked");
+  });
+
+  // Test 2: Preview confirm with account-specific rules intent also blocked.
+  // rulesChoice is checked by the component only after a successful API call,
+  // so it is never reached for preview accounts.
+  it("preview account is blocked for every firm choice variant", () => {
+    assert.equal(resolveConfirmOutcome(true, "personal", "", "personal").kind, "preview_blocked");
+    assert.equal(resolveConfirmOutcome(true, "other", "Custom Firm", "funded").kind, "preview_blocked");
+    assert.equal(resolveConfirmOutcome(true, "Topstep", "", "evaluation").kind, "preview_blocked");
+  });
+
+  // Test 3: Preview confirm shows "Preview only — this is sample data. No account will be created."
+  it("PREVIEW_CONFIRM_MESSAGE contains the required user-facing text", () => {
+    assert.ok(PREVIEW_CONFIRM_MESSAGE.startsWith("Preview only"), `got: ${PREVIEW_CONFIRM_MESSAGE}`);
+    assert.ok(PREVIEW_CONFIRM_MESSAGE.includes("sample data"));
+    assert.ok(PREVIEW_CONFIRM_MESSAGE.includes("No account will be created"));
+  });
+
+  it("PREVIEW_CONFIRM_HINT describes what would happen in a real import", () => {
+    assert.ok(PREVIEW_CONFIRM_HINT.includes("real import"));
+  });
+
+  // Test 4: Preview confirm does not render "not_found".
+  // preview_blocked is returned before any fetch() call, so no API error string
+  // can reach the UI from the preview path.
+  it("preview_blocked outcome contains no API error strings", () => {
+    const outcome = resolveConfirmOutcome(true, "MyFundedFutures", "", "evaluation");
+    assert.equal(outcome.kind, "preview_blocked");
+    const serialised = JSON.stringify(outcome);
+    assert.ok(!serialised.includes("not_found"), "must not contain 'not_found'");
+    assert.ok(!serialised.includes("unauthorized"), "must not contain 'unauthorized'");
+  });
+
+  // Test 5: Preview confirm does not render "Open setup".
+  // The UI renders "Open setup" only in the real-account error branch (kind === "activate"
+  // error path). preview_blocked takes a separate render path with no "Open setup" link.
+  it("preview_blocked kind is distinct from activate — Open setup link must not appear", () => {
+    const preview = resolveConfirmOutcome(true, "MyFundedFutures", "", "evaluation");
+    assert.equal(preview.kind, "preview_blocked");
+    assert.notEqual(preview.kind, "activate");
+  });
+
+  // Test 6: Real pending accounts still call the real import/protection flow.
+  it("real pending account (isPreview=false) resolves to activate with correct payload", () => {
+    const outcome = resolveConfirmOutcome(false, "MyFundedFutures", "", "evaluation");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, "MyFundedFutures");
+      assert.equal(outcome.accountType, "evaluation");
+    }
+  });
+
+  it("real pending account (isPreview=undefined) resolves to activate", () => {
+    const outcome = resolveConfirmOutcome(undefined, "Apex Trader Funding", "", "funded");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, "Apex Trader Funding");
+      assert.equal(outcome.accountType, "funded");
+    }
+  });
+
+  // Test 7: Real pending accounts with custom rules navigate to account-specific rules setup.
+  // resolveConfirmOutcome returns 'activate' so the component can proceed with the API call
+  // and then route to /rules?scope=account&id=<accountId> when rulesChoice="account_specific".
+  it("real account activate outcome enables the account-specific rules navigation path", () => {
+    const outcome = resolveConfirmOutcome(false, "Topstep", "", "funded");
+    assert.equal(outcome.kind, "activate");
+    // The component: if (rulesChoice === "account_specific") router.push("/rules?scope=account&id=...")
+    // This path is only reachable when outcome.kind === "activate" — never for preview_blocked.
+    assert.notEqual(outcome.kind, "preview_blocked");
+  });
+
+  it("personal firm choice sets propFirm=null and accountType='personal'", () => {
+    const outcome = resolveConfirmOutcome(false, "personal", "", "personal");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, null);
+      assert.equal(outcome.accountType, "personal");
+    }
+  });
+
+  it("'other' firm choice uses trimmed otherText as propFirm", () => {
+    const outcome = resolveConfirmOutcome(false, "other", "  My Custom Prop  ", "evaluation");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, "My Custom Prop");
+    }
+  });
+
+  it("'other' firm choice with blank otherText sets propFirm=null", () => {
+    const outcome = resolveConfirmOutcome(false, "other", "   ", "evaluation");
+    assert.equal(outcome.kind, "activate");
+    if (outcome.kind === "activate") {
+      assert.equal(outcome.propFirm, null);
+    }
   });
 });

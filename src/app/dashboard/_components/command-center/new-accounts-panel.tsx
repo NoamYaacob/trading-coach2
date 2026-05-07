@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  resolveConfirmOutcome,
+  PREVIEW_CONFIRM_MESSAGE,
+  PREVIEW_CONFIRM_HINT,
+} from "./new-accounts-panel-logic";
 import type { PendingDiscoveredAccount } from "./types";
 
 type Props = {
@@ -137,7 +142,7 @@ function getDefaultTypeChoice(account: PendingDiscoveredAccount): AccountTypeCho
 
 // ── Row mode ─────────────────────────────────────────────────────────────────
 
-type RowMode = "idle" | "reviewing" | "busy_add" | "busy_ignore";
+type RowMode = "idle" | "reviewing" | "busy_add" | "busy_ignore" | "dismissed";
 type RulesChoice = "default" | "account_specific";
 
 // ── Rules card buttons ────────────────────────────────────────────────────────
@@ -208,26 +213,23 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   const firmIsInferred = !!account.inheritedPropFirm;
   const busy = mode === "busy_add" || mode === "busy_ignore";
 
-  function classificationPayload(): { propFirm: string | null; accountType: string } {
-    if (firmChoice === "personal") return { propFirm: null, accountType: "personal" };
-    if (firmChoice === "other") return { propFirm: otherText.trim() || null, accountType: typeChoice };
-    return { propFirm: firmChoice, accountType: typeChoice };
-  }
-
   async function handleConfirmAdd() {
-    if (account.isPreview) {
-      setError("Preview only — this is sample data. No account will be created.");
-      setMode("reviewing");
+    const outcome = resolveConfirmOutcome(account.isPreview, firmChoice, otherText, typeChoice);
+    if (outcome.kind === "preview_blocked") {
+      setError(PREVIEW_CONFIRM_MESSAGE);
       return;
     }
     setMode("busy_add");
     setError(null);
-    const { propFirm, accountType } = classificationPayload();
     try {
       const res = await fetch(`/api/accounts/${account.id}/protection`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ protectionStatus: "protected", propFirm, accountType }),
+        body: JSON.stringify({
+          protectionStatus: "protected",
+          propFirm: outcome.propFirm,
+          accountType: outcome.accountType,
+        }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; message?: string };
       if (!res.ok || !data.ok) {
@@ -247,6 +249,11 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
   }
 
   async function handleIgnore() {
+    // Preview accounts have no DB row — silently dismiss without calling the API.
+    if (account.isPreview) {
+      setMode("dismissed");
+      return;
+    }
     setMode("busy_ignore");
     setError(null);
     try {
@@ -273,6 +280,8 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
     setError(null);
     setShowManualPicker(false);
   }
+
+  if (mode === "dismissed") return null;
 
   const metaParts = buildMetaParts(account);
   // Show the manual picker when firm is ambiguous OR after user clicks "Change…"
@@ -435,7 +444,13 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
         </div>
       )}
 
-      {error && (
+      {error && account.isPreview && (
+        <div className="mt-2">
+          <p className="text-[11px] text-stone-600">{error}</p>
+          <p className="mt-0.5 text-[11px] text-stone-400">{PREVIEW_CONFIRM_HINT}</p>
+        </div>
+      )}
+      {error && !account.isPreview && (
         <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-red-700">
           <span>{error}</span>
           <Link
