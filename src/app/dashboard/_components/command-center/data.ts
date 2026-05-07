@@ -50,10 +50,17 @@ function deriveFirmKeyAndLabel(account: {
   platform: string;
   propFirm: string | null;
   accountType: string;
+  brokerConnectionId: string | null;
 }): { key: string; label: string } {
   if (account.propFirm && account.propFirm.trim().length > 0) {
     const label = account.propFirm.trim();
     return { key: label.toLowerCase(), label };
+  }
+  // No prop firm — group by broker connection so personal + demo accounts
+  // on the same connection appear under one platform-named header.
+  if (account.brokerConnectionId) {
+    const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
+    return { key: `__conn__${account.brokerConnectionId}`, label: platformLabel };
   }
   if (account.accountType === "personal") {
     return { key: PERSONAL_BROKER_FIRM_KEY, label: PERSONAL_BROKER_FIRM_LABEL };
@@ -272,6 +279,7 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       platform: account.platform,
       propFirm: account.propFirm,
       accountType: account.accountType,
+      brokerConnectionId: account.brokerConnectionId ?? null,
     });
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
@@ -420,8 +428,12 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
     }
   }
 
-  const SINK_KEYS = new Set([PERSONAL_BROKER_FIRM_KEY, FALLBACK_FIRM_KEY]);
-  const groups = buildCommandCenterGroups(computed, SINK_KEYS);
+  // Sink any group that has no prop firm — this covers __personal_broker__,
+  // __unassigned__, and the new __conn__* connection-based groups.
+  const sinkFirmKeys = new Set(
+    computed.filter((a) => !a.propFirm || a.propFirm.trim() === "").map((a) => a.firmKey),
+  );
+  const groups = buildCommandCenterGroups(computed, sinkFirmKeys);
 
   // Deduplicate by firmKey: same firm across multiple broker connections shows once
   // in the filter dropdown (filtering by firm shows all connections for that firm).
