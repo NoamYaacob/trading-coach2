@@ -325,16 +325,11 @@ export default async function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
               Configuration
             </p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <NavCard
                 href="/rules"
                 title="Trading Plan"
                 description="Edit daily loss limits, trade caps, and breach actions."
-              />
-              <NavCard
-                href="/accounts"
-                title="Broker Connections"
-                description="Manage connected accounts, review sync status, and reconnect."
               />
               <NavCard
                 href="/alerts"

@@ -228,7 +228,15 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     return counts;
   }, [data.groups]);
 
-  if (data.accounts.length === 0 && data.pendingAccounts.length === 0) {
+  const expiredGroups = data.groups.filter(
+    (g) => g.connectionStatus === "expired" || g.connectionStatus === "connection_error",
+  );
+
+  if (
+    data.accounts.length === 0 &&
+    data.pendingAccounts.length === 0 &&
+    expiredGroups.length === 0
+  ) {
     return null;
   }
 
@@ -254,6 +262,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       {data.reclassifiableAccounts.length > 0 && (
         <ReclassifyPanel accounts={data.reclassifiableAccounts} />
       )}
+      {expiredGroups.map((g) => (
+        <ExpiredConnectionBanner key={g.groupId} group={g} />
+      ))}
       {data.accounts.length > 0 && (
         <section
           aria-label="Risk command center"
@@ -302,6 +313,35 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           ) : null}
         </section>
       )}
+    </div>
+  );
+}
+
+// ─── Expired connection banner ─────────────────────────────────────────────────
+
+function ExpiredConnectionBanner({ group }: { group: CommandCenterFirmGroup }) {
+  const envLabel = group.brokerEnv === "demo" ? " Demo" : group.brokerEnv === "live" ? " Live" : "";
+  const reconnectHref = group.brokerConnectionId
+    ? `/accounts/connect/tradovate?env=${group.brokerEnv ?? "live"}&reconnect=${group.brokerConnectionId}`
+    : "/accounts/connect/tradovate";
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-4 py-3"
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-orange-500" aria-hidden />
+        <p className="text-sm text-orange-900">
+          <span className="font-semibold">Tradovate{envLabel} connection expired.</span>
+          {" "}Sync and rule evaluation are paused for this connection.
+        </p>
+      </div>
+      <Link
+        href={reconnectHref}
+        className="inline-flex items-center rounded-full bg-orange-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-orange-800"
+      >
+        Reconnect
+      </Link>
     </div>
   );
 }
@@ -403,7 +443,7 @@ function SectionHeader({
       <div className="flex flex-wrap items-center gap-2">
         <Link
           href="/accounts/connect/tradovate"
-          className="inline-flex h-8 items-center rounded-full border border-stone-200 px-3.5 text-xs font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
+          className="inline-flex h-8 items-center rounded-full bg-stone-950 px-4 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
         >
           Add account
         </Link>

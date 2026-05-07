@@ -17,7 +17,6 @@ export const MORE_NAV: readonly AppNavItem[] = [
   { href: "/alerts", label: "Alerts", match: "exact" },
   { href: "/settings", label: "Settings", match: "exact" },
   { href: "/onboarding", label: "Setup guide", match: "exact" },
-  { href: "/accounts", label: "Broker connections", match: "startsWith" },
 ];
 
 export const ALL_NAV: readonly AppNavItem[] = [...PRIMARY_NAV, ...MORE_NAV];

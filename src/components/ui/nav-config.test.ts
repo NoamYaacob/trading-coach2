@@ -35,28 +35,18 @@ describe("PRIMARY_NAV", () => {
   });
 });
 
-// ── Test 4: Broker connections is reachable through More ─────────────────────
+// ── Test 4 (updated): Broker connections removed from More nav ────────────────
 
 describe("MORE_NAV", () => {
-  it("includes Broker connections so it remains reachable through More (test 4)", () => {
-    const brokerItem = MORE_NAV.find((item) => item.href === "/accounts");
-    assert.ok(brokerItem != null, "Broker connections must be present in MORE_NAV");
-  });
-
-  it("Broker connections label uses lowercase to signal secondary placement", () => {
-    const brokerItem = MORE_NAV.find((item) => item.href === "/accounts");
-    assert.ok(brokerItem != null);
-    assert.equal(
-      brokerItem!.label,
-      "Broker connections",
-      "label must be 'Broker connections' (lowercase 'c')",
+  it("does not include Broker connections — /accounts is no longer a nav destination (test 4)", () => {
+    assert.ok(
+      !MORE_NAV.some((item) => item.href === "/accounts"),
+      "Broker connections (/accounts) must not appear in MORE_NAV",
     );
-  });
-
-  it("match mode for Broker connections is startsWith so sub-pages stay active", () => {
-    const brokerItem = MORE_NAV.find((item) => item.href === "/accounts");
-    assert.ok(brokerItem != null);
-    assert.equal(brokerItem!.match, "startsWith");
+    assert.ok(
+      !MORE_NAV.some((item) => item.label.toLowerCase().includes("broker")),
+      "No 'broker' label must appear in MORE_NAV",
+    );
   });
 
   it("retains existing More nav items: Status details, Alerts, Settings, Setup guide", () => {
@@ -65,6 +55,10 @@ describe("MORE_NAV", () => {
     assert.ok(hrefs.includes("/alerts"), "Alerts must remain");
     assert.ok(hrefs.includes("/settings"), "Settings must remain");
     assert.ok(hrefs.includes("/onboarding"), "Setup guide must remain");
+  });
+
+  it("has exactly 4 items (Status details, Alerts, Settings, Setup guide)", () => {
+    assert.equal(MORE_NAV.length, 4, "MORE_NAV should have exactly 4 items");
   });
 });
 
@@ -86,10 +80,6 @@ describe("ADD_ACCOUNT_HREF", () => {
 // ── Test 2: Add account action is wired up on the Dashboard ──────────────────
 
 describe("dashboard Add account action (test 2)", () => {
-  // The 'Add account' button in the Dashboard command center's SectionHeader
-  // links to ADD_ACCOUNT_HREF so users can add accounts without visiting the
-  // Broker connections settings page. This test documents the contract;
-  // the button is rendered in command-center.tsx → SectionHeader.
   it("ADD_ACCOUNT_HREF is the canonical link target for the dashboard Add account button", () => {
     assert.ok(typeof ADD_ACCOUNT_HREF === "string");
     assert.ok(ADD_ACCOUNT_HREF.length > 0);
@@ -114,22 +104,15 @@ describe("ALL_NAV", () => {
     assert.equal(ALL_NAV.length, PRIMARY_NAV.length + MORE_NAV.length);
   });
 
-  it("Broker connections appears exactly once in ALL_NAV (not duplicated)", () => {
+  it("Broker connections does not appear in ALL_NAV", () => {
     const accountItems = ALL_NAV.filter((i) => i.href === "/accounts");
-    assert.equal(accountItems.length, 1, "Broker connections must appear exactly once");
+    assert.equal(accountItems.length, 0, "Broker connections must not appear in ALL_NAV");
   });
 });
 
 // ── Test 5: Reconnect state visible on Dashboard ─────────────────────────────
 
 describe("expired connection state visibility on Dashboard (test 5)", () => {
-  // The command center's FirmSection renders group.connectionStatusLabel in a
-  // colour keyed by CONN_STATUS_CLASS[group.connectionStatus].
-  // For 'expired', the class is 'text-red-600' — visually distinct from
-  // 'connected_live' (text-emerald-600). Users see "Token expired" in red
-  // directly on the Dashboard without visiting Broker connections.
-  // This test documents that contract.
-
   const CONN_STATUS_HIGHLIGHTS: Record<string, "highlight" | "normal"> = {
     connected_live: "normal",
     connected_readonly: "normal",
@@ -156,10 +139,6 @@ describe("expired connection state visibility on Dashboard (test 5)", () => {
 // ── Test 6: New account found panel remains on Dashboard ─────────────────────
 
 describe("new account found panel on Dashboard (test 6)", () => {
-  // NewAccountsPanel is rendered in CommandCenter when
-  // data.pendingAccounts.length > 0. This test documents the contract:
-  // the panel is surfaced on the Dashboard, not only on the Broker
-  // connections page.
   it("pending accounts with length > 0 trigger NewAccountsPanel on Dashboard", () => {
     const pendingAccounts = [
       { id: "test-pending", label: "TEST-ACCOUNT" },
@@ -179,6 +158,9 @@ describe("changed files do not include sync/enforcement/webhook files (test 7)",
     "src/components/ui/nav-config.test.ts",
     "src/components/ui/top-nav.tsx",
     "src/app/dashboard/_components/command-center/command-center.tsx",
+    "src/app/dashboard/page.tsx",
+    "src/app/settings/page.tsx",
+    "src/app/accounts/page.tsx",
   ];
 
   const FORBIDDEN_PATTERNS = [
