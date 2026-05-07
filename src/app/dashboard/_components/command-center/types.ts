@@ -132,6 +132,13 @@ export type PendingDiscoveredAccount = {
   envLabel: string | null;
   /** Prop firm name on the discovered ConnectedAccount row, or null for unassigned/personal. */
   propFirm: string | null;
+  /** propFirm inherited from existing active accounts on the same brokerConnectionId.
+   *  null when the connection has no unambiguous single propFirm.
+   *  Takes priority over suggestedPropFirm (connection context > name pattern). */
+  inheritedPropFirm: string | null;
+  /** accountType inherited from prop-firm accounts on the same connection.
+   *  null when the connection has no unambiguous evaluation/funded type. */
+  inheritedAccountType: string | null;
   /** Inferred prop firm from the account label pattern (e.g. MFFU→"MyFundedFutures").
    *  null when the pattern didn't match. Used to pre-fill the classification selector. */
   suggestedPropFirm: string | null;

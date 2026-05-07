@@ -48,9 +48,22 @@ function buildMetaParts(account: PendingDiscoveredAccount): string[] {
   const parts: string[] = [];
   parts.push(account.platformLabel);
   if (account.envLabel) parts.push(account.envLabel);
-  const firmDisplay = account.suggestedPropFirm ?? account.propFirm;
+  // Priority: connection-inherited > name-pattern suggestion > stored propFirm
+  const firmDisplay = account.inheritedPropFirm ?? account.suggestedPropFirm ?? account.propFirm;
   parts.push(firmDisplay?.trim() ? firmDisplay.trim() : "Unassigned");
-  if (account.accountTypeLabel) parts.push(account.accountTypeLabel);
+  // Show inherited account type when a firm is known
+  const typeToShow = firmDisplay
+    ? (account.inheritedAccountType ?? account.suggestedAccountType)
+    : null;
+  if (typeToShow && typeToShow !== "personal") {
+    const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+      evaluation: "Evaluation",
+      funded: "Funded",
+      demo: "Demo",
+    };
+    const typeLabel = ACCOUNT_TYPE_LABEL[typeToShow];
+    if (typeLabel) parts.push(typeLabel);
+  }
   if (account.externalAccountId) parts.push(`ID ${account.externalAccountId}`);
   return parts;
 }
@@ -79,23 +92,27 @@ const ACCOUNT_TYPE_PILLS: { value: AccountTypeChoice; label: string }[] = [
 const KNOWN_PILL_FIRMS: FirmChoice[] = ["MyFundedFutures", "Apex Trader Funding", "Topstep"];
 
 function getDefaultFirmChoice(account: PendingDiscoveredAccount): FirmChoice {
-  if (account.suggestedPropFirm) {
-    return KNOWN_PILL_FIRMS.includes(account.suggestedPropFirm as FirmChoice)
-      ? (account.suggestedPropFirm as FirmChoice)
+  // Connection context wins over name-pattern inference
+  const bestFirm = account.inheritedPropFirm ?? account.suggestedPropFirm;
+  if (bestFirm) {
+    return KNOWN_PILL_FIRMS.includes(bestFirm as FirmChoice)
+      ? (bestFirm as FirmChoice)
       : "other";
   }
   return "personal";
 }
 
 function getDefaultOtherText(account: PendingDiscoveredAccount): string {
-  if (account.suggestedPropFirm && !KNOWN_PILL_FIRMS.includes(account.suggestedPropFirm as FirmChoice)) {
-    return account.suggestedPropFirm;
+  const bestFirm = account.inheritedPropFirm ?? account.suggestedPropFirm;
+  if (bestFirm && !KNOWN_PILL_FIRMS.includes(bestFirm as FirmChoice)) {
+    return bestFirm;
   }
   return "";
 }
 
 function getDefaultTypeChoice(account: PendingDiscoveredAccount): AccountTypeChoice {
-  const t = account.suggestedAccountType;
+  // Connection context wins over name-pattern inference
+  const t = account.inheritedAccountType ?? account.suggestedAccountType;
   if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
   return "evaluation";
 }

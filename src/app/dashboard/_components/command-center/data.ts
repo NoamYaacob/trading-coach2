@@ -8,6 +8,7 @@ import {
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
 import { inferAccountClassification } from "@/lib/brokers/account-classification";
+import { inferConnectionClassification } from "@/lib/brokers/connection-classification";
 import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
 import {
   deriveAccountKind,
@@ -436,9 +437,18 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
   const firmsMap = new Map(groups.map((g) => [g.firmKey, g.firmLabel]));
   const firms = [...firmsMap.entries()].map(([key, label]) => ({ key, label }));
 
+  // Build a lightweight sibling list from active accounts so the pending
+  // rows can inherit propFirm/accountType from existing connection context.
+  const activeSiblings = computed.map((a) => ({
+    brokerConnectionId: a.brokerConnectionId,
+    propFirm: a.propFirm,
+    accountType: a.accountType,
+  }));
+
   const pendingAccounts: PendingDiscoveredAccount[] = pendingRows.map((p) => {
     const env = p.brokerConnection?.env ?? null;
-    const classification = inferAccountClassification(p.label);
+    const namePattern = inferAccountClassification(p.label);
+    const connectionCtx = inferConnectionClassification(p.brokerConnectionId, activeSiblings);
     return {
       id: p.id,
       label: p.label,
@@ -452,8 +462,10 @@ export async function loadCommandCenterData(userId: string): Promise<CommandCent
       env,
       envLabel: env === "live" ? "Live account" : env === "demo" ? "Demo / Sim" : null,
       propFirm: p.propFirm ?? null,
-      suggestedPropFirm: classification.propFirm,
-      suggestedAccountType: classification.accountType,
+      inheritedPropFirm: connectionCtx.inheritedPropFirm,
+      inheritedAccountType: connectionCtx.inheritedAccountType,
+      suggestedPropFirm: namePattern.propFirm,
+      suggestedAccountType: namePattern.accountType,
     };
   });
 
