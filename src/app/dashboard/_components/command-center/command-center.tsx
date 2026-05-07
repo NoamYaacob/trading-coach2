@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { ArchiveAccountButton } from "./archive-account-button";
+import {
+  COLLAPSED_GROUPS_STORAGE_KEY,
+  parseCollapsedPayload,
+  pruneStaleCollapsedIds,
+  serializeCollapsedPayload,
+  toggleCollapsedId,
+} from "./collapsed-state";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { SyncAllButton } from "./sync-all-button";
 import {
@@ -122,6 +129,53 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [firmFilter, setFirmFilter] = useState<string>("all");
 
+  // Collapsed-groups preference: groupIds the user has explicitly collapsed.
+  // Lives in localStorage so it survives refresh, navigation, and filter
+  // changes (lifted out of FirmSection so unmount-on-filter doesn't reset it).
+  // Initial state is empty so the SSR HTML matches the first client render —
+  // localStorage is read in a post-hydration effect.
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let raw: string | null = null;
+    try {
+      raw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    const parsed = parseCollapsedPayload(raw);
+    if (parsed.size > 0) setCollapsedGroups(parsed);
+  }, []);
+
+  const validGroupIds = useMemo(
+    () => new Set(data.groups.map((g) => g.groupId)),
+    [data.groups],
+  );
+
+  const handleToggleCollapsed = useCallback(
+    (groupId: string) => {
+      setCollapsedGroups((prev) => {
+        const toggled = toggleCollapsedId(prev, groupId);
+        const next = pruneStaleCollapsedIds(toggled, validGroupIds);
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              COLLAPSED_GROUPS_STORAGE_KEY,
+              serializeCollapsedPayload(next),
+            );
+          }
+        } catch {
+          // Private mode / storage disabled — fall back to in-memory only.
+        }
+        return next;
+      });
+    },
+    [validGroupIds],
+  );
+
   const filteredGroups = useMemo<CommandCenterFirmGroup[]>(() => {
     return data.groups
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
@@ -206,7 +260,12 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
               <EmptyFilterMatch />
             ) : (
               filteredGroups.map((group) => (
-                <FirmSection key={group.groupId} group={group} />
+                <FirmSection
+                  key={group.groupId}
+                  group={group}
+                  isCollapsed={collapsedGroups.has(group.groupId)}
+                  onToggleCollapsed={() => handleToggleCollapsed(group.groupId)}
+                />
               ))
             )}
           </div>
@@ -400,11 +459,20 @@ const CONN_STATUS_CLASS: Record<string, string> = {
 
 // ─── Firm section ──────────────────────────────────────────────────────────────
 
-function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
-  // Default expanded so risk-relevant detail is visible without an extra
-  // click; collapsing is purely local UI state and does not affect monitoring,
-  // sync, enforcement, or any totals.
-  const [expanded, setExpanded] = useState(true);
+function FirmSection({
+  group,
+  isCollapsed,
+  onToggleCollapsed,
+}: {
+  group: CommandCenterFirmGroup;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
+  // Default expanded (when not in the collapsed set) so risk-relevant detail
+  // is visible without an extra click. State is lifted to CommandCenter and
+  // persisted to localStorage; collapsing is purely UI preference and never
+  // affects monitoring, sync, enforcement, or any totals.
+  const expanded = !isCollapsed;
   const panelId = useId();
   const connClass = CONN_STATUS_CLASS[group.connectionStatus] ?? "text-stone-500";
   const showBrokerMeta = group.platform !== "manual";
@@ -427,7 +495,7 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
       <h3 className="m-0">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={onToggleCollapsed}
           aria-expanded={expanded}
           aria-controls={panelId}
           className={`flex w-full flex-col gap-2 px-3 py-2.5 text-left transition hover:bg-stone-50 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-3 ${expanded ? "border-b border-stone-100" : ""}`}
