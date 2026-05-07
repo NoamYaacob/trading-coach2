@@ -403,12 +403,9 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           {/* Left: firm identity + broker meta */}
           <div>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
               <h3 className="text-sm font-semibold text-stone-950">{group.firmLabel}</h3>
-              <span className="text-[11px] text-stone-500">
-                {group.accounts.length} account{group.accounts.length === 1 ? "" : "s"}
-              </span>
-              <FirmStatusInline counts={group.counts} />
+              <FirmStatusInline accountCount={group.accounts.length} counts={group.counts} />
             </div>
             {showBrokerMeta && (
               <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-stone-400">
@@ -489,13 +486,26 @@ function FirmSection({ group }: { group: CommandCenterFirmGroup }) {
   );
 }
 
-function FirmStatusInline({ counts }: { counts: Record<AccountStatus, number> }) {
+function FirmStatusInline({
+  accountCount,
+  counts,
+}: {
+  accountCount: number;
+  counts: Record<AccountStatus, number>;
+}) {
   const tradable = counts.allowed ?? 0;
-  if (tradable === 0) return null;
+  const accountLabel = `${accountCount} account${accountCount === 1 ? "" : "s"}`;
   return (
-    <span className="text-[11px] font-medium text-emerald-700">
-      {tradable} tradable
-    </span>
+    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-stone-500">
+      <span aria-hidden>·</span>
+      <span>{accountLabel}</span>
+      {tradable > 0 && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="font-medium text-emerald-700">{tradable} tradable</span>
+        </>
+      )}
+    </p>
   );
 }
 
