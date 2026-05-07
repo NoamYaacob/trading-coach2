@@ -134,7 +134,6 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   // hide/unhide handlers below. Top-line summary cards keep using data.summary
   // (computed from ALL accounts) so hidden groups stay counted in monitoring.
   const [hiddenIds, setHiddenIds] = useState<readonly string[]>(() => data.hiddenGroupIds);
-  const [showHidden, setShowHidden] = useState(false);
 
   const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
   const { visible: visibleGroups, hidden: hiddenGroups } = useMemo(
@@ -143,8 +142,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
   );
 
   const filteredGroups = useMemo<CommandCenterFirmGroup[]>(() => {
-    const source = showHidden ? data.groups : visibleGroups;
-    return source
+    return visibleGroups
       .filter((group) => firmFilter === "all" || group.firmKey === firmFilter)
       .map((group) => ({
         ...group,
@@ -154,11 +152,10 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             : group.accounts.filter((a) => a.status === statusFilter),
       }))
       .filter((group) => group.accounts.length > 0);
-  }, [data.groups, visibleGroups, showHidden, statusFilter, firmFilter]);
+  }, [visibleGroups, statusFilter, firmFilter]);
 
-  // Status-chip counts reflect only the currently visible groups so the user
-  // can scan "Tradable / Warning / Locked" for the active dashboard. Hidden
-  // groups are still counted in data.summary for the top-of-page totals.
+  // Status-chip counts reflect only visible groups. Hidden groups remain in
+  // data.summary for top-of-page totals.
   const visibleCounts = useMemo(() => {
     const counts: Record<AccountStatus, number> = {
       allowed: 0,
@@ -168,14 +165,13 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       not_connected: 0,
       unavailable: 0,
     };
-    const source = showHidden ? data.groups : visibleGroups;
-    for (const group of source) {
+    for (const group of visibleGroups) {
       for (const status of Object.keys(counts) as AccountStatus[]) {
         counts[status] += group.counts[status] ?? 0;
       }
     }
     return counts;
-  }, [data.groups, visibleGroups, showHidden]);
+  }, [visibleGroups]);
 
   async function handleHide(groupId: string) {
     const previous = hiddenIds;
@@ -255,8 +251,6 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
           {hiddenGroups.length > 0 && (
             <HiddenGroupsPanel
               groups={hiddenGroups}
-              showHidden={showHidden}
-              onToggleShow={() => setShowHidden((v) => !v)}
               onUnhide={handleUnhide}
             />
           )}
