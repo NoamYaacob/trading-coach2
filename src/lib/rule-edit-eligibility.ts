@@ -20,6 +20,7 @@ export type RuleEditReason =
   | "no_session_configured"
   | "account_stopped"
   | "rule_breach_today"
+  | "protection_locked_today"
   | "open_position"
   | "within_session"
   | "within_buffer";
@@ -55,6 +56,7 @@ export type RuleEditEligibilityInput = {
   lockBufferMinutes?: number | null;
   hasOpenPosition?: boolean;
   hasRuleBreachToday?: boolean;
+  hasProtectionLockToday?: boolean;
   isAccountStopped?: boolean;
 };
 
@@ -216,6 +218,17 @@ export function deriveRuleEditEligibility(
     return {
       canEditNow: false,
       reason: "rule_breach_today",
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+  }
+
+  if (input.hasProtectionLockToday) {
+    return {
+      canEditNow: false,
+      reason: "protection_locked_today",
       nextAllowedAt: null,
       lockStartsAt: null,
       sessionStartsAt: null,
@@ -441,7 +454,10 @@ export function buildRuleEditLockMessage(
       return "Account is stopped by Guardrail. Rules cannot be changed until the account is manually reset.";
 
     case "rule_breach_today":
-      return "A rule was breached today. Rules are locked until the next session.";
+      return "You already hit a protection rule today, so changes cannot affect today. These changes will apply from the next trading day.";
+
+    case "protection_locked_today":
+      return "You already hit a protection rule today, so changes cannot affect today. These changes will apply from the next trading day.";
 
     case "open_position":
       return "You have an open position. Rules will be editable once the position is closed.";

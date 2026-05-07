@@ -46,7 +46,7 @@ export default async function RulesPage({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, accounts, guardian, traderProfile] = await Promise.all([
+  const [riskRules, accounts, guardian, traderProfile, guardianStatus] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount.findMany({
       where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
@@ -89,6 +89,10 @@ export default async function RulesPage({
     }),
     getGuardianSnapshot(user.id),
     prisma.traderProfile.findFirst({ where: { userId: user.id }, select: { timezone: true } }),
+    prisma.guardianStatus.findUnique({
+      where: { userId: user.id },
+      select: { currentLockoutActive: true },
+    }),
   ]);
 
   const protectionLock = getProtectionLockState({
@@ -100,8 +104,10 @@ export default async function RulesPage({
   const savedSessionPresets = riskRules?.sessionPresetsJson
     ? (JSON.parse(riskRules.sessionPresetsJson) as string[])
     : null;
+  const hasProtectionLockToday = guardianStatus?.currentLockoutActive === true;
   const ruleEditEligibility = deriveRuleEditEligibility({
     selectedSessionPresets: savedSessionPresets,
+    hasProtectionLockToday,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
     sessionStartTime: riskRules?.sessionStartTime ?? null,

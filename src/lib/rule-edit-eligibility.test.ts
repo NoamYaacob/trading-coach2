@@ -1596,3 +1596,256 @@ describe("deriveRuleEditEligibility — selectedSessionPresets no server-local d
     assert.equal(a.reason, b.reason);
   });
 });
+
+// ── protection_locked_today anti-bypass ───────────────────────────────────────
+
+describe("deriveRuleEditEligibility — protection_locked_today anti-bypass", () => {
+  const TZ = "America/New_York";
+
+  it("hasProtectionLockToday → protection_locked_today, canEditNow=false", () => {
+    // Outside session entirely — no time-based lock would apply
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("protection_locked_today has priority over within_session (breach wins)", () => {
+    // Inside session — time-based lock would say within_session, but breach wins
+    const insideSession = tzDate(2026, 5, 6, 10, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: insideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("protection_locked_today has priority over within_buffer (breach wins)", () => {
+    // In buffer zone — time-based lock would say within_buffer, but breach wins
+    const inBuffer = tzDate(2026, 5, 6, 8, 45, TZ);
+    const result = deriveRuleEditEligibility({
+      now: inBuffer,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("protection_locked_today: nextAllowedAt is null (no time-based unlock)", () => {
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.nextAllowedAt, null);
+    assert.equal(result.lockStartsAt, null);
+    assert.equal(result.sessionStartsAt, null);
+    assert.equal(result.sessionEndsAt, null);
+  });
+
+  it("account_stopped still takes priority over protection_locked_today", () => {
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      isAccountStopped: true,
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "account_stopped");
+  });
+
+  it("rule_breach_today (existing) takes priority over protection_locked_today", () => {
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasRuleBreachToday: true,
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "rule_breach_today");
+  });
+
+  it("no lock when hasProtectionLockToday=false and outside session", () => {
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: false,
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "can_edit");
+  });
+
+  it("Asia→London bypass scenario: breach blocks immediate session change", () => {
+    // User previously had Asia session, suffered a breach, and is now trying to
+    // switch to London session mid-day. hasProtectionLockToday should block them.
+    const midDay = tzDate(2026, 5, 6, 14, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: midDay,
+      // Existing sessions: asia
+      selectedSessionPresets: ["asia"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("session removal blocked by breach: canEditNow=false", () => {
+    // User tries to remove session presets while in protection-locked state
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      selectedSessionPresets: ["ny_am"],
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("custom session change blocked by breach: canEditNow=false", () => {
+    // User has a custom session and tries to change session times while in lockout
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      sessionStartTime: "09:30",
+      sessionEndTime: "16:00",
+      sessionTimezone: TZ,
+      hasProtectionLockToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "protection_locked_today");
+  });
+
+  it("no lock outside session with no breach (baseline check)", () => {
+    const outsideSession = tzDate(2026, 5, 6, 6, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now: outsideSession,
+      sessionStartTime: "09:30",
+      sessionEndTime: "16:00",
+      sessionTimezone: TZ,
+      hasProtectionLockToday: false,
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "can_edit");
+  });
+});
+
+// ── buildRuleEditLockMessage — breach/lockout vs session copy ─────────────────
+
+describe("buildRuleEditLockMessage — breach/lockout vs session copy", () => {
+  const TZ = "America/New_York";
+
+  it("protection_locked_today says 'protection rule today'", () => {
+    const eligibility = {
+      canEditNow: false as const,
+      reason: "protection_locked_today" as const,
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      msg.includes("protection rule today"),
+      `Expected 'protection rule today' in: ${msg}`,
+    );
+  });
+
+  it("protection_locked_today says 'next trading day'", () => {
+    const eligibility = {
+      canEditNow: false as const,
+      reason: "protection_locked_today" as const,
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      msg.includes("next trading day"),
+      `Expected 'next trading day' in: ${msg}`,
+    );
+  });
+
+  it("rule_breach_today says 'protection rule today'", () => {
+    const eligibility = {
+      canEditNow: false as const,
+      reason: "rule_breach_today" as const,
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      msg.includes("protection rule today"),
+      `Expected 'protection rule today' in: ${msg}`,
+    );
+  });
+
+  it("within_session says 'active trading session', not 'protection rule today'", () => {
+    const now = tzDate(2026, 5, 6, 10, 0, TZ);
+    const eligibility = deriveRuleEditEligibility({
+      now,
+      sessionStartTime: "09:30",
+      sessionEndTime: "16:00",
+      sessionTimezone: TZ,
+    });
+    assert.equal(eligibility.reason, "within_session");
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      msg.includes("active trading session"),
+      `Expected 'active trading session' in: ${msg}`,
+    );
+    assert.ok(
+      !msg.includes("protection rule today"),
+      `Expected NO 'protection rule today' in: ${msg}`,
+    );
+  });
+
+  it("within_buffer says 'active trading session', not 'protection rule today'", () => {
+    const now = tzDate(2026, 5, 6, 8, 45, TZ);
+    const eligibility = deriveRuleEditEligibility({
+      now,
+      sessionStartTime: "09:30",
+      sessionEndTime: "16:00",
+      sessionTimezone: TZ,
+    });
+    assert.equal(eligibility.reason, "within_buffer");
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      msg.includes("active trading session"),
+      `Expected 'active trading session' in: ${msg}`,
+    );
+    assert.ok(
+      !msg.includes("protection rule today"),
+      `Expected NO 'protection rule today' in: ${msg}`,
+    );
+  });
+
+  it("breach copy does not mention CT timezone", () => {
+    const eligibility = {
+      canEditNow: false as const,
+      reason: "protection_locked_today" as const,
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+    const msg = buildRuleEditLockMessage(eligibility, TZ, null);
+    assert.ok(
+      !msg.includes(" CT") && !msg.includes("Central Time") && !msg.includes("Chicago"),
+      `Expected no CT timezone in breach message: ${msg}`,
+    );
+  });
+});

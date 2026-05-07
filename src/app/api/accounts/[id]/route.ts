@@ -122,7 +122,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
   if (body.riskRules !== undefined) {
     // Check the user's rule-edit eligibility before mutating account rules.
-    const [userRules, existingAccountRules, liveState] = await Promise.all([
+    const [userRules, existingAccountRules, liveState, guardianStatus] = await Promise.all([
       prisma.riskRules.findUnique({
         where: { userId: currentUser.id },
         select: {
@@ -130,6 +130,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           sessionEndHour: true,
           sessionTimezone: true,
           ruleEditLockBufferMinutes: true,
+          sessionStartTime: true,
+          sessionEndTime: true,
+          sessionPresetsJson: true,
         },
       }),
       prisma.accountRiskRules.findUnique({
@@ -140,18 +143,29 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         where: { accountId: id },
         select: { riskState: true, cooldownActive: true },
       }),
+      prisma.guardianStatus.findUnique({
+        where: { userId: currentUser.id },
+        select: { currentLockoutActive: true },
+      }),
     ]);
     const isFirstTimeSetup = !existingAccountRules;
     const isAccountStopped =
       liveState?.riskState === "STOPPED" || liveState?.cooldownActive === true;
+    const hasProtectionLockToday =
+      isAccountStopped || guardianStatus?.currentLockoutActive === true;
 
+    const userRulesPresetsJson = userRules?.sessionPresetsJson ?? null;
     const eligibility = deriveRuleEditEligibility({
+      selectedSessionPresets: userRulesPresetsJson ? JSON.parse(userRulesPresetsJson) : null,
       sessionStartHour: userRules?.sessionStartHour ?? null,
       sessionEndHour: userRules?.sessionEndHour ?? null,
+      sessionStartTime: userRules?.sessionStartTime ?? null,
+      sessionEndTime: userRules?.sessionEndTime ?? null,
       sessionTimezone: userRules?.sessionTimezone ?? null,
       lockBufferMinutes: userRules?.ruleEditLockBufferMinutes ?? null,
       // First-time setup bypasses state-based locks: no active rules to weaken.
       isAccountStopped: isFirstTimeSetup ? false : isAccountStopped,
+      hasProtectionLockToday: isFirstTimeSetup ? false : hasProtectionLockToday,
     });
 
     if (!eligibility.canEditNow && !isFirstTimeSetup) {

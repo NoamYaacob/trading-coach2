@@ -286,11 +286,27 @@ export async function POST(request: Request) {
       sessionPresetsJson: true,
     },
   });
+
+  const [guardianStatus, accountLiveStates] = await Promise.all([
+    prisma.guardianStatus.findUnique({
+      where: { userId: user.id },
+      select: { currentLockoutActive: true },
+    }),
+    prisma.liveSessionState.findMany({
+      where: { account: { userId: user.id } },
+      select: { riskState: true, cooldownActive: true },
+    }),
+  ]);
+  const hasProtectionLockToday =
+    guardianStatus?.currentLockoutActive === true ||
+    accountLiveStates.some((s) => s.riskState === "STOPPED" || s.cooldownActive === true);
+
   const existingPresets = existing?.sessionPresetsJson
     ? (JSON.parse(existing.sessionPresetsJson) as string[])
     : null;
   const eligibility = deriveRuleEditEligibility({
     selectedSessionPresets: existingPresets,
+    hasProtectionLockToday,
     sessionStartHour: existing?.sessionStartHour ?? null,
     sessionEndHour: existing?.sessionEndHour ?? null,
     sessionStartTime: existing?.sessionStartTime ?? null,
