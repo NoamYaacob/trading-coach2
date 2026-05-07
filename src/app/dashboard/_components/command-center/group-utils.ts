@@ -27,6 +27,11 @@ export function emptyBreakdown(): Record<AccountStatus, StatusBreakdown> {
   };
 }
 
+const ENV_SUFFIX: Record<string, string> = {
+  live: "Live",
+  demo: "Demo",
+};
+
 /**
  * Builds firm group sections from a flat account list.
  *
@@ -35,6 +40,14 @@ export function emptyBreakdown(): Record<AccountStatus, StatusBreakdown> {
  * are never merged into the same group.
  *
  * sinkKeys — firm keys that sort to the bottom (personal, unassigned).
+ *
+ * Tradovate authorises live and demo as separate OAuth grants and exposes
+ * no stable cross-environment user identifier (the OAuth `accountId` is
+ * per-trading-account, and `/account/list`'s `userId` is scoped to a single
+ * Tradovate environment). For sink groups (personal / unassigned) we append
+ * the connection env to the firmLabel so duplicate cards are visibly
+ * distinguishable instead of risking a silent merge of accounts that may
+ * belong to different humans.
  */
 export function buildCommandCenterGroups(
   accounts: CommandCenterAccount[],
@@ -43,23 +56,17 @@ export function buildCommandCenterGroups(
   const groupMap = new Map<string, CommandCenterFirmGroup>();
 
   for (const account of accounts) {
-    // Group key always includes brokerConnectionId. This guarantees that:
-    //   • Two prop-firm OAuth connections for the same firm stay in distinct groups.
-    //   • Two distinct Tradovate logins (each its own BrokerConnection) — even
-    //     if both contain only personal/demo accounts — stay in distinct groups,
-    //     so hiding one cannot accidentally hide the other.
-    // The trade-off: live and demo of the SAME Tradovate user are also two
-    // BrokerConnections, so they appear as two visually separate cards. We
-    // accept that over the alternative (silently merging unrelated logins),
-    // since there's no reliable per-Tradovate-user identifier available across
-    // the two OAuth tokens to safely merge same-user-different-env.
     const mapKey = `${account.firmKey}::${account.brokerConnectionId ?? ""}`;
     let group = groupMap.get(mapKey);
     if (!group) {
+      const envSuffix =
+        sinkKeys.has(account.firmKey) && account.brokerEnv
+          ? ENV_SUFFIX[account.brokerEnv]
+          : null;
       group = {
         groupId: mapKey,
         firmKey: account.firmKey,
-        firmLabel: account.firmLabel,
+        firmLabel: envSuffix ? `${account.firmLabel} · ${envSuffix}` : account.firmLabel,
         accounts: [],
         counts: emptyCounts(),
         totalDailyPnl: 0,
@@ -71,6 +78,7 @@ export function buildCommandCenterGroups(
         connectionStatus: account.connectionStatus,
         connectionStatusLabel: account.connectionStatusLabel,
         brokerConnectionId: account.brokerConnectionId,
+        brokerEnv: account.brokerEnv,
         lastSyncAt: account.lastSyncAt,
         enforcementMode: account.enforcementMode,
       };

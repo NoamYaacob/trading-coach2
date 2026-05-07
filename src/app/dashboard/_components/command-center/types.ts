@@ -92,6 +92,12 @@ export type CommandCenterAccount = {
     | null;
   /** OAuth broker connection ID — used to group accounts by connection */
   brokerConnectionId: string | null;
+  /** BrokerConnection.env at the platform level — "live" | "demo" for
+   *  Tradovate OAuth grants, null for manual or pre-multi-connection rows.
+   *  Used to disambiguate visually-identical personal groups when the same
+   *  human has both a live and a demo connection (Tradovate has no stable
+   *  cross-environment user identifier to safely merge them). */
+  brokerEnv: string | null;
   /** triggerType from the most recent GuardianIntervention, for rule-specific UI copy */
   lastInterventionTrigger: EnforcementTrigger | null;
   lastInterventionAt: Date | null;
@@ -145,6 +151,10 @@ export type CommandCenterFirmGroup = {
   connectionStatusLabel: string;
   /** OAuth broker connection ID shared by accounts in this group */
   brokerConnectionId: string | null;
+  /** Environment of the broker connection backing this group — "live" or
+   *  "demo" for Tradovate, null otherwise. Surfaced so the UI can suffix
+   *  duplicate "Tradovate · Personal" groups with " · Live" / " · Demo". */
+  brokerEnv: string | null;
   /** Most recent account sync timestamp in this group */
   lastSyncAt: Date | null;
   /** Dominant enforcement mode across accounts in this group */

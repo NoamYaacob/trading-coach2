@@ -45,6 +45,7 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     setupNeededReason: null,
     breachReason: null,
     brokerConnectionId: null,
+    brokerEnv: null,
     brokerLockStatus: null,
     lastInterventionTrigger: null,
     lastInterventionAt: null,
@@ -407,8 +408,9 @@ describe("generic grouping rules", () => {
   //     Tradovate authorises live and demo as separate OAuth grants, so each
   //     is its own BrokerConnection. We do NOT silently merge them since
   //     there is no reliable per-Tradovate-user identifier shared across
-  //     OAuth tokens to confirm "same human user".
-  it("personal live and demo (different broker connections) stay in separate groups", () => {
+  //     OAuth tokens to confirm "same human user". The labels are env-
+  //     suffixed so the two cards are visibly distinguishable.
+  it("personal live and demo (different broker connections) stay separate with env-suffixed labels", () => {
     const accounts = [
       stubAccount({
         id: "live",
@@ -416,6 +418,7 @@ describe("generic grouping rules", () => {
         firmLabel: "Tradovate · Personal",
         platform: "tradovate",
         brokerConnectionId: "live-conn",
+        brokerEnv: "live",
         accountType: "personal",
       }),
       stubAccount({
@@ -424,6 +427,7 @@ describe("generic grouping rules", () => {
         firmLabel: "Tradovate · Personal",
         platform: "tradovate",
         brokerConnectionId: "demo-conn",
+        brokerEnv: "demo",
         accountType: "demo",
       }),
     ];
@@ -431,6 +435,13 @@ describe("generic grouping rules", () => {
     assert.equal(groups.length, 2, "live + demo on separate connections → two groups");
     const groupIds = new Set(groups.map((g) => g.groupId));
     assert.equal(groupIds.size, 2, "groupIds are distinct");
+
+    const labels = groups.map((g) => g.firmLabel).sort();
+    assert.deepEqual(
+      labels,
+      ["Tradovate · Personal · Demo", "Tradovate · Personal · Live"],
+      "personal/unassigned groups gain a · Live / · Demo suffix when env is known",
+    );
   });
 
   // 6c. personal accounts on DIFFERENT platforms remain separate.
@@ -550,5 +561,102 @@ describe("generic grouping rules", () => {
     const [group] = buildCommandCenterGroups(accounts, STANDARD_SINK_KEYS);
     assert.equal(group.firmLabel, "Unassigned firm");
     assert.notEqual(group.firmLabel, "Personal accounts");
+  });
+});
+
+// ── Env disambiguation for sink groups ────────────────────────────────────────
+// Tradovate has no stable cross-environment user identifier, so live and demo
+// OAuth grants for the same human render as separate cards. To make the two
+// cards visibly distinct (instead of two indistinguishable "Tradovate ·
+// Personal" rows) we append `· Live` / `· Demo` to the firmLabel — but only
+// for sink groups (personal / unassigned). Prop firm labels are already
+// distinctive and stay untouched.
+
+describe("env disambiguation for sink groups", () => {
+  it("appends · Live to a personal group whose connection env is 'live'", () => {
+    const [group] = buildCommandCenterGroups(
+      [
+        stubAccount({
+          id: "p1",
+          firmKey: PERSONAL_KEY,
+          firmLabel: "Tradovate · Personal",
+          brokerConnectionId: "conn-a",
+          brokerEnv: "live",
+          accountType: "personal",
+        }),
+      ],
+      STANDARD_SINK_KEYS,
+    );
+    assert.equal(group.firmLabel, "Tradovate · Personal · Live");
+    assert.equal(group.brokerEnv, "live");
+  });
+
+  it("appends · Demo to a personal group whose connection env is 'demo'", () => {
+    const [group] = buildCommandCenterGroups(
+      [
+        stubAccount({
+          id: "p1",
+          firmKey: PERSONAL_KEY,
+          firmLabel: "Tradovate · Personal",
+          brokerConnectionId: "conn-a",
+          brokerEnv: "demo",
+          accountType: "demo",
+        }),
+      ],
+      STANDARD_SINK_KEYS,
+    );
+    assert.equal(group.firmLabel, "Tradovate · Personal · Demo");
+  });
+
+  it("does not append a suffix when env is unknown (e.g. manual or pre-multi-connection rows)", () => {
+    const [group] = buildCommandCenterGroups(
+      [
+        stubAccount({
+          id: "p1",
+          firmKey: PERSONAL_KEY,
+          firmLabel: "Tradovate · Personal",
+          brokerConnectionId: null,
+          brokerEnv: null,
+          accountType: "personal",
+        }),
+      ],
+      STANDARD_SINK_KEYS,
+    );
+    assert.equal(group.firmLabel, "Tradovate · Personal");
+    assert.equal(group.brokerEnv, null);
+  });
+
+  it("does not append a suffix to prop firm labels regardless of env", () => {
+    const [group] = buildCommandCenterGroups(
+      [
+        stubAccount({
+          id: "f1",
+          firmKey: "myfundedfutures",
+          firmLabel: "MyFundedFutures",
+          brokerConnectionId: "conn-a",
+          brokerEnv: "live",
+          accountType: "funded",
+        }),
+      ],
+      STANDARD_SINK_KEYS,
+    );
+    assert.equal(group.firmLabel, "MyFundedFutures");
+  });
+
+  it("ignores unknown env values (defensive — no suffix if Tradovate ever returns something new)", () => {
+    const [group] = buildCommandCenterGroups(
+      [
+        stubAccount({
+          id: "p1",
+          firmKey: PERSONAL_KEY,
+          firmLabel: "Tradovate · Personal",
+          brokerConnectionId: "conn-a",
+          brokerEnv: "sandbox",
+          accountType: "personal",
+        }),
+      ],
+      STANDARD_SINK_KEYS,
+    );
+    assert.equal(group.firmLabel, "Tradovate · Personal");
   });
 });
