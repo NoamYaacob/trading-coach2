@@ -28,26 +28,46 @@ function AccountItem({
   });
   const isInactive = account.missingFromBrokerSince != null;
 
+  // "Custom" badge is conveyed by subtitle text; show badge only for critical alerts.
+  const visibleBadge = badge?.label !== "Custom" ? badge : null;
+
+  // Plan-status subtitle — shown only when no alert badge is present (avoid duplicating info).
+  const subtitle =
+    visibleBadge == null
+      ? account.hasAccountRules
+        ? "Custom rules"
+        : "Default plan"
+      : null;
+
   return (
     <li className="min-w-0">
       <Link
         href={`/rules?scope=account&id=${account.id}`}
         aria-current={isSelected ? "page" : undefined}
-        className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 text-sm transition ${
+        className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
           isSelected
-            ? "border-stone-950 bg-stone-100 font-semibold text-stone-900"
+            ? "border-stone-950 bg-stone-100 text-stone-900"
             : isInactive
               ? "border-transparent text-stone-400 hover:bg-stone-50"
               : "border-transparent text-stone-700 hover:bg-stone-50"
         }`}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">{account.label}</span>
-          {badge && (
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className={`truncate text-sm ${isSelected ? "font-semibold" : ""}`}>
+              {account.label}
+            </p>
+            {subtitle && (
+              <p className={`truncate text-[11px] ${isSelected ? "text-stone-500" : "text-stone-400"}`}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {visibleBadge && (
             <span
-              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
+              className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${visibleBadge.cls}`}
             >
-              {badge.label}
+              {visibleBadge.label}
             </span>
           )}
         </div>
@@ -78,8 +98,8 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
                 <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
                   Default template
                 </p>
-                <p className={`truncate text-[11px] ${isDefault ? "text-stone-600" : "text-stone-400"}`}>
-                  Applies to accounts without overrides
+                <p className={`truncate text-[11px] ${isDefault ? "text-stone-500" : "text-stone-400"}`}>
+                  All accounts without an override
                 </p>
               </div>
               <span
@@ -118,7 +138,8 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
             <li key={group.groupKey} className="mt-2 min-w-0 border-t border-stone-100 pt-2">
               <div className="flex min-w-0 items-start justify-between gap-1.5 px-2 pb-1">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-500">
+                  {/* Readable heading — not uppercase micro text */}
+                  <p className="truncate text-xs font-semibold text-stone-700">
                     {group.firmLabel}
                   </p>
                   <p className="truncate text-[10px] text-stone-400">

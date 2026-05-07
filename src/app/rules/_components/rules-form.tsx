@@ -192,7 +192,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
-          <Field label="Max risk per trade ($)" hint="Saved for reference. Guardrail does not enforce this limit — use daily loss limit for automated enforcement.">
+          <Field label="Max risk per trade ($)" hint="Reference only — Guardrail does not lock the account for this limit. Use daily loss limit for enforcement.">
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
@@ -271,7 +271,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           />
           <span>
             <span className="font-medium text-stone-950">Send alert when a rule is triggered</span>
-            <span className="mt-0.5 block text-stone-500">Planned — Guardrail will use this setting when in-app and Telegram alert delivery is enabled.</span>
+            <span className="mt-0.5 block text-stone-500">Coming soon — Guardrail will use this when in-app and Telegram alerts are enabled.</span>
           </span>
         </label>
       </div>
@@ -336,7 +336,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
             {saving ? "Saving..." : "Save rules"}
           </button>
           {savedAt && !pendingMessage && (
-            <span className="text-xs text-emerald-700">Rules updated. They are active for the next trading session.</span>
+            <span className="text-xs text-emerald-700">Saved. These rules apply at the next trading session.</span>
           )}
           {pendingMessage && (
             <span className="text-xs text-amber-700">{pendingMessage}</span>

@@ -247,7 +247,7 @@ export function AccountRulesForm({
         const pendingPresets = hasPresets ? values.sessionPresets.slice() : (values.sessionIsCustom ? null : []);
         setLocalPendingPresets(pendingPresets);
         setLocalPendingDate(data.rulesLock.effectiveDate ?? null);
-        setPendingMessage("Changes saved as pending — will apply at the next edit window.");
+        setPendingMessage("Saved as pending — these rules take effect at the next edit window.");
       } else {
         setLocalPendingPresets(null);
         setLocalPendingDate(null);
@@ -272,7 +272,7 @@ export function AccountRulesForm({
       if (data.rulesLock?.applied === false && data.rulesLock.message) {
         setPendingMessage(data.rulesLock.message);
       } else {
-        setPendingMessage("Account-specific rules removed. This account now uses the Default Trading Plan.");
+        setPendingMessage("Account-specific rules removed. This account now uses the default template.");
         router.refresh();
       }
     } catch (err) {
@@ -370,7 +370,7 @@ export function AccountRulesForm({
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
-          <Field label="Risk per trade ($)" hint="Warning fires when unrealized P&L on an open position exceeds this amount. Does not lock the account.">
+          <Field label="Risk per trade ($)" hint="Fires a warning when unrealized loss on an open position exceeds this amount. Does not lock the account.">
             <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
           </Field>
           <Field label="Max trades per day">

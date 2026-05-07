@@ -25,10 +25,10 @@ export function TradingSessionSelector({ values, onChange }: Props) {
       <div>
         <p className="text-sm font-semibold text-stone-950">Trading session</p>
         <p className="mt-1 text-xs text-stone-500">
-          Select the sessions you normally trade. Guardrail uses them to detect off-session trades and lock rule editing during active sessions.
+          Select the sessions you normally trade. Guardrail uses these to warn about off-session trades and prevent rule changes during active sessions.
         </p>
         <p className="mt-1 text-xs text-stone-400">
-          Times are shown in Eastern Time (ET). Guardrail uses sessions for discipline monitoring and rule-edit protection. Broker-level time blocking is not currently available.
+          Times are in Eastern Time (ET). Session hours do not block broker orders yet.
         </p>
       </div>
 
@@ -126,7 +126,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
       {/* Rule edit lock buffer — always shown */}
       <SessionField
         label="Rule edit lock buffer (minutes)"
-        hint="How many minutes before the session starts that rule editing locks. Default is 60."
+        hint="Minutes before the session starts that rule editing locks. Default: 60."
       >
         <input
           type="number"

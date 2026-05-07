@@ -4,10 +4,10 @@ export type AccountRulesFormBanner =
   | { kind: "locked"; message: string };
 
 export const FIRST_TIME_SETUP_BANNER =
-  "First-time setup · These account-specific rules will apply immediately after saving.";
+  "First-time setup — these account-specific rules will apply immediately after saving.";
 
 export const LOCKED_BANNER =
-  "Rule changes are locked during your active trading session. Changes will apply at the next edit window.";
+  "Rules are locked during your active trading session. Changes will apply at the next edit window.";
 
 export const REVIEW_INHERITED_HINT = "Review these inherited limits before saving.";
 

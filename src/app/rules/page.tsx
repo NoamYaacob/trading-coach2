@@ -255,7 +255,7 @@ export default async function RulesPage({
     <AppShell
       eyebrow="Trading Plan"
       title="Set your trading plan."
-      description="Choose the limits Guardrail monitors during each session."
+      description="Define the limits Guardrail enforces during each trading session."
       compactHero
       actions={
         <Link
@@ -296,7 +296,7 @@ export default async function RulesPage({
               Rule Target
             </p>
             <p className="mt-1 text-xs leading-snug text-stone-500">
-              Choose the default plan or an account-specific override.
+              Choose where these rules apply.
             </p>
           </div>
           <ScopeSelector
@@ -337,7 +337,7 @@ export default async function RulesPage({
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
               <span>
-                <span className="font-medium">Protection test mode.</span> Enforcement is simulated — no broker writes are sent.
+                <span className="font-medium">Test mode:</span> Guardrail is monitoring only. It will not block or close trades.
               </span>
             </div>
           )}
@@ -349,23 +349,25 @@ export default async function RulesPage({
               <div className="min-w-0">
                 <p className="font-medium">Changes pending</p>
                 <p className="mt-0.5 text-[11px] text-amber-800">
-                  {!ruleEditEligibility.canEditNow ? `${accountRuleLockMessage} ` : ""}
-                  {hasPendingPayload && riskRules?.pendingEffectiveDate && (
-                    <>
-                      Changes apply at{" "}
-                      <span className="font-semibold">
-                        {formatPendingRuleActivation({
-                          nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
-                            ? protectionLock.nextTradingDayKey
-                            : riskRules!.pendingEffectiveDate!,
-                          sessionStartHour: riskRules?.sessionStartHour ?? null,
-                          userTimezone: traderProfile?.timezone ?? null,
-                        })}
-                      </span>
-                      .
-                    </>
-                  )}
+                  These rules are saved, but will only apply at the next edit window.
+                  {!ruleEditEligibility.canEditNow && accountRuleLockMessage
+                    ? ` ${accountRuleLockMessage}`
+                    : ""}
                 </p>
+                {hasPendingPayload && riskRules?.pendingEffectiveDate && (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    Applies at:{" "}
+                    <span className="font-semibold">
+                      {formatPendingRuleActivation({
+                        nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
+                          ? protectionLock.nextTradingDayKey
+                          : riskRules!.pendingEffectiveDate!,
+                        sessionStartHour: riskRules?.sessionStartHour ?? null,
+                        userTimezone: traderProfile?.timezone ?? null,
+                      })}
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -411,7 +413,7 @@ export default async function RulesPage({
             /* Default template editor */
             <SectionCard
               title="Default template"
-              description="These limits apply to any account that doesn't have account-specific rules."
+              description="Applies to all connected accounts that don't have an account-specific override."
             >
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} />
@@ -507,8 +509,7 @@ function ScopeContextHeader({
           Default template
         </h2>
         <p className="mt-0.5 text-sm text-stone-500">
-          Applies to all accounts without account-specific rules. Select an account on the left to
-          configure it individually.
+          These rules apply to any account that doesn't have an override. Select an account in the sidebar to configure it individually.
         </p>
       </div>
     );
@@ -528,7 +529,7 @@ function ScopeContextHeader({
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-        Trading Plan · Account rules
+        Trading Plan · Account override
       </p>
       <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
         {account.label}
