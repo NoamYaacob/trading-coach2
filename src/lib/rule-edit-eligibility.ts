@@ -5,10 +5,10 @@
  *   1. Account is stopped/locked by Guardrail
  *   2. A rule was breached today
  *   3. There is an open position
- *   4. Now falls within the pre-session lock buffer
- *   5. Now falls within the active trading session
+ *   4. Now falls within the pre-session lock buffer of any selected session
+ *   5. Now falls within an active trading session
  *
- * Unlocked windows: before the lock buffer, and after the session ends.
+ * Unlocked windows: before the lock buffer, and after all sessions end.
  */
 
 import { getTradingDayWindow, SESSION_WINDOW_TIMEZONE } from "./trading-day.ts";
@@ -31,7 +31,7 @@ export type RuleEditEligibility = {
   nextAllowedAt: Date | null;
   /** UTC time when the lock begins (= session start minus buffer). Null when no session or when already allowed. */
   lockStartsAt: Date | null;
-  /** UTC start of the active or upcoming session. Null when no session configured. */
+  /** UTC start of the active or upcoming session. Null when no session configured or multi-session. */
   sessionStartsAt: Date | null;
   /** UTC end of the active or upcoming session. Null when no session configured. */
   sessionEndsAt: Date | null;
@@ -39,7 +39,9 @@ export type RuleEditEligibility = {
 
 export type RuleEditEligibilityInput = {
   now?: Date;
-  /** Preset identifier: "ny" | "london" | "asia" | "custom". When set, resolved times take precedence over hour fields. */
+  /** Multi-select preset IDs. When set (even empty array), takes precedence over single-session fields. */
+  selectedSessionPresets?: string[] | null;
+  /** Preset identifier: "ny" | "london" | "asia" | "custom". Legacy single-select. */
   sessionPreset?: string | null;
   /** Session start time as HH:mm in sessionTimezone (minute-precise). Falls back to sessionStartHour when absent. */
   sessionStartTime?: string | null;
@@ -57,36 +59,43 @@ export type RuleEditEligibilityInput = {
 };
 
 export type SessionPreset = {
-  id: "ny" | "london" | "asia";
+  id: "asia" | "london" | "ny_am" | "ny_pm";
   label: string;
-  /** HH:mm start time in the preset timezone. */
+  /** HH:mm start time in ET (America/New_York). */
   sessionStartTime: string;
-  /** HH:mm end time in the preset timezone. */
+  /** HH:mm end time in ET (America/New_York). */
   sessionEndTime: string;
   timezone: string;
 };
 
 export const SESSION_PRESETS: SessionPreset[] = [
   {
-    id: "ny",
-    label: "New York (NYSE/CME)",
-    sessionStartTime: "09:30",
-    sessionEndTime: "16:00",
+    id: "asia",
+    label: "Asia",
+    sessionStartTime: "18:00",
+    sessionEndTime: "01:00",
     timezone: "America/New_York",
   },
   {
     id: "london",
-    label: "London (LSE)",
-    sessionStartTime: "08:00",
-    sessionEndTime: "12:00",
-    timezone: "Europe/London",
+    label: "London",
+    sessionStartTime: "01:00",
+    sessionEndTime: "09:30",
+    timezone: "America/New_York",
   },
   {
-    id: "asia",
-    label: "Asia (Tokyo)",
-    sessionStartTime: "09:00",
-    sessionEndTime: "12:00",
-    timezone: "Asia/Tokyo",
+    id: "ny_am",
+    label: "NY AM",
+    sessionStartTime: "09:30",
+    sessionEndTime: "13:00",
+    timezone: "America/New_York",
+  },
+  {
+    id: "ny_pm",
+    label: "NY PM",
+    sessionStartTime: "13:00",
+    sessionEndTime: "17:00",
+    timezone: "America/New_York",
   },
 ];
 
@@ -101,6 +110,86 @@ function parseHHmm(s: string | null | undefined): { hour: number; minute: number
   return { hour, minute };
 }
 
+export type LockWindow = { lockStart: Date; lockEnd: Date };
+
+function computePresetLockWindow(
+  preset: SessionPreset,
+  now: Date,
+  bufferMinutes: number,
+): LockWindow {
+  const startParsed = parseHHmm(preset.sessionStartTime)!;
+  const endParsed = parseHHmm(preset.sessionEndTime)!;
+
+  const win = getTradingDayWindow({
+    timezone: preset.timezone,
+    sessionStartHour: startParsed.hour,
+    sessionEndHour: endParsed.hour,
+    sessionStartMinute: startParsed.minute,
+    sessionEndMinute: endParsed.minute,
+    now,
+  });
+
+  let sessionStart = win.start;
+  let sessionEnd = win.end;
+  if (now >= sessionEnd) {
+    const dayMs = 24 * 60 * 60_000;
+    sessionStart = new Date(sessionStart.getTime() + dayMs);
+    sessionEnd = new Date(sessionEnd.getTime() + dayMs);
+  }
+
+  return {
+    lockStart: new Date(sessionStart.getTime() - bufferMinutes * 60_000),
+    lockEnd: sessionEnd,
+  };
+}
+
+export function mergeLockWindows(windows: LockWindow[]): LockWindow[] {
+  if (windows.length === 0) return [];
+  const sorted = [...windows].sort((a, b) => a.lockStart.getTime() - b.lockStart.getTime());
+  const merged: LockWindow[] = [{ lockStart: sorted[0].lockStart, lockEnd: sorted[0].lockEnd }];
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1];
+    const curr = sorted[i];
+    if (curr.lockStart.getTime() <= last.lockEnd.getTime()) {
+      if (curr.lockEnd.getTime() > last.lockEnd.getTime()) {
+        last.lockEnd = curr.lockEnd;
+      }
+    } else {
+      merged.push({ lockStart: curr.lockStart, lockEnd: curr.lockEnd });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Returns true when the UTC trade timestamp falls within any of the selected
+ * session's active windows (not the lock buffer, just the session itself).
+ */
+export function isTradeInsideSelectedSessions({
+  tradeTime,
+  selectedSessions,
+}: {
+  tradeTime: Date;
+  selectedSessions: string[];
+}): boolean {
+  if (selectedSessions.length === 0) return false;
+  return selectedSessions.some((id) => {
+    const preset = SESSION_PRESETS.find((p) => p.id === id);
+    if (!preset) return false;
+    const startParsed = parseHHmm(preset.sessionStartTime);
+    const endParsed = parseHHmm(preset.sessionEndTime);
+    if (!startParsed || !endParsed) return false;
+    return getTradingDayWindow({
+      timezone: preset.timezone,
+      sessionStartHour: startParsed.hour,
+      sessionEndHour: endParsed.hour,
+      sessionStartMinute: startParsed.minute,
+      sessionEndMinute: endParsed.minute,
+      now: tradeTime,
+    }).isCurrentSessionOpen;
+  });
+}
+
 export function deriveRuleEditEligibility(
   input: RuleEditEligibilityInput,
 ): RuleEditEligibility {
@@ -111,7 +200,6 @@ export function deriveRuleEditEligibility(
     input.lockBufferMinutes >= 0
       ? Math.floor(input.lockBufferMinutes)
       : DEFAULT_RULE_EDIT_LOCK_BUFFER_MINUTES;
-  const tz = input.sessionTimezone ?? SESSION_WINDOW_TIMEZONE;
 
   if (input.isAccountStopped) {
     return {
@@ -146,8 +234,88 @@ export function deriveRuleEditEligibility(
     };
   }
 
-  // Resolve start/end times with minute precision.
-  // Priority: sessionStartTime/sessionEndTime (HH:mm) → integer hour fields.
+  // ── Multi-session path (selectedSessionPresets takes precedence) ───────────
+  if (input.selectedSessionPresets != null) {
+    if (input.selectedSessionPresets.length === 0) {
+      return {
+        canEditNow: true,
+        reason: "no_session_configured",
+        nextAllowedAt: null,
+        lockStartsAt: null,
+        sessionStartsAt: null,
+        sessionEndsAt: null,
+      };
+    }
+
+    const validPresets = input.selectedSessionPresets
+      .map((id) => SESSION_PRESETS.find((p) => p.id === id))
+      .filter((p): p is SessionPreset => p != null);
+
+    if (validPresets.length === 0) {
+      return {
+        canEditNow: true,
+        reason: "no_session_configured",
+        nextAllowedAt: null,
+        lockStartsAt: null,
+        sessionStartsAt: null,
+        sessionEndsAt: null,
+      };
+    }
+
+    const rawWindows = validPresets.map((p) => computePresetLockWindow(p, now, lockBufferMinutes));
+    const merged = mergeLockWindows(rawWindows);
+
+    const activeLock = merged.find((w) => now >= w.lockStart && now < w.lockEnd) ?? null;
+
+    if (activeLock) {
+      const isWithinSession = validPresets.some((preset) => {
+        const startParsed = parseHHmm(preset.sessionStartTime)!;
+        const endParsed = parseHHmm(preset.sessionEndTime)!;
+        const win = getTradingDayWindow({
+          timezone: preset.timezone,
+          sessionStartHour: startParsed.hour,
+          sessionEndHour: endParsed.hour,
+          sessionStartMinute: startParsed.minute,
+          sessionEndMinute: endParsed.minute,
+          now,
+        });
+        let sStart = win.start;
+        let sEnd = win.end;
+        if (now >= sEnd) {
+          const dayMs = 24 * 60 * 60_000;
+          sStart = new Date(sStart.getTime() + dayMs);
+          sEnd = new Date(sEnd.getTime() + dayMs);
+        }
+        return now >= sStart && now < sEnd;
+      });
+
+      return {
+        canEditNow: false,
+        reason: isWithinSession ? "within_session" : "within_buffer",
+        nextAllowedAt: activeLock.lockEnd,
+        lockStartsAt: activeLock.lockStart,
+        sessionStartsAt: null,
+        sessionEndsAt: activeLock.lockEnd,
+      };
+    }
+
+    const upcoming = merged
+      .filter((w) => w.lockStart > now)
+      .sort((a, b) => a.lockStart.getTime() - b.lockStart.getTime())[0] ?? null;
+
+    return {
+      canEditNow: true,
+      reason: "can_edit",
+      nextAllowedAt: null,
+      lockStartsAt: upcoming?.lockStart ?? null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+  }
+
+  // ── Single-session path (legacy / custom) ─────────────────────────────────
+  const tz = input.sessionTimezone ?? SESSION_WINDOW_TIMEZONE;
+
   const startParsed = parseHHmm(input.sessionStartTime);
   const endParsed = parseHHmm(input.sessionEndTime);
 
@@ -179,7 +347,6 @@ export function deriveRuleEditEligibility(
   const dayMs = 24 * 60 * 60_000;
   let sessionStart = window.start;
   let sessionEnd = window.end;
-  // When the current window has already ended, advance to the upcoming session.
   if (now >= sessionEnd) {
     sessionStart = new Date(sessionStart.getTime() + dayMs);
     sessionEnd = new Date(sessionEnd.getTime() + dayMs);

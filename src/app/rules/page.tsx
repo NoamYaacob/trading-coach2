@@ -97,7 +97,11 @@ export default async function RulesPage({
     cutoffMinutes: riskRules?.protectionLockCutoffMinutes ?? null,
   });
 
+  const savedSessionPresets = riskRules?.sessionPresetsJson
+    ? (JSON.parse(riskRules.sessionPresetsJson) as string[])
+    : null;
   const ruleEditEligibility = deriveRuleEditEligibility({
+    selectedSessionPresets: savedSessionPresets,
     sessionStartHour: riskRules?.sessionStartHour ?? null,
     sessionEndHour: riskRules?.sessionEndHour ?? null,
     sessionStartTime: riskRules?.sessionStartTime ?? null,
@@ -163,7 +167,8 @@ export default async function RulesPage({
     sessionEndHour: intStr(riskRules?.sessionEndHour),
     sessionEndBehavior: riskRules?.sessionEndBehavior ?? "wait_for_exit_then_lock",
     onBreachWarn: riskRules?.onBreachWarn ?? true,
-    sessionPreset: riskRules?.sessionPreset ?? "",
+    sessionPresets: savedSessionPresets ?? [],
+    sessionIsCustom: !savedSessionPresets && riskRules?.sessionPreset === "custom",
     sessionStartTime: riskRules?.sessionStartTime ?? "",
     sessionEndTime: riskRules?.sessionEndTime ?? "",
     sessionTimezone: riskRules?.sessionTimezone ?? "",

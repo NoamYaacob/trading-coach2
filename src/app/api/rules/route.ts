@@ -12,7 +12,8 @@ import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actio
 import { isValidTimeZone } from "@/lib/timezone";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
-const VALID_SESSION_PRESETS = ["ny", "london", "asia", "custom"] as const;
+const VALID_SESSION_PRESETS = ["asia", "london", "ny_am", "ny_pm", "custom"] as const;
+const VALID_MULTI_PRESETS = new Set(["asia", "london", "ny_am", "ny_pm"]);
 const HH_MM_RE = /^(\d{1,2}):(\d{2})$/;
 
 function isValidHHmm(v: string): boolean {
@@ -47,6 +48,8 @@ type RulesPayload = {
   sessionEndTime?: string | null;
   sessionTimezone?: string | null;
   ruleEditLockBufferMinutes?: number | null;
+  /** Multi-select preset IDs. When set, stored in sessionPresetsJson and takes precedence. */
+  selectedSessionPresets?: string[] | null;
   /**
    * When true, the user just confirmed the automated-actions consent
    * checkbox. Server stamps automatedActionsConsentAt = now and the current
@@ -166,6 +169,22 @@ export async function POST(request: Request) {
       );
     }
   }
+  if (body.selectedSessionPresets != null) {
+    if (!Array.isArray(body.selectedSessionPresets)) {
+      return NextResponse.json(
+        { error: "selectedSessionPresets must be an array." },
+        { status: 400 },
+      );
+    }
+    for (const id of body.selectedSessionPresets) {
+      if (typeof id !== "string" || !VALID_MULTI_PRESETS.has(id)) {
+        return NextResponse.json(
+          { error: `Invalid session preset: '${id}'. Must be one of: asia, london, ny_am, ny_pm.` },
+          { status: 400 },
+        );
+      }
+    }
+  }
   if (body.sessionEndBehavior != null && !VALID_SESSION_END_BEHAVIORS.includes(body.sessionEndBehavior as (typeof VALID_SESSION_END_BEHAVIORS)[number])) {
     return NextResponse.json(
       { error: "sessionEndBehavior must be 'flatten_at_session_end' or 'wait_for_exit_then_lock'." },
@@ -239,6 +258,9 @@ export async function POST(request: Request) {
     sessionEndTime: body.sessionEndTime !== undefined ? (body.sessionEndTime ?? null) : undefined,
     sessionTimezone: body.sessionTimezone !== undefined ? (body.sessionTimezone ?? null) : undefined,
     ruleEditLockBufferMinutes: body.ruleEditLockBufferMinutes !== undefined ? (body.ruleEditLockBufferMinutes != null ? Math.floor(body.ruleEditLockBufferMinutes) : null) : undefined,
+    sessionPresetsJson: body.selectedSessionPresets !== undefined
+      ? (body.selectedSessionPresets != null ? JSON.stringify(body.selectedSessionPresets) : null)
+      : undefined,
     ...consentFields,
   };
 
@@ -261,9 +283,14 @@ export async function POST(request: Request) {
       ruleEditLockBufferMinutes: true,
       sessionStartTime: true,
       sessionEndTime: true,
+      sessionPresetsJson: true,
     },
   });
+  const existingPresets = existing?.sessionPresetsJson
+    ? (JSON.parse(existing.sessionPresetsJson) as string[])
+    : null;
   const eligibility = deriveRuleEditEligibility({
+    selectedSessionPresets: existingPresets,
     sessionStartHour: existing?.sessionStartHour ?? null,
     sessionEndHour: existing?.sessionEndHour ?? null,
     sessionStartTime: existing?.sessionStartTime ?? null,

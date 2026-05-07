@@ -4,6 +4,9 @@ import {
   deriveRuleEditEligibility,
   buildRuleEditLockMessage,
   DEFAULT_RULE_EDIT_LOCK_BUFFER_MINUTES,
+  SESSION_PRESETS,
+  mergeLockWindows,
+  isTradeInsideSelectedSessions,
 } from "./rule-edit-eligibility.ts";
 import {
   computeAccountRulesBanner,
@@ -1057,5 +1060,539 @@ describe("deriveRuleEditEligibility — removal while locked returns structured 
     assert.ok(result.reason !== "can_edit" && result.reason !== "no_session_configured");
     assert.ok(result.nextAllowedAt !== null, "nextAllowedAt should be set for time-based lock");
     assert.ok(result.lockStartsAt !== null, "lockStartsAt should be set for time-based lock");
+  });
+});
+
+// ── SESSION_PRESETS — ET-based definitions ────────────────────────────────────
+
+describe("SESSION_PRESETS — ET-based definitions", () => {
+  it("has exactly 4 presets: asia, london, ny_am, ny_pm", () => {
+    const ids = SESSION_PRESETS.map((p) => p.id);
+    assert.deepEqual(ids, ["asia", "london", "ny_am", "ny_pm"]);
+  });
+
+  it("all presets use America/New_York timezone", () => {
+    for (const p of SESSION_PRESETS) {
+      assert.equal(p.timezone, "America/New_York", `${p.id} should use ET`);
+    }
+  });
+
+  it("asia is 18:00–01:00 ET", () => {
+    const p = SESSION_PRESETS.find((x) => x.id === "asia")!;
+    assert.equal(p.sessionStartTime, "18:00");
+    assert.equal(p.sessionEndTime, "01:00");
+  });
+
+  it("london is 01:00–09:30 ET", () => {
+    const p = SESSION_PRESETS.find((x) => x.id === "london")!;
+    assert.equal(p.sessionStartTime, "01:00");
+    assert.equal(p.sessionEndTime, "09:30");
+  });
+
+  it("ny_am is 09:30–13:00 ET", () => {
+    const p = SESSION_PRESETS.find((x) => x.id === "ny_am")!;
+    assert.equal(p.sessionStartTime, "09:30");
+    assert.equal(p.sessionEndTime, "13:00");
+  });
+
+  it("ny_pm is 13:00–17:00 ET", () => {
+    const p = SESSION_PRESETS.find((x) => x.id === "ny_pm")!;
+    assert.equal(p.sessionStartTime, "13:00");
+    assert.equal(p.sessionEndTime, "17:00");
+  });
+
+  it("preset labels are short, human-readable, and do not contain raw IANA timezone strings", () => {
+    const ianaPattern = /[A-Z][a-z]+\/[A-Z]/; // e.g. America/New_York
+    for (const p of SESSION_PRESETS) {
+      assert.ok(!ianaPattern.test(p.label), `${p.id} label should not expose IANA tz: ${p.label}`);
+    }
+  });
+});
+
+// ── Multi-session: single preset selected ─────────────────────────────────────
+
+describe("deriveRuleEditEligibility — selectedSessionPresets single preset [ny_am]", () => {
+  const TZ = "America/New_York";
+
+  it("empty selectedSessionPresets → no_session_configured", () => {
+    const result = deriveRuleEditEligibility({
+      now: new Date("2026-05-06T14:00:00Z"),
+      selectedSessionPresets: [],
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "no_session_configured");
+  });
+
+  it("unknown preset IDs → no_session_configured", () => {
+    const result = deriveRuleEditEligibility({
+      now: new Date("2026-05-06T14:00:00Z"),
+      selectedSessionPresets: ["bad_id"],
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "no_session_configured");
+  });
+
+  it("08:29 ET [ny_am] → allowed (1 min before 60-min buffer for 09:30 start)", () => {
+    const now = tzDate(2026, 5, 6, 8, 29, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "can_edit");
+  });
+
+  it("08:30 ET [ny_am] → locked (at buffer boundary)", () => {
+    const now = tzDate(2026, 5, 6, 8, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("10:00 ET [ny_am] → locked (within session)", () => {
+    const now = tzDate(2026, 5, 6, 10, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("13:00 ET [ny_am] → allowed (session ended)", () => {
+    const now = tzDate(2026, 5, 6, 13, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("nextAllowedAt is 13:00 ET for [ny_am] when locked at 10:00 ET", () => {
+    const now = tzDate(2026, 5, 6, 10, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.ok(result.nextAllowedAt !== null);
+    const expected = tzDate(2026, 5, 6, 13, 0, TZ);
+    assert.equal(result.nextAllowedAt!.getTime(), expected.getTime());
+  });
+
+  it("lockStartsAt is 08:30 ET for [ny_am] when inside session", () => {
+    const now = tzDate(2026, 5, 6, 10, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.ok(result.lockStartsAt !== null);
+    const expected = tzDate(2026, 5, 6, 8, 30, TZ);
+    assert.equal(result.lockStartsAt!.getTime(), expected.getTime());
+  });
+});
+
+// ── Multi-session: NY AM + NY PM (touching at 13:00) ─────────────────────────
+// Lock windows: [08:30–13:00] + [12:00–17:00] → merged [08:30–17:00]
+
+describe("deriveRuleEditEligibility — selectedSessionPresets [ny_am, ny_pm] merged lock", () => {
+  const TZ = "America/New_York";
+
+  it("08:29 ET → allowed (before merged lock start)", () => {
+    const now = tzDate(2026, 5, 6, 8, 29, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("08:30 ET → locked (merged buffer starts)", () => {
+    const now = tzDate(2026, 5, 6, 8, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("12:30 ET → locked (between ny_am and ny_pm — within_session for ny_am)", () => {
+    const now = tzDate(2026, 5, 6, 12, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("13:00 ET → still locked (ny_pm starts, merged window continues to 17:00)", () => {
+    const now = tzDate(2026, 5, 6, 13, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, false);
+  });
+
+  it("16:59 ET → locked (within ny_pm session)", () => {
+    const now = tzDate(2026, 5, 6, 16, 59, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("17:00 ET → allowed (merged lock ends)", () => {
+    const now = tzDate(2026, 5, 6, 17, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("nextAllowedAt for 10:00 ET is 17:00 ET (end of merged window)", () => {
+    const now = tzDate(2026, 5, 6, 10, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am", "ny_pm"] });
+    assert.ok(result.nextAllowedAt !== null);
+    const expected = tzDate(2026, 5, 6, 17, 0, TZ);
+    assert.equal(result.nextAllowedAt!.getTime(), expected.getTime());
+  });
+});
+
+// ── Multi-session: London + NY AM (overlapping at 08:30–09:30) ───────────────
+// Lock windows: London [00:00–09:30] + NY AM [08:30–13:00] → merged [00:00–13:00]
+
+describe("deriveRuleEditEligibility — selectedSessionPresets [london, ny_am] merged lock", () => {
+  const TZ = "America/New_York";
+
+  it("02:00 ET → locked (within London session, nextAllowedAt = 13:00 merged end)", () => {
+    const now = tzDate(2026, 5, 6, 2, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["london", "ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+    // nextAllowedAt should be 13:00 ET (not 09:30 which is only London's end)
+    assert.ok(result.nextAllowedAt !== null);
+    const expected = tzDate(2026, 5, 6, 13, 0, TZ);
+    assert.equal(result.nextAllowedAt!.getTime(), expected.getTime());
+  });
+
+  it("09:00 ET → locked (overlap zone: still in merged window)", () => {
+    const now = tzDate(2026, 5, 6, 9, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["london", "ny_am"] });
+    assert.equal(result.canEditNow, false);
+  });
+
+  it("11:00 ET → locked (within ny_am, inside merged window)", () => {
+    const now = tzDate(2026, 5, 6, 11, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["london", "ny_am"] });
+    assert.equal(result.canEditNow, false);
+  });
+
+  it("13:00 ET → allowed (merged window ends)", () => {
+    const now = tzDate(2026, 5, 6, 13, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["london", "ny_am"] });
+    assert.equal(result.canEditNow, true);
+  });
+});
+
+// ── Multi-session: Asia + London (cross-midnight merge) ───────────────────────
+// Asia lock: 17:00 ET today – 01:00 ET tomorrow
+// London lock: 00:00 ET tomorrow – 09:30 ET tomorrow
+// Merged: 17:00 ET today – 09:30 ET tomorrow
+
+describe("deriveRuleEditEligibility — selectedSessionPresets [asia, london] cross-midnight merge", () => {
+  const TZ = "America/New_York";
+
+  it("16:59 ET → allowed (1 min before Asia buffer start at 17:00)", () => {
+    const now = tzDate(2026, 5, 6, 16, 59, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("17:00 ET → locked (Asia buffer starts)", () => {
+    const now = tzDate(2026, 5, 6, 17, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("23:00 ET → locked (within Asia session)", () => {
+    const now = tzDate(2026, 5, 6, 23, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("00:30 ET (next day) → locked (between Asia end and London overlap, still merged)", () => {
+    const now = tzDate(2026, 5, 7, 0, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, false);
+  });
+
+  it("05:00 ET (next day) → locked (within London session)", () => {
+    const now = tzDate(2026, 5, 7, 5, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("09:30 ET (next day) → allowed (merged window ends at London close)", () => {
+    const now = tzDate(2026, 5, 7, 9, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia", "london"] });
+    assert.equal(result.canEditNow, true);
+  });
+});
+
+// ── Multi-session: Asia cross-midnight session (single preset) ─────────────────
+
+describe("deriveRuleEditEligibility — selectedSessionPresets [asia] cross-midnight 18:00–01:00 ET", () => {
+  const TZ = "America/New_York";
+
+  it("16:59 ET → allowed (before buffer)", () => {
+    const now = tzDate(2026, 5, 6, 16, 59, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("17:00 ET → locked (buffer starts, 60 min before 18:00)", () => {
+    const now = tzDate(2026, 5, 6, 17, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("18:00 ET → locked (session starts)", () => {
+    const now = tzDate(2026, 5, 6, 18, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("00:00 ET (next day) → locked (overnight, within session)", () => {
+    const now = tzDate(2026, 5, 7, 0, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+
+  it("01:00 ET (next day) → allowed (session ends)", () => {
+    const now = tzDate(2026, 5, 7, 1, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("nextAllowedAt at 20:00 ET is 01:00 ET next day", () => {
+    const now = tzDate(2026, 5, 6, 20, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["asia"] });
+    assert.ok(result.nextAllowedAt !== null);
+    const expected = tzDate(2026, 5, 7, 1, 0, TZ);
+    assert.equal(result.nextAllowedAt!.getTime(), expected.getTime());
+  });
+});
+
+// ── Multi-session: state-based blocks take priority ──────────────────────────
+
+describe("deriveRuleEditEligibility — state blocks override selectedSessionPresets", () => {
+  const TZ = "America/New_York";
+
+  it("isAccountStopped blocks regardless of session", () => {
+    const now = tzDate(2026, 5, 6, 20, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now,
+      selectedSessionPresets: ["ny_am"],
+      isAccountStopped: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "account_stopped");
+  });
+
+  it("hasRuleBreachToday blocks regardless of session", () => {
+    const now = tzDate(2026, 5, 6, 20, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now,
+      selectedSessionPresets: ["ny_am"],
+      hasRuleBreachToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "rule_breach_today");
+  });
+
+  it("hasOpenPosition blocks regardless of session", () => {
+    const now = tzDate(2026, 5, 6, 20, 0, TZ);
+    const result = deriveRuleEditEligibility({
+      now,
+      selectedSessionPresets: ["ny_am"],
+      hasOpenPosition: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "open_position");
+  });
+});
+
+// ── mergeLockWindows ──────────────────────────────────────────────────────────
+
+describe("mergeLockWindows", () => {
+  function ms(h: number, m = 0): Date {
+    return new Date(Date.UTC(2026, 4, 6, h, m, 0));
+  }
+
+  it("empty array returns empty", () => {
+    assert.deepEqual(mergeLockWindows([]), []);
+  });
+
+  it("single window returns as-is", () => {
+    const w = { lockStart: ms(8, 30), lockEnd: ms(13, 0) };
+    const result = mergeLockWindows([w]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].lockStart.getTime(), w.lockStart.getTime());
+    assert.equal(result[0].lockEnd.getTime(), w.lockEnd.getTime());
+  });
+
+  it("non-overlapping windows stay separate", () => {
+    const a = { lockStart: ms(0), lockEnd: ms(9, 30) };
+    const b = { lockStart: ms(14, 0), lockEnd: ms(18, 0) };
+    const result = mergeLockWindows([a, b]);
+    assert.equal(result.length, 2);
+  });
+
+  it("touching windows merge (end == start)", () => {
+    const a = { lockStart: ms(0), lockEnd: ms(9, 30) };
+    const b = { lockStart: ms(9, 30), lockEnd: ms(13, 0) };
+    const result = mergeLockWindows([a, b]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].lockStart.getTime(), ms(0).getTime());
+    assert.equal(result[0].lockEnd.getTime(), ms(13, 0).getTime());
+  });
+
+  it("overlapping windows merge (end > start of next)", () => {
+    const a = { lockStart: ms(8, 30), lockEnd: ms(13, 0) };
+    const b = { lockStart: ms(12, 0), lockEnd: ms(17, 0) };
+    const result = mergeLockWindows([a, b]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].lockStart.getTime(), ms(8, 30).getTime());
+    assert.equal(result[0].lockEnd.getTime(), ms(17, 0).getTime());
+  });
+
+  it("input order does not matter — sorts by lockStart before merging", () => {
+    const a = { lockStart: ms(8, 30), lockEnd: ms(13, 0) };
+    const b = { lockStart: ms(0), lockEnd: ms(9, 30) };
+    const result = mergeLockWindows([a, b]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].lockStart.getTime(), ms(0).getTime());
+    assert.equal(result[0].lockEnd.getTime(), ms(13, 0).getTime());
+  });
+
+  it("does not mutate input array", () => {
+    const a = { lockStart: ms(0), lockEnd: ms(9, 30) };
+    const b = { lockStart: ms(8, 30), lockEnd: ms(13, 0) };
+    const input = [a, b];
+    mergeLockWindows(input);
+    // input still has 2 elements
+    assert.equal(input.length, 2);
+  });
+});
+
+// ── isTradeInsideSelectedSessions ─────────────────────────────────────────────
+
+describe("isTradeInsideSelectedSessions", () => {
+  const TZ = "America/New_York";
+
+  it("returns false for empty sessions", () => {
+    const tradeTime = tzDate(2026, 5, 6, 10, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: [] }), false);
+  });
+
+  it("returns false for unknown session id", () => {
+    const tradeTime = tzDate(2026, 5, 6, 10, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["bad_id"] }), false);
+  });
+
+  it("trade at 10:00 ET is inside ny_am (09:30–13:00)", () => {
+    const tradeTime = tzDate(2026, 5, 6, 10, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am"] }), true);
+  });
+
+  it("trade at 09:29 ET is outside ny_am", () => {
+    const tradeTime = tzDate(2026, 5, 6, 9, 29, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am"] }), false);
+  });
+
+  it("trade at 13:00 ET is outside ny_am (exclusive end)", () => {
+    const tradeTime = tzDate(2026, 5, 6, 13, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am"] }), false);
+  });
+
+  it("trade at 15:00 ET is inside ny_pm (13:00–17:00)", () => {
+    const tradeTime = tzDate(2026, 5, 6, 15, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_pm"] }), true);
+  });
+
+  it("trade at 20:00 ET is inside asia (18:00–01:00 ET overnight)", () => {
+    const tradeTime = tzDate(2026, 5, 6, 20, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["asia"] }), true);
+  });
+
+  it("trade at 00:30 ET (next day) is inside asia (18:00–01:00 overnight)", () => {
+    const tradeTime = tzDate(2026, 5, 7, 0, 30, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["asia"] }), true);
+  });
+
+  it("trade at 05:00 ET is inside london (01:00–09:30)", () => {
+    const tradeTime = tzDate(2026, 5, 6, 5, 0, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["london"] }), true);
+  });
+
+  it("trade at 10:00 ET is inside ny_am when multiple sessions selected [ny_am, ny_pm]", () => {
+    const tradeTime = tzDate(2026, 5, 6, 10, 0, TZ);
+    assert.equal(
+      isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am", "ny_pm"] }),
+      true,
+    );
+  });
+
+  it("trade at 14:00 ET is outside ny_am but inside ny_pm when [ny_am, ny_pm] selected", () => {
+    const tradeTime = tzDate(2026, 5, 6, 14, 0, TZ);
+    assert.equal(
+      isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am", "ny_pm"] }),
+      true,
+    );
+  });
+
+  it("trade at 18:30 ET is outside all sessions when only [ny_am] selected", () => {
+    const tradeTime = tzDate(2026, 5, 6, 18, 30, TZ);
+    assert.equal(isTradeInsideSelectedSessions({ tradeTime, selectedSessions: ["ny_am"] }), false);
+  });
+});
+
+// ── Multi-session: DST safety ─────────────────────────────────────────────────
+
+describe("deriveRuleEditEligibility — selectedSessionPresets DST New York spring-forward 2026-03-08", () => {
+  const TZ = "America/New_York";
+
+  it("08:29 ET on spring-forward day → allowed before ny_am buffer", () => {
+    const now = tzDate(2026, 3, 8, 8, 29, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("08:30 ET on spring-forward day → locked (ny_am buffer starts)", () => {
+    const now = tzDate(2026, 3, 8, 8, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("13:00 ET on spring-forward day → allowed (ny_am session ended)", () => {
+    const now = tzDate(2026, 3, 8, 13, 0, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, true);
+  });
+});
+
+describe("deriveRuleEditEligibility — selectedSessionPresets DST New York fall-back 2026-11-01", () => {
+  const TZ = "America/New_York";
+
+  it("08:29 ET on fall-back day → allowed before ny_am buffer", () => {
+    const now = tzDate(2026, 11, 1, 8, 29, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, true);
+  });
+
+  it("08:30 ET on fall-back day → locked (ny_am buffer starts)", () => {
+    const now = tzDate(2026, 11, 1, 8, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  it("09:30 ET on fall-back day → locked (ny_am session starts)", () => {
+    const now = tzDate(2026, 11, 1, 9, 30, TZ);
+    const result = deriveRuleEditEligibility({ now, selectedSessionPresets: ["ny_am"] });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "within_session");
+  });
+});
+
+// ── Multi-session: no server-local timezone dependency ────────────────────────
+
+describe("deriveRuleEditEligibility — selectedSessionPresets no server-local dependency", () => {
+  it("same result regardless of when test runs (explicit now)", () => {
+    const nowA = new Date("2026-05-06T14:00:00Z"); // 10:00 ET
+    const nowB = new Date("2026-05-06T14:00:00Z");
+    const a = deriveRuleEditEligibility({ now: nowA, selectedSessionPresets: ["ny_am"] });
+    const b = deriveRuleEditEligibility({ now: nowB, selectedSessionPresets: ["ny_am"] });
+    assert.equal(a.canEditNow, b.canEditNow);
+    assert.equal(a.reason, b.reason);
   });
 });

@@ -18,7 +18,10 @@ export type RulesFormValues = {
   sessionEndHour: string;
   sessionEndBehavior: string;
   onBreachWarn: boolean;
-  sessionPreset: string;
+  /** Multi-select preset IDs. Empty = no session configured. */
+  sessionPresets: string[];
+  /** True when user wants a custom (non-preset) session window. */
+  sessionIsCustom: boolean;
   sessionStartTime: string;
   sessionEndTime: string;
   sessionTimezone: string;
@@ -117,16 +120,10 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
     setSaving(true);
     setError(null);
 
-    const preset = SESSION_PRESETS.find((p) => p.id === values.sessionPreset);
-    const resolvedTimezone = values.sessionPreset && values.sessionPreset !== "custom"
-      ? (preset?.timezone ?? null)
-      : (values.sessionTimezone.trim() || null);
-    const resolvedStartTime = values.sessionPreset && values.sessionPreset !== "custom"
-      ? (preset?.sessionStartTime ?? null)
-      : (values.sessionStartTime.trim() || null);
-    const resolvedEndTime = values.sessionPreset && values.sessionPreset !== "custom"
-      ? (preset?.sessionEndTime ?? null)
-      : (values.sessionEndTime.trim() || null);
+    const hasPresets = values.sessionPresets.length > 0;
+    const resolvedStartTime = values.sessionIsCustom ? (values.sessionStartTime.trim() || null) : null;
+    const resolvedEndTime = values.sessionIsCustom ? (values.sessionEndTime.trim() || null) : null;
+    const resolvedTimezone = values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null;
 
     const payload = {
       accountSize: numericOrNull(values.accountSize),
@@ -139,7 +136,8 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       sessionEndHour: intOrNull(values.sessionEndHour),
       sessionEndBehavior: values.sessionEndBehavior || null,
       onBreachWarn: values.onBreachWarn,
-      sessionPreset: values.sessionPreset || null,
+      selectedSessionPresets: hasPresets ? values.sessionPresets : (values.sessionIsCustom ? null : []),
+      sessionPreset: values.sessionIsCustom ? "custom" : null,
       sessionStartTime: resolvedStartTime,
       sessionEndTime: resolvedEndTime,
       sessionTimezone: resolvedTimezone,
@@ -294,50 +292,69 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
         <div>
           <p className="text-sm font-semibold text-stone-950">Trading session</p>
           <p className="mt-1 text-xs text-stone-500">
-            Guardrail locks rule editing 60 minutes before your session starts and keeps it locked until the session ends. Choose your trading session so you cannot weaken your own protections mid-session.
+            Guardrail locks rule editing 60 minutes before your session starts and keeps it locked until the session ends. Select one or more sessions to prevent weakening your own protections mid-session.
+          </p>
+          <p className="mt-1 text-xs text-stone-400">
+            Times are shown in Eastern Time (ET). Guardrail monitors session discipline only. Broker-level time blocking is not currently available.
           </p>
         </div>
+
+        {/* Multi-select preset buttons */}
         <div className="flex flex-wrap gap-2">
-          {(["", ...SESSION_PRESETS.map((p) => p.id), "custom"] as const).map((pid) => {
-            const label =
-              pid === "" ? "None"
-              : pid === "custom" ? "Custom"
-              : SESSION_PRESETS.find((p) => p.id === pid)?.label ?? pid;
-            const selected = values.sessionPreset === pid;
+          {SESSION_PRESETS.map((preset) => {
+            const selected = values.sessionPresets.includes(preset.id);
             return (
               <button
-                key={pid}
+                key={preset.id}
                 type="button"
-                onClick={() => update("sessionPreset", pid)}
+                onClick={() => {
+                  const next = selected
+                    ? values.sessionPresets.filter((id) => id !== preset.id)
+                    : [...values.sessionPresets, preset.id];
+                  update("sessionPresets", next);
+                  if (next.length > 0) update("sessionIsCustom", false);
+                }}
                 className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
                   selected
                     ? "border-stone-950 bg-stone-950 text-stone-50"
                     : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"
                 }`}
               >
-                {label}
+                {preset.label}
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => {
+              update("sessionIsCustom", !values.sessionIsCustom);
+              if (!values.sessionIsCustom) update("sessionPresets", []);
+            }}
+            className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+              values.sessionIsCustom
+                ? "border-stone-950 bg-stone-950 text-stone-50"
+                : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"
+            }`}
+          >
+            Custom
+          </button>
         </div>
 
-        {/* Show preset info when a named preset is selected */}
-        {values.sessionPreset && values.sessionPreset !== "custom" && (() => {
-          const preset = SESSION_PRESETS.find((p) => p.id === values.sessionPreset);
-          if (!preset) return null;
-          return (
-            <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-xs text-stone-600">
-              <p>
-                <span className="font-medium">{preset.sessionStartTime}–{preset.sessionEndTime}</span>{" "}
-                {preset.timezone} · Rule editing locks at{" "}
-                <span className="font-medium">{lockBufferStart(preset.sessionStartTime, 60)}</span>
+        {/* Show selected preset times */}
+        {values.sessionPresets.length > 0 && (
+          <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-xs text-stone-600 space-y-1">
+            {SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id)).map((preset) => (
+              <p key={preset.id}>
+                <span className="font-medium">{preset.label}:</span>{" "}
+                {preset.sessionStartTime}–{preset.sessionEndTime} ET · Locks at{" "}
+                <span className="font-medium">{lockBufferStart(preset.sessionStartTime, 60)} ET</span>
               </p>
-            </div>
-          );
-        })()}
+            ))}
+          </div>
+        )}
 
         {/* Custom session fields */}
-        {values.sessionPreset === "custom" && (
+        {values.sessionIsCustom && (
           <div className="grid gap-3">
             <Field label="Timezone (IANA, e.g. America/New_York)">
               <input
