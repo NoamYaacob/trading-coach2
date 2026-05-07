@@ -102,7 +102,7 @@ export function RuleProgressPanel({
   if (maxTradesPerDay !== null && maxTradesPerDay > 0) {
     const pct = todayTradesCount / maxTradesPerDay;
     rows.push({
-      label: "Trades today",
+      label: "Completed trades",
       current: String(todayTradesCount),
       limit: String(maxTradesPerDay),
       pct,

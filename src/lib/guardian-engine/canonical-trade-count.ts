@@ -117,3 +117,91 @@ export function deriveCanonicalEntryCount(fills: CanonicalFill[]): number {
   }
   return entryCount;
 }
+
+/**
+ * Pure, DB-free completed-trade-count function.
+ *
+ * Counts completed round trips: a trade is "completed" when the position
+ * returns to flat (zero) after an exit fill, OR when a reversal closes the
+ * previous direction.  Open positions that have not yet closed are NOT
+ * counted, matching the product definition for Max trades per day.
+ *
+ * Unlike deriveCanonicalEntryCount (which counts when positions OPEN),
+ * this function counts when positions CLOSE — so an entry for the 3rd trade
+ * does not advance the count until that trade closes.
+ *
+ * Exported for unit testing; production callers use countCanonicalEntries()
+ * in session-state.ts (which delegates here).
+ */
+export function deriveCanonicalCompletedCount(fills: CanonicalFill[]): number {
+  // Dedup + group logic is identical to deriveCanonicalEntryCount.
+  const byExtId = new Map<string, CanonicalFill>();
+  const noIdSeen = new Set<string>();
+  const noIdFills: CanonicalFill[] = [];
+
+  for (const fill of fills) {
+    if (!fill.externalTradeId) {
+      const key = compositeKey(fill);
+      if (!noIdSeen.has(key)) {
+        noIdSeen.add(key);
+        noIdFills.push(fill);
+      }
+      continue;
+    }
+    const existing = byExtId.get(fill.externalTradeId);
+    if (!existing || (fill.contractId != null && existing.contractId == null)) {
+      byExtId.set(fill.externalTradeId, fill);
+    }
+  }
+
+  const deduped = [...byExtId.values(), ...noIdFills].sort((a, b) => {
+    const timeDiff = a.occurredAt.getTime() - b.occurredAt.getTime();
+    if (timeDiff !== 0) return timeDiff;
+    const aId = a.externalTradeId != null ? Number(a.externalTradeId) : Infinity;
+    const bId = b.externalTradeId != null ? Number(b.externalTradeId) : Infinity;
+    if (aId !== bId) return aId - bId;
+    return (Number(a.price) || 0) - (Number(b.price) || 0);
+  });
+
+  const byContract = new Map<string, CanonicalFill[]>();
+  for (const fill of deduped) {
+    let key: string;
+    if (fill.contractId != null) {
+      key = `cid:${fill.contractId}`;
+    } else {
+      const payload = fill.rawPayload as { symbol?: string } | null;
+      key = `sym:${payload?.symbol ?? "unknown"}`;
+    }
+    const group = byContract.get(key);
+    if (group) {
+      group.push(fill);
+    } else {
+      byContract.set(key, [fill]);
+    }
+  }
+
+  // Count completed trades per contract.
+  // A trade is completed when:
+  //   - a "reduction" fill brings the position back to exactly 0 (flat), OR
+  //   - a "reversal" fill closes the previous direction (crosses flat implicitly).
+  // "entry" and "scale_in" fills do NOT advance the completed count.
+  let completedCount = 0;
+  for (const [, group] of byContract) {
+    let position = 0;
+    for (const fill of group) {
+      const side = normalizeSide(fill.side);
+      const qty = Number(fill.quantity);
+      const cls = classifyFill(position, side, qty);
+      position += side === "BUY" ? qty : -qty;
+      if (cls === "reversal") {
+        // Previous direction just closed — counts as one completed trade.
+        // The new direction is now open and not yet counted.
+        completedCount++;
+      } else if (cls === "reduction" && position === 0) {
+        // Position returned to flat: round trip complete.
+        completedCount++;
+      }
+    }
+  }
+  return completedCount;
+}

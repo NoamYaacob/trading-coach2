@@ -11,10 +11,10 @@ import type { TradovateWebhookEvent } from "@/lib/tradovate/types";
 import {
   getOrCreateSessionState,
   applyTradeClose,
-  applyTradeEntry,
   applyTradeOpen,
   classifyFill,
   computeNetPosition,
+  normalizeSide,
   setCooldown,
   setRiskState,
 } from "@/lib/guardian-engine/session-state";
@@ -183,10 +183,9 @@ export async function POST(request: Request) {
     const { contractId, side, quantity, externalTradeId } = normalizedEvent;
 
     if (contractId != null && side != null && quantity != null && externalTradeId != null) {
-      // Position-aware classification: count a trade only when the fill represents
-      // a new position opening (flat→non-flat, scale-in, or reversal).
-      // This prevents exit fills — including Tradovate demo fills that carry profit: 0
-      // on the entry leg — from inflating tradesCount.
+      // Position-aware classification: determine if this fill opens, adds to,
+      // or closes a position. tradesCount is incremented ONLY when a round trip
+      // completes (position returns to flat or a reversal closes the previous direction).
       const netPos = await computeNetPosition(
         account.id,
         contractId,
@@ -195,15 +194,34 @@ export async function POST(request: Request) {
       );
       const cls = classifyFill(netPos, side, quantity);
 
-      if (cls === "entry" || cls === "reversal") {
-        state = await applyTradeEntry(account.id, normalizedEvent.occurredAt);
+      if (cls === "entry") {
+        // Trade started but not yet complete — update lastTradeAt only.
+        state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
+      } else if (cls === "reversal") {
+        // Previous direction closes (1 completed trade) and new direction opens.
+        if (normalizedEvent.pnl != null) {
+          state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt, true);
+        } else {
+          // PnL not reported for the closing leg — update lastTradeAt.
+          // The periodic sync (countCanonicalEntries) will reconcile the count.
+          state = await applyTradeOpen(account.id, normalizedEvent.occurredAt);
+        }
+      } else if (cls === "reduction" && normalizedEvent.pnl != null) {
+        // Compute position after this fill to detect flat (round trip complete).
+        const normSide = normalizeSide(side);
+        const qty = Number(quantity);
+        const newPos = netPos + (normSide === "BUY" ? qty : -qty);
+        state = await applyTradeClose(
+          account.id,
+          normalizedEvent.pnl,
+          normalizedEvent.occurredAt,
+          newPos === 0,  // only count completion when position returns to flat
+        );
       }
-      if ((cls === "reduction" || cls === "reversal") && normalizedEvent.pnl != null) {
-        state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
-      }
+      // scale_in: position grows — no state change needed
     } else if (normalizedEvent.pnl != null) {
-      // Fallback for events without contractId (e.g. legacy or non-Tradovate fills).
-      // Apply P&L but do not increment tradesCount — can't classify without position context.
+      // Fallback for events without full position context (legacy or non-Tradovate fills).
+      // Apply P&L but do not count as completed — can't verify flat without position data.
       state = await applyTradeClose(account.id, normalizedEvent.pnl, normalizedEvent.occurredAt);
     }
   } else if (normalizedEvent.eventType === "trade_opened") {

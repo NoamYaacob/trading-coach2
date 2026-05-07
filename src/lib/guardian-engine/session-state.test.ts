@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { classifyFill, normalizeSide } from "./fill-classifier.ts";
-import { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count.ts";
+import { deriveCanonicalEntryCount, deriveCanonicalCompletedCount, type CanonicalFill } from "./canonical-trade-count.ts";
 
 // Simulate a sequence of fills and count how many are trade entries.
 // Mirrors the webhook's position-aware classification loop: only entry and
@@ -187,6 +187,119 @@ describe("classifyFill — edge cases", () => {
       ]),
       1,
     );
+  });
+});
+
+// ── deriveCanonicalCompletedCount — max trades per day regression tests ──────
+//
+// Verifies the product definition: a "trade" for Max trades per day means a
+// completed round trip (position returns to flat or reversal closes the prior
+// direction). An open entry does NOT advance the completed count.
+
+describe("deriveCanonicalCompletedCount — Cases A–E", () => {
+  // Shared helper functions are defined below (t / fill) in the next section.
+  // We forward-declare the test helpers here as local versions so this describe
+  // block does not depend on the ordering of helper declarations in the file.
+  function mkT(offsetMs: number): Date { return new Date(1_700_000_000_000 + offsetMs); }
+  function mkFill(
+    id: string | null, cid: number | null,
+    side: "BUY" | "SELL" | "LONG" | "SHORT",
+    qty: number, ms: number,
+  ): CanonicalFill {
+    return { externalTradeId: id, contractId: cid, side, quantity: String(qty), price: null, occurredAt: mkT(ms), rawPayload: null };
+  }
+
+  it("Case A: 2 completed + 1 entry (open) → completedCount stays 2, entryCount is 3", () => {
+    // maxTrades = 3, completed = 2, 3rd trade just OPENED.
+    // Expected: completedCount = 2 (enforcement must NOT fire yet).
+    const fills = [
+      mkFill("a1", 1, "BUY",  1, 0),    // entry 1 open
+      mkFill("a2", 1, "SELL", 1, 1000), // trade 1 closes → flat → completed 1
+      mkFill("a3", 1, "BUY",  1, 2000), // entry 2 open
+      mkFill("a4", 1, "SELL", 1, 3000), // trade 2 closes → flat → completed 2
+      mkFill("a5", 1, "BUY",  1, 4000), // entry 3 open — position still open, NOT completed
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 2, "open 3rd trade must not count as completed");
+    assert.equal(deriveCanonicalEntryCount(fills), 3, "entry count still shows 3 (old behaviour)");
+  });
+
+  it("Case B: 3rd trade closes → completedCount becomes 3", () => {
+    // Same sequence as Case A but the 3rd trade now closes.
+    // Expected: completedCount = 3 → enforcement should fire.
+    const fills = [
+      mkFill("b1", 1, "BUY",  1, 0),
+      mkFill("b2", 1, "SELL", 1, 1000),
+      mkFill("b3", 1, "BUY",  1, 2000),
+      mkFill("b4", 1, "SELL", 1, 3000),
+      mkFill("b5", 1, "BUY",  1, 4000), // entry 3
+      mkFill("b6", 1, "SELL", 1, 5000), // trade 3 closes → flat → completed 3
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 3, "closed 3rd trade must become 3");
+  });
+
+  it("Case C: scale-in fills during the same open trade do not increase completed count", () => {
+    // Trade opens with 1 contract, adds 1 more (scale-in), then still open.
+    // Expected: completedCount = 0.
+    const fills = [
+      mkFill("c1", 1, "BUY", 1, 0),    // entry: 0 → long 1
+      mkFill("c2", 1, "BUY", 1, 500),  // scale_in: long 1 → long 2 (still open)
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 0, "scale-in must not increment completed count");
+  });
+
+  it("Case D: partial exit but position not flat → not yet counted as completed", () => {
+    // Buy 2, sell 1 (partial). Position is long 1 — still open.
+    // Expected: completedCount = 0.
+    const fills = [
+      mkFill("d1", 1, "BUY",  2, 0),    // entry: 0 → long 2
+      mkFill("d2", 1, "SELL", 1, 1000), // reduction: long 2 → long 1 (not flat)
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 0, "partial exit must not count as completed trade");
+  });
+
+  it("Case D cont: partial exit then full close counts as 1 completed", () => {
+    const fills = [
+      mkFill("d1", 1, "BUY",  2, 0),
+      mkFill("d2", 1, "SELL", 1, 1000), // partial: long 2 → long 1
+      mkFill("d3", 1, "SELL", 1, 2000), // close: long 1 → flat → 1 completed
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 1);
+  });
+
+  it("Case E: reversal — closing prior position counts 1, opening reversed does not", () => {
+    // Buy 1 (entry), sell 2 (reversal: closes long + opens short 1).
+    // After reversal: 1 completed trade (the long). Short is open (not yet completed).
+    const fills = [
+      mkFill("e1", 1, "BUY",  1, 0),   // entry: 0 → long 1
+      mkFill("e2", 1, "SELL", 2, 500), // reversal: long 1 → short 1 → 1 completed
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 1, "reversal closes prior direction: 1 completed");
+  });
+
+  it("Case E cont: reversal then close → 2 completed total", () => {
+    const fills = [
+      mkFill("e1", 1, "BUY",  1, 0),   // entry long
+      mkFill("e2", 1, "SELL", 2, 500), // reversal → 1 completed (long closed)
+      mkFill("e3", 1, "BUY",  1, 1000), // close short → flat → 2 completed
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 2, "reversal + close = 2 completed trades");
+  });
+
+  it("simple round trip = 1 completed (sanity check)", () => {
+    const fills = [
+      mkFill("s1", 1, "BUY",  1, 0),
+      mkFill("s2", 1, "SELL", 1, 1000),
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 1);
+  });
+
+  it("scale-in then full close = 1 completed (not 2)", () => {
+    const fills = [
+      mkFill("sc1", 1, "BUY", 1, 0),    // entry: 0 → long 1
+      mkFill("sc2", 1, "BUY", 1, 200),  // scale_in: long 1 → long 2
+      mkFill("sc3", 1, "SELL", 2, 1000), // close: long 2 → flat → 1 completed
+    ];
+    assert.equal(deriveCanonicalCompletedCount(fills), 1, "scale-in then close = one round trip");
   });
 });
 

@@ -189,7 +189,7 @@ export function LiveEnforcementPanel({ state }: Props) {
 
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Trades today
+                Completed trades
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
                 {state.tradesCount}

@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db";
 import type { SessionState } from "./types";
 export { classifyFill, normalizeSide } from "./fill-classifier";
 import { normalizeSide } from "./fill-classifier";
-export { deriveCanonicalEntryCount, type CanonicalFill } from "./canonical-trade-count";
-import { deriveCanonicalEntryCount } from "./canonical-trade-count";
+export { deriveCanonicalEntryCount, deriveCanonicalCompletedCount, type CanonicalFill } from "./canonical-trade-count";
+import { deriveCanonicalCompletedCount } from "./canonical-trade-count";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -170,10 +170,15 @@ export async function countCanonicalEntries(
     occurredAt: row.occurredAt,
     rawPayload: row.rawPayload,
   }));
-  return { count: deriveCanonicalEntryCount(canonical), tradeCountSource: "verified" };
+  return { count: deriveCanonicalCompletedCount(canonical), tradeCountSource: "verified" };
 }
 
-/** Called when a fill opens a new position entry. Increments tradesCount only. */
+/**
+ * Called when a fill opens a new position entry.
+ * Does NOT increment tradesCount — a trade is only counted when it completes
+ * (position returns to flat or reversal closes the previous direction).
+ * Updates lastTradeAt so the session knows a trade is in progress.
+ */
 export async function applyTradeEntry(
   accountId: string,
   occurredAt: Date,
@@ -182,7 +187,6 @@ export async function applyTradeEntry(
     await prisma.liveSessionState.update({
       where: { accountId },
       data: {
-        tradesCount: { increment: 1 },
         lastTradeAt: occurredAt,
       },
     }),
@@ -190,20 +194,24 @@ export async function applyTradeEntry(
 }
 
 /**
- * Called when a fill closes a position (exit fill). Updates dailyPnl and
- * consecutiveLosses. Does NOT increment tradesCount — entries are counted
- * separately in applyTradeEntry so exits are not double-counted.
+ * Called when a fill closes (partially or fully) a position.
+ *
+ * @param isCompletedRoundTrip - true when the position returns to flat OR when
+ *   a reversal closes the previous direction. Only then is tradesCount
+ *   incremented — partial exits that leave a position open do NOT count.
  */
 export async function applyTradeClose(
   accountId: string,
   pnl: number,
   occurredAt: Date,
+  isCompletedRoundTrip = false,
 ): Promise<SessionState> {
   const isLoss = pnl < 0;
   return toSessionState(
     await prisma.liveSessionState.update({
       where: { accountId },
       data: {
+        ...(isCompletedRoundTrip ? { tradesCount: { increment: 1 } } : {}),
         dailyPnl: { increment: pnl },
         consecutiveLosses: isLoss ? { increment: 1 } : 0,
         lastTradeAt: occurredAt,

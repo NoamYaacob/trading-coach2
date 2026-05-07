@@ -462,7 +462,11 @@ export function AccountCard({
               Trades today
             </p>
             <p className="mt-2 text-lg font-semibold text-stone-950">
-              {tradesCount}{maxTradesPerDay != null ? ` / ${maxTradesPerDay}` : ""}
+              {tradesCount}{maxTradesPerDay != null ? ` / ${maxTradesPerDay}` : ""}{" "}
+              <span className="text-sm font-normal text-stone-500">completed</span>
+              {account.openPnl != null && (
+                <span className="ml-2 text-sm font-normal text-amber-700">· 1 open</span>
+              )}
             </p>
             <p className="mt-1 text-sm text-stone-500">
               {consecutiveLosses > 0
