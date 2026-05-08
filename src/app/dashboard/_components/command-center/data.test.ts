@@ -1474,13 +1474,13 @@ describe("deriveRowStatusLabel", () => {
 // ── derivePerAccountStateLabel — small label under plan name ──────────────────
 
 describe("derivePerAccountStateLabel", () => {
-  it("dry_run → 'Protection test mode' (per-row reminder of the global banner)", () => {
+  it("dry_run without full_access → null (TradingPermissionBlock above the card covers it)", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "dry_run",
         requiresAutomatedActionsConsent: false,
       }),
-      "Protection test mode",
+      null,
     );
   });
 
@@ -1534,13 +1534,13 @@ describe("derivePerAccountStateLabel", () => {
     );
   });
 
-  it("dry_run wins over consent missing (banner state is the dominant context)", () => {
+  it("dry_run without full_access → null even when consent is missing (TradingPermissionBlock covers it)", () => {
     assert.equal(
       derivePerAccountStateLabel({
         enforcementMode: "dry_run",
         requiresAutomatedActionsConsent: true,
       }),
-      "Protection test mode",
+      null,
     );
   });
 });
@@ -1726,15 +1726,13 @@ describe("deriveProtectionStatusPanel", () => {
     assert.equal(panel, null);
   });
 
-  it("returns dry_run panel when test mode is active", () => {
+  it("returns null when test mode is active (TradingPermissionBlock above card covers dry_run state)", () => {
     const panel = deriveProtectionStatusPanel({
       isDryRunActive: true,
       requiresConsentCount: 0,
       isProtectionLocked: false,
     });
-    assert.ok(panel !== null);
-    assert.equal(panel!.kind, "dry_run");
-    assert.equal(panel!.showConsentCta, false);
+    assert.equal(panel, null);
   });
 
   it("returns consent_required when only consent is needed", () => {
@@ -1759,27 +1757,22 @@ describe("deriveProtectionStatusPanel", () => {
     assert.equal(panel!.showConsentCta, false);
   });
 
-  it("dry_run wins over consent_required (priority: test mode > consent)", () => {
+  it("dry_run + consent pending → null (TradingPermissionBlock handles dry_run; consent panel deferred)", () => {
     const panel = deriveProtectionStatusPanel({
       isDryRunActive: true,
       requiresConsentCount: 3,
       isProtectionLocked: false,
     });
-    assert.ok(panel !== null);
-    assert.equal(panel!.kind, "dry_run");
-    // Consent CTA is still shown even when dry_run wins the primary slot.
-    assert.equal(panel!.showConsentCta, true);
+    assert.equal(panel, null);
   });
 
-  it("dry_run wins over protection_locked", () => {
+  it("dry_run + protection_locked → null (TradingPermissionBlock handles dry_run state)", () => {
     const panel = deriveProtectionStatusPanel({
       isDryRunActive: true,
       requiresConsentCount: 0,
       isProtectionLocked: true,
     });
-    assert.ok(panel !== null);
-    assert.equal(panel!.kind, "dry_run");
-    assert.equal(panel!.showConsentCta, false);
+    assert.equal(panel, null);
   });
 
   it("consent_required wins over protection_locked when not in dry_run", () => {
