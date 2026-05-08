@@ -109,4 +109,52 @@ describe("riskRulesData — account override isolation", () => {
       "account body must not produce sessionEndHour (that's the default template column)",
     );
   });
+
+  it("allowedEndHour=15 stores 15 (CME hour 3:00 PM CT)", () => {
+    assert.equal(riskRulesData({ allowedEndHour: 15 }).allowedEndHour, 15);
+  });
+
+  it("allowedEndHour=null stores null (account inherits default cutoff at enforcement time)", () => {
+    assert.equal(riskRulesData({ allowedEndHour: null }).allowedEndHour, null);
+  });
+
+  it("cutoff null does not erase unrelated account-specific fields", () => {
+    const result = riskRulesData({
+      allowedEndHour: null,
+      maxDailyLoss: 500,
+      stopAfterLosses: 3,
+      maxContracts: 2,
+    });
+    assert.equal(result.allowedEndHour, null);
+    assert.equal(result.maxDailyLoss, "500");
+    assert.equal(result.stopAfterLosses, 3);
+    assert.equal(result.maxContracts, 2);
+  });
+
+  it("absent allowedEndHour defaults to null (dropdown shows 'No cutoff' → inherited)", () => {
+    assert.equal(riskRulesData({}).allowedEndHour, null);
+  });
+});
+
+describe("riskRulesData — enforcement truth", () => {
+  it("output contains no tradovate_* or broker_* keys (this helper has no broker side-effects)", () => {
+    const result = riskRulesData({ maxDailyLoss: 500, allowedEndHour: 16 });
+    const keys = Object.keys(result);
+    const brokerKeys = keys.filter((k) => /tradovate|broker/i.test(k));
+    assert.deepEqual(
+      brokerKeys,
+      [],
+      "riskRulesData is a pure DB-column mapper; it must not include broker API fields",
+    );
+  });
+
+  it("the account-specific form never writes sessionEndHour (default template column)", () => {
+    // sessionEndHour lives on RiskRules (default template).
+    // allowedEndHour lives on AccountRiskRules (account override).
+    // Saving account rules must never bleed into the default template.
+    const result = riskRulesData({ maxDailyLoss: 500, allowedEndHour: 14, ruleEditLockBufferMinutes: 30 });
+    assert.ok(!Object.prototype.hasOwnProperty.call(result, "sessionEndHour"));
+    assert.ok(!Object.prototype.hasOwnProperty.call(result, "sessionStartHour"));
+    assert.equal(result.allowedEndHour, 14);
+  });
 });

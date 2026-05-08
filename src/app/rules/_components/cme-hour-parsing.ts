@@ -95,10 +95,10 @@ export function formatCmeHourLabel(hour: number): string {
  */
 export function cmeHourBoundaryNote(hour: number): string | null {
   if (hour === 16) {
-    return "4:00 PM CT is the CME daily break (Mon–Thu) and weekly close (Fri). Cutoff applies before the close.";
+    return "4:00 PM CT is the CME daily break (Mon–Thu) and weekly close (Fri). Automatic cutoff enforcement is not active yet — this is saved configuration only.";
   }
   if (hour === 17) {
-    return "5:00 PM CT is the CME session reopen on Sun–Thu.";
+    return "5:00 PM CT is the CME session reopen (Sun–Thu). Trades before this reopens the market may not execute.";
   }
   return null;
 }

@@ -64,7 +64,7 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "wait_for_exit_then_lock",
     label: "Let open trade finish, then lock",
-    hint: "Guardrail will not force-close the open trade. After the position is closed, the account is locked for the rest of the day.",
+    hint: "Saved in Guardrail. Automatic cutoff scheduling is not active yet. When enabled, Guardrail will wait for the open position to close, then mark the account stopped for the rest of the day.",
   },
   {
     value: "flatten_at_session_end",

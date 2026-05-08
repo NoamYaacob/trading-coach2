@@ -241,6 +241,12 @@ test("cmeHourBoundaryNote: hour 16 mentions CME daily break and weekly close", (
   assert.match(note!, /weekly close/i);
 });
 
+test("cmeHourBoundaryNote: hour 16 says enforcement not active yet", () => {
+  const note = cmeHourBoundaryNote(16);
+  assert.ok(note);
+  assert.match(note!, /not active yet/i);
+});
+
 test("cmeHourBoundaryNote: hour 17 mentions session reopen", () => {
   const note = cmeHourBoundaryNote(17);
   assert.ok(note);
