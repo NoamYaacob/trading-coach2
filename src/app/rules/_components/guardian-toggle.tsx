@@ -5,10 +5,12 @@ import { useState } from "react";
 
 type Props = {
   initialEnabled: boolean;
-  isDryRun?: boolean;
+  /** When at least one of the user's accounts has Tradovate full_access permission,
+   *  the active card upgrades its copy to mention broker risk settings. */
+  hasFullAccessAccount?: boolean;
 };
 
-export function GuardianToggle({ initialEnabled, isDryRun = false }: Props) {
+export function GuardianToggle({ initialEnabled, hasFullAccessAccount = false }: Props) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [loading, setLoading] = useState(false);
@@ -31,9 +33,11 @@ export function GuardianToggle({ initialEnabled, isDryRun = false }: Props) {
   }
 
   if (enabled) {
-    const title = isDryRun ? "Guardian active · Protection test mode" : "Guardian is active";
-    const subtitle = isDryRun
-      ? "Guardrail is monitoring this account against your rules. Protection test mode: broker actions are simulated, no Tradovate writes are sent."
+    const title = hasFullAccessAccount
+      ? "Guardian active · Broker risk settings enabled"
+      : "Guardian is active";
+    const subtitle = hasFullAccessAccount
+      ? "Guardrail monitors this account against your rules. Daily loss/profit breaches can trigger Tradovate risk settings. Order actions are not enabled yet."
       : "Guardrail is monitoring each session against your rules.";
 
     return (

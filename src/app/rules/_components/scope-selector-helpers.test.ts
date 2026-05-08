@@ -8,39 +8,24 @@ import {
 
 // ── deriveScopeGroupBadge ─────────────────────────────────────────────────────
 
-describe("deriveScopeGroupBadge — protection test mode", () => {
-  it("isDryRun=true → 'Protection test mode' regardless of permission level", () => {
+describe("deriveScopeGroupBadge — capability-driven (no Protection test mode override)", () => {
+  it("full_access never returns 'Protection test mode'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: true,
       connectionStatus: "connected_live",
       permissionLevel: "full_access",
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Protection test mode");
-    assert.ok(badge.cls.includes("sky"), `expected sky colour, got: ${badge.cls}`);
+    assert.notEqual(badge.label, "Protection test mode");
+    assert.ok(!badge.label.toLowerCase().includes("test mode"));
   });
 
-  it("isDryRun=true overrides disconnected status too", () => {
+  it("read_only never returns 'Protection test mode'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: true,
-      connectionStatus: "expired",
-      permissionLevel: null,
-      requiresConsentInGroup: false,
-    });
-    assert.equal(badge.label, "Protection test mode");
-  });
-
-  it("no user-facing copy contains 'dry_run'", () => {
-    const badge = deriveScopeGroupBadge({
-      isDryRun: true,
       connectionStatus: "connected_readonly",
-      permissionLevel: "full_access",
+      permissionLevel: "read_only",
       requiresConsentInGroup: false,
     });
-    assert.ok(
-      !badge.label.toLowerCase().includes("dry"),
-      `label must not contain 'dry': ${badge.label}`,
-    );
+    assert.notEqual(badge.label, "Protection test mode");
   });
 });
 
@@ -48,7 +33,6 @@ describe("deriveScopeGroupBadge — disconnected states", () => {
   for (const status of ["not_connected", "expired", "connection_error"]) {
     it(`${status} → 'Reconnect'`, () => {
       const badge = deriveScopeGroupBadge({
-        isDryRun: false,
         connectionStatus: status,
         permissionLevel: "full_access",
         requiresConsentInGroup: false,
@@ -62,7 +46,6 @@ describe("deriveScopeGroupBadge — pending setup", () => {
   for (const status of ["pending_webhook", "oauth_pending_storage"]) {
     it(`${status} → 'Setting up'`, () => {
       const badge = deriveScopeGroupBadge({
-        isDryRun: false,
         connectionStatus: status,
         permissionLevel: null,
         requiresConsentInGroup: false,
@@ -73,20 +56,18 @@ describe("deriveScopeGroupBadge — pending setup", () => {
 });
 
 describe("deriveScopeGroupBadge — full_access permission", () => {
-  it("full_access + no consent needed → 'Protected'", () => {
+  it("full_access + no consent needed → 'Risk settings'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_live",
       permissionLevel: "full_access",
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Protected");
+    assert.equal(badge.label, "Risk settings");
     assert.ok(badge.cls.includes("emerald"), `expected emerald colour, got: ${badge.cls}`);
   });
 
   it("full_access + consent missing in group → 'Action required'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_live",
       permissionLevel: "full_access",
       requiresConsentInGroup: true,
@@ -95,28 +76,24 @@ describe("deriveScopeGroupBadge — full_access permission", () => {
     assert.ok(badge.cls.includes("amber"), `expected amber colour, got: ${badge.cls}`);
   });
 
-  it("full_access even via connected_readonly connectionStatus → 'Protected'", () => {
-    // permissionLevel wins over connectionStatus for the group badge.
+  it("full_access via connected_readonly status → 'Risk settings' (probe wins over status)", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_readonly",
       permissionLevel: "full_access",
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Protected");
+    assert.equal(badge.label, "Risk settings");
   });
 });
 
-describe("deriveScopeGroupBadge — read_only permission (replaces READ-ONLY)", () => {
-  it("read_only → 'Limited', not 'Read-only'", () => {
+describe("deriveScopeGroupBadge — read_only permission", () => {
+  it("read_only → 'Monitoring' (alerts only, no broker actions)", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_readonly",
       permissionLevel: "read_only",
       requiresConsentInGroup: false,
     });
-    assert.equal(badge.label, "Limited");
-    assert.notEqual(badge.label, "Read-only");
+    assert.equal(badge.label, "Monitoring");
     assert.ok(
       !badge.label.toLowerCase().includes("read"),
       `label must not contain 'read': ${badge.label}`,
@@ -127,7 +104,6 @@ describe("deriveScopeGroupBadge — read_only permission (replaces READ-ONLY)", 
 describe("deriveScopeGroupBadge — unverified permission", () => {
   it("permissionLevel=null → 'Verifying'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_live",
       permissionLevel: null,
       requiresConsentInGroup: false,
@@ -137,7 +113,6 @@ describe("deriveScopeGroupBadge — unverified permission", () => {
 
   it("permissionLevel=undefined → 'Verifying'", () => {
     const badge = deriveScopeGroupBadge({
-      isDryRun: false,
       connectionStatus: "connected_live",
       permissionLevel: undefined,
       requiresConsentInGroup: false,
@@ -254,7 +229,6 @@ describe("deriveScopeAccountBadge — per-account badge is independent", () => {
     assert.ok(afterA !== null);
     assert.equal(afterA!.label, "Custom");
 
-    // B is unchanged — its badge comes only from its own flags
     const badgeB = deriveScopeAccountBadge({ isUnavailable: false, requiresAutomatedActionsConsent: false, hasAccountRules: false });
     assert.equal(badgeB, null, "B must still be null after A gets an override");
   });
@@ -270,13 +244,14 @@ describe("deriveScopeGroupBadge — regression: no raw technical labels", () => 
     "monitoring_only",
     "dry_run",
     "permission_unverified",
+    "protection test mode",
   ];
 
   const cases: Parameters<typeof deriveScopeGroupBadge>[0][] = [
-    { isDryRun: false, connectionStatus: "connected_readonly", permissionLevel: "read_only", requiresConsentInGroup: false },
-    { isDryRun: false, connectionStatus: "connected_live", permissionLevel: null, requiresConsentInGroup: false },
-    { isDryRun: true, connectionStatus: "connected_live", permissionLevel: "full_access", requiresConsentInGroup: false },
-    { isDryRun: false, connectionStatus: "connected_live", permissionLevel: "full_access", requiresConsentInGroup: false },
+    { connectionStatus: "connected_readonly", permissionLevel: "read_only", requiresConsentInGroup: false },
+    { connectionStatus: "connected_live", permissionLevel: null, requiresConsentInGroup: false },
+    { connectionStatus: "connected_live", permissionLevel: "full_access", requiresConsentInGroup: false },
+    { connectionStatus: "connected_live", permissionLevel: "full_access", requiresConsentInGroup: true },
   ];
 
   for (const input of cases) {

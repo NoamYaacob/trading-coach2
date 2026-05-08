@@ -26,25 +26,24 @@ const PENDING_STATUSES = new Set([
 
 /**
  * Derives the connection-group badge for the sidebar header row.
+ * Capability-driven; the server-side ENFORCEMENT_DRY_RUN flag is intentionally
+ * not reflected here — the Trading Plan UI describes what the account is wired
+ * to do, not the runtime simulation flag.
+ *
  * Priority (highest → lowest):
- *   1. isDryRun           → "Protection test mode"  (env-wide, overrides everything)
- *   2. Disconnected       → "Reconnect"    (connection broken, action needed)
- *   3. Pending setup      → "Setting up"   (OAuth completing)
- *   4. full_access + no consent → "Action required"
- *   5. full_access        → "Protected"    (capability confirmed + consent)
- *   6. read_only          → "Limited"      (replaces "READ-ONLY")
- *   7. null/unknown       → "Verifying"    (permission probe hasn't run yet)
+ *   1. Disconnected       → "Reconnect"    (connection broken, action needed)
+ *   2. Pending setup      → "Setting up"   (OAuth completing)
+ *   3. full_access + no consent → "Action required"
+ *   4. full_access        → "Risk settings" (broker risk settings capability + consent)
+ *   5. read_only          → "Monitoring"   (alerts only, no broker actions)
+ *   6. null/unknown       → "Verifying"    (permission probe hasn't run yet)
  */
 export function deriveScopeGroupBadge(input: {
-  isDryRun: boolean;
   connectionStatus: string;
   permissionLevel: string | null | undefined;
   /** true when at least one account in the group is missing consent. */
   requiresConsentInGroup: boolean;
 }): ScopeBadge {
-  if (input.isDryRun) {
-    return { label: "Protection test mode", cls: "bg-sky-100 text-sky-700" };
-  }
   if (DISCONNECTED_STATUSES.has(input.connectionStatus)) {
     return { label: "Reconnect", cls: "bg-orange-100 text-orange-700" };
   }
@@ -56,10 +55,10 @@ export function deriveScopeGroupBadge(input: {
     if (input.requiresConsentInGroup) {
       return { label: "Action required", cls: "bg-amber-100 text-amber-800" };
     }
-    return { label: "Protected", cls: "bg-emerald-100 text-emerald-700" };
+    return { label: "Risk settings", cls: "bg-emerald-100 text-emerald-700" };
   }
   if (pl === "read_only") {
-    return { label: "Limited", cls: "bg-sky-100 text-sky-700" };
+    return { label: "Monitoring", cls: "bg-sky-100 text-sky-700" };
   }
   // null / unknown — permission probe hasn't completed yet.
   return { label: "Verifying", cls: "bg-stone-100 text-stone-500" };

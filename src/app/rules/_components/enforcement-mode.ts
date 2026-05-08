@@ -24,13 +24,14 @@
  *                               the call (e.g. 403 permission denied, network error).
  *                               Shown on status/Guardian views.
  *
- *   dry_run                    – ENFORCEMENT_DRY_RUN=true. Guardrail evaluates rules
- *                               but no Tradovate writes are sent.
- *
  * Capability is determined by `BrokerConnection.permissionLevel`, populated by the
  * server-side permission probe (calls userAccountAutoLiq/deps which requires the
  * Account Risk Settings permission). When the probe has not yet run, the mode is
  * reported conservatively as "permission_unverified".
+ *
+ * Note: the server-side `ENFORCEMENT_DRY_RUN` flag is intentionally not surfaced in
+ * this user-facing mode. The Trading Plan UI describes capability — what the system
+ * is wired to do — not the runtime simulation flag, which is a dev/operator concern.
  */
 export type AccountEnforcementMode =
   | "monitoring_only"
@@ -38,8 +39,7 @@ export type AccountEnforcementMode =
   | "broker_enforcement_pending"
   | "broker_enforced_active"
   | "broker_enforcement_failed"
-  | "permission_unverified"
-  | "dry_run";
+  | "permission_unverified";
 
 export type EnforcementModeInfo = {
   mode: AccountEnforcementMode;
@@ -63,8 +63,9 @@ type AccountArg = {
 };
 
 export type ComputeEnforcementOptions = {
-  /** ENFORCEMENT_DRY_RUN env var. When true, overrides label to user-facing "Protection test mode". */
-  isDryRun?: boolean;
+  /** True when at least one of the user's connected accounts has full_access permission.
+   *  Drives the Default-template copy ("Broker risk settings available" vs "Guardrail rules"). */
+  hasFullAccessAccount?: boolean;
 };
 
 const EXPIRED_STATUSES = new Set(["expired", "connection_error"]);
@@ -81,29 +82,21 @@ export function computeEnforcementMode(
   isDefault: boolean,
   options: ComputeEnforcementOptions = {},
 ): EnforcementModeInfo {
-  // Dry-run takes precedence over all other classification — when the server is
-  // running in simulation mode, no broker writes will be sent regardless of the
-  // underlying capability. Show this prominently so operators are not surprised.
-  if (options.isDryRun) {
-    return {
-      mode: "dry_run",
-      // User-facing label — internal enum value stays "dry_run".
-      label: "Protection test mode",
-      detail:
-        "Protection test mode: changes and rule breaches are simulated. " +
-        "No Tradovate write actions are sent. " +
-        "Disable ENFORCEMENT_DRY_RUN on the server to engage real broker actions.",
-      cls: "border-blue-200 bg-blue-50 text-blue-900",
-    };
-  }
-
   if (isDefault) {
+    if (options.hasFullAccessAccount) {
+      return {
+        mode: "monitoring_only",
+        label: "Default template · Broker risk settings available",
+        detail:
+          "Rules are saved in Guardrail. Accounts with Tradovate Account Risk Settings permission can trigger broker risk settings on breach.",
+        cls: "border-stone-200 bg-stone-50 text-stone-600",
+      };
+    }
     return {
       mode: "monitoring_only",
-      label: "Default template · Monitoring only",
+      label: "Default template · Guardrail rules",
       detail:
-        "Applies to accounts that do not have their own rules. " +
-        "Broker actions require account-level rules and verified broker permissions.",
+        "Rules are saved in Guardrail. Broker-side behavior depends on each account's permissions.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
     };
   }
@@ -167,10 +160,8 @@ export function computeEnforcementMode(
         mode: "broker_enforcement_pending",
         label: "Broker risk settings enabled",
         detail:
-          "Account Risk Settings: Full Access verified. When the daily loss limit or daily profit target is breached, " +
-          "Guardrail applies a Tradovate risk setting that places the account in liquidation-only mode. " +
-          "Trade count and consecutive-loss limits use an app-level lock only — no matching broker field exists for these rules. " +
-          "Automatic order cancellation is not yet wired to enforcement.",
+          "Daily loss and profit target can trigger Tradovate risk settings on breach. " +
+          "Other rules are enforced by Guardrail. Order actions are not enabled yet.",
         cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
       };
     }

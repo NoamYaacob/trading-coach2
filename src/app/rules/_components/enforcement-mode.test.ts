@@ -16,57 +16,53 @@ const tradovateAccount = (
   },
 });
 
-describe("computeEnforcementMode — dry-run override (user-facing 'Protection test mode')", () => {
-  it("returns dry_run mode (internal enum) when isDryRun is true (default scope)", () => {
-    const result = computeEnforcementMode(null, true, { isDryRun: true });
-    assert.equal(result.mode, "dry_run");
-    // Internal enum stays "dry_run"; user-facing label is "Protection test mode".
-    assert.equal(result.label, "Protection test mode");
-  });
-
-  it("returns dry_run mode when isDryRun is true even with full permissions", () => {
+describe("computeEnforcementMode — capability-driven copy (no Protection test mode override)", () => {
+  it("full_access account never returns 'Protection test mode' or 'No broker actions are sent'", () => {
     const result = computeEnforcementMode(
       tradovateAccount("connected_live", "full_access"),
       false,
-      { isDryRun: true },
     );
-    assert.equal(result.mode, "dry_run");
-    assert.equal(result.label, "Protection test mode");
+    assert.ok(!result.label.includes("Protection test mode"), `label leak: ${result.label}`);
+    assert.ok(!result.detail.includes("Protection test mode"), `detail leak: ${result.detail}`);
+    assert.ok(!result.detail.includes("No broker actions are sent"), `detail leak: ${result.detail}`);
+    assert.ok(
+      !result.detail.includes("broker actions are simulated"),
+      `detail leak: ${result.detail}`,
+    );
+    assert.ok(!result.detail.includes("Tradovate writes are sent"), `detail leak: ${result.detail}`);
   });
 
-  it("user-facing label does NOT use the technical phrase 'Dry run mode'", () => {
-    const result = computeEnforcementMode(null, true, { isDryRun: true });
-    assert.ok(
-      !result.label.toLowerCase().includes("dry run"),
-      `'Dry run' must not appear in user-facing label, got: ${result.label}`,
-    );
-  });
-
-  it("dry-run detail uses 'Protection test mode:' prefix and mentions simulation", () => {
-    const result = computeEnforcementMode(null, true, { isDryRun: true });
-    assert.ok(
-      result.detail.includes("Protection test mode"),
-      `expected 'Protection test mode' in detail, got: ${result.detail}`,
-    );
-    assert.ok(result.detail.toLowerCase().includes("simulated"));
-    assert.ok(result.detail.includes("No Tradovate write"));
+  it("default template never returns 'Protection test mode'", () => {
+    const withFullAccess = computeEnforcementMode(null, true, { hasFullAccessAccount: true });
+    const withoutFullAccess = computeEnforcementMode(null, true, { hasFullAccessAccount: false });
+    for (const result of [withFullAccess, withoutFullAccess]) {
+      assert.ok(!result.label.includes("Protection test mode"));
+      assert.ok(!result.detail.includes("Protection test mode"));
+      assert.ok(!result.detail.includes("No broker actions are sent"));
+    }
   });
 });
 
 describe("computeEnforcementMode — default template", () => {
-  it("returns monitoring_only mode for default scope (no dry-run)", () => {
-    const result = computeEnforcementMode(null, true);
+  it("hasFullAccessAccount=true → 'Default template · Broker risk settings available'", () => {
+    const result = computeEnforcementMode(null, true, { hasFullAccessAccount: true });
     assert.equal(result.mode, "monitoring_only");
+    assert.equal(result.label, "Default template · Broker risk settings available");
+    assert.ok(result.detail.includes("Rules are saved in Guardrail"));
+    assert.ok(result.detail.includes("Account Risk Settings"));
   });
 
-  it("label mentions 'Monitoring only' for default template", () => {
-    const result = computeEnforcementMode(null, true);
-    assert.ok(result.label.includes("Monitoring only"), `unexpected label: ${result.label}`);
+  it("hasFullAccessAccount=false → 'Default template · Guardrail rules'", () => {
+    const result = computeEnforcementMode(null, true, { hasFullAccessAccount: false });
+    assert.equal(result.mode, "monitoring_only");
+    assert.equal(result.label, "Default template · Guardrail rules");
+    assert.ok(result.detail.includes("Rules are saved in Guardrail"));
+    assert.ok(result.detail.includes("Broker-side behavior depends on each account"));
   });
 
-  it("detail explains broker actions require account-level rules", () => {
+  it("default scope omits hasFullAccessAccount → conservative copy", () => {
     const result = computeEnforcementMode(null, true);
-    assert.ok(result.detail.includes("Broker actions require account-level rules"));
+    assert.equal(result.label, "Default template · Guardrail rules");
   });
 });
 
@@ -149,10 +145,6 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
   });
 
   it("upgrades label even when connection still labelled connected_readonly (probe overrides legacy status)", () => {
-    // This is the real-world bug case: the parent BrokerConnection.connectionStatus
-    // never flipped from "connected_readonly" because that field is set by the OAuth
-    // callback and only by the per-account webhook handler — not by the connection
-    // itself. With the probe, we can correctly classify these accounts.
     const result = computeEnforcementMode(
       tradovateAccount("connected_readonly", "full_access"),
       false,
@@ -161,33 +153,15 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
     assert.equal(result.label, "Broker risk settings enabled");
   });
 
-  it("detail mentions daily loss limit and daily profit target", () => {
+  it("detail uses the concise capability copy", () => {
     const result = computeEnforcementMode(
       tradovateAccount("connected_live", "full_access"),
       false,
     );
-    assert.ok(result.detail.includes("daily loss limit or daily profit target"));
-  });
-
-  it("detail does NOT say 'Order cancel is not yet implemented' (order cancel code exists)", () => {
-    const result = computeEnforcementMode(
-      tradovateAccount("connected_live", "full_access"),
-      false,
-    );
-    assert.ok(
-      !result.detail.includes("Order cancel is not yet implemented"),
-      `Stale copy detected in detail: ${result.detail}`,
-    );
-  });
-
-  it("detail mentions order cancellation is not wired to automatic enforcement", () => {
-    const result = computeEnforcementMode(
-      tradovateAccount("connected_live", "full_access"),
-      false,
-    );
-    assert.ok(
-      result.detail.includes("order cancellation"),
-      `Expected 'order cancellation' in detail, got: ${result.detail}`,
+    assert.equal(
+      result.detail,
+      "Daily loss and profit target can trigger Tradovate risk settings on breach. " +
+        "Other rules are enforced by Guardrail. Order actions are not enabled yet.",
     );
   });
 });

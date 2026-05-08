@@ -228,7 +228,11 @@ export default async function RulesPage({
     maxContracts: intStr(riskRules?.maxContracts),
   };
 
-  const isDryRun = process.env.ENFORCEMENT_DRY_RUN === "true";
+  // True when at least one of the user's connected accounts has Tradovate full_access.
+  // Drives the Default-template enforcement copy and the Guardian active-card copy.
+  const hasFullAccessAccount = accounts.some(
+    (a) => a.brokerConnection?.permissionLevel === "full_access",
+  );
 
   // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)
   const enforcementInfo = computeEnforcementMode(
@@ -246,7 +250,7 @@ export default async function RulesPage({
         }
       : null,
     scope !== "account",
-    { isDryRun },
+    { hasFullAccessAccount },
   );
 
   return (
@@ -274,7 +278,6 @@ export default async function RulesPage({
               groups={groups}
               currentScope={scope}
               currentAccountId={id ?? null}
-              isDryRun={isDryRun}
             />
           </div>
         </details>
@@ -293,7 +296,6 @@ export default async function RulesPage({
             groups={groups}
             currentScope={scope}
             currentAccountId={id ?? null}
-            isDryRun={isDryRun}
           />
         </div>
 
@@ -307,34 +309,18 @@ export default async function RulesPage({
             hasAccountRules={selectedAccount?.riskRules !== null}
           />
 
-          {/* Enforcement mode banner — suppressed when dry-run (test mode shown below) */}
-          {!isDryRun && (
-            <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="font-semibold">{enforcementInfo.label}. </span>
-                  {enforcementInfo.detail}
-                </div>
-                <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
-                  {enforcementInfo.mode}
-                </code>
+          {/* Enforcement mode banner */}
+          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="font-semibold">{enforcementInfo.label}. </span>
+                {enforcementInfo.detail}
               </div>
+              <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
+                {enforcementInfo.mode}
+              </code>
             </div>
-          )}
-
-          {/* Compact test-mode notice — shown once, replaces full enforcement banner */}
-          {isDryRun && (
-            <div
-              role="status"
-              aria-label="Protection test mode"
-              className="flex items-center gap-2 rounded-lg border border-sky-200/70 bg-sky-50/70 px-3 py-1.5 text-[11px] text-sky-800"
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
-              <span>
-                <span className="font-medium">Protection test mode:</span> Guardrail is watching your accounts. No broker actions are sent.
-              </span>
-            </div>
-          )}
+          </div>
 
           {/* How enforcement works — compact collapsible */}
           <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
@@ -344,7 +330,7 @@ export default async function RulesPage({
             </summary>
             <ul className="mt-3 grid gap-1.5 text-stone-600">
               <li>• Guardrail sends warnings when rules are crossed.</li>
-              <li>• In app-level monitoring or protection test mode, Guardrail marks the account locked inside the app only.</li>
+              <li>• In app-level monitoring, Guardrail marks the account locked inside the app only.</li>
               <li>• Broker-side cancel, flatten, and blocking are not active unless the account has verified write permissions and the action is implemented.</li>
               <li>• Read-only connections support monitoring and alerts only.</li>
             </ul>
@@ -419,7 +405,7 @@ export default async function RulesPage({
             /* Default template editor */
             <SectionCard>
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
-                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} isDryRun={isDryRun} />
+                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
               </div>
               <RulesForm
                 initial={defaultInitial}

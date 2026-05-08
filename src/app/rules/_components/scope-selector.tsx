@@ -11,7 +11,6 @@ type Props = {
   groups: RuleScopeGroup[];
   currentScope: string;
   currentAccountId: string | null;
-  isDryRun: boolean;
 };
 
 function AccountItem({
@@ -76,7 +75,7 @@ function AccountItem({
   );
 }
 
-export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun }: Props) {
+export function ScopeSelector({ groups, currentScope, currentAccountId }: Props) {
   const isDefault = currentScope !== "account";
 
   return (
@@ -119,7 +118,6 @@ export function ScopeSelector({ groups, currentScope, currentAccountId, isDryRun
             (a) => a.requiresAutomatedActionsConsent,
           );
           const badge = deriveScopeGroupBadge({
-            isDryRun,
             connectionStatus: group.connectionStatus,
             permissionLevel: group.permissionLevel,
             requiresConsentInGroup,
