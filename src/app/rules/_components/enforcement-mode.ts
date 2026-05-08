@@ -170,7 +170,7 @@ export function computeEnforcementMode(
           "Account Risk Settings: Full Access verified. When the daily loss limit or daily profit target is breached, " +
           "Guardrail applies a Tradovate risk setting that places the account in liquidation-only mode. " +
           "Trade count and consecutive-loss limits use an app-level lock only — no matching broker field exists for these rules. " +
-          "Order cancel and broker-level order blocking are not yet implemented.",
+          "Automatic order cancellation is not yet wired to enforcement.",
         cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
       };
     }

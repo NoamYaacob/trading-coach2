@@ -6,6 +6,7 @@ import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
 import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
+import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
   REVIEW_INHERITED_HINT,
@@ -133,7 +134,7 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff time, Guardrail will lock the account for the day. Position flattening requires a full-access Tradovate connection.",
+    hint: "If a trade is still open at the cutoff, Guardrail will attempt to close it, then lock. Requires full Tradovate access and order actions to be enabled.",
   },
 ] as const;
 
@@ -467,7 +468,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail only. Order cancel is not yet implemented.
+          Rules are saved in Guardrail. Daily loss and profit target limits can also trigger broker risk settings on breach.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.
@@ -481,7 +482,7 @@ export function AccountRulesForm({
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
             />
             <span>
-              I understand that Guardrail may automatically lock this account when my configured rules are breached.
+              {AUTOMATED_ACTIONS_CONSENT_TEXT}
             </span>
           </label>
         )}

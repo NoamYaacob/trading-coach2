@@ -168,6 +168,28 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
     );
     assert.ok(result.detail.includes("daily loss limit or daily profit target"));
   });
+
+  it("detail does NOT say 'Order cancel is not yet implemented' (order cancel code exists)", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+    );
+    assert.ok(
+      !result.detail.includes("Order cancel is not yet implemented"),
+      `Stale copy detected in detail: ${result.detail}`,
+    );
+  });
+
+  it("detail mentions order cancellation is not wired to automatic enforcement", () => {
+    const result = computeEnforcementMode(
+      tradovateAccount("connected_live", "full_access"),
+      false,
+    );
+    assert.ok(
+      result.detail.includes("order cancellation"),
+      `Expected 'order cancellation' in detail, got: ${result.detail}`,
+    );
+  });
 });
 
 describe("computeEnforcementMode — Tradovate permission probe not yet run", () => {
