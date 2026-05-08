@@ -511,11 +511,8 @@ export function AccountRulesForm({
           <div>
             <p className="font-medium">Pending changes saved</p>
             <p className="mt-0.5 text-[11px] text-amber-800">
-              Earliest edit window
-              {localPendingDate ? `: ${localPendingDate}.` : "."}
-            </p>
-            <p className="mt-1 text-[11px] text-amber-700">
-              Pending changes are saved, but automatic activation is not wired yet. Re-open this form during the next edit window and save again to apply them.
+              Pending changes are saved and will activate automatically at the next edit window
+              {localPendingDate ? ` (${localPendingDate}).` : "."}
             </p>
           </div>
           {pendingIsDelete ? (

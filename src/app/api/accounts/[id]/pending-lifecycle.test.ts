@@ -1,28 +1,23 @@
 /**
- * Audit-tier tests that document the pending-rule lifecycle today.
+ * Audit-tier tests that pin the pending-rule lifecycle.
  *
- * Findings (verified against the source tree):
- *   - pendingPayloadJson and pendingEffectiveDate are WRITTEN by:
- *       /api/rules         (default-template locked save)
- *       /api/accounts/[id] (account-override locked save)
+ * Current state (verified against the source tree):
+ *   - pendingPayloadJson + pendingEffectiveDate are WRITTEN by the locked
+ *     branch of /api/rules and /api/accounts/[id].
  *   - They are CLEARED (set to JsonNull / null) when the user saves again
- *     during an unlocked window — the new save replaces both active and
- *     pending state, but does NOT first apply the pending values.
+ *     during an unlocked window OR when the cron promotes them.
  *   - They are READ (display-only) by app/rules/page.tsx and
  *     account-rules-form.tsx to render the pending panel.
- *   - There is NO cron job, page-load side effect, background task, or any
- *     other code path that reads pendingPayloadJson and writes its values
- *     into the active columns. Verified by grep below.
- *
- * Conclusion: pending changes are saved memory only. The user must re-save
- * during the next edit window for the values to take effect. The UI copy
- * must reflect that truth.
+ *   - They are PROMOTED into the active columns by the cron route at
+ *     /api/cron/promote-pending-rules, which calls
+ *     src/lib/pending-rule-promoter.ts. Eligibility is anchored to the CME
+ *     trading-day key (deriveCmeTradingDayKey).
  *
  * These tests guard against silent regressions:
- *   - If someone adds a half-baked auto-promotion path that bypasses the
- *     eligibility check, the "no promotion code" test will fire.
- *   - If someone re-introduces stale "applies automatically" copy, the copy
- *     tests in account-rules-form-copy.test.ts will fire.
+ *   - Promotion-related Prisma writes can only originate from the two
+ *     PATCH routes or the promoter library — anything else is suspect.
+ *   - The promoter cron must exist and reference the promoter library.
+ *   - UI copy must reflect that pending will activate automatically.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -73,67 +68,88 @@ test("pendingPayloadJson is written from exactly two routes (default rules + acc
   );
 });
 
-// ── No promotion code anywhere ───────────────────────────────────────────────
+// ── Promotion code is centralised ────────────────────────────────────────────
 
-test("no source file applies pendingPayloadJson values into active rule columns", () => {
-  // A real promoter would: read pendingPayloadJson, then UPDATE/upsert
-  // AccountRiskRules or RiskRules with the pending values. We look for
-  // any file that both READS pendingPayloadJson (treating it as a value
-  // to promote) AND issues a Prisma update against either rules table.
-  //
-  // The display-only readers (page.tsx, account-rules-form.tsx) read
-  // pendingPayloadJson to show the diff but never write it back.
+test("only the promoter library and the two PATCH routes touch pending+active rules", () => {
+  // A real promoter reads pendingPayloadJson and UPDATEs / DELETEs the
+  // matching rules row. We assert that the only files doing both are the
+  // documented locations, so a half-baked alt-promoter can't sneak in.
+  const allowed = new Set<string>([
+    "src/app/api/accounts/[id]/route.ts",
+    "src/app/api/rules/route.ts",
+    "src/lib/pending-rule-promoter.ts",
+  ]);
   const suspicious = SOURCE_FILES.filter((f) => {
     const src = readFileSync(f, "utf8");
     const readsPending = /pendingPayloadJson/.test(src);
     if (!readsPending) return false;
-    const writesActive =
-      /accountRiskRules\.(update|upsert)|riskRules\.(update|upsert)/i.test(src);
-    if (!writesActive) return false;
-    // Allow the documented PATCH routes, since they clear pending without
-    // promoting, which is the behaviour we're testing for.
-    if (
-      f.endsWith("/app/api/accounts/[id]/route.ts") ||
-      f.endsWith("/app/api/rules/route.ts")
-    ) {
-      return false;
-    }
-    return true;
+    const writesRules =
+      /accountRiskRules\.(update|upsert|delete)|riskRules\.(update|upsert)/i.test(src);
+    if (!writesRules) return false;
+    const rel = f.slice(REPO_ROOT.length + 1);
+    return !allowed.has(rel);
   });
   assert.deepEqual(
     suspicious,
     [],
-    "No file outside the two PATCH routes should both read pendingPayloadJson and write to *RiskRules — that would be a half-baked promotion path",
+    "Pending-payload promotion may only happen in /api/rules, /api/accounts/[id], or src/lib/pending-rule-promoter.ts",
   );
 });
 
-test("no cron route promotes pending rules", () => {
-  const cronDir = join(SRC_ROOT, "app", "api", "cron");
-  const cronFiles = walk(cronDir);
-  for (const f of cronFiles) {
-    const src = readFileSync(f, "utf8");
-    assert.ok(
-      !/pendingPayloadJson/.test(src),
-      `cron route ${f} must not reference pendingPayloadJson — there is no scheduled promoter today`,
-    );
-  }
-});
-
-// ── Default-template pending banner is honest about no auto-activation ───────
-
-test("default template pending banner says automatic activation is not wired yet", () => {
-  const src = readFileSync(join(SRC_ROOT, "app", "rules", "page.tsx"), "utf8");
+test("the promoter cron route exists and is wired to the promoter library", () => {
+  const path = join(SRC_ROOT, "app", "api", "cron", "promote-pending-rules", "route.ts");
+  const src = readFileSync(path, "utf8");
   assert.ok(
-    src.includes("automatic activation is not wired yet"),
-    "default template pending banner must explicitly say automatic activation is not wired yet",
+    /promotePendingRules/.test(src),
+    "cron route must call promotePendingRules from the promoter library",
+  );
+  assert.ok(
+    /x-cron-secret/.test(src),
+    "cron route must require the same x-cron-secret header as other crons",
   );
 });
 
-test("default template pending banner does not say 'Applies at:' (implied automation)", () => {
+test("the promoter uses the CME trading-day key, not raw UTC dates", () => {
+  const src = readFileSync(join(SRC_ROOT, "lib", "pending-rule-promoter.ts"), "utf8");
+  assert.ok(
+    /deriveCmeTradingDayKey/.test(src),
+    "promoter must use deriveCmeTradingDayKey to compute the eligibility key",
+  );
+});
+
+test("the promoter library never imports a Tradovate / broker SDK", () => {
+  const src = readFileSync(join(SRC_ROOT, "lib", "pending-rule-promoter.ts"), "utf8");
+  // Strip line + block comments before scanning for broker imports / calls so
+  // a comment that explicitly says "this module does not call Tradovate" can
+  // stay in the source for human readers without tripping the regex.
+  const stripped = src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(
+    !/from\s+["']@\/lib\/brokers\//.test(stripped),
+    "promoter must not import from @/lib/brokers — promotion is a DB activation step only",
+  );
+  assert.ok(
+    !/TradovateClient|tradovate-client|brokers\/tradovate/.test(stripped),
+    "promoter code must not reference any Tradovate runtime symbol",
+  );
+});
+
+// ── Default-template pending banner now reflects the wired promoter ──────────
+
+test("default template pending banner says pending will activate automatically", () => {
   const src = readFileSync(join(SRC_ROOT, "app", "rules", "page.tsx"), "utf8");
   assert.ok(
-    !src.includes("Applies at:"),
-    "default template banner must not say 'Applies at:' — the time is when the next edit window opens, not when the rules apply automatically",
+    src.includes("will activate automatically at the next edit window"),
+    "default template pending banner must say pending will activate automatically",
+  );
+});
+
+test("default template pending banner no longer claims 'not wired yet'", () => {
+  const src = readFileSync(join(SRC_ROOT, "app", "rules", "page.tsx"), "utf8");
+  assert.ok(
+    !src.includes("automatic activation is not wired yet"),
+    "the 'not wired yet' line must be removed now that the promoter exists",
   );
 });
 

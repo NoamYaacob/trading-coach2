@@ -31,35 +31,26 @@ test("account form: pending panel header says 'Pending changes saved'", () => {
   );
 });
 
-test("account form: pending panel subline mentions earliest edit window", () => {
+test("account form: pending panel subline says auto-activation at next edit window", () => {
+  // The promoter cron is now wired (src/lib/pending-rule-promoter.ts +
+  // /api/cron/promote-pending-rules). Copy must reflect that pending
+  // changes activate automatically.
   const src = read(FORM_FILES.account);
   assert.ok(
-    src.includes("Earliest edit window"),
-    "pending panel subline must mention 'Earliest edit window'",
+    src.includes("will activate automatically at the next edit window"),
+    "pending panel must say 'will activate automatically at the next edit window'",
   );
 });
 
-test("account form: pending panel says automatic activation is not wired yet", () => {
-  // Audit finding: no cron/page-load/scheduler promotes pendingPayloadJson to
-  // active columns today. Saving again during the next edit window is the
-  // only way pending values become active. Copy must reflect that truth.
+test("account form: stale 'not wired yet' copy has been removed", () => {
   const src = read(FORM_FILES.account);
   assert.ok(
-    src.includes("automatic activation is not wired yet"),
-    "pending panel must explicitly say automatic activation is not wired yet",
+    !src.includes("automatic activation is not wired yet"),
+    "the 'not wired yet' line must be removed now that the promoter exists",
   );
   assert.ok(
-    src.includes("Re-open this form during the next edit window and save again"),
-    "pending panel must tell the user how to apply pending changes manually",
-  );
-});
-
-test("account form: pending panel does not promise auto-activation", () => {
-  const src = read(FORM_FILES.account);
-  // The previous wording implied the system would apply changes by itself.
-  assert.ok(
-    !src.includes("These changes will apply at the next edit window"),
-    "stale auto-apply phrasing must be removed — there is no scheduler",
+    !src.includes("Re-open this form during the next edit window and save again"),
+    "the manual-save instruction must be removed now that the promoter exists",
   );
 });
 
