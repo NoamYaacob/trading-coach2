@@ -321,7 +321,7 @@ export default async function RulesPage({
               How enforcement works
               <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
             </summary>
-            <ul className="mt-3 grid gap-1.5 text-stone-600">
+            <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
               <li>• Guardrail sends warnings when rules are crossed.</li>
               <li>• In app-level monitoring, Guardrail marks the account locked inside the app only.</li>
               <li>• Broker-side cancel, flatten, and blocking require write permissions and enabled order actions.</li>
