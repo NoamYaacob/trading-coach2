@@ -54,7 +54,7 @@ Complete **every** item before running any test step.
 - [ ] Confirm `platform = 'tradovate'` and `connectionStatus = 'connected_live'`
   (not `expired`, not `not_connected`).
 - [ ] Confirm `protectionStatus != 'archived'` and `missingFromBrokerSince IS NULL`.
-- [ ] Confirm `externalAccountId` is set (a numeric Tradovate account ID like `1234567`).
+- [ ] Confirm `externalAccountId` is set and is a **pure positive integer string** (e.g. `"1234567"` — digits only, no spaces, signs, dots, or letters). The diagnostic GET response shows this field. If it is invalid, the action will throw with code `INVALID_EXTERNAL_ACCOUNT_ID` before any broker call.
 
 ### 1.2 OAuth permissions
 
@@ -419,8 +419,6 @@ These actions are **not permitted** during this QA phase.
 
 ## 8. Safety notes from code review
 
-These are non-blocking observations about the current implementation.
-
 ### 8.1 cancel reads orders in dry-run (intentional)
 
 `cancelOpenOrdersForAccount()` calls `client.getOrders()` before the dry-run
@@ -428,17 +426,22 @@ branch. This is a **read-only** GET call that shows what would be cancelled. No
 write endpoint is called. `flattenPositionsForAccount()` makes zero API calls
 in dry-run (client is not even initialized).
 
-### 8.2 tvAccountId null-safety
+### 8.2 tvAccountId null-safety — FIXED
 
-`TradovateClient.getOrders()` filters to `tvAccountId` after `initialize()`.
-If `externalAccountId` in the DB is somehow not parseable as an integer,
-`tvAccountId` stays `null` and `getOrders()` returns all Working/Pending orders
-across the OAuth token. `validateAccountForOrderActions()` rejects accounts with
-a null/empty `externalAccountId` before we ever reach this code path, so this
-is only a concern if the DB contains a non-numeric value in that column.
+~~Previously noted as a potential gap: `TradovateClient.getOrders()` returns all
+orders across the OAuth token when `tvAccountId` is null.~~
 
-**Mitigation:** Confirm `externalAccountId` is a valid integer string (e.g.
-`"1234567"`) before running live tests. The GET diagnostic response shows this.
+**Fixed** in `parseTradovateAccountId()` (`order-actions-helpers.ts`). Both
+`cancelOpenOrdersForAccount` and `flattenPositionsForAccount` now call this
+helper **before** `client.initialize()`. If `externalAccountId` is null, empty,
+non-numeric, contains any non-digit character (spaces, signs, dots, letters),
+or parses to zero or a negative number, the action is blocked immediately:
+an audit log is written with `success: false` and the function throws before
+any broker API call is made.
+
+This is enforced by 18 unit tests in `cancel-open-orders.test.ts` covering
+null, empty, alphabetic, alphanumeric, decimal notation, whitespace, sign
+characters, hex notation, zero, and leading zeros.
 
 ### 8.3 Partial cancel failure
 

@@ -20,16 +20,19 @@ import { writeBrokerOrderActionLog } from "./broker-order-action-log";
 import {
   validateAccountForOrderActions,
   canSendLiveOrderActions,
+  parseTradovateAccountId,
 } from "./order-actions-helpers";
 
 // Re-export pure helpers and types so callers can import from one place.
 export {
   validateAccountForOrderActions,
   canSendLiveOrderActions,
+  parseTradovateAccountId,
 } from "./order-actions-helpers";
 export type {
   OrderActionsAccountState,
   AccountValidationResult,
+  ExternalAccountIdParseResult,
 } from "./order-actions-helpers";
 
 // ── Result type ───────────────────────────────────────────────────────────────
@@ -118,6 +121,29 @@ export async function cancelOpenOrdersForAccount(
 
   if (!validation.ok) {
     throw new Error(`Account not eligible for order actions: ${validation.reason} [${validation.code}]`);
+  }
+
+  // ── 2b. Strictly validate external account ID as a positive integer ────────
+  // Must happen before client.initialize() — TradovateClient leaves tvAccountId
+  // as null if parseInt fails, which would cause getOrders() to return ALL orders
+  // across the OAuth token instead of this account's orders only.
+  const accountIdParsed = parseTradovateAccountId(account.externalAccountId);
+  if (!accountIdParsed.ok) {
+    await writeBrokerOrderActionLog({
+      userId: account.userId,
+      connectedAccountId,
+      externalAccountId: account.externalAccountId,
+      actionType: "cancel_orders",
+      triggerReason,
+      dryRun: true,
+      requestSummary: null,
+      responseSummary: { code: accountIdParsed.code, reason: accountIdParsed.reason },
+      success: false,
+      errorMessage: accountIdParsed.reason,
+    });
+    throw new Error(
+      `Cannot cancel orders: ${accountIdParsed.reason} [${accountIdParsed.code}]`,
+    );
   }
 
   // ── 3. Determine effective dry-run ────────────────────────────────────────

@@ -22,6 +22,7 @@ import { writeBrokerOrderActionLog } from "./broker-order-action-log";
 import {
   validateAccountForOrderActions,
   canSendLiveOrderActions,
+  parseTradovateAccountId,
 } from "./order-actions-helpers";
 import type { BrokerFlattenResult } from "./enforcement-helpers";
 
@@ -113,6 +114,29 @@ export async function flattenPositionsForAccount(
   if (!validation.ok) {
     throw new Error(
       `Account not eligible for order actions: ${validation.reason} [${validation.code}]`,
+    );
+  }
+
+  // ── 2b. Strictly validate external account ID as a positive integer ────────
+  // Must happen before client.initialize() — TradovateClient leaves tvAccountId
+  // as null if parseInt fails, which would cause applyFlattenOpenPositions() to
+  // read positions from all accounts on the OAuth token, not just this one.
+  const accountIdParsed = parseTradovateAccountId(account.externalAccountId);
+  if (!accountIdParsed.ok) {
+    await writeBrokerOrderActionLog({
+      userId: account.userId,
+      connectedAccountId,
+      externalAccountId: account.externalAccountId,
+      actionType: "flatten_positions",
+      triggerReason,
+      dryRun: true,
+      requestSummary: null,
+      responseSummary: { code: accountIdParsed.code, reason: accountIdParsed.reason },
+      success: false,
+      errorMessage: accountIdParsed.reason,
+    });
+    throw new Error(
+      `Cannot flatten positions: ${accountIdParsed.reason} [${accountIdParsed.code}]`,
     );
   }
 

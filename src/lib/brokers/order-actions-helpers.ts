@@ -20,6 +20,10 @@ export type AccountValidationResult =
   | { ok: true }
   | { ok: false; reason: string; code: string };
 
+export type ExternalAccountIdParseResult =
+  | { ok: true; tvAccountId: number }
+  | { ok: false; reason: string; code: string };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
@@ -78,6 +82,49 @@ export function validateAccountForOrderActions(
     };
   }
   return { ok: true };
+}
+
+/**
+ * Pure: strictly parse a Tradovate external account ID.
+ *
+ * Valid: a string of one or more decimal digits representing a positive integer
+ * (e.g. "1234567"). This is the format Tradovate uses for account IDs.
+ *
+ * Invalid: null, empty string, non-digit characters (letters, dots, spaces,
+ * signs), or zero. If invalid, the broker client cannot safely scope its
+ * requests to this account — the action must be blocked.
+ *
+ * This is a stricter secondary check after validateAccountForOrderActions.
+ * The first function catches null/empty; this function catches non-integer
+ * strings that would cause TradovateClient to leave tvAccountId as null,
+ * which would make getOrders() return all orders across the OAuth token.
+ */
+export function parseTradovateAccountId(
+  externalAccountId: string | null,
+): ExternalAccountIdParseResult {
+  if (!externalAccountId) {
+    return {
+      ok: false,
+      reason: "External account ID is not set.",
+      code: "INVALID_EXTERNAL_ACCOUNT_ID",
+    };
+  }
+  if (!/^\d+$/.test(externalAccountId)) {
+    return {
+      ok: false,
+      reason: `External account ID "${externalAccountId}" is not a valid positive integer — must contain digits only.`,
+      code: "INVALID_EXTERNAL_ACCOUNT_ID",
+    };
+  }
+  const tvAccountId = parseInt(externalAccountId, 10);
+  if (tvAccountId <= 0) {
+    return {
+      ok: false,
+      reason: `External account ID "${externalAccountId}" must be a positive integer, got ${tvAccountId}.`,
+      code: "INVALID_EXTERNAL_ACCOUNT_ID",
+    };
+  }
+  return { ok: true, tvAccountId };
 }
 
 /**
