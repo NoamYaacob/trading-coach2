@@ -8,6 +8,7 @@ import {
   getTradovateReportWindowForCmeSession,
   isCmeMaintenanceWindow,
   isCmeMarketOpen,
+  isCmeWeekendClose,
   getCurrentCmeTradingDayKey,
 } from "./cme-session.ts";
 
@@ -164,22 +165,71 @@ describe("getCmeSessionForInstant — 5:00 PM CT: new session opens (Thursday)",
 describe("getCmeSessionForInstant — weekend", () => {
   // May 9 2026 is Saturday
 
-  it("Saturday 10:00 CT: market closed, not maintenance", () => {
+  it("Saturday 10:00 CT: market closed, not maintenance, weekend close", () => {
     const info = getCmeSessionForInstant(ct("2026-05-09T10:00:00"));
     assert.equal(info.isActiveTradingOpen, false);
     assert.equal(info.isMaintenanceWindow, false);
+    assert.equal(info.isWeekendClose, true);
   });
 
-  it("Sunday 12:00 CT (before 17:00 open): closed, not maintenance", () => {
+  it("Sunday 12:00 CT (before 17:00 open): closed, not maintenance, weekend close", () => {
     const info = getCmeSessionForInstant(ct("2026-05-10T12:00:00"));
     assert.equal(info.isActiveTradingOpen, false);
     assert.equal(info.isMaintenanceWindow, false);
+    assert.equal(info.isWeekendClose, true);
   });
 
-  it("Sunday 17:00 CT: market opens", () => {
+  it("Sunday 17:00 CT: market opens, no longer weekend close", () => {
     const info = getCmeSessionForInstant(ct("2026-05-10T17:00:00"));
     assert.equal(info.isActiveTradingOpen, true);
     assert.equal(info.isMaintenanceWindow, false);
+    assert.equal(info.isWeekendClose, false);
+  });
+});
+
+// ── isCmeWeekendClose ─────────────────────────────────────────────────────────
+
+describe("isCmeWeekendClose — mutual exclusivity with market open and maintenance", () => {
+  // May 8 2026 is Friday. May 7 is Thursday.
+
+  it("Friday 15:59 CT (active trading): false — market is open", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-08T15:59:00")), false);
+  });
+
+  it("Friday 16:00 CT: true — weekend close begins (not maintenance; Friday excluded)", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-08T16:00:00")), true);
+  });
+
+  it("Friday 16:30 CT: true", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-08T16:30:00")), true);
+  });
+
+  it("Saturday 10:00 CT: true", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-09T10:00:00")), true);
+  });
+
+  it("Sunday 12:00 CT: true", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-10T12:00:00")), true);
+  });
+
+  it("Sunday 16:59 CT: true — still closed", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-10T16:59:00")), true);
+  });
+
+  it("Sunday 17:00 CT: false — market reopens", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-10T17:00:00")), false);
+  });
+
+  it("Thursday 16:00 CT: false — that is maintenance, not weekend close", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-07T16:00:00")), false);
+  });
+
+  it("Thursday 16:30 CT: false — maintenance window", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-07T16:30:00")), false);
+  });
+
+  it("Thursday 10:00 CT (active session): false", () => {
+    assert.equal(isCmeWeekendClose(ct("2026-05-07T10:00:00")), false);
   });
 });
 

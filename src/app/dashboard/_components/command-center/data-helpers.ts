@@ -443,6 +443,7 @@ export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
 export type RowStatusLabel =
   | "Tradable"
   | "Maintenance"
+  | "Closed"
   | "Action required"
   | "Warning"
   | "Locked"
@@ -459,6 +460,8 @@ export function deriveRowStatusLabel(input: {
   requiresAutomatedActionsConsent: boolean;
   /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu). */
   isMaintenanceWindow?: boolean;
+  /** True during the weekend close (Fri 4:00 PM CT → Sun 5:00 PM CT). */
+  isWeekendClose?: boolean;
 }): RowStatusLabel {
   if (input.status === "unavailable") return "Unavailable";
   if (input.status === "locked") return "Locked";
@@ -469,7 +472,8 @@ export function deriveRowStatusLabel(input: {
     if (input.setupNeededReason === "prop_firm_rules_missing") return "Firm rules missing";
     return "Needs rules";
   }
-  // status === "allowed" — show maintenance label if the CME break is active.
+  // status === "allowed" — reflect market availability on the badge.
+  if (input.isWeekendClose) return "Closed";
   if (input.isMaintenanceWindow) return "Maintenance";
   // Refine based on consent + permission gaps.
   if (input.requiresAutomatedActionsConsent) return "Action required";
@@ -736,6 +740,8 @@ export function deriveTradingPermissionStatus(input: {
   }>;
   /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu). */
   isMaintenanceWindow?: boolean;
+  /** True during the weekend close (Fri 4:00 PM CT → Sun 5:00 PM CT). */
+  isWeekendClose?: boolean;
 }): TradingPermissionStatus | null {
   const { accounts } = input;
   const activeAccounts = accounts.filter(
@@ -799,6 +805,14 @@ export function deriveTradingPermissionStatus(input: {
       level: "warning",
       headline: n === 1 ? "1 account in warning" : `${n} accounts in warning`,
       subline: "Approaching the daily loss limit. Monitor your positions closely.",
+    };
+  }
+
+  if (input.isWeekendClose) {
+    return {
+      level: "allowed",
+      headline: "Market closed",
+      subline: "Trading resumes Sunday at 5:00 PM CT.",
     };
   }
 

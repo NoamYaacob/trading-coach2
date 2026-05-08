@@ -243,6 +243,9 @@ export type CommandCenterData = {
     hasSessionHours: boolean;
   };
   /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu).
-   *  Drives "Market maintenance" badge and "CME maintenance window" banner. */
+   *  Drives "Maintenance" badge and "CME break" banner. */
   isMaintenanceWindow: boolean;
+  /** True during the weekend close (Fri 4:00 PM CT → Sun 5:00 PM CT).
+   *  Drives "Closed" badge and "Market closed" banner. */
+  isWeekendClose: boolean;
 };

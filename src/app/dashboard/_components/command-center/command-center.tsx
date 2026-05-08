@@ -263,6 +263,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       permissionLevel: a.permissionLevel,
     })),
     isMaintenanceWindow: data.isMaintenanceWindow,
+    isWeekendClose: data.isWeekendClose,
   });
 
   return (
@@ -316,6 +317,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
                   isCollapsed={collapsedGroups.has(group.groupId)}
                   onToggleCollapsed={() => handleToggleCollapsed(group.groupId)}
                   isMaintenanceWindow={data.isMaintenanceWindow}
+                  isWeekendClose={data.isWeekendClose}
                 />
               ))
             )}
@@ -617,11 +619,13 @@ function FirmSection({
   isCollapsed,
   onToggleCollapsed,
   isMaintenanceWindow,
+  isWeekendClose,
 }: {
   group: CommandCenterFirmGroup;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
   isMaintenanceWindow: boolean;
+  isWeekendClose: boolean;
 }) {
   // Default expanded (when not in the collapsed set) so risk-relevant detail
   // is visible without an extra click. State is lifted to CommandCenter and
@@ -756,7 +760,7 @@ function FirmSection({
               </thead>
               <tbody>
                 {group.accounts.map((account) => (
-                  <AccountRow key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} />
+                  <AccountRow key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} isWeekendClose={isWeekendClose} />
                 ))}
               </tbody>
             </table>
@@ -765,7 +769,7 @@ function FirmSection({
           {/* Mobile/tablet cards */}
           <div className="grid gap-2 p-2.5 lg:hidden sm:p-3">
             {group.accounts.map((account) => (
-              <AccountCard key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} />
+              <AccountCard key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} isWeekendClose={isWeekendClose} />
             ))}
           </div>
         </div>
@@ -886,7 +890,7 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
   );
 }
 
-function AccountRow({ account, isMaintenanceWindow }: { account: CommandCenterAccount; isMaintenanceWindow: boolean }) {
+function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   return (
@@ -900,6 +904,7 @@ function AccountRow({ account, isMaintenanceWindow }: { account: CommandCenterAc
             enforcementMode={account.enforcementMode}
             requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
             isMaintenanceWindow={isMaintenanceWindow}
+            isWeekendClose={isWeekendClose}
           />
           <div className="min-w-0">
             <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
@@ -999,7 +1004,7 @@ function AccountRow({ account, isMaintenanceWindow }: { account: CommandCenterAc
 
 // ─── Mobile card ───────────────────────────────────────────────────────────────
 
-function AccountCard({ account, isMaintenanceWindow }: { account: CommandCenterAccount; isMaintenanceWindow: boolean }) {
+function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   const stateLabel = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
@@ -1054,6 +1059,7 @@ function AccountCard({ account, isMaintenanceWindow }: { account: CommandCenterA
             enforcementMode={account.enforcementMode}
             requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
             isMaintenanceWindow={isMaintenanceWindow}
+            isWeekendClose={isWeekendClose}
           />
         <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
       </div>
@@ -1318,6 +1324,7 @@ function StatusBadge({
   enforcementMode,
   requiresAutomatedActionsConsent,
   isMaintenanceWindow,
+  isWeekendClose,
 }: {
   status: AccountStatus;
   setupNeededReason?: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
@@ -1326,6 +1333,7 @@ function StatusBadge({
   enforcementMode?: EnforcementMode;
   requiresAutomatedActionsConsent?: boolean;
   isMaintenanceWindow?: boolean;
+  isWeekendClose?: boolean;
 }) {
   const label = deriveRowStatusLabel({
     status,
@@ -1333,20 +1341,22 @@ function StatusBadge({
     enforcementMode: enforcementMode ?? "not_connected",
     requiresAutomatedActionsConsent: requiresAutomatedActionsConsent ?? false,
     isMaintenanceWindow,
+    isWeekendClose,
   });
   // "Action required" is a refinement of "allowed" status — paint it amber.
-  // "Maintenance" is a temporary non-tradable state — paint it stone.
+  // "Maintenance" and "Closed" are temporary non-tradable states — paint them stone.
   const isActionRequired = label === "Action required";
   const isMaintenance = label === "Maintenance";
+  const isClosed = label === "Closed";
   const badgeClass = isActionRequired
     ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
-    : isMaintenance
-      ? "bg-stone-100 text-stone-600"
+    : isMaintenance || isClosed
+      ? "bg-stone-100 text-stone-500"
       : STATUS_BADGE_CLASS[status];
   const dotClass = isActionRequired
     ? "bg-amber-500"
-    : isMaintenance
-      ? "bg-stone-400"
+    : isMaintenance || isClosed
+      ? "bg-stone-300"
       : STATUS_DOT_CLASS[status];
   return (
     <span

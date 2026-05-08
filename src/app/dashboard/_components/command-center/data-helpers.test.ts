@@ -429,3 +429,100 @@ describe("deriveTradingPermissionStatus — maintenance window", () => {
     assert.equal(result?.headline, "Allowed to trade");
   });
 });
+
+// ── deriveRowStatusLabel — weekend close ──────────────────────────────────────
+
+describe("deriveRowStatusLabel — weekend close", () => {
+  const allowedBase = {
+    status: "allowed" as AccountStatus,
+    setupNeededReason: null as null,
+    enforcementMode: "broker_active" as EnforcementMode,
+    requiresAutomatedActionsConsent: false,
+  };
+
+  it("returns 'Closed' for allowed account during weekend close", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true }),
+      "Closed",
+    );
+  });
+
+  it("returns 'Tradable' for allowed account outside weekend close", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, isWeekendClose: false }),
+      "Tradable",
+    );
+  });
+
+  it("weekend close does not override locked status", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, status: "locked", isWeekendClose: true }),
+      "Locked",
+    );
+  });
+
+  it("weekend close does not override warning status", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, status: "warning", isWeekendClose: true }),
+      "Warning",
+    );
+  });
+
+  it("weekend close does not override setup_needed status", () => {
+    assert.equal(
+      deriveRowStatusLabel({
+        ...allowedBase,
+        status: "setup_needed",
+        setupNeededReason: "no_rules",
+        isWeekendClose: true,
+      }),
+      "Needs rules",
+    );
+  });
+
+  it("weekend close takes priority over maintenance when both are true", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true, isMaintenanceWindow: true }),
+      "Closed",
+    );
+  });
+});
+
+// ── deriveTradingPermissionStatus — weekend close ─────────────────────────────
+
+describe("deriveTradingPermissionStatus — weekend close", () => {
+  it("returns 'Market closed' headline when all accounts allowed and weekend close is active", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "broker_active")],
+      isWeekendClose: true,
+    });
+    assert.equal(result?.level, "allowed");
+    assert.equal(result?.headline, "Market closed");
+    assert.match(result?.subline ?? "", /Sunday/);
+    assert.match(result?.subline ?? "", /5:00 PM CT/);
+  });
+
+  it("weekend close banner is suppressed when an account is locked", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed"), makeAccount("locked")],
+      isWeekendClose: true,
+    });
+    assert.equal(result?.level, "locked");
+  });
+
+  it("weekend close banner is suppressed when an account is in warning", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed"), makeAccount("warning")],
+      isWeekendClose: true,
+    });
+    assert.equal(result?.level, "warning");
+  });
+
+  it("isWeekendClose false → normal Allowed to trade headline", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "broker_active")],
+      isWeekendClose: false,
+    });
+    assert.equal(result?.headline, "Allowed to trade");
+  });
+});

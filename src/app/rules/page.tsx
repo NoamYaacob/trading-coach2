@@ -12,7 +12,7 @@ import {
   deriveRuleEditEligibility,
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
-import { isCmeMaintenanceWindow } from "@/lib/time/cme-session";
+import { isCmeMaintenanceWindow, isCmeWeekendClose } from "@/lib/time/cme-session";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
@@ -127,6 +127,7 @@ export default async function RulesPage({
     sessionTimezone: riskRules?.sessionTimezone ?? null,
     lockBufferMinutes: riskRules?.ruleEditLockBufferMinutes ?? null,
     isCmeMaintenance: isCmeMaintenanceWindow(),
+    isCmeWeekendClose: isCmeWeekendClose(),
   });
   const accountRuleLockMessage = ruleEditEligibility.canEditNow
     ? null

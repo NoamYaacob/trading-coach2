@@ -41,6 +41,8 @@ export type CmeSessionInfo = {
    * False during the weekend (Fri 16:00–Sun 17:00 CT), which is a market close, not maintenance.
    */
   isMaintenanceWindow: boolean;
+  /** True during the weekend close (Fri 16:00 CT → Sun 17:00 CT). Mutually exclusive with isMaintenanceWindow. */
+  isWeekendClose: boolean;
 };
 
 export type TradovateReportWindow = {
@@ -111,6 +113,16 @@ export function isCmeMarketOpen(now?: Date): boolean {
 }
 
 /**
+ * True during the weekend close: Fri 16:00 CT through Sun 16:59:59 CT.
+ * Distinct from the daily maintenance window (Mon–Thu 16:00–17:00 CT).
+ * Mutually exclusive with isCmeMaintenanceWindow and isCmeMarketOpen.
+ */
+export function isCmeWeekendClose(now?: Date): boolean {
+  const instant = now ?? new Date();
+  return !isCmeMarketOpen(instant) && !isCmeMaintenanceWindow(instant);
+}
+
+/**
  * Returns the full CME session info for the given instant (defaults to now).
  * Single call-site for all session boundary data.
  */
@@ -125,6 +137,7 @@ export function getCmeSessionForInstant(now?: Date): CmeSessionInfo {
     activeTradingEnd,
     isActiveTradingOpen: isCmeMarketOpen(instant),
     isMaintenanceWindow: isCmeMaintenanceWindow(instant),
+    isWeekendClose: isCmeWeekendClose(instant),
   };
 }
 

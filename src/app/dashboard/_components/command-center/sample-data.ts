@@ -654,4 +654,5 @@ export const DEMO_COMMAND_CENTER_DATA: CommandCenterData = {
     hasSessionHours: false,
   },
   isMaintenanceWindow: false,
+  isWeekendClose: false,
 };
