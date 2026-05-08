@@ -339,6 +339,26 @@ export function AccountRulesForm({
     stopAfterLosses: effectiveValue(values.stopAfterLosses, defaultValues?.stopAfterLosses),
   });
 
+  // Parse pending field values from the server-side pendingPayload prop.
+  // These survive navigation because they come from the DB on every page load.
+  const pendingIsDelete = Boolean(pendingPayload && (pendingPayload as { __delete?: boolean }).__delete);
+  const pendingFieldRows: { label: string; value: string }[] = [];
+  if (pendingPayload && !pendingIsDelete) {
+    const dl = typeof pendingPayload.maxDailyLoss === "string" ? pendingPayload.maxDailyLoss : null;
+    const rpt = typeof pendingPayload.riskPerTrade === "string" ? pendingPayload.riskPerTrade : null;
+    const mtpd = typeof pendingPayload.maxTradesPerDay === "number" ? String(pendingPayload.maxTradesPerDay) : null;
+    const sal = typeof pendingPayload.stopAfterLosses === "number" ? String(pendingPayload.stopAfterLosses) : null;
+    const aeh = typeof pendingPayload.allowedEndHour === "number" ? String(pendingPayload.allowedEndHour) : null;
+    const mc = typeof pendingPayload.maxContracts === "number" ? String(pendingPayload.maxContracts) : null;
+    if (dl !== null) pendingFieldRows.push({ label: "Daily loss limit", value: `$${dl}` });
+    if (rpt !== null) pendingFieldRows.push({ label: "Risk per trade", value: `$${rpt}` });
+    if (mtpd !== null) pendingFieldRows.push({ label: "Max trades / day", value: mtpd });
+    if (sal !== null) pendingFieldRows.push({ label: "Stop after losses", value: sal });
+    if (aeh !== null) pendingFieldRows.push({ label: "Cutoff time", value: `${aeh}:00 CME` });
+    if (mc !== null) pendingFieldRows.push({ label: "Max position size", value: mc });
+  }
+  const showPendingPanel = (pendingPayload !== null || localPendingPresets !== null) && !isDirty;
+
   return (
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
 
@@ -459,30 +479,47 @@ export function AccountRulesForm({
         </div>
       </div>
 
-      {/* Pending session panel — shown when a locked save introduced a pending preset change */}
-      {localPendingPresets !== null && (
+      {/* Pending changes panel — server-driven via pendingPayload prop; survives navigation */}
+      {showPendingPanel && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
-          <p className="font-medium">Session change pending</p>
-          <div className="grid gap-1">
+          <p className="font-medium">
+            Changes pending{localPendingDate ? ` — applies ${localPendingDate}` : ""}
+          </p>
+          {pendingIsDelete ? (
             <p className="text-[11px] text-amber-800">
-              <span className="font-medium">Active now: </span>
-              {values.sessionPresets.length > 0
-                ? SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id))
-                    .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
-                    .join(", ")
-                : values.sessionIsCustom
-                ? "Custom session"
-                : "None"}
+              Account-specific rules are scheduled for removal. This account will revert to the default template at the next edit window.
             </p>
-            <p className="text-[11px] text-amber-800">
-              <span className="font-medium">Pending{localPendingDate ? ` from ${localPendingDate}` : ""}: </span>
-              {localPendingPresets.length > 0
-                ? SESSION_PRESETS.filter((p) => localPendingPresets.includes(p.id))
-                    .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
-                    .join(", ")
-                : "None (presets cleared)"}
-            </p>
-          </div>
+          ) : pendingFieldRows.length > 0 ? (
+            <div className="grid gap-1">
+              {pendingFieldRows.map(({ label, value }) => (
+                <p key={label} className="text-[11px] text-amber-800">
+                  <span className="font-medium">{label}:</span> {value}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {localPendingPresets !== null && (
+            <div className={`grid gap-1${pendingFieldRows.length > 0 ? " border-t border-amber-100 pt-2" : ""}`}>
+              <p className="text-[11px] text-amber-800">
+                <span className="font-medium">Active session: </span>
+                {values.sessionPresets.length > 0
+                  ? SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id))
+                      .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
+                      .join(", ")
+                  : values.sessionIsCustom
+                  ? "Custom session"
+                  : "None"}
+              </p>
+              <p className="text-[11px] text-amber-800">
+                <span className="font-medium">Pending session: </span>
+                {localPendingPresets.length > 0
+                  ? SESSION_PRESETS.filter((p) => localPendingPresets.includes(p.id))
+                      .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
+                      .join(", ")
+                  : "None (presets cleared)"}
+              </p>
+            </div>
+          )}
         </div>
       )}
 

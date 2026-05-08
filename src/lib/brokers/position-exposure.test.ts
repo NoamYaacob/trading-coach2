@@ -554,8 +554,8 @@ describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
     assert.ok(!MAX_POSITION_SIZE_COPY.label.includes("contracts"));
   });
 
-  it("hint includes 'mini-equivalent exposure'", () => {
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /mini-equivalent exposure/);
+  it("hint mentions app-level monitoring", () => {
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /app-level monitoring/i);
   });
 
   it("hint does not imply fractional tradable contracts", () => {
