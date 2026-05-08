@@ -65,6 +65,23 @@ export function deriveScopeGroupBadge(input: {
 }
 
 /**
+ * Derives the short permission suffix shown in the account-specific page subtitle.
+ * Uses the probed permissionLevel — not the legacy connectionStatus string —
+ * so it stays consistent with the sidebar badge and enforcement banner.
+ *
+ *   full_access  → "Risk settings enabled"
+ *   read_only    → "Limited permissions"
+ *   null/unknown → "" (probe hasn't run yet; show no suffix)
+ */
+export function deriveAccountSubtitleSuffix(
+  permissionLevel: string | null | undefined,
+): string {
+  if (permissionLevel === "full_access") return "Risk settings enabled";
+  if (permissionLevel === "read_only") return "Limited permissions";
+  return "";
+}
+
+/**
  * Derives the per-account badge shown inside a group's account list.
  * Returns null when the account needs no annotation.
  *

@@ -21,6 +21,7 @@ import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
 import { buildRuleScopes } from "./_components/rule-scope-utils";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
+import { deriveAccountSubtitleSuffix } from "./_components/scope-selector-helpers";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
@@ -448,31 +449,9 @@ type SelectedAccount = {
     env: string;
     brokerUserId: string | null;
     connectionStatus: string;
+    permissionLevel: string | null;
   } | null;
 } | null;
-
-function buildAccountSubtitle(account: NonNullable<SelectedAccount>): string {
-  const parts: string[] = [];
-  if (account.propFirm) parts.push(account.propFirm);
-  const conn = account.brokerConnection;
-  if (conn) {
-    const pLabel = conn.platform === "tradovate" ? "Tradovate"
-      : conn.platform === "tradingview" ? "TradingView"
-      : conn.platform;
-    const eLabel = conn.env === "live" ? "Live account" : conn.env === "demo" ? "Demo / Sim" : conn.env;
-    parts.push(`${pLabel} · ${eLabel}`);
-    if (conn.connectionStatus === "connected_readonly") {
-      parts.push("Limited permissions");
-    }
-    if (conn.brokerUserId) {
-      const uid = conn.brokerUserId.length > 14
-        ? `${conn.brokerUserId.slice(0, 12)}…`
-        : conn.brokerUserId;
-      parts.push(`User ID ${uid}`);
-    }
-  }
-  return parts.join(" · ");
-}
 
 function ScopeContextHeader({
   scope,
@@ -508,11 +487,11 @@ function ScopeContextHeader({
 
   const conn = account.brokerConnection;
   const envLabel = conn?.env === "live" ? "Live account" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
-  const readOnlySuffix = conn?.connectionStatus === "connected_readonly" ? " · Limited permissions" : "";
+  const permSuffix = deriveAccountSubtitleSuffix(conn?.permissionLevel ?? null);
   const firmLine = account.propFirm
     ? account.propFirm
     : conn
-    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${envLabel}${readOnlySuffix}`
+    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${envLabel}${permSuffix ? ` · ${permSuffix}` : ""}`
     : null;
 
   return (

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   deriveScopeGroupBadge,
   deriveScopeAccountBadge,
+  deriveAccountSubtitleSuffix,
 } from "./scope-selector-helpers.ts";
 
 // ── deriveScopeGroupBadge ─────────────────────────────────────────────────────
@@ -265,4 +266,76 @@ describe("deriveScopeGroupBadge — regression: no raw technical labels", () => 
       }
     });
   }
+});
+
+// ── deriveAccountSubtitleSuffix ───────────────────────────────────────────────
+
+describe("deriveAccountSubtitleSuffix — permission suffix for account subtitle", () => {
+  it("full_access → 'Risk settings enabled'", () => {
+    assert.equal(deriveAccountSubtitleSuffix("full_access"), "Risk settings enabled");
+  });
+
+  it("read_only → 'Limited permissions'", () => {
+    assert.equal(deriveAccountSubtitleSuffix("read_only"), "Limited permissions");
+  });
+
+  it("null → '' (probe not yet run)", () => {
+    assert.equal(deriveAccountSubtitleSuffix(null), "");
+  });
+
+  it("undefined → '' (probe not yet run)", () => {
+    assert.equal(deriveAccountSubtitleSuffix(undefined), "");
+  });
+
+  it("full_access never shows 'Limited permissions' in subtitle", () => {
+    assert.ok(
+      !deriveAccountSubtitleSuffix("full_access").includes("Limited permissions"),
+      "full_access must not show 'Limited permissions'",
+    );
+  });
+
+  it("read_only never shows 'Risk settings' in subtitle", () => {
+    const suffix = deriveAccountSubtitleSuffix("read_only");
+    assert.ok(!suffix.includes("Risk settings"), `read_only must not show 'Risk settings': ${suffix}`);
+  });
+});
+
+// ── Cross-surface consistency: badge, subtitle, and banner agree ──────────────
+
+describe("badge + subtitle suffix consistency", () => {
+  it("full_access: badge is 'Risk settings', subtitle suffix is 'Risk settings enabled'", () => {
+    const badge = deriveScopeGroupBadge({
+      connectionStatus: "connected_live",
+      permissionLevel: "full_access",
+      requiresConsentInGroup: false,
+    });
+    const suffix = deriveAccountSubtitleSuffix("full_access");
+    assert.equal(badge.label, "Risk settings");
+    assert.ok(suffix.includes("Risk settings"), `suffix must mention 'Risk settings': ${suffix}`);
+    assert.ok(!suffix.includes("Limited permissions"), "full_access suffix must not say 'Limited permissions'");
+  });
+
+  it("read_only: badge is 'Monitoring', subtitle suffix is 'Limited permissions'", () => {
+    const badge = deriveScopeGroupBadge({
+      connectionStatus: "connected_readonly",
+      permissionLevel: "read_only",
+      requiresConsentInGroup: false,
+    });
+    const suffix = deriveAccountSubtitleSuffix("read_only");
+    assert.equal(badge.label, "Monitoring");
+    assert.ok(suffix.includes("Limited permissions"), `suffix must say 'Limited permissions': ${suffix}`);
+    assert.ok(!suffix.includes("Risk settings"), "read_only suffix must not say 'Risk settings'");
+  });
+
+  it("full_access via connected_readonly status: badge says 'Risk settings', subtitle suffix says 'Risk settings enabled' (probe wins over legacy status)", () => {
+    const badge = deriveScopeGroupBadge({
+      connectionStatus: "connected_readonly",
+      permissionLevel: "full_access",
+      requiresConsentInGroup: false,
+    });
+    const suffix = deriveAccountSubtitleSuffix("full_access");
+    assert.equal(badge.label, "Risk settings");
+    assert.ok(suffix.includes("Risk settings"), "full_access suffix must mention 'Risk settings'");
+    assert.ok(!suffix.includes("Limited permissions"), "full_access must not show 'Limited permissions' even when connectionStatus is connected_readonly");
+  });
 });
