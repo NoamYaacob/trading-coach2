@@ -34,6 +34,7 @@ export async function GET() {
   return NextResponse.json(
     {
       ok: true,
+      commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown",
       env: envReport.ok ? "ok" : "missing_vars",
       ...(envReport.missing.length ? { missing: envReport.missing } : {}),
       ...(envReport.warnings.length ? { warnings: envReport.warnings } : {}),

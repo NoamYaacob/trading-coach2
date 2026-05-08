@@ -238,13 +238,20 @@ describe("resolveTradeCount — attempts trail", () => {
 // ── selectPhaseCTradeCount — Phase C source priority ─────────────────────────
 // Regression guard: Performance Report count must win over canonical DB count
 // when available, even when the canonical count would return a lower number.
-// This covers the DEMO7433035 production case where Performance Report = 2
-// and canonical DB = 1.
+//
+// DEMO7433035 "2 / 100" root cause (now fixed):
+//   fetchPerformanceReport used startDate=endDate=sessionKeyDate with
+//   startTime="00:00:00"/endTime="23:59:59" — the full calendar day. The
+//   morning hours 00:00–16:59 CT on the session key date belong to the
+//   PREVIOUS CME session, so trades from that window inflated the count.
+//   Fix: report now uses startTime="17:00:00" on startDate through
+//   endTime="16:59:59" on nextCalendarDay(tradingDayKey), matching the
+//   actual CME Globex 17:00 CT → 17:00 CT session window. countCanonicalEntries
+//   also hardened to use sessionStartAt (the real 17:00 CT timestamp) instead
+//   of UTC midnight.
 
 describe("selectPhaseCTradeCount — Phase C source priority (test 9)", () => {
   it("Performance Report count wins over canonical DB when available", () => {
-    // Reproduces the production scenario: report = 2, canonical = 1.
-    // Dashboard must show 2, not 1.
     const result = selectPhaseCTradeCount(2, 1);
     assert.equal(result.count, 2);
     assert.equal(result.source, "broker_report");

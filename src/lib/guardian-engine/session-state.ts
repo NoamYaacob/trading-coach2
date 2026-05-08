@@ -139,8 +139,13 @@ export async function computeNetPosition(
 export async function countCanonicalEntries(
   accountId: string,
   sessionDate: string,
+  sessionStartAt?: Date,
 ): Promise<{ count: number; tradeCountSource: "verified" }> {
-  const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  // When the CME session start is provided, use it as the lower bound.
+  // Falling back to UTC midnight of the session date key would include fills
+  // from the previous CME session that happen to fall on the same calendar day
+  // (e.g. 00:00–16:59 CT on the session key date belongs to the prior session).
+  const dayStart = sessionStartAt ?? new Date(`${sessionDate}T00:00:00.000Z`);
   const fills = await prisma.normalizedTradeEvent.findMany({
     where: {
       accountId,

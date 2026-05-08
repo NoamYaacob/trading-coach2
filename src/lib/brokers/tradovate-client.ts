@@ -54,6 +54,7 @@ import {
 export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
 import { isAutoLiqConfirmed, buildLiquidatePositionsPayload, isFlattenConfirmed } from "./enforcement-helpers";
 import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
+import { formatDateMMDDYYYY, nextCalendarDay } from "./tradovate-report-date";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
 
 // ── Raw Tradovate API shapes ──────────────────────────────────────────────────
@@ -183,12 +184,6 @@ export type FillsScopingVerdict =
   | "field_scoped"
   | "unscoped_suspect"
   | "not_loaded";
-
-/** MM/DD/YYYY — converts a YYYY-MM-DD trading-day key to the format Tradovate's reports endpoint expects. */
-function formatDateMMDDYYYY(tradingDayKey: string): string {
-  const [y, m, d] = tradingDayKey.split("-");
-  return `${m}/${d}/${y}`;
-}
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
@@ -1102,15 +1097,21 @@ export class TradovateClient {
     tradingDayKey: string;
   }): Promise<{ status: number; body: string; contentType: string | null } | null> {
     if (!this.#reportsBaseUrl || !this.#accessToken) return null;
-    const dateStr = formatDateMMDDYYYY(input.tradingDayKey);
+    // CME Globex sessions run 17:00 CT → 17:00 CT the next calendar day.
+    // Using the full calendar day (00:00–23:59) on the session key date would
+    // include the morning hours (00:00–16:59 CT) that belong to the PREVIOUS
+    // CME session, inflating the count by carryover trades. Scope the report
+    // to [startDate 17:00:00, endDate 16:59:59] to match the actual session.
+    const startDateStr = formatDateMMDDYYYY(input.tradingDayKey);
+    const endDateStr = formatDateMMDDYYYY(nextCalendarDay(input.tradingDayKey));
     const url = `${this.#reportsBaseUrl}/reports/requestreport`;
     const body = {
       name: "Performance",
       params: [
-        { name: "startDate", value: dateStr },
-        { name: "endDate", value: dateStr },
-        { name: "startTime", value: "00:00:00" },
-        { name: "endTime", value: "23:59:59" },
+        { name: "startDate", value: startDateStr },
+        { name: "endDate", value: endDateStr },
+        { name: "startTime", value: "17:00:00" },
+        { name: "endTime", value: "16:59:59" },
         { name: "account", value: input.accountName },
       ],
       representationType: "html",

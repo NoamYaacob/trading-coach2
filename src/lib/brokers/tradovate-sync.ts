@@ -282,7 +282,7 @@ export async function syncTradovateAccount(
 
     {
       const canonical = reportCount == null
-        ? await countCanonicalEntries(accountId, tradingDayKey)
+        ? await countCanonicalEntries(accountId, tradingDayKey, new Date(sessionStartMs))
         : null;
       if (canonical != null) {
         console.info("[tradovate/trades] canonical DB count (Performance Report unavailable)", {
