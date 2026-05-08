@@ -344,7 +344,7 @@ export default async function RulesPage({
                 </p>
                 {hasPendingPayload && riskRules?.pendingEffectiveDate && (
                   <p className="mt-1 text-[11px] text-amber-800">
-                    Applies at:{" "}
+                    Earliest edit window:{" "}
                     <span className="font-semibold">
                       {formatPendingRuleActivation({
                         nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
@@ -354,6 +354,11 @@ export default async function RulesPage({
                         userTimezone: traderProfile?.timezone ?? null,
                       })}
                     </span>
+                  </p>
+                )}
+                {hasPendingPayload && (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    Pending changes are saved, but automatic activation is not wired yet. Re-open this form during the next edit window and save again to apply them.
                   </p>
                 )}
               </div>
