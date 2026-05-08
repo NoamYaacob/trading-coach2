@@ -1335,9 +1335,9 @@ function StatusBadge({
     isMaintenanceWindow,
   });
   // "Action required" is a refinement of "allowed" status — paint it amber.
-  // "Market maintenance" is a temporary non-tradable state — paint it stone.
+  // "Maintenance" is a temporary non-tradable state — paint it stone.
   const isActionRequired = label === "Action required";
-  const isMaintenance = label === "Market maintenance";
+  const isMaintenance = label === "Maintenance";
   const badgeClass = isActionRequired
     ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
     : isMaintenance

@@ -442,7 +442,7 @@ export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
  */
 export type RowStatusLabel =
   | "Tradable"
-  | "Market maintenance"
+  | "Maintenance"
   | "Action required"
   | "Warning"
   | "Locked"
@@ -470,7 +470,7 @@ export function deriveRowStatusLabel(input: {
     return "Needs rules";
   }
   // status === "allowed" — show maintenance label if the CME break is active.
-  if (input.isMaintenanceWindow) return "Market maintenance";
+  if (input.isMaintenanceWindow) return "Maintenance";
   // Refine based on consent + permission gaps.
   if (input.requiresAutomatedActionsConsent) return "Action required";
   if (input.enforcementMode === "broker_readonly") return "Action required";
@@ -805,7 +805,7 @@ export function deriveTradingPermissionStatus(input: {
   if (input.isMaintenanceWindow) {
     return {
       level: "allowed",
-      headline: "CME maintenance window",
+      headline: "CME break",
       subline: "Trading resumes at 5:00 PM CT.",
     };
   }

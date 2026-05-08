@@ -351,10 +351,10 @@ describe("deriveRowStatusLabel — maintenance window", () => {
     requiresAutomatedActionsConsent: false,
   };
 
-  it("returns 'Market maintenance' for allowed account during maintenance", () => {
+  it("returns 'Maintenance' for allowed account during maintenance", () => {
     assert.equal(
       deriveRowStatusLabel({ ...allowedBase, isMaintenanceWindow: true }),
-      "Market maintenance",
+      "Maintenance",
     );
   });
 
@@ -401,7 +401,7 @@ describe("deriveTradingPermissionStatus — maintenance window", () => {
       isMaintenanceWindow: true,
     });
     assert.equal(result?.level, "allowed");
-    assert.equal(result?.headline, "CME maintenance window");
+    assert.equal(result?.headline, "CME break");
     assert.match(result?.subline ?? "", /5:00 PM CT/);
   });
 
