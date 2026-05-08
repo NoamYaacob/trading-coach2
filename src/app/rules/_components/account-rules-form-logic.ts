@@ -44,3 +44,46 @@ export function canSaveAccountRulesNow(hasExistingRules: boolean, isLocked: bool
   if (!hasExistingRules) return true;
   return !isLocked;
 }
+
+// ── Save button state ────────────────────────────────────────────────────────
+
+export type AccountSaveButtonState = {
+  /** Whether the Save button should be disabled. */
+  disabled: boolean;
+  /** Visible label: "Save rules", "Saving…", or "Saved". */
+  label: string;
+};
+
+/**
+ * Derives the disabled/label state of the account-rules Save button.
+ *
+ * Enabled when:
+ *   - the form is dirty (any field changed since load), OR
+ *   - this is a first-time setup (no rules exist yet — saving creates them), OR
+ *   - the user just ticked the consent checkbox (consent itself is a saveable change).
+ *
+ * After a successful save, isDirty flips back to false and savedAt is stamped,
+ * which renders the "Saved" label and re-disables the button until the next edit.
+ */
+export function computeAccountSaveButtonState(input: {
+  isDirty: boolean;
+  saving: boolean;
+  removing: boolean;
+  hasExistingRules: boolean;
+  hasValidConsent: boolean;
+  consentChecked: boolean;
+  savedAt: Date | null;
+  pendingMessage: string | null;
+}): AccountSaveButtonState {
+  const hasSomethingToSave =
+    input.isDirty ||
+    !input.hasExistingRules ||
+    (!input.hasValidConsent && input.consentChecked);
+  const disabled = input.saving || input.removing || !hasSomethingToSave;
+  const label = input.saving
+    ? "Saving…"
+    : !input.isDirty && input.savedAt && !input.pendingMessage && input.hasExistingRules
+      ? "Saved"
+      : "Save rules";
+  return { disabled, label };
+}

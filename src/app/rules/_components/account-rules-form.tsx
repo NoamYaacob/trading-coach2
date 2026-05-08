@@ -9,6 +9,7 @@ import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
+  computeAccountSaveButtonState,
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
@@ -468,7 +469,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss and profit target limits can also trigger broker risk settings on breach.
+          Rules are saved in Guardrail. Daily loss, and the inherited profit target when configured, can trigger broker risk settings on breach.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.
@@ -490,16 +491,23 @@ export function AccountRulesForm({
         {/* Primary save row */}
         <div className="flex flex-wrap items-center gap-3">
           {(() => {
-            const hasSomethingToSave = isDirty || !hasExistingRules || (!hasValidConsent && consentChecked);
-            const saveDisabled = saving || removing || !hasSomethingToSave;
-            const saveLabel = saving ? "Saving…" : (!isDirty && savedAt && !pendingMessage && hasExistingRules ? "Saved" : "Save rules");
+            const saveBtn = computeAccountSaveButtonState({
+              isDirty,
+              saving,
+              removing,
+              hasExistingRules,
+              hasValidConsent,
+              consentChecked,
+              savedAt,
+              pendingMessage,
+            });
             return (
               <button
                 type="submit"
-                disabled={saveDisabled}
+                disabled={saveBtn.disabled}
                 className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
               >
-                {saveLabel}
+                {saveBtn.label}
               </button>
             );
           })()}

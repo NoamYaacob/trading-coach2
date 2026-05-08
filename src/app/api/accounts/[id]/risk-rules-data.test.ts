@@ -57,3 +57,56 @@ describe("riskRulesData — maxContracts does not corrupt other fields", () => {
     assert.equal(result.stopAfterLosses, 3);
   });
 });
+
+describe("riskRulesData — daily profit target is NOT account-specific", () => {
+  it("dailyProfitTarget is absent from the account-rules transformation output", () => {
+    // The Trading Plan account-specific form has no profit-target field, and the
+    // server transformation omits it on purpose so account overrides cannot
+    // accidentally store one. Profit target lives on the default template only.
+    const result = riskRulesData({} as Parameters<typeof riskRulesData>[0]);
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(result, "dailyProfitTarget"),
+      "riskRulesData output must not include dailyProfitTarget",
+    );
+  });
+
+  it("ignores dailyProfitTarget if smuggled into the body — account-specific overrides cannot store it", () => {
+    const result = riskRulesData({
+      maxDailyLoss: 500,
+      // @ts-expect-error — field is intentionally not on RiskRulesBody
+      dailyProfitTarget: 1000,
+    });
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(result, "dailyProfitTarget"),
+      "riskRulesData must drop dailyProfitTarget even if a client sends it",
+    );
+  });
+});
+
+describe("riskRulesData — account override isolation", () => {
+  it("transforming account A's body produces only account A's column shape", () => {
+    // The function is pure — same input always produces same output regardless
+    // of which account the caller intends to save to. Caller-side scoping
+    // (where: { accountId }) is what guarantees per-account isolation.
+    const a = riskRulesData({ maxDailyLoss: 500, allowedEndHour: 16 });
+    const b = riskRulesData({ maxDailyLoss: 1000, allowedEndHour: 18 });
+    assert.notEqual(a.maxDailyLoss, b.maxDailyLoss);
+    assert.notEqual(a.allowedEndHour, b.allowedEndHour);
+    // Mutating one snapshot must not affect the other (no shared object refs).
+    (a as Record<string, unknown>).maxDailyLoss = "999";
+    assert.equal(b.maxDailyLoss, "1000");
+  });
+
+  it("cutoff (allowedEndHour) round-trips as an account-level integer override", () => {
+    // Account override: cutoff at 16. Default template lives in a separate
+    // table (RiskRules.sessionEndHour) and is not touched by this helper.
+    const result = riskRulesData({ allowedEndHour: 16 });
+    assert.equal(result.allowedEndHour, 16);
+    // riskRulesData has no concept of "default" — it only emits the
+    // AccountRiskRules columns. There is no sessionEndHour key in the output.
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(result, "sessionEndHour"),
+      "account body must not produce sessionEndHour (that's the default template column)",
+    );
+  });
+});

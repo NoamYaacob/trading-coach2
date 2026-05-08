@@ -3,11 +3,23 @@ import assert from "node:assert/strict";
 
 import {
   computeAccountRulesBanner,
+  computeAccountSaveButtonState,
   canSaveAccountRulesNow,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic.ts";
+
+const baseSaveInput = {
+  isDirty: false,
+  saving: false,
+  removing: false,
+  hasExistingRules: true,
+  hasValidConsent: true,
+  consentChecked: false,
+  savedAt: null,
+  pendingMessage: null,
+} as const;
 
 // ─── canSaveAccountRulesNow ───────────────────────────────────────────────────
 
@@ -106,4 +118,89 @@ test("first-time save never shows lock message even when lockMessage is provided
 test("REVIEW_INHERITED_HINT mentions reviewing limits", () => {
   assert.ok(REVIEW_INHERITED_HINT.toLowerCase().includes("review"));
   assert.ok(REVIEW_INHERITED_HINT.toLowerCase().includes("inherited") || REVIEW_INHERITED_HINT.toLowerCase().includes("limit"));
+});
+
+// ─── computeAccountSaveButtonState ────────────────────────────────────────────
+
+test("save button disabled when nothing changed (existing rules, clean form)", () => {
+  const state = computeAccountSaveButtonState({ ...baseSaveInput });
+  assert.equal(state.disabled, true);
+  assert.equal(state.label, "Save rules");
+});
+
+test("save button enabled as soon as a field changes (isDirty=true)", () => {
+  const state = computeAccountSaveButtonState({ ...baseSaveInput, isDirty: true });
+  assert.equal(state.disabled, false);
+  assert.equal(state.label, "Save rules");
+});
+
+test("save button enabled for first-time setup even when nothing typed yet", () => {
+  // hasExistingRules=false → user is creating an override; saving the inherited
+  // values into a new AccountRiskRules row counts as a save.
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    hasExistingRules: false,
+  });
+  assert.equal(state.disabled, false);
+});
+
+test("save button enabled when consent is freshly ticked even with clean form", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    hasValidConsent: false,
+    consentChecked: true,
+  });
+  assert.equal(state.disabled, false);
+});
+
+test("save button label says 'Saving…' while saving", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    saving: true,
+  });
+  assert.equal(state.disabled, true);
+  assert.equal(state.label, "Saving…");
+});
+
+test("save button shows 'Saved' after successful save (clean form, savedAt stamped)", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: false,
+    savedAt: new Date(),
+  });
+  assert.equal(state.disabled, true, "stays disabled until next edit");
+  assert.equal(state.label, "Saved");
+});
+
+test("after save → user edits a field → button re-enables and label flips back to 'Save rules'", () => {
+  // Simulate the lifecycle: saved, then user edits a field.
+  const after = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    savedAt: new Date(),
+  });
+  assert.equal(after.disabled, false);
+  assert.equal(after.label, "Save rules");
+});
+
+test("save button disabled while remove flow is in flight", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    removing: true,
+  });
+  assert.equal(state.disabled, true);
+});
+
+test("save button stays in 'Save rules' label when a pending message is shown after save", () => {
+  // pendingMessage is set when the save was deferred (locked window).
+  // Label should stay "Save rules" rather than "Saved" — the change is not yet applied.
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: false,
+    savedAt: new Date(),
+    pendingMessage: "Saved as pending — applies at next edit window.",
+  });
+  assert.equal(state.label, "Save rules");
 });
