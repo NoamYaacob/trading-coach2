@@ -53,6 +53,50 @@ export function getTradeCountDisplay(account: {
   };
 }
 
+// ── Session display metrics ───────────────────────────────────────────────────
+
+/**
+ * Returns display-safe trade count, P&L, and source from a LiveSessionState row.
+ *
+ * Stale detection: if the stored sessionDate doesn't match todayKey (current CME
+ * trading day key, e.g. "2026-05-08"), the session is from a prior day and its
+ * count/P&L must not be shown as today's. In that case all three metric fields
+ * are nulled out / set to "unavailable" so the UI shows "—" or "Unavailable"
+ * rather than the prior-day number.
+ *
+ * consecutiveLosses and riskState are intentionally NOT included here — they
+ * are enforcement fields that carry across sessions and must not be cleared.
+ */
+export function resolveSessionDisplayMetrics(
+  sessionState: {
+    sessionDate: string;
+    tradesCount: number;
+    dailyPnl: number | { toString(): string };
+    tradeCountSource: string | null;
+  } | null,
+  todayKey: string,
+): {
+  tradesCount: number | null;
+  dailyPnl: number | null;
+  tradeCountSource: "verified" | "estimated" | "unavailable";
+  isStale: boolean;
+} {
+  if (!sessionState) {
+    return { tradesCount: null, dailyPnl: null, tradeCountSource: "unavailable", isStale: false };
+  }
+  if (sessionState.sessionDate !== todayKey) {
+    return { tradesCount: null, dailyPnl: null, tradeCountSource: "unavailable", isStale: true };
+  }
+  return {
+    tradesCount: sessionState.tradesCount,
+    dailyPnl: Number(sessionState.dailyPnl),
+    tradeCountSource: (sessionState.tradeCountSource ?? "verified") as
+      | "verified"
+      | "estimated"
+      | "unavailable",
+    isStale: false,
+  };
+}
 
 export function deriveBreachReason(input: {
   status: AccountStatus;

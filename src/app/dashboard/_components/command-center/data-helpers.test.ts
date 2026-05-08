@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTradingPermissionStatus } from "./data-helpers.ts";
+import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics } from "./data-helpers.ts";
 import type { AccountStatus, EnforcementMode } from "./types.ts";
 
 function makeAccount(
@@ -231,5 +231,112 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
       result.subline.toLowerCase().includes("cancel/flatten not active yet"),
       `got: ${result.subline}`,
     );
+  });
+});
+
+// ── resolveSessionDisplayMetrics ──────────────────────────────────────────────
+
+const TODAY = "2026-05-08";
+const YESTERDAY = "2026-05-07";
+
+function makeSession(overrides: {
+  sessionDate?: string;
+  tradesCount?: number;
+  dailyPnl?: number;
+  tradeCountSource?: string | null;
+}) {
+  return {
+    sessionDate: overrides.sessionDate ?? TODAY,
+    tradesCount: overrides.tradesCount ?? 0,
+    dailyPnl: overrides.dailyPnl ?? 0,
+    tradeCountSource: overrides.tradeCountSource ?? "verified",
+  };
+}
+
+describe("resolveSessionDisplayMetrics — no session", () => {
+  it("returns null metrics and isStale:false when sessionState is null", () => {
+    const result = resolveSessionDisplayMetrics(null, TODAY);
+    assert.equal(result.tradesCount, null);
+    assert.equal(result.dailyPnl, null);
+    assert.equal(result.tradeCountSource, "unavailable");
+    assert.equal(result.isStale, false);
+  });
+});
+
+describe("resolveSessionDisplayMetrics — stale session (prior CME day)", () => {
+  it("nulls all display metrics when sessionDate is yesterday's key", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: YESTERDAY, tradesCount: 2, dailyPnl: -150 }),
+      TODAY,
+    );
+    assert.equal(result.tradesCount, null, "stale count must not be shown as today's");
+    assert.equal(result.dailyPnl, null, "stale P&L must not be shown as today's");
+    assert.equal(result.tradeCountSource, "unavailable");
+    assert.equal(result.isStale, true);
+  });
+
+  it("isStale:true regardless of tradeCountSource value", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: YESTERDAY, tradeCountSource: "estimated" }),
+      TODAY,
+    );
+    assert.equal(result.isStale, true);
+    assert.equal(result.tradeCountSource, "unavailable");
+  });
+
+  it("isStale:true for any sessionDate that differs from todayKey", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: "2026-01-01", tradesCount: 99 }),
+      TODAY,
+    );
+    assert.equal(result.tradesCount, null);
+    assert.equal(result.isStale, true);
+  });
+});
+
+describe("resolveSessionDisplayMetrics — current session", () => {
+  it("returns actual metrics when sessionDate matches todayKey", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: TODAY, tradesCount: 3, dailyPnl: 250 }),
+      TODAY,
+    );
+    assert.equal(result.tradesCount, 3);
+    assert.equal(result.dailyPnl, 250);
+    assert.equal(result.tradeCountSource, "verified");
+    assert.equal(result.isStale, false);
+  });
+
+  it("returns 0 trades when session exists with no fills yet", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: TODAY, tradesCount: 0 }),
+      TODAY,
+    );
+    assert.equal(result.tradesCount, 0);
+    assert.equal(result.isStale, false);
+  });
+
+  it("preserves tradeCountSource from session", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: TODAY, tradeCountSource: "estimated" }),
+      TODAY,
+    );
+    assert.equal(result.tradeCountSource, "estimated");
+  });
+
+  it("treats null tradeCountSource as verified", () => {
+    const result = resolveSessionDisplayMetrics(
+      makeSession({ sessionDate: TODAY, tradeCountSource: null }),
+      TODAY,
+    );
+    assert.equal(result.tradeCountSource, "verified");
+  });
+
+  it("handles Decimal-like dailyPnl (toString-able object)", () => {
+    const decimalLike = { toString: () => "-75.50" };
+    const result = resolveSessionDisplayMetrics(
+      { sessionDate: TODAY, tradesCount: 1, dailyPnl: decimalLike as unknown as number, tradeCountSource: "verified" },
+      TODAY,
+    );
+    assert.equal(result.dailyPnl, -75.5);
   });
 });

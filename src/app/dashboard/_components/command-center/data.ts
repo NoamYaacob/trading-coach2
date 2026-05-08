@@ -17,7 +17,9 @@ import {
   deriveEnforcementMode,
   derivePropFirmSetupNeeded,
   deriveStatus,
+  resolveSessionDisplayMetrics,
 } from "./data-helpers";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 import { isPreviewEnabled, buildPreviewPendingAccount } from "./discovery-preview";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
@@ -125,6 +127,11 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     defaultMaxDailyLoss != null || defaultMaxTradesPerDay != null || defaultStopAfterLosses != null,
   );
 
+  // CME trading day key used to detect stale LiveSessionState rows — a row
+  // whose sessionDate differs from this key is from a prior session and must
+  // not be shown as today's count/P&L (would display yesterday's "2 trades").
+  const todayKey = deriveCmeTradingDayKey();
+
   const computed: CommandCenterAccount[] = accounts.map((account) => {
     const accountRules = account.riskRules;
     const sessionState = account.sessionState;
@@ -149,11 +156,10 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     const maxTradesPerDay = accountRules?.maxTradesPerDay ?? defaultMaxTradesPerDay;
     const stopAfterLosses = accountRules?.stopAfterLosses ?? defaultStopAfterLosses;
 
-    const dailyPnl = sessionState ? Number(sessionState.dailyPnl) : null;
-    const tradesCount = sessionState ? sessionState.tradesCount : null;
-    const tradeCountSource: "verified" | "estimated" | "unavailable" = sessionState
-      ? ((sessionState.tradeCountSource ?? "verified") as "verified" | "estimated" | "unavailable")
-      : "unavailable";
+    const { tradesCount, dailyPnl, tradeCountSource } = resolveSessionDisplayMetrics(
+      sessionState,
+      todayKey,
+    );
     const consecutiveLosses = sessionState ? sessionState.consecutiveLosses : null;
     const riskState = sessionState
       ? (sessionState.riskState as "NORMAL" | "WARNING" | "STOPPED")
