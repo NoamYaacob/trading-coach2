@@ -186,7 +186,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       {/* ── Money limits ────────────────────────────────────────────────── */}
       <div role="group" aria-label="Money limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Money limits</p>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field label="Account size ($)">
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
           </Field>
@@ -201,7 +201,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
-          <Field label="Max risk per trade ($)" hint="Reference only — Guardrail does not lock the account for this limit. Use daily loss limit for enforcement.">
+          <Field label="Max risk per trade ($)" hint="Warning only — does not lock the account.">
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
@@ -210,7 +210,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       {/* ── Trading limits ──────────────────────────────────────────────── */}
       <div role="group" aria-label="Trading limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Trading limits</p>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field label="Max trades per day">
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>

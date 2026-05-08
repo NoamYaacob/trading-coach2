@@ -350,7 +350,7 @@ export function AccountRulesForm({
         {!hasExistingRules && (
           <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
         )}
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>

@@ -33,24 +33,17 @@ export function GuardianToggle({ initialEnabled, hasFullAccessAccount = false }:
   }
 
   if (enabled) {
-    const title = hasFullAccessAccount
-      ? "Guardian active · Broker risk settings enabled"
-      : "Guardian is active";
-    const subtitle = hasFullAccessAccount
-      ? "Guardrail monitors this account against your rules. Daily loss/profit breaches can trigger Tradovate risk settings. Order actions are not enabled yet."
-      : "Guardrail is monitoring each session against your rules.";
+    const secondary = hasFullAccessAccount
+      ? "Broker risk settings enabled · Order actions not enabled yet"
+      : "Monitoring each session against your rules";
 
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold text-white" aria-hidden>
-            ✓
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-emerald-900">{title}</p>
-            <p className="mt-0.5 text-xs text-emerald-800/80">{subtitle}</p>
-          </div>
-        </div>
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-1.5 text-xs text-emerald-900">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+        <span className="min-w-0 truncate">
+          <span className="font-semibold">Guardian active</span>
+          <span className="text-emerald-800/70"> · {secondary}</span>
+        </span>
       </div>
     );
   }
