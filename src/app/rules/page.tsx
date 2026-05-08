@@ -311,15 +311,8 @@ export default async function RulesPage({
 
           {/* Enforcement mode banner */}
           <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <span className="font-semibold">{enforcementInfo.label}. </span>
-                {enforcementInfo.detail}
-              </div>
-              <code className="shrink-0 self-start rounded bg-current/10 px-1.5 py-0.5 font-mono text-[9px] opacity-40">
-                {enforcementInfo.mode}
-              </code>
-            </div>
+            <span className="font-semibold">{enforcementInfo.label}. </span>
+            {enforcementInfo.detail}
           </div>
 
           {/* How enforcement works — compact collapsible */}

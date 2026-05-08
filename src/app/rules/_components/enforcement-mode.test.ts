@@ -200,6 +200,72 @@ describe("computeEnforcementMode — Tradovate permission probe not yet run", ()
   });
 });
 
+// ── Regression: never leak raw enum strings into user-facing copy ─────────────
+
+describe("computeEnforcementMode — regression: no raw enum strings in label/detail", () => {
+  const FORBIDDEN = [
+    "monitoring_only",
+    "internal_app_lock",
+    "broker_enforcement_pending",
+    "broker_enforced_active",
+    "broker_enforcement_failed",
+    "permission_unverified",
+    "broker_readonly",
+    "dry_run",
+  ];
+
+  type Case = {
+    name: string;
+    account: Parameters<typeof computeEnforcementMode>[0];
+    isDefault: boolean;
+    options?: Parameters<typeof computeEnforcementMode>[2];
+  };
+
+  const cases: Case[] = [
+    { name: "default · hasFullAccessAccount=true", account: null, isDefault: true, options: { hasFullAccessAccount: true } },
+    { name: "default · hasFullAccessAccount=false", account: null, isDefault: true, options: { hasFullAccessAccount: false } },
+    { name: "default · no options", account: null, isDefault: true },
+    { name: "no account", account: null, isDefault: false },
+    {
+      name: "no broker connection",
+      account: { platform: "tradovate", brokerConnectionId: null, brokerConnection: null },
+      isDefault: false,
+    },
+    { name: "expired connection", account: tradovateAccount("expired", "full_access"), isDefault: false },
+    { name: "connection_error", account: tradovateAccount("connection_error", "full_access"), isDefault: false },
+    { name: "tradovate read_only", account: tradovateAccount("connected_live", "read_only"), isDefault: false },
+    { name: "tradovate full_access", account: tradovateAccount("connected_live", "full_access"), isDefault: false },
+    { name: "tradovate full_access via connected_readonly status", account: tradovateAccount("connected_readonly", "full_access"), isDefault: false },
+    { name: "tradovate permissionLevel=null (probe pending)", account: tradovateAccount("connected_live", null), isDefault: false },
+    { name: "tradovate permissionLevel=unknown", account: tradovateAccount("connected_readonly", "unknown"), isDefault: false },
+    {
+      name: "non-tradovate connected (tradingview)",
+      account: {
+        platform: "tradingview",
+        brokerConnectionId: "conn-tv",
+        brokerConnection: { platform: "tradingview", connectionStatus: "connected_live", permissionLevel: null },
+      },
+      isDefault: false,
+    },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}: label and detail contain no raw enum strings`, () => {
+      const result = computeEnforcementMode(c.account, c.isDefault, c.options);
+      for (const forbidden of FORBIDDEN) {
+        assert.ok(
+          !result.label.toLowerCase().includes(forbidden),
+          `label "${result.label}" must not contain raw enum "${forbidden}"`,
+        );
+        assert.ok(
+          !result.detail.toLowerCase().includes(forbidden),
+          `detail "${result.detail}" must not contain raw enum "${forbidden}"`,
+        );
+      }
+    });
+  }
+});
+
 describe("computeEnforcementMode — non-Tradovate platform", () => {
   it("returns monitoring_only for non-Tradovate connected account", () => {
     const result = computeEnforcementMode(
