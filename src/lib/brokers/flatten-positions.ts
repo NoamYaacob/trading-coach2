@@ -122,11 +122,7 @@ export async function flattenPositionsForAccount(
   const effectiveDryRun =
     options.dryRun === true || !orderActionsEnabled || !permissionAllowsLive;
 
-  // ── 4. Initialize client ──────────────────────────────────────────────────
-  const client = new TradovateClient(connectedAccountId, account.userId);
-  await client.initialize();
-
-  // ── 5. Dry-run: report what would happen without sending any API writes ───
+  // ── 4. Dry-run: no client initialization, no API calls ────────────────────
   if (effectiveDryRun) {
     const result: FlattenPositionsResult = {
       dryRun: true,
@@ -147,6 +143,10 @@ export async function flattenPositionsForAccount(
     });
     return result;
   }
+
+  // ── 5. Initialize client for live action ─────────────────────────────────
+  const client = new TradovateClient(connectedAccountId, account.userId);
+  await client.initialize();
 
   // ── 6. Live: delegate to TradovateClient.applyFlattenOpenPositions() ──────
   const brokerResult = await client.applyFlattenOpenPositions();

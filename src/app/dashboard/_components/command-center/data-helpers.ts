@@ -705,14 +705,14 @@ export function deriveTradingPermissionStatus(input: {
           level: "allowed",
           headline: `Broker risk settings enabled · ${n} account${n > 1 ? "s" : ""} locked`,
           subline:
-            "Daily loss protection can use Tradovate risk settings. Cancel, flatten, and order-blocking actions are not active yet.",
+            "Order permissions available · cancel/flatten not active yet.",
         };
       }
       return {
         level: "allowed",
         headline: "Broker risk settings enabled",
         subline:
-          "Daily loss protection can use Tradovate risk settings. Cancel, flatten, and order-blocking actions are not active yet.",
+          "Order permissions available · cancel/flatten not active yet.",
       };
     }
     if (lockedCount > 0) {
