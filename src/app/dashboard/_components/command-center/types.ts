@@ -242,4 +242,7 @@ export type CommandCenterData = {
     nextTradingDayKey: string;
     hasSessionHours: boolean;
   };
+  /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu).
+   *  Drives "Market maintenance" badge and "CME maintenance window" banner. */
+  isMaintenanceWindow: boolean;
 };

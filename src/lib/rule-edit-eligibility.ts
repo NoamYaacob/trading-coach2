@@ -58,6 +58,9 @@ export type RuleEditEligibilityInput = {
   hasRuleBreachToday?: boolean;
   hasProtectionLockToday?: boolean;
   isAccountStopped?: boolean;
+  /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu).
+   *  Session-lock checks are bypassed so traders can edit rules during this window. */
+  isCmeMaintenance?: boolean;
 };
 
 export type SessionPreset = {
@@ -240,6 +243,19 @@ export function deriveRuleEditEligibility(
     return {
       canEditNow: false,
       reason: "open_position",
+      nextAllowedAt: null,
+      lockStartsAt: null,
+      sessionStartsAt: null,
+      sessionEndsAt: null,
+    };
+  }
+
+  // CME maintenance window (4:00–5:00 PM CT, Mon–Thu) is a safe edit window:
+  // the market is not actively tradable so session-lock checks don't apply.
+  if (input.isCmeMaintenance) {
+    return {
+      canEditNow: true,
+      reason: "can_edit",
       nextAllowedAt: null,
       lockStartsAt: null,
       sessionStartsAt: null,

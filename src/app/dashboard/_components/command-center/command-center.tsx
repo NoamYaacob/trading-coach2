@@ -262,6 +262,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
       enforcementMode: a.enforcementMode,
       permissionLevel: a.permissionLevel,
     })),
+    isMaintenanceWindow: data.isMaintenanceWindow,
   });
 
   return (
@@ -314,6 +315,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
                   group={group}
                   isCollapsed={collapsedGroups.has(group.groupId)}
                   onToggleCollapsed={() => handleToggleCollapsed(group.groupId)}
+                  isMaintenanceWindow={data.isMaintenanceWindow}
                 />
               ))
             )}
@@ -614,10 +616,12 @@ function FirmSection({
   group,
   isCollapsed,
   onToggleCollapsed,
+  isMaintenanceWindow,
 }: {
   group: CommandCenterFirmGroup;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
+  isMaintenanceWindow: boolean;
 }) {
   // Default expanded (when not in the collapsed set) so risk-relevant detail
   // is visible without an extra click. State is lifted to CommandCenter and
@@ -752,7 +756,7 @@ function FirmSection({
               </thead>
               <tbody>
                 {group.accounts.map((account) => (
-                  <AccountRow key={account.id} account={account} />
+                  <AccountRow key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} />
                 ))}
               </tbody>
             </table>
@@ -761,7 +765,7 @@ function FirmSection({
           {/* Mobile/tablet cards */}
           <div className="grid gap-2 p-2.5 lg:hidden sm:p-3">
             {group.accounts.map((account) => (
-              <AccountCard key={account.id} account={account} />
+              <AccountCard key={account.id} account={account} isMaintenanceWindow={isMaintenanceWindow} />
             ))}
           </div>
         </div>
@@ -882,7 +886,7 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
   );
 }
 
-function AccountRow({ account }: { account: CommandCenterAccount }) {
+function AccountRow({ account, isMaintenanceWindow }: { account: CommandCenterAccount; isMaintenanceWindow: boolean }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   return (
@@ -895,6 +899,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
             setupNeededReason={account.setupNeededReason}
             enforcementMode={account.enforcementMode}
             requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
+            isMaintenanceWindow={isMaintenanceWindow}
           />
           <div className="min-w-0">
             <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
@@ -994,7 +999,7 @@ function AccountRow({ account }: { account: CommandCenterAccount }) {
 
 // ─── Mobile card ───────────────────────────────────────────────────────────────
 
-function AccountCard({ account }: { account: CommandCenterAccount }) {
+function AccountCard({ account, isMaintenanceWindow }: { account: CommandCenterAccount; isMaintenanceWindow: boolean }) {
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
   const stateLabel = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
@@ -1048,6 +1053,7 @@ function AccountCard({ account }: { account: CommandCenterAccount }) {
             setupNeededReason={account.setupNeededReason}
             enforcementMode={account.enforcementMode}
             requiresAutomatedActionsConsent={account.requiresAutomatedActionsConsent}
+            isMaintenanceWindow={isMaintenanceWindow}
           />
         <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
       </div>
@@ -1311,6 +1317,7 @@ function StatusBadge({
   setupNeededReason,
   enforcementMode,
   requiresAutomatedActionsConsent,
+  isMaintenanceWindow,
 }: {
   status: AccountStatus;
   setupNeededReason?: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
@@ -1318,20 +1325,29 @@ function StatusBadge({
    *  fallback usages omit them because the label is already deterministic. */
   enforcementMode?: EnforcementMode;
   requiresAutomatedActionsConsent?: boolean;
+  isMaintenanceWindow?: boolean;
 }) {
   const label = deriveRowStatusLabel({
     status,
     setupNeededReason: setupNeededReason ?? null,
     enforcementMode: enforcementMode ?? "not_connected",
     requiresAutomatedActionsConsent: requiresAutomatedActionsConsent ?? false,
+    isMaintenanceWindow,
   });
-  // "Action required" is a refinement of "allowed" status — paint it amber
-  // to draw attention away from the default emerald "tradable" treatment.
+  // "Action required" is a refinement of "allowed" status — paint it amber.
+  // "Market maintenance" is a temporary non-tradable state — paint it stone.
   const isActionRequired = label === "Action required";
+  const isMaintenance = label === "Market maintenance";
   const badgeClass = isActionRequired
     ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
-    : STATUS_BADGE_CLASS[status];
-  const dotClass = isActionRequired ? "bg-amber-500" : STATUS_DOT_CLASS[status];
+    : isMaintenance
+      ? "bg-stone-100 text-stone-600"
+      : STATUS_BADGE_CLASS[status];
+  const dotClass = isActionRequired
+    ? "bg-amber-500"
+    : isMaintenance
+      ? "bg-stone-400"
+      : STATUS_DOT_CLASS[status];
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${badgeClass}`}

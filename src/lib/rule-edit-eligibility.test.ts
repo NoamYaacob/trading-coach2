@@ -1847,3 +1847,73 @@ describe("buildRuleEditLockMessage — breach/lockout vs session copy", () => {
     );
   });
 });
+
+// ── CME maintenance window bypass ─────────────────────────────────────────────
+
+describe("deriveRuleEditEligibility — CME maintenance bypass", () => {
+  // Thursday 2026-05-07 16:30 CT (= within maintenance window)
+  const maintenanceNow = tzDate(2026, 5, 7, 16, 30, "America/Chicago");
+
+  it("allows editing during maintenance even when within session buffer", () => {
+    const result = deriveRuleEditEligibility({
+      now: maintenanceNow,
+      selectedSessionPresets: ["ny_pm"],
+      isCmeMaintenance: true,
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "can_edit");
+  });
+
+  it("allows editing during maintenance even when within session", () => {
+    const result = deriveRuleEditEligibility({
+      now: maintenanceNow,
+      sessionStartTime: "09:30",
+      sessionEndTime: "17:00",
+      sessionTimezone: "America/New_York",
+      isCmeMaintenance: true,
+    });
+    assert.equal(result.canEditNow, true);
+    assert.equal(result.reason, "can_edit");
+  });
+
+  it("maintenance bypass does not apply when account is stopped", () => {
+    const result = deriveRuleEditEligibility({
+      now: maintenanceNow,
+      isCmeMaintenance: true,
+      isAccountStopped: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "account_stopped");
+  });
+
+  it("maintenance bypass does not apply when rule was breached today", () => {
+    const result = deriveRuleEditEligibility({
+      now: maintenanceNow,
+      isCmeMaintenance: true,
+      hasRuleBreachToday: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "rule_breach_today");
+  });
+
+  it("maintenance bypass does not apply when position is open", () => {
+    const result = deriveRuleEditEligibility({
+      now: maintenanceNow,
+      isCmeMaintenance: true,
+      hasOpenPosition: true,
+    });
+    assert.equal(result.canEditNow, false);
+    assert.equal(result.reason, "open_position");
+  });
+
+  it("outside maintenance (isCmeMaintenance false) → still blocked within session", () => {
+    // Thursday 10:00 ET (NY_AM session)
+    const insideSession = tzDate(2026, 5, 7, 10, 0, "America/New_York");
+    const result = deriveRuleEditEligibility({
+      now: insideSession,
+      selectedSessionPresets: ["ny_am"],
+      isCmeMaintenance: false,
+    });
+    assert.equal(result.canEditNow, false);
+  });
+});

@@ -20,6 +20,7 @@ import {
   resolveSessionDisplayMetrics,
 } from "./data-helpers";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { isCmeMaintenanceWindow } from "@/lib/time/cme-session";
 import { isPreviewEnabled, buildPreviewPendingAccount } from "./discovery-preview";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
@@ -131,6 +132,10 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
   // whose sessionDate differs from this key is from a prior session and must
   // not be shown as today's count/P&L (would display yesterday's "2 trades").
   const todayKey = deriveCmeTradingDayKey();
+  // True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu).
+  // Drives "Market maintenance" badge and "CME maintenance window" banner;
+  // does NOT reset session metrics (the session key is unchanged during break).
+  const isMaintenanceWindow = isCmeMaintenanceWindow();
 
   const computed: CommandCenterAccount[] = accounts.map((account) => {
     const accountRules = account.riskRules;
@@ -528,5 +533,6 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       nextTradingDayKey: protectionLock.nextTradingDayKey,
       hasSessionHours: protectionLock.hasSessionHours,
     },
+    isMaintenanceWindow,
   };
 }

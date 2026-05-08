@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics } from "./data-helpers.ts";
+import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel } from "./data-helpers.ts";
 import type { AccountStatus, EnforcementMode } from "./types.ts";
 
 function makeAccount(
@@ -338,5 +338,94 @@ describe("resolveSessionDisplayMetrics — current session", () => {
       TODAY,
     );
     assert.equal(result.dailyPnl, -75.5);
+  });
+});
+
+// ── deriveRowStatusLabel — maintenance window ─────────────────────────────────
+
+describe("deriveRowStatusLabel — maintenance window", () => {
+  const allowedBase = {
+    status: "allowed" as AccountStatus,
+    setupNeededReason: null as null,
+    enforcementMode: "broker_active" as EnforcementMode,
+    requiresAutomatedActionsConsent: false,
+  };
+
+  it("returns 'Market maintenance' for allowed account during maintenance", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, isMaintenanceWindow: true }),
+      "Market maintenance",
+    );
+  });
+
+  it("returns 'Tradable' for allowed account outside maintenance", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, isMaintenanceWindow: false }),
+      "Tradable",
+    );
+  });
+
+  it("maintenance does not override locked status", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, status: "locked", isMaintenanceWindow: true }),
+      "Locked",
+    );
+  });
+
+  it("maintenance does not override warning status", () => {
+    assert.equal(
+      deriveRowStatusLabel({ ...allowedBase, status: "warning", isMaintenanceWindow: true }),
+      "Warning",
+    );
+  });
+
+  it("maintenance does not override setup_needed status", () => {
+    assert.equal(
+      deriveRowStatusLabel({
+        ...allowedBase,
+        status: "setup_needed",
+        setupNeededReason: "no_rules",
+        isMaintenanceWindow: true,
+      }),
+      "Needs rules",
+    );
+  });
+});
+
+// ── deriveTradingPermissionStatus — maintenance window ────────────────────────
+
+describe("deriveTradingPermissionStatus — maintenance window", () => {
+  it("returns maintenance headline when all accounts are allowed and maintenance is active", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "broker_active")],
+      isMaintenanceWindow: true,
+    });
+    assert.equal(result?.level, "allowed");
+    assert.equal(result?.headline, "CME maintenance window");
+    assert.match(result?.subline ?? "", /5:00 PM CT/);
+  });
+
+  it("maintenance banner is suppressed when an account is locked", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed"), makeAccount("locked")],
+      isMaintenanceWindow: true,
+    });
+    assert.equal(result?.level, "locked");
+  });
+
+  it("maintenance banner is suppressed when an account is in warning", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed"), makeAccount("warning")],
+      isMaintenanceWindow: true,
+    });
+    assert.equal(result?.level, "warning");
+  });
+
+  it("isMaintenanceWindow false → normal Allowed to trade headline", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "broker_active")],
+      isMaintenanceWindow: false,
+    });
+    assert.equal(result?.headline, "Allowed to trade");
   });
 });

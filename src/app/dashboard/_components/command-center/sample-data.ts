@@ -653,4 +653,5 @@ export const DEMO_COMMAND_CENTER_DATA: CommandCenterData = {
     nextTradingDayKey: "2026-05-05",
     hasSessionHours: false,
   },
+  isMaintenanceWindow: false,
 };

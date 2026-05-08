@@ -430,17 +430,19 @@ export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
  * Refines the raw AccountStatus (which is a model concept) into a copy that
  * a non-technical trader recognises:
  *
- *   TRADABLE        — active, no broker capability gap, no consent gap
- *   ACTION REQUIRED — allowed but consent is missing OR broker permissions
- *                     are limited (read-only). Guides the user to the fix.
- *   WARNING         — approaching daily loss / trade limit
- *   LOCKED          — Guardrail STOPPED for the rest of the session
- *   UNAVAILABLE     — broker no longer returns this account
- *   NOT CONNECTED   — connection expired/error/never connected
+ *   TRADABLE           — active, no broker capability gap, no consent gap
+ *   MARKET MAINTENANCE — CME 4:00–5:00 PM CT daily break; not tradable now
+ *   ACTION REQUIRED    — allowed but consent is missing OR broker permissions
+ *                        are limited (read-only). Guides the user to the fix.
+ *   WARNING            — approaching daily loss / trade limit
+ *   LOCKED             — Guardrail STOPPED for the rest of the session
+ *   UNAVAILABLE        — broker no longer returns this account
+ *   NOT CONNECTED      — connection expired/error/never connected
  *   NEEDS RULES / PENDING / FIRM RULES MISSING — setup states
  */
 export type RowStatusLabel =
   | "Tradable"
+  | "Market maintenance"
   | "Action required"
   | "Warning"
   | "Locked"
@@ -455,6 +457,8 @@ export function deriveRowStatusLabel(input: {
   setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
   enforcementMode: EnforcementMode;
   requiresAutomatedActionsConsent: boolean;
+  /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu). */
+  isMaintenanceWindow?: boolean;
 }): RowStatusLabel {
   if (input.status === "unavailable") return "Unavailable";
   if (input.status === "locked") return "Locked";
@@ -465,7 +469,9 @@ export function deriveRowStatusLabel(input: {
     if (input.setupNeededReason === "prop_firm_rules_missing") return "Firm rules missing";
     return "Needs rules";
   }
-  // status === "allowed" → refine based on consent + permission gaps.
+  // status === "allowed" — show maintenance label if the CME break is active.
+  if (input.isMaintenanceWindow) return "Market maintenance";
+  // Refine based on consent + permission gaps.
   if (input.requiresAutomatedActionsConsent) return "Action required";
   if (input.enforcementMode === "broker_readonly") return "Action required";
   return "Tradable";
@@ -728,6 +734,8 @@ export function deriveTradingPermissionStatus(input: {
     enforcementMode: EnforcementMode;
     permissionLevel?: string | null;
   }>;
+  /** True during the CME daily maintenance break (4:00–5:00 PM CT, Mon–Thu). */
+  isMaintenanceWindow?: boolean;
 }): TradingPermissionStatus | null {
   const { accounts } = input;
   const activeAccounts = accounts.filter(
@@ -791,6 +799,14 @@ export function deriveTradingPermissionStatus(input: {
       level: "warning",
       headline: n === 1 ? "1 account in warning" : `${n} accounts in warning`,
       subline: "Approaching the daily loss limit. Monitor your positions closely.",
+    };
+  }
+
+  if (input.isMaintenanceWindow) {
+    return {
+      level: "allowed",
+      headline: "CME maintenance window",
+      subline: "Trading resumes at 5:00 PM CT.",
     };
   }
 
