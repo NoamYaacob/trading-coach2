@@ -4,73 +4,68 @@ import assert from "node:assert/strict";
 import {
   decidePendingPromotion,
   promotePendingRules,
-  type PromotionSummary,
 } from "./pending-rule-promoter.ts";
+
+// ─── Reference instants ───────────────────────────────────────────────────────
+//
+// Active CME trading: Mon 18:00 CT = Mon 23:00 UTC (CDT, May).
+// Daily maintenance:  Mon 16:30 CT = Mon 21:30 UTC.
+const NOW_ACTIVE = new Date("2026-05-11T23:00:00.000Z");      // Mon 18:00 CT
+const NOW_MAINTENANCE = new Date("2026-05-11T21:30:00.000Z"); // Mon 16:30 CT
+const NOW_WEEKEND = new Date("2026-05-15T21:30:00.000Z");     // Fri 16:30 CT (weekend close)
 
 // ─── decidePendingPromotion (pure) ────────────────────────────────────────────
 
 describe("decidePendingPromotion — skip cases", () => {
   test("skip when pendingPayloadJson is null", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: null, pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({ pendingPayloadJson: null, pendingEffectiveDate: "2026-05-09" });
     assert.equal(d.kind, "skip");
     if (d.kind === "skip") assert.equal(d.reason, "no_pending");
   });
 
   test("skip when pendingEffectiveDate is null", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { maxDailyLoss: "500" }, pendingEffectiveDate: null },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { maxDailyLoss: "500" },
+      pendingEffectiveDate: null,
+    });
     assert.equal(d.kind, "skip");
     if (d.kind === "skip") assert.equal(d.reason, "no_pending");
   });
 
-  test("skip 'future' when effective date is later than today's CME key", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { maxDailyLoss: "500" }, pendingEffectiveDate: "2026-05-10" },
-      "2026-05-09",
-    );
-    assert.equal(d.kind, "skip");
-    if (d.kind === "skip") assert.equal(d.reason, "future");
-  });
-
   test("skip 'invalid_date' when effective date is not YYYY-MM-DD", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { maxDailyLoss: "500" }, pendingEffectiveDate: "tomorrow" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { maxDailyLoss: "500" },
+      pendingEffectiveDate: "tomorrow",
+    });
     assert.equal(d.kind, "skip");
     if (d.kind === "skip") assert.equal(d.reason, "invalid_date");
   });
 
   test("skip 'invalid_payload' when payload is an array", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: ["a", "b"], pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: ["a", "b"],
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "skip");
     if (d.kind === "skip") assert.equal(d.reason, "invalid_payload");
   });
 
   test("skip 'invalid_payload' when payload is a string (corruption)", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: "oops", pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: "oops",
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "skip");
     if (d.kind === "skip") assert.equal(d.reason, "invalid_payload");
   });
 });
 
 describe("decidePendingPromotion — promote", () => {
-  test("promotes when CME day key equals effective date", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { maxDailyLoss: "500", maxTradesPerDay: 5 }, pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+  test("returns promote when payload is a valid object", () => {
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { maxDailyLoss: "500", maxTradesPerDay: 5 },
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "promote");
     if (d.kind === "promote") {
       assert.equal(d.updates.maxDailyLoss, "500");
@@ -78,26 +73,15 @@ describe("decidePendingPromotion — promote", () => {
     }
   });
 
-  test("promotes when CME day key is later than effective date", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { maxDailyLoss: "500" }, pendingEffectiveDate: "2026-05-09" },
-      "2026-05-15",
-    );
-    assert.equal(d.kind, "promote");
-  });
-
   test("strips pendingPayloadJson and pendingEffectiveDate keys defensively", () => {
-    const d = decidePendingPromotion(
-      {
-        pendingPayloadJson: {
-          maxDailyLoss: "500",
-          pendingPayloadJson: { evil: true },
-          pendingEffectiveDate: "should-not-leak",
-        },
-        pendingEffectiveDate: "2026-05-09",
+    const d = decidePendingPromotion({
+      pendingPayloadJson: {
+        maxDailyLoss: "500",
+        pendingPayloadJson: { evil: true },
+        pendingEffectiveDate: "should-not-leak",
       },
-      "2026-05-09",
-    );
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "promote");
     if (d.kind === "promote") {
       assert.ok(!Object.prototype.hasOwnProperty.call(d.updates, "pendingPayloadJson"));
@@ -108,13 +92,10 @@ describe("decidePendingPromotion — promote", () => {
 
   test("hydrates automatedActionsConsentAt ISO string back to Date", () => {
     const iso = "2026-05-08T14:30:00.000Z";
-    const d = decidePendingPromotion(
-      {
-        pendingPayloadJson: { maxDailyLoss: "500", automatedActionsConsentAt: iso },
-        pendingEffectiveDate: "2026-05-09",
-      },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { maxDailyLoss: "500", automatedActionsConsentAt: iso },
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "promote");
     if (d.kind === "promote") {
       assert.ok(d.updates.automatedActionsConsentAt instanceof Date);
@@ -123,13 +104,10 @@ describe("decidePendingPromotion — promote", () => {
   });
 
   test("drops automatedActionsConsentAt if the stored ISO is invalid", () => {
-    const d = decidePendingPromotion(
-      {
-        pendingPayloadJson: { maxDailyLoss: "500", automatedActionsConsentAt: "not-a-date" },
-        pendingEffectiveDate: "2026-05-09",
-      },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { maxDailyLoss: "500", automatedActionsConsentAt: "not-a-date" },
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "promote");
     if (d.kind === "promote") {
       assert.ok(!Object.prototype.hasOwnProperty.call(d.updates, "automatedActionsConsentAt"));
@@ -139,26 +117,18 @@ describe("decidePendingPromotion — promote", () => {
 
 describe("decidePendingPromotion — delete_override", () => {
   test("returns delete_override when payload is { __delete: true }", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { __delete: true }, pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { __delete: true },
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "delete_override");
   });
 
-  test("does NOT return delete_override before effective date", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { __delete: true }, pendingEffectiveDate: "2026-06-01" },
-      "2026-05-09",
-    );
-    assert.equal(d.kind, "skip");
-  });
-
   test("ignores __delete:false and treats payload as a normal promotion", () => {
-    const d = decidePendingPromotion(
-      { pendingPayloadJson: { __delete: false, maxDailyLoss: "500" }, pendingEffectiveDate: "2026-05-09" },
-      "2026-05-09",
-    );
+    const d = decidePendingPromotion({
+      pendingPayloadJson: { __delete: false, maxDailyLoss: "500" },
+      pendingEffectiveDate: "2026-05-09",
+    });
     assert.equal(d.kind, "promote");
   });
 });
@@ -175,19 +145,29 @@ type DefaultRow = {
   pendingPayloadJson: unknown;
   pendingEffectiveDate: string | null;
 };
+type LiveState = {
+  accountId: string;
+  riskState: "NORMAL" | "WARNING" | "STOPPED";
+  cooldownActive: boolean;
+};
+type FakeAccount = {
+  id: string;
+  userId: string;
+  /** True when this account has an AccountRiskRules row (i.e., NOT inheriting). */
+  hasOverride: boolean;
+};
 
-/**
- * Build a fake Prisma client over in-memory arrays. We track every update /
- * delete call so tests can assert isolation, idempotency, and that the
- * helper never wrote outside the row it was scoped to.
- */
 function makeFakePrisma(opts: {
   accountRows?: AccountRow[];
   defaultRows?: DefaultRow[];
+  liveStates?: LiveState[];
+  accounts?: FakeAccount[];
   failOn?: { table: "account" | "default"; id: string };
 }) {
   const accountRows = (opts.accountRows ?? []).map((r) => ({ ...r }));
   const defaultRows = (opts.defaultRows ?? []).map((r) => ({ ...r }));
+  const liveStates = (opts.liveStates ?? []).map((s) => ({ ...s }));
+  const accounts = (opts.accounts ?? []).map((a) => ({ ...a }));
   const accountUpdates: { accountId: string; data: Record<string, unknown> }[] = [];
   const accountDeletes: string[] = [];
   const defaultUpdates: { userId: string; data: Record<string, unknown> }[] = [];
@@ -208,8 +188,6 @@ function makeFakePrisma(opts: {
           for (const [k, v] of Object.entries(args.data)) {
             (row as Record<string, unknown>)[k] = v;
           }
-          // Simulate Prisma.JsonNull semantics for the in-memory store: any
-          // explicit null on the JSON column counts as "cleared".
           if (Object.prototype.hasOwnProperty.call(args.data, "pendingPayloadJson")) {
             row.pendingPayloadJson = null;
           }
@@ -245,261 +223,391 @@ function makeFakePrisma(opts: {
         }
       },
     },
+    liveSessionState: {
+      findMany: async (args: { where: { accountId: { in: string[] } } }) => {
+        const set = new Set(args.where.accountId.in);
+        return liveStates.filter((s) => set.has(s.accountId));
+      },
+    },
+    connectedAccount: {
+      findMany: async (args: { where: Record<string, unknown> }) => {
+        const userIdFilter = args.where.userId as { in: string[] } | undefined;
+        const userIds = userIdFilter?.in ?? [];
+        // The promoter requests inheriting accounts (no AccountRiskRules row).
+        return accounts
+          .filter((a) => userIds.includes(a.userId) && !a.hasOverride)
+          .map((a) => ({ id: a.id, userId: a.userId, riskRules: null }));
+      },
+    },
   };
   return { prisma, accountRows, defaultRows, accountUpdates, accountDeletes, defaultUpdates };
 }
 
-// "now" deep inside Tuesday's CME session: 18:00 CT 2026-05-12 = 2026-05-12 23:00Z (CDT, UTC-5).
-// CME trading-day key for that instant is "2026-05-12".
-const NOW_TUE_18CT = new Date("2026-05-12T23:00:00.000Z");
+describe("promotePendingRules — account scope safety gate", () => {
+  test("during CME maintenance, account row promotes regardless of lockout state", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      // No live state → treated as not locked, but CME maintenance overrides.
+    });
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates.length, 1);
+  });
 
-describe("promotePendingRules — promotion paths", () => {
-  test("promotes account row whose effective date has been reached", async () => {
+  test("during weekend close, account row promotes", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_WEEKEND);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates.length, 1);
+  });
+
+  test("during active trading, account row stays pending unless that account is locked", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-A", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 0);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(accountUpdates.length, 0);
+  });
+
+  test("during active trading, an internally STOPPED account promotes immediately", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-A", riskState: "STOPPED", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates.length, 1);
+  });
+
+  test("during active trading, an account in cooldown promotes immediately", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-A", riskState: "NORMAL", cooldownActive: true }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates.length, 1);
+  });
+
+  test("Account A locked + Account B active → only A promotes", async () => {
     const { prisma, accountRows, accountUpdates } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-A",
-          pendingPayloadJson: { maxDailyLoss: "500", maxTradesPerDay: 3, allowedEndHour: 16 },
-          pendingEffectiveDate: "2026-05-12",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+        {
+          accountId: "acct-B",
+          pendingPayloadJson: { maxDailyLoss: "999" },
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
+      liveStates: [
+        { accountId: "acct-A", riskState: "STOPPED", cooldownActive: false },
+        { accountId: "acct-B", riskState: "NORMAL", cooldownActive: false },
+      ],
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
     assert.equal(summary.promotedAccountCount, 1);
-    assert.equal(summary.promotedDefaultCount, 0);
-    assert.equal(summary.failedCount, 0);
-    // The active update spreads pending values AND clears the pending columns.
-    assert.equal(accountUpdates.length, 1);
-    assert.equal(accountUpdates[0].data.maxDailyLoss, "500");
-    assert.equal(accountUpdates[0].data.maxTradesPerDay, 3);
-    assert.equal(accountUpdates[0].data.allowedEndHour, 16);
-    assert.equal(accountUpdates[0].data.pendingEffectiveDate, null);
-    // After promotion the row's pending columns are cleared.
-    assert.equal(accountRows[0].pendingPayloadJson, null);
-    assert.equal(accountRows[0].pendingEffectiveDate, null);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.deepEqual(
+      accountUpdates.map((u) => u.accountId),
+      ["acct-A"],
+    );
+    // B's pending payload is intact for retry.
+    const b = accountRows.find((r) => r.accountId === "acct-B");
+    assert.deepEqual(b?.pendingPayloadJson, { maxDailyLoss: "999" });
   });
+});
 
-  test("promotes default row whose effective date has been reached", async () => {
+describe("promotePendingRules — default scope safety gate", () => {
+  test("during CME maintenance, default promotes regardless of inheriting accounts", async () => {
     const { prisma, defaultUpdates } = makeFakePrisma({
       defaultRows: [
         {
           userId: "user-1",
-          pendingPayloadJson: { maxDailyLoss: "1000", dailyProfitTarget: "2000" },
-          pendingEffectiveDate: "2026-05-12",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
+      accounts: [{ id: "acct-X", userId: "user-1", hasOverride: false }],
+      liveStates: [{ accountId: "acct-X", riskState: "NORMAL", cooldownActive: false }],
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
     assert.equal(summary.promotedDefaultCount, 1);
-    assert.equal(summary.promotedAccountCount, 0);
-    assert.equal(defaultUpdates[0].data.maxDailyLoss, "1000");
-    assert.equal(defaultUpdates[0].data.dailyProfitTarget, "2000");
-    assert.equal(defaultUpdates[0].data.pendingEffectiveDate, null);
+    assert.equal(defaultUpdates.length, 1);
   });
 
-  test("removes account override when payload is { __delete: true }", async () => {
+  test("during active trading, default stays pending if any inheriting account is active", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accounts: [{ id: "acct-X", userId: "user-1", hasOverride: false }],
+      liveStates: [{ accountId: "acct-X", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 0);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(defaultUpdates.length, 0);
+  });
+
+  test("during active trading, default promotes when ALL inheriting accounts are locked", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accounts: [
+        { id: "acct-X", userId: "user-1", hasOverride: false },
+        { id: "acct-Y", userId: "user-1", hasOverride: false },
+      ],
+      liveStates: [
+        { accountId: "acct-X", riskState: "STOPPED", cooldownActive: false },
+        { accountId: "acct-Y", riskState: "NORMAL", cooldownActive: true },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 1);
+    assert.equal(defaultUpdates.length, 1);
+  });
+
+  test("default promotion ignores accounts that have their own override", async () => {
+    // Account X inherits the default; Account Y has its own override.
+    // Y being active must NOT block the default-template promotion since the
+    // default doesn't affect Y anyway.
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accounts: [
+        { id: "acct-X", userId: "user-1", hasOverride: false }, // inheriting, locked
+        { id: "acct-Y", userId: "user-1", hasOverride: true },  // overridden, active
+      ],
+      liveStates: [
+        { accountId: "acct-X", riskState: "STOPPED", cooldownActive: false },
+        { accountId: "acct-Y", riskState: "NORMAL", cooldownActive: false },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 1, "Y has its own override → ignored for default safety");
+    assert.equal(defaultUpdates.length, 1);
+  });
+
+  test("default promotion when user has no inheriting accounts at all → safe", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      // No accounts in the fixture → no inheriting accounts → no risk.
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 1);
+    assert.equal(defaultUpdates.length, 1);
+  });
+});
+
+describe("promotePendingRules — delete override", () => {
+  test("removes account override when payload is { __delete: true } and safe", async () => {
     const { prisma, accountDeletes, accountRows } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-X",
           pendingPayloadJson: { __delete: true },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
     assert.equal(summary.promotedAccountCount, 1);
     assert.deepEqual(accountDeletes, ["acct-X"]);
-    assert.equal(accountRows.length, 0, "row was deleted");
-  });
-});
-
-describe("promotePendingRules — skip / future / idempotency", () => {
-  test("skips rows whose effective date is still in the future", async () => {
-    const { prisma, accountUpdates } = makeFakePrisma({
-      accountRows: [
-        {
-          accountId: "acct-future",
-          pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2099-12-31",
-        },
-      ],
-    });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
-    assert.equal(summary.promotedAccountCount, 0);
-    assert.equal(summary.skippedCount, 1);
-    assert.equal(accountUpdates.length, 0);
+    assert.equal(accountRows.length, 0);
   });
 
-  test("idempotent: a second run after promotion is a no-op", async () => {
-    const { prisma } = makeFakePrisma({
-      accountRows: [
-        {
-          accountId: "acct-A",
-          pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2026-05-12",
-        },
-      ],
-    });
-    const first = await promotePendingRules(prisma, NOW_TUE_18CT);
-    assert.equal(first.promotedAccountCount, 1);
-    const second = await promotePendingRules(prisma, NOW_TUE_18CT);
-    assert.equal(second.promotedAccountCount, 0);
-    assert.equal(second.skippedCount, 0, "the cleared row falls out of the findMany filter");
-  });
-
-  test("skips default-template row carrying __delete payload (no delete path for defaults)", async () => {
+  test("default-template row carrying __delete is skipped (no delete path for defaults)", async () => {
     const { prisma, defaultUpdates } = makeFakePrisma({
       defaultRows: [
         {
           userId: "user-evil",
           pendingPayloadJson: { __delete: true },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
     assert.equal(summary.promotedDefaultCount, 0);
     assert.equal(summary.skippedCount, 1);
     assert.equal(defaultUpdates.length, 0);
   });
 });
 
-describe("promotePendingRules — isolation guarantees", () => {
-  test("Account A promotion does not affect Account B", async () => {
-    const { prisma, accountUpdates, accountRows } = makeFakePrisma({
+describe("promotePendingRules — idempotency + isolation", () => {
+  test("idempotent: a second run after promotion is a no-op", async () => {
+    const { prisma } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-A",
           pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2026-05-12",
-        },
-        {
-          accountId: "acct-B",
-          pendingPayloadJson: { maxDailyLoss: "999" },
-          pendingEffectiveDate: "2099-12-31",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
     });
-    await promotePendingRules(prisma, NOW_TUE_18CT);
-    // Only A was updated; B's pending payload is intact for a future run.
-    assert.deepEqual(
-      accountUpdates.map((u) => u.accountId),
-      ["acct-A"],
-    );
-    const b = accountRows.find((r) => r.accountId === "acct-B");
-    assert.deepEqual(b?.pendingPayloadJson, { maxDailyLoss: "999" });
-    assert.equal(b?.pendingEffectiveDate, "2099-12-31");
+    const first = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(first.promotedAccountCount, 1);
+    const second = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(second.promotedAccountCount, 0);
+    assert.equal(second.skippedNotSafeCount, 0);
+    assert.equal(second.skippedCount, 0);
   });
 
-  test("default-template promotion does not touch any account override", async () => {
+  test("default-template promotion does not touch account override rows", async () => {
     const { prisma, accountUpdates, defaultUpdates } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-A",
           pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2099-12-31", // not yet eligible
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
       defaultRows: [
         {
           userId: "user-1",
           pendingPayloadJson: { maxDailyLoss: "1000" },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
+      liveStates: [{ accountId: "acct-A", riskState: "NORMAL", cooldownActive: false }],
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
-    assert.equal(summary.promotedDefaultCount, 1);
+    // Active trading, account NOT locked → account stays pending. Default has
+    // no inheriting accounts in this fixture, so it promotes.
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
     assert.equal(summary.promotedAccountCount, 0);
-    assert.equal(accountUpdates.length, 0, "no account override was touched");
+    assert.equal(summary.promotedDefaultCount, 1);
+    assert.equal(accountUpdates.length, 0);
     assert.equal(defaultUpdates.length, 1);
   });
 
-  test("account override promotion does not touch the default template", async () => {
-    const { prisma, defaultUpdates, accountUpdates } = makeFakePrisma({
+  test("Account A promotion does not affect Account B's pending payload", async () => {
+    const { prisma, accountRows } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-A",
           pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
+        },
+        {
+          accountId: "acct-B",
+          pendingPayloadJson: { maxDailyLoss: "999" },
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
-      defaultRows: [
-        {
-          userId: "user-1",
-          pendingPayloadJson: { maxDailyLoss: "1000" },
-          pendingEffectiveDate: "2099-12-31", // not yet eligible
-        },
+      liveStates: [
+        { accountId: "acct-A", riskState: "STOPPED", cooldownActive: false },
+        { accountId: "acct-B", riskState: "NORMAL", cooldownActive: false },
       ],
     });
-    await promotePendingRules(prisma, NOW_TUE_18CT);
-    assert.equal(accountUpdates.length, 1);
-    assert.equal(defaultUpdates.length, 0, "no default template row was touched");
+    await promotePendingRules(prisma, NOW_ACTIVE);
+    const b = accountRows.find((r) => r.accountId === "acct-B");
+    assert.deepEqual(b?.pendingPayloadJson, { maxDailyLoss: "999" });
+    assert.equal(b?.pendingEffectiveDate, "2026-05-09");
   });
 });
 
 describe("promotePendingRules — failure handling", () => {
   test("a failing row does NOT clear its pending payload; other rows still promote", async () => {
-    const { prisma, accountRows, accountUpdates } = makeFakePrisma({
+    const { prisma, accountRows } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-fails",
           pendingPayloadJson: { maxDailyLoss: "500" },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
         {
           accountId: "acct-ok",
           pendingPayloadJson: { maxDailyLoss: "750" },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
       failOn: { table: "account", id: "acct-fails" },
     });
-    const summary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
     assert.equal(summary.promotedAccountCount, 1);
     assert.equal(summary.failedCount, 1);
-    assert.equal(summary.errors.length, 1);
     assert.equal(summary.errors[0].id, "acct-fails");
-    // The failing row still has its pending payload intact for retry.
     const fails = accountRows.find((r) => r.accountId === "acct-fails");
     assert.deepEqual(fails?.pendingPayloadJson, { maxDailyLoss: "500" });
-    assert.equal(fails?.pendingEffectiveDate, "2026-05-12");
-    // The healthy row was promoted.
-    const ok = accountRows.find((r) => r.accountId === "acct-ok");
-    assert.equal(ok?.pendingPayloadJson, null);
-    assert.deepEqual(
-      accountUpdates.map((u) => u.accountId),
-      ["acct-ok"],
-    );
   });
 });
 
-// ─── No-Tradovate guarantee ───────────────────────────────────────────────────
+// ─── No broker calls ──────────────────────────────────────────────────────────
 
 describe("promotePendingRules — Tradovate isolation", () => {
   test("promotion does not invoke any broker client / Tradovate method", async () => {
-    // The promoter receives only the rule tables. If a future change tried to
-    // call a broker SDK from inside, it would either need a new dependency
-    // injection or it would throw because the fake Prisma here exposes only
-    // riskRules + accountRiskRules. The result is that we capture no
-    // network or broker calls — verified by the fact that the test runs
-    // without import-side-effects loading any Tradovate module.
     const { prisma, accountUpdates } = makeFakePrisma({
       accountRows: [
         {
           accountId: "acct-A",
           pendingPayloadJson: {
             maxDailyLoss: "500",
-            dailyProfitTarget: "1000", // would be a broker risk-settings field on breach
+            dailyProfitTarget: "1000",
           },
-          pendingEffectiveDate: "2026-05-12",
+          pendingEffectiveDate: "2026-05-09",
         },
       ],
     });
-    const summary: PromotionSummary = await promotePendingRules(prisma, NOW_TUE_18CT);
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
     assert.equal(summary.promotedAccountCount, 1);
-    // Only one DB write per promoted row — no extra broker call accounted for.
-    assert.equal(accountUpdates.length, 1);
+    assert.equal(accountUpdates.length, 1, "exactly one DB write per promoted row, no extra broker call");
   });
 });

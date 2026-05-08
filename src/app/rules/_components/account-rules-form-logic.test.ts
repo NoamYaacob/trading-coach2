@@ -90,8 +90,13 @@ test("existing rules, not locked: no banner", () => {
 test("deferred banner still appears for real rule changes (existing rules + locked)", () => {
   const banner = computeAccountRulesBanner(true, true, true);
   assert.equal(banner.kind, "locked");
-  assert.ok(banner.message.includes("locked"));
-  assert.ok(banner.message.includes("edit window") || banner.message.includes("trading session"));
+  // The new framing tells users they can edit anytime; saves during active
+  // trading are queued as pending and activate at the next safe window.
+  assert.ok(banner.message.includes("edit anytime"), "banner must say editing is always allowed");
+  assert.ok(
+    banner.message.includes("pending") && banner.message.includes("safe window"),
+    "banner must explain the save will be queued until the account's next safe window",
+  );
 });
 
 test("locked banner uses server lockMessage when provided", () => {

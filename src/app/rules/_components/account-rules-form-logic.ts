@@ -6,8 +6,12 @@ export type AccountRulesFormBanner =
 export const FIRST_TIME_SETUP_BANNER =
   "First-time setup — these account-specific rules will apply immediately after saving.";
 
+// Editing is always allowed. The "locked" banner explains that saves made
+// during active trading are queued as pending and activated automatically
+// when this account reaches its next safe window (Guardrail lockout, CME
+// daily maintenance, weekend close, or market close).
 export const LOCKED_BANNER =
-  "Rules are locked during your active trading session. Changes will apply at the next edit window.";
+  "You can edit anytime. Saving while this account is in active trading queues the change as pending — it activates automatically at the account's next safe window.";
 
 export const REVIEW_INHERITED_HINT = "Review these inherited limits before saving.";
 

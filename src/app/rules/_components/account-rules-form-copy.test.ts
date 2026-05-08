@@ -62,6 +62,30 @@ test("account form: above-panel guidance says fields show active rules", () => {
   );
 });
 
+test("account form: shows inherited/default-only summary so missing fields don't feel broken", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Inherited from default template"),
+    "account form must surface the inherited/default-only summary",
+  );
+  assert.ok(
+    /Account size.*daily profit target.*notifications.*Guardian/i.test(src.replace(/\s+/g, " ")),
+    "summary must list account size, daily profit target, notifications, and Guardian toggle",
+  );
+});
+
+test("account form: trading-session diff uses 'active now' / 'pending next' framing", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Trading session — active now"),
+    "session diff must use 'Trading session — active now' label",
+  );
+  assert.ok(
+    src.includes("Trading session — pending next"),
+    "session diff must use 'Trading session — pending next' label",
+  );
+});
+
 test("account form: pending panel guidance does NOT use stale 'changes pending — applies' header", () => {
   const src = read(FORM_FILES.account);
   // The new header is "Pending changes saved" with the date in a subline.

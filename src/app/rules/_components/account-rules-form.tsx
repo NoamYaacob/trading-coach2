@@ -392,6 +392,16 @@ export function AccountRulesForm({
         </div>
       )}
 
+      {/* Default-only fields — inherited by every account, not overrideable here.
+          Surfaced so users don't perceive missing fields as a bug. */}
+      <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-[11px] text-stone-500">
+        <p className="font-medium text-stone-700">Inherited from default template</p>
+        <p className="mt-0.5">
+          Account size, daily profit target, breach notifications, and the Guardian toggle are
+          configured in the default template only and apply to every account.
+        </p>
+      </div>
+
       {/* Account limits */}
       <div role="group" aria-label="Account limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <p className="text-sm font-semibold text-stone-950">Account limits</p>
@@ -534,7 +544,7 @@ export function AccountRulesForm({
           {localPendingPresets !== null && (
             <div className={`grid gap-1${pendingFieldRows.length > 0 ? " border-t border-amber-100 pt-2" : ""}`}>
               <p className="text-[11px] text-amber-800">
-                <span className="font-medium">Active session: </span>
+                <span className="font-medium">Trading session — active now: </span>
                 {values.sessionPresets.length > 0
                   ? SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id))
                       .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
@@ -544,7 +554,7 @@ export function AccountRulesForm({
                   : "None"}
               </p>
               <p className="text-[11px] text-amber-800">
-                <span className="font-medium">Pending session: </span>
+                <span className="font-medium">Trading session — pending next: </span>
                 {localPendingPresets.length > 0
                   ? SESSION_PRESETS.filter((p) => localPendingPresets.includes(p.id))
                       .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)

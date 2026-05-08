@@ -1030,9 +1030,11 @@ describe("computeAccountRulesBanner — remove account-specific rules feedback",
   it("locked banner falls back to default copy when no lockMessage provided", () => {
     const banner = computeAccountRulesBanner(true, true, true, null);
     assert.equal(banner.kind, "locked");
+    // The default copy now uses the new "edit anytime, save queues pending" framing
+    // instead of "locked" wording — editing is always allowed; only activation is gated.
     assert.ok(
-      banner.kind === "locked" && banner.message.includes("locked"),
-      `Expected 'locked' in: ${banner.kind === "locked" ? banner.message : ""}`,
+      banner.kind === "locked" && banner.message.includes("edit anytime"),
+      `Expected 'edit anytime' in: ${banner.kind === "locked" ? banner.message : ""}`,
     );
   });
 

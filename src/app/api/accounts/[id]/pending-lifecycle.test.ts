@@ -109,11 +109,25 @@ test("the promoter cron route exists and is wired to the promoter library", () =
   );
 });
 
-test("the promoter uses the CME trading-day key, not raw UTC dates", () => {
-  const src = readFileSync(join(SRC_ROOT, "lib", "pending-rule-promoter.ts"), "utf8");
+test("the promoter activation gate is anchored to CME logic, not raw UTC dates", () => {
+  const promoterSrc = readFileSync(
+    join(SRC_ROOT, "lib", "pending-rule-promoter.ts"),
+    "utf8",
+  );
+  const activationSrc = readFileSync(
+    join(SRC_ROOT, "lib", "rule-activation-window.ts"),
+    "utf8",
+  );
+  // The promoter delegates safety to canActivateRulesNow, which internally
+  // calls the CME helpers (isCmeMaintenanceWindow, isCmeWeekendClose,
+  // isCmeMarketOpen). Together they anchor activation to America/Chicago.
   assert.ok(
-    /deriveCmeTradingDayKey/.test(src),
-    "promoter must use deriveCmeTradingDayKey to compute the eligibility key",
+    /canActivateRulesNow/.test(promoterSrc),
+    "promoter must call canActivateRulesNow as the activation gate",
+  );
+  assert.ok(
+    /isCmeMaintenanceWindow|isCmeWeekendClose|isCmeMarketOpen/.test(activationSrc),
+    "activation helper must use the CME session helpers, not local/UTC time",
   );
 });
 
