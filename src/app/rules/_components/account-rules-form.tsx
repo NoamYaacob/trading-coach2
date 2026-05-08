@@ -16,6 +16,8 @@ import { validateRules, effectiveValue } from "./rule-validation";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
 import { fmt12h } from "./trading-session-utils";
 import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
+import { CmeHourSelect } from "./cme-hour-select";
+import { cmeHourBoundaryNote } from "./cme-hour-parsing";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -418,20 +420,31 @@ export function AccountRulesForm({
             Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
           </p>
         </div>
-        <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day.">
-          <Input value={values.allowedEndHour} onChange={(v) => update("allowedEndHour", v)} placeholder="16" integer />
+        <Field label={SESSION_WINDOW_COPY.endLabel} hint={SESSION_WINDOW_COPY.endHint}>
+          <CmeHourSelect
+            value={values.allowedEndHour}
+            onChange={(v) => update("allowedEndHour", v)}
+            ariaLabel={SESSION_WINDOW_COPY.endLabel}
+          />
         </Field>
         {(() => {
           const e = int(values.allowedEndHour);
+          if (e === null) return null;
+          const boundary = cmeHourBoundaryNote(e);
           const label = tzLabel(timezone);
-          if (e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
-          const le = cmeHourToLocalHour(e, timezone);
-          if (le === null) return null;
+          const showLocal = label && timezone && timezone !== SESSION_WINDOW_TIMEZONE;
+          const le = showLocal ? cmeHourToLocalHour(e, timezone) : null;
+          if (!boundary && le === null) return null;
           return (
-            <p className="text-xs text-stone-400">
-              {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
-              {String(le).padStart(2, "0")}:00 {label}
-            </p>
+            <div className="grid gap-1 text-xs text-stone-500">
+              {boundary && <p className="text-stone-600">{boundary}</p>}
+              {le !== null && (
+                <p className="text-stone-400">
+                  {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
+                  {String(le).padStart(2, "0")}:00 {label}
+                </p>
+              )}
+            </div>
           );
         })()}
       </div>

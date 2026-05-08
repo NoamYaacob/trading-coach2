@@ -16,6 +16,7 @@ import {
 } from "@/lib/rule-edit-eligibility";
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
+import { validateRiskRulesBody } from "./risk-rules-validate";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -61,6 +62,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   )
     ? (body.accountType as (typeof VALID_ACCOUNT_TYPES)[number])
     : undefined;
+
+  // Validate risk rule integer ranges before any DB write so a 123 or 0.5
+  // can't reach AccountRiskRules even if the client bypassed the dropdown.
+  const ruleErr = validateRiskRulesBody(body.riskRules);
+  if (ruleErr) {
+    return NextResponse.json({ error: ruleErr.message }, { status: 400 });
+  }
 
   // Block deactivating a protected/monitor-only account while the session is locked.
   // Bypass for unavailable accounts (missingFromBrokerSince is set) and ignored accounts —

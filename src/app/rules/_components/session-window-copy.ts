@@ -11,7 +11,9 @@ export const SESSION_WINDOW_COPY = {
   legend: "Daily cutoff · CME time",
   helperText:
     "Times are anchored to CME time so futures sessions stay aligned through daylight-saving changes.",
-  endLabel: "Stop trading at (CME hour 0–23)",
+  endLabel: "Stop trading at (CME hour)",
+  endHint:
+    "Saved in Guardrail. Automatic cutoff scheduling is not active yet — Guardrail will warn around this time but does not auto-flatten or lock at this hour today.",
   cutoffBehaviorLabel: "At cutoff",
   localPreviewPrefix: "Your local time:",
 } as const;

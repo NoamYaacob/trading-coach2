@@ -8,6 +8,8 @@ import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import { validateRules } from "./rule-validation";
+import { CmeHourSelect } from "./cme-hour-select";
+import { cmeHourBoundaryNote } from "./cme-hour-parsing";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -250,20 +252,31 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
           <p className="mt-1 text-xs text-stone-500">Set when Guardrail should stop trading for the day. {SESSION_WINDOW_COPY.helperText}</p>
         </div>
-        <Field label={SESSION_WINDOW_COPY.endLabel} hint="At this time, Guardrail will lock the account for the rest of the trading day. If a position is open, your selected cutoff behavior applies.">
-          <NumberInput value={values.sessionEndHour} onChange={(v) => update("sessionEndHour", v)} placeholder="16" integer />
+        <Field label={SESSION_WINDOW_COPY.endLabel} hint={SESSION_WINDOW_COPY.endHint}>
+          <CmeHourSelect
+            value={values.sessionEndHour}
+            onChange={(v) => update("sessionEndHour", v)}
+            ariaLabel={SESSION_WINDOW_COPY.endLabel}
+          />
         </Field>
         {(() => {
           const e = intOrNull(values.sessionEndHour);
+          if (e === null) return null;
+          const boundary = cmeHourBoundaryNote(e);
           const label = tzLabel(timezone);
-          if (e === null || !label || !timezone || timezone === SESSION_WINDOW_TIMEZONE) return null;
-          const le = cmeHourToLocalHour(e, timezone);
-          if (le === null) return null;
+          const showLocal = label && timezone && timezone !== SESSION_WINDOW_TIMEZONE;
+          const le = showLocal ? cmeHourToLocalHour(e, timezone) : null;
+          if (!boundary && le === null) return null;
           return (
-            <p className="text-xs text-stone-400">
-              {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
-              {String(le).padStart(2, "0")}:00 {label}
-            </p>
+            <div className="grid gap-1 text-xs text-stone-500">
+              {boundary && <p className="text-stone-600">{boundary}</p>}
+              {le !== null && (
+                <p className="text-stone-400">
+                  {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
+                  {String(le).padStart(2, "0")}:00 {label}
+                </p>
+              )}
+            </div>
           );
         })()}
         <div>
