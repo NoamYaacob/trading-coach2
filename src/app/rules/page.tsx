@@ -324,7 +324,7 @@ export default async function RulesPage({
             <ul className="mt-3 grid gap-1.5 text-stone-600">
               <li>• Guardrail sends warnings when rules are crossed.</li>
               <li>• In app-level monitoring, Guardrail marks the account locked inside the app only.</li>
-              <li>• Broker-side cancel, flatten, and blocking are not active unless the account has verified write permissions and the action is implemented.</li>
+              <li>• Broker-side cancel, flatten, and blocking require write permissions and enabled order actions.</li>
               <li>• Read-only connections support monitoring and alerts only.</li>
             </ul>
           </details>

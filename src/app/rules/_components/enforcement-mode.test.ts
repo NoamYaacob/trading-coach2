@@ -44,25 +44,25 @@ describe("computeEnforcementMode — capability-driven copy (no Protection test 
 });
 
 describe("computeEnforcementMode — default template", () => {
-  it("hasFullAccessAccount=true → 'Default template · Broker risk settings available'", () => {
+  it("hasFullAccessAccount=true → 'Default template'", () => {
     const result = computeEnforcementMode(null, true, { hasFullAccessAccount: true });
     assert.equal(result.mode, "monitoring_only");
-    assert.equal(result.label, "Default template · Broker risk settings available");
+    assert.equal(result.label, "Default template");
     assert.ok(result.detail.includes("Rules are saved in Guardrail"));
-    assert.ok(result.detail.includes("Account Risk Settings"));
+    assert.ok(result.detail.includes("Eligible Tradovate accounts"));
   });
 
-  it("hasFullAccessAccount=false → 'Default template · Guardrail rules'", () => {
+  it("hasFullAccessAccount=false → 'Default template'", () => {
     const result = computeEnforcementMode(null, true, { hasFullAccessAccount: false });
     assert.equal(result.mode, "monitoring_only");
-    assert.equal(result.label, "Default template · Guardrail rules");
+    assert.equal(result.label, "Default template");
     assert.ok(result.detail.includes("Rules are saved in Guardrail"));
     assert.ok(result.detail.includes("Broker-side behavior depends on each account"));
   });
 
   it("default scope omits hasFullAccessAccount → conservative copy", () => {
     const result = computeEnforcementMode(null, true);
-    assert.equal(result.label, "Default template · Guardrail rules");
+    assert.equal(result.label, "Default template");
   });
 });
 

@@ -86,15 +86,15 @@ export function computeEnforcementMode(
     if (options.hasFullAccessAccount) {
       return {
         mode: "monitoring_only",
-        label: "Default template · Broker risk settings available",
+        label: "Default template",
         detail:
-          "Rules are saved in Guardrail. Accounts with Tradovate Account Risk Settings permission can trigger broker risk settings on breach.",
+          "Rules are saved in Guardrail. Eligible Tradovate accounts can trigger broker risk settings on breach.",
         cls: "border-stone-200 bg-stone-50 text-stone-600",
       };
     }
     return {
       mode: "monitoring_only",
-      label: "Default template · Guardrail rules",
+      label: "Default template",
       detail:
         "Rules are saved in Guardrail. Broker-side behavior depends on each account's permissions.",
       cls: "border-stone-200 bg-stone-50 text-stone-600",
