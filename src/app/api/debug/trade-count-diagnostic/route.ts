@@ -4,7 +4,7 @@ import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { deriveCanonicalEntryCount } from "@/lib/guardian-engine/canonical-trade-count";
 import { classifyFill, normalizeSide } from "@/lib/guardian-engine/fill-classifier";
 import { parsePerformanceReportTradeCount } from "@/lib/brokers/tradovate-reports-parser";
-import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 
 /**
  * Diagnostic endpoint for investigating trade-count discrepancies.
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   }
 
   const sessionDate = deriveCmeTradingDayKey(new Date());
-  const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  const dayStart = deriveCmeTradingDaySessionStart(new Date());
   const dateRange = { tradingDayKey: sessionDate, start: dayStart.toISOString() };
 
   // ── Performance Report (same path as Phase C in sync) ──────────────────────

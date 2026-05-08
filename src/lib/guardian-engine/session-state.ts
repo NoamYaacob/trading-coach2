@@ -4,10 +4,8 @@ export { classifyFill, normalizeSide } from "./fill-classifier";
 import { normalizeSide } from "./fill-classifier";
 export { deriveCanonicalEntryCount, deriveCanonicalCompletedCount, type CanonicalFill } from "./canonical-trade-count";
 import { deriveCanonicalCompletedCount } from "./canonical-trade-count";
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { getCmeSessionStartForKey } from "@/lib/time/cme-session";
 
 type SessionStateRow = {
   accountId: string;
@@ -36,7 +34,7 @@ function toSessionState(row: SessionStateRow): SessionState {
 }
 
 export async function getOrCreateSessionState(accountId: string): Promise<SessionState> {
-  const today = todayKey();
+  const today = deriveCmeTradingDayKey();
   const existing = await prisma.liveSessionState.findUnique({ where: { accountId } });
 
   if (existing && existing.sessionDate !== today) {
@@ -99,7 +97,7 @@ export async function computeNetPosition(
   sessionDate: string,
   excludeExternalTradeId: string,
 ): Promise<number> {
-  const dayStart = new Date(`${sessionDate}T00:00:00.000Z`);
+  const dayStart = getCmeSessionStartForKey(sessionDate);
   const fills = await prisma.normalizedTradeEvent.findMany({
     where: {
       accountId,

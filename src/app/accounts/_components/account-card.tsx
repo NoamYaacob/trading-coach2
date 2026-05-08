@@ -4,6 +4,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { DisconnectButton } from "./disconnect-button";
 import { SyncButton } from "./sync-button";
 import { ProtectionControls } from "./protection-controls";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
 type AccountWithRelations = ConnectedAccount & {
   riskRules: AccountRiskRules | null;
@@ -124,10 +125,6 @@ function shortDate(date: Date): string {
   }).format(date);
 }
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /** Derive a plain-language enforcement mode label from live account state and rules. */
 function deriveEnforcementMode(
   riskState: string,
@@ -198,7 +195,7 @@ export function AccountCard({
 }) {
   const { sessionState, riskRules, interventions } = account;
 
-  const today = todayKey();
+  const today = deriveCmeTradingDayKey();
   const hasLiveData = sessionState != null && sessionState.sessionDate === today;
 
   const riskState = (hasLiveData ? sessionState.riskState : "NORMAL") as keyof typeof RISK_STATE_STYLE;
