@@ -204,3 +204,32 @@ test("save button stays in 'Save rules' label when a pending message is shown af
   });
   assert.equal(state.label, "Save rules");
 });
+
+test("save button disabled when validation errors are present even on a dirty form", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    hasValidationErrors: true,
+  });
+  assert.equal(state.disabled, true);
+  assert.equal(state.label, "Save rules");
+});
+
+test("save button disabled when validation errors are present even on first-time setup", () => {
+  // First-time setup normally enables save; validation errors override that.
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    hasExistingRules: false,
+    hasValidationErrors: true,
+  });
+  assert.equal(state.disabled, true);
+});
+
+test("save button re-enables once validation errors clear (dirty + valid)", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    hasValidationErrors: false,
+  });
+  assert.equal(state.disabled, false);
+});

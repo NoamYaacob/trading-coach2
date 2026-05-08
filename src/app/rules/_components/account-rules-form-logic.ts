@@ -74,12 +74,18 @@ export function computeAccountSaveButtonState(input: {
   consentChecked: boolean;
   savedAt: Date | null;
   pendingMessage: string | null;
+  /** True when cross-field validation reports any error. Disables save. */
+  hasValidationErrors?: boolean;
 }): AccountSaveButtonState {
   const hasSomethingToSave =
     input.isDirty ||
     !input.hasExistingRules ||
     (!input.hasValidConsent && input.consentChecked);
-  const disabled = input.saving || input.removing || !hasSomethingToSave;
+  const disabled =
+    input.saving ||
+    input.removing ||
+    !hasSomethingToSave ||
+    Boolean(input.hasValidationErrors);
   const label = input.saving
     ? "Saving…"
     : !input.isDirty && input.savedAt && !input.pendingMessage && input.hasExistingRules

@@ -7,6 +7,7 @@ import { SESSION_WINDOW_COPY } from "./session-window-copy";
 import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
+import { validateRules } from "./rule-validation";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -109,6 +110,16 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const errs = validateRules({
+      maxDailyLoss: values.maxDailyLoss,
+      riskPerTrade: values.maxRiskPerTrade,
+      maxTradesPerDay: values.maxTradesPerDay,
+      stopAfterLosses: values.stopAfterLosses,
+    });
+    if (errs.length > 0) {
+      setError(errs[0].message);
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -175,9 +186,19 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
     }
   }
 
+  // Cross-field validation: block save on logically impossible combinations.
+  // Note: maxRiskPerTrade is the default-template name for what the account
+  // form calls riskPerTrade — same concept, different field key.
+  const validationErrors = validateRules({
+    maxDailyLoss: values.maxDailyLoss,
+    riskPerTrade: values.maxRiskPerTrade,
+    maxTradesPerDay: values.maxTradesPerDay,
+    stopAfterLosses: values.stopAfterLosses,
+  });
+
   // Enabled when the form has changes, OR when consent needs to be captured.
   const hasSomethingToSave = isDirty || (!hasValidConsent && consentChecked);
-  const saveDisabled = saving || !hasSomethingToSave;
+  const saveDisabled = saving || !hasSomethingToSave || validationErrors.length > 0;
   const saveLabel = saving ? "Saving…" : (!isDirty && savedAt && !pendingMessage ? "Saved" : "Save rules");
 
   return (
@@ -321,6 +342,14 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
               {AUTOMATED_ACTIONS_CONSENT_TEXT}
             </span>
           </label>
+        )}
+
+        {validationErrors.length > 0 && (
+          <ul className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">
+            {validationErrors.map((e) => (
+              <li key={`${e.field}:${e.message}`}>{e.message}</li>
+            ))}
+          </ul>
         )}
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
