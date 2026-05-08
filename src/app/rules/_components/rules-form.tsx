@@ -66,7 +66,7 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "If a trade is still open at the cutoff, Guardrail will attempt to close it, then lock. Requires full Tradovate access and order actions to be enabled.",
+    hint: "Cutoff behavior is saved in Guardrail. Automatic cutoff scheduling is not active yet. When enabled, flattening will require full Tradovate access, order actions enabled, and fresh automated-actions consent.",
   },
 ] as const;
 
