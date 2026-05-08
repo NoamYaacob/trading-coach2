@@ -69,7 +69,7 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "Cutoff behavior is saved in Guardrail. Automatic cutoff scheduling is not active yet. When enabled, flattening will require full Tradovate access, order actions enabled, and fresh automated-actions consent.",
+    hint: "Saved for future cutoff automation. Not active until cutoff scheduling and live order actions are enabled.",
   },
 ] as const;
 

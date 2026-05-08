@@ -138,7 +138,7 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Flatten at cutoff, then lock",
-    hint: "Cutoff behavior is saved in Guardrail. Automatic cutoff scheduling is not active yet. When enabled, flattening will require full Tradovate access, order actions enabled, and fresh automated-actions consent.",
+    hint: "Saved for future cutoff automation. Not active until cutoff scheduling and live order actions are enabled.",
   },
 ] as const;
 
@@ -343,8 +343,13 @@ export function AccountRulesForm({
 
   // Parse pending field values from the server-side pendingPayload prop.
   // These survive navigation because they come from the DB on every page load.
+  // Each row shows the current active value (from form state) → pending value
+  // so users can see the diff at a glance.
   const pendingIsDelete = Boolean(pendingPayload && (pendingPayload as { __delete?: boolean }).__delete);
-  const pendingFieldRows: { label: string; value: string }[] = [];
+  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "—");
+  const fmtCount = (v: string): string => (v.trim() ? v : "—");
+  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "—");
+  const pendingFieldRows: { label: string; active: string; pending: string }[] = [];
   if (pendingPayload && !pendingIsDelete) {
     const dl = typeof pendingPayload.maxDailyLoss === "string" ? pendingPayload.maxDailyLoss : null;
     const rpt = typeof pendingPayload.riskPerTrade === "string" ? pendingPayload.riskPerTrade : null;
@@ -352,12 +357,12 @@ export function AccountRulesForm({
     const sal = typeof pendingPayload.stopAfterLosses === "number" ? String(pendingPayload.stopAfterLosses) : null;
     const aeh = typeof pendingPayload.allowedEndHour === "number" ? String(pendingPayload.allowedEndHour) : null;
     const mc = typeof pendingPayload.maxContracts === "number" ? String(pendingPayload.maxContracts) : null;
-    if (dl !== null) pendingFieldRows.push({ label: "Daily loss limit", value: `$${dl}` });
-    if (rpt !== null) pendingFieldRows.push({ label: "Risk per trade", value: `$${rpt}` });
-    if (mtpd !== null) pendingFieldRows.push({ label: "Max trades / day", value: mtpd });
-    if (sal !== null) pendingFieldRows.push({ label: "Stop after losses", value: sal });
-    if (aeh !== null) pendingFieldRows.push({ label: "Cutoff time", value: `${aeh}:00 CME` });
-    if (mc !== null) pendingFieldRows.push({ label: "Max position size", value: mc });
+    if (dl !== null) pendingFieldRows.push({ label: "Daily loss limit", active: fmtMoney(values.maxDailyLoss), pending: fmtMoney(dl) });
+    if (rpt !== null) pendingFieldRows.push({ label: "Risk per trade", active: fmtMoney(values.riskPerTrade), pending: fmtMoney(rpt) });
+    if (mtpd !== null) pendingFieldRows.push({ label: "Max trades / day", active: fmtCount(values.maxTradesPerDay), pending: fmtCount(mtpd) });
+    if (sal !== null) pendingFieldRows.push({ label: "Stop after losses", active: fmtCount(values.stopAfterLosses), pending: fmtCount(sal) });
+    if (aeh !== null) pendingFieldRows.push({ label: "Cutoff time", active: fmtCutoff(values.allowedEndHour), pending: fmtCutoff(aeh) });
+    if (mc !== null) pendingFieldRows.push({ label: "Max position size", active: fmtCount(values.maxContracts), pending: fmtCount(mc) });
   }
   const showPendingPanel = (pendingPayload !== null || localPendingPresets !== null) && !isDirty;
 
@@ -492,21 +497,36 @@ export function AccountRulesForm({
         </div>
       </div>
 
+      {/* Active vs pending guidance — sits ABOVE the pending panel so users
+          read it before scanning the diff. Hidden when no pending data. */}
+      {showPendingPanel && !pendingIsDelete && (
+        <p className="text-[11px] text-stone-500">
+          Form fields show active rules. Pending changes are listed below and will apply at the next edit window.
+        </p>
+      )}
+
       {/* Pending changes panel — server-driven via pendingPayload prop; survives navigation */}
       {showPendingPanel && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
-          <p className="font-medium">
-            Changes pending{localPendingDate ? ` — applies ${localPendingDate}` : ""}
-          </p>
+          <div>
+            <p className="font-medium">Pending changes saved</p>
+            <p className="mt-0.5 text-[11px] text-amber-800">
+              These changes will apply at the next edit window
+              {localPendingDate ? ` (${localPendingDate}).` : "."}
+            </p>
+          </div>
           {pendingIsDelete ? (
             <p className="text-[11px] text-amber-800">
               Account-specific rules are scheduled for removal. This account will revert to the default template at the next edit window.
             </p>
           ) : pendingFieldRows.length > 0 ? (
             <div className="grid gap-1">
-              {pendingFieldRows.map(({ label, value }) => (
+              {pendingFieldRows.map(({ label, active, pending }) => (
                 <p key={label} className="text-[11px] text-amber-800">
-                  <span className="font-medium">{label}:</span> {value}
+                  <span className="font-medium">{label}:</span>{" "}
+                  <span className="text-amber-700">{active}</span>
+                  <span className="mx-1 text-amber-500">→</span>
+                  <span className="font-medium">{pending}</span>
                 </p>
               ))}
             </div>
@@ -532,11 +552,6 @@ export function AccountRulesForm({
                   : "None (presets cleared)"}
               </p>
             </div>
-          )}
-          {!pendingIsDelete && (
-            <p className="text-[11px] text-amber-700 border-t border-amber-100 pt-2">
-              The form shows current active values. Pending changes listed above will replace them at the next edit window.
-            </p>
           )}
         </div>
       )}
