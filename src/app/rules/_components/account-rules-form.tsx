@@ -10,6 +10,7 @@ import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
+  computePendingFieldRows,
   computeShowPendingPanel,
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic";
@@ -246,6 +247,12 @@ export function AccountRulesForm({
         setLocalPendingPresets(pendingPresets);
         setLocalPendingDate(data.rulesLock.effectiveDate ?? null);
         setPendingMessage("Saved as pending — these rules take effect at the next edit window.");
+        // Pending save: the DB active fields did NOT change. Roll the form
+        // input back to the active baseline so the fields keep showing the
+        // currently-active rules. The diff renders active (initial) → pending
+        // (server-loaded pendingPayloadJson) correctly because `values` is no
+        // longer holding the user's just-submitted edits.
+        setValues(initial);
       } else {
         setLocalPendingPresets(null);
         setLocalPendingDate(null);
@@ -342,35 +349,24 @@ export function AccountRulesForm({
     stopAfterLosses: effectiveValue(values.stopAfterLosses, defaultValues?.stopAfterLosses),
   });
 
-  // Parse pending field values from the server-side pendingPayload prop.
-  // These survive navigation because they come from the DB on every page load.
-  // Each row shows the current active value (from form state) → pending value
-  // so users can see the diff at a glance.
+  // Build the active → pending diff. The "active" side comes from `initial`
+  // (the DB active baseline passed by the parent), NOT from `values` (the
+  // form's current input state). After a pending save, `values` still holds
+  // the user's edited values — using it as the active side would render
+  // identical-looking rows like "$400 → $400" when the actual DB active is
+  // still "$500 → $400". Identical rows are filtered out by the helper.
   const pendingIsDelete = Boolean(pendingPayload && (pendingPayload as { __delete?: boolean }).__delete);
-  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "—");
-  const fmtCount = (v: string): string => (v.trim() ? v : "—");
-  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "—");
-  const pendingFieldRows: { label: string; active: string; pending: string }[] = [];
-  if (pendingPayload && !pendingIsDelete) {
-    const dl = typeof pendingPayload.maxDailyLoss === "string" ? pendingPayload.maxDailyLoss : null;
-    const rpt = typeof pendingPayload.riskPerTrade === "string" ? pendingPayload.riskPerTrade : null;
-    const mtpd = typeof pendingPayload.maxTradesPerDay === "number" ? String(pendingPayload.maxTradesPerDay) : null;
-    const sal = typeof pendingPayload.stopAfterLosses === "number" ? String(pendingPayload.stopAfterLosses) : null;
-    const aeh = typeof pendingPayload.allowedEndHour === "number" ? String(pendingPayload.allowedEndHour) : null;
-    const mc = typeof pendingPayload.maxContracts === "number" ? String(pendingPayload.maxContracts) : null;
-    if (dl !== null) pendingFieldRows.push({ label: "Daily loss limit", active: fmtMoney(values.maxDailyLoss), pending: fmtMoney(dl) });
-    if (rpt !== null) pendingFieldRows.push({ label: "Risk per trade", active: fmtMoney(values.riskPerTrade), pending: fmtMoney(rpt) });
-    if (mtpd !== null) pendingFieldRows.push({ label: "Max trades / day", active: fmtCount(values.maxTradesPerDay), pending: fmtCount(mtpd) });
-    if (sal !== null) pendingFieldRows.push({ label: "Stop after losses", active: fmtCount(values.stopAfterLosses), pending: fmtCount(sal) });
-    if (aeh !== null) pendingFieldRows.push({ label: "Cutoff time", active: fmtCutoff(values.allowedEndHour), pending: fmtCutoff(aeh) });
-    if (mc !== null) pendingFieldRows.push({ label: "Max position size", active: fmtCount(values.maxContracts), pending: fmtCount(mc) });
-  }
+  const pendingFieldRows = computePendingFieldRows({
+    activeBaseline: initial,
+    pendingPayload: pendingPayload ?? null,
+    pendingIsDelete,
+  });
   const showPendingPanel = computeShowPendingPanel({
     pendingFieldRows,
     pendingIsDelete,
     hasPendingPayload: pendingPayload !== null && pendingPayload !== undefined,
     pendingSessionPresets: localPendingPresets,
-    activeSessionPresets: values.sessionPresets,
+    activeSessionPresets: initial.sessionPresets,
     isDirty,
   });
 
@@ -549,16 +545,18 @@ export function AccountRulesForm({
               ))}
             </div>
           ) : null}
+          {/* Session diff: "active now" reads from `initial` (the DB active baseline),
+              never from `values` (which holds the user's edited input post-save). */}
           {localPendingPresets !== null &&
-            [...localPendingPresets].sort().join(",") !== [...values.sessionPresets].sort().join(",") && (
+            [...localPendingPresets].sort().join(",") !== [...initial.sessionPresets].sort().join(",") && (
             <div className={`grid gap-1${pendingFieldRows.length > 0 ? " border-t border-amber-100 pt-2" : ""}`}>
               <p className="text-[11px] text-amber-800">
                 <span className="font-medium">Trading session — active now: </span>
-                {values.sessionPresets.length > 0
-                  ? SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id))
+                {initial.sessionPresets.length > 0
+                  ? SESSION_PRESETS.filter((p) => initial.sessionPresets.includes(p.id))
                       .map((p) => `${p.label} (${fmt12h(p.sessionStartTime)}–${fmt12h(p.sessionEndTime)} ET)`)
                       .join(", ")
-                  : values.sessionIsCustom
+                  : initial.sessionIsCustom
                   ? "Custom session"
                   : "None"}
               </p>

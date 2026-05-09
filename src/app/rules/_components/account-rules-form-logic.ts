@@ -49,6 +49,77 @@ export function canSaveAccountRulesNow(hasExistingRules: boolean, isLocked: bool
   return !isLocked;
 }
 
+// ── Pending field diff rows ──────────────────────────────────────────────────
+
+/**
+ * Subset of the form's active-baseline values that the pending diff inspects.
+ * Defined locally so this pure module doesn't depend on the form component.
+ */
+export type PendingDiffActiveBaseline = {
+  maxDailyLoss: string;
+  riskPerTrade: string;
+  maxTradesPerDay: string;
+  stopAfterLosses: string;
+  allowedEndHour: string;
+  maxContracts: string;
+};
+
+/**
+ * Builds the rows shown inside the "Pending changes saved" panel.
+ *
+ * The "active" side of each row MUST come from the DB active baseline
+ * (the rules currently in force), NOT from the form's input state. Once
+ * the user edits a field and clicks Save during a locked window, the form
+ * input now contains the *pending* value — using the form input as the
+ * active side would make the diff render `$400 → $400` instead of
+ * `$500 → $400`. Callers pass the `initial` prop (server-loaded DB active
+ * values) as the baseline.
+ *
+ * Rows where the formatted active value equals the formatted pending value
+ * are filtered out: there is no meaningful change to show, even if the
+ * payload key is present (e.g. user re-saved the same value).
+ */
+export function computePendingFieldRows(input: {
+  activeBaseline: PendingDiffActiveBaseline;
+  pendingPayload: Record<string, unknown> | null;
+  pendingIsDelete: boolean;
+}): { label: string; active: string; pending: string }[] {
+  if (!input.pendingPayload || input.pendingIsDelete) return [];
+
+  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "—");
+  const fmtCount = (v: string): string => (v.trim() ? v : "—");
+  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "—");
+
+  const rows: { label: string; active: string; pending: string }[] = [];
+  const push = (
+    label: string,
+    activeRaw: string,
+    pendingRaw: string,
+    fmt: (v: string) => string,
+  ) => {
+    const active = fmt(activeRaw);
+    const pending = fmt(pendingRaw);
+    if (active !== pending) rows.push({ label, active, pending });
+  };
+
+  const p = input.pendingPayload;
+  const dl = typeof p.maxDailyLoss === "string" ? p.maxDailyLoss : null;
+  const rpt = typeof p.riskPerTrade === "string" ? p.riskPerTrade : null;
+  const mtpd = typeof p.maxTradesPerDay === "number" ? String(p.maxTradesPerDay) : null;
+  const sal = typeof p.stopAfterLosses === "number" ? String(p.stopAfterLosses) : null;
+  const aeh = typeof p.allowedEndHour === "number" ? String(p.allowedEndHour) : null;
+  const mc = typeof p.maxContracts === "number" ? String(p.maxContracts) : null;
+
+  if (dl !== null) push("Daily loss limit", input.activeBaseline.maxDailyLoss, dl, fmtMoney);
+  if (rpt !== null) push("Risk per trade", input.activeBaseline.riskPerTrade, rpt, fmtMoney);
+  if (mtpd !== null) push("Max trades / day", input.activeBaseline.maxTradesPerDay, mtpd, fmtCount);
+  if (sal !== null) push("Stop after losses", input.activeBaseline.stopAfterLosses, sal, fmtCount);
+  if (aeh !== null) push("Cutoff time", input.activeBaseline.allowedEndHour, aeh, fmtCutoff);
+  if (mc !== null) push("Max position size", input.activeBaseline.maxContracts, mc, fmtCount);
+
+  return rows;
+}
+
 // ── Pending panel visibility ─────────────────────────────────────────────────
 
 /**

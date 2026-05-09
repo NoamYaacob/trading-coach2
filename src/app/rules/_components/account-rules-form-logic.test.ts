@@ -4,11 +4,13 @@ import assert from "node:assert/strict";
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
+  computePendingFieldRows,
   computeShowPendingPanel,
   canSaveAccountRulesNow,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
   REVIEW_INHERITED_HINT,
+  type PendingDiffActiveBaseline,
 } from "./account-rules-form-logic.ts";
 
 const baseSaveInput = {
@@ -343,4 +345,163 @@ test("delete-override panel hidden when hasPendingPayload is false", () => {
     hasPendingPayload: false,
   });
   assert.equal(result, false);
+});
+
+// ─── computePendingFieldRows ──────────────────────────────────────────────────
+
+const baseActiveBaseline: PendingDiffActiveBaseline = {
+  maxDailyLoss: "500",
+  riskPerTrade: "200",
+  maxTradesPerDay: "5",
+  stopAfterLosses: "2",
+  allowedEndHour: "16",
+  maxContracts: "2",
+};
+
+test("pending field rows: empty when pendingPayload is null", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: null,
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, []);
+});
+
+test("pending field rows: empty when pendingIsDelete is true (handled elsewhere)", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { __delete: true },
+    pendingIsDelete: true,
+  });
+  assert.deepEqual(rows, []);
+});
+
+test("pending field rows: returns active=DB-baseline, pending=payload for one differing field", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Daily loss limit", active: "$500", pending: "$400" },
+  ]);
+});
+
+test("REGRESSION: active side comes from baseline, NOT from a stale form-state value", () => {
+  // Bug being guarded: after a pending save, the form's `values` state still
+  // holds the user's submitted edit ($400). If the diff was built from form
+  // state, the row would render "$400 → $400" instead of the correct
+  // "$500 → $400". This test passes the DB baseline ($500) and the payload
+  // ($400) explicitly; if the implementation ever regresses to reading from
+  // an alternate baseline, this assertion will catch it.
+  const dbBaseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxDailyLoss: "500",
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: dbBaseline,
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].active, "$500", "active side must equal the DB baseline value");
+  assert.equal(rows[0].pending, "$400", "pending side must equal the payload value");
+});
+
+test("pending field rows: filters out a field whose pending value equals the active baseline", () => {
+  // Payload contains a key whose value matches the active baseline — the
+  // row must not be emitted because there is nothing meaningful to show.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { maxDailyLoss: "500", riskPerTrade: "150" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Risk per trade", active: "$200", pending: "$150" },
+  ]);
+});
+
+test("pending field rows: returns multiple rows when several fields differ", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: {
+      maxDailyLoss: "400",
+      riskPerTrade: "150",
+      maxTradesPerDay: 3,
+      stopAfterLosses: 1,
+      allowedEndHour: 15,
+      maxContracts: 1,
+    },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows.map((r) => r.label), [
+    "Daily loss limit",
+    "Risk per trade",
+    "Max trades / day",
+    "Stop after losses",
+    "Cutoff time",
+    "Max position size",
+  ]);
+  // Spot-check the formatting of each kind of value (money, count, cutoff).
+  assert.deepEqual(
+    rows.find((r) => r.label === "Daily loss limit"),
+    { label: "Daily loss limit", active: "$500", pending: "$400" },
+  );
+  assert.deepEqual(
+    rows.find((r) => r.label === "Max trades / day"),
+    { label: "Max trades / day", active: "5", pending: "3" },
+  );
+  assert.deepEqual(
+    rows.find((r) => r.label === "Cutoff time"),
+    { label: "Cutoff time", active: "16:00 CME", pending: "15:00 CME" },
+  );
+});
+
+test("pending field rows: returns empty when payload only repeats the active values", () => {
+  // The post-promotion / no-op-save scenario: every key in the payload matches
+  // the active baseline. The panel should ultimately be hidden — this helper
+  // returns no rows, which is what computeShowPendingPanel checks.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: {
+      maxDailyLoss: "500",
+      riskPerTrade: "200",
+      maxTradesPerDay: 5,
+      stopAfterLosses: 2,
+      allowedEndHour: 16,
+      maxContracts: 2,
+    },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, []);
+});
+
+test("pending field rows: ignores payload keys with the wrong type", () => {
+  // Defensive: a malformed payload (e.g. maxDailyLoss serialised as a number
+  // instead of a string) should not crash and should not emit a row.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { maxDailyLoss: 400, maxTradesPerDay: "5" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [], "wrong types are silently dropped — no row emitted");
+});
+
+test("pending panel hides entirely when computePendingFieldRows is empty and presets match", () => {
+  // Integration check: the two helpers compose correctly. After a successful
+  // promotion (or a no-op save), every field is identical and presets match.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { maxDailyLoss: "500", riskPerTrade: "200" },
+    pendingIsDelete: false,
+  });
+  const show = computeShowPendingPanel({
+    pendingFieldRows: rows,
+    pendingIsDelete: false,
+    hasPendingPayload: true,
+    pendingSessionPresets: ["ny_open"],
+    activeSessionPresets: ["ny_open"],
+    isDirty: false,
+  });
+  assert.equal(show, false);
 });
