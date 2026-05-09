@@ -611,3 +611,96 @@ describe("promotePendingRules — Tradovate isolation", () => {
     assert.equal(accountUpdates.length, 1, "exactly one DB write per promoted row, no extra broker call");
   });
 });
+
+// ─── Pending field clearing ───────────────────────────────────────────────────
+
+describe("promotePendingRules — pending field clearing", () => {
+  test("successful account promotion writes pendingPayloadJson clear to the update data", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500", riskPerTrade: "200" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(accountUpdates.length, 1);
+    const data = accountUpdates[0].data;
+    // The update must include the clearing keys so Prisma sets them to null.
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(data, "pendingPayloadJson"),
+      "update data must include pendingPayloadJson to clear it",
+    );
+    assert.equal(
+      data.pendingEffectiveDate,
+      null,
+      "update data must set pendingEffectiveDate to null",
+    );
+    // The active field values must also be written.
+    assert.equal(data.maxDailyLoss, "500");
+    assert.equal(data.riskPerTrade, "200");
+  });
+
+  test("successful default promotion writes pendingPayloadJson clear to the update data", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000", maxTradesPerDay: 10 },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(defaultUpdates.length, 1);
+    const data = defaultUpdates[0].data;
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(data, "pendingPayloadJson"),
+      "update data must include pendingPayloadJson to clear it",
+    );
+    assert.equal(
+      data.pendingEffectiveDate,
+      null,
+      "update data must set pendingEffectiveDate to null",
+    );
+    assert.equal(data.maxDailyLoss, "1000");
+    assert.equal(data.maxTradesPerDay, 10);
+  });
+
+  test("failing row does NOT get pendingPayloadJson cleared (left intact for retry)", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      failOn: { table: "account", id: "acct-A" },
+    });
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(summary.failedCount, 1);
+    assert.equal(accountUpdates.length, 0, "no update written — Prisma threw before clearing");
+  });
+
+  test("promotedAccountCount increments only once per successfully-cleared row", async () => {
+    // Run twice. After the first run the fake clears pendingPayloadJson in-memory,
+    // so the second run sees no pending rows and does not double-count.
+    const { prisma } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    const first = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    const second = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(first.promotedAccountCount, 1);
+    assert.equal(second.promotedAccountCount, 0, "second run is a no-op — row was cleared");
+    assert.equal(second.skippedCount, 0, "no rows at all on second run (already null)");
+  });
+});

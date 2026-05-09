@@ -10,6 +10,7 @@ import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
+  computeShowPendingPanel,
   REVIEW_INHERITED_HINT,
 } from "./account-rules-form-logic";
 import { validateRules, effectiveValue } from "./rule-validation";
@@ -364,7 +365,14 @@ export function AccountRulesForm({
     if (aeh !== null) pendingFieldRows.push({ label: "Cutoff time", active: fmtCutoff(values.allowedEndHour), pending: fmtCutoff(aeh) });
     if (mc !== null) pendingFieldRows.push({ label: "Max position size", active: fmtCount(values.maxContracts), pending: fmtCount(mc) });
   }
-  const showPendingPanel = (pendingPayload !== null || localPendingPresets !== null) && !isDirty;
+  const showPendingPanel = computeShowPendingPanel({
+    pendingFieldRows,
+    pendingIsDelete,
+    hasPendingPayload: pendingPayload !== null && pendingPayload !== undefined,
+    pendingSessionPresets: localPendingPresets,
+    activeSessionPresets: values.sessionPresets,
+    isDirty,
+  });
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
@@ -541,7 +549,8 @@ export function AccountRulesForm({
               ))}
             </div>
           ) : null}
-          {localPendingPresets !== null && (
+          {localPendingPresets !== null &&
+            [...localPendingPresets].sort().join(",") !== [...values.sessionPresets].sort().join(",") && (
             <div className={`grid gap-1${pendingFieldRows.length > 0 ? " border-t border-amber-100 pt-2" : ""}`}>
               <p className="text-[11px] text-amber-800">
                 <span className="font-medium">Trading session — active now: </span>

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
+  computeShowPendingPanel,
   canSaveAccountRulesNow,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
@@ -237,4 +238,109 @@ test("save button re-enables once validation errors clear (dirty + valid)", () =
     hasValidationErrors: false,
   });
   assert.equal(state.disabled, false);
+});
+
+// ─── computeShowPendingPanel ──────────────────────────────────────────────────
+
+const basePendingInput = {
+  pendingFieldRows: [] as { active: string; pending: string }[],
+  pendingIsDelete: false,
+  hasPendingPayload: true,
+  pendingSessionPresets: null as string[] | null,
+  activeSessionPresets: [] as string[],
+  isDirty: false,
+} as const;
+
+test("pending panel hidden when there are no differing field rows and no pending session presets", () => {
+  const result = computeShowPendingPanel({ ...basePendingInput });
+  assert.equal(result, false);
+});
+
+test("pending panel hidden when all pending field values equal the active values", () => {
+  // This guards the post-promotion case: promoter wrote active=$500 but
+  // pendingPayloadJson was not yet cleared — both sides show $500.
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingFieldRows: [
+      { active: "$500", pending: "$500" },
+      { active: "5", pending: "5" },
+    ],
+  });
+  assert.equal(result, false, "panel must be hidden when active and pending values are identical");
+});
+
+test("pending panel shown when at least one field value differs", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingFieldRows: [
+      { active: "$500", pending: "$600" },
+      { active: "5", pending: "5" },
+    ],
+  });
+  assert.equal(result, true, "panel must be visible when any field differs");
+});
+
+test("pending panel shown for a single differing field even if others are identical", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingFieldRows: [
+      { active: "$500", pending: "$500" },
+      { active: "2", pending: "3" },
+    ],
+  });
+  assert.equal(result, true);
+});
+
+test("session pending panel hidden when active and pending session presets are equal", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingSessionPresets: ["ny_open", "london"],
+    activeSessionPresets: ["london", "ny_open"],
+  });
+  assert.equal(result, false, "panel must be hidden when session presets are the same (order-independent)");
+});
+
+test("session pending panel shown when pending session presets differ from active", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingSessionPresets: ["ny_open", "ny_close"],
+    activeSessionPresets: ["ny_open"],
+  });
+  assert.equal(result, true);
+});
+
+test("session pending panel shown when pending presets cleared to empty but active had presets", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingSessionPresets: [],
+    activeSessionPresets: ["ny_open"],
+  });
+  assert.equal(result, true);
+});
+
+test("pending panel hidden when form is dirty, even with differing field values", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    isDirty: true,
+    pendingFieldRows: [{ active: "$500", pending: "$600" }],
+  });
+  assert.equal(result, false, "panel is suppressed while user is actively editing");
+});
+
+test("delete-override panel shown when hasPendingPayload is true", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingIsDelete: true,
+    hasPendingPayload: true,
+  });
+  assert.equal(result, true, "delete-override sentinel must always show the panel when payload exists");
+});
+
+test("delete-override panel hidden when hasPendingPayload is false", () => {
+  const result = computeShowPendingPanel({
+    ...basePendingInput,
+    pendingIsDelete: true,
+    hasPendingPayload: false,
+  });
+  assert.equal(result, false);
 });

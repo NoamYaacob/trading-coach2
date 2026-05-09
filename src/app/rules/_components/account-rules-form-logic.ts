@@ -49,6 +49,51 @@ export function canSaveAccountRulesNow(hasExistingRules: boolean, isLocked: bool
   return !isLocked;
 }
 
+// ── Pending panel visibility ─────────────────────────────────────────────────
+
+/**
+ * Determines whether the "Pending changes saved" yellow panel should appear.
+ *
+ * The panel is only shown when at least one value actually differs between the
+ * active state and the pending payload. This guards against a scenario where
+ * the cron has already promoted the pending values to active columns but the
+ * pendingPayloadJson column has not yet been cleared (e.g. a Prisma JSON-null
+ * write that reads back as a non-null sentinel in some Prisma versions). In
+ * that case both active and pending would be identical — the panel must be
+ * hidden because there is nothing meaningful left to display.
+ *
+ * @param pendingFieldRows  Pairs of { active, pending } display strings for
+ *   each field that is present in the pending payload. Pass the FULL list
+ *   (including identical pairs) — this function does the filtering.
+ * @param pendingIsDelete   True when the pending payload is { __delete: true }.
+ * @param hasPendingPayload True when pendingPayloadJson is non-null.
+ * @param pendingSessionPresets  Pending session preset IDs, or null if not pending.
+ * @param activeSessionPresets   Active session preset IDs (current form state).
+ * @param isDirty  True when the user has unsaved edits — hides the panel while editing.
+ */
+export function computeShowPendingPanel(input: {
+  pendingFieldRows: { active: string; pending: string }[];
+  pendingIsDelete: boolean;
+  hasPendingPayload: boolean;
+  pendingSessionPresets: string[] | null;
+  activeSessionPresets: string[];
+  isDirty: boolean;
+}): boolean {
+  if (input.isDirty) return false;
+  // Delete-override sentinel: always show if there is an active payload.
+  if (input.pendingIsDelete && input.hasPendingPayload) return true;
+  // Show when at least one field value actually differs.
+  const hasFieldDiff = input.pendingFieldRows.some((r) => r.active !== r.pending);
+  if (hasFieldDiff) return true;
+  // Show when session presets differ (order-independent comparison).
+  if (input.pendingSessionPresets !== null) {
+    const pendingSorted = [...input.pendingSessionPresets].sort().join(",");
+    const activeSorted = [...input.activeSessionPresets].sort().join(",");
+    if (pendingSorted !== activeSorted) return true;
+  }
+  return false;
+}
+
 // ── Save button state ────────────────────────────────────────────────────────
 
 export type AccountSaveButtonState = {
