@@ -1,4 +1,3 @@
-import { UserRole, SubscriptionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { createSession, hashPassword } from "@/lib/auth";
@@ -58,8 +57,8 @@ export async function POST(request: Request) {
     data: {
       email,
       passwordHash,
-      role: UserRole.USER,
-      subscriptionStatus: SubscriptionStatus.TRIALING,
+      role: "USER",
+      subscriptionStatus: "TRIALING",
       trialStartedAt,
       trialEndsAt,
     },

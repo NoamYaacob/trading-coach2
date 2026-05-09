@@ -1,4 +1,3 @@
-import { SubscriptionStatus, UserRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
@@ -158,8 +157,8 @@ export async function GET(request: NextRequest) {
         data: {
           email: googleUser.email,
           passwordHash: null,
-          role: UserRole.USER,
-          subscriptionStatus: SubscriptionStatus.TRIALING,
+          role: "USER",
+          subscriptionStatus: "TRIALING",
           trialStartedAt,
           trialEndsAt,
         },
