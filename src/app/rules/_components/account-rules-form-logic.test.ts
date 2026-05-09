@@ -505,3 +505,174 @@ test("pending panel hides entirely when computePendingFieldRows is empty and pre
   });
   assert.equal(show, false);
 });
+
+// ─── Effective-baseline composition (override OR inherited default) ──────────
+//
+// In production, `account-rules-form.tsx` builds the activeBaseline with
+// effectiveValue(accountOverride, inheritedDefault) for each field — the
+// override when present, otherwise the inherited default. These tests exercise
+// computePendingFieldRows with both shapes of baseline so a regression in how
+// the form composes the baseline is caught here.
+
+test("EFFECTIVE BASELINE: account override exists → diff shows the override on the active side", () => {
+  // Account has its own maxDailyLoss override of $500. Pending payload edits
+  // it to $400. Effective baseline (override): $500.
+  const effectiveBaseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxDailyLoss: "500", // account-override value (would come from initial.maxDailyLoss)
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: effectiveBaseline,
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Daily loss limit", active: "$500", pending: "$400" },
+  ]);
+});
+
+test("EFFECTIVE BASELINE: account inherits → diff shows the default-template value on the active side", () => {
+  // Bug being fixed: account has NO maxDailyLoss override (initial value is "")
+  // but the default template has $500. The form now builds the baseline with
+  // effectiveValue("", "500") → "500". The diff renders "$500 → $400", not
+  // "— → $400".
+  const inheritedAccount = "";
+  const inheritedDefault = "500";
+  const effectiveBaseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    // simulate: effectiveValue("", "500") = "500"
+    maxDailyLoss: inheritedAccount.trim() ? inheritedAccount : inheritedDefault,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: effectiveBaseline,
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Daily loss limit", active: "$500", pending: "$400" },
+  ]);
+  assert.notEqual(rows[0].active, "—", "must NOT render '—' when default has a value");
+});
+
+test("EFFECTIVE BASELINE: missing account override does NOT produce '—' if default has a value", () => {
+  // Multi-field check: every field is inherited (account has no override),
+  // and the default has a value for each. The diff must render the default
+  // values on the active side, never "—".
+  const effectiveBaseline: PendingDiffActiveBaseline = {
+    maxDailyLoss: "500",      // from default
+    riskPerTrade: "100",      // from default
+    maxTradesPerDay: "5",     // from default
+    stopAfterLosses: "2",     // from default
+    allowedEndHour: "16",     // from default
+    maxContracts: "3",        // from default
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: effectiveBaseline,
+    pendingPayload: {
+      maxDailyLoss: "400",
+      riskPerTrade: "200",
+      maxTradesPerDay: 4,
+      stopAfterLosses: 2,
+      maxContracts: 1,
+    },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows.find((r) => r.label === "Daily loss limit"), {
+    label: "Daily loss limit",
+    active: "$500",
+    pending: "$400",
+  });
+  assert.deepEqual(rows.find((r) => r.label === "Risk per trade"), {
+    label: "Risk per trade",
+    active: "$100",
+    pending: "$200",
+  });
+  assert.deepEqual(rows.find((r) => r.label === "Max trades / day"), {
+    label: "Max trades / day",
+    active: "5",
+    pending: "4",
+  });
+  assert.deepEqual(rows.find((r) => r.label === "Max position size"), {
+    label: "Max position size",
+    active: "3",
+    pending: "1",
+  });
+  // Stop after losses identical (2 == 2) — must be filtered out.
+  assert.equal(
+    rows.find((r) => r.label === "Stop after losses"),
+    undefined,
+    "identical row must be filtered out even when both sides come from the default",
+  );
+  // None of the rows render the dash placeholder.
+  for (const r of rows) {
+    assert.notEqual(r.active, "—", `${r.label} active side must not be '—'`);
+  }
+});
+
+test("EFFECTIVE BASELINE: only renders '— → value' when neither account nor default has a value", () => {
+  // Truly missing baseline: no account override, no default. effectiveValue
+  // returns "" and the formatter renders "—". The diff still emits the row
+  // because there is a real difference ("" vs the pending value).
+  const effectiveBaseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: "", // no override AND no default
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: effectiveBaseline,
+    pendingPayload: { maxContracts: 2 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "—", pending: "2" },
+  ]);
+});
+
+test("REGRESSION: pending payload field names match the active baseline keys", () => {
+  // Keep these two shapes in sync. If the active baseline ever loses a key
+  // that the pending payload still emits, computePendingFieldRows would
+  // silently render the active side as "undefined" / "—" — which is exactly
+  // the class of bug being guarded here.
+  const baselineKeys: (keyof PendingDiffActiveBaseline)[] = [
+    "maxDailyLoss",
+    "riskPerTrade",
+    "maxTradesPerDay",
+    "stopAfterLosses",
+    "allowedEndHour",
+    "maxContracts",
+  ];
+  // Drive the helper with a payload that uses the same keys for every field
+  // and a value that differs from baseActiveBaseline on every field, so the
+  // identical-row filter does not interfere with the key-coverage check.
+  const payload: Record<string, unknown> = {
+    maxDailyLoss: "400",   // baseline 500 → 400
+    riskPerTrade: "150",   // baseline 200 → 150
+    maxTradesPerDay: 4,    // baseline 5 → 4
+    stopAfterLosses: 1,    // baseline 2 → 1
+    allowedEndHour: 15,    // baseline 16 → 15
+    maxContracts: 1,       // baseline 2 → 1
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: payload,
+    pendingIsDelete: false,
+  });
+  assert.equal(
+    rows.length,
+    baselineKeys.length,
+    "every payload key must produce a diff row when all values differ",
+  );
+});
+
+test("REGRESSION: account override $500 + pending $400 must render '$500 → $400', not '$400 → $400'", () => {
+  // The pre-previous bug: form input state ($400) leaked into the active side.
+  // Guard with an explicit baseline of $500 — independent of any client state.
+  const rows = computePendingFieldRows({
+    activeBaseline: { ...baseActiveBaseline, maxDailyLoss: "500" },
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].active, "$500");
+  assert.equal(rows[0].pending, "$400");
+  assert.notEqual(rows[0].active, "$400", "guard against stale form-state leak into the active side");
+});

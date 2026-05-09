@@ -349,15 +349,24 @@ export function AccountRulesForm({
     stopAfterLosses: effectiveValue(values.stopAfterLosses, defaultValues?.stopAfterLosses),
   });
 
-  // Build the active → pending diff. The "active" side comes from `initial`
-  // (the DB active baseline passed by the parent), NOT from `values` (the
-  // form's current input state). After a pending save, `values` still holds
-  // the user's edited values — using it as the active side would render
-  // identical-looking rows like "$400 → $400" when the actual DB active is
-  // still "$500 → $400". Identical rows are filtered out by the helper.
+  // Build the active → pending diff. The "active" side comes from the
+  // *effective* baseline — for each field, the account override value when
+  // present, otherwise the inherited default-template value. Reading
+  // `initial.X` alone would render "—" for fields that the account inherits
+  // (no override row), even though those fields have a real active value
+  // coming from the default template. We never read `values` for this:
+  // after a pending save it still holds the user's submitted edit.
   const pendingIsDelete = Boolean(pendingPayload && (pendingPayload as { __delete?: boolean }).__delete);
+  const effectiveBaseline = {
+    maxDailyLoss: effectiveValue(initial.maxDailyLoss, defaultValues?.maxDailyLoss),
+    riskPerTrade: effectiveValue(initial.riskPerTrade, defaultValues?.riskPerTrade),
+    maxTradesPerDay: effectiveValue(initial.maxTradesPerDay, defaultValues?.maxTradesPerDay),
+    stopAfterLosses: effectiveValue(initial.stopAfterLosses, defaultValues?.stopAfterLosses),
+    allowedEndHour: effectiveValue(initial.allowedEndHour, defaultValues?.allowedEndHour),
+    maxContracts: effectiveValue(initial.maxContracts, defaultValues?.maxContracts),
+  };
   const pendingFieldRows = computePendingFieldRows({
-    activeBaseline: initial,
+    activeBaseline: effectiveBaseline,
     pendingPayload: pendingPayload ?? null,
     pendingIsDelete,
   });
