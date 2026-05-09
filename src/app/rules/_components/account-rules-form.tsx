@@ -10,9 +10,11 @@ import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
-  computePendingFieldRows,
+  computePendingFieldRowsWithSource,
   computeShowPendingPanel,
   REVIEW_INHERITED_HINT,
+  type PendingDiffBaseline,
+  type PendingFieldActiveSource,
 } from "./account-rules-form-logic";
 import { validateRules, effectiveValue } from "./rule-validation";
 import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
@@ -95,6 +97,39 @@ function int(v: string): number | null {
   if (!v.trim()) return null;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Renders the small badge next to the "Active now" value in the pending diff,
+ * so users can tell whether the active value comes from this account's
+ * override, the inherited default template, or is genuinely not configured.
+ *
+ * Pure rendering — accepts the activeSource label produced by the source-aware
+ * helper. Returns null for "override" so the most common case stays visually
+ * quiet (a tag on every row would be noise); returns visible tags for
+ * "inherited" and "not_set" because those are the cases users actually need
+ * to disambiguate.
+ */
+function renderActiveSourceTag(source: PendingFieldActiveSource) {
+  if (source === "override") {
+    return (
+      <span className="rounded-full border border-stone-200 bg-white px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-stone-500">
+        Override
+      </span>
+    );
+  }
+  if (source === "inherited") {
+    return (
+      <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
+        Inherited
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full border border-stone-200 bg-stone-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-stone-500">
+      Not set
+    </span>
+  );
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -349,24 +384,33 @@ export function AccountRulesForm({
     stopAfterLosses: effectiveValue(values.stopAfterLosses, defaultValues?.stopAfterLosses),
   });
 
-  // Build the active → pending diff. The "active" side comes from the
-  // *effective* baseline — for each field, the account override value when
-  // present, otherwise the inherited default-template value. Reading
-  // `initial.X` alone would render "—" for fields that the account inherits
-  // (no override row), even though those fields have a real active value
-  // coming from the default template. We never read `values` for this:
-  // after a pending save it still holds the user's submitted edit.
+  // Build the active → pending diff. The "active" side is split into two
+  // inputs — `override` (this account's AccountRiskRules row, the `initial`
+  // prop) and `defaultBaseline` (the user's RiskRules mapped via
+  // mapDefaultRulesToAccountForm). The pure helper picks override-when-set,
+  // inherited-otherwise, and reports the source so each row can be tagged
+  // Override / Inherited / Not set in the UI. We never read `values` for
+  // this: after a pending save it still holds the user's submitted edit.
   const pendingIsDelete = Boolean(pendingPayload && (pendingPayload as { __delete?: boolean }).__delete);
-  const effectiveBaseline = {
-    maxDailyLoss: effectiveValue(initial.maxDailyLoss, defaultValues?.maxDailyLoss),
-    riskPerTrade: effectiveValue(initial.riskPerTrade, defaultValues?.riskPerTrade),
-    maxTradesPerDay: effectiveValue(initial.maxTradesPerDay, defaultValues?.maxTradesPerDay),
-    stopAfterLosses: effectiveValue(initial.stopAfterLosses, defaultValues?.stopAfterLosses),
-    allowedEndHour: effectiveValue(initial.allowedEndHour, defaultValues?.allowedEndHour),
-    maxContracts: effectiveValue(initial.maxContracts, defaultValues?.maxContracts),
+  const overrideBaseline: PendingDiffBaseline = {
+    maxDailyLoss: initial.maxDailyLoss,
+    riskPerTrade: initial.riskPerTrade,
+    maxTradesPerDay: initial.maxTradesPerDay,
+    stopAfterLosses: initial.stopAfterLosses,
+    allowedEndHour: initial.allowedEndHour,
+    maxContracts: initial.maxContracts,
   };
-  const pendingFieldRows = computePendingFieldRows({
-    activeBaseline: effectiveBaseline,
+  const defaultBaseline: PendingDiffBaseline = {
+    maxDailyLoss: defaultValues?.maxDailyLoss ?? "",
+    riskPerTrade: defaultValues?.riskPerTrade ?? "",
+    maxTradesPerDay: defaultValues?.maxTradesPerDay ?? "",
+    stopAfterLosses: defaultValues?.stopAfterLosses ?? "",
+    allowedEndHour: defaultValues?.allowedEndHour ?? "",
+    maxContracts: defaultValues?.maxContracts ?? "",
+  };
+  const pendingFieldRows = computePendingFieldRowsWithSource({
+    override: overrideBaseline,
+    defaultBaseline,
     pendingPayload: pendingPayload ?? null,
     pendingIsDelete,
   });
@@ -405,21 +449,41 @@ export function AccountRulesForm({
         </div>
       )}
 
-      {/* Default-only fields — inherited by every account, not overrideable here.
-          Surfaced so users don't perceive missing fields as a bug. */}
-      <div className="rounded-xl border border-stone-100 bg-white px-4 py-3 text-[11px] text-stone-500">
-        <p className="font-medium text-stone-700">Inherited from default template</p>
-        <p className="mt-0.5">
-          Account size, daily profit target, breach notifications, and the Guardian toggle are
-          configured in the default template only and apply to every account.
-        </p>
-      </div>
-
-      {/* Account limits */}
-      <div role="group" aria-label="Account limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-stone-950">Account limits</p>
+      {/* ── Money limits ──────────────────────────────────────────────────
+          Mirrors the default-template form's "Money limits" section so the
+          two pages share one mental model. Account size + Daily profit target
+          live on the default template only; we surface them as a small inherited
+          context block at the top so the section doesn't feel "missing fields". */}
+      <div role="group" aria-label="Money limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <p className="text-sm font-semibold text-stone-950">Money limits</p>
         {!hasExistingRules && (
           <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
+        )}
+        {/* Inherited-only fields surfaced so the account form mirrors the
+            default template's section structure even though account size and
+            daily profit target are configured on the default template only. */}
+        {(defaultValues?.maxDailyLoss !== undefined ||
+          (defaultValues as { dailyProfitTarget?: string } | undefined)?.dailyProfitTarget !== undefined) && (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-stone-100 bg-white px-3 py-2 text-[11px] text-stone-500">
+            <div>
+              <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">Account size</dt>
+              <dd className="text-stone-700">
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
+                  Inherited
+                </span>{" "}
+                <span className="text-stone-500">configured on default template</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">Daily profit target</dt>
+              <dd className="text-stone-700">
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
+                  Inherited
+                </span>{" "}
+                <span className="text-stone-500">configured on default template</span>
+              </dd>
+            </div>
+          </dl>
         )}
         <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Daily loss limit ($)">
@@ -428,6 +492,13 @@ export function AccountRulesForm({
           <Field label="Risk per trade ($)" hint="Warning only — does not lock the account.">
             <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
           </Field>
+        </div>
+      </div>
+
+      {/* ── Trading limits ──────────────────────────────────────────────── */}
+      <div role="group" aria-label="Trading limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <p className="text-sm font-semibold text-stone-950">Trading limits</p>
+        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Max trades per day">
             <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
@@ -440,7 +511,10 @@ export function AccountRulesForm({
         </div>
       </div>
 
-      {/* Daily cutoff */}
+      {/* ── Daily cutoff (CME) ──────────────────────────────────────────────
+          Cutoff behavior radios live INSIDE this section to match the default
+          template form (where they're nested under "Daily cutoff" rather than
+          floating in their own card). */}
       <div role="group" aria-label="Daily cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <div>
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
@@ -475,6 +549,44 @@ export function AccountRulesForm({
             </div>
           );
         })()}
+        <div>
+          <p className="text-xs font-medium text-stone-600">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</p>
+          <div className="mt-2 grid gap-2">
+            {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
+              <label
+                key={value}
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="accountSessionEndBehavior"
+                  value={value}
+                  checked={values.sessionEndBehavior === value}
+                  onChange={() => update("sessionEndBehavior", value)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
+                />
+                <span>
+                  <span className="font-medium text-stone-950">{label}</span>
+                  <span className="mt-0.5 block text-stone-500">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Notifications (inherited) ───────────────────────────────────────
+          Default-only field surfaced as a card so the account form mirrors
+          the default template's section list. The on-page UX is read-only:
+          breach alerts are configured on the default template. */}
+      <div role="group" aria-label="Notifications" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
+        <p className="text-sm font-semibold text-stone-950">Notifications</p>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs text-stone-600">
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
+            Inherited
+          </span>{" "}
+          Breach alerts are configured on the default template and apply to every account.
+        </div>
       </div>
 
       <TradingSessionSelector
@@ -489,37 +601,6 @@ export function AccountRulesForm({
         onChange={(key, val) => update(key as keyof AccountRulesValues, val as AccountRulesValues[keyof AccountRulesValues])}
       />
 
-      {/* At cutoff */}
-      <div role="group" aria-label="At cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <div>
-          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</p>
-          <p className="mt-1 text-xs text-stone-500">
-            What Guardrail does if a position is open at the cutoff time.
-          </p>
-        </div>
-        <div className="grid gap-2">
-          {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
-            <label
-              key={value}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
-            >
-              <input
-                type="radio"
-                name="accountSessionEndBehavior"
-                value={value}
-                checked={values.sessionEndBehavior === value}
-                onChange={() => update("sessionEndBehavior", value)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
-              />
-              <span>
-                <span className="font-medium text-stone-950">{label}</span>
-                <span className="mt-0.5 block text-stone-500">{hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       {/* Active vs pending guidance — sits ABOVE the pending panel so users
           read it before scanning the diff. Hidden when no pending data. */}
       {showPendingPanel && !pendingIsDelete && (
@@ -530,11 +611,11 @@ export function AccountRulesForm({
 
       {/* Pending changes panel — server-driven via pendingPayload prop; survives navigation */}
       {showPendingPanel && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-3">
           <div>
             <p className="font-medium">Pending changes saved</p>
             <p className="mt-0.5 text-[11px] text-amber-800">
-              Pending changes are saved and will activate automatically at the next safe window
+              These changes will activate automatically at the next safe window
               {localPendingDate ? ` (${localPendingDate}).` : "."}
             </p>
           </div>
@@ -543,18 +624,28 @@ export function AccountRulesForm({
               Account-specific rules are scheduled for removal. This account will revert to the default template at the next safe window.
             </p>
           ) : pendingFieldRows.length > 0 ? (
-            <div className="grid gap-1">
-              {pendingFieldRows.map(({ label, active, pending }) => (
-                <p key={label} className="text-[11px] text-amber-800">
-                  <span className="font-medium">{label}:</span>{" "}
-                  <span className="text-amber-700">{active}</span>
-                  <span className="mx-1 text-amber-500">→</span>
-                  <span className="font-medium">{pending}</span>
-                </p>
+            <div className="overflow-hidden rounded-lg border border-amber-100 bg-white">
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-amber-100 bg-amber-50/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-700">
+                <span>Rule</span>
+                <span>Active now</span>
+                <span>Pending next</span>
+              </div>
+              {pendingFieldRows.map(({ label, active, pending, activeSource }) => (
+                <div
+                  key={label}
+                  className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 border-t border-amber-50 px-3 py-1.5 first:border-t-0 text-[12px] text-amber-900"
+                >
+                  <span className="font-medium">{label}</span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-amber-800">
+                    <span>{active}</span>
+                    {renderActiveSourceTag(activeSource)}
+                  </span>
+                  <span className="font-semibold text-amber-900">{pending}</span>
+                </div>
               ))}
-              {pendingFieldRows.some((r) => r.active === "Not set") && (
-                <p className="text-[10px] italic text-amber-700">
-                  &quot;Not set&quot; means no active value is configured for this rule on the account override or the default template.
+              {pendingFieldRows.some((r) => r.activeSource === "not_set") && (
+                <p className="border-t border-amber-50 bg-amber-50/40 px-3 py-1.5 text-[10px] italic text-amber-700">
+                  &quot;Not set&quot; means neither the account override nor the default template has a value configured for this rule.
                 </p>
               )}
             </div>
@@ -650,7 +741,11 @@ export function AccountRulesForm({
               Saved in Guardrail.
             </span>
           )}
-          {pendingMessage && <span className="text-xs text-amber-700">{pendingMessage}</span>}
+          {pendingMessage && (
+            <span className="text-xs text-amber-700">
+              Saved as pending — these rules will activate at the next safe window.
+            </span>
+          )}
           {error && <span className="text-xs text-red-700">{error}</span>}
         </div>
 

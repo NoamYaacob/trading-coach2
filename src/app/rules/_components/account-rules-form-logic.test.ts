@@ -5,13 +5,16 @@ import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
   computePendingFieldRows,
+  computePendingFieldRowsWithSource,
   computeShowPendingPanel,
   canSaveAccountRulesNow,
   mapDefaultRulesToAccountForm,
+  resolvePendingActiveSource,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
   REVIEW_INHERITED_HINT,
   type PendingDiffActiveBaseline,
+  type PendingDiffBaseline,
 } from "./account-rules-form-logic.ts";
 
 const baseSaveInput = {
@@ -202,15 +205,33 @@ test("save button disabled while remove flow is in flight", () => {
   assert.equal(state.disabled, true);
 });
 
-test("save button stays in 'Save rules' label when a pending message is shown after save", () => {
-  // pendingMessage is set when the save was deferred (locked window).
-  // Label should stay "Save rules" rather than "Saved" — the change is not yet applied.
+test("save button shows 'Saved as pending' label after a pending save", () => {
+  // pendingMessage is set when the save was deferred (locked window). The
+  // label MUST be distinct from "Saved" (which is reserved for immediate
+  // saves whose values are already active) and from "Save rules" (which is
+  // the idle / dirty state). "Saved as pending" matches the in-form pending
+  // panel header so the user knows the values aren't active yet.
   const state = computeAccountSaveButtonState({
     ...baseSaveInput,
     isDirty: false,
     savedAt: new Date(),
     pendingMessage: "Saved as pending — applies at next edit window.",
   });
+  assert.equal(state.label, "Saved as pending");
+  // Must NOT regress to "Saved" (which would imply the values are active).
+  assert.notEqual(state.label, "Saved");
+});
+
+test("save button re-enables and label flips to 'Save rules' as soon as the user edits after a pending save", () => {
+  // After a pending save, savedAt is stamped and pendingMessage is set.
+  // If the user changes another field (isDirty=true), Save must re-enable.
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    savedAt: new Date(),
+    pendingMessage: "Saved as pending — applies at next edit window.",
+  });
+  assert.equal(state.disabled, false);
   assert.equal(state.label, "Save rules");
 });
 
@@ -1132,4 +1153,133 @@ test("NOT SET COPY: cutoff formatter uses 'Not set' for empty active", () => {
     pendingIsDelete: false,
   });
   assert.equal(rows[0].active, "Not set");
+});
+
+// ─── resolvePendingActiveSource ──────────────────────────────────────────────
+
+test("resolvePendingActiveSource: override wins when non-empty (even if default also set)", () => {
+  assert.equal(resolvePendingActiveSource("3", "4"), "override");
+});
+
+test("resolvePendingActiveSource: inherited when override empty and default has value", () => {
+  assert.equal(resolvePendingActiveSource("", "4"), "inherited");
+});
+
+test("resolvePendingActiveSource: not_set when both override and default are empty", () => {
+  assert.equal(resolvePendingActiveSource("", ""), "not_set");
+});
+
+test("resolvePendingActiveSource: whitespace-only values are treated as empty", () => {
+  // Form fields can hold "   " when the user pastes a space — must NOT be
+  // treated as a real value.
+  assert.equal(resolvePendingActiveSource("   ", "4"), "inherited");
+  assert.equal(resolvePendingActiveSource("", "  "), "not_set");
+});
+
+// ─── computePendingFieldRowsWithSource — inheritance regression scenarios ───
+
+const emptyBaseline: PendingDiffBaseline = {
+  maxDailyLoss: "",
+  riskPerTrade: "",
+  maxTradesPerDay: "",
+  stopAfterLosses: "",
+  allowedEndHour: "",
+  maxContracts: "",
+};
+
+test("INHERITED: default maxContracts=4 + account override empty + pending=4 produces NO row", () => {
+  // Live bug observed: account form rendered "Max position size: Not set → 4"
+  // even though the default template has maxContracts=4. With the source-aware
+  // helper, the inherited 4 is recognised on the active side, formatted matches
+  // the pending 4, and the row is filtered out — pending panel hides.
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: { ...emptyBaseline, maxContracts: "4" },
+    pendingPayload: { maxContracts: 4 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [], "no row should appear when inherited active equals pending");
+});
+
+test("INHERITED: default maxContracts=4 + account override empty + pending=3 produces '4 → 3' with activeSource=inherited", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: { ...emptyBaseline, maxContracts: "4" },
+    pendingPayload: { maxContracts: 3 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "4", pending: "3", activeSource: "inherited" },
+  ]);
+});
+
+test("NOT SET: both default and account empty + pending=3 produces 'Not set → 3' with activeSource=not_set", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: emptyBaseline,
+    pendingPayload: { maxContracts: 3 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "Not set", pending: "3", activeSource: "not_set" },
+  ]);
+});
+
+test("OVERRIDE: account override=2 (default also=4) + pending=1 produces '2 → 1' with activeSource=override", () => {
+  // Override wins over default; the row tag must read "Override".
+  const rows = computePendingFieldRowsWithSource({
+    override: { ...emptyBaseline, maxContracts: "2" },
+    defaultBaseline: { ...emptyBaseline, maxContracts: "4" },
+    pendingPayload: { maxContracts: 1 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "2", pending: "1", activeSource: "override" },
+  ]);
+});
+
+test("INHERITED money: default maxDailyLoss=$500 + account empty + pending=$400 produces '$500 → $400' tagged inherited", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: { ...emptyBaseline, maxDailyLoss: "500" },
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Daily loss limit", active: "$500", pending: "$400", activeSource: "inherited" },
+  ]);
+});
+
+test("WITH SOURCE: respects pendingIsDelete sentinel (returns no rows)", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: { ...emptyBaseline, maxContracts: "4" },
+    pendingPayload: { __delete: true },
+    pendingIsDelete: true,
+  });
+  assert.deepEqual(rows, []);
+});
+
+test("WITH SOURCE: null pendingPayload returns no rows", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: emptyBaseline,
+    defaultBaseline: emptyBaseline,
+    pendingPayload: null,
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, []);
+});
+
+test("WITH SOURCE: multiple fields differing — each row carries its own activeSource", () => {
+  const rows = computePendingFieldRowsWithSource({
+    override: { ...emptyBaseline, maxDailyLoss: "500" }, // override
+    defaultBaseline: { ...emptyBaseline, maxContracts: "4" }, // inherited
+    pendingPayload: { maxDailyLoss: "400", maxContracts: 3 },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows.length, 2);
+  const dailyLoss = rows.find((r) => r.label === "Daily loss limit")!;
+  const positionSize = rows.find((r) => r.label === "Max position size")!;
+  assert.equal(dailyLoss.activeSource, "override");
+  assert.equal(positionSize.activeSource, "inherited");
 });

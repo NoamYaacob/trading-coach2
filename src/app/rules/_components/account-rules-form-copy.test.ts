@@ -63,15 +63,21 @@ test("account form: above-panel guidance says fields show active rules", () => {
   );
 });
 
-test("account form: shows inherited/default-only summary so missing fields don't feel broken", () => {
+test("account form: surfaces inherited fields per-section (parity with default form structure)", () => {
+  // After the section-parity refactor, inherited default-only fields are
+  // surfaced in the section where they conceptually belong rather than in
+  // a single consolidated callout:
+  //   - Account size + Daily profit target → inside the "Money limits" section
+  //     as a small inherited mini-table.
+  //   - Breach alerts → inside the "Notifications" section as an inherited card.
+  // This mirrors the default template's section list while making it obvious
+  // that those fields are managed elsewhere.
   const src = read(FORM_FILES.account);
+  assert.ok(src.includes("Account size"), "Money limits section must mention 'Account size' as inherited");
+  assert.ok(src.includes("Daily profit target"), "Money limits section must mention 'Daily profit target' as inherited");
   assert.ok(
-    src.includes("Inherited from default template"),
-    "account form must surface the inherited/default-only summary",
-  );
-  assert.ok(
-    /Account size.*daily profit target.*notifications.*Guardian/i.test(src.replace(/\s+/g, " ")),
-    "summary must list account size, daily profit target, notifications, and Guardian toggle",
+    /Breach alerts are configured on the default template/i.test(src),
+    "Notifications section must explain that breach alerts are inherited",
   );
 });
 
@@ -99,20 +105,25 @@ test("account form: pending panel guidance does NOT use stale 'changes pending �
 });
 
 test("account form: explanatory note appears next to 'Not set' rows", () => {
-  // When a diff row's active side is the 'Not set' placeholder (because both
-  // the account override and the default template have null for that field),
-  // a small inline note must appear under the rows explaining what that
-  // means. The note prevents users from misreading 'Not set' as "the value
-  // is whatever the input placeholder shows" (e.g. the hardcoded "2" hint
-  // on the maxContracts input).
+  // When a diff row's active side is "Not set" (because both the account
+  // override and the default template have null for that field), a small
+  // inline note must appear under the rows explaining what that means. The
+  // note prevents users from misreading 'Not set' as "the value is whatever
+  // the input placeholder shows" (e.g. the hardcoded "2" hint on the
+  // maxContracts input). The guard now uses `activeSource === "not_set"`
+  // (the source-aware tag) rather than string matching on the formatted
+  // active value, since the diff helper no longer reuses "Not set" for
+  // inherited values that match the default template.
   const src = read(FORM_FILES.account);
   assert.ok(
-    src.includes("no active value is configured for this rule on the account override or the default template"),
+    /Not set.{0,30}means neither the account override nor the default template has a value/i.test(
+      src.replace(/\s+/g, " "),
+    ),
     "form must include the 'Not set' explanatory note copy",
   );
   assert.ok(
-    /pendingFieldRows\.some\(\s*\(r\)\s*=>\s*r\.active === "Not set"\s*\)/.test(src),
-    "the note must be guarded by a 'some row has Not set' check, not always-on",
+    /pendingFieldRows\.some\(\s*\(r\)\s*=>\s*r\.activeSource === "not_set"\s*\)/.test(src),
+    "the note must be guarded by an activeSource === 'not_set' check, not always-on",
   );
 });
 
@@ -225,6 +236,87 @@ test("both forms use the SAME risk-per-trade hint copy", () => {
   const SHARED_HINT = "Warning only — does not lock the account.";
   assert.ok(defaultSrc.includes(SHARED_HINT), "default form must use shared risk-per-trade hint");
   assert.ok(accountSrc.includes(SHARED_HINT), "account form must use shared risk-per-trade hint");
+});
+
+test("both forms expose the same five top-level sections in the same order", () => {
+  // Default template form sections: Money limits → Trading limits → Daily
+  // cutoff → Notifications → Trading Session (mounted as a separate component).
+  // The account form must mirror this section list so the two pages feel like
+  // the same form rather than two unrelated layouts. Trading Session is
+  // rendered by <TradingSessionSelector> (no role="group"), so we only
+  // assert on the four section cards that live in the form file itself.
+  const SECTIONS = [
+    'aria-label="Money limits"',
+    'aria-label="Trading limits"',
+    'aria-label="Daily cutoff"',
+    'aria-label="Notifications"',
+  ];
+  for (const path of [FORM_FILES.default, FORM_FILES.account]) {
+    const src = read(path);
+    let lastIdx = -1;
+    for (const section of SECTIONS) {
+      const idx = src.indexOf(section);
+      assert.ok(
+        idx !== -1,
+        `${path} is missing section ${section} — both forms must declare the same section list`,
+      );
+      assert.ok(
+        idx > lastIdx,
+        `${path} declares ${section} before an earlier section in the canonical order`,
+      );
+      lastIdx = idx;
+    }
+  }
+});
+
+test("account form does NOT have a stray 'At cutoff' section card (cutoff behavior must live inside Daily cutoff)", () => {
+  // Pre-parity: account form had a separate `aria-label="At cutoff"` card,
+  // which split the cutoff settings across two cards while the default
+  // template kept them together. The behavior radio now lives nested
+  // inside the Daily cutoff section, matching the default form.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes('aria-label="At cutoff"'),
+    "remove the standalone 'At cutoff' card — its radios must nest inside Daily cutoff",
+  );
+});
+
+test("pending diff renders three columns: Rule / Active now / Pending next", () => {
+  // The amber paragraph list was replaced with a compact diff table.
+  // Asserting the column headers locks the new layout against future
+  // regressions back to the old 'X → Y' inline list.
+  const src = read(FORM_FILES.account);
+  assert.match(src, />\s*Rule\s*</);
+  assert.match(src, />\s*Active now\s*</);
+  assert.match(src, />\s*Pending next\s*</);
+});
+
+test("pending diff active value is tagged Inherited / Override / Not set via activeSource", () => {
+  // The form must call renderActiveSourceTag(activeSource) for each row so
+  // the user can tell whether the active value is this account's override,
+  // the inherited default, or genuinely missing. Without this, the diff
+  // would silently regress to "Not set → 4" for inherited values.
+  const src = read(FORM_FILES.account);
+  assert.match(
+    src,
+    /renderActiveSourceTag\(\s*activeSource\s*\)/,
+    "diff must invoke renderActiveSourceTag(activeSource) per row",
+  );
+  // The three legal labels must all be present in the renderer.
+  assert.match(src, />\s*Inherited\s*</);
+  assert.match(src, />\s*Override\s*</);
+  assert.match(src, />\s*Not set\s*</);
+});
+
+test("pending save status copy uses 'Saved as pending — these rules will activate at the next safe window'", () => {
+  // Replaces the old generic pendingMessage echo with explicit copy that
+  // tells the user the rules are NOT active yet and when they will become
+  // active.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Saved as pending — these rules will activate at the next safe window."),
+    "form must show the new pending-save status copy",
+  );
 });
 
 test("Max position size hint reflects broker sync (not 'app-level monitoring only')", () => {

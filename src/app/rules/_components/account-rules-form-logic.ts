@@ -136,8 +136,15 @@ export function mapDefaultRulesToAccountForm(
 /**
  * Subset of the form's active-baseline values that the pending diff inspects.
  * Defined locally so this pure module doesn't depend on the form component.
+ *
+ * The diff splits the "active" side into TWO inputs — the override values
+ * (this account's AccountRiskRules row) and the inherited default values
+ * (the user's RiskRules row mapped via `mapDefaultRulesToAccountForm`).
+ * The function picks override-when-present, inherited-otherwise, and
+ * reports which source it used via `activeSource` so the UI can label the
+ * value (override / inherited / not_set).
  */
-export type PendingDiffActiveBaseline = {
+export type PendingDiffBaseline = {
   maxDailyLoss: string;
   riskPerTrade: string;
   maxTradesPerDay: string;
@@ -145,6 +152,38 @@ export type PendingDiffActiveBaseline = {
   allowedEndHour: string;
   maxContracts: string;
 };
+
+/** Backwards-compatible alias for the override-only baseline shape. */
+export type PendingDiffActiveBaseline = PendingDiffBaseline;
+
+/**
+ * Where the row's "active" value came from:
+ *   - "override"  — this account has its own value set
+ *   - "inherited" — the value comes from the default template
+ *   - "not_set"   — neither override nor default has a value
+ */
+export type PendingFieldActiveSource = "override" | "inherited" | "not_set";
+
+export type PendingFieldRow = {
+  label: string;
+  active: string;
+  pending: string;
+  activeSource: PendingFieldActiveSource;
+};
+
+/**
+ * Resolves which side wins for the active value and reports the source.
+ * Override wins when non-empty; otherwise default wins when non-empty;
+ * otherwise "not_set".
+ */
+export function resolvePendingActiveSource(
+  overrideValue: string,
+  defaultValue: string,
+): PendingFieldActiveSource {
+  if (overrideValue.trim()) return "override";
+  if (defaultValue.trim()) return "inherited";
+  return "not_set";
+}
 
 /**
  * Builds the rows shown inside the "Pending changes saved" panel.
@@ -160,22 +199,18 @@ export type PendingDiffActiveBaseline = {
  * Rows where the formatted active value equals the formatted pending value
  * are filtered out: there is no meaningful change to show, even if the
  * payload key is present (e.g. user re-saved the same value).
+ *
+ * This shape returns rows without `activeSource`; callers that need to
+ * tag rows as Override / Inherited / Not set should use
+ * `computePendingFieldRowsWithSource` instead.
  */
 export function computePendingFieldRows(input: {
-  activeBaseline: PendingDiffActiveBaseline;
+  activeBaseline: PendingDiffBaseline;
   pendingPayload: Record<string, unknown> | null;
   pendingIsDelete: boolean;
 }): { label: string; active: string; pending: string }[] {
   if (!input.pendingPayload || input.pendingIsDelete) return [];
 
-  // Empty active/pending values render as the explicit string "Not set"
-  // rather than the dash "—". The dash had been mistaken in the live UI for
-  // a placeholder/dummy ("0", "—", or the input's hardcoded placeholder
-  // value), which masked the real underlying state: neither the account
-  // override nor the default template has a value configured for this row.
-  // "Not set" makes the absence explicit and is paired with an inline note
-  // in the panel ("`Not set` means no active value is configured on the
-  // account override or the default template").
   const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "Not set");
   const fmtCount = (v: string): string => (v.trim() ? v : "Not set");
   const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "Not set");
@@ -206,6 +241,73 @@ export function computePendingFieldRows(input: {
   if (sal !== null) push("Stop after losses", input.activeBaseline.stopAfterLosses, sal, fmtCount);
   if (aeh !== null) push("Cutoff time", input.activeBaseline.allowedEndHour, aeh, fmtCutoff);
   if (mc !== null) push("Max position size", input.activeBaseline.maxContracts, mc, fmtCount);
+
+  return rows;
+}
+
+/**
+ * Source-aware variant of `computePendingFieldRows`. Takes the override
+ * values (this account's AccountRiskRules row) and the inherited default
+ * values (the user's RiskRules mapped via mapDefaultRulesToAccountForm)
+ * separately, and reports `activeSource` per row so the UI can tag each
+ * value as Override / Inherited / Not set.
+ *
+ * Behaviour rules (mirrors the legacy function on row inclusion):
+ *   - override wins per field when non-empty
+ *   - inherited default fills in when override is empty
+ *   - rows whose formatted active equals the formatted pending are
+ *     filtered out (handles the case where the cron promoted the value
+ *     but didn't clear pendingPayloadJson — UI must not show 4 → 4)
+ */
+export function computePendingFieldRowsWithSource(input: {
+  override: PendingDiffBaseline;
+  defaultBaseline: PendingDiffBaseline;
+  pendingPayload: Record<string, unknown> | null;
+  pendingIsDelete: boolean;
+}): PendingFieldRow[] {
+  if (!input.pendingPayload || input.pendingIsDelete) return [];
+
+  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "Not set");
+  const fmtCount = (v: string): string => (v.trim() ? v : "Not set");
+  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "Not set");
+
+  const rows: PendingFieldRow[] = [];
+  const push = (
+    label: string,
+    overrideRaw: string,
+    defaultRaw: string,
+    pendingRaw: string,
+    fmt: (v: string) => string,
+  ) => {
+    const activeRaw = overrideRaw.trim() ? overrideRaw : defaultRaw;
+    const active = fmt(activeRaw);
+    const pending = fmt(pendingRaw);
+    if (active !== pending) {
+      rows.push({
+        label,
+        active,
+        pending,
+        activeSource: resolvePendingActiveSource(overrideRaw, defaultRaw),
+      });
+    }
+  };
+
+  const p = input.pendingPayload;
+  const dl = typeof p.maxDailyLoss === "string" ? p.maxDailyLoss : null;
+  const rpt = typeof p.riskPerTrade === "string" ? p.riskPerTrade : null;
+  const mtpd = typeof p.maxTradesPerDay === "number" ? String(p.maxTradesPerDay) : null;
+  const sal = typeof p.stopAfterLosses === "number" ? String(p.stopAfterLosses) : null;
+  const aeh = typeof p.allowedEndHour === "number" ? String(p.allowedEndHour) : null;
+  const mc = typeof p.maxContracts === "number" ? String(p.maxContracts) : null;
+
+  const o = input.override;
+  const d = input.defaultBaseline;
+  if (dl !== null) push("Daily loss limit", o.maxDailyLoss, d.maxDailyLoss, dl, fmtMoney);
+  if (rpt !== null) push("Risk per trade", o.riskPerTrade, d.riskPerTrade, rpt, fmtMoney);
+  if (mtpd !== null) push("Max trades / day", o.maxTradesPerDay, d.maxTradesPerDay, mtpd, fmtCount);
+  if (sal !== null) push("Stop after losses", o.stopAfterLosses, d.stopAfterLosses, sal, fmtCount);
+  if (aeh !== null) push("Cutoff time", o.allowedEndHour, d.allowedEndHour, aeh, fmtCutoff);
+  if (mc !== null) push("Max position size", o.maxContracts, d.maxContracts, mc, fmtCount);
 
   return rows;
 }
@@ -298,8 +400,12 @@ export function computeAccountSaveButtonState(input: {
     Boolean(input.hasValidationErrors);
   const label = input.saving
     ? "Saving…"
-    : !input.isDirty && input.savedAt && !input.pendingMessage && input.hasExistingRules
-      ? "Saved"
-      : "Save rules";
+    : !input.isDirty && input.savedAt && input.pendingMessage
+      ? // Pending save just succeeded — distinguish from immediate save so users
+        // know their values aren't active yet (matches the in-form pending panel).
+        "Saved as pending"
+      : !input.isDirty && input.savedAt && !input.pendingMessage && input.hasExistingRules
+        ? "Saved"
+        : "Save rules";
   return { disabled, label };
 }
