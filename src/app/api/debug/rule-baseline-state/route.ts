@@ -37,6 +37,15 @@ export async function GET() {
         maxTradesPerDay: true,
         stopAfterLosses: true,
         sessionEndHour: true,
+        // Default template can also defer saves into pendingPayloadJson when
+        // the user is locked out (mid-session). When that happens the active
+        // column stays null but the form may still display the typed value
+        // from local state, leading users to believe the value is active when
+        // it isn't. Surfacing the default's pending payload here lets the
+        // caller distinguish "actually configured" from "saved but not yet
+        // promoted" without having to dump pendingPayloadJson by hand.
+        pendingPayloadJson: true,
+        pendingEffectiveDate: true,
       },
     }),
     prisma.connectedAccount.findMany({
@@ -44,6 +53,7 @@ export async function GET() {
       select: {
         id: true,
         label: true,
+        externalAccountId: true,
         riskRules: {
           select: {
             accountId: true,
@@ -62,31 +72,32 @@ export async function GET() {
     }),
   ]);
 
+  /** Extract a single key from a pendingPayloadJson value, returning null
+   *  when the payload is missing, non-object, or the key is absent. */
+  function pendingKey(payload: unknown, key: string): unknown {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    return (payload as Record<string, unknown>)[key] ?? null;
+  }
+
   // Surface the maxContracts key from pendingPayloadJson explicitly so the
   // caller doesn't have to reason about JSON shape.
-  const accountsView = accounts.map((a) => {
-    const payload = a.riskRules?.pendingPayloadJson;
-    const pendingMaxContracts =
-      payload && typeof payload === "object" && !Array.isArray(payload)
-        ? ((payload as Record<string, unknown>).maxContracts ?? null)
-        : null;
-    return {
-      id: a.id,
-      label: a.label,
-      accountRiskRules: a.riskRules
-        ? {
-            maxContracts: a.riskRules.maxContracts,
-            maxDailyLoss: a.riskRules.maxDailyLoss,
-            riskPerTrade: a.riskRules.riskPerTrade,
-            maxTradesPerDay: a.riskRules.maxTradesPerDay,
-            stopAfterLosses: a.riskRules.stopAfterLosses,
-            allowedEndHour: a.riskRules.allowedEndHour,
-            pendingMaxContracts,
-            pendingEffectiveDate: a.riskRules.pendingEffectiveDate,
-          }
-        : null,
-    };
-  });
+  const accountsView = accounts.map((a) => ({
+    id: a.id,
+    label: a.label,
+    externalAccountId: a.externalAccountId,
+    accountRiskRules: a.riskRules
+      ? {
+          maxContracts: a.riskRules.maxContracts,
+          maxDailyLoss: a.riskRules.maxDailyLoss,
+          riskPerTrade: a.riskRules.riskPerTrade,
+          maxTradesPerDay: a.riskRules.maxTradesPerDay,
+          stopAfterLosses: a.riskRules.stopAfterLosses,
+          allowedEndHour: a.riskRules.allowedEndHour,
+          pendingMaxContracts: pendingKey(a.riskRules.pendingPayloadJson, "maxContracts"),
+          pendingEffectiveDate: a.riskRules.pendingEffectiveDate,
+        }
+      : null,
+  }));
 
   return NextResponse.json({
     ok: true,
@@ -100,6 +111,10 @@ export async function GET() {
           maxTradesPerDay: riskRules.maxTradesPerDay,
           stopAfterLosses: riskRules.stopAfterLosses,
           sessionEndHour: riskRules.sessionEndHour,
+          // Default-template pending payload — distinguishes "actually saved"
+          // from "saved as pending, awaiting promotion".
+          pendingMaxContracts: pendingKey(riskRules.pendingPayloadJson, "maxContracts"),
+          pendingEffectiveDate: riskRules.pendingEffectiveDate,
         }
       : null,
     accounts: accountsView,
