@@ -140,11 +140,17 @@ export const ENFORCEMENT_CAPABILITIES = {
   max_position_size: {
     capability: "internal_only" as const,
     notes:
-      "Mini-equivalent total exposure (sum of NQ+0.1·MNQ, ES+0.1·MES, …). " +
-      "Tradovate's UserAccountPositionLimit is per-product and cannot express " +
-      "the cross-product equivalence required for a unified mini-equivalent " +
-      "limit, so this is Guardrail-side monitoring only. May still flatten via " +
-      "order/liquidatepositions when broker permission and connection allow.",
+      "BREACH-RESPONSE trigger (this entry): Guardrail-side monitor on " +
+      "mini-equivalent total exposure (sum of NQ+0.1·MNQ, ES+0.1·MES, …). " +
+      "Tradovate's UserAccountPositionLimit cannot express cross-product " +
+      "weighted equivalence, so the breach trigger remains Guardrail-side. " +
+      "May still flatten via order/liquidatepositions when permission allows. " +
+      "PRE-EMPTIVE CAP (separate mechanism): Guardrail also syncs maxContracts " +
+      "to a Tradovate userAccountPositionLimit (totalBy='Overall', " +
+      "userAccountRiskParameter.hardLimit=true) on rule save via " +
+      "TradovateClient.applyMaxPositionSize. That cap is broker-enforced 1:1 " +
+      "across contracts (not weighted). Live reject behavior pending demo " +
+      "verification — see docs/ops/tradovate-position-limit-demo.md.",
   },
   manual: {
     capability: "internal_only" as const,

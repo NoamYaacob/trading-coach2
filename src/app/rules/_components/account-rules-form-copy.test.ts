@@ -194,3 +194,52 @@ test("4PM boundary note states automatic cutoff enforcement is not active yet", 
   assert.ok(note);
   assert.match(note!, /not active yet/i);
 });
+
+// ── Cross-form parity ────────────────────────────────────────────────────────
+
+test("both forms use identical 'Risk per trade ($)' label (no 'Max risk per trade' divergence)", () => {
+  // Default and account forms drifted on this label: default form said
+  // 'Max risk per trade' and account form said 'Risk per trade'. The DB
+  // column is `maxRiskPerTrade`/`riskPerTrade` (legacy schema), but the
+  // user-visible label must be the same in both places to avoid implying
+  // a different rule semantics.
+  const defaultSrc = read(FORM_FILES.default);
+  const accountSrc = read(FORM_FILES.account);
+  assert.ok(
+    defaultSrc.includes('label="Risk per trade ($)"'),
+    "default form must label this field 'Risk per trade ($)' — do NOT regress to 'Max risk per trade'",
+  );
+  assert.ok(
+    accountSrc.includes('label="Risk per trade ($)"'),
+    "account form must label this field 'Risk per trade ($)'",
+  );
+  assert.ok(
+    !defaultSrc.includes('"Max risk per trade ($)"'),
+    "default form must not contain the old 'Max risk per trade ($)' label",
+  );
+});
+
+test("both forms use the SAME risk-per-trade hint copy", () => {
+  const defaultSrc = read(FORM_FILES.default);
+  const accountSrc = read(FORM_FILES.account);
+  const SHARED_HINT = "Warning only — does not lock the account.";
+  assert.ok(defaultSrc.includes(SHARED_HINT), "default form must use shared risk-per-trade hint");
+  assert.ok(accountSrc.includes(SHARED_HINT), "account form must use shared risk-per-trade hint");
+});
+
+test("Max position size hint reflects broker sync (not 'app-level monitoring only')", () => {
+  // After wiring applyMaxPositionSize, the hint must mention Tradovate
+  // broker-side enforcement. Both forms read MAX_POSITION_SIZE_COPY from
+  // position-size-copy.ts so checking the hint text via the file is enough
+  // to catch regressions.
+  const copySrc = readFileSync(
+    resolve(import.meta.dirname, "position-size-copy.ts"),
+    "utf8",
+  );
+  assert.match(copySrc, /Tradovate/, "max position size hint must mention Tradovate");
+  assert.match(copySrc, /broker-side/i, "max position size hint must mention broker-side enforcement");
+  assert.ok(
+    !copySrc.includes("Broker-side blocking is not active yet"),
+    "stale 'not active yet' wording must be removed from MAX_POSITION_SIZE_COPY",
+  );
+});

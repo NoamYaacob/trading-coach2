@@ -554,8 +554,15 @@ describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
     assert.ok(!MAX_POSITION_SIZE_COPY.label.includes("contracts"));
   });
 
-  it("hint mentions app-level monitoring", () => {
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /app-level monitoring/i);
+  it("hint preserves the app-level fallback wording for accounts without broker sync", () => {
+    // After applyMaxPositionSize was wired, the hint changed from
+    // "App-level monitoring. Broker-side blocking is not active yet." to
+    // text that mentions both broker sync (via Tradovate) AND the
+    // app-level fallback (for non-Tradovate / no-permission cases).
+    // Both halves of the message must be present.
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /app[- ]level/i);
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /Tradovate/);
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /broker[- ]side/i);
   });
 
   it("hint does not imply fractional tradable contracts", () => {

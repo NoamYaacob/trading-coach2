@@ -224,7 +224,7 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <Field label="Daily profit target ($)">
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
-          <Field label="Max risk per trade ($)" hint="Warning only — does not lock the account.">
+          <Field label="Risk per trade ($)" hint="Warning only — does not lock the account.">
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
