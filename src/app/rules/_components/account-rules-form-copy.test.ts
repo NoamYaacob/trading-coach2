@@ -335,3 +335,94 @@ test("Max position size hint reflects broker sync (not 'app-level monitoring onl
     "stale 'not active yet' wording must be removed from MAX_POSITION_SIZE_COPY",
   );
 });
+
+// ── Task A: Default form pending indicator ────────────────────────────────────
+
+test("default form: Field component accepts pendingNote prop", () => {
+  // Task A: when an active DB column is null but pendingPayloadJson has a
+  // value, the default form must render an inline amber note. The note copy
+  // must include "Pending next safe window" and should NOT say the value IS
+  // active — it must make clear the value is waiting for promotion.
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    src.includes("Pending next safe window:"),
+    "default form's pendingFieldNote helper must use 'Pending next safe window:' copy",
+  );
+  assert.ok(
+    /pendingNote=/.test(src),
+    "Field invocations must pass pendingNote= prop for pending-payload display",
+  );
+});
+
+test("default form: pendingFieldNote only shows note when active value is empty", () => {
+  // The helper must return null when activeValue is non-empty, so users with
+  // an active value set don't see a redundant double-note.
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    /activeValue\.trim\(\) !== ""/.test(src),
+    "pendingFieldNote must guard on activeValue.trim() !== '' to suppress note when active is set",
+  );
+});
+
+test("default form: pendingPayload prop is accepted and forwarded to field notes", () => {
+  // The RulesForm component must accept a pendingPayload prop and the fields
+  // must consume it so the page can pass the server's pendingPayloadJson.
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    /pendingPayload\?.*Record<string, unknown>/.test(src.replace(/\s+/g, " ")),
+    "RulesForm Props must include pendingPayload?: Record<string, unknown> | null",
+  );
+});
+
+// ── Task B: Account form inherited-default-pending note ───────────────────────
+
+test("account form: defaultPendingPayload prop is accepted", () => {
+  // Task B: when the inherited default active column is null but the default
+  // pendingPayloadJson has a value, the account form should surface a note.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    /defaultPendingPayload\?.*Record<string, unknown>/.test(src.replace(/\s+/g, " ")),
+    "AccountRulesForm Props must include defaultPendingPayload?: Record<string, unknown> | null",
+  );
+});
+
+test("account form: defaultPendingNote copy mentions 'Default template has' and 'pending'", () => {
+  // The note must make it clear the value is from the DEFAULT TEMPLATE and is
+  // PENDING (not yet active), not from this account's own pending state.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    /Default template has.*pending/i.test(src.replace(/\s+/g, " ")),
+    "account form must include copy that mentions 'Default template has ... pending'",
+  );
+  assert.ok(
+    /not active yet/.test(src),
+    "account form default-pending note must say 'not active yet'",
+  );
+});
+
+// ── Task G: No 'verified/guaranteed reject' language before demo sign-off ─────
+
+test("no form claims Tradovate rejection is verified or guaranteed", () => {
+  // The demo verification plan (docs/ops/tradovate-position-limit-demo.md)
+  // must be completed before we claim broker-side rejection is confirmed.
+  // Any wording that implies live testing has been done is premature and
+  // misleading — lock it out via copy test until the demo checklist is signed.
+  for (const path of Object.values(FORM_FILES)) {
+    const src = read(path);
+    const FORBIDDEN = [
+      "verified reject",
+      "guaranteed reject",
+      "confirmed reject",
+      "rejection verified",
+      "rejection guaranteed",
+      "tested and verified",
+      "broker will reject",
+    ];
+    for (const phrase of FORBIDDEN) {
+      assert.ok(
+        !src.toLowerCase().includes(phrase),
+        `${path} must not claim verified/guaranteed broker rejection before demo sign-off — found: "${phrase}"`,
+      );
+    }
+  }
+});

@@ -108,6 +108,16 @@ export type PromotionError = {
   message: string;
 };
 
+export type SkippedRow = {
+  /** userId for default rows, accountId for account rows. */
+  id: string;
+  scope: "default" | "account";
+  pendingEffectiveDate: string | null;
+  /** True when the payload was valid but the safety gate blocked activation. */
+  canActivateNow: boolean;
+  skipReason: string;
+};
+
 export type PromotionSummary = {
   promotedDefaultCount: number;
   promotedAccountCount: number;
@@ -117,6 +127,8 @@ export type PromotionSummary = {
   skippedCount: number;
   failedCount: number;
   errors: PromotionError[];
+  /** Per-row detail for every row that was skipped (both not-safe and invalid). */
+  skippedRows: SkippedRow[];
 };
 
 /**
@@ -189,6 +201,7 @@ export async function promotePendingRules(
     skippedCount: 0,
     failedCount: 0,
     errors: [],
+    skippedRows: [],
   };
 
   // ─── Account overrides ─────────────────────────────────────────────────────
@@ -220,6 +233,13 @@ export async function promotePendingRules(
     const decision = decidePendingPromotion(row);
     if (decision.kind === "skip") {
       summary.skippedCount += 1;
+      summary.skippedRows.push({
+        id: row.accountId,
+        scope: "account",
+        pendingEffectiveDate: row.pendingEffectiveDate,
+        canActivateNow: false,
+        skipReason: decision.reason,
+      });
       continue;
     }
     const accountIsLocked = isAccountLocked(accountStateById.get(row.accountId));
@@ -230,6 +250,13 @@ export async function promotePendingRules(
     });
     if (!safety.canActivate) {
       summary.skippedNotSafeCount += 1;
+      summary.skippedRows.push({
+        id: row.accountId,
+        scope: "account",
+        pendingEffectiveDate: row.pendingEffectiveDate,
+        canActivateNow: false,
+        skipReason: safety.reason,
+      });
       console.info("[promote-pending] account row not safe yet; skipping", {
         accountId: row.accountId,
         reason: safety.reason,
@@ -311,10 +338,24 @@ export async function promotePendingRules(
     const decision = decidePendingPromotion(row);
     if (decision.kind === "skip") {
       summary.skippedCount += 1;
+      summary.skippedRows.push({
+        id: row.userId,
+        scope: "default",
+        pendingEffectiveDate: row.pendingEffectiveDate,
+        canActivateNow: false,
+        skipReason: decision.reason,
+      });
       continue;
     }
     if (decision.kind === "delete_override") {
       summary.skippedCount += 1;
+      summary.skippedRows.push({
+        id: row.userId,
+        scope: "default",
+        pendingEffectiveDate: row.pendingEffectiveDate,
+        canActivateNow: false,
+        skipReason: "default_row_has_delete_payload",
+      });
       console.warn("[promote-pending] default row carries __delete payload; skipping", {
         userId: row.userId,
       });
@@ -331,6 +372,13 @@ export async function promotePendingRules(
     });
     if (!safety.canActivate) {
       summary.skippedNotSafeCount += 1;
+      summary.skippedRows.push({
+        id: row.userId,
+        scope: "default",
+        pendingEffectiveDate: row.pendingEffectiveDate,
+        canActivateNow: false,
+        skipReason: safety.reason,
+      });
       console.info("[promote-pending] default row not safe yet; skipping", {
         userId: row.userId,
         reason: safety.reason,

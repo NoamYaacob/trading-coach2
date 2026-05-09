@@ -67,6 +67,16 @@ type Props = {
   /** Pending payload stored for this account (not yet applied). */
   pendingPayload?: Record<string, unknown> | null;
   pendingEffectiveDate?: string | null;
+  /**
+   * Parsed pendingPayloadJson from the DEFAULT TEMPLATE RiskRules row.
+   * When a field has no account override AND the inherited default active column
+   * is also null, but this payload has a value, we show an inline note:
+   * "The default template has this value pending (not active yet)."
+   * This prevents users from thinking "Not set → X" in the diff means the
+   * default was never configured — it means the default's pending hasn't
+   * promoted yet.
+   */
+  defaultPendingPayload?: Record<string, unknown> | null;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -132,6 +142,26 @@ function renderActiveSourceTag(source: PendingFieldActiveSource) {
   );
 }
 
+/**
+ * Returns a note when the account has no override AND the inherited default
+ * active column is null, but the default's pending payload has a value.
+ * Signals: "The default will eventually provide this value, but it isn't
+ * active yet — that's why the diff shows 'Not set'."
+ */
+function defaultPendingNote(
+  defaultPendingPayload: Record<string, unknown> | null | undefined,
+  key: string,
+  accountOverrideValue: string,
+  defaultActiveValue: string,
+): string | null {
+  if (!defaultPendingPayload) return null;
+  if (accountOverrideValue.trim() !== "") return null;
+  if (defaultActiveValue.trim() !== "") return null;
+  const v = defaultPendingPayload[key];
+  if (v == null) return null;
+  return `Default template has ${v} saved as pending — not active yet. This account will inherit it when it activates.`;
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5">
@@ -192,6 +222,7 @@ export function AccountRulesForm({
   defaultValues,
   pendingPayload,
   pendingEffectiveDate,
+  defaultPendingPayload,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -501,12 +532,27 @@ export function AccountRulesForm({
         <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
           <Field label="Max trades per day">
             <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
+            {defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "") && (
+              <span className="text-xs font-medium text-amber-600">
+                {defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
+              </span>
+            )}
           </Field>
           <Field label="Stop after consecutive losses">
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
+            {defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "") && (
+              <span className="text-xs font-medium text-amber-600">
+                {defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
+              </span>
+            )}
           </Field>
           <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+            {defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "") && (
+              <span className="text-xs font-medium text-amber-600">
+                {defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
+              </span>
+            )}
           </Field>
         </div>
       </div>

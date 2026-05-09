@@ -2020,6 +2020,15 @@ export class TradovateClient {
       });
     }
 
+    const returnedLimitId = (limitResponse as { id?: unknown } | null)?.id ?? null;
+    console.info("[tradovate/positionLimit] sync complete", {
+      accountId: this.#accountId,
+      action,
+      returnedLimitId,
+      hardLimitAttached: riskParamPayload !== null,
+      endpoints,
+    });
+
     return {
       action,
       endpoints,

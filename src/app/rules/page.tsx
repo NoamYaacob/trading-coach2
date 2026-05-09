@@ -381,6 +381,7 @@ export default async function RulesPage({
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}
+                  defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                 />
               </SectionCard>
             ) : (
@@ -406,6 +407,7 @@ export default async function RulesPage({
                   consentAt: riskRules?.automatedActionsConsentAt ?? null,
                   consentVersion: riskRules?.automatedActionsConsentVersion ?? null,
                 })}
+                pendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
               />
             </SectionCard>
           )}

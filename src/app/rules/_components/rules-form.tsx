@@ -40,6 +40,12 @@ type Props = {
    *  and required to submit — broker writes will not fire on accounts that
    *  fall back to this default template until consent is captured. */
   hasValidConsent: boolean;
+  /**
+   * Parsed pendingPayloadJson from the server. When a field's active DB column
+   * is null but the pending payload has a value, we surface an inline note so
+   * users don't mistake a pending value for an active one.
+   */
+  pendingPayload?: Record<string, unknown> | null;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -85,7 +91,7 @@ function intOrNull(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
+export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<RulesFormValues>(initial);
   const [isDirty, setIsDirty] = useState(false);
@@ -210,10 +216,16 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       <div role="group" aria-label="Money limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Money limits</p>
         <div className="grid items-start gap-4 sm:grid-cols-2">
-          <Field label="Account size ($)">
+          <Field
+            label="Account size ($)"
+            pendingNote={pendingFieldNote(pendingPayload, "accountSize", initial.accountSize)}
+          >
             <NumberInput value={values.accountSize} onChange={(v) => update("accountSize", v)} placeholder="50000" />
           </Field>
-          <Field label="Daily loss limit ($)">
+          <Field
+            label="Daily loss limit ($)"
+            pendingNote={pendingFieldNote(pendingPayload, "maxDailyLoss", initial.maxDailyLoss)}
+          >
             <NumberInput value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
             {showDailyLossBalanceWarning && (
               <span className="text-xs text-amber-700">
@@ -221,10 +233,17 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
               </span>
             )}
           </Field>
-          <Field label="Daily profit target ($)">
+          <Field
+            label="Daily profit target ($)"
+            pendingNote={pendingFieldNote(pendingPayload, "dailyProfitTarget", initial.dailyProfitTarget)}
+          >
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
-          <Field label="Risk per trade ($)" hint="Warning only — does not lock the account.">
+          <Field
+            label="Risk per trade ($)"
+            hint="Warning only — does not lock the account."
+            pendingNote={pendingFieldNote(pendingPayload, "maxRiskPerTrade", initial.maxRiskPerTrade)}
+          >
             <NumberInput value={values.maxRiskPerTrade} onChange={(v) => update("maxRiskPerTrade", v)} placeholder="200" />
           </Field>
         </div>
@@ -234,13 +253,23 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
       <div role="group" aria-label="Trading limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Trading limits</p>
         <div className="grid items-start gap-4 sm:grid-cols-2">
-          <Field label="Max trades per day">
+          <Field
+            label="Max trades per day"
+            pendingNote={pendingFieldNote(pendingPayload, "maxTradesPerDay", initial.maxTradesPerDay)}
+          >
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
-          <Field label="Stop after consecutive losses">
+          <Field
+            label="Stop after consecutive losses"
+            pendingNote={pendingFieldNote(pendingPayload, "stopAfterLosses", initial.stopAfterLosses)}
+          >
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
-          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
+          <Field
+            label={MAX_POSITION_SIZE_COPY.label}
+            hint={MAX_POSITION_SIZE_COPY.hint}
+            pendingNote={pendingFieldNote(pendingPayload, "maxContracts", initial.maxContracts)}
+          >
             <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
           </Field>
         </div>
@@ -252,7 +281,11 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
           <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
           <p className="mt-1 text-xs text-stone-500">Set when Guardrail should stop trading for the day. {SESSION_WINDOW_COPY.helperText}</p>
         </div>
-        <Field label={SESSION_WINDOW_COPY.endLabel} hint={SESSION_WINDOW_COPY.endHint}>
+        <Field
+          label={SESSION_WINDOW_COPY.endLabel}
+          hint={SESSION_WINDOW_COPY.endHint}
+          pendingNote={pendingFieldNote(pendingPayload, "sessionEndHour", initial.sessionEndHour)}
+        >
           <CmeHourSelect
             value={values.sessionEndHour}
             onChange={(v) => update("sessionEndHour", v)}
@@ -389,13 +422,32 @@ export function RulesForm({ initial, timezone, hasValidConsent }: Props) {
   );
 }
 
+/**
+ * Returns a "Pending next safe window: X" hint when the active DB value is
+ * empty (null) but the pending payload contains a value for that field.
+ * Only surfaces when the active value is truly absent — when a field already
+ * has an active value the user can see it directly.
+ */
+function pendingFieldNote(
+  payload: Record<string, unknown> | null | undefined,
+  key: string,
+  activeValue: string,
+): string | null {
+  if (!payload || activeValue.trim() !== "") return null;
+  const v = payload[key];
+  if (v == null) return null;
+  return `Pending next safe window: ${v}`;
+}
+
 function Field({
   label,
   hint,
+  pendingNote,
   children,
 }: {
   label: string;
   hint?: string;
+  pendingNote?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -403,6 +455,9 @@ function Field({
       <span className="text-xs font-medium text-stone-600">{label}</span>
       {children}
       {hint && <span className="text-xs text-stone-400">{hint}</span>}
+      {pendingNote && (
+        <span className="text-xs font-medium text-amber-600">{pendingNote}</span>
+      )}
     </label>
   );
 }

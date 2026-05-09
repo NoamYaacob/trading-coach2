@@ -704,3 +704,100 @@ describe("promotePendingRules — pending field clearing", () => {
     assert.equal(second.skippedCount, 0, "no rows at all on second run (already null)");
   });
 });
+
+// ─── Task D: skippedRows detail ────────────────────────────────────────────────
+
+describe("promotePendingRules — skippedRows", () => {
+  test("skippedRows is empty when all rows promote successfully", async () => {
+    const { prisma } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.deepEqual(summary.skippedRows, []);
+  });
+
+  test("skippedRows includes entry with skipReason when account active during trading", async () => {
+    const { prisma } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-A",
+          pendingPayloadJson: { maxDailyLoss: "500" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-A", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(summary.skippedRows.length, 1);
+    const row = summary.skippedRows[0];
+    assert.equal(row.id, "acct-A");
+    assert.equal(row.scope, "account");
+    assert.equal(row.pendingEffectiveDate, "2026-05-09");
+    assert.equal(row.canActivateNow, false);
+    assert.equal(row.skipReason, "account_active");
+  });
+
+  test("skippedRows includes entry with skipReason for invalid payload", async () => {
+    const { prisma } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-B",
+          pendingPayloadJson: ["bad-array"],
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(summary.skippedCount, 1);
+    assert.equal(summary.skippedRows.length, 1);
+    const row = summary.skippedRows[0];
+    assert.equal(row.id, "acct-B");
+    assert.equal(row.scope, "account");
+    assert.equal(row.skipReason, "invalid_payload");
+  });
+
+  test("skippedRows includes default-scope entry when inheriting account is active", async () => {
+    const { prisma } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accounts: [{ id: "acct-X", userId: "user-1", hasOverride: false }],
+      liveStates: [{ accountId: "acct-X", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.skippedRows.length, 1);
+    const row = summary.skippedRows[0];
+    assert.equal(row.id, "user-1");
+    assert.equal(row.scope, "default");
+    assert.equal(row.skipReason, "default_inheriting_account_active");
+  });
+
+  test("skippedRows includes entry with skipReason 'default_row_has_delete_payload' for __delete on default", async () => {
+    const { prisma } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-evil",
+          pendingPayloadJson: { __delete: true },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_MAINTENANCE);
+    assert.equal(summary.skippedCount, 1);
+    const row = summary.skippedRows[0];
+    assert.equal(row.scope, "default");
+    assert.equal(row.skipReason, "default_row_has_delete_payload");
+  });
+});
