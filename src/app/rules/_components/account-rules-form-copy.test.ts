@@ -98,6 +98,32 @@ test("account form: pending panel guidance does NOT use stale 'changes pending �
   );
 });
 
+test("account form: explanatory note appears next to 'Not set' rows", () => {
+  // When a diff row's active side is the 'Not set' placeholder (because both
+  // the account override and the default template have null for that field),
+  // a small inline note must appear under the rows explaining what that
+  // means. The note prevents users from misreading 'Not set' as "the value
+  // is whatever the input placeholder shows" (e.g. the hardcoded "2" hint
+  // on the maxContracts input).
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("no active value is configured for this rule on the account override or the default template"),
+    "form must include the 'Not set' explanatory note copy",
+  );
+  assert.ok(
+    /pendingFieldRows\.some\(\s*\(r\)\s*=>\s*r\.active === "Not set"\s*\)/.test(src),
+    "the note must be guarded by a 'some row has Not set' check, not always-on",
+  );
+});
+
+test("account form: temporary data-debug-* attributes have been removed from production HTML", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !/data-debug-/.test(src),
+    "production form must not include any data-debug-* diagnostic attributes",
+  );
+});
+
 // ── Cutoff behavior options ──────────────────────────────────────────────────
 
 test("account form: flatten-at-cutoff hint uses the saved-for-future-automation copy", () => {

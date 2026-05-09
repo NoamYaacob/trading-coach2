@@ -624,7 +624,7 @@ test("EFFECTIVE BASELINE: only renders '— → value' when neither account nor 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "—", pending: "2" },
+    { label: "Max position size", active: "Not set", pending: "2" },
   ]);
 });
 
@@ -865,9 +865,9 @@ test("MAX POSITION SIZE: account inherits from default → diff shows '2 → 1' 
   );
 });
 
-test("MAX POSITION SIZE: account override + default both empty → '— → 1' is the only legal '—' case", () => {
+test("MAX POSITION SIZE: account override + default both empty → 'Not set → 1' is the only legal 'Not set' case", () => {
   // The default template has maxContracts: null AND the account has no
-  // override. This is the ONLY case where '—' is correct on the active side.
+  // override. This is the ONLY case where the active side renders 'Not set'.
   const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: null });
   const accountOverride = "";
   const baseline: PendingDiffActiveBaseline = {
@@ -880,7 +880,7 @@ test("MAX POSITION SIZE: account override + default both empty → '— → 1' i
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "—", pending: "1" },
+    { label: "Max position size", active: "Not set", pending: "1" },
   ]);
 });
 
@@ -994,4 +994,142 @@ test("REGRESSION (live bug): inherited Max position size must NOT render '— �
     "Cutoff time: 18:00 CME → 3:00 CME",
     "Max position size: 2 → 1",
   ]);
+});
+
+// ─── 'Not set' rendering for empty active baselines ──────────────────────────
+//
+// Replaces the previous '—' rendering. Empty active values now render as
+// "Not set" so users do not mistake the dash for a placeholder/default.
+// The inline note in account-rules-form.tsx is shown only when at least
+// one row has active === "Not set" — these tests pin the trigger condition.
+
+test("NOT SET COPY: empty active baseline renders 'Not set' instead of '—'", () => {
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: "",
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "Not set", pending: "5" },
+  ]);
+  assert.notEqual(rows[0].active, "—", "the dash placeholder must be retired");
+});
+
+test("NOT SET COPY: 'Not set' note trigger — at least one row with empty active", () => {
+  // The trigger condition the JSX uses to decide whether to render the
+  // inline explanatory note: pendingFieldRows.some((r) => r.active === "Not set").
+  const rows = computePendingFieldRows({
+    activeBaseline: { ...baseActiveBaseline, maxContracts: "" },
+    pendingPayload: { maxDailyLoss: "400", maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  const noteShouldShow = rows.some((r) => r.active === "Not set");
+  assert.equal(noteShouldShow, true, "explanatory note must be shown when at least one row has 'Not set'");
+});
+
+test("NOT SET COPY: note trigger is OFF when every row has a real active value", () => {
+  // Every field has a populated active value — the note must NOT appear.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseActiveBaseline,
+    pendingPayload: { maxDailyLoss: "400", maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  const noteShouldShow = rows.some((r) => r.active === "Not set");
+  assert.equal(noteShouldShow, false, "no 'Not set' rows means no explanatory note");
+});
+
+// ─── Product spec: three maxContracts cases from the live bug ────────────────
+
+test("PRODUCT SPEC: default null + account null + pending 5 → 'Not set → 5'", () => {
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: null });
+  const accountOverride = "";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "Not set", pending: "5" },
+  ]);
+});
+
+test("PRODUCT SPEC: default 2 + account null + pending 5 → '2 → 5'", () => {
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: 2 });
+  const accountOverride = "";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "2", pending: "5" },
+  ]);
+});
+
+test("PRODUCT SPEC: account 3 + default 2 + pending 5 → '3 → 5' (override beats default)", () => {
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: 2 });
+  const accountOverride = "3";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "3", pending: "5" },
+  ]);
+});
+
+test("PRODUCT SPEC: 'Not set' must never come from a UI placeholder", () => {
+  // The form's <Input> uses a hardcoded placeholder of "2" for maxContracts.
+  // The placeholder is purely visual and must NOT be treated as the active
+  // value: a baseline of "" still renders "Not set" regardless of any UI hint.
+  const placeholderHint = "2"; // hardcoded in account-rules-form.tsx — not data
+  const dbBaseline = ""; // both account override AND default-template are null
+  const rows = computePendingFieldRows({
+    activeBaseline: { ...baseActiveBaseline, maxContracts: dbBaseline },
+    pendingPayload: { maxContracts: 5 },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows[0].active, "Not set");
+  assert.notEqual(
+    rows[0].active,
+    placeholderHint,
+    "placeholder must never leak into the diff baseline",
+  );
+});
+
+// ─── Sister formatters use 'Not set' too (consistent UX) ─────────────────────
+
+test("NOT SET COPY: money formatter uses 'Not set' for empty active", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: { ...baseActiveBaseline, maxDailyLoss: "" },
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows[0].active, "Not set");
+});
+
+test("NOT SET COPY: cutoff formatter uses 'Not set' for empty active", () => {
+  const rows = computePendingFieldRows({
+    activeBaseline: { ...baseActiveBaseline, allowedEndHour: "" },
+    pendingPayload: { allowedEndHour: 16 },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows[0].active, "Not set");
 });

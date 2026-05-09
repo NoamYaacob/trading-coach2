@@ -168,9 +168,17 @@ export function computePendingFieldRows(input: {
 }): { label: string; active: string; pending: string }[] {
   if (!input.pendingPayload || input.pendingIsDelete) return [];
 
-  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "—");
-  const fmtCount = (v: string): string => (v.trim() ? v : "—");
-  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "—");
+  // Empty active/pending values render as the explicit string "Not set"
+  // rather than the dash "—". The dash had been mistaken in the live UI for
+  // a placeholder/dummy ("0", "—", or the input's hardcoded placeholder
+  // value), which masked the real underlying state: neither the account
+  // override nor the default template has a value configured for this row.
+  // "Not set" makes the absence explicit and is paired with an inline note
+  // in the panel ("`Not set` means no active value is configured on the
+  // account override or the default template").
+  const fmtMoney = (v: string): string => (v.trim() ? `$${v}` : "Not set");
+  const fmtCount = (v: string): string => (v.trim() ? v : "Not set");
+  const fmtCutoff = (v: string): string => (v.trim() ? `${v}:00 CME` : "Not set");
 
   const rows: { label: string; active: string; pending: string }[] = [];
   const push = (
