@@ -55,6 +55,18 @@ export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
 import { isAutoLiqConfirmed, buildLiquidatePositionsPayload, isFlattenConfirmed } from "./enforcement-helpers";
 import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 import { formatDateMMDDYYYY, nextCalendarDay } from "./tradovate-report-date";
+import {
+  findGuardrailPositionLimit,
+  buildCreatePositionLimitPayload,
+  buildUpdatePositionLimitPayload,
+  buildDeactivatePositionLimitPayload,
+  buildCreateRiskParameterPayload,
+  buildUpdateRiskParameterPayload,
+  type TvUserAccountPositionLimit,
+  type TvUserAccountRiskParameter,
+  type PositionLimitSyncResult,
+} from "./tradovate-position-limit";
+export type { PositionLimitSyncResult } from "./tradovate-position-limit";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
 
 // ── Raw Tradovate API shapes ──────────────────────────────────────────────────
@@ -1820,5 +1832,201 @@ export class TradovateClient {
         };
       })
       .filter((e): e is BrokerExecution => e !== null);
+  }
+
+  /**
+   * Fetch all UserAccountPositionLimit records for this account.
+   *
+   * Endpoint: GET userAccountPositionLimit/deps?masterid={tvAccountId}
+   *
+   * skipMarkExpired=true: a 401/403 here means the OAuth token lacks
+   * "Account Risk Settings: Full Access" — a scope gap, not a global auth
+   * failure. The connection must NOT be marked expired.
+   */
+  async listUserAccountPositionLimits(): Promise<TvUserAccountPositionLimit[]> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+    const raw = await this.#request<unknown>(
+      `userAccountPositionLimit/deps?masterid=${this.#tvAccountId}`,
+      "GET",
+      undefined,
+      false,
+      /* skipMarkExpired */ true,
+    );
+    return parseSnapshotItems<TvUserAccountPositionLimit>(raw);
+  }
+
+  /**
+   * Apply (or remove) a broker-side Max Position Size limit for this account.
+   *
+   * When maxContracts is a positive integer: creates or updates the
+   * Guardrail-owned UserAccountPositionLimit record and ensures a
+   * UserAccountRiskParameter with hardLimit=true is attached, so
+   * Tradovate rejects any order that would push net open contracts
+   * above the limit at the broker level.
+   *
+   * When maxContracts is null: deactivates the Guardrail-owned limit by
+   * setting active=false. We deactivate rather than delete because
+   * Tradovate's delete endpoint is not available on all account tiers.
+   *
+   * Limits created by the user or their prop firm (different description)
+   * are never touched.
+   *
+   * Endpoints used:
+   *   GET  userAccountPositionLimit/deps?masterid={tvAccountId}
+   *   POST userAccountPositionLimit/create   (first call for this account)
+   *   POST userAccountPositionLimit/update   (subsequent calls)
+   *   GET  userAccountRiskParameter/deps?masterid={positionLimitId}
+   *   POST userAccountRiskParameter/create   (first call)
+   *   POST userAccountRiskParameter/update   (subsequent calls)
+   */
+  async applyMaxPositionSize(params: {
+    maxContracts: number | null;
+  }): Promise<PositionLimitSyncResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+
+    const existing = await this.listUserAccountPositionLimits();
+    const guardrailLimit = findGuardrailPositionLimit(existing);
+
+    // ── Deactivate path (maxContracts removed) ───────────────────────────────
+    if (params.maxContracts === null) {
+      if (!guardrailLimit?.id) {
+        console.info("[tradovate/positionLimit] no Guardrail limit exists — nothing to deactivate", {
+          accountId: this.#accountId,
+        });
+        return {
+          action: "skipped",
+          endpoints: [],
+          positionLimitPayload: null,
+          riskParameterPayload: null,
+          positionLimitResponse: null,
+          riskParameterResponse: null,
+        };
+      }
+      const payload = buildDeactivatePositionLimitPayload(guardrailLimit.id);
+      console.info("[tradovate/positionLimit] deactivating Guardrail limit", {
+        accountId: this.#accountId,
+        limitId: guardrailLimit.id,
+      });
+      const response = await this.#request<TvUserAccountPositionLimit>(
+        "userAccountPositionLimit/update",
+        "POST",
+        payload,
+        false,
+        /* skipMarkExpired */ true,
+      );
+      return {
+        action: "deactivated",
+        endpoints: ["userAccountPositionLimit/update"],
+        positionLimitPayload: payload,
+        riskParameterPayload: null,
+        positionLimitResponse: response,
+        riskParameterResponse: null,
+      };
+    }
+
+    // ── Create/update path ───────────────────────────────────────────────────
+    let limitEndpoint: string;
+    let limitPayload: Record<string, unknown>;
+    let action: PositionLimitSyncResult["action"];
+
+    if (guardrailLimit?.id != null) {
+      limitEndpoint = "userAccountPositionLimit/update";
+      limitPayload = buildUpdatePositionLimitPayload(guardrailLimit.id, params.maxContracts);
+      action = "updated";
+    } else {
+      limitEndpoint = "userAccountPositionLimit/create";
+      limitPayload = buildCreatePositionLimitPayload(this.#tvAccountId, params.maxContracts);
+      action = "created";
+    }
+
+    console.info("[tradovate/positionLimit] applying max position size", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      maxContracts: params.maxContracts,
+      action,
+      existingLimitId: guardrailLimit?.id ?? null,
+    });
+
+    const limitResponse = await this.#request<TvUserAccountPositionLimit>(
+      limitEndpoint,
+      "POST",
+      limitPayload,
+      false,
+      /* skipMarkExpired */ true,
+    );
+
+    const limitId = limitResponse?.id ?? guardrailLimit?.id ?? null;
+
+    // ── Risk parameter (hardLimit) ───────────────────────────────────────────
+    let riskParamPayload: Record<string, unknown> | null = null;
+    let riskParamResponse: unknown = null;
+    const endpoints = [limitEndpoint];
+
+    if (limitId != null) {
+      const existingParams = await this.#request<unknown>(
+        `userAccountRiskParameter/deps?masterid=${limitId}`,
+        "GET",
+        undefined,
+        false,
+        /* skipMarkExpired */ true,
+      );
+      const paramRecords = parseSnapshotItems<TvUserAccountRiskParameter>(existingParams);
+      const existingParam = paramRecords[0] ?? null;
+
+      if (existingParam?.id != null) {
+        riskParamPayload = buildUpdateRiskParameterPayload(existingParam.id);
+        endpoints.push("userAccountRiskParameter/update");
+        riskParamResponse = await this.#request<TvUserAccountRiskParameter>(
+          "userAccountRiskParameter/update",
+          "POST",
+          riskParamPayload,
+          false,
+          /* skipMarkExpired */ true,
+        );
+      } else {
+        riskParamPayload = buildCreateRiskParameterPayload(limitId);
+        endpoints.push("userAccountRiskParameter/create");
+        riskParamResponse = await this.#request<TvUserAccountRiskParameter>(
+          "userAccountRiskParameter/create",
+          "POST",
+          riskParamPayload,
+          false,
+          /* skipMarkExpired */ true,
+        );
+      }
+
+      console.info("[tradovate/positionLimit] risk parameter applied", {
+        accountId: this.#accountId,
+        limitId,
+        riskParamAction: existingParam?.id != null ? "updated" : "created",
+      });
+    } else {
+      console.warn("[tradovate/positionLimit] could not resolve limitId for risk parameter — skipping", {
+        accountId: this.#accountId,
+        limitResponseKeys:
+          limitResponse != null && typeof limitResponse === "object"
+            ? Object.keys(limitResponse as object)
+            : [],
+      });
+    }
+
+    return {
+      action,
+      endpoints,
+      positionLimitPayload: limitPayload,
+      riskParameterPayload: riskParamPayload,
+      positionLimitResponse: limitResponse,
+      riskParameterResponse: riskParamResponse,
+    };
   }
 }

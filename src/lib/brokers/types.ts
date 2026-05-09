@@ -33,7 +33,8 @@ export type BrokerCapabilityKey =
   | "cancelOrders"
   | "flattenPositions"
   | "brokerLevelLockout"
-  | "placeOrderBlock";
+  | "placeOrderBlock"
+  | "maxPositionSize";
 
 /**
  * Capability state values.

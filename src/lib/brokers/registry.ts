@@ -47,6 +47,7 @@ class PlaceholderAdapter implements BrokerAdapter {
       flattenPositions: make("flattenPositions", "Flatten all positions (kill switch)"),
       brokerLevelLockout: make("brokerLevelLockout", "Broker-level lockout"),
       placeOrderBlock: make("placeOrderBlock", "Block new orders pre-trade"),
+      maxPositionSize: make("maxPositionSize", "Max position size (broker-enforced)"),
     };
   }
 

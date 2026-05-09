@@ -88,6 +88,12 @@ export class TradovateAdapter implements BrokerAdapter {
         status: "unknown",
         note: "Tradovate API support to be verified.",
       },
+      maxPositionSize: {
+        key: "maxPositionSize",
+        label: "Max position size (broker-enforced)",
+        status: "coming_soon",
+        note: "Requires 'Account Risk Settings: Full Access' OAuth scope. Enforced via userAccountPositionLimit with hardLimit=true.",
+      },
     };
   }
 

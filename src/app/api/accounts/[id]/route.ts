@@ -17,6 +17,7 @@ import {
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 import { validateRiskRulesBody } from "./risk-rules-validate";
+import { TradovateClient } from "@/lib/brokers/tradovate-client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -228,6 +229,37 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           pendingEffectiveDate: null,
         },
       });
+
+      // Sync broker-side Max Position Size when maxContracts is present in the
+      // payload and the account is a connected Tradovate account. Fire-and-forget
+      // (void) — a broker sync failure must NOT roll back the DB save; the
+      // Guardrail DB value is authoritative and the broker sync can be retried.
+      if (
+        body.riskRules !== null &&
+        "maxContracts" in body.riskRules &&
+        existing.platform === "tradovate" &&
+        existing.externalAccountId
+      ) {
+        void (async () => {
+          try {
+            const client = new TradovateClient(existing.id, currentUser.id);
+            await client.initialize();
+            const result = await client.applyMaxPositionSize({
+              maxContracts: body.riskRules!.maxContracts ?? null,
+            });
+            console.info("[accounts/patch] broker max position size synced", {
+              accountId: id,
+              action: result.action,
+              endpoints: result.endpoints,
+            });
+          } catch (err) {
+            console.warn("[accounts/patch] broker max position size sync failed (non-fatal)", {
+              accountId: id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+      }
     }
   }
 
