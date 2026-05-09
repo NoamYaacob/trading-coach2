@@ -530,7 +530,27 @@ export function AccountRulesForm({
 
       {/* Pending changes panel — server-driven via pendingPayload prop; survives navigation */}
       {showPendingPanel && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
+        <div
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2"
+          // TEMPORARY DIAGNOSTIC: surfaces every value that feeds the
+          // "Max position size" diff row so users can inspect-element on
+          // the yellow panel and confirm whether the live `—` is a data
+          // issue (DB column null) or a code regression. Remove these
+          // attributes once the live observation is reproduced and
+          // diagnosed. Sister fields are included for comparison so the
+          // discrepancy with the working rows is obvious.
+          data-debug-init-max-contracts={initial.maxContracts}
+          data-debug-default-max-contracts={defaultValues?.maxContracts ?? "(undefined)"}
+          data-debug-effective-max-contracts={effectiveBaseline.maxContracts}
+          data-debug-pending-max-contracts={
+            typeof pendingPayload?.maxContracts === "number"
+              ? String(pendingPayload.maxContracts)
+              : "(missing)"
+          }
+          data-debug-init-max-trades={initial.maxTradesPerDay}
+          data-debug-default-max-trades={defaultValues?.maxTradesPerDay ?? "(undefined)"}
+          data-debug-effective-max-trades={effectiveBaseline.maxTradesPerDay}
+        >
           <div>
             <p className="font-medium">Pending changes saved</p>
             <p className="mt-0.5 text-[11px] text-amber-800">
