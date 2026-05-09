@@ -810,3 +810,188 @@ test("REGRESSION: inherited account when default has only maxRiskPerTrade — ri
     { label: "Risk per trade", active: "$150", pending: "$200" },
   ]);
 });
+
+// ─── Max position size (maxContracts) end-to-end inheritance ─────────────────
+//
+// Pins the maxContracts field plumbing across the four layers it touches:
+//   1. mapDefaultRulesToAccountForm — reads `row.maxContracts`
+//   2. effectiveBaseline composition — effectiveValue(initial, default)
+//   3. computePendingFieldRows — reads `payload.maxContracts` as a number
+//   4. label `Max position size`
+// A regression at any of these layers shows up as `— → N` in the live UI.
+
+test("MAX POSITION SIZE: account override exists → diff shows '2 → 1'", () => {
+  // Account has its own override of 2. Default template also has 5 — irrelevant
+  // because the override wins. Pending: 1.
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: 5 });
+  const accountOverride = "2";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    // mimic the form's effectiveValue composition for the diff baseline
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 1 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "2", pending: "1" },
+  ]);
+});
+
+test("MAX POSITION SIZE: account inherits from default → diff shows '2 → 1' (NOT '— → 1')", () => {
+  // The exact bug the user is auditing: account has no maxContracts override,
+  // default template has maxContracts=2. The diff baseline must fall back to
+  // the default value, never render '—'.
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: 2 });
+  const accountOverride = ""; // inherited
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 1 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "2", pending: "1" },
+  ]);
+  assert.notEqual(
+    rows[0].active,
+    "—",
+    "inherited maxContracts MUST render the default value, not '—'",
+  );
+});
+
+test("MAX POSITION SIZE: account override + default both empty → '— → 1' is the only legal '—' case", () => {
+  // The default template has maxContracts: null AND the account has no
+  // override. This is the ONLY case where '—' is correct on the active side.
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({ maxContracts: null });
+  const accountOverride = "";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxContracts: accountOverride.trim() ? accountOverride : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 1 },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Max position size", active: "—", pending: "1" },
+  ]);
+});
+
+test("MAX POSITION SIZE: pending payload key is 'maxContracts' (not 'maxPositionSize' / 'maxPosition')", () => {
+  // The user-facing label is 'Max position size' but the storage key is
+  // 'maxContracts' — same name across AccountRiskRules, RiskRules, the form
+  // submit body, and pendingPayloadJson. A drift here would silently break
+  // the diff: the payload would still contain a value but
+  // computePendingFieldRows would not pick it up.
+  const baseline: PendingDiffActiveBaseline = { ...baseActiveBaseline, maxContracts: "2" };
+
+  // Wrong keys produce no row.
+  const noRows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxPositionSize: 1 } as Record<string, unknown>,
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(noRows, [], "diff helper must NOT pick up alternate key names");
+
+  // Correct key produces a row with the user-facing 'Max position size' label.
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxContracts: 1 },
+    pendingIsDelete: false,
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].label, "Max position size");
+});
+
+test("MAX POSITION SIZE: mapping reads row.maxContracts identically to its sibling Int fields", () => {
+  // Belt-and-suspenders: read maxContracts alongside other Int fields that the
+  // user reports working (maxTradesPerDay, stopAfterLosses). All three must
+  // come out non-empty when the source row has values.
+  const result = mapDefaultRulesToAccountForm({
+    maxTradesPerDay: 100,
+    stopAfterLosses: 50,
+    maxContracts: 2,
+  });
+  assert.equal(result.maxTradesPerDay, "100");
+  assert.equal(result.stopAfterLosses, "50");
+  assert.equal(
+    result.maxContracts,
+    "2",
+    "if maxTradesPerDay/stopAfterLosses come back populated then maxContracts must too",
+  );
+});
+
+test("REGRESSION (live bug): inherited Max position size must NOT render '— → 1' when default has maxContracts", () => {
+  // Reproduces the exact live observation: most fields work, but Max position
+  // size renders '— → 1' even though every other field on the default has
+  // values and the account inherits. The fix is: defaultValues.maxContracts
+  // must be derived from riskRules.maxContracts. This test compose the same
+  // chain the production code uses (page.tsx + form effectiveBaseline).
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({
+    // Match the user's other reported active values so the fixture
+    // mirrors the live state.
+    maxDailyLoss: "1000",
+    riskPerTrade: "500",
+    maxTradesPerDay: 100,
+    stopAfterLosses: 50,
+    sessionEndHour: 18,
+    maxContracts: 2, // <-- the value the test asserts must reach the diff
+  });
+  // Account has no override on any field — pure inheritance scenario.
+  const inheritedAccountInitial = {
+    maxDailyLoss: "",
+    riskPerTrade: "",
+    maxTradesPerDay: "",
+    stopAfterLosses: "",
+    allowedEndHour: "",
+    maxContracts: "",
+  };
+  const baseline: PendingDiffActiveBaseline = {
+    maxDailyLoss: inheritedAccountInitial.maxDailyLoss.trim()
+      ? inheritedAccountInitial.maxDailyLoss
+      : accountFormDefaultValues.maxDailyLoss,
+    riskPerTrade: inheritedAccountInitial.riskPerTrade.trim()
+      ? inheritedAccountInitial.riskPerTrade
+      : accountFormDefaultValues.riskPerTrade,
+    maxTradesPerDay: inheritedAccountInitial.maxTradesPerDay.trim()
+      ? inheritedAccountInitial.maxTradesPerDay
+      : accountFormDefaultValues.maxTradesPerDay,
+    stopAfterLosses: inheritedAccountInitial.stopAfterLosses.trim()
+      ? inheritedAccountInitial.stopAfterLosses
+      : accountFormDefaultValues.stopAfterLosses,
+    allowedEndHour: inheritedAccountInitial.allowedEndHour.trim()
+      ? inheritedAccountInitial.allowedEndHour
+      : accountFormDefaultValues.allowedEndHour,
+    maxContracts: inheritedAccountInitial.maxContracts.trim()
+      ? inheritedAccountInitial.maxContracts
+      : accountFormDefaultValues.maxContracts,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: {
+      maxDailyLoss: "900",
+      riskPerTrade: "800",
+      maxTradesPerDay: 4,
+      stopAfterLosses: 2,
+      allowedEndHour: 3,
+      maxContracts: 1,
+    },
+    pendingIsDelete: false,
+  });
+  // The user's full diff expectation, in row order:
+  assert.deepEqual(rows.map((r) => `${r.label}: ${r.active} → ${r.pending}`), [
+    "Daily loss limit: $1000 → $900",
+    "Risk per trade: $500 → $800",
+    "Max trades / day: 100 → 4",
+    "Stop after losses: 50 → 2",
+    "Cutoff time: 18:00 CME → 3:00 CME",
+    "Max position size: 2 → 1",
+  ]);
+});
