@@ -246,7 +246,7 @@ export function AccountRulesForm({
         const pendingPresets = hasPresets ? values.sessionPresets.slice() : (values.sessionIsCustom ? null : []);
         setLocalPendingPresets(pendingPresets);
         setLocalPendingDate(data.rulesLock.effectiveDate ?? null);
-        setPendingMessage("Saved as pending — these rules take effect at the next edit window.");
+        setPendingMessage("Saved as pending — these rules take effect at the next safe window.");
         // Pending save: the DB active fields did NOT change. Roll the form
         // input back to the active baseline so the fields keep showing the
         // currently-active rules. The diff renders active (initial) → pending
@@ -524,7 +524,7 @@ export function AccountRulesForm({
           read it before scanning the diff. Hidden when no pending data. */}
       {showPendingPanel && !pendingIsDelete && (
         <p className="text-[11px] text-stone-500">
-          Form fields show active rules. Pending changes are listed below and will apply at the next edit window.
+          Form fields show active rules. Pending changes are listed below and will apply at the next safe window.
         </p>
       )}
 
@@ -534,13 +534,13 @@ export function AccountRulesForm({
           <div>
             <p className="font-medium">Pending changes saved</p>
             <p className="mt-0.5 text-[11px] text-amber-800">
-              Pending changes are saved and will activate automatically at the next edit window
+              Pending changes are saved and will activate automatically at the next safe window
               {localPendingDate ? ` (${localPendingDate}).` : "."}
             </p>
           </div>
           {pendingIsDelete ? (
             <p className="text-[11px] text-amber-800">
-              Account-specific rules are scheduled for removal. This account will revert to the default template at the next edit window.
+              Account-specific rules are scheduled for removal. This account will revert to the default template at the next safe window.
             </p>
           ) : pendingFieldRows.length > 0 ? (
             <div className="grid gap-1">

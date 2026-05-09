@@ -7,6 +7,7 @@ import {
   computePendingFieldRows,
   computeShowPendingPanel,
   canSaveAccountRulesNow,
+  mapDefaultRulesToAccountForm,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
   REVIEW_INHERITED_HINT,
@@ -675,4 +676,137 @@ test("REGRESSION: account override $500 + pending $400 must render '$500 → $40
   assert.equal(rows[0].active, "$500");
   assert.equal(rows[0].pending, "$400");
   assert.notEqual(rows[0].active, "$400", "guard against stale form-state leak into the active side");
+});
+
+// ─── mapDefaultRulesToAccountForm ────────────────────────────────────────────
+
+test("default mapping: null/undefined input returns all-empty strings", () => {
+  const fromNull = mapDefaultRulesToAccountForm(null);
+  const fromUndefined = mapDefaultRulesToAccountForm(undefined);
+  const empty = {
+    maxDailyLoss: "",
+    riskPerTrade: "",
+    maxTradesPerDay: "",
+    stopAfterLosses: "",
+    allowedEndHour: "",
+    maxContracts: "",
+  };
+  assert.deepEqual(fromNull, empty);
+  assert.deepEqual(fromUndefined, empty);
+});
+
+test("default mapping: copies populated decimal/int columns straight across", () => {
+  const result = mapDefaultRulesToAccountForm({
+    maxDailyLoss: "500",
+    riskPerTrade: "100",
+    maxTradesPerDay: 5,
+    stopAfterLosses: 2,
+    sessionEndHour: 16,
+    maxContracts: 3,
+  });
+  assert.deepEqual(result, {
+    maxDailyLoss: "500",
+    riskPerTrade: "100",
+    maxTradesPerDay: "5",
+    stopAfterLosses: "2",
+    allowedEndHour: "16",
+    maxContracts: "3",
+  });
+});
+
+test("default mapping: riskPerTrade falls back to maxRiskPerTrade when riskPerTrade is null", () => {
+  // Legacy users have only maxRiskPerTrade populated. Without this fallback
+  // the account form's defaultValues.riskPerTrade is "", and the pending
+  // diff renders "—" for inherited rows. With it, the active side shows
+  // the value the user actually has on the default template.
+  const result = mapDefaultRulesToAccountForm({
+    riskPerTrade: null,
+    maxRiskPerTrade: "150",
+  });
+  assert.equal(result.riskPerTrade, "150");
+});
+
+test("default mapping: riskPerTrade prefers riskPerTrade over maxRiskPerTrade when both present", () => {
+  const result = mapDefaultRulesToAccountForm({
+    riskPerTrade: "100",
+    maxRiskPerTrade: "150",
+  });
+  assert.equal(result.riskPerTrade, "100", "current riskPerTrade wins over legacy maxRiskPerTrade");
+});
+
+test("default mapping: sessionEndHour (default-template column) maps to allowedEndHour (account-form key)", () => {
+  // Account form expects `allowedEndHour` but the default template column is
+  // `sessionEndHour`. Without this remap the account-form receives no cutoff
+  // baseline.
+  const result = mapDefaultRulesToAccountForm({ sessionEndHour: 16 });
+  assert.equal(result.allowedEndHour, "16");
+});
+
+test("default mapping: emits empty string when a specific field is null even if others are populated", () => {
+  // Mixed-population case: some default fields set, others not. The unset
+  // ones must come back as "" so effectiveValue() can short-circuit them.
+  const result = mapDefaultRulesToAccountForm({
+    maxDailyLoss: "500",
+    riskPerTrade: null,
+    maxRiskPerTrade: null,
+    maxTradesPerDay: null,
+    stopAfterLosses: 3,
+    sessionEndHour: null,
+    maxContracts: null,
+  });
+  assert.equal(result.maxDailyLoss, "500");
+  assert.equal(result.riskPerTrade, "");
+  assert.equal(result.maxTradesPerDay, "");
+  assert.equal(result.stopAfterLosses, "3");
+  assert.equal(result.allowedEndHour, "");
+  assert.equal(result.maxContracts, "");
+});
+
+test("REGRESSION: inherited account with default $500 produces '$500 → $400' diff (no '—')", () => {
+  // The end-to-end flow: account has no override (initial.maxDailyLoss = "");
+  // default template has $500. mapDefaultRulesToAccountForm gives the account
+  // form a defaultValues row with maxDailyLoss="500". The form's
+  // effectiveValue("", "500") = "500". The pending diff renders "$500 → $400".
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({
+    maxDailyLoss: "500",
+  });
+  // Mimic the form's effectiveValue() composition for the diff baseline.
+  const inheritedAccountOverride = "";
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    maxDailyLoss: inheritedAccountOverride.trim()
+      ? inheritedAccountOverride
+      : accountFormDefaultValues.maxDailyLoss,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { maxDailyLoss: "400" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Daily loss limit", active: "$500", pending: "$400" },
+  ]);
+  assert.notEqual(rows[0].active, "—", "inherited from default must NOT render '—' on the active side");
+});
+
+test("REGRESSION: inherited account when default has only maxRiskPerTrade — riskPerTrade row uses fallback", () => {
+  // Legacy user: default template has maxRiskPerTrade=150 but no riskPerTrade.
+  // The account inherits. The fallback in mapDefaultRulesToAccountForm makes
+  // defaultValues.riskPerTrade = "150", so the diff renders "$150 → $200".
+  const accountFormDefaultValues = mapDefaultRulesToAccountForm({
+    riskPerTrade: null,
+    maxRiskPerTrade: "150",
+  });
+  const baseline: PendingDiffActiveBaseline = {
+    ...baseActiveBaseline,
+    riskPerTrade: accountFormDefaultValues.riskPerTrade,
+  };
+  const rows = computePendingFieldRows({
+    activeBaseline: baseline,
+    pendingPayload: { riskPerTrade: "200" },
+    pendingIsDelete: false,
+  });
+  assert.deepEqual(rows, [
+    { label: "Risk per trade", active: "$150", pending: "$200" },
+  ]);
 });

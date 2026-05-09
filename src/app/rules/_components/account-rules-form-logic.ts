@@ -49,6 +49,88 @@ export function canSaveAccountRulesNow(hasExistingRules: boolean, isLocked: bool
   return !isLocked;
 }
 
+// ── Default-template → account-form mapping ─────────────────────────────────
+
+/**
+ * Shape returned by the account-form mapping. Mirrors the form's
+ * `DefaultRuleValues` prop exactly so a test that catches a key
+ * mismatch on the mapping side also catches a desync with the form.
+ */
+export type AccountFormDefaultValues = {
+  maxDailyLoss: string;
+  riskPerTrade: string;
+  maxTradesPerDay: string;
+  stopAfterLosses: string;
+  allowedEndHour: string;
+  maxContracts: string;
+};
+
+/**
+ * Subset of the Prisma `RiskRules` row that this mapper inspects. Defined
+ * structurally so this module doesn't import @prisma/client.
+ */
+export type DefaultRulesRow = {
+  maxDailyLoss?: { toString(): string } | null;
+  riskPerTrade?: { toString(): string } | null;
+  /** Legacy: some users have only `maxRiskPerTrade` set on the default
+   *  template and `riskPerTrade` is null. Account form expects
+   *  `riskPerTrade`; we fall back to `maxRiskPerTrade` so inheritance
+   *  doesn't render '—' on the diff baseline. */
+  maxRiskPerTrade?: { toString(): string } | null;
+  maxTradesPerDay?: number | null;
+  stopAfterLosses?: number | null;
+  /** Default-template column name. Account form uses `allowedEndHour`; we
+   *  remap here so the account-form receives the right key. */
+  sessionEndHour?: number | null;
+  maxContracts?: number | null;
+};
+
+function decimalString(v: { toString(): string } | null | undefined): string {
+  return v != null ? Number(v).toString() : "";
+}
+
+function intString(v: number | null | undefined): string {
+  return v != null ? String(v) : "";
+}
+
+/**
+ * Convert a default-template `RiskRules` row into the prop shape the account
+ * form expects (`DefaultRuleValues`).
+ *
+ * Two non-trivial mappings happen here:
+ *   1. `riskPerTrade` falls back to `maxRiskPerTrade` when the former is null.
+ *      Some users were onboarded with only `maxRiskPerTrade` populated.
+ *   2. `sessionEndHour` (default-template column) is remapped to
+ *      `allowedEndHour` (the account-form key, which mirrors the
+ *      AccountRiskRules column).
+ *
+ * Returns all-empty strings when input is null so the form renders
+ * placeholders only — no spurious '—' from missing fields when no default
+ * template exists.
+ */
+export function mapDefaultRulesToAccountForm(
+  row: DefaultRulesRow | null | undefined,
+): AccountFormDefaultValues {
+  if (!row) {
+    return {
+      maxDailyLoss: "",
+      riskPerTrade: "",
+      maxTradesPerDay: "",
+      stopAfterLosses: "",
+      allowedEndHour: "",
+      maxContracts: "",
+    };
+  }
+  return {
+    maxDailyLoss: decimalString(row.maxDailyLoss),
+    riskPerTrade: decimalString(row.riskPerTrade ?? row.maxRiskPerTrade),
+    maxTradesPerDay: intString(row.maxTradesPerDay),
+    stopAfterLosses: intString(row.stopAfterLosses),
+    allowedEndHour: intString(row.sessionEndHour),
+    maxContracts: intString(row.maxContracts),
+  };
+}
+
 // ── Pending field diff rows ──────────────────────────────────────────────────
 
 /**

@@ -31,14 +31,15 @@ test("account form: pending panel header says 'Pending changes saved'", () => {
   );
 });
 
-test("account form: pending panel subline says auto-activation at next edit window", () => {
+test("account form: pending panel subline says auto-activation at next safe window", () => {
   // The promoter cron is now wired (src/lib/pending-rule-promoter.ts +
-  // /api/cron/promote-pending-rules). Copy must reflect that pending
-  // changes activate automatically.
+  // /api/cron/promote-pending-rules). Activation is gated by the per-row
+  // SAFETY window (CME maintenance / weekend close / market closed / account
+  // locked) — not by a calendar "edit window". Copy must reflect this.
   const src = read(FORM_FILES.account);
   assert.ok(
-    src.includes("will activate automatically at the next edit window"),
-    "pending panel must say 'will activate automatically at the next edit window'",
+    src.includes("will activate automatically at the next safe window"),
+    "pending panel must say 'will activate automatically at the next safe window'",
   );
 });
 

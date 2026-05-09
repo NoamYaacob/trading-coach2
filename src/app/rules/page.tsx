@@ -19,6 +19,7 @@ import { RulesForm, type RulesFormValues } from "./_components/rules-form";
 import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
+import { mapDefaultRulesToAccountForm } from "./_components/account-rules-form-logic";
 import { buildRuleScopes } from "./_components/rule-scope-utils";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix } from "./_components/scope-selector-helpers";
@@ -220,14 +221,11 @@ export default async function RulesPage({
     // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   };
 
-  const accountDefaultValues: DefaultRuleValues = {
-    maxDailyLoss: decStr(riskRules?.maxDailyLoss),
-    riskPerTrade: decStr(riskRules?.riskPerTrade),
-    maxTradesPerDay: intStr(riskRules?.maxTradesPerDay),
-    stopAfterLosses: intStr(riskRules?.stopAfterLosses),
-    allowedEndHour: intStr(riskRules?.sessionEndHour),
-    maxContracts: intStr(riskRules?.maxContracts),
-  };
+  // Map the default-template row into the shape the account form expects.
+  // The helper handles the riskPerTrade ← maxRiskPerTrade legacy fallback and
+  // the sessionEndHour → allowedEndHour field-name remap, both of which the
+  // account-form's pending diff baseline depends on for inherited fields.
+  const accountDefaultValues: DefaultRuleValues = mapDefaultRulesToAccountForm(riskRules);
 
   // True when at least one of the user's connected accounts has Tradovate full_access.
   // Drives the Default-template enforcement copy and the Guardian active-card copy.
@@ -337,7 +335,7 @@ export default async function RulesPage({
               <div className="min-w-0">
                 <p className="font-medium">Changes pending</p>
                 <p className="mt-0.5 text-[11px] text-amber-800">
-                  Pending changes are saved and will activate automatically at the next edit window.
+                  Pending changes are saved and will activate automatically at the next safe window.
                   {!ruleEditEligibility.canEditNow && accountRuleLockMessage
                     ? ` ${accountRuleLockMessage}`
                     : ""}

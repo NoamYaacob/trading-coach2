@@ -151,11 +151,15 @@ test("the promoter library never imports a Tradovate / broker SDK", () => {
 
 // ── Default-template pending banner now reflects the wired promoter ──────────
 
-test("default template pending banner says pending will activate automatically", () => {
+test("default template pending banner says pending will activate at the next safe window", () => {
+  // Activation is gated by the per-row SAFETY window enforced by the cron +
+  // canActivateRulesNow (CME maintenance / weekend close / market closed /
+  // account locked). The banner copy must reflect that mechanism, not a
+  // calendar "edit window".
   const src = readFileSync(join(SRC_ROOT, "app", "rules", "page.tsx"), "utf8");
   assert.ok(
-    src.includes("will activate automatically at the next edit window"),
-    "default template pending banner must say pending will activate automatically",
+    src.includes("will activate automatically at the next safe window"),
+    "default template pending banner must say 'will activate automatically at the next safe window'",
   );
 });
 
