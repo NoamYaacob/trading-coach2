@@ -287,6 +287,86 @@ describe("section structure", () => {
   });
 });
 
+// ── Orphan + active coexistence ───────────────────────────────────────────────
+
+describe("orphan expired connection alongside active connected account", () => {
+  test("orphaned row copy says 'Old expired' not 'connection expired' to avoid confusion", () => {
+    const src = read(SECTION_FILE);
+    const orphanedFnStart = src.indexOf("function OrphanedConnectionRow");
+    const orphanedFnEnd = src.indexOf("\nfunction ", orphanedFnStart + 1);
+    const orphanedFn = src.slice(orphanedFnStart, orphanedFnEnd);
+    assert.ok(
+      orphanedFn.includes("Old expired"),
+      "orphaned row must use 'Old expired' prefix so it is not confused with an active connection expiry",
+    );
+    assert.ok(
+      !orphanedFn.includes("connection expired"),
+      "orphaned row must not use 'connection expired' phrasing (reserved for grouped expired cards with accounts)",
+    );
+  });
+
+  test("orphaned row action is 'Remove connection', not 'Reconnect'", () => {
+    const src = read(SECTION_FILE);
+    const orphanedFnStart = src.indexOf("function OrphanedConnectionRow");
+    const orphanedFnEnd = src.indexOf("\nfunction ", orphanedFnStart + 1);
+    const orphanedFn = src.slice(orphanedFnStart, orphanedFnEnd);
+    assert.ok(
+      orphanedFn.includes("RemoveBrokerConnectionButton"),
+      "orphaned row must render RemoveBrokerConnectionButton as the action",
+    );
+    assert.ok(
+      !orphanedFn.includes(">Reconnect<") && !orphanedFn.includes('"Reconnect"'),
+      "orphaned row must not have a Reconnect link — that action makes no sense for an orphaned connection",
+    );
+  });
+
+  test("connected accounts section appears before unused expired connections in JSX", () => {
+    const src = read(SECTION_FILE);
+    const connectedIdx = src.indexOf("Connected accounts");
+    const unusedIdx = src.indexOf("Unused expired connections");
+    assert.ok(connectedIdx > -1, "'Connected accounts' header must be present");
+    assert.ok(unusedIdx > -1, "'Unused expired connections' header must be present");
+    assert.ok(
+      connectedIdx < unusedIdx,
+      "Connected accounts section must appear before Unused expired connections — active accounts take visual priority",
+    );
+  });
+
+  test("orphaned section does not appear inside 'Needs attention' block", () => {
+    const src = read(SECTION_FILE);
+    // The 'Needs attention' block closes (via {hasNeedsAttention && (...)} pattern)
+    // before the 'Unused expired connections' label appears.
+    const needsAttentionIdx = src.indexOf("Needs attention");
+    const connectedIdx = src.indexOf("Connected accounts");
+    const unusedIdx = src.indexOf("Unused expired connections");
+    // Connected accounts must come after Needs attention
+    assert.ok(connectedIdx > needsAttentionIdx);
+    // Unused expired connections must come after Connected accounts
+    assert.ok(unusedIdx > connectedIdx);
+  });
+
+  test("callback auto-cleans orphaned expired BrokerConnections for same env on reconnect", () => {
+    const callbackSrc = readFileSync(
+      resolve(import.meta.dirname, "../../api/auth/tradovate/callback/route.ts"),
+      "utf8",
+    );
+    // Must find and delete other orphaned expired connections
+    assert.ok(
+      callbackSrc.includes("cleaned up orphaned expired connections"),
+      "callback must log cleanup of orphaned expired connections",
+    );
+    assert.ok(
+      callbackSrc.includes("brokerConnection.deleteMany"),
+      "callback must call brokerConnection.deleteMany to remove orphaned rows",
+    );
+    // Safety check: only deletes those with no linked accounts
+    assert.ok(
+      callbackSrc.includes("brokerConnectionId: { in: candidateIds }"),
+      "callback must filter for linked accounts before deleting",
+    );
+  });
+});
+
 // ── Final polish pass ─────────────────────────────────────────────────────────
 
 describe("final polish pass", () => {

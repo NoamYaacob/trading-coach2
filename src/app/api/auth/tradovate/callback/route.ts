@@ -301,6 +301,37 @@ export async function GET(request: NextRequest) {
         where: { brokerConnectionId: payload.reconnectId, connectionStatus: "expired" },
         data: { connectionStatus: "connected_readonly", errorMessage: null },
       });
+
+      // Auto-delete other orphaned expired BrokerConnections for the same env
+      // (no linked accounts) so stale rows don't confuse the Settings UI.
+      const otherExpiredBcs = await prisma.brokerConnection.findMany({
+        where: {
+          userId: payload.userId,
+          env: payload.env,
+          connectionStatus: "expired",
+          id: { not: payload.reconnectId },
+        },
+        select: { id: true },
+      });
+      if (otherExpiredBcs.length > 0) {
+        const candidateIds = otherExpiredBcs.map((b) => b.id);
+        const linkedRows = await prisma.connectedAccount.findMany({
+          where: { brokerConnectionId: { in: candidateIds } },
+          select: { brokerConnectionId: true },
+        });
+        const linkedIds = new Set(
+          linkedRows.map((r) => r.brokerConnectionId).filter((id): id is string => id !== null),
+        );
+        const toDelete = candidateIds.filter((id) => !linkedIds.has(id));
+        if (toDelete.length > 0) {
+          await prisma.brokerConnection.deleteMany({ where: { id: { in: toDelete } } });
+          console.info("[tradovate/callback] cleaned up orphaned expired connections", {
+            deletedCount: toDelete.length,
+            env: payload.env,
+          });
+        }
+      }
+
       console.info("[tradovate/callback] connection reconnected", {
         brokerConnectionId: payload.reconnectId,
       });

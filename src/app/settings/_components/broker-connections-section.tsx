@@ -247,20 +247,12 @@ function OrphanedConnectionRow({ bc }: { bc: BrokerConnectionRow }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5">
       <p className="text-xs text-stone-500">
-        {platform}
-        {env ? ` ${env}` : ""} connection expired
+        Old expired {platform}
+        {env ? ` ${env}` : ""} connection
         {" · "}
         <span className="text-stone-400">No accounts linked</span>
       </p>
-      <div className="flex items-center gap-3">
-        <Link
-          href={reconnectUrlForConnection(bc)}
-          className="text-xs font-medium text-stone-600 underline-offset-2 hover:underline"
-        >
-          Reconnect
-        </Link>
-        <RemoveBrokerConnectionButton connectionId={bc.id} />
-      </div>
+      <RemoveBrokerConnectionButton connectionId={bc.id} />
     </div>
   );
 }
@@ -322,20 +314,6 @@ export function BrokerConnectionsSection({
           <div className="grid gap-3">
             {expiredGroups.map((group) => (
               <ExpiredConnectionGroupCard key={group.connectionId} group={group} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Unused expired connections ───────────────────────────────────── */}
-      {hasOrphaned && (
-        <div className="grid gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
-            Unused expired connections
-          </p>
-          <div className="grid gap-2">
-            {orphanedExpired.map((bc) => (
-              <OrphanedConnectionRow key={bc.id} bc={bc} />
             ))}
           </div>
         </div>
@@ -428,6 +406,20 @@ export function BrokerConnectionsSection({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Unused expired connections ───────────────────────────────────── */}
+      {hasOrphaned && (
+        <div className="grid gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+            Unused expired connections
+          </p>
+          <div className="grid gap-2">
+            {orphanedExpired.map((bc) => (
+              <OrphanedConnectionRow key={bc.id} bc={bc} />
+            ))}
           </div>
         </div>
       )}
