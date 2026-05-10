@@ -78,6 +78,45 @@ describe("canActivateRulesNow — account scope during CME active hours", () => 
     assert.equal(d.canActivate, false);
     assert.equal(d.reason, "account_active");
   });
+
+  test("not-live account (expired/disconnected) → safe even during CME active hours", () => {
+    const d = canActivateRulesNow({
+      scope: "account",
+      accountIsLocked: false,
+      accountConnectionLive: false,
+      now: MON_18CT,
+    });
+    assert.equal(d.canActivate, true);
+    assert.equal(d.reason, "account_not_live");
+  });
+
+  test("accountConnectionLive=false takes precedence over locked check", () => {
+    const d = canActivateRulesNow({
+      scope: "account",
+      accountIsLocked: true,
+      accountConnectionLive: false,
+      now: MON_18CT,
+    });
+    assert.equal(d.canActivate, true);
+    assert.equal(d.reason, "account_not_live");
+  });
+
+  test("accountConnectionLive=true (default-conserved omission) → falls through to account_active", () => {
+    const d = canActivateRulesNow({
+      scope: "account",
+      accountIsLocked: false,
+      accountConnectionLive: true,
+      now: MON_18CT,
+    });
+    assert.equal(d.canActivate, false);
+    assert.equal(d.reason, "account_active");
+  });
+
+  test("accountConnectionLive omitted → conservatively treated as live, returns account_active", () => {
+    const d = canActivateRulesNow({ scope: "account", accountIsLocked: false, now: MON_18CT });
+    assert.equal(d.canActivate, false);
+    assert.equal(d.reason, "account_active");
+  });
 });
 
 // ─── Default scope ────────────────────────────────────────────────────────────
@@ -151,6 +190,12 @@ describe("activationReasonMessage", () => {
 
   test("account_locked message says changes apply now", () => {
     const msg = activationReasonMessage("account_locked");
+    assert.match(msg, /apply now/i);
+  });
+
+  test("account_not_live message says broker connection is not live", () => {
+    const msg = activationReasonMessage("account_not_live");
+    assert.match(msg, /not live/i);
     assert.match(msg, /apply now/i);
   });
 });

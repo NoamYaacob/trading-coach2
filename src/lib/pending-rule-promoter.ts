@@ -174,7 +174,7 @@ export type PromoterPrisma = {
       where: Record<string, unknown>;
       select: Record<string, unknown>;
     }) => Promise<
-      { id: string; userId: string; riskRules: { accountId: string } | null }[]
+      { id: string; userId: string; connectionStatus: string; riskRules: { accountId: string } | null }[]
     >;
   };
 };
@@ -217,17 +217,25 @@ export async function promotePendingRules(
     },
   });
 
-  // Batch-load lockout state for every candidate account so we don't issue
-  // one query per row.
+  // Batch-load lockout state AND connection status for every candidate account.
   const accountIds = accountRows.map((r) => r.accountId);
-  const accountStates =
+  const [accountStates, accountConnections] =
     accountIds.length > 0
-      ? await prisma.liveSessionState.findMany({
-          where: { accountId: { in: accountIds } },
-          select: { accountId: true, riskState: true, cooldownActive: true },
-        })
-      : [];
+      ? await Promise.all([
+          prisma.liveSessionState.findMany({
+            where: { accountId: { in: accountIds } },
+            select: { accountId: true, riskState: true, cooldownActive: true },
+          }),
+          prisma.connectedAccount.findMany({
+            where: { id: { in: accountIds } },
+            select: { id: true, connectionStatus: true },
+          }),
+        ])
+      : [[], []];
   const accountStateById = new Map(accountStates.map((s) => [s.accountId, s]));
+  const accountConnectionById = new Map(
+    (accountConnections as { id: string; connectionStatus: string }[]).map((a) => [a.id, a]),
+  );
 
   for (const row of accountRows) {
     const decision = decidePendingPromotion(row);
@@ -243,9 +251,12 @@ export async function promotePendingRules(
       continue;
     }
     const accountIsLocked = isAccountLocked(accountStateById.get(row.accountId));
+    const connectionStatus = accountConnectionById.get(row.accountId)?.connectionStatus;
+    const accountConnectionLive = connectionStatus === "connected_live";
     const safety = canActivateRulesNow({
       scope: "account",
       accountIsLocked,
+      accountConnectionLive,
       now,
     });
     if (!safety.canActivate) {
@@ -309,14 +320,21 @@ export async function promotePendingRules(
   });
 
   // For each user with a pending default-template row, find their inheriting
-  // accounts (active accounts with no AccountRiskRules row) and check if any
-  // is currently NOT locked. We batch this once per user.
+  // accounts (active accounts with no AccountRiskRules row) that have a live
+  // broker connection. Only live-connected accounts can be actively trading —
+  // expired/disconnected accounts are safe to bypass.
   const defaultUserIds = defaultRows.map((r) => r.userId);
   const inheritingByUser = new Map<string, string[]>();
   if (defaultUserIds.length > 0) {
     const inheritingAccounts = await prisma.connectedAccount.findMany({
-      where: { userId: { in: defaultUserIds }, isActive: true, riskRules: { is: null } },
-      select: { id: true, userId: true, riskRules: { select: { accountId: true } } },
+      where: {
+        userId: { in: defaultUserIds },
+        isActive: true,
+        riskRules: { is: null },
+        // Only live-connected accounts can be actively trading.
+        connectionStatus: "connected_live",
+      },
+      select: { id: true, userId: true, connectionStatus: true, riskRules: { select: { accountId: true } } },
     });
     for (const a of inheritingAccounts) {
       const list = inheritingByUser.get(a.userId) ?? [];
@@ -362,6 +380,7 @@ export async function promotePendingRules(
       continue;
     }
     const inheriting = inheritingByUser.get(row.userId) ?? [];
+    // Only live-connected, non-locked accounts count as "active" for safety.
     const anyInheritingAccountActive = inheriting.some(
       (id) => !isAccountLocked(inheritingStateById.get(id)),
     );
@@ -412,5 +431,205 @@ export async function promotePendingRules(
     }
   }
 
+  return summary;
+}
+
+// ─── Per-scope promotion helpers (used by "Apply pending now" routes) ─────────
+
+/**
+ * Promote pending rules for a single account. Used by the "Apply pending now"
+ * POST route so the UI can trigger immediate promotion without waiting for the
+ * next cron tick.
+ *
+ * Returns a PromotionSummary. If the account is not yet safe (live-connected
+ * during CME active trading and not locked), `skippedNotSafeCount` will be 1
+ * and nothing will be written.
+ */
+export async function promoteAccountPendingRules(
+  prisma: PromoterPrisma,
+  accountId: string,
+  now: Date = new Date(),
+): Promise<PromotionSummary> {
+  const summary: PromotionSummary = {
+    promotedDefaultCount: 0,
+    promotedAccountCount: 0,
+    skippedNotSafeCount: 0,
+    skippedCount: 0,
+    failedCount: 0,
+    errors: [],
+    skippedRows: [],
+  };
+
+  const rows = await prisma.accountRiskRules.findMany({
+    where: {
+      accountId,
+      NOT: { pendingPayloadJson: { equals: Prisma.JsonNull } },
+      pendingEffectiveDate: { not: null },
+    },
+    select: { accountId: true, pendingPayloadJson: true, pendingEffectiveDate: true },
+  });
+  if (rows.length === 0) return summary;
+  const row = rows[0];
+
+  const decision = decidePendingPromotion(row);
+  if (decision.kind === "skip") {
+    summary.skippedCount += 1;
+    summary.skippedRows.push({
+      id: accountId,
+      scope: "account",
+      pendingEffectiveDate: row.pendingEffectiveDate,
+      canActivateNow: false,
+      skipReason: decision.reason,
+    });
+    return summary;
+  }
+
+  const [stateRows, connectionRows] = await Promise.all([
+    prisma.liveSessionState.findMany({
+      where: { accountId: { in: [accountId] } },
+      select: { accountId: true, riskState: true, cooldownActive: true },
+    }),
+    prisma.connectedAccount.findMany({
+      where: { id: { in: [accountId] } },
+      select: { id: true, connectionStatus: true },
+    }),
+  ]);
+  const accountIsLocked = isAccountLocked(stateRows[0]);
+  const connectionStatus = (connectionRows[0] as { id: string; connectionStatus: string } | undefined)?.connectionStatus;
+  const accountConnectionLive = connectionStatus === "connected_live";
+  const safety = canActivateRulesNow({ scope: "account", accountIsLocked, accountConnectionLive, now });
+
+  if (!safety.canActivate) {
+    summary.skippedNotSafeCount += 1;
+    summary.skippedRows.push({
+      id: accountId,
+      scope: "account",
+      pendingEffectiveDate: row.pendingEffectiveDate,
+      canActivateNow: false,
+      skipReason: safety.reason,
+    });
+    return summary;
+  }
+
+  try {
+    if (decision.kind === "delete_override") {
+      await prisma.accountRiskRules.delete({ where: { accountId } });
+    } else {
+      await prisma.accountRiskRules.update({
+        where: { accountId },
+        data: { ...decision.updates, pendingPayloadJson: Prisma.JsonNull, pendingEffectiveDate: null },
+      });
+    }
+    summary.promotedAccountCount += 1;
+  } catch (err) {
+    summary.failedCount += 1;
+    const message = err instanceof Error ? err.message : String(err);
+    summary.errors.push({ kind: "account", id: accountId, message });
+  }
+  return summary;
+}
+
+/**
+ * Promote pending rules for a single user's default template. Used by the
+ * "Apply pending now" POST route.
+ */
+export async function promoteDefaultPendingRules(
+  prisma: PromoterPrisma,
+  userId: string,
+  now: Date = new Date(),
+): Promise<PromotionSummary> {
+  const summary: PromotionSummary = {
+    promotedDefaultCount: 0,
+    promotedAccountCount: 0,
+    skippedNotSafeCount: 0,
+    skippedCount: 0,
+    failedCount: 0,
+    errors: [],
+    skippedRows: [],
+  };
+
+  const rows = await prisma.riskRules.findMany({
+    where: {
+      userId,
+      NOT: { pendingPayloadJson: { equals: Prisma.JsonNull } },
+      pendingEffectiveDate: { not: null },
+    },
+    select: { userId: true, pendingPayloadJson: true, pendingEffectiveDate: true },
+  });
+  if (rows.length === 0) return summary;
+  const row = rows[0];
+
+  const decision = decidePendingPromotion(row);
+  if (decision.kind === "skip") {
+    summary.skippedCount += 1;
+    summary.skippedRows.push({
+      id: userId,
+      scope: "default",
+      pendingEffectiveDate: row.pendingEffectiveDate,
+      canActivateNow: false,
+      skipReason: decision.reason,
+    });
+    return summary;
+  }
+  if (decision.kind === "delete_override") {
+    summary.skippedCount += 1;
+    summary.skippedRows.push({
+      id: userId,
+      scope: "default",
+      pendingEffectiveDate: row.pendingEffectiveDate,
+      canActivateNow: false,
+      skipReason: "default_row_has_delete_payload",
+    });
+    return summary;
+  }
+
+  // Find inheriting accounts that are live-connected (the only ones that could
+  // be actively trading).
+  const inheritingAccounts = await prisma.connectedAccount.findMany({
+    where: {
+      userId,
+      isActive: true,
+      riskRules: { is: null },
+      connectionStatus: "connected_live",
+    },
+    select: { id: true, userId: true, connectionStatus: true, riskRules: { select: { accountId: true } } },
+  });
+  const inheritingIds = inheritingAccounts.map((a) => a.id);
+  const inheritingStates =
+    inheritingIds.length > 0
+      ? await prisma.liveSessionState.findMany({
+          where: { accountId: { in: inheritingIds } },
+          select: { accountId: true, riskState: true, cooldownActive: true },
+        })
+      : [];
+  const inheritingStateById = new Map(inheritingStates.map((s) => [s.accountId, s]));
+  const anyInheritingAccountActive = inheritingIds.some(
+    (id) => !isAccountLocked(inheritingStateById.get(id)),
+  );
+
+  const safety = canActivateRulesNow({ scope: "default", anyInheritingAccountActive, now });
+  if (!safety.canActivate) {
+    summary.skippedNotSafeCount += 1;
+    summary.skippedRows.push({
+      id: userId,
+      scope: "default",
+      pendingEffectiveDate: row.pendingEffectiveDate,
+      canActivateNow: false,
+      skipReason: safety.reason,
+    });
+    return summary;
+  }
+
+  try {
+    await prisma.riskRules.update({
+      where: { userId },
+      data: { ...decision.updates, pendingPayloadJson: Prisma.JsonNull, pendingEffectiveDate: null },
+    });
+    summary.promotedDefaultCount += 1;
+  } catch (err) {
+    summary.failedCount += 1;
+    const message = err instanceof Error ? err.message : String(err);
+    summary.errors.push({ kind: "default", id: userId, message });
+  }
   return summary;
 }

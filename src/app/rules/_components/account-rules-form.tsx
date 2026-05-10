@@ -22,6 +22,7 @@ import { fmt12h } from "./trading-session-utils";
 import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 import { CmeHourSelect } from "./cme-hour-select";
 import { cmeHourBoundaryNote } from "./cme-hour-parsing";
+import { ApplyPendingButton } from "./apply-pending-button";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -77,6 +78,9 @@ type Props = {
    * promoted yet.
    */
   defaultPendingPayload?: Record<string, unknown> | null;
+  /** True when the server has determined it is safe to promote pending rules
+   *  immediately. Shows the "Apply pending now" button in the pending panel. */
+  canApplyPendingNow?: boolean;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -159,7 +163,7 @@ function defaultPendingNote(
   if (defaultActiveValue.trim() !== "") return null;
   const v = defaultPendingPayload[key];
   if (v == null) return null;
-  return `Default template has ${v} saved as pending — not active yet. This account will inherit it when it activates.`;
+  return `Default template has ${v} pending — will inherit when default activates.`;
 }
 
 function Field({ label, hint, pendingNote, children }: { label: string; hint?: string; pendingNote?: string | null; children: React.ReactNode }) {
@@ -224,6 +228,7 @@ export function AccountRulesForm({
   pendingPayload,
   pendingEffectiveDate,
   defaultPendingPayload,
+  canApplyPendingNow,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -657,9 +662,13 @@ export function AccountRulesForm({
           <div>
             <p className="font-medium">Pending changes saved</p>
             <p className="mt-0.5 text-[11px] text-amber-800">
-              These changes will activate automatically at the next safe window
-              {localPendingDate ? ` (${localPendingDate}).` : "."}
+              {canApplyPendingNow
+                ? "Ready to apply now — broker connection is not live or account is in a safe window."
+                : `Changes will activate automatically at the next safe window${localPendingDate ? ` (${localPendingDate})` : ""}.`}
             </p>
+            {canApplyPendingNow && (
+              <ApplyPendingButton url={`/api/accounts/${accountId}/apply-pending`} />
+            )}
           </div>
           {pendingIsDelete ? (
             <p className="text-[11px] text-amber-800">

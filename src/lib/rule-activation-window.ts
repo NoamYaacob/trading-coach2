@@ -36,6 +36,8 @@ export type ActivationReason =
   | "cme_market_closed"
   /** Account is internally locked: Guardrail STOPPED, cooldown, or hard lock. */
   | "account_locked"
+  /** Account has no live broker connection — cannot be actively trading. */
+  | "account_not_live"
   /** Account is currently tradable — must queue as pending. */
   | "account_active"
   /** Default scope: no inheriting account is currently active. */
@@ -54,6 +56,17 @@ export type AccountActivationInput = {
    *  any other internal lockout state. Computed by the caller from
    *  liveSessionState / GuardianStatus / hard-lock flags. */
   accountIsLocked: boolean;
+  /**
+   * True when the account has an active live broker connection
+   * (connectionStatus === "connected_live"). When false (expired /
+   * connection_error / not_connected / etc.) the account cannot be actively
+   * trading, so rule changes are safe to apply immediately without waiting for
+   * a CME safe window.
+   *
+   * Defaults to true when omitted so existing callers that don't pass this
+   * field keep the conservative behaviour they had before.
+   */
+  accountConnectionLive?: boolean;
   /** Optional clock override for testing. */
   now?: Date;
 };
@@ -91,6 +104,11 @@ export function canActivateRulesNow(input: ActivationInput): ActivationDecision 
 
   // CME is in active trading hours. Decide per scope.
   if (input.scope === "account") {
+    // Not live-monitorable: the account cannot be actively trading (expired
+    // connection, disconnected, etc.) so there is nothing to protect.
+    if (input.accountConnectionLive === false) {
+      return { canActivate: true, reason: "account_not_live" };
+    }
     if (input.accountIsLocked) {
       return { canActivate: true, reason: "account_locked" };
     }
@@ -119,6 +137,8 @@ export function activationReasonMessage(reason: ActivationReason): string {
       return "CME market is closed — changes apply now.";
     case "account_locked":
       return "Account is locked — changes apply now.";
+    case "account_not_live":
+      return "Broker connection is not live — changes apply now.";
     case "account_active":
       return "Account is in active trading — changes will activate at the next safe window for this account.";
     case "default_safe":

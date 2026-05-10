@@ -177,7 +177,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       hasProtectionLockToday: isFirstTimeSetup ? false : hasProtectionLockToday,
     });
 
-    if (!eligibility.canEditNow && !isFirstTimeSetup) {
+    // When the broker connection is not live (expired, disconnected, etc.) the
+    // account cannot be actively trading, so rule changes are safe to apply
+    // immediately regardless of session-timing locks.
+    const accountIsNotLive = existing.connectionStatus !== "connected_live";
+
+    if (!eligibility.canEditNow && !isFirstTimeSetup && !accountIsNotLive) {
       // Save the requested change as a pending payload that will apply on
       // the next trading day. Do NOT mutate AccountRiskRules columns now.
       const nextDayKey = eligibility.nextAllowedAt

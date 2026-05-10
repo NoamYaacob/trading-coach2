@@ -436,7 +436,7 @@ function pendingFieldNote(
   if (!payload || activeValue.trim() !== "") return null;
   const v = payload[key];
   if (v == null) return null;
-  return `Pending next safe window: ${v}`;
+  return `Active now: Not set · Pending next: ${v}`;
 }
 
 function Field({

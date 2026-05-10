@@ -13,6 +13,7 @@ import {
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
 import { isCmeMaintenanceWindow, isCmeWeekendClose } from "@/lib/time/cme-session";
+import { canActivateRulesNow } from "@/lib/rule-activation-window";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
@@ -21,6 +22,7 @@ import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
 import { mapDefaultRulesToAccountForm } from "./_components/account-rules-form-logic";
 import { buildRuleScopes } from "./_components/rule-scope-utils";
+import { ApplyPendingButton } from "./_components/apply-pending-button";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix } from "./_components/scope-selector-helpers";
 
@@ -49,7 +51,7 @@ export default async function RulesPage({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [riskRules, accounts, guardian, traderProfile, guardianStatus] = await Promise.all([
+  const [riskRules, accounts, guardian, traderProfile, guardianStatus, selectedAccountLiveState] = await Promise.all([
     prisma.riskRules.findUnique({ where: { userId: user.id } }),
     prisma.connectedAccount.findMany({
       where: {
@@ -107,6 +109,14 @@ export default async function RulesPage({
       where: { userId: user.id },
       select: { currentLockoutActive: true },
     }),
+    // Load per-account lock state for the selected account (scope=account only).
+    // Used to compute canApplyPendingNow accurately when the account is live-connected.
+    scope === "account" && id
+      ? prisma.liveSessionState.findUnique({
+          where: { accountId: id },
+          select: { riskState: true, cooldownActive: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const protectionLock = getProtectionLockState({
@@ -176,6 +186,31 @@ export default async function RulesPage({
   // Resolve selected account when scope=account
   const selectedAccount =
     scope === "account" && id ? accounts.find((a) => a.id === id) ?? null : null;
+
+  // Determine whether pending rules can be applied immediately ("Apply pending
+  // now" button). Uses canActivateRulesNow with live account/scope state.
+  const accountConnectionLive = selectedAccount?.connectionStatus === "connected_live";
+  const accountIsLockedForPending =
+    selectedAccountLiveState?.riskState === "STOPPED" ||
+    selectedAccountLiveState?.cooldownActive === true;
+  const accountCanApplyPendingNow =
+    selectedAccount && selectedAccount.riskRules?.pendingPayloadJson
+      ? canActivateRulesNow({
+          scope: "account",
+          accountIsLocked: accountIsLockedForPending,
+          accountConnectionLive,
+        }).canActivate
+      : false;
+
+  // For default scope: any account that has no override AND is live-connected
+  // counts as a potentially active inheriting account.
+  const anyInheritingLiveActive = accounts.some(
+    (a) => !a.riskRules && a.connectionStatus === "connected_live",
+  );
+  const defaultCanApplyPendingNow =
+    riskRules?.pendingPayloadJson
+      ? canActivateRulesNow({ scope: "default", anyInheritingAccountActive: anyInheritingLiveActive }).canActivate
+      : false;
 
   // Build default template initial values
   const defaultInitial: RulesFormValues = {
@@ -332,10 +367,12 @@ export default async function RulesPage({
           {scope !== "account" && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">Changes pending</p>
                 <p className="mt-0.5 text-[11px] text-amber-800">
-                  Pending changes are saved and will activate automatically at the next safe window.
+                  {defaultCanApplyPendingNow
+                    ? "Ready to apply now — no active inheriting accounts in the way."
+                    : "Pending changes are saved and will activate automatically at the next safe window."}
                   {!ruleEditEligibility.canEditNow && accountRuleLockMessage
                     ? ` ${accountRuleLockMessage}`
                     : ""}
@@ -353,6 +390,9 @@ export default async function RulesPage({
                       })}
                     </span>
                   </p>
+                )}
+                {hasPendingPayload && defaultCanApplyPendingNow && (
+                  <ApplyPendingButton url="/api/rules/apply-pending" />
                 )}
               </div>
             </div>
@@ -378,6 +418,7 @@ export default async function RulesPage({
                   lockMessage={accountRuleLockMessage}
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
+                  canApplyPendingNow={accountCanApplyPendingNow}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}

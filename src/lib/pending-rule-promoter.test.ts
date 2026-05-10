@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   decidePendingPromotion,
   promotePendingRules,
+  promoteAccountPendingRules,
+  promoteDefaultPendingRules,
 } from "./pending-rule-promoter.ts";
 
 // ─── Reference instants ───────────────────────────────────────────────────────
@@ -155,6 +157,8 @@ type FakeAccount = {
   userId: string;
   /** True when this account has an AccountRiskRules row (i.e., NOT inheriting). */
   hasOverride: boolean;
+  /** Broker connection status. Defaults to "connected_live" when omitted. */
+  connectionStatus?: string;
 };
 
 function makeFakePrisma(opts: {
@@ -162,12 +166,19 @@ function makeFakePrisma(opts: {
   defaultRows?: DefaultRow[];
   liveStates?: LiveState[];
   accounts?: FakeAccount[];
+  /**
+   * Per-account connection status for account-scope queries.
+   * When an accountId is not in this map, it defaults to "connected_live"
+   * so existing tests that don't specify connection status keep working.
+   */
+  accountConnectionStatuses?: Record<string, string>;
   failOn?: { table: "account" | "default"; id: string };
 }) {
   const accountRows = (opts.accountRows ?? []).map((r) => ({ ...r }));
   const defaultRows = (opts.defaultRows ?? []).map((r) => ({ ...r }));
   const liveStates = (opts.liveStates ?? []).map((s) => ({ ...s }));
   const accounts = (opts.accounts ?? []).map((a) => ({ ...a }));
+  const accountConnectionStatuses = opts.accountConnectionStatuses ?? {};
   const accountUpdates: { accountId: string; data: Record<string, unknown> }[] = [];
   const accountDeletes: string[] = [];
   const defaultUpdates: { userId: string; data: Record<string, unknown> }[] = [];
@@ -231,12 +242,39 @@ function makeFakePrisma(opts: {
     },
     connectedAccount: {
       findMany: async (args: { where: Record<string, unknown> }) => {
-        const userIdFilter = args.where.userId as { in: string[] } | undefined;
-        const userIds = userIdFilter?.in ?? [];
-        // The promoter requests inheriting accounts (no AccountRiskRules row).
+        const idFilter = args.where.id as { in: string[] } | undefined;
+        if (idFilter?.in) {
+          // Account-scope connection-status query (promoter or per-scope helper).
+          return idFilter.in.map((id) => ({
+            id,
+            userId: "",
+            connectionStatus: accountConnectionStatuses[id] ?? "connected_live",
+            riskRules: null,
+          }));
+        }
+        // Default-scope inheriting-accounts query.
+        const userIdFilter = args.where.userId as { in: string[] } | string | undefined;
+        const userIds =
+          typeof userIdFilter === "object" && userIdFilter !== null && "in" in userIdFilter
+            ? (userIdFilter as { in: string[] }).in
+            : typeof userIdFilter === "string"
+            ? [userIdFilter]
+            : [];
+        const connectionStatusFilter = args.where.connectionStatus as string | undefined;
         return accounts
-          .filter((a) => userIds.includes(a.userId) && !a.hasOverride)
-          .map((a) => ({ id: a.id, userId: a.userId, riskRules: null }));
+          .filter((a) => {
+            if (!userIds.includes(a.userId)) return false;
+            if (a.hasOverride) return false;
+            const effStatus = a.connectionStatus ?? "connected_live";
+            if (connectionStatusFilter && effStatus !== connectionStatusFilter) return false;
+            return true;
+          })
+          .map((a) => ({
+            id: a.id,
+            userId: a.userId,
+            connectionStatus: a.connectionStatus ?? "connected_live",
+            riskRules: null,
+          }));
       },
     },
   };
@@ -799,5 +837,234 @@ describe("promotePendingRules — skippedRows", () => {
     const row = summary.skippedRows[0];
     assert.equal(row.scope, "default");
     assert.equal(row.skipReason, "default_row_has_delete_payload");
+  });
+});
+
+// ─── connectionStatus bypass (account_not_live) ───────────────────────────────
+
+describe("promotePendingRules — connection status bypass", () => {
+  test("during active trading, expired account promotes immediately (not live-connected)", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-demo",
+          pendingPayloadJson: { maxContracts: 5 },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-demo", riskState: "NORMAL", cooldownActive: false }],
+      accountConnectionStatuses: { "acct-demo": "expired" },
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1, "expired account must promote during active hours");
+    assert.equal(accountUpdates.length, 1);
+    assert.equal(accountUpdates[0].data.maxContracts, 5);
+  });
+
+  test("during active trading, not_connected account promotes immediately", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-nc",
+          pendingPayloadJson: { maxDailyLoss: "800" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accountConnectionStatuses: { "acct-nc": "not_connected" },
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates[0].data.maxDailyLoss, "800");
+  });
+
+  test("during active trading, connection_error account promotes immediately", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-err",
+          pendingPayloadJson: { stopAfterLosses: 3 },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accountConnectionStatuses: { "acct-err": "connection_error" },
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates[0].data.stopAfterLosses, 3);
+  });
+
+  test("connected_live account with NORMAL state stays pending during active hours", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        {
+          accountId: "acct-live",
+          pendingPayloadJson: { maxDailyLoss: "600" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      liveStates: [{ accountId: "acct-live", riskState: "NORMAL", cooldownActive: false }],
+      accountConnectionStatuses: { "acct-live": "connected_live" },
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 0);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(accountUpdates.length, 0);
+  });
+
+  test("default scope: expired inheriting account is excluded from live-active count, default promotes", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      // This account is NOT live-connected, so it cannot be actively trading.
+      accounts: [{ id: "acct-expired", userId: "user-1", hasOverride: false, connectionStatus: "expired" }],
+      liveStates: [{ accountId: "acct-expired", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(
+      summary.promotedDefaultCount,
+      1,
+      "expired account must not block default promotion",
+    );
+    assert.equal(defaultUpdates.length, 1);
+  });
+
+  test("default scope: one live-connected + one expired → only live-connected counts, stays pending", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        {
+          userId: "user-1",
+          pendingPayloadJson: { maxDailyLoss: "1000" },
+          pendingEffectiveDate: "2026-05-09",
+        },
+      ],
+      accounts: [
+        { id: "acct-live", userId: "user-1", hasOverride: false, connectionStatus: "connected_live" },
+        { id: "acct-exp", userId: "user-1", hasOverride: false, connectionStatus: "expired" },
+      ],
+      liveStates: [
+        { accountId: "acct-live", riskState: "NORMAL", cooldownActive: false },
+        { accountId: "acct-exp", riskState: "NORMAL", cooldownActive: false },
+      ],
+    });
+    const summary = await promotePendingRules(prisma, NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 0, "live-connected active account blocks default");
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(defaultUpdates.length, 0);
+  });
+});
+
+// ─── Per-scope helpers (promoteAccountPendingRules / promoteDefaultPendingRules) ─
+
+describe("promoteAccountPendingRules — single account helper", () => {
+  test("promotes when no pending rows exist → returns empty summary", async () => {
+    const { prisma } = makeFakePrisma({ accountRows: [] });
+    const summary = await promoteAccountPendingRules(prisma, "acct-A", NOW_MAINTENANCE);
+    assert.equal(summary.promotedAccountCount, 0);
+    assert.equal(summary.skippedCount, 0);
+  });
+
+  test("promotes the specific account during safe window", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        { accountId: "acct-A", pendingPayloadJson: { maxContracts: 4 }, pendingEffectiveDate: "2026-05-09" },
+        { accountId: "acct-B", pendingPayloadJson: { maxContracts: 9 }, pendingEffectiveDate: "2026-05-09" },
+      ],
+    });
+    const summary = await promoteAccountPendingRules(prisma, "acct-A", NOW_MAINTENANCE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates.length, 1);
+    assert.equal(accountUpdates[0].accountId, "acct-A");
+    assert.equal(accountUpdates[0].data.maxContracts, 4);
+  });
+
+  test("skips with account_active when live-connected during active trading", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        { accountId: "acct-live", pendingPayloadJson: { maxContracts: 4 }, pendingEffectiveDate: "2026-05-09" },
+      ],
+      liveStates: [{ accountId: "acct-live", riskState: "NORMAL", cooldownActive: false }],
+      accountConnectionStatuses: { "acct-live": "connected_live" },
+    });
+    const summary = await promoteAccountPendingRules(prisma, "acct-live", NOW_ACTIVE);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(summary.skippedRows[0].skipReason, "account_active");
+    assert.equal(accountUpdates.length, 0);
+  });
+
+  test("promotes expired account during active trading (account_not_live bypass)", async () => {
+    const { prisma, accountUpdates } = makeFakePrisma({
+      accountRows: [
+        { accountId: "acct-exp", pendingPayloadJson: { maxContracts: 5 }, pendingEffectiveDate: "2026-05-09" },
+      ],
+      accountConnectionStatuses: { "acct-exp": "expired" },
+    });
+    const summary = await promoteAccountPendingRules(prisma, "acct-exp", NOW_ACTIVE);
+    assert.equal(summary.promotedAccountCount, 1);
+    assert.equal(accountUpdates[0].data.maxContracts, 5);
+  });
+});
+
+describe("promoteDefaultPendingRules — single user helper", () => {
+  test("promotes when no pending rows exist → returns empty summary", async () => {
+    const { prisma } = makeFakePrisma({ defaultRows: [] });
+    const summary = await promoteDefaultPendingRules(prisma, "user-1", NOW_MAINTENANCE);
+    assert.equal(summary.promotedDefaultCount, 0);
+    assert.equal(summary.skippedCount, 0);
+  });
+
+  test("promotes the specific user's default during safe window", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        { userId: "user-1", pendingPayloadJson: { maxDailyLoss: "1000" }, pendingEffectiveDate: "2026-05-09" },
+        { userId: "user-2", pendingPayloadJson: { maxDailyLoss: "500" }, pendingEffectiveDate: "2026-05-09" },
+      ],
+    });
+    const summary = await promoteDefaultPendingRules(prisma, "user-1", NOW_MAINTENANCE);
+    assert.equal(summary.promotedDefaultCount, 1);
+    assert.equal(defaultUpdates.length, 1);
+    assert.equal(defaultUpdates[0].userId, "user-1");
+  });
+
+  test("skips when a live-connected inheriting account is active during trading", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        { userId: "user-1", pendingPayloadJson: { maxDailyLoss: "1000" }, pendingEffectiveDate: "2026-05-09" },
+      ],
+      accounts: [{ id: "acct-X", userId: "user-1", hasOverride: false, connectionStatus: "connected_live" }],
+      liveStates: [{ accountId: "acct-X", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promoteDefaultPendingRules(prisma, "user-1", NOW_ACTIVE);
+    assert.equal(summary.skippedNotSafeCount, 1);
+    assert.equal(summary.skippedRows[0].skipReason, "default_inheriting_account_active");
+    assert.equal(defaultUpdates.length, 0);
+  });
+
+  test("promotes when all inheriting accounts are expired (not live-connected)", async () => {
+    const { prisma, defaultUpdates } = makeFakePrisma({
+      defaultRows: [
+        { userId: "user-1", pendingPayloadJson: { maxDailyLoss: "1000" }, pendingEffectiveDate: "2026-05-09" },
+      ],
+      accounts: [{ id: "acct-exp", userId: "user-1", hasOverride: false, connectionStatus: "expired" }],
+      liveStates: [{ accountId: "acct-exp", riskState: "NORMAL", cooldownActive: false }],
+    });
+    const summary = await promoteDefaultPendingRules(prisma, "user-1", NOW_ACTIVE);
+    assert.equal(summary.promotedDefaultCount, 1);
+    assert.equal(defaultUpdates.length, 1);
+  });
+
+  test("skips __delete payload on default template", async () => {
+    const { prisma } = makeFakePrisma({
+      defaultRows: [
+        { userId: "user-1", pendingPayloadJson: { __delete: true }, pendingEffectiveDate: "2026-05-09" },
+      ],
+    });
+    const summary = await promoteDefaultPendingRules(prisma, "user-1", NOW_MAINTENANCE);
+    assert.equal(summary.skippedCount, 1);
+    assert.equal(summary.skippedRows[0].skipReason, "default_row_has_delete_payload");
   });
 });
