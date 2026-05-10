@@ -162,12 +162,13 @@ function defaultPendingNote(
   return `Default template has ${v} saved as pending — not active yet. This account will inherit it when it activates.`;
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, pendingNote, children }: { label: string; hint?: string; pendingNote?: string | null; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5">
       <span className="text-xs font-medium text-stone-600">{label}</span>
       {children}
       {hint && <span className="text-xs text-stone-400">{hint}</span>}
+      {pendingNote && <span className="text-xs font-medium text-amber-600">{pendingNote}</span>}
     </label>
   );
 }
@@ -530,29 +531,24 @@ export function AccountRulesForm({
       <div role="group" aria-label="Trading limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <p className="text-sm font-semibold text-stone-950">Trading limits</p>
         <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label="Max trades per day">
+          <Field
+            label="Max trades per day"
+            pendingNote={defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
+          >
             <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
-            {defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "") && (
-              <span className="text-xs font-medium text-amber-600">
-                {defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
-              </span>
-            )}
           </Field>
-          <Field label="Stop after consecutive losses">
+          <Field
+            label="Stop after consecutive losses"
+            pendingNote={defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
+          >
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
-            {defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "") && (
-              <span className="text-xs font-medium text-amber-600">
-                {defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
-              </span>
-            )}
           </Field>
-          <Field label={MAX_POSITION_SIZE_COPY.label} hint={MAX_POSITION_SIZE_COPY.hint}>
+          <Field
+            label={MAX_POSITION_SIZE_COPY.label}
+            hint={MAX_POSITION_SIZE_COPY.hint}
+            pendingNote={defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
+          >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-            {defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "") && (
-              <span className="text-xs font-medium text-amber-600">
-                {defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
-              </span>
-            )}
           </Field>
         </div>
       </div>
@@ -671,22 +667,21 @@ export function AccountRulesForm({
             </p>
           ) : pendingFieldRows.length > 0 ? (
             <div className="overflow-hidden rounded-lg border border-amber-100 bg-white">
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-amber-100 bg-amber-50/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-700">
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)] gap-x-3 border-b border-amber-100 bg-amber-50/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-700">
                 <span>Rule</span>
                 <span>Active now</span>
                 <span>Pending next</span>
+                <span>Source</span>
               </div>
               {pendingFieldRows.map(({ label, active, pending, activeSource }) => (
                 <div
                   key={label}
-                  className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 border-t border-amber-50 px-3 py-1.5 first:border-t-0 text-[12px] text-amber-900"
+                  className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-baseline gap-x-3 border-t border-amber-50 px-3 py-1.5 first:border-t-0 text-[12px] text-amber-900"
                 >
                   <span className="font-medium">{label}</span>
-                  <span className="flex flex-wrap items-center gap-1.5 text-amber-800">
-                    <span>{active}</span>
-                    {renderActiveSourceTag(activeSource)}
-                  </span>
+                  <span className="text-amber-800">{active}</span>
                   <span className="font-semibold text-amber-900">{pending}</span>
+                  <span>{renderActiveSourceTag(activeSource)}</span>
                 </div>
               ))}
               {pendingFieldRows.some((r) => r.activeSource === "not_set") && (

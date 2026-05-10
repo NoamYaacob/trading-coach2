@@ -207,7 +207,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
   // Enabled when the form has changes, OR when consent needs to be captured.
   const hasSomethingToSave = isDirty || (!hasValidConsent && consentChecked);
   const saveDisabled = saving || !hasSomethingToSave || validationErrors.length > 0;
-  const saveLabel = saving ? "Saving…" : (!isDirty && savedAt && !pendingMessage ? "Saved" : "Save rules");
+  const saveLabel = saving ? "Saving…" : (pendingMessage && !isDirty ? "Saved as pending" : (!isDirty && savedAt ? "Saved" : "Save rules"));
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-6">
@@ -413,7 +413,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
             <span className="text-xs text-emerald-700">Saved in Guardrail.</span>
           )}
           {pendingMessage && (
-            <span className="text-xs text-amber-700">{pendingMessage}</span>
+            <span className="text-xs text-amber-700">Activation waiting for next safe window.</span>
           )}
           {error && <span className="text-xs text-red-700">{error}</span>}
         </div>
