@@ -15,6 +15,7 @@
 
 import { prisma } from "@/lib/db";
 import { TradovateClient, TradovateClientError } from "./tradovate-client";
+import { ensureTradovateAccessToken } from "./tradovate-ensure-token";
 import { runDiscoveryForConnection } from "./tradovate-discovery";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
@@ -695,6 +696,14 @@ export async function syncTradovateConnection(
   results: SyncResult[];
   discovery: { newlyCreatedIds: string[]; missingIds: string[]; ok: boolean };
 }> {
+  // ── 0. Connection-level token renewal ────────────────────────────────────
+  // Renew once before discovery and parallel account syncs to avoid N
+  // concurrent renewal attempts from N TradovateClient.initialize() calls.
+  // Throws on auth_invalid (connection/accounts already marked expired) or
+  // transient errors — either way the caller records the failure and skips
+  // this connection for this cron cycle.
+  await ensureTradovateAccessToken({ brokerConnectionId: connectionId, userId });
+
   // ── 1. Discovery + reconciliation ────────────────────────────────────────
   const discovery = await runDiscoveryForConnection(connectionId, userId);
   const discoveryOk = discovery.ok;

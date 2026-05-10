@@ -333,6 +333,13 @@ export class TradovateClient {
         where: { id: this.#brokerConnectionId },
         data,
       });
+      // Cascade to all accounts linked to this connection so their
+      // connectionStatus reflects the parent's expired state immediately,
+      // without waiting for the next sync to detect the stale token.
+      await prisma.connectedAccount.updateMany({
+        where: { brokerConnectionId: this.#brokerConnectionId },
+        data: { connectionStatus: "expired" },
+      });
     } else {
       await prisma.connectedAccount.update({
         where: { id: this.#accountId },
@@ -639,10 +646,13 @@ export class TradovateClient {
       if (this.#brokerConnectionId) {
         // BrokerConnection-backed account — update the shared token row so
         // all accounts linked to this connection pick up the new token.
+        // connectionStatus is intentionally NOT changed: a successful renewal
+        // must preserve connected_live (not demote it to connected_readonly).
+        // The permission probe is solely responsible for the live ↔ readonly
+        // status; we only clear errorMessage here.
         const bcData: Parameters<typeof prisma.brokerConnection.update>[0]["data"] = {
           accessTokenEncrypted: encryptedAccess,
           tokenExpiresAt: tokens.expiresAt,
-          connectionStatus: "connected_readonly",
           errorMessage: null,
         };
         if (!preserveRefreshToken && tokens.refreshToken) {
@@ -657,7 +667,6 @@ export class TradovateClient {
         const data: Parameters<typeof prisma.connectedAccount.update>[0]["data"] = {
           accessTokenEncrypted: encryptedAccess,
           tokenExpiresAt: tokens.expiresAt,
-          connectionStatus: "connected_readonly",
           errorMessage: null,
         };
         if (!preserveRefreshToken && tokens.refreshToken) {

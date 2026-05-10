@@ -87,10 +87,16 @@ export async function getTradovateTokensForAccount(
     );
   }
 
-  // Prefer BrokerConnection tokens when the account was imported via the
-  // multi-account OAuth flow (brokerConnectionId is set and the per-account
-  // token columns are empty).
-  if (account.brokerConnectionId && !account.accessTokenEncrypted) {
+  // Prefer BrokerConnection tokens whenever brokerConnectionId is set.
+  //
+  // IMPORTANT: do not guard this on !account.accessTokenEncrypted.
+  // The legacy OAuth callback (no setupId) writes tokens to BOTH
+  // BrokerConnection and ConnectedAccount. After a token renewal,
+  // #storeRefreshedTokens updates only BrokerConnection, leaving
+  // ConnectedAccount.accessTokenEncrypted stale. If we read the per-account
+  // column here, every sync after the first renewal uses an expired token and
+  // triggers an auth_invalid → connection marked expired loop.
+  if (account.brokerConnectionId) {
     const bc = await prisma.brokerConnection.findFirst({
       where: { id: account.brokerConnectionId, userId },
       select: {
