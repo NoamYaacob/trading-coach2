@@ -24,6 +24,8 @@ export type RunProbeArgs = {
   accountId: string;
   /** Owning userId (TradovateClient requires it for token lookup). */
   userId: string;
+  /** Caller context for log attribution: "finalize" | "reconnect" | "cron". */
+  source?: string;
 };
 
 /**
@@ -35,7 +37,7 @@ export type RunProbeArgs = {
 export async function runPermissionProbe(
   args: RunProbeArgs,
 ): Promise<PermissionProbeResult> {
-  const { brokerConnectionId, accountId, userId } = args;
+  const { brokerConnectionId, accountId, userId, source } = args;
 
   let result: PermissionProbeResult;
   try {
@@ -69,6 +71,7 @@ export async function runPermissionProbe(
     level: result.level,
     httpStatus: result.httpStatus,
     reason: result.reason,
+    source: source ?? "unknown",
   });
 
   return result;

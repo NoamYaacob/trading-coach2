@@ -36,6 +36,15 @@ const removeBrokerConnectionButton = read(
 const brokerConnectionsApiRoute = read(
   "../../../../../app/api/broker-connections/[id]/route.ts",
 );
+const permissionProbeRunner = read(
+  "../../../../../lib/brokers/permission-probe-runner.ts",
+);
+const finalizeRoute = read(
+  "../../../../../app/api/auth/tradovate/finalize/route.ts",
+);
+const cronRoute = read(
+  "../../../../../app/api/cron/tradovate-sync/route.ts",
+);
 
 // ── connect-tradovate-client.tsx ──────────────────────────────────────────────
 
@@ -285,5 +294,79 @@ describe("DELETE /api/broker-connections/[id]", () => {
 
   test("returns { ok: true } on success", () => {
     assert.ok(brokerConnectionsApiRoute.includes("ok: true"));
+  });
+});
+
+// ── connect/route.ts — OAuth scope ────────────────────────────────────────────
+
+describe("connect route — OAuth scope not capped to read-only", () => {
+  test("URLSearchParams constructor does not include a scope key", () => {
+    const start = connectRoute.indexOf("new URLSearchParams({");
+    const end = connectRoute.indexOf("});", start);
+    assert.ok(start > -1, "URLSearchParams constructor must exist");
+    const paramsBlock = connectRoute.slice(start, end);
+    assert.ok(
+      !paramsBlock.includes("scope"),
+      "scope must not be a key in the URLSearchParams constructor",
+    );
+  });
+});
+
+// ── callback/route.ts — permission probe on reconnect ────────────────────────
+
+describe("callback route — permission probe on reconnect", () => {
+  test("imports runPermissionProbe", () => {
+    assert.ok(callbackRoute.includes('import { runPermissionProbe }'));
+  });
+
+  test("calls runPermissionProbe inside the reconnect block", () => {
+    const reconnectBlockStart = callbackRoute.indexOf("if (payload.reconnectId)");
+    const reconnectBlockEnd = callbackRoute.indexOf("// ── Create or update BrokerConnection");
+    const probeCalls = callbackRoute.indexOf("runPermissionProbe(");
+    assert.ok(reconnectBlockStart > -1, "reconnect block must exist");
+    assert.ok(
+      probeCalls > reconnectBlockStart && probeCalls < reconnectBlockEnd,
+      "runPermissionProbe must be called inside the reconnect block",
+    );
+  });
+
+  test("passes source: reconnect to the probe", () => {
+    assert.ok(callbackRoute.includes('source: "reconnect"'));
+  });
+
+  test("resets permissionLevel to null in reconnect BC update", () => {
+    assert.ok(callbackRoute.includes("permissionLevel: null"));
+  });
+
+  test("resets permissionsProbedAt to null in reconnect BC update", () => {
+    assert.ok(callbackRoute.includes("permissionsProbedAt: null"));
+  });
+});
+
+// ── permission-probe-runner.ts — source field ─────────────────────────────────
+
+describe("permission-probe-runner — source attribution", () => {
+  test("RunProbeArgs defines optional source field", () => {
+    assert.ok(permissionProbeRunner.includes("source?:"));
+  });
+
+  test("logs source in console.info", () => {
+    assert.ok(permissionProbeRunner.includes("source: source"));
+  });
+});
+
+// ── caller source attribution ─────────────────────────────────────────────────
+
+describe("permission probe callers — source attribution", () => {
+  test("finalize route passes source: finalize", () => {
+    assert.ok(finalizeRoute.includes('source: "finalize"'));
+  });
+
+  test("cron route passes source: cron", () => {
+    assert.ok(cronRoute.includes('source: "cron"'));
+  });
+
+  test("callback reconnect path passes source: reconnect", () => {
+    assert.ok(callbackRoute.includes('source: "reconnect"'));
   });
 });

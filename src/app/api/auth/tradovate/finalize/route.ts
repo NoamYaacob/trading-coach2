@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
       brokerConnectionId: brokerConnection.id,
       accountId: createdAccountIds[0],
       userId: currentUser.id,
+      source: "finalize",
     });
   }
 

@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
           brokerConnectionId: bc.id,
           accountId: bc.accounts[0].id,
           userId: bc.userId,
+          source: "cron",
         });
       }
     } catch (err) {

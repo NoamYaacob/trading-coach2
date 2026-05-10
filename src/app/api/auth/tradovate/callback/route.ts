@@ -16,6 +16,7 @@ import {
 import type { TvParsedToken } from "@/lib/brokers/tradovate-token-exchange";
 import { encryptAndSerialize, TokenCryptoError } from "@/lib/security/token-crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { runPermissionProbe } from "@/lib/brokers/permission-probe-runner";
 
 const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
 
@@ -295,6 +296,9 @@ export async function GET(request: NextRequest) {
           tokenExpiresAt,
           errorMessage: null,
           ...(token.accountId != null && { brokerUserId: token.accountId }),
+          // Clear stale permission level — fresh probe runs below with the new token.
+          permissionLevel: null,
+          permissionsProbedAt: null,
         },
       });
       await prisma.connectedAccount.updateMany({
@@ -339,6 +343,23 @@ export async function GET(request: NextRequest) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[tradovate/callback] reconnect update failed", { msg });
       return backToConnectPage(request, "broker_connection_storage_failed");
+    }
+
+    // Run the permission probe immediately after reconnect — same as the finalize
+    // route does for new connections. Uses the fresh token just stored above.
+    // Awaited so Settings shows the correct permissionLevel on arrival, not a
+    // stale read_only from before the reconnect.
+    const probeAccount = await prisma.connectedAccount.findFirst({
+      where: { brokerConnectionId: payload.reconnectId, isActive: true },
+      select: { id: true },
+    });
+    if (probeAccount) {
+      await runPermissionProbe({
+        brokerConnectionId: payload.reconnectId,
+        accountId: probeAccount.id,
+        userId: payload.userId,
+        source: "reconnect",
+      });
     }
 
     return NextResponse.redirect(`${base}/settings?tradovate_reconnected=1`);

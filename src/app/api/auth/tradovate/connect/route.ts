@@ -82,15 +82,15 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 10, // 10-minute window
   });
 
+  // Tradovate permissions are controlled at the API-key level in their
+  // dashboard — not via the OAuth scope string. Omitting scope matches the
+  // official Tradovate OAuth example and avoids inadvertently capping the
+  // token at read-only: passing scope: "read" may prevent the user from
+  // granting Account Risk Settings access even when their app supports it.
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
     redirect_uri: redirectUri,
-    // TODO: verify whether Tradovate requires a scope parameter for your
-    // OAuth app. The official example omits scope entirely. If Tradovate
-    // rejects the request with "invalid_scope", remove this line or set
-    // the value to whatever your app registration requires.
-    scope: "read",
     state,
   });
 
