@@ -118,20 +118,56 @@ export function buildCommandCenterGroups(
 /**
  * Filters groups to those that should show the expired-connection banner.
  *
- * A group triggers the banner only when:
- *   (a) its broker connection is expired or errored, AND
- *   (b) at least one account in the group has status !== "unavailable" — meaning
- *       reconnecting would actually restore sync/enforcement for that account.
+ * Three conditions must ALL be true for the banner to fire:
  *
- * Groups where every account has missingFromBrokerSince set (status: "unavailable")
- * are excluded — the accounts are gone from the broker regardless of connection state,
- * so a reconnect warning is noise (orphaned expired BCs, archived MFFU accounts, etc.).
+ *   (a) The group's broker connection is expired or errored.
+ *
+ *   (b) At least one account in the group has missingFromBrokerSince === null
+ *       AND status !== "unavailable". Accounts gone from the broker
+ *       (missingFromBrokerSince set → status: "unavailable") are not
+ *       actionable; reconnecting won't restore them.
+ *
+ *   (c) No other group has a healthy connection for the same brokerEnv.
+ *       When the user already has an active Demo grant, an old expired Demo
+ *       grant is irrelevant — the MFFU accounts on that old grant may not
+ *       have had a sync run to set missingFromBrokerSince yet, but they are
+ *       not the active connection and the banner is noise.
+ *
+ * Suppressed scenarios:
+ *   - All accounts have missingFromBrokerSince set (confirmed gone from broker)
+ *   - Expired grant for an env where a healthy grant already exists
+ *     (e.g. old expired Demo BC when user reconnected to a new Demo BC)
+ *
+ * missingFromBrokerSince and status are available on every CommandCenterAccount
+ * (loaded from the DB query in data.ts and mapped in the computed array).
  */
 export function filterExpiredGroups(groups: CommandCenterFirmGroup[]): CommandCenterFirmGroup[] {
+  // Connection statuses that indicate a functioning OAuth grant.
+  const HEALTHY = new Set([
+    "connected_live",
+    "connected_readonly",
+    "pending_webhook",
+    "oauth_pending_storage",
+  ]);
+
+  // Collect the envs already covered by at least one healthy group.
+  const healthyEnvs = new Set<string | null>();
+  for (const g of groups) {
+    if (HEALTHY.has(g.connectionStatus)) {
+      healthyEnvs.add(g.brokerEnv);
+    }
+  }
+
   return groups.filter(
     (g) =>
+      // (a) expired or errored connection
       (g.connectionStatus === "expired" || g.connectionStatus === "connection_error") &&
-      g.accounts.some((a) => a.status !== "unavailable"),
+      // (b) at least one account not yet confirmed gone from broker
+      g.accounts.some(
+        (a) => a.missingFromBrokerSince === null && a.status !== "unavailable",
+      ) &&
+      // (c) no healthy connection already covers this env
+      !healthyEnvs.has(g.brokerEnv),
   );
 }
 
