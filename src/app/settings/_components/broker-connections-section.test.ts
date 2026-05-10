@@ -286,3 +286,64 @@ describe("section structure", () => {
     );
   });
 });
+
+// ── Final polish pass ─────────────────────────────────────────────────────────
+
+describe("final polish pass", () => {
+  test("explanation card is always visible (not hidden inside <details>)", () => {
+    const src = read(SECTION_FILE);
+    const detailsIndex = src.indexOf("<details");
+    const explanationIndex = src.indexOf("How broker connections work");
+    // Either there are no <details> at all, or the explanation block comes
+    // before any <details> element (i.e., it is not wrapped in one).
+    assert.ok(
+      detailsIndex === -1 || explanationIndex < detailsIndex,
+      "explanation block must not be inside a <details> element",
+    );
+  });
+
+  test("expired card shows 'Affects 1 account:' label for single linked account", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Affects 1 account:"),
+      "single-account group subtitle must say 'Affects 1 account: <label>'",
+    );
+  });
+
+  test("expired card shows 'Broker-side enforcement paused until reconnect'", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Broker-side enforcement paused until reconnect"),
+      "expired group card must include enforcement-paused notice",
+    );
+  });
+
+  test("reconnect button labels use '<env> connection' format", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("connection`"),
+      "reconnect button label must produce '<env> connection' or 'connection'",
+    );
+    // Must NOT fall back to platform-prefixed label like 'Reconnect Tradovate Demo'
+    assert.ok(
+      !src.includes("Reconnect {platform}"),
+      "reconnect button must not use platform name in label",
+    );
+  });
+
+  test("orphaned connections render under 'Unused expired connections', not Needs attention", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Unused expired connections"),
+      "section must have 'Unused expired connections' subsection for orphaned tokens",
+    );
+    // orphanedExpired.map must appear after the Needs attention block ends
+    const needsAttentionIndex = src.indexOf("Needs attention");
+    const unusedSectionIndex = src.indexOf("Unused expired connections");
+    const orphanedMapIndex = src.indexOf("orphanedExpired.map");
+    assert.ok(
+      orphanedMapIndex > unusedSectionIndex && unusedSectionIndex > needsAttentionIndex,
+      "orphanedExpired.map must appear inside the 'Unused expired connections' section, after 'Needs attention'",
+    );
+  });
+});

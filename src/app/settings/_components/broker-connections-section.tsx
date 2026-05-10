@@ -197,7 +197,7 @@ function ExpiredConnectionGroupCard({ group }: { group: ExpiredConnectionGroup }
             <p className="text-sm font-semibold text-amber-950">{title}</p>
             <p className="mt-0.5 text-xs text-amber-700">
               {count === 1
-                ? group.accounts[0]!.label
+                ? `Affects 1 account: ${group.accounts[0]!.label}`
                 : `Affects ${count} accounts`}
             </p>
           </div>
@@ -218,6 +218,9 @@ function ExpiredConnectionGroupCard({ group }: { group: ExpiredConnectionGroup }
             Connection expired — reconnect to resume live sync and broker-side risk settings
             {count > 1 ? " for these accounts." : "."}
           </p>
+          <p className="text-xs text-amber-700">
+            Broker-side enforcement paused until reconnect.
+          </p>
         </div>
 
         {/* Right: primary action */}
@@ -225,8 +228,7 @@ function ExpiredConnectionGroupCard({ group }: { group: ExpiredConnectionGroup }
           href={group.reconnectUrl}
           className="inline-flex shrink-0 items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
         >
-          Reconnect {platform}
-          {env ? ` ${env}` : ""}
+          Reconnect {env ? `${env} connection` : "connection"}
         </Link>
       </div>
     </div>
@@ -285,29 +287,27 @@ export function BrokerConnectionsSection({
     (bc) => isExpiredStatus(bc.connectionStatus) && !linkedConnectionIds.has(bc.id),
   );
 
-  const hasNeedsAttention = expiredGroups.length > 0 || orphanedExpired.length > 0;
+  const hasNeedsAttention = expiredGroups.length > 0;
+  const hasOrphaned = orphanedExpired.length > 0;
   const hasConnected = connected.length > 0;
   const hasInactive = inactive.length > 0;
 
-  if (!hasNeedsAttention && !hasConnected && !hasInactive) {
+  if (!hasNeedsAttention && !hasOrphaned && !hasConnected && !hasInactive) {
     return <p className="text-sm text-stone-500">No broker connected yet.</p>;
   }
 
   return (
     <div className="grid gap-5">
 
-      {/* ── Explanation block ────────────────────────────────────────────── */}
-      <details className="group rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3 text-xs">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
-          How broker connections work
-          <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-        </summary>
-        <p className="mt-2 leading-relaxed text-stone-600">
+      {/* ── Explanation block — always visible ──────────────────────────── */}
+      <div className="rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3 text-xs">
+        <p className="font-semibold text-stone-700">How broker connections work</p>
+        <p className="mt-1 leading-relaxed text-stone-600">
           A broker connection is the permission link to Tradovate. Broker accounts sit under
           that connection. If the connection expires, Guardrail keeps your saved rules, but
           live sync and broker-side enforcement pause until you reconnect.
         </p>
-      </details>
+      </div>
 
       {/* ── Needs attention ─────────────────────────────────────────────── */}
       {hasNeedsAttention && (
@@ -319,6 +319,17 @@ export function BrokerConnectionsSection({
             {expiredGroups.map((group) => (
               <ExpiredConnectionGroupCard key={group.connectionId} group={group} />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Unused expired connections ───────────────────────────────────── */}
+      {hasOrphaned && (
+        <div className="grid gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+            Unused expired connections
+          </p>
+          <div className="grid gap-2">
             {orphanedExpired.map((bc) => (
               <OrphanedConnectionRow key={bc.id} bc={bc} />
             ))}
