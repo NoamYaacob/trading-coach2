@@ -33,7 +33,15 @@ export type BrokerConnectionRow = {
   createdAt: Date;
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+type ExpiredConnectionGroup = {
+  connectionId: string;
+  platform: string;
+  env: string;
+  reconnectUrl: string;
+  accounts: BrokerAccountRow[];
+};
+
+// ── Pure helpers ──────────────────────────────────────────────────────────────
 
 function platformLabel(platform: string): string {
   if (platform === "tradovate") return "Tradovate";
@@ -63,29 +71,86 @@ function reconnectUrlForConnection(bc: BrokerConnectionRow): string {
   return `/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`;
 }
 
+/**
+ * Returns a human-readable enforcement status for an account that is
+ * currently connected (connected_live or connected_readonly).
+ */
+function enforcementStatus(acct: BrokerAccountRow): string {
+  const perm = acct.brokerConnection?.permissionLevel;
+  if (acct.connectionStatus === "connected_live" && perm === "full_access") {
+    return "Broker-side enforcement active";
+  }
+  if (
+    acct.connectionStatus === "connected_readonly" ||
+    perm === "read_only"
+  ) {
+    return "Monitoring only";
+  }
+  if (acct.connectionStatus === "connected_live") {
+    return "App-level only";
+  }
+  return "";
+}
+
 // ── Classification ────────────────────────────────────────────────────────────
 
+/**
+ * Classifies accounts into three mutually-exclusive buckets.
+ *
+ * Precedence:
+ *   1. inactive  — missing from broker (missingFromBrokerSince set)
+ *   2. needsAttention — OAuth token expired but account still exists in broker
+ *   3. connected — everything else
+ *
+ * Inactive takes highest precedence so an account that is both "missing from
+ * broker" and "in an expired connection" ends up in the inactive section (where
+ * Remove from Guardrail is offered), not in the reconnect group.
+ */
 function classifyAccounts(accounts: BrokerAccountRow[]) {
+  const inactive = accounts.filter((a) => a.missingFromBrokerSince != null);
+  const inactiveIds = new Set(inactive.map((a) => a.id));
+
   const needsAttention = accounts.filter(
     (a) =>
-      isExpiredStatus(a.connectionStatus) ||
-      (a.brokerConnection != null && isExpiredStatus(a.brokerConnection.connectionStatus)),
+      !inactiveIds.has(a.id) &&
+      (isExpiredStatus(a.connectionStatus) ||
+        (a.brokerConnection != null && isExpiredStatus(a.brokerConnection.connectionStatus))),
   );
   const needsAttentionIds = new Set(needsAttention.map((a) => a.id));
 
-  const inactive = accounts.filter(
-    (a) => a.missingFromBrokerSince != null && !needsAttentionIds.has(a.id),
-  );
-  const inactiveIds = new Set(inactive.map((a) => a.id));
-
   const connected = accounts.filter(
-    (a) => !needsAttentionIds.has(a.id) && !inactiveIds.has(a.id),
+    (a) => !inactiveIds.has(a.id) && !needsAttentionIds.has(a.id),
   );
 
   return { needsAttention, inactive, connected };
 }
 
-// ── Status pill atoms ─────────────────────────────────────────────────────────
+/**
+ * Groups expired accounts by their brokerConnectionId so that all accounts
+ * belonging to the same OAuth token are displayed as one card, not N cards.
+ * Accounts without a brokerConnectionId each get their own synthetic group.
+ */
+function groupExpiredByConnection(accounts: BrokerAccountRow[]): ExpiredConnectionGroup[] {
+  const groups = new Map<string, ExpiredConnectionGroup>();
+
+  for (const acct of accounts) {
+    const key = acct.brokerConnectionId ?? `__standalone_${acct.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        connectionId: key,
+        platform: acct.platform,
+        env: acct.brokerConnection?.env ?? "",
+        reconnectUrl: reconnectUrlForAccount(acct),
+        accounts: [],
+      });
+    }
+    groups.get(key)!.accounts.push(acct);
+  }
+
+  return Array.from(groups.values());
+}
+
+// ── Status pill ───────────────────────────────────────────────────────────────
 
 function StatusPill({
   label,
@@ -110,6 +175,90 @@ function StatusPill({
   );
 }
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+/**
+ * One card per expired broker connection. All accounts that share the same
+ * OAuth token are listed compactly inside the single card so the user
+ * understands one reconnect action fixes all of them.
+ */
+function ExpiredConnectionGroupCard({ group }: { group: ExpiredConnectionGroup }) {
+  const platform = platformLabel(group.platform);
+  const env = envLabel(group.env);
+  const count = group.accounts.length;
+  const title = `${platform}${env ? ` ${env}` : ""} connection expired`;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        {/* Left: description */}
+        <div className="grid min-w-0 gap-2">
+          <div>
+            <p className="text-sm font-semibold text-amber-950">{title}</p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              {count === 1
+                ? group.accounts[0]!.label
+                : `Affects ${count} accounts`}
+            </p>
+          </div>
+
+          {/* Affected account list — shown only for 2+ accounts */}
+          {count > 1 && (
+            <ul className="grid gap-0.5">
+              {group.accounts.map((acct) => (
+                <li key={acct.id} className="flex items-center gap-1.5 text-xs text-amber-800">
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-amber-400" aria-hidden />
+                  {acct.label}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-xs text-amber-800">
+            Connection expired — reconnect to resume live sync and broker-side risk settings
+            {count > 1 ? " for these accounts." : "."}
+          </p>
+        </div>
+
+        {/* Right: primary action */}
+        <Link
+          href={group.reconnectUrl}
+          className="inline-flex shrink-0 items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
+        >
+          Reconnect {platform}
+          {env ? ` ${env}` : ""}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact muted row for an expired broker connection that has no linked
+ * accounts. Does not visually compete with groups that have real affected
+ * accounts.
+ */
+function OrphanedConnectionRow({ bc }: { bc: BrokerConnectionRow }) {
+  const platform = platformLabel(bc.platform);
+  const env = envLabel(bc.env);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5">
+      <p className="text-xs text-stone-500">
+        {platform}
+        {env ? ` ${env}` : ""} connection expired
+        {" · "}
+        <span className="text-stone-400">No accounts linked</span>
+      </p>
+      <Link
+        href={reconnectUrlForConnection(bc)}
+        className="text-xs font-medium text-stone-600 underline-offset-2 hover:underline"
+      >
+        Reconnect
+      </Link>
+    </div>
+  );
+}
+
 // ── Section component ─────────────────────────────────────────────────────────
 
 export function BrokerConnectionsSection({
@@ -125,8 +274,10 @@ export function BrokerConnectionsSection({
 }) {
   const { needsAttention, inactive, connected } = classifyAccounts(accounts);
 
-  // Broker connections with expired tokens but no accounts linked (e.g. setup
-  // was abandoned before any accounts were discovered).
+  const expiredGroups = groupExpiredByConnection(needsAttention);
+
+  // Broker connections whose token expired but have no linked accounts at all
+  // (e.g. setup abandoned before any accounts were discovered).
   const linkedConnectionIds = new Set(
     accounts.map((a) => a.brokerConnectionId).filter(Boolean),
   );
@@ -134,7 +285,7 @@ export function BrokerConnectionsSection({
     (bc) => isExpiredStatus(bc.connectionStatus) && !linkedConnectionIds.has(bc.id),
   );
 
-  const hasNeedsAttention = needsAttention.length > 0 || orphanedExpired.length > 0;
+  const hasNeedsAttention = expiredGroups.length > 0 || orphanedExpired.length > 0;
   const hasConnected = connected.length > 0;
   const hasInactive = inactive.length > 0;
 
@@ -145,80 +296,32 @@ export function BrokerConnectionsSection({
   return (
     <div className="grid gap-5">
 
+      {/* ── Explanation block ────────────────────────────────────────────── */}
+      <details className="group rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3 text-xs">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
+          How broker connections work
+          <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          A broker connection is the permission link to Tradovate. Broker accounts sit under
+          that connection. If the connection expires, Guardrail keeps your saved rules, but
+          live sync and broker-side enforcement pause until you reconnect.
+        </p>
+      </details>
+
       {/* ── Needs attention ─────────────────────────────────────────────── */}
       {hasNeedsAttention && (
         <div className="grid gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
             Needs attention
           </p>
-          <div className="grid gap-2">
-
-            {needsAttention.map((acct) => {
-              const platform = platformLabel(acct.platform);
-              const env = envLabel(acct.brokerConnection?.env);
-              const subtitle = [platform, env].filter(Boolean).join(" ");
-              return (
-                <div
-                  key={acct.id}
-                  className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="grid gap-1 text-sm">
-                      <p className="font-medium text-amber-950">{acct.label}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-amber-800">
-                        <span>{subtitle}</span>
-                        <StatusPill label="Expired" color="orange" />
-                      </div>
-                      <p className="text-xs text-amber-800">
-                        Connection expired — reconnect to resume live sync and broker-side risk settings.
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <Link
-                        href={reconnectUrlForAccount(acct)}
-                        className="inline-flex items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
-                      >
-                        Reconnect
-                      </Link>
-                      <RemoveAccountButton accountId={acct.id} redirectTo="/settings" />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {orphanedExpired.map((bc) => {
-              const platform = platformLabel(bc.platform);
-              const env = envLabel(bc.env);
-              return (
-                <div
-                  key={bc.id}
-                  className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="grid gap-1 text-sm">
-                      <p className="font-medium text-amber-950">
-                        {platform} {env}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-amber-800">
-                        <StatusPill label="Expired" color="orange" />
-                        <span>· No accounts linked</span>
-                      </div>
-                      <p className="text-xs text-amber-800">
-                        Connection expired — reconnect to restore your broker accounts.
-                      </p>
-                    </div>
-                    <Link
-                      href={reconnectUrlForConnection(bc)}
-                      className="inline-flex shrink-0 items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
-                    >
-                      Reconnect
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-
+          <div className="grid gap-3">
+            {expiredGroups.map((group) => (
+              <ExpiredConnectionGroupCard key={group.connectionId} group={group} />
+            ))}
+            {orphanedExpired.map((bc) => (
+              <OrphanedConnectionRow key={bc.id} bc={bc} />
+            ))}
           </div>
         </div>
       )}
@@ -253,6 +356,7 @@ export function BrokerConnectionsSection({
                 <StatusPill label={acct.connectionStatus.replace(/_/g, " ")} color="stone" />
               );
 
+              const enforcement = enforcementStatus(acct);
               const disconnectState = computeAccountDisconnectState(acct, disconnectWindow);
 
               return (
@@ -282,13 +386,9 @@ export function BrokerConnectionsSection({
                           Connected with read-only access. Guardrail can monitor this account,
                           but cannot apply broker-side risk settings.
                         </p>
-                      ) : (
-                        acct.brokerConnection?.permissionLevel === "full_access" && (
-                          <p className="text-xs text-stone-400">
-                            Full access · Risk settings enabled
-                          </p>
-                        )
-                      )}
+                      ) : enforcement ? (
+                        <p className="text-xs text-stone-400">{enforcement}</p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
                       {isReadOnly && acct.brokerConnection && (
