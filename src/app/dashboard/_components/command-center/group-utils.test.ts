@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCommandCenterGroups, filterAccountsByType, recomputeGroupAggregates } from "./group-utils.ts";
+import { buildCommandCenterGroups, filterAccountsByType, filterExpiredGroups, recomputeGroupAggregates } from "./group-utils.ts";
 import type { CommandCenterAccount } from "./types.ts";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -958,5 +958,210 @@ describe("filterAccountsByType", () => {
     assert.equal(recomputed.totalDailyPnl, 0, "locked P&L excluded; unavailable P&L is stale");
     assert.equal(recomputed.hasPnlData, false, "no data for unavailable-filtered group");
     assert.equal(recomputed.accounts.length, 1, "only the unavailable funded row is visible");
+  });
+});
+
+// ── filterExpiredGroups — expired-connection banner gate ──────────────────────
+// The banner must only fire for expired connections that have at least one
+// recoverable account (status !== "unavailable"). Groups where every account is
+// "unavailable" (missingFromBrokerSince set — the broker no longer returns them)
+// are silently excluded: reconnecting won't restore those accounts, so showing
+// the warning is noise.
+//
+// Production scenario that prompted this fix:
+//   - User has an active Demo BrokerConnection (permissionLevel: full_access)
+//   - An old expired Demo BrokerConnection still has MFFU accounts in the DB
+//     (isActive=true, protectionStatus="protected", connectionStatus="expired",
+//      missingFromBrokerSince=<date> because the prop firm reset/closed them)
+//   - Dashboard was incorrectly showing "Tradovate Demo connection expired" banner
+//   - Fix: suppress the banner when all accounts in the expired group are "unavailable"
+
+describe("filterExpiredGroups — expired connection banner gate", () => {
+  // ── Scenario 1: expired group with all-unavailable accounts → no banner ──────
+  // Old expired Demo BrokerConnection with MFFU accounts gone from the broker.
+  // The accounts are still in the DB (isActive=true, protectionStatus=protected)
+  // but missingFromBrokerSince is set → status: "unavailable". Reconnecting
+  // this old connection would not help because the broker no longer returns these
+  // accounts. Banner must be suppressed.
+  it("suppresses banner for expired group whose accounts are all unavailable (orphaned expired BC)", () => {
+    const oldExpiredMFFU = stubAccount({
+      id: "mffu-old-1",
+      firmKey: "myfundedfutures",
+      firmLabel: "MyFundedFutures",
+      brokerConnectionId: "old-demo-bc",
+      brokerEnv: "demo",
+      connectionStatus: "expired",
+      status: "unavailable",
+      missingFromBrokerSince: new Date("2026-04-01T12:00:00Z"),
+    });
+    const [expiredGroup] = buildCommandCenterGroups([oldExpiredMFFU], NO_SINK_KEYS);
+    assert.equal(expiredGroup.connectionStatus, "expired");
+
+    const result = filterExpiredGroups([expiredGroup]);
+    assert.equal(result.length, 0, "all-unavailable expired group must not trigger banner");
+  });
+
+  // ── Scenario 2: expired group with multiple unavailable MFFU accounts → no banner ──
+  // Mirrors the real production case: several MFFU accounts under the old expired
+  // Demo BC all have missingFromBrokerSince set.
+  it("suppresses banner when multiple unavailable accounts share the expired group", () => {
+    const makeUnavailMFFF = (id: string) =>
+      stubAccount({
+        id,
+        firmKey: "myfundedfutures",
+        firmLabel: "MyFundedFutures",
+        brokerConnectionId: "old-demo-bc",
+        brokerEnv: "demo",
+        connectionStatus: "expired",
+        status: "unavailable",
+        missingFromBrokerSince: new Date("2026-04-01T12:00:00Z"),
+      });
+
+    const accounts = [makeUnavailMFFF("m1"), makeUnavailMFFF("m2"), makeUnavailMFFF("m3")];
+    const groups = buildCommandCenterGroups(accounts, NO_SINK_KEYS);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].connectionStatus, "expired");
+
+    const result = filterExpiredGroups(groups);
+    assert.equal(result.length, 0, "all three unavailable → banner suppressed");
+  });
+
+  // ── Scenario 3: active account under expired connection → banner fires ────────
+  // An account is expired (connectionStatus: "expired") but the broker still
+  // returns it (missingFromBrokerSince === null). Reconnecting would restore sync
+  // and rule enforcement for this account. Banner MUST show.
+  it("shows banner when expired group has a recoverable not_connected account", () => {
+    const expiredActiveAccount = stubAccount({
+      id: "live-acct-expired",
+      firmKey: "myfundedfutures",
+      firmLabel: "MyFundedFutures",
+      brokerConnectionId: "expired-bc",
+      brokerEnv: "live",
+      connectionStatus: "expired",
+      status: "not_connected",
+      missingFromBrokerSince: null,
+    });
+    const [expiredGroup] = buildCommandCenterGroups([expiredActiveAccount], NO_SINK_KEYS);
+    assert.equal(expiredGroup.connectionStatus, "expired");
+
+    const result = filterExpiredGroups([expiredGroup]);
+    assert.equal(result.length, 1, "recoverable account → banner must fire");
+    assert.equal(result[0].brokerConnectionId, "expired-bc");
+  });
+
+  // ── Scenario 4: mixed — one unavailable + one not_connected → banner fires ───
+  // If any account is recoverable, the banner should fire even if others are gone.
+  it("shows banner when at least one account is not unavailable, even if others are", () => {
+    const unavail = stubAccount({
+      id: "gone",
+      firmKey: "myfundedfutures",
+      firmLabel: "MyFundedFutures",
+      brokerConnectionId: "expired-bc",
+      connectionStatus: "expired",
+      status: "unavailable",
+      missingFromBrokerSince: new Date("2026-04-01T12:00:00Z"),
+    });
+    const recoverable = stubAccount({
+      id: "recoverable",
+      firmKey: "myfundedfutures",
+      firmLabel: "MyFundedFutures",
+      brokerConnectionId: "expired-bc",
+      connectionStatus: "expired",
+      status: "not_connected",
+      missingFromBrokerSince: null,
+    });
+    const groups = buildCommandCenterGroups([unavail, recoverable], NO_SINK_KEYS);
+    assert.equal(groups.length, 1);
+
+    const result = filterExpiredGroups(groups);
+    assert.equal(result.length, 1, "recoverable account present → banner fires");
+  });
+
+  // ── Scenario 5: healthy group is never affected ────────────────────────────────
+  it("does not touch groups with connected_live or connected_readonly status", () => {
+    const liveGroup = stubAccount({
+      id: "live-1",
+      brokerConnectionId: "active-bc",
+      connectionStatus: "connected_live",
+      status: "allowed",
+      missingFromBrokerSince: null,
+    });
+    const [group] = buildCommandCenterGroups([liveGroup], NO_SINK_KEYS);
+    assert.equal(group.connectionStatus, "connected_live");
+
+    const result = filterExpiredGroups([group]);
+    assert.equal(result.length, 0, "healthy group must not appear in expiredGroups");
+  });
+
+  // ── Scenario 6: connection_error is treated the same as expired ───────────────
+  it("shows banner for connection_error group with recoverable account", () => {
+    const errorAccount = stubAccount({
+      id: "error-acct",
+      brokerConnectionId: "error-bc",
+      connectionStatus: "connection_error",
+      status: "not_connected",
+      missingFromBrokerSince: null,
+    });
+    const [group] = buildCommandCenterGroups([errorAccount], NO_SINK_KEYS);
+
+    const result = filterExpiredGroups([group]);
+    assert.equal(result.length, 1, "connection_error with recoverable account → banner fires");
+  });
+
+  it("suppresses banner for connection_error group whose accounts are all unavailable", () => {
+    const errorUnavail = stubAccount({
+      id: "error-gone",
+      brokerConnectionId: "error-bc",
+      connectionStatus: "connection_error",
+      status: "unavailable",
+      missingFromBrokerSince: new Date("2026-04-01T12:00:00Z"),
+    });
+    const [group] = buildCommandCenterGroups([errorUnavail], NO_SINK_KEYS);
+
+    const result = filterExpiredGroups([group]);
+    assert.equal(result.length, 0, "all-unavailable connection_error group → banner suppressed");
+  });
+
+  // ── Scenario 7: production alignment — active Demo + old expired Demo ──────────
+  // The user has:
+  //   - active-demo-bc: Demo connection, full_access, DEMO7433035 account (connected_readonly)
+  //   - old-expired-demo-bc: old expired Demo connection, MFFU accounts all unavailable
+  // Only the active-demo-bc creates a group with status: "connected_readonly".
+  // The old-expired-demo-bc creates a group with status: "expired", all accounts unavailable.
+  // filterExpiredGroups must return 0 groups → no banner.
+  it("production scenario: active Demo full_access + old expired Demo (all unavailable MFFU) → no banner", () => {
+    const STANDARD_SINK_KEYS = new Set(["__personal_broker__", "__unassigned__"]);
+
+    // Active Demo account (new connection)
+    const activeDemo = stubAccount({
+      id: "DEMO7433035",
+      firmKey: "__personal_broker__",
+      firmLabel: "Tradovate · Personal",
+      brokerConnectionId: "active-demo-bc",
+      brokerEnv: "demo",
+      accountType: "demo",
+      connectionStatus: "connected_readonly",
+      status: "allowed",
+      missingFromBrokerSince: null,
+    });
+
+    // Old expired MFFU account (old connection, broker no longer returns it)
+    const oldMFFF = stubAccount({
+      id: "MFFU-old",
+      firmKey: "myfundedfutures",
+      firmLabel: "MyFundedFutures",
+      brokerConnectionId: "old-expired-demo-bc",
+      brokerEnv: "demo",
+      accountType: "evaluation",
+      connectionStatus: "expired",
+      status: "unavailable",
+      missingFromBrokerSince: new Date("2026-04-15T12:00:00Z"),
+    });
+
+    const groups = buildCommandCenterGroups([activeDemo, oldMFFF], STANDARD_SINK_KEYS);
+    assert.equal(groups.length, 2, "two separate groups (different BrokerConnections)");
+
+    const expiredGroups = filterExpiredGroups(groups);
+    assert.equal(expiredGroups.length, 0, "no banner: old expired group has only unavailable accounts");
   });
 });

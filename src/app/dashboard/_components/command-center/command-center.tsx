@@ -13,7 +13,7 @@ import {
   serializeCollapsedPayload,
   toggleCollapsedId,
 } from "./collapsed-state";
-import { filterAccountsByType, recomputeGroupAggregates } from "./group-utils";
+import { filterAccountsByType, filterExpiredGroups, recomputeGroupAggregates } from "./group-utils";
 import { NewAccountsPanel } from "./new-accounts-panel";
 import { ReclassifyPanel } from "./reclassify-panel";
 import { SyncAllButton } from "./sync-all-button";
@@ -230,9 +230,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     return counts;
   }, [data.groups]);
 
-  const expiredGroups = data.groups.filter(
-    (g) => g.connectionStatus === "expired" || g.connectionStatus === "connection_error",
-  );
+  const expiredGroups = filterExpiredGroups(data.groups);
 
   if (
     data.accounts.length === 0 &&

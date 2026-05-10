@@ -116,6 +116,26 @@ export function buildCommandCenterGroups(
 }
 
 /**
+ * Filters groups to those that should show the expired-connection banner.
+ *
+ * A group triggers the banner only when:
+ *   (a) its broker connection is expired or errored, AND
+ *   (b) at least one account in the group has status !== "unavailable" — meaning
+ *       reconnecting would actually restore sync/enforcement for that account.
+ *
+ * Groups where every account has missingFromBrokerSince set (status: "unavailable")
+ * are excluded — the accounts are gone from the broker regardless of connection state,
+ * so a reconnect warning is noise (orphaned expired BCs, archived MFFU accounts, etc.).
+ */
+export function filterExpiredGroups(groups: CommandCenterFirmGroup[]): CommandCenterFirmGroup[] {
+  return groups.filter(
+    (g) =>
+      (g.connectionStatus === "expired" || g.connectionStatus === "connection_error") &&
+      g.accounts.some((a) => a.status !== "unavailable"),
+  );
+}
+
+/**
  * Filters accounts to those matching the given accountType.
  * Returns the full list unchanged when typeFilter is "all".
  */
