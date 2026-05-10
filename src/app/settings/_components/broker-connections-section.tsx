@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 
 import { DisconnectButton } from "@/app/accounts/_components/disconnect-button";
@@ -73,34 +74,46 @@ function reconnectUrlForConnection(bc: BrokerConnectionRow): string {
 }
 
 /**
- * Returns a human-readable enforcement status for an account that is
- * currently connected (connected_live or connected_readonly).
+ * Per-account display properties derived exclusively from permissionLevel.
  *
  * permissionLevel is the authoritative source for write-access capability:
- *   full_access — probe confirmed Account Risk Settings access (writes will work)
- *   read_only   — probe confirmed 401/403 on risk endpoint (writes will fail)
- *   unknown/null — probe not yet run or inconclusive; fall back to connectionStatus
+ *   full_access   — probe confirmed Account Risk Settings access
+ *   read_only     — probe confirmed 401/403; broker writes will fail
+ *   unknown/null  — probe inconclusive or not yet run
  *
- * connectionStatus reflects webhook activity (connected_live = first event received),
- * which is separate from permission level.
+ * connectionStatus is NOT used to determine the badge or copy here.
+ * It only drives the "since <date>" annotation (connected_live = first webhook).
  */
-function enforcementStatus(acct: BrokerAccountRow): string {
-  const perm = acct.brokerConnection?.permissionLevel;
-  if (perm === "full_access" && acct.connectionStatus === "connected_live") {
-    return "Broker-side enforcement active";
-  }
+type PermDisplay = {
+  pill: React.ReactElement;
+  copy: string;
+  /** Show "Reconnect with full access" upgrade link. */
+  showReconnect: boolean;
+};
+
+function permDisplay(perm: string | null | undefined): PermDisplay {
   if (perm === "full_access") {
-    // Probe confirmed write access but webhook not yet received. Enforcement
-    // will activate automatically on the next trade sync.
-    return "Risk settings enabled";
+    return {
+      pill: <StatusPill label="Risk settings" color="emerald" />,
+      copy: "Connected with risk settings access. Guardrail can monitor this account and sync supported broker-side risk settings.",
+      showReconnect: false,
+    };
   }
-  if (perm === "read_only" || acct.connectionStatus === "connected_readonly") {
-    return "Monitoring only";
+  if (perm === "read_only") {
+    return {
+      pill: <StatusPill label="Read-only" color="sky" />,
+      copy: "Connected with read-only access. Guardrail can monitor this account, but cannot apply broker-side risk settings.",
+      showReconnect: true,
+    };
   }
-  if (acct.connectionStatus === "connected_live") {
-    return "App-level only";
-  }
-  return "";
+  // null or "unknown" — probe not yet run or returned an inconclusive result.
+  // Show reconnect when "unknown" (probe ran but failed) so the user can trigger
+  // a fresh probe; omit when null (probe has never run — it will run on next sync).
+  return {
+    pill: <StatusPill label="Checking" color="amber" />,
+    copy: "Permission check pending. Guardrail can monitor only until access is confirmed.",
+    showReconnect: perm === "unknown",
+  };
 }
 
 // ── Classification ────────────────────────────────────────────────────────────
@@ -341,32 +354,11 @@ export function BrokerConnectionsSection({
               const env = envLabel(acct.brokerConnection?.env);
               const subtitle = [platform, env].filter(Boolean).join(" ");
 
-              const perm = acct.brokerConnection?.permissionLevel;
-              // permissionLevel is the authoritative source for write-access:
-              //   full_access → NOT read-only regardless of connectionStatus
-              //   read_only   → always read-only
-              //   null/unknown → fall back to connectionStatus
-              const isReadOnly =
-                perm === "read_only" ||
-                (perm !== "full_access" && acct.connectionStatus === "connected_readonly");
-              // Show Connected pill when probe confirmed full access OR webhook received.
-              const isConnected = perm === "full_access" || acct.connectionStatus === "connected_live";
-              const isLive = acct.connectionStatus === "connected_live";
-              const isPending =
-                acct.connectionStatus === "pending_webhook" ||
-                acct.connectionStatus === "oauth_pending_storage";
-
-              const statusPill = isReadOnly ? (
-                <StatusPill label="Read-only" color="sky" />
-              ) : isConnected ? (
-                <StatusPill label="Connected" color="emerald" />
-              ) : isPending ? (
-                <StatusPill label="Syncing" color="amber" />
-              ) : (
-                <StatusPill label={acct.connectionStatus.replace(/_/g, " ")} color="stone" />
+              const { pill, copy, showReconnect } = permDisplay(
+                acct.brokerConnection?.permissionLevel,
               );
-
-              const enforcement = enforcementStatus(acct);
+              // connectedAt date shown only after first webhook event arrives.
+              const isLive = acct.connectionStatus === "connected_live";
               const disconnectState = computeAccountDisconnectState(acct, disconnectWindow);
 
               return (
@@ -379,7 +371,7 @@ export function BrokerConnectionsSection({
                       <p className="font-medium text-stone-950">{acct.label}</p>
                       <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
                         <span>{subtitle}</span>
-                        {statusPill}
+                        {pill}
                         {isLive && acct.connectedAt && (
                           <span className="text-stone-400">
                             · since{" "}
@@ -391,17 +383,10 @@ export function BrokerConnectionsSection({
                           </span>
                         )}
                       </div>
-                      {isReadOnly ? (
-                        <p className="text-xs text-stone-500">
-                          Connected with read-only access. Guardrail can monitor this account,
-                          but cannot apply broker-side risk settings.
-                        </p>
-                      ) : enforcement ? (
-                        <p className="text-xs text-stone-400">{enforcement}</p>
-                      ) : null}
+                      <p className="text-xs text-stone-500">{copy}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
-                      {isReadOnly && acct.brokerConnection && (
+                      {showReconnect && acct.brokerConnection && (
                         <Link
                           href={`/accounts/connect/tradovate?env=${acct.brokerConnection.env}&reconnect=${acct.brokerConnection.id}`}
                           className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:border-stone-400"

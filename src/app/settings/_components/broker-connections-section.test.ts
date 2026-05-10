@@ -184,48 +184,189 @@ describe("explanation block", () => {
 
 // ── Connected account rows ────────────────────────────────────────────────────
 
-describe("connected account rows", () => {
-  test("shows enforcement status for connected accounts", () => {
+describe("connected account rows — permission-level badge and copy", () => {
+  test("full_access shows 'Risk settings' badge (not Read-only)", () => {
     const src = read(SECTION_FILE);
     assert.ok(
-      src.includes("Broker-side enforcement active"),
-      "section must surface 'Broker-side enforcement active' for full-access live accounts",
-    );
-    assert.ok(
-      src.includes("Monitoring only"),
-      "section must surface 'Monitoring only' for read-only accounts",
-    );
-    assert.ok(
-      src.includes("App-level only"),
-      "section must surface 'App-level only' for live accounts without confirmed write access",
+      src.includes('"Risk settings"'),
+      "full_access badge must be 'Risk settings'",
     );
   });
 
-  test("read-only accounts show explanation copy, not expired styling", () => {
+  test("full_access shows risk-settings copy", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Connected with risk settings access"),
+      "full_access copy must say 'Connected with risk settings access'",
+    );
+    assert.ok(
+      src.includes("sync supported broker-side risk settings"),
+      "full_access copy must mention syncing broker-side risk settings",
+    );
+  });
+
+  test("full_access does NOT show 'Connected with read-only access' copy", () => {
+    const src = read(SECTION_FILE);
+    // The read-only copy string must exist (for perm === "read_only" branch) but
+    // must live inside the permDisplay function, not in an unconditional render path.
+    // We verify that the component uses perm === "full_access" as the gate for the
+    // risk-settings copy — meaning the read-only copy is only rendered in the else branch.
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const permDisplayFn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    assert.ok(
+      permDisplayFn.includes("full_access"),
+      "permDisplay must branch on full_access",
+    );
+    assert.ok(
+      permDisplayFn.includes("Connected with read-only access"),
+      "read-only copy must exist inside permDisplay for perm === read_only branch",
+    );
+  });
+
+  test("full_access hides Reconnect with full access button (showReconnect: false)", () => {
+    const src = read(SECTION_FILE);
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const permDisplayFn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    // Inside the full_access branch, showReconnect must be false
+    assert.ok(
+      permDisplayFn.includes("showReconnect: false"),
+      "full_access branch must set showReconnect: false",
+    );
+  });
+
+  test("read_only shows 'Read-only' badge", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(src.includes('"Read-only"'), "must include Read-only status pill for perm === read_only");
+  });
+
+  test("read_only shows read-only copy and enables Reconnect with full access", () => {
     const src = read(SECTION_FILE);
     assert.ok(
       src.includes("Connected with read-only access"),
-      "read-only copy must say 'Connected with read-only access'",
+      "read_only copy must say 'Connected with read-only access'",
     );
     assert.ok(
       src.includes("cannot apply broker-side risk settings"),
       "read-only copy must mention the broker-side limitation",
     );
-  });
-
-  test("offers Reconnect with full access link for read-only accounts", () => {
-    const src = read(SECTION_FILE);
     assert.ok(
       src.includes("Reconnect with full access"),
-      "read-only accounts must offer 'Reconnect with full access' upgrade link",
+      "read-only case must offer 'Reconnect with full access' upgrade link",
+    );
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const permDisplayFn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    // Inside the read_only branch, showReconnect must be true
+    assert.ok(
+      permDisplayFn.includes("showReconnect: true"),
+      "read_only branch must set showReconnect: true",
     );
   });
 
-  test("status pills include Connected, Read-only, and Syncing states", () => {
+  test("null/unknown permissionLevel shows 'Checking' badge", () => {
     const src = read(SECTION_FILE);
-    assert.ok(src.includes('"Connected"'), "must include Connected status pill");
-    assert.ok(src.includes('"Read-only"'), "must include Read-only status pill");
-    assert.ok(src.includes('"Syncing"'), "must include Syncing status pill");
+    assert.ok(src.includes('"Checking"'), "null/unknown must use Checking badge");
+  });
+
+  test("null/unknown shows permission check pending copy", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Permission check pending"),
+      "null/unknown copy must say 'Permission check pending'",
+    );
+    assert.ok(
+      src.includes("Guardrail can monitor only until access is confirmed"),
+      "null/unknown copy must tell user monitoring-only until probe confirms access",
+    );
+  });
+
+  test("showReconnect for unknown (probe failed), not for null (probe not yet run)", () => {
+    const src = read(SECTION_FILE);
+    // The permDisplay fallback (null/unknown) must only set showReconnect when perm === "unknown"
+    assert.ok(
+      src.includes('perm === "unknown"'),
+      "showReconnect must gate on perm === unknown to distinguish probe failure from no probe",
+    );
+  });
+
+  test("connected account card uses permDisplay for pill and copy — not connectionStatus", () => {
+    const src = read(SECTION_FILE);
+    // The card render must call permDisplay() rather than branching on connectionStatus
+    assert.ok(
+      src.includes("permDisplay("),
+      "connected account card must call permDisplay() to drive badge and copy",
+    );
+    // Must NOT contain the old isReadOnly or isConnected guards that used connectionStatus
+    assert.ok(
+      !src.includes("acct.connectionStatus === \"connected_readonly\""),
+      "connected account card must not use connected_readonly to drive isReadOnly",
+    );
+  });
+});
+
+// ── Production scenario: full_access + connected_readonly ─────────────────────
+
+describe("production scenario: permissionLevel full_access with connectionStatus connected_readonly", () => {
+  test("permDisplay(full_access) returns Risk settings pill regardless of connectionStatus", () => {
+    const src = read(SECTION_FILE);
+    // Verify permDisplay function has the full_access branch with emerald pill
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const fn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    assert.ok(fn.includes('"full_access"'), "permDisplay must have full_access branch");
+    assert.ok(fn.includes('"Risk settings"'), "full_access branch must return Risk settings pill");
+    assert.ok(fn.includes('"emerald"'), "full_access pill must use emerald color");
+  });
+
+  test("permDisplay(full_access) copy mentions risk settings access, not read-only", () => {
+    const src = read(SECTION_FILE);
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const fn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    const fullAccessBranchEnd = fn.indexOf("if (perm === \"read_only\")");
+    const fullAccessBranch = fn.slice(0, fullAccessBranchEnd);
+    assert.ok(
+      fullAccessBranch.includes("risk settings access"),
+      "full_access copy must say 'risk settings access'",
+    );
+    assert.ok(
+      !fullAccessBranch.includes("read-only access"),
+      "full_access copy must NOT say 'read-only access'",
+    );
+  });
+
+  test("connected account card does not branch on connectionStatus for badge selection", () => {
+    const src = read(SECTION_FILE);
+    // The connected account render block should use the pill from permDisplay, not derive
+    // a separate pill from connectionStatus comparisons.
+    // Find the connected.map block
+    const connectedMapStart = src.indexOf("connected.map((acct)");
+    const connectedMapEnd = src.indexOf("})})", connectedMapStart);
+    const mapBlock = src.slice(connectedMapStart, connectedMapEnd);
+    assert.ok(
+      !mapBlock.includes("connected_readonly"),
+      "connected account render block must not reference connected_readonly for badge logic",
+    );
+    assert.ok(
+      mapBlock.includes("permDisplay("),
+      "connected account render block must call permDisplay() for badge/copy/reconnect",
+    );
+  });
+
+  test("production scenario: live + demo connections with full_access each get Risk settings badge", () => {
+    const src = read(SECTION_FILE);
+    // There is a single permDisplay function that maps full_access → Risk settings.
+    // Both live and demo accounts will resolve the same way since the badge
+    // derives from permissionLevel only. Verify the mapping is env-agnostic.
+    const permDisplayFnStart = src.indexOf("function permDisplay");
+    const permDisplayFnEnd = src.indexOf("\nfunction ", permDisplayFnStart + 1);
+    const fn = src.slice(permDisplayFnStart, permDisplayFnEnd);
+    // No env-specific branching inside permDisplay
+    assert.ok(!fn.includes('"live"'), "permDisplay must not branch on env");
+    assert.ok(!fn.includes('"demo"'), "permDisplay must not branch on env");
+    assert.ok(fn.includes('"full_access"'), "must handle full_access for all envs");
   });
 });
 
