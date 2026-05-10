@@ -9,9 +9,11 @@ const SETUP_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type SetupBody = {
   displayName?: string | null;
-  accountSource: "prop_firm" | "personal" | "demo" | "other";
+  accountSource?: "prop_firm" | "personal" | "demo" | "other";
   propFirmName?: string | null;
   env: "live" | "demo";
+  /** brokerConnectionId — present for reconnect flows, skips PendingBrokerSetup creation */
+  reconnect?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -35,13 +37,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const { displayName, accountSource, propFirmName, env } = body;
+  const { displayName, accountSource, propFirmName, env, reconnect } = body;
 
-  if (!["prop_firm", "personal", "demo", "other"].includes(accountSource)) {
-    return NextResponse.json({ error: "invalid_account_source" }, { status: 400 });
-  }
   if (env !== "live" && env !== "demo") {
     return NextResponse.json({ error: "invalid_env" }, { status: 400 });
+  }
+
+  // Reconnect mode — re-authorize an existing expired BrokerConnection.
+  // Skip PendingBrokerSetup; the reconnectId is threaded through OAuth state.
+  if (reconnect) {
+    const bc = await prisma.brokerConnection.findFirst({
+      where: { id: reconnect, userId: currentUser.id },
+      select: { id: true, env: true },
+    });
+    if (!bc) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json({
+      redirectTo: `/api/auth/tradovate/connect?env=${encodeURIComponent(bc.env)}&reconnect=${encodeURIComponent(bc.id)}`,
+    });
+  }
+
+  if (!accountSource || !["prop_firm", "personal", "demo", "other"].includes(accountSource)) {
+    return NextResponse.json({ error: "invalid_account_source" }, { status: 400 });
   }
 
   const setup = await prisma.pendingBrokerSetup.create({

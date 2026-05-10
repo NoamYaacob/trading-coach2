@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
   // Read env before config check so we can emit env-specific error codes.
   const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
   const setupId = request.nextUrl.searchParams.get("setupId") ?? undefined;
+  const reconnectId = request.nextUrl.searchParams.get("reconnect") ?? undefined;
 
   const status = getTradovateConfig();
 
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
     userId: currentUser.id,
     env,
     setupId,
+    reconnectId,
   });
 
   // Persist nonce in an httpOnly cookie so the callback can verify CSRF.

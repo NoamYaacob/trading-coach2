@@ -3,6 +3,7 @@ import Link from "next/link";
 import { DisconnectButton } from "@/app/accounts/_components/disconnect-button";
 import { computeAccountDisconnectState, type DisconnectWindowState } from "@/lib/broker-disconnect-window";
 import { RemoveAccountButton } from "./remove-account-button";
+import { RemoveBrokerConnectionButton } from "./remove-broker-connection-button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -251,12 +252,15 @@ function OrphanedConnectionRow({ bc }: { bc: BrokerConnectionRow }) {
         {" · "}
         <span className="text-stone-400">No accounts linked</span>
       </p>
-      <Link
-        href={reconnectUrlForConnection(bc)}
-        className="text-xs font-medium text-stone-600 underline-offset-2 hover:underline"
-      >
-        Reconnect
-      </Link>
+      <div className="flex items-center gap-3">
+        <Link
+          href={reconnectUrlForConnection(bc)}
+          className="text-xs font-medium text-stone-600 underline-offset-2 hover:underline"
+        >
+          Reconnect
+        </Link>
+        <RemoveBrokerConnectionButton connectionId={bc.id} />
+      </div>
     </div>
   );
 }

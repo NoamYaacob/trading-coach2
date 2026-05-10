@@ -99,12 +99,17 @@ export function ConnectTradovateClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
+  const reconnectId = searchParams.get("reconnect");
+  const envParam = searchParams.get("env");
+  const isReconnectMode = Boolean(reconnectId);
 
   const [accountSource, setAccountSource] = useState<AccountSource>("prop_firm");
   const [propFirm, setPropFirm] = useState<string>("Apex Trader Funding");
   const [customFirm, setCustomFirm] = useState("");
   const [propFirmPhase, setPropFirmPhase] = useState<PropFirmPhase>(DEFAULT_PROP_FIRM_PHASE);
-  const [env, setEnv] = useState<TradovateEnv>("demo");
+  const [env, setEnv] = useState<TradovateEnv>(
+    isReconnectMode && (envParam === "demo" || envParam === "live") ? envParam : "demo",
+  );
   // Once the user manually picks an environment, source-change auto-defaults stop running.
   const [userHasOverriddenEnv, setUserHasOverriddenEnv] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -140,15 +145,17 @@ export function ConnectTradovateClient() {
     e.preventDefault();
     setFormError(null);
 
-    const envError = validateSourceEnv(accountSource, env);
-    if (envError) {
-      setFormError(envError);
-      return;
-    }
+    if (!isReconnectMode) {
+      const envError = validateSourceEnv(accountSource, env);
+      if (envError) {
+        setFormError(envError);
+        return;
+      }
 
-    if (accountSource === "prop_firm" && !propFirm) {
-      setFormError("Please select a prop firm.");
-      return;
+      if (accountSource === "prop_firm" && !propFirm) {
+        setFormError("Please select a prop firm.");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -160,16 +167,20 @@ export function ConnectTradovateClient() {
           : propFirm
         : null;
 
-    try {
-      const res = await fetch("/api/auth/tradovate/setup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const body = isReconnectMode
+      ? { env, reconnect: reconnectId }
+      : {
           displayName: displayName.trim() || null,
           accountSource,
           propFirmName: resolvedFirmName,
           env,
-        }),
+        };
+
+    try {
+      const res = await fetch("/api/auth/tradovate/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -208,23 +219,27 @@ export function ConnectTradovateClient() {
         >
           Guardrail
         </Link>
-        <Link href="/accounts" className="text-sm text-stone-600 transition hover:text-stone-950">
-          Back to accounts
+        <Link href={isReconnectMode ? "/settings" : "/accounts"} className="text-sm text-stone-600 transition hover:text-stone-950">
+          {isReconnectMode ? "Back to Settings" : "Back to accounts"}
         </Link>
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pb-20 pt-6 sm:px-6 lg:px-10">
 
         <div>
-          <div className="flex items-center gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Broker Connections</p>
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-stone-400">Step 1 of 3 · Connection setup</span>
-          </div>
+          {!isReconnectMode && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Broker Connections</p>
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-stone-400">Step 1 of 3 · Connection setup</span>
+            </div>
+          )}
           <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-3xl">
-            Connect Tradovate
+            {isReconnectMode ? "Reconnect Tradovate" : "Connect Tradovate"}
           </h1>
           <p className="mt-2 text-sm leading-6 text-stone-600">
-            Guardrail connects read-only. It reads your account data to evaluate your rules — it cannot place trades or modify your account.
+            {isReconnectMode
+              ? "Reconnect restores live sync and broker-side enforcement for the affected accounts. Your saved Guardrail rules will remain unchanged."
+              : "Authorize on Tradovate to connect your account. You’ll choose the access level during authorization."}
           </p>
         </div>
 
@@ -236,206 +251,218 @@ export function ConnectTradovateClient() {
 
         <form onSubmit={handleSubmit} className="grid gap-5">
 
-          {/* ── Step 1: What are you connecting? ────────────────────────── */}
-          <div role="group" aria-labelledby="label-account-source">
-            <p id="label-account-source" className="mb-2 text-sm font-semibold text-stone-950">
-              What are you connecting?
-            </p>
-            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-              <div className="grid gap-2 sm:grid-cols-2">
-                {ACCOUNT_SOURCES.map(({ value, label, hint }) => (
-                  <label
-                    key={value}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
-                      accountSource === value
-                        ? "border-stone-950 bg-stone-950/5"
-                        : "border-stone-200 hover:border-stone-300"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="accountSource"
-                      value={value}
-                      checked={accountSource === value}
-                      onChange={() => handleSourceChange(value)}
-                      className="mt-0.5 shrink-0 accent-stone-950"
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-stone-950">{label}</span>
-                      <span className="text-xs text-stone-500">{hint}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Step 2a: Prop firm ───────────────────────────────────────── */}
-          {accountSource === "prop_firm" && (
-            <div role="group" aria-labelledby="label-prop-firm">
-              <p id="label-prop-firm" className="mb-2 text-sm font-semibold text-stone-950">
-                Which prop firm?
+          {isReconnectMode ? (
+            /* ── Reconnect mode: show env summary only ──────────────────── */
+            <div className="rounded-2xl border border-stone-200 bg-white/90 px-5 py-4 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">Reconnecting</p>
+              <p className="mt-1 text-sm font-medium text-stone-950">
+                Tradovate {env === "demo" ? "Demo / Simulation" : "Live"} connection
               </p>
-              <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {PROP_FIRMS.map((firm) => (
-                    <label
-                      key={firm}
-                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
-                        propFirm === firm
-                          ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
-                          : "border-stone-200 text-stone-700 hover:border-stone-300"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="propFirm"
-                        value={firm}
-                        checked={propFirm === firm}
-                        onChange={() => setPropFirm(firm)}
-                        className="shrink-0 accent-stone-950"
-                      />
-                      {firm}
-                    </label>
-                  ))}
-                </div>
-                {propFirm === "Other" && (
-                  <input
-                    type="text"
-                    placeholder="Firm name (optional)"
-                    value={customFirm}
-                    onChange={(e) => setCustomFirm(e.target.value)}
-                    className="mt-3 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
-                    maxLength={80}
-                  />
-                )}
-              </div>
             </div>
-          )}
-
-          {/* ── Step 2b: Prop firm phase ─────────────────────────────────── */}
-          {accountSource === "prop_firm" && (
-            <div role="group" aria-labelledby="label-prop-firm-phase">
-              <p id="label-prop-firm-phase" className="mb-2 text-sm font-semibold text-stone-950">
-                Prop firm phase
-              </p>
-              <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {PROP_FIRM_PHASES.map(({ value, label }) => (
-                    <label
-                      key={value}
-                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
-                        propFirmPhase === value
-                          ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
-                          : "border-stone-200 text-stone-700 hover:border-stone-300"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="propFirmPhase"
-                        value={value}
-                        checked={propFirmPhase === value}
-                        onChange={() => handlePhaseChange(value)}
-                        className="shrink-0 accent-stone-950"
-                      />
-                      {label}
-                    </label>
-                  ))}
+          ) : (
+            <>
+              {/* ── Step 1: What are you connecting? ──────────────────────── */}
+              <div role="group" aria-labelledby="label-account-source">
+                <p id="label-account-source" className="mb-2 text-sm font-semibold text-stone-950">
+                  What are you connecting?
+                </p>
+                <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ACCOUNT_SOURCES.map(({ value, label, hint }) => (
+                      <label
+                        key={value}
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
+                          accountSource === value
+                            ? "border-stone-950 bg-stone-950/5"
+                            : "border-stone-200 hover:border-stone-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="accountSource"
+                          value={value}
+                          checked={accountSource === value}
+                          onChange={() => handleSourceChange(value)}
+                          className="mt-0.5 shrink-0 accent-stone-950"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-stone-950">{label}</span>
+                          <span className="text-xs text-stone-500">{hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <p className="mt-3 text-xs leading-5 text-stone-500">
-                  Most prop firm funded accounts are simulated. Choose Live funded only if your
-                  prop firm specifically gave you a real-money Tradovate Live account.
-                </p>
               </div>
-            </div>
-          )}
 
-          {/* ── Step 3: Tradovate environment ────────────────────────────── */}
-          <div role="group" aria-labelledby="label-env">
-            <p id="label-env" className="mb-2 text-sm font-semibold text-stone-950">
-              Tradovate environment
-            </p>
-            <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
-                    env === "demo"
-                      ? "border-stone-950 bg-stone-950/5"
-                      : "border-stone-200 hover:border-stone-300"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="env"
-                    value="demo"
-                    checked={env === "demo"}
-                    onChange={() => handleEnvChange("demo")}
-                    className="mt-0.5 shrink-0 accent-stone-950"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
-                    <span className="text-xs text-stone-500">Prop firms and sim accounts</span>
-                  </span>
-                </label>
-                <label
-                  className={`flex items-start gap-3 rounded-xl border p-3.5 transition ${
-                    !liveAllowed
-                      ? "cursor-not-allowed border-stone-100 bg-stone-50 opacity-50"
-                      : "cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 " +
-                        (env === "live"
-                          ? "border-stone-950 bg-stone-950/5"
-                          : "border-stone-200 hover:border-stone-300")
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="env"
-                    value="live"
-                    checked={env === "live"}
-                    onChange={() => handleEnvChange("live")}
-                    disabled={!liveAllowed}
-                    className="mt-0.5 shrink-0 accent-stone-950"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-stone-950">Live</span>
-                    <span className="text-xs text-stone-500">Personal brokerage accounts</span>
-                  </span>
-                </label>
-              </div>
-              {envHint && (
-                <p
-                  className={`mt-3 rounded-xl border px-3.5 py-2.5 text-xs leading-5 ${
-                    envForced
-                      ? "border-stone-200 bg-stone-50 text-stone-600"
-                      : accountSource === "prop_firm" && env === "live"
-                        ? "border-amber-300 bg-amber-50 text-amber-900"
-                        : "border-amber-200 bg-amber-50 text-amber-800"
-                  }`}
-                >
-                  {envHint}
-                </p>
+              {/* ── Step 2a: Prop firm ───────────────────────────────────── */}
+              {accountSource === "prop_firm" && (
+                <div role="group" aria-labelledby="label-prop-firm">
+                  <p id="label-prop-firm" className="mb-2 text-sm font-semibold text-stone-950">
+                    Which prop firm?
+                  </p>
+                  <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {PROP_FIRMS.map((firm) => (
+                        <label
+                          key={firm}
+                          className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
+                            propFirm === firm
+                              ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
+                              : "border-stone-200 text-stone-700 hover:border-stone-300"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="propFirm"
+                            value={firm}
+                            checked={propFirm === firm}
+                            onChange={() => setPropFirm(firm)}
+                            className="shrink-0 accent-stone-950"
+                          />
+                          {firm}
+                        </label>
+                      ))}
+                    </div>
+                    {propFirm === "Other" && (
+                      <input
+                        type="text"
+                        placeholder="Firm name (optional)"
+                        value={customFirm}
+                        onChange={(e) => setCustomFirm(e.target.value)}
+                        className="mt-3 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
+                        maxLength={80}
+                      />
+                    )}
+                  </div>
+                </div>
               )}
-            </div>
-          </div>
 
-          {/* ── Optional label ───────────────────────────────────────────── */}
-          <div>
-            <label htmlFor="displayName" className="mb-1.5 block text-xs font-medium text-stone-500">
-              Connection label <span className="text-stone-400">(optional)</span>
-            </label>
-            <input
-              id="displayName"
-              type="text"
-              placeholder="e.g. Apex Eval 1"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={60}
-              className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
-            />
-            <p className="mt-1.5 text-xs text-stone-400">
-              Used only to name this connection in Guardrail. You can rename accounts after adding them.
-            </p>
-          </div>
+              {/* ── Step 2b: Prop firm phase ─────────────────────────────── */}
+              {accountSource === "prop_firm" && (
+                <div role="group" aria-labelledby="label-prop-firm-phase">
+                  <p id="label-prop-firm-phase" className="mb-2 text-sm font-semibold text-stone-950">
+                    Prop firm phase
+                  </p>
+                  <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {PROP_FIRM_PHASES.map(({ value, label }) => (
+                        <label
+                          key={value}
+                          className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
+                            propFirmPhase === value
+                              ? "border-stone-950 bg-stone-950/5 font-medium text-stone-950"
+                              : "border-stone-200 text-stone-700 hover:border-stone-300"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="propFirmPhase"
+                            value={value}
+                            checked={propFirmPhase === value}
+                            onChange={() => handlePhaseChange(value)}
+                            className="shrink-0 accent-stone-950"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-stone-500">
+                      Most prop firm funded accounts are simulated. Choose Live funded only if your
+                      prop firm specifically gave you a real-money Tradovate Live account.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 3: Tradovate environment ──────────────────────────── */}
+              <div role="group" aria-labelledby="label-env">
+                <p id="label-env" className="mb-2 text-sm font-semibold text-stone-950">
+                  Tradovate environment
+                </p>
+                <div className="rounded-2xl border border-stone-200 bg-white/90 p-4 shadow-sm sm:p-5">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 ${
+                        env === "demo"
+                          ? "border-stone-950 bg-stone-950/5"
+                          : "border-stone-200 hover:border-stone-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="env"
+                        value="demo"
+                        checked={env === "demo"}
+                        onChange={() => handleEnvChange("demo")}
+                        className="mt-0.5 shrink-0 accent-stone-950"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-stone-950">Demo / Simulation</span>
+                        <span className="text-xs text-stone-500">Prop firms and sim accounts</span>
+                      </span>
+                    </label>
+                    <label
+                      className={`flex items-start gap-3 rounded-xl border p-3.5 transition ${
+                        !liveAllowed
+                          ? "cursor-not-allowed border-stone-100 bg-stone-50 opacity-50"
+                          : "cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-1 " +
+                            (env === "live"
+                              ? "border-stone-950 bg-stone-950/5"
+                              : "border-stone-200 hover:border-stone-300")
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="env"
+                        value="live"
+                        checked={env === "live"}
+                        onChange={() => handleEnvChange("live")}
+                        disabled={!liveAllowed}
+                        className="mt-0.5 shrink-0 accent-stone-950"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-stone-950">Live</span>
+                        <span className="text-xs text-stone-500">Personal brokerage accounts</span>
+                      </span>
+                    </label>
+                  </div>
+                  {envHint && (
+                    <p
+                      className={`mt-3 rounded-xl border px-3.5 py-2.5 text-xs leading-5 ${
+                        envForced
+                          ? "border-stone-200 bg-stone-50 text-stone-600"
+                          : accountSource === "prop_firm" && env === "live"
+                            ? "border-amber-300 bg-amber-50 text-amber-900"
+                            : "border-amber-200 bg-amber-50 text-amber-800"
+                      }`}
+                    >
+                      {envHint}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Optional label ───────────────────────────────────────── */}
+              <div>
+                <label htmlFor="displayName" className="mb-1.5 block text-xs font-medium text-stone-500">
+                  Connection label <span className="text-stone-400">(optional)</span>
+                </label>
+                <input
+                  id="displayName"
+                  type="text"
+                  placeholder="e.g. Apex Eval 1"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  maxLength={60}
+                  className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-950 placeholder:text-stone-400 focus:border-stone-950 focus:outline-none"
+                />
+                <p className="mt-1.5 text-xs text-stone-400">
+                  Used only to name this connection in Guardrail. You can rename accounts after adding them.
+                </p>
+              </div>
+            </>
+          )}
 
           {formError && (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -453,20 +480,34 @@ export function ConnectTradovateClient() {
                 {submitting ? "Redirecting…" : "Continue to Tradovate authorization →"}
               </button>
               <Link
-                href="/accounts"
+                href={isReconnectMode ? "/settings" : "/accounts"}
                 className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
               >
                 Cancel
               </Link>
             </div>
-            <p className="text-xs text-stone-400">
-              After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
-            </p>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
-              <p className="font-semibold text-stone-700">Read-only connection</p>
-              <p className="mt-0.5 leading-5">
-                Guardrail requests read-only access. It cannot place, modify, or cancel orders, and it cannot withdraw funds. Broker-side enforcement is not active yet.
+            {!isReconnectMode && (
+              <p className="text-xs text-stone-400">
+                After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
               </p>
+            )}
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
+              <p className="font-semibold text-stone-700">Choose the access level</p>
+              <p className="mt-1 leading-5">
+                During Tradovate authorization, you&apos;ll select an access level for Guardrail:
+              </p>
+              <div className="mt-2 grid gap-1.5">
+                <div>
+                  <span className="font-medium text-stone-700">Monitoring only</span>
+                  {" — "}
+                  read balances, positions, and P&amp;L. Cannot place trades or change broker-side risk limits.
+                </div>
+                <div>
+                  <span className="font-medium text-stone-700">Risk settings enabled</span>
+                  {" — "}
+                  adds broker-side drawdown and max-loss enforcement. Requires full-access scope at Tradovate authorization.
+                </div>
+              </div>
             </div>
           </div>
         </form>

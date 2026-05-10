@@ -270,6 +270,49 @@ export async function GET(request: NextRequest) {
     return backToConnectPage(request, "token_encryption_failed");
   }
 
+  const base = resolveAppBaseUrl(request.url);
+
+  // ── Reconnect path — update existing BrokerConnection ─────────────────
+  if (payload.reconnectId) {
+    const existingBc = await prisma.brokerConnection.findFirst({
+      where: { id: payload.reconnectId, userId: payload.userId },
+      select: { id: true },
+    });
+    if (!existingBc) {
+      console.warn("[tradovate/callback] reconnect target not found", {
+        reconnectId: payload.reconnectId,
+      });
+      return backToConnectPage(request, "broker_connection_storage_failed");
+    }
+
+    try {
+      await prisma.brokerConnection.update({
+        where: { id: payload.reconnectId },
+        data: {
+          connectionStatus: "connected_readonly",
+          accessTokenEncrypted,
+          ...(refreshTokenEncrypted !== null && { refreshTokenEncrypted }),
+          tokenExpiresAt,
+          errorMessage: null,
+          ...(token.accountId != null && { brokerUserId: token.accountId }),
+        },
+      });
+      await prisma.connectedAccount.updateMany({
+        where: { brokerConnectionId: payload.reconnectId, connectionStatus: "expired" },
+        data: { connectionStatus: "connected_readonly", errorMessage: null },
+      });
+      console.info("[tradovate/callback] connection reconnected", {
+        brokerConnectionId: payload.reconnectId,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[tradovate/callback] reconnect update failed", { msg });
+      return backToConnectPage(request, "broker_connection_storage_failed");
+    }
+
+    return NextResponse.redirect(`${base}/settings?tradovate_reconnected=1`);
+  }
+
   // ── Create or update BrokerConnection ──────────────────────────────────
   let brokerConnection: { id: string };
   try {
@@ -291,8 +334,6 @@ export async function GET(request: NextRequest) {
     console.error("[tradovate/callback] brokerConnection create failed", { msg });
     return backToConnectPage(request, "broker_connection_storage_failed");
   }
-
-  const base = resolveAppBaseUrl(request.url);
 
   // ── New multi-account flow (with setupId) ───────────────────────────────
   if (payload.setupId) {

@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   title: "Settings — Guardrail",
 };
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ oauth_error?: string; google_connected?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ oauth_error?: string; google_connected?: string; tradovate_reconnected?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -132,6 +132,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {params.google_connected === "1" && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Google account connected successfully.
+          </div>
+        )}
+        {params.tradovate_reconnected === "1" && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Tradovate reconnected. Live sync will resume shortly.
           </div>
         )}
 

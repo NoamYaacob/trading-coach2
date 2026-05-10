@@ -19,6 +19,8 @@ export type TradovateOAuthState = {
   env: TradovateOAuthEnv;
   /** Links back to the PendingBrokerSetup record created in the setup form. */
   setupId?: string;
+  /** Present for reconnect flows — the existing BrokerConnection being re-authorized. */
+  reconnectId?: string;
 };
 
 export function generateOAuthNonce(): string {
@@ -54,6 +56,9 @@ export function decodeOAuthState(raw: string): DecodeResult {
         env: parsed.env,
         setupId: typeof parsed.setupId === "string" && parsed.setupId.length > 0
           ? parsed.setupId
+          : undefined,
+        reconnectId: typeof parsed.reconnectId === "string" && parsed.reconnectId.length > 0
+          ? parsed.reconnectId
           : undefined,
       },
     };
