@@ -75,16 +75,26 @@ function reconnectUrlForConnection(bc: BrokerConnectionRow): string {
 /**
  * Returns a human-readable enforcement status for an account that is
  * currently connected (connected_live or connected_readonly).
+ *
+ * permissionLevel is the authoritative source for write-access capability:
+ *   full_access — probe confirmed Account Risk Settings access (writes will work)
+ *   read_only   — probe confirmed 401/403 on risk endpoint (writes will fail)
+ *   unknown/null — probe not yet run or inconclusive; fall back to connectionStatus
+ *
+ * connectionStatus reflects webhook activity (connected_live = first event received),
+ * which is separate from permission level.
  */
 function enforcementStatus(acct: BrokerAccountRow): string {
   const perm = acct.brokerConnection?.permissionLevel;
-  if (acct.connectionStatus === "connected_live" && perm === "full_access") {
+  if (perm === "full_access" && acct.connectionStatus === "connected_live") {
     return "Broker-side enforcement active";
   }
-  if (
-    acct.connectionStatus === "connected_readonly" ||
-    perm === "read_only"
-  ) {
+  if (perm === "full_access") {
+    // Probe confirmed write access but webhook not yet received. Enforcement
+    // will activate automatically on the next trade sync.
+    return "Risk settings enabled";
+  }
+  if (perm === "read_only" || acct.connectionStatus === "connected_readonly") {
     return "Monitoring only";
   }
   if (acct.connectionStatus === "connected_live") {
@@ -331,9 +341,16 @@ export function BrokerConnectionsSection({
               const env = envLabel(acct.brokerConnection?.env);
               const subtitle = [platform, env].filter(Boolean).join(" ");
 
+              const perm = acct.brokerConnection?.permissionLevel;
+              // permissionLevel is the authoritative source for write-access:
+              //   full_access → NOT read-only regardless of connectionStatus
+              //   read_only   → always read-only
+              //   null/unknown → fall back to connectionStatus
               const isReadOnly =
-                acct.connectionStatus === "connected_readonly" ||
-                acct.brokerConnection?.permissionLevel === "read_only";
+                perm === "read_only" ||
+                (perm !== "full_access" && acct.connectionStatus === "connected_readonly");
+              // Show Connected pill when probe confirmed full access OR webhook received.
+              const isConnected = perm === "full_access" || acct.connectionStatus === "connected_live";
               const isLive = acct.connectionStatus === "connected_live";
               const isPending =
                 acct.connectionStatus === "pending_webhook" ||
@@ -341,7 +358,7 @@ export function BrokerConnectionsSection({
 
               const statusPill = isReadOnly ? (
                 <StatusPill label="Read-only" color="sky" />
-              ) : isLive ? (
+              ) : isConnected ? (
                 <StatusPill label="Connected" color="emerald" />
               ) : isPending ? (
                 <StatusPill label="Syncing" color="amber" />

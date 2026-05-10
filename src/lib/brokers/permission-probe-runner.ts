@@ -39,16 +39,88 @@ export async function runPermissionProbe(
 ): Promise<PermissionProbeResult> {
   const { brokerConnectionId, accountId, userId, source } = args;
 
+  // ── Pre-probe diagnostics ───────────────────────────────────────────────────
+  let previousPermissionLevel: string | null = null;
+  try {
+    const [bc, acct] = await Promise.all([
+      prisma.brokerConnection.findUnique({
+        where: { id: brokerConnectionId },
+        select: { permissionLevel: true, env: true, connectionStatus: true, permissionsProbedAt: true },
+      }),
+      prisma.connectedAccount.findUnique({
+        where: { id: accountId },
+        select: { externalAccountId: true, platform: true, connectionStatus: true },
+      }),
+    ]);
+    previousPermissionLevel = bc?.permissionLevel ?? null;
+    console.info("[permission-probe] starting probe", {
+      brokerConnectionId,
+      accountId,
+      source: source ?? "unknown",
+      env: bc?.env ?? null,
+      bcConnectionStatus: bc?.connectionStatus ?? null,
+      bcPreviousPermissionLevel: previousPermissionLevel,
+      bcPermissionsProbedAt: bc?.permissionsProbedAt?.toISOString() ?? null,
+      accountPlatform: acct?.platform ?? null,
+      accountConnectionStatus: acct?.connectionStatus ?? null,
+      // Log whether externalAccountId is set — a missing one means getUserAccountAutoLiq
+      // will throw NO_ACCOUNT_ID, making the probe return "unknown" instead of the real level.
+      hasExternalAccountId: Boolean(acct?.externalAccountId),
+      externalAccountId: acct?.externalAccountId ?? null,
+    });
+  } catch (lookupErr) {
+    console.warn("[permission-probe] pre-probe lookup failed (non-fatal)", {
+      brokerConnectionId,
+      accountId,
+      error: lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+    });
+  }
+
+  // ── Probe call ──────────────────────────────────────────────────────────────
+  // Endpoint: GET userAccountAutoLiq/deps?masterid={tvAccountId}
+  // 200 → Account Risk Settings read confirmed (same permission gate as write endpoints).
+  // 401/403 → Account Risk Settings permission missing; broker writes will fail.
+  const probeEndpoint = "userAccountAutoLiq/deps";
+  const probeMethod = "GET";
+
   let result: PermissionProbeResult;
   try {
     const client = new TradovateClient(accountId, userId);
     await client.initialize();
     const rules = await client.getUserAccountAutoLiq();
     result = classifyProbeOutcome({ ok: true, rules });
+    console.info("[permission-probe] probe API call succeeded", {
+      brokerConnectionId,
+      accountId,
+      source: source ?? "unknown",
+      endpoint: probeEndpoint,
+      method: probeMethod,
+      httpStatus: result.httpStatus,
+      rulesCount: rules.length,
+      detectedPermissionLevel: result.level,
+      reason: result.reason,
+    });
   } catch (err) {
     result = classifyProbeOutcome({ ok: false, error: err });
+    const errAny = err as Record<string, unknown> | null;
+    console.info("[permission-probe] probe API call failed", {
+      brokerConnectionId,
+      accountId,
+      source: source ?? "unknown",
+      endpoint: probeEndpoint,
+      method: probeMethod,
+      httpStatus: result.httpStatus,
+      errorCode: (errAny && typeof errAny.code === "string") ? errAny.code : (err instanceof Error ? err.name : "unknown"),
+      // Log the error message. getUserAccountAutoLiq throws for: NO_ACCOUNT_ID (missing
+      // externalAccountId), API_ERROR (401/403/5xx from Tradovate), NETWORK_ERROR,
+      // CONFIG_MISSING, TOKEN_LOAD_FAILED. None of these messages contain token values.
+      errorMessage: err instanceof Error ? err.message : String(err),
+      detectedPermissionLevel: result.level,
+      reason: result.reason,
+    });
   }
 
+  // ── Persist ─────────────────────────────────────────────────────────────────
   try {
     await prisma.brokerConnection.update({
       where: { id: brokerConnectionId },
@@ -57,6 +129,14 @@ export async function runPermissionProbe(
         permissionsProbedAt: new Date(),
       },
     });
+    console.info("[permission-probe] probe result persisted", {
+      brokerConnectionId,
+      source: source ?? "unknown",
+      previousPermissionLevel,
+      newPermissionLevel: result.level,
+      httpStatus: result.httpStatus,
+      reason: result.reason,
+    });
   } catch (persistErr) {
     console.warn("[permission-probe] failed to persist probe result", {
       brokerConnectionId,
@@ -64,15 +144,6 @@ export async function runPermissionProbe(
       error: persistErr instanceof Error ? persistErr.message : String(persistErr),
     });
   }
-
-  console.info("[permission-probe] probe completed", {
-    brokerConnectionId,
-    accountId,
-    level: result.level,
-    httpStatus: result.httpStatus,
-    reason: result.reason,
-    source: source ?? "unknown",
-  });
 
   return result;
 }
