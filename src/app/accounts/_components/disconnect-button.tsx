@@ -391,43 +391,28 @@ export function DisconnectButton({
     }
   }
 
-  const availableLabel =
-    !isUnavailable && isBlocked && windowStartMs != null && windowEndMs != null
-      ? formatWindowAvailableLabel(windowStartMs, windowEndMs, userTz)
-      : null;
-
   return (
     <>
       {error && <p className="text-xs text-red-700">{error}</p>}
 
       {isUnavailable ? (
-        <div className="flex flex-col items-end gap-1">
-          <p className="text-xs text-stone-400">
-            No longer active in Tradovate · removable anytime
-          </p>
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={handleClick}
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700"
-          >
-            Remove from Guardrail
-          </button>
-        </div>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={handleClick}
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-600 transition hover:border-red-300 hover:text-red-700"
+        >
+          Remove from Guardrail
+        </button>
       ) : isBlocked ? (
-        <div className="flex flex-col items-end gap-1">
-          {availableLabel && (
-            <p className="text-xs text-amber-700">{availableLabel}</p>
-          )}
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={handleClick}
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-100 px-4 py-2 text-xs font-medium text-stone-400 transition hover:border-stone-200 hover:text-stone-500"
-          >
-            Disconnect
-          </button>
-        </div>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={handleClick}
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-100 px-4 py-2 text-xs font-medium text-stone-400 transition hover:border-stone-200 hover:text-stone-500"
+        >
+          Disconnect
+        </button>
       ) : (
         <button
           ref={triggerRef}

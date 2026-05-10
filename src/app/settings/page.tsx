@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { getBrokerDisconnectWindow, computeAccountDisconnectState } from "@/lib/broker-disconnect-window";
+import { getBrokerDisconnectWindow } from "@/lib/broker-disconnect-window";
 
 import { getCurrentUser } from "@/lib/auth";
 
@@ -35,7 +35,7 @@ import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 
 import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
-import { DisconnectButton } from "@/app/accounts/_components/disconnect-button";
+import { BrokerConnectionsSection } from "./_components/broker-connections-section";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
@@ -80,6 +80,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         connectedAt: true,
         protectionStatus: true,
         missingFromBrokerSince: true,
+        lastSyncAt: true,
+        brokerConnectionId: true,
+        brokerConnection: {
+          select: {
+            id: true,
+            env: true,
+            connectionStatus: true,
+            permissionLevel: true,
+          },
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -90,6 +100,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         platform: true,
         env: true,
         connectionStatus: true,
+        permissionLevel: true,
         createdAt: true,
       },
       orderBy: { createdAt: "asc" },
@@ -249,102 +260,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </details>
         </SectionCard>
 
-        {/* Broker connections — always shown; this is where add/disconnect/reconnect live */}
+        {/* Broker connections — grouped by status */}
         <SectionCard
           title="Broker connections"
           description="Connect, disconnect, and reconnect your broker accounts."
         >
-          <div className="grid gap-3">
-            {/* Expired connections — reconnect CTA per connection */}
-            {brokerConnections
-              .filter(
-                (bc) =>
-                  bc.connectionStatus === "expired" || bc.connectionStatus === "connection_error",
-              )
-              .map((bc) => {
-                const envLabel = bc.env === "demo" ? "Demo" : "Live";
-                return (
-                  <div
-                    key={bc.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3"
-                  >
-                    <div className="text-sm">
-                      <p className="font-medium text-orange-900">
-                        Tradovate {envLabel} — connection expired
-                      </p>
-                      <p className="text-orange-700 text-xs">
-                        Sync and rule evaluation are paused. Reconnect to restore.
-                      </p>
-                    </div>
-                    <Link
-                      href={`/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`}
-                      className="inline-flex items-center rounded-full bg-orange-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-orange-800"
-                    >
-                      Reconnect
-                    </Link>
-                  </div>
-                );
-              })}
-
-            {/* Per-account rows with disconnect */}
-            {connectedAccounts.map((acct) => {
-              const platformLabel =
-                acct.platform === "tradovate"
-                  ? "Tradovate"
-                  : acct.platform === "tradingview"
-                    ? "TradingView"
-                    : acct.platform === "manual"
-                      ? "Manual"
-                      : acct.platform;
-              const statusLabel =
-                acct.connectionStatus === "connected_live"
-                  ? "Live"
-                  : acct.connectionStatus === "connected_readonly"
-                    ? "Read-only"
-                    : acct.connectionStatus === "pending_webhook"
-                      ? "Pending sync"
-                      : acct.connectionStatus === "expired"
-                        ? "Expired"
-                        : acct.connectionStatus === "connection_error"
-                          ? "Connection error"
-                          : "Not connected";
-              const isConnected =
-                acct.connectionStatus === "connected_live" ||
-                acct.connectionStatus === "connected_readonly";
-              return (
-                <div
-                  key={acct.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3"
-                >
-                  <div className="text-sm">
-                    <p className="font-medium text-stone-900">{acct.label}</p>
-                    <p className="text-stone-500">
-                      {platformLabel} · {statusLabel}
-                      {isConnected && acct.connectedAt
-                        ? ` · since ${acct.connectedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-                        : ""}
-                    </p>
-                  </div>
-                  <DisconnectButton
-                    accountId={acct.id}
-                    providerLabel={platformLabel}
-                    redirectTo="/settings"
-                    {...computeAccountDisconnectState(acct, disconnectWindow)}
-                    windowStartMs={disconnectWindow.nextWindowStart.getTime()}
-                    windowEndMs={disconnectWindow.nextWindowEnd.getTime()}
-                    userTz={traderProfile?.timezone ?? null}
-                  />
-                </div>
-              );
-            })}
-
-            {brokerConnections.length === 0 && connectedAccounts.length === 0 && (
-              <p className="text-sm text-stone-500">No broker connected yet.</p>
-            )}
-          </div>
+          <BrokerConnectionsSection
+            accounts={connectedAccounts}
+            brokerConnections={brokerConnections}
+            disconnectWindow={disconnectWindow}
+            userTz={traderProfile?.timezone ?? null}
+          />
 
           {/* Add / connect action — always visible at the bottom */}
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-5 flex items-center gap-3">
             <Link
               href="/accounts/connect/tradovate"
               className="inline-flex h-9 items-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
