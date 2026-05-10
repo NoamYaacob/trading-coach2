@@ -400,6 +400,48 @@ test("account form: defaultPendingNote copy mentions 'Default template has' and 
   );
 });
 
+// ── Pending panel: blocking reason exposure ──────────────────────────────────
+
+test("account form: pending panel shows 'Cannot apply yet' when activation is blocked", () => {
+  // When canApplyPendingNow is false, the pending panel must show a human-
+  // readable reason so the user understands why the "Apply pending now" button
+  // is absent. The copy must contain "Cannot apply yet" as the lead-in to the
+  // reason string supplied by activationReasonMessage().
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Cannot apply yet:"),
+    "pending panel must include 'Cannot apply yet:' lead-in when activation is blocked",
+  );
+});
+
+test("account form: pending panel renders pendingBlockReason when provided", () => {
+  // The component must reference the pendingBlockReason prop directly in the
+  // JSX so the server-computed reason string is displayed to the user.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("pendingBlockReason"),
+    "account form must reference pendingBlockReason in JSX to render the blocking reason",
+  );
+});
+
+test("account form: pending panel shows button OR reason, never silent", () => {
+  // There must be no path where pending changes exist and neither a button nor
+  // a reason is shown. The JSX must use a ternary/conditional that surfaces
+  // one of: ApplyPendingButton (when safe) or the Cannot-apply-yet paragraph
+  // (when blocked). A silent "Changes will activate..." with no context is
+  // insufficient UX — the user needs actionable information.
+  const src = read(FORM_FILES.account);
+  // Both the button and the reason branch must be present in the source.
+  assert.ok(
+    src.includes("canApplyPendingNow") && src.includes("ApplyPendingButton"),
+    "pending panel must show ApplyPendingButton when canApplyPendingNow is true",
+  );
+  assert.ok(
+    src.includes("pendingBlockReason") && src.includes("Cannot apply yet:"),
+    "pending panel must show block reason when pendingBlockReason is set",
+  );
+});
+
 // ── Task G: No 'verified/guaranteed reject' language before demo sign-off ─────
 
 test("no form claims Tradovate rejection is verified or guaranteed", () => {

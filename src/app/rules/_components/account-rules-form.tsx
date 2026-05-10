@@ -81,6 +81,11 @@ type Props = {
   /** True when the server has determined it is safe to promote pending rules
    *  immediately. Shows the "Apply pending now" button in the pending panel. */
   canApplyPendingNow?: boolean;
+  /** When canApplyPendingNow is false, the human-readable reason why activation
+   *  is blocked (e.g. "Account is in active trading — ..."). Shown as a small
+   *  note below the pending diff so the user understands why the button is
+   *  absent. Null when the reason is unknown or canApplyPendingNow is true. */
+  pendingBlockReason?: string | null;
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -229,6 +234,7 @@ export function AccountRulesForm({
   pendingEffectiveDate,
   defaultPendingPayload,
   canApplyPendingNow,
+  pendingBlockReason,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -666,9 +672,11 @@ export function AccountRulesForm({
                 ? "Ready to apply now — broker connection is not live or account is in a safe window."
                 : `Changes will activate automatically at the next safe window${localPendingDate ? ` (${localPendingDate})` : ""}.`}
             </p>
-            {canApplyPendingNow && (
+            {canApplyPendingNow ? (
               <ApplyPendingButton url={`/api/accounts/${accountId}/apply-pending`} />
-            )}
+            ) : pendingBlockReason ? (
+              <p className="mt-1 text-[11px] text-amber-700">Cannot apply yet: {pendingBlockReason}</p>
+            ) : null}
           </div>
           {pendingIsDelete ? (
             <p className="text-[11px] text-amber-800">

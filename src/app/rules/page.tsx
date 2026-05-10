@@ -13,7 +13,7 @@ import {
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
 import { isCmeMaintenanceWindow, isCmeWeekendClose } from "@/lib/time/cme-session";
-import { canActivateRulesNow } from "@/lib/rule-activation-window";
+import { canActivateRulesNow, activationReasonMessage } from "@/lib/rule-activation-window";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
 import { RulesForm, type RulesFormValues } from "./_components/rules-form";
@@ -193,24 +193,34 @@ export default async function RulesPage({
   const accountIsLockedForPending =
     selectedAccountLiveState?.riskState === "STOPPED" ||
     selectedAccountLiveState?.cooldownActive === true;
-  const accountCanApplyPendingNow =
-    selectedAccount && selectedAccount.riskRules?.pendingPayloadJson
+  const accountPendingDecision =
+    selectedAccount?.riskRules?.pendingPayloadJson
       ? canActivateRulesNow({
           scope: "account",
           accountIsLocked: accountIsLockedForPending,
           accountConnectionLive,
-        }).canActivate
-      : false;
+        })
+      : null;
+  const accountCanApplyPendingNow = accountPendingDecision?.canActivate ?? false;
+  const accountPendingBlockReason =
+    accountPendingDecision && !accountPendingDecision.canActivate
+      ? activationReasonMessage(accountPendingDecision.reason)
+      : null;
 
   // For default scope: any account that has no override AND is live-connected
   // counts as a potentially active inheriting account.
   const anyInheritingLiveActive = accounts.some(
     (a) => !a.riskRules && a.connectionStatus === "connected_live",
   );
-  const defaultCanApplyPendingNow =
+  const defaultPendingDecision =
     riskRules?.pendingPayloadJson
-      ? canActivateRulesNow({ scope: "default", anyInheritingAccountActive: anyInheritingLiveActive }).canActivate
-      : false;
+      ? canActivateRulesNow({ scope: "default", anyInheritingAccountActive: anyInheritingLiveActive })
+      : null;
+  const defaultCanApplyPendingNow = defaultPendingDecision?.canActivate ?? false;
+  const defaultPendingBlockReason =
+    defaultPendingDecision && !defaultPendingDecision.canActivate
+      ? activationReasonMessage(defaultPendingDecision.reason)
+      : null;
 
   // Build default template initial values
   const defaultInitial: RulesFormValues = {
@@ -372,6 +382,8 @@ export default async function RulesPage({
                 <p className="mt-0.5 text-[11px] text-amber-800">
                   {defaultCanApplyPendingNow
                     ? "Ready to apply now — no active inheriting accounts in the way."
+                    : defaultPendingBlockReason
+                    ? `Cannot apply yet: ${defaultPendingBlockReason}`
                     : "Pending changes are saved and will activate automatically at the next safe window."}
                   {!ruleEditEligibility.canEditNow && accountRuleLockMessage
                     ? ` ${accountRuleLockMessage}`
@@ -419,6 +431,7 @@ export default async function RulesPage({
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
                   canApplyPendingNow={accountCanApplyPendingNow}
+                  pendingBlockReason={accountPendingBlockReason}
                   hasDefaultRules={hasDefaultRules}
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}
