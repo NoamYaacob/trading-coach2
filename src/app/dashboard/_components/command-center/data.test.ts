@@ -20,6 +20,7 @@ import {
   deriveProtectionStatusPanel,
   deriveRowStatusLabel,
   shouldShowEnforcementChip,
+  resolveEffectiveConnectionStatus,
   DRY_RUN_BANNER_COPY,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
@@ -1784,5 +1785,167 @@ describe("deriveProtectionStatusPanel", () => {
     assert.ok(panel !== null);
     assert.equal(panel!.kind, "consent_required");
     assert.equal(panel!.showConsentCta, true);
+  });
+});
+
+// ── resolveEffectiveConnectionStatus ─────────────────────────────────────────
+
+describe("resolveEffectiveConnectionStatus", () => {
+  it("uses BC status when BC is healthy and account is stale expired", () => {
+    // Production scenario: account row still says "expired" after reconnect,
+    // but BC was updated to "connected_readonly". Dashboard must show Connected.
+    const result = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    assert.equal(result, "connected_readonly");
+  });
+
+  it("uses BC status when BC is connected_live and account is expired", () => {
+    const result = resolveEffectiveConnectionStatus("expired", "connected_live");
+    assert.equal(result, "connected_live");
+  });
+
+  it("uses account status as fallback when BC status is null (orphaned account)", () => {
+    // Account without a brokerConnection — brokerConnection?.connectionStatus is undefined.
+    const result = resolveEffectiveConnectionStatus("connected_readonly", null);
+    assert.equal(result, "connected_readonly");
+  });
+
+  it("uses account status as fallback when BC status is undefined", () => {
+    const result = resolveEffectiveConnectionStatus("connected_live", undefined);
+    assert.equal(result, "connected_live");
+  });
+
+  it("prefers BC expired over account connected_readonly (BC always wins)", () => {
+    // If BC is expired, account is expired too — BC is the authority in both directions.
+    const result = resolveEffectiveConnectionStatus("connected_readonly", "expired");
+    assert.equal(result, "expired");
+  });
+
+  it("passes through when BC and account agree", () => {
+    const result = resolveEffectiveConnectionStatus("connected_readonly", "connected_readonly");
+    assert.equal(result, "connected_readonly");
+  });
+
+  it("BC connection_error overrides stale account connected_readonly", () => {
+    const result = resolveEffectiveConnectionStatus("connected_readonly", "connection_error");
+    assert.equal(result, "connection_error");
+  });
+});
+
+// ── BC authority: deriveStatus with effectiveConnectionStatus ─────────────────
+
+describe("BC-authority: deriveStatus uses effectiveConnectionStatus", () => {
+  const baseArgs = {
+    isActive: true,
+    platform: "tradovate",
+    hasAnyRules: true,
+    propFirmSetupNeeded: false,
+    riskState: null as "NORMAL" | "WARNING" | "STOPPED" | null,
+    dailyLossUsedPct: null,
+    tradesCount: null,
+    maxTradesPerDay: null,
+    missingFromBrokerSince: null,
+  };
+
+  it("expired account + healthy BC connectionStatus → allowed (not not_connected)", () => {
+    // The key production fix: stale account.connectionStatus=expired, but BC says
+    // connected_readonly. Dashboard should show the account as tradable.
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    const result = deriveStatus({ ...baseArgs, connectionStatus: effective });
+    assert.equal(result, "allowed");
+    assert.notEqual(result, "not_connected");
+  });
+
+  it("expired account + BC connection_error → not_connected (BC wins, connection is broken)", () => {
+    const effective = resolveEffectiveConnectionStatus("connected_readonly", "connection_error");
+    const result = deriveStatus({ ...baseArgs, connectionStatus: effective });
+    assert.equal(result, "not_connected");
+  });
+
+  it("expired account + BC connected_live + full_access → allowed", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_live");
+    const result = deriveStatus({ ...baseArgs, connectionStatus: effective });
+    assert.equal(result, "allowed");
+  });
+
+  it("orphaned account (no BC) with expired account status → not_connected", () => {
+    // No BC: fall back to account status.
+    const effective = resolveEffectiveConnectionStatus("expired", null);
+    const result = deriveStatus({ ...baseArgs, connectionStatus: effective });
+    assert.equal(result, "not_connected");
+  });
+});
+
+// ── BC authority: deriveEnforcementMode ──────────────────────────────────────
+
+describe("BC-authority: deriveEnforcementMode uses effectiveConnectionStatus", () => {
+  it("expired account + BC connected_readonly + full_access → broker_active", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    const result = deriveEnforcementMode({
+      platform: "tradovate",
+      connectionStatus: effective,
+      isActive: true,
+      permissionLevel: "full_access",
+      isDryRun: false,
+    });
+    assert.equal(result, "broker_active");
+  });
+
+  it("expired account + BC connected_readonly + read_only → broker_readonly", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    const result = deriveEnforcementMode({
+      platform: "tradovate",
+      connectionStatus: effective,
+      isActive: true,
+      permissionLevel: "read_only",
+      isDryRun: false,
+    });
+    assert.equal(result, "broker_readonly");
+  });
+
+  it("orphaned expired account (no BC) → not_connected regardless of permissionLevel", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", null);
+    const result = deriveEnforcementMode({
+      platform: "tradovate",
+      connectionStatus: effective,
+      isActive: true,
+      permissionLevel: "full_access",
+      isDryRun: false,
+    });
+    assert.equal(result, "not_connected");
+  });
+
+  it("expired account + BC connected_readonly + no permissionLevel → permission_unverified", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    const result = deriveEnforcementMode({
+      platform: "tradovate",
+      connectionStatus: effective,
+      isActive: true,
+      permissionLevel: null,
+      isDryRun: false,
+    });
+    assert.equal(result, "permission_unverified");
+  });
+});
+
+// ── BC authority: connectionStatusLabel ──────────────────────────────────────
+
+describe("BC-authority: connectionStatusLabel uses effectiveConnectionStatus", () => {
+  it("expired account + BC connected_readonly → label is 'Connected' not 'Expired'", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_readonly");
+    const label = deriveConnectionStatusLabel(effective);
+    assert.equal(label, "Connected");
+    assert.notEqual(label, "Expired — re-authorize");
+  });
+
+  it("expired account + BC connected_live → label is 'Connected'", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", "connected_live");
+    const label = deriveConnectionStatusLabel(effective);
+    assert.equal(label, "Connected");
+  });
+
+  it("orphaned expired account (no BC) → label is 'Expired — re-authorize'", () => {
+    const effective = resolveEffectiveConnectionStatus("expired", null);
+    const label = deriveConnectionStatusLabel(effective);
+    assert.equal(label, "Expired — re-authorize");
   });
 });

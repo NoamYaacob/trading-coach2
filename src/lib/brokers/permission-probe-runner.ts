@@ -145,5 +145,44 @@ export async function runPermissionProbe(
     });
   }
 
+  // ── Cascade healthy BC status to stale account rows ──────────────────────────
+  // A probe runs after reconnect. At that point the BC.connectionStatus is
+  // already "connected_readonly", but linked ConnectedAccount rows may still
+  // carry stale "expired" or "connection_error" status from the prior expiry
+  // cascade. Heal them here so the Dashboard reflects the correct state without
+  // waiting for the next full sync.
+  try {
+    const bc = await prisma.brokerConnection.findUnique({
+      where: { id: brokerConnectionId },
+      select: { connectionStatus: true },
+    });
+    if (
+      bc &&
+      (bc.connectionStatus === "connected_readonly" || bc.connectionStatus === "connected_live")
+    ) {
+      const healed = await prisma.connectedAccount.updateMany({
+        where: {
+          brokerConnectionId,
+          connectionStatus: { in: ["expired", "connection_error"] },
+          missingFromBrokerSince: null,
+        },
+        data: { connectionStatus: bc.connectionStatus, errorMessage: null },
+      });
+      if (healed.count > 0) {
+        console.info("[permission-probe] healed stale account connectionStatus rows", {
+          brokerConnectionId,
+          source: source ?? "unknown",
+          bcConnectionStatus: bc.connectionStatus,
+          healedCount: healed.count,
+        });
+      }
+    }
+  } catch (healErr) {
+    console.warn("[permission-probe] cascade heal failed (non-fatal)", {
+      brokerConnectionId,
+      error: healErr instanceof Error ? healErr.message : String(healErr),
+    });
+  }
+
   return result;
 }

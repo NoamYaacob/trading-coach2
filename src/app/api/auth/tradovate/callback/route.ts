@@ -302,7 +302,11 @@ export async function GET(request: NextRequest) {
         },
       });
       await prisma.connectedAccount.updateMany({
-        where: { brokerConnectionId: payload.reconnectId, connectionStatus: "expired" },
+        where: {
+          brokerConnectionId: payload.reconnectId,
+          connectionStatus: { in: ["expired", "connection_error"] },
+          missingFromBrokerSince: null,
+        },
         data: { connectionStatus: "connected_readonly", errorMessage: null },
       });
 

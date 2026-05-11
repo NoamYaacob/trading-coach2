@@ -17,6 +17,7 @@ import {
   deriveEnforcementMode,
   derivePropFirmSetupNeeded,
   deriveStatus,
+  resolveEffectiveConnectionStatus,
   resolveSessionDisplayMetrics,
 } from "./data-helpers";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
@@ -86,7 +87,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
           orderBy: { createdAt: "desc" },
           take: 1,
         },
-        brokerConnection: { select: { createdAt: true, permissionLevel: true, env: true } },
+        brokerConnection: { select: { createdAt: true, permissionLevel: true, env: true, connectionStatus: true } },
       },
       orderBy: [{ propFirm: "asc" }, { label: "asc" }],
     }),
@@ -243,10 +244,32 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
 
     const rulesLabel = deriveRulesLabel(hasAccountRules, hasDefaultRules, isPropFirm);
 
+    // BC.connectionStatus is the ground truth — it is updated immediately on
+    // reconnect/expiry. The linked ConnectedAccount.connectionStatus can lag
+    // behind: the expiry cascade is instant, but the reverse heal (after
+    // reconnect) may not have run yet. Use the BC status when available.
+    const effectiveConnectionStatus = resolveEffectiveConnectionStatus(
+      account.connectionStatus,
+      account.brokerConnection?.connectionStatus,
+    );
+
+    if (
+      account.brokerConnection?.connectionStatus != null &&
+      account.brokerConnection.connectionStatus !== account.connectionStatus
+    ) {
+      console.info("[dashboard] connectionStatus mismatch — using BrokerConnection as authority", {
+        accountId: account.id,
+        accountLabel: account.label,
+        accountConnectionStatus: account.connectionStatus,
+        bcConnectionStatus: account.brokerConnection.connectionStatus,
+        bcPermissionLevel: account.brokerConnection.permissionLevel,
+      });
+    }
+
     const status = deriveStatus({
       isActive: account.isActive,
       platform: account.platform,
-      connectionStatus: account.connectionStatus,
+      connectionStatus: effectiveConnectionStatus,
       hasAnyRules: hasAccountRules || hasDefaultRules,
       propFirmSetupNeeded,
       riskState,
@@ -260,8 +283,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     let setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null = null;
     if (status === "setup_needed") {
       if (
-        account.connectionStatus === "pending_webhook" ||
-        account.connectionStatus === "oauth_pending_storage"
+        effectiveConnectionStatus === "pending_webhook" ||
+        effectiveConnectionStatus === "oauth_pending_storage"
       ) {
         setupNeededReason = "pending_connection";
       } else if (propFirmSetupNeeded) {
@@ -284,7 +307,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
 
     const enforcementMode = deriveEnforcementMode({
       platform: account.platform,
-      connectionStatus: account.connectionStatus,
+      connectionStatus: effectiveConnectionStatus,
       isActive: account.isActive,
       permissionLevel: account.brokerConnection?.permissionLevel ?? null,
       isDryRun,
@@ -298,7 +321,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
     const accountTypeLabel = ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
-    const connectionStatusLabel = deriveConnectionStatusLabel(account.connectionStatus);
+    const connectionStatusLabel = deriveConnectionStatusLabel(effectiveConnectionStatus);
 
     const hasOpenIntervention = Boolean(
       lastIntervention &&
@@ -332,7 +355,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       firmLabel,
       accountType: account.accountType,
       accountTypeLabel,
-      connectionStatus: account.connectionStatus,
+      connectionStatus: effectiveConnectionStatus,
       connectionStatusLabel,
       status,
       enforcementMode,

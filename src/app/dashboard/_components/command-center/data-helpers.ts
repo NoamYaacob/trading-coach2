@@ -387,6 +387,26 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
   }
 }
 
+// ── Effective connection status ───────────────────────────────────────────────
+
+/**
+ * Resolves the authoritative connection status for an account.
+ *
+ * BrokerConnection.connectionStatus is the ground truth — it reflects the live
+ * OAuth token state and is updated immediately on reconnect/expiry. The linked
+ * ConnectedAccount.connectionStatus is a cached copy that can lag behind: when
+ * a connection expires the cascade updates accounts instantly, but the reverse
+ * (healing stale "expired" rows after a reconnect) may not have run yet.
+ *
+ * Rule: always prefer BrokerConnection.connectionStatus when it is present.
+ */
+export function resolveEffectiveConnectionStatus(
+  accountConnectionStatus: string,
+  bcConnectionStatus: string | null | undefined,
+): string {
+  return bcConnectionStatus ?? accountConnectionStatus;
+}
+
 // ── Connection status label ───────────────────────────────────────────────────
 
 /** Public-facing labels for BrokerConnection.connectionStatus. Raw enum values
