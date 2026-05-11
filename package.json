@@ -12,6 +12,7 @@
     "start:railway": "prisma migrate deploy && next start -p ${PORT:-3000}",
     "cron:sync": "node scripts/cron-tradovate-sync.mjs",
     "cron:promote": "node scripts/cron-promote-pending-rules.mjs",
+    "cron:renew-tokens": "node scripts/cron-renew-tradovate-tokens.mjs",
     "lint": "eslint",
     "test:unit": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
     "prisma:generate": "prisma generate",
