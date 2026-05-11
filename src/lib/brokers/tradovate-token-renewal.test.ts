@@ -67,28 +67,38 @@ describe("Bug 1 fix: tradovate-tokens always prefers BrokerConnection tokens", (
 describe("Bug 2 fix: #storeRefreshedTokens does not reset connectionStatus", () => {
   test("#storeRefreshedTokens does not write connected_readonly on the BrokerConnection update", () => {
     const s = src(CLIENT_FILE);
-    // Find #storeRefreshedTokens body
+    // Find #storeRefreshedTokens body and locate the bcData object literal.
+    // The check: brokerConnection.update(data: bcData) must NOT include connectionStatus.
+    // (connectedAccount.updateMany may legitimately use connected_readonly for cascade heals.)
     const fnStart = s.indexOf("async #storeRefreshedTokens(");
     const fnEnd = s.indexOf("\n  async ", fnStart + 1);
     const fnBody = s.slice(fnStart, fnEnd);
+    // bcData is the object passed to brokerConnection.update — find its block.
+    const bcDataStart = fnBody.indexOf("const bcData:");
+    const bcDataEnd = fnBody.indexOf("await prisma.brokerConnection.update(", bcDataStart);
+    const bcDataBlock = fnBody.slice(bcDataStart, bcDataEnd);
     assert.ok(
-      !fnBody.includes('"connected_readonly"'),
-      "#storeRefreshedTokens must not hardcode connected_readonly — it would demote connected_live connections",
+      !bcDataBlock.includes('"connected_readonly"'),
+      "#storeRefreshedTokens must not hardcode connected_readonly in bcData — it would demote connected_live connections",
     );
   });
 
-  test("connection-level renewal (ensureTradovateAccessToken) also preserves connectionStatus", () => {
+  test("connection-level renewal (ensureTradovateAccessToken) also preserves connectionStatus on BC", () => {
     const s = src(ENSURE_FILE);
     const persistFn = s.indexOf("async function persistRenewedTokens(");
     const persistEnd = s.indexOf("\nasync function ", persistFn + 1);
-    const persistBody = s.slice(persistFn, persistEnd);
+    const persistBody = s.slice(persistFn, persistEnd > persistFn ? persistEnd : s.length);
+    // The BC update data must not include a hard-coded connectionStatus.
+    const dataStart = persistBody.indexOf("const data:");
+    const dataEnd = persistBody.indexOf("await prisma.brokerConnection.update(", dataStart);
+    const dataBlock = persistBody.slice(dataStart, dataEnd);
     assert.ok(
-      !persistBody.includes('"connected_readonly"'),
-      "persistRenewedTokens must not hardcode connected_readonly",
+      !dataBlock.includes('"connected_readonly"'),
+      "brokerConnection.update data in persistRenewedTokens must not hardcode connected_readonly",
     );
     assert.ok(
       persistBody.includes("connectionStatus is NOT changed"),
-      "persistRenewedTokens must carry a comment explaining why connectionStatus is preserved",
+      "persistRenewedTokens must carry a comment explaining why BC connectionStatus is preserved",
     );
   });
 });
@@ -379,5 +389,272 @@ describe("tradovate-sync cron: expired connections are skipped", () => {
       !cronSrc.includes('"expired"'),
       "cron must NOT include expired in its connection status filter",
     );
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Token lifecycle requirement tests (Req 1–8)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const GROUP_UTILS_FILE = resolve(
+  import.meta.dirname,
+  "../../app/dashboard/_components/command-center/group-utils.ts",
+);
+const DASHBOARD_DATA_FILE = resolve(
+  import.meta.dirname,
+  "../../app/dashboard/_components/command-center/data.ts",
+);
+
+// ── Req 1: token expiring within buffer triggers proactive renewal ────────────
+
+describe("Req 1: token expiring soon triggers proactive renewal before any API call", () => {
+  test("token expiring in 14 min (inside 15-min buffer) → shouldRenew: true", () => {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 14 * 60 * 1000);
+    const result = shouldRenewToken({ expiresAt, now, bufferMs: REFRESH_BUFFER_MS });
+    assert.equal(result.shouldRenew, true);
+    assert.equal(result.reason, "within_buffer");
+  });
+
+  test("ensureTradovateAccessToken checks shouldRenewToken before making any API call", () => {
+    const s = src(ENSURE_FILE);
+    assert.ok(s.includes("shouldRenewToken"), "must call shouldRenewToken before any network call");
+    assert.ok(
+      s.includes("if (!decision.shouldRenew) {"),
+      "must return early when token does not need renewal",
+    );
+    // The shouldRenewToken check must appear before callRenewEndpoint
+    const decisionIdx = s.indexOf("shouldRenewToken");
+    const callIdx = s.indexOf("callRenewEndpoint");
+    assert.ok(decisionIdx < callIdx, "renewal decision must precede the network call");
+  });
+});
+
+// ── Req 2: token valid for >15 min → no renewal ───────────────────────────────
+
+describe("Req 2: token with more than 15 min remaining is not renewed", () => {
+  test("token expiring in 20 min (outside 15-min buffer) → shouldRenew: false", () => {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
+    const result = shouldRenewToken({ expiresAt, now, bufferMs: REFRESH_BUFFER_MS });
+    assert.equal(result.shouldRenew, false);
+    assert.equal(result.reason, "valid_outside_buffer");
+    assert.ok(result.msUntilExpiry !== null && result.msUntilExpiry > 0, "msUntilExpiry must be positive");
+  });
+
+  test("token expiring in exactly 16 min (just outside 15-min buffer) → shouldRenew: false", () => {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 16 * 60 * 1000);
+    const result = shouldRenewToken({ expiresAt, now, bufferMs: REFRESH_BUFFER_MS });
+    assert.equal(result.shouldRenew, false);
+  });
+});
+
+// ── Req 3: first 401 → renew + retry, NOT immediately marked expired ──────────
+
+describe("Req 3: first 401 triggers renewal + retry before marking connection expired", () => {
+  test("#request uses retriedAfterRenewal flag to prevent infinite renewal loops", () => {
+    const s = src(CLIENT_FILE);
+    assert.ok(
+      s.includes("retriedAfterRenewal"),
+      "#request must carry a retriedAfterRenewal flag — loops are prevented by attempting renewal only once",
+    );
+  });
+
+  test("first 401 does NOT call #markConnectionExpired — only the second 401 does", () => {
+    const s = src(CLIENT_FILE);
+    // Verify the comment that documents the second-401 path
+    assert.ok(
+      s.includes("Already tried renewal and got 401 again"),
+      "code must document that marking expired happens only after the second 401",
+    );
+    // #markConnectionExpired must appear after the second-401 detection comment
+    const secondPassComment = s.indexOf("Already tried renewal and got 401 again");
+    const markExpiredIdx = s.indexOf("markConnectionExpired", secondPassComment);
+    assert.ok(
+      markExpiredIdx > secondPassComment,
+      "#markConnectionExpired must be called after detecting the second 401, not on the first",
+    );
+  });
+
+  test("skipMarkExpired flag lets optional endpoints get 401 without expiring the connection", () => {
+    const s = src(CLIENT_FILE);
+    assert.ok(
+      s.includes("skipMarkExpired"),
+      "optional trade-count endpoints use skipMarkExpired to avoid burning the connection on a 401",
+    );
+  });
+});
+
+// ── Req 4: renewal success cascades linked accounts out of expired ─────────────
+
+describe("Req 4: successful token renewal heals linked ConnectedAccount rows stuck at expired", () => {
+  test("persistRenewedTokens (connection-level) cascades heal via connectedAccount.updateMany", () => {
+    const s = src(ENSURE_FILE);
+    const persistStart = s.indexOf("async function persistRenewedTokens(");
+    const persistEnd = s.indexOf("\nasync function ", persistStart + 1);
+    const persistBody = s.slice(persistStart, persistEnd > persistStart ? persistEnd : s.length);
+    assert.ok(
+      persistBody.includes("connectedAccount.updateMany"),
+      "persistRenewedTokens must heal linked accounts via updateMany after successful renewal",
+    );
+    assert.ok(
+      persistBody.includes('"connected_readonly"'),
+      "heap target must be connected_readonly — probe upgrades to connected_live as needed",
+    );
+    assert.ok(
+      persistBody.includes("missingFromBrokerSince: null"),
+      "heal must only target accounts still present at broker (missingFromBrokerSince: null)",
+    );
+  });
+
+  test("#storeRefreshedTokens (per-client) also cascades heal for BrokerConnection-backed accounts", () => {
+    const s = src(CLIENT_FILE);
+    const storeFn = s.indexOf("async #storeRefreshedTokens(");
+    const storeEnd = s.indexOf("\n  async ", storeFn + 1);
+    const storeBody = s.slice(storeFn, storeEnd > storeFn ? storeEnd : s.length);
+    assert.ok(
+      storeBody.includes("connectedAccount.updateMany"),
+      "#storeRefreshedTokens must cascade heal linked accounts after successful per-client renewal",
+    );
+    assert.ok(
+      storeBody.includes('"connected_readonly"'),
+      "#storeRefreshedTokens heal target must be connected_readonly",
+    );
+    assert.ok(
+      storeBody.includes("missingFromBrokerSince: null"),
+      "#storeRefreshedTokens heal must guard with missingFromBrokerSince: null",
+    );
+  });
+});
+
+// ── Req 5: renewal failure marks BrokerConnection expired + records error ─────
+
+describe("Req 5: renewal failure marks BrokerConnection expired and records lastRenewError", () => {
+  test("markExpiredWithAccounts records the failure reason as lastRenewError", () => {
+    const s = src(ENSURE_FILE);
+    const markStart = s.indexOf("async function markExpiredWithAccounts(");
+    const markEnd = s.indexOf("\nasync function ", markStart + 1);
+    const markBody = s.slice(markStart, markEnd > markStart ? markEnd : s.length);
+    assert.ok(
+      markBody.includes("lastRenewError: reason"),
+      "markExpiredWithAccounts must persist the failure reason as lastRenewError so the debug endpoint can display it",
+    );
+  });
+
+  test("transient errors are NOT marked expired — only auth_invalid errors trigger expiry", () => {
+    const s = src(ENSURE_FILE);
+    assert.ok(
+      s.includes('if (cls === "transient") {'),
+      "transient errors must exit before reaching markExpiredWithAccounts",
+    );
+    const transientIdx = s.indexOf('if (cls === "transient") {');
+    const firstMarkIdx = s.indexOf("markExpiredWithAccounts");
+    assert.ok(
+      transientIdx < firstMarkIdx,
+      "transient early-return guard must appear before the first markExpiredWithAccounts call",
+    );
+  });
+
+  test("classifyRenewalError maps network errors to transient, not auth_invalid", () => {
+    assert.equal(classifyRenewalError({ code: "NETWORK_ERROR" }), "transient");
+    assert.equal(classifyRenewalError({ httpStatus: 500 }), "transient");
+    assert.equal(classifyRenewalError({ httpStatus: 429 }), "transient");
+  });
+});
+
+// ── Req 6: Dashboard does not show Reconnect for healthy/renewable connection ──
+
+describe("Req 6: Dashboard Reconnect banner is not shown for connected_live or renewable connection", () => {
+  test("filterExpiredGroups only includes groups with expired or connection_error status", () => {
+    const s = src(GROUP_UTILS_FILE);
+    assert.ok(
+      s.includes('"expired"') && s.includes('"connection_error"'),
+      "filterExpiredGroups gate must check for expired and connection_error",
+    );
+  });
+
+  test("filterExpiredGroups return condition requires expired or connection_error — not the opposite", () => {
+    const s = src(GROUP_UTILS_FILE);
+    const filterFn = s.indexOf("export function filterExpiredGroups(");
+    const filterEnd = s.indexOf("\nexport ", filterFn + 1);
+    const filterBody = s.slice(filterFn, filterEnd > filterFn ? filterEnd : s.length);
+    // The filter predicate must gate on expired/connection_error (positive check),
+    // NOT on "is not connected_live" — the latter would inadvertently include all non-healthy groups.
+    assert.ok(
+      filterBody.includes('"expired"') && filterBody.includes('"connection_error"'),
+      "filterExpiredGroups gate must reference expired and connection_error",
+    );
+    // Verify the return array uses a .filter() call with the expired/error check.
+    assert.ok(
+      filterBody.includes("groups.filter("),
+      "filterExpiredGroups must use groups.filter() to select only expired/error groups",
+    );
+  });
+
+  test("persistRenewedTokens sets lastRenewedAt and clears lastRenewError on success", () => {
+    const s = src(ENSURE_FILE);
+    const persistStart = s.indexOf("async function persistRenewedTokens(");
+    const persistEnd = s.indexOf("\nasync function ", persistStart + 1);
+    const persistBody = s.slice(persistStart, persistEnd > persistStart ? persistEnd : s.length);
+    assert.ok(persistBody.includes("lastRenewedAt: now"), "must record when renewal succeeded");
+    assert.ok(persistBody.includes("lastRenewError: null"), "must clear previous renewal error on success");
+  });
+});
+
+// ── Req 7: Settings and Dashboard both use BrokerConnection as status authority
+
+describe("Req 7: Settings and Dashboard agree — both use BrokerConnection connectionStatus as authority", () => {
+  test("Dashboard data.ts uses resolveEffectiveConnectionStatus (BC wins over stale account row)", () => {
+    const s = src(DASHBOARD_DATA_FILE);
+    assert.ok(
+      s.includes("resolveEffectiveConnectionStatus"),
+      "Dashboard data.ts must apply resolveEffectiveConnectionStatus so BC status overrides stale account rows",
+    );
+  });
+
+  test("resolveEffectiveConnectionStatus always prefers bcConnectionStatus over accountConnectionStatus", () => {
+    const dataHelpersSrc = readFileSync(
+      resolve(import.meta.dirname, "../../app/dashboard/_components/command-center/data-helpers.ts"),
+      "utf8",
+    );
+    assert.ok(
+      dataHelpersSrc.includes("resolveEffectiveConnectionStatus"),
+      "resolveEffectiveConnectionStatus must be defined in data-helpers.ts",
+    );
+    // The function must prefer bcConnectionStatus (null-coalesce: BC wins when present).
+    assert.ok(
+      dataHelpersSrc.includes("bcConnectionStatus ??"),
+      "resolveEffectiveConnectionStatus must null-coalesce: bcConnectionStatus ?? accountConnectionStatus",
+    );
+  });
+});
+
+// ── Req 8: no per-account stale token when brokerConnectionId is set ───────────
+
+describe("Req 8: BrokerConnection token path is always taken when brokerConnectionId is set", () => {
+  test("tradovate-tokens.ts enters the BrokerConnection path unconditionally when brokerConnectionId is set", () => {
+    const s = src(TOKENS_FILE);
+    assert.ok(
+      s.includes("if (account.brokerConnectionId) {"),
+      "must use BC path for any account with brokerConnectionId — no additional guards",
+    );
+  });
+
+  test("old compound guard (brokerConnectionId && !accessTokenEncrypted) is removed", () => {
+    const s = src(TOKENS_FILE);
+    assert.ok(
+      !s.includes("brokerConnectionId && !account.accessTokenEncrypted"),
+      "old guard must not exist — it caused per-account stale tokens to be read when BC had already renewed",
+    );
+  });
+
+  test("BrokerConnection path appears before the legacy per-account token path", () => {
+    const s = src(TOKENS_FILE);
+    const bcPath = s.indexOf("if (account.brokerConnectionId) {");
+    const legacyPath = s.indexOf("// Legacy path: per-account token columns.");
+    assert.ok(bcPath !== -1, "BC path must exist");
+    assert.ok(legacyPath !== -1, "legacy path must exist (for accounts created before BrokerConnection)");
+    assert.ok(bcPath < legacyPath, "BC path must come first to ensure it takes priority");
   });
 });

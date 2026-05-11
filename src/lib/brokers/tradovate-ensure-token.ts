@@ -328,10 +328,13 @@ async function persistRenewedTokens(
   tokens: { accessToken: string; refreshToken: string | null; expiresAt: Date | null },
   preserveRefreshToken: boolean,
 ): Promise<void> {
+  const now = new Date();
   const data: Parameters<typeof prisma.brokerConnection.update>[0]["data"] = {
     accessTokenEncrypted: encryptAndSerialize(tokens.accessToken),
     tokenExpiresAt: tokens.expiresAt,
     errorMessage: null,
+    lastRenewedAt: now,
+    lastRenewError: null,
     // connectionStatus is NOT changed: preserves connected_live status.
     // The permission probe is solely responsible for live ↔ readonly transitions.
   };
@@ -342,6 +345,19 @@ async function persistRenewedTokens(
     where: { id: brokerConnectionId },
     data,
   });
+
+  // Heal linked accounts that are stuck at "expired" from a prior cascade. The
+  // BC is still connected (connectionStatus unchanged), so any account rows
+  // that were individually expired are now stale. Cascade to connected_readonly;
+  // the permission probe will upgrade to connected_live if warranted.
+  await prisma.connectedAccount.updateMany({
+    where: {
+      brokerConnectionId,
+      connectionStatus: "expired",
+      missingFromBrokerSince: null,
+    },
+    data: { connectionStatus: "connected_readonly", errorMessage: null },
+  });
 }
 
 async function markExpiredWithAccounts(
@@ -350,7 +366,7 @@ async function markExpiredWithAccounts(
 ): Promise<void> {
   await prisma.brokerConnection.update({
     where: { id: brokerConnectionId },
-    data: { connectionStatus: "expired", errorMessage: reason },
+    data: { connectionStatus: "expired", errorMessage: reason, lastRenewError: reason },
   });
   await prisma.connectedAccount.updateMany({
     where: { brokerConnectionId },

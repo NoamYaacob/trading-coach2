@@ -654,6 +654,8 @@ export class TradovateClient {
           accessTokenEncrypted: encryptedAccess,
           tokenExpiresAt: tokens.expiresAt,
           errorMessage: null,
+          lastRenewedAt: new Date(),
+          lastRenewError: null,
         };
         if (!preserveRefreshToken && tokens.refreshToken) {
           bcData.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
@@ -661,6 +663,16 @@ export class TradovateClient {
         await prisma.brokerConnection.update({
           where: { id: this.#brokerConnectionId },
           data: bcData,
+        });
+        // Heal linked accounts stuck at "expired" — BC is healthy so these are
+        // stale. Conservative target is connected_readonly; probe upgrades as needed.
+        await prisma.connectedAccount.updateMany({
+          where: {
+            brokerConnectionId: this.#brokerConnectionId,
+            connectionStatus: "expired",
+            missingFromBrokerSince: null,
+          },
+          data: { connectionStatus: "connected_readonly", errorMessage: null },
         });
       } else {
         // Legacy per-account token columns.

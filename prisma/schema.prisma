@@ -380,6 +380,11 @@ model BrokerConnection {
   // null          = not yet probed (treat conservatively in classification)
   permissionLevel       String?
   permissionsProbedAt   DateTime?
+  // Token renewal tracking — set by persistRenewedTokens / #storeRefreshedTokens.
+  // lastRenewedAt: timestamp of the most recent successful renewal.
+  // lastRenewError: reason string from the most recent failed renewal (cleared on success).
+  lastRenewedAt         DateTime?
+  lastRenewError        String?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 

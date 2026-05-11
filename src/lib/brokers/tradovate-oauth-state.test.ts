@@ -20,7 +20,7 @@ describe("tradovate-oauth-state", () => {
       const decoded = decodeOAuthState(encoded);
       assert.equal(decoded.ok, true);
       if (decoded.ok) {
-        assert.deepEqual(decoded.state, { ...state, setupId: undefined });
+        assert.deepEqual(decoded.state, { ...state, setupId: undefined, reconnectId: undefined });
       }
     });
 
