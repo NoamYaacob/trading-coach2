@@ -10,23 +10,50 @@ export function DisconnectButton({ accountId }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
 
   async function handleRemove() {
     setRemoving(true);
     setError(null);
+    setCleanupWarning(null);
     try {
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
+      const data = (await res.json()) as {
+        error?: string;
+        message?: string;
+        cleanupWarning?: string | null;
+      };
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string; message?: string };
         setError(data.message ?? data.error ?? "Failed to disconnect account.");
         setRemoving(false);
         return;
       }
-      router.push("/accounts");
+      if (data.cleanupWarning) {
+        setCleanupWarning(data.cleanupWarning);
+        setConfirming(false);
+        setRemoving(false);
+      } else {
+        router.push("/accounts");
+      }
     } catch {
       setError("Network error.");
       setRemoving(false);
     }
+  }
+
+  if (cleanupWarning) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="w-full text-xs text-amber-700">{cleanupWarning}</p>
+        <button
+          type="button"
+          onClick={() => router.push("/accounts")}
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-white transition hover:bg-stone-800"
+        >
+          Got it
+        </button>
+      </div>
+    );
   }
 
   if (!confirming) {

@@ -5,6 +5,10 @@
  * This separation makes the logic unit-testable without a database.
  */
 
+import {
+  TradovateClientError,
+} from "./tradovate-client-helpers.ts";
+
 // ── Disconnect payload ────────────────────────────────────────────────────────
 
 export type DisconnectUpdate = {
@@ -36,6 +40,87 @@ export function buildDisconnectUpdate(): DisconnectUpdate {
     tokenExpiresAt: null,
     errorMessage: "Disconnected by user.",
   };
+}
+
+// ── Broker-side cleanup decision ──────────────────────────────────────────────
+
+/**
+ * Whether to attempt broker-side Guardrail rule cleanup before disconnecting.
+ *
+ * Cleanup is only meaningful for Tradovate accounts that have an externalAccountId
+ * (required to scope the Tradovate API call) and are currently active (there are
+ * live broker rules to clean up). Inactive accounts have no ongoing broker
+ * enforcement to remove.
+ */
+export function shouldAttemptBrokerCleanup(account: {
+  platform: string;
+  externalAccountId: string | null;
+  isActive: boolean;
+}): boolean {
+  return (
+    account.platform === "tradovate" &&
+    account.externalAccountId != null &&
+    account.externalAccountId.trim() !== "" &&
+    account.isActive
+  );
+}
+
+// ── Broker cleanup error classification ───────────────────────────────────────
+
+/**
+ * Error class for broker cleanup failures.
+ *
+ *   token_invalid — the stored OAuth token is expired or missing; the broker
+ *     call can never succeed with the current credentials.
+ *   scope_gap — the token exists but lacks the Account Risk Settings permission
+ *     needed to modify position limits. Not a connection error.
+ *   other — transient network or API error; may succeed on retry.
+ */
+export type BrokerCleanupErrorClass = "token_invalid" | "scope_gap" | "other";
+
+export function classifyBrokerCleanupError(err: unknown): BrokerCleanupErrorClass {
+  if (err instanceof TradovateClientError) {
+    switch (err.code) {
+      case "NO_TOKENS":
+      case "TOKEN_LOAD_FAILED":
+      case "TOKEN_EXPIRED_NO_REFRESH":
+      case "REFRESH_FAILED":
+        return "token_invalid";
+      case "API_ERROR":
+        if (err.statusCode === 401 || err.statusCode === 403) return "scope_gap";
+        return "other";
+      default:
+        return "other";
+    }
+  }
+  return "other";
+}
+
+// ── Broker cleanup result ─────────────────────────────────────────────────────
+
+export type BrokerCleanupResult = {
+  attempted: boolean;
+  succeeded: boolean;
+  /** Non-null when cleanup was attempted but failed. Shown to the user so they
+   *  know to check Tradovate Risk Settings manually. */
+  warning: string | null;
+};
+
+export const BROKER_CLEANUP_WARNING =
+  "Disconnected locally, but broker-side cleanup could not be verified. Check Tradovate Risk Settings.";
+
+export function buildSkippedCleanupResult(): BrokerCleanupResult {
+  return { attempted: false, succeeded: false, warning: null };
+}
+
+export function buildSucceededCleanupResult(): BrokerCleanupResult {
+  return { attempted: true, succeeded: true, warning: null };
+}
+
+export function buildFailedCleanupResult(err: unknown): BrokerCleanupResult {
+  const errorClass = classifyBrokerCleanupError(err);
+  void errorClass; // class is logged by the caller; same warning regardless of class
+  return { attempted: true, succeeded: false, warning: BROKER_CLEANUP_WARNING };
 }
 
 // ── Provider revocation ───────────────────────────────────────────────────────

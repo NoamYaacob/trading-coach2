@@ -7,7 +7,12 @@ import { prisma } from "@/lib/db";
 import {
   buildDisconnectUpdate,
   buildNoRevocationResult,
+  buildSkippedCleanupResult,
+  buildSucceededCleanupResult,
+  buildFailedCleanupResult,
+  classifyBrokerCleanupError,
   platformHasRevocationEndpoint,
+  shouldAttemptBrokerCleanup,
 } from "@/lib/brokers/tradovate-disconnect";
 import { getProtectionLockState } from "@/lib/account-protection";
 import {
@@ -326,9 +331,44 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     userId: currentUser.id,
     platform: existing.platform,
     revokeAttempted,
-    revokeSucceeded,
   });
 
+  // ── Best-effort broker-side cleanup ────────────────────────────────────────
+  // Before deleting local tokens, attempt to deactivate any Guardrail-owned
+  // broker rules (identified by description = "Guardrail Max Position Size").
+  // User- or prop-firm-created settings are never touched — the position-limit
+  // helpers guard against that using the description field.
+  //
+  // For userAccountAutoLiq records: Tradovate provides no ownership marker on
+  // those records, so we cannot safely distinguish Guardrail-set values from
+  // user-set ones. autoLiq cleanup is intentionally skipped.
+  //
+  // Failure is non-fatal: we always proceed to local disconnect so the user
+  // is never left in a half-disconnected state.
+  let cleanupResult = buildSkippedCleanupResult();
+  if (shouldAttemptBrokerCleanup(existing)) {
+    try {
+      const client = new TradovateClient(existing.id, currentUser.id);
+      await client.initialize();
+      const posResult = await client.applyMaxPositionSize({ maxContracts: null });
+      cleanupResult = buildSucceededCleanupResult();
+      console.info("[accounts/disconnect] broker cleanup succeeded", {
+        accountId: id,
+        action: posResult.action,
+        endpoints: posResult.endpoints,
+      });
+    } catch (err) {
+      cleanupResult = buildFailedCleanupResult(err);
+      const errorClass = classifyBrokerCleanupError(err);
+      console.warn("[accounts/disconnect] broker cleanup failed (non-fatal, proceeding with local disconnect)", {
+        accountId: id,
+        errorClass,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // ── Local disconnect ────────────────────────────────────────────────────────
   const update = buildDisconnectUpdate();
   await prisma.connectedAccount.update({
     where: { id },
@@ -338,11 +378,20 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   console.info("[accounts/disconnect] local disconnect succeeded", {
     accountId: id,
     platform: existing.platform,
+    cleanupAttempted: cleanupResult.attempted,
+    cleanupSucceeded: cleanupResult.succeeded,
   });
 
   if (!revokeAttempted) {
     void buildNoRevocationResult();
   }
 
-  return NextResponse.json({ ok: true, revokeAttempted, revokeSucceeded });
+  return NextResponse.json({
+    ok: true,
+    revokeAttempted,
+    revokeSucceeded,
+    cleanupAttempted: cleanupResult.attempted,
+    cleanupSucceeded: cleanupResult.succeeded,
+    cleanupWarning: cleanupResult.warning,
+  });
 }

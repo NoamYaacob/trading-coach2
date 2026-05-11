@@ -354,9 +354,10 @@ export function DisconnectButton({
 }) {
   const router = useRouter();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [dialogMode, setDialogMode] = useState<"destructive" | "blocked" | "remove" | null>(null);
+  const [dialogMode, setDialogMode] = useState<"destructive" | "blocked" | "remove" | "cleanup_warning" | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
 
   function closeDialog() {
     setDialogMode(null);
@@ -378,17 +379,35 @@ export function DisconnectButton({
 
     try {
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
-      const data = (await res.json()) as { error?: string; message?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        message?: string;
+        cleanupWarning?: string | null;
+      };
       if (!res.ok) {
         throw new Error(data.message ?? data.error ?? "Failed to disconnect.");
       }
-      setDialogMode(null);
-      router.push(redirectTo);
-      router.refresh();
+      if (data.cleanupWarning) {
+        // Disconnected successfully, but broker cleanup failed. Show a warning
+        // before navigating so the user knows to check Tradovate Risk Settings.
+        setCleanupWarning(data.cleanupWarning);
+        setDialogMode("cleanup_warning");
+        setIsDisconnecting(false);
+      } else {
+        setDialogMode(null);
+        router.push(redirectTo);
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to disconnect. Please try again.");
       setIsDisconnecting(false);
     }
+  }
+
+  function handleCleanupWarningDismiss() {
+    setDialogMode(null);
+    router.push(redirectTo);
+    router.refresh();
   }
 
   return (
@@ -452,6 +471,37 @@ export function DisconnectButton({
             if (!isDisconnecting) closeDialog();
           }}
         />
+      )}
+
+      {dialogMode === "cleanup_warning" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cleanup-warning-title"
+        >
+          <div className="absolute inset-0 bg-stone-950/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-[0_32px_80px_-20px_rgba(28,25,23,0.5)]">
+            <h2
+              id="cleanup-warning-title"
+              className="text-xl font-semibold tracking-[-0.03em] text-stone-950"
+            >
+              Disconnected
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-amber-700">
+              {cleanupWarning}
+            </p>
+            <div className="mt-7 flex justify-end">
+              <button
+                type="button"
+                onClick={handleCleanupWarningDismiss}
+                className="inline-flex h-10 items-center justify-center rounded-full bg-stone-950 px-6 text-sm font-medium text-white transition hover:bg-stone-800"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
