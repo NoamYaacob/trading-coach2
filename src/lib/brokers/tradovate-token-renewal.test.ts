@@ -658,3 +658,52 @@ describe("Req 8: BrokerConnection token path is always taken when brokerConnecti
     assert.ok(bcPath < legacyPath, "BC path must come first to ensure it takes priority");
   });
 });
+
+// ── Stale lastRenewError cleanup ───────────────────────────────────────────
+
+describe("ensure-token: stale lastRenewError cleanup", () => {
+  test("ensureTradovateAccessToken selects lastRenewError from DB", () => {
+    const s = src(ENSURE_FILE);
+    const selectIdx = s.indexOf("select: {");
+    const selectBlock = s.slice(selectIdx, s.indexOf("}", selectIdx) + 1);
+    assert.ok(
+      selectBlock.includes("lastRenewError"),
+      "DB select must include lastRenewError so no-op path can check for stale errors",
+    );
+  });
+
+  test("fresh-token path clears stale lastRenewError via fire-and-forget update", () => {
+    const s = src(ENSURE_FILE);
+    // The no-renewal branch precedes the return { renewed: false } line
+    const returnFreshIdx = s.indexOf("return { renewed: false, tokenExpiresAt: bc.tokenExpiresAt }");
+    assert.ok(returnFreshIdx !== -1, "fresh-token return must exist");
+    // The cleanup block must appear before the return
+    const cleanupIdx = s.lastIndexOf("lastRenewError: null", returnFreshIdx);
+    assert.ok(
+      cleanupIdx !== -1 && cleanupIdx < returnFreshIdx,
+      "fire-and-forget lastRenewError cleanup must appear before the fresh-token return",
+    );
+  });
+
+  test("cleanup update is fire-and-forget (uses .catch, does not await or throw)", () => {
+    const s = src(ENSURE_FILE);
+    const returnFreshIdx = s.indexOf("return { renewed: false, tokenExpiresAt: bc.tokenExpiresAt }");
+    // Find the cleanup block just before the return
+    const cleanupStart = s.lastIndexOf("if (bc.lastRenewError !== null)", returnFreshIdx);
+    assert.ok(cleanupStart !== -1, "cleanup guard must exist");
+    const cleanupBlock = s.slice(cleanupStart, returnFreshIdx);
+    assert.ok(cleanupBlock.includes(".catch("), "cleanup must be fire-and-forget (.catch)");
+    assert.ok(!cleanupBlock.includes("await "), "cleanup must not be awaited");
+  });
+
+  test("healthy connection with stale error does not block or throw", () => {
+    // Pure logic: the .catch ensures DB failure cannot propagate
+    const s = src(ENSURE_FILE);
+    const returnFreshIdx = s.indexOf("return { renewed: false, tokenExpiresAt: bc.tokenExpiresAt }");
+    const cleanupStart = s.lastIndexOf("if (bc.lastRenewError !== null)", returnFreshIdx);
+    const cleanupBlock = s.slice(cleanupStart, returnFreshIdx);
+    // Must not re-throw or propagate
+    assert.ok(!cleanupBlock.includes("throw "), "cleanup must not throw");
+    assert.ok(!cleanupBlock.includes("return NextResponse"), "cleanup must not short-circuit response");
+  });
+});

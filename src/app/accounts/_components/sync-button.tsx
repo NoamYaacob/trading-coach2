@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /** Returns a human-friendly relative time: "just now", "2m ago", "1h ago". */
 function relativeTime(date: Date): string {
@@ -56,6 +56,17 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "def
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(lastSyncAt);
+  // Relative time label is computed client-side only to prevent React
+  // hydration mismatch (#418): Date.now() produces different values on
+  // the server and client, so we never render it during SSR.
+  const [relativeLabel, setRelativeLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lastSync) return;
+    const update = () => setRelativeLabel(relativeTime(lastSync));
+    update();
+    const id = setInterval(update, 30_000);
+    return () => clearInterval(id);
+  }, [lastSync]);
 
   async function handleSync() {
     setSyncing(true);
@@ -77,11 +88,13 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "def
       if (!res.ok || !data.ok) {
         const msg = data.message ?? data.error ?? "Refresh failed. Please try again.";
         setError(
-          msg.includes("TOKEN_EXPIRED") || msg.includes("expired")
+          msg === "reconnect_required" || res.status === 409
             ? "Connection expired — re-authorize Tradovate to refresh."
-            : msg.includes("NO_ACCESS_TOKEN") || msg.includes("NO_TOKENS")
-              ? "No tokens found — re-authorize Tradovate."
-              : "Refresh failed. Please try again.",
+            : msg.includes("TOKEN_EXPIRED") || msg.includes("expired")
+              ? "Connection expired — re-authorize Tradovate to refresh."
+              : msg.includes("NO_ACCESS_TOKEN") || msg.includes("NO_TOKENS")
+                ? "No tokens found — re-authorize Tradovate."
+                : "Refresh failed. Please try again.",
         );
       } else {
         if (data.lastSyncAt) setLastSync(new Date(data.lastSyncAt));
@@ -107,9 +120,9 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "def
           <RotateIcon spinning={syncing} />
           {syncing ? "Refreshing…" : "Refresh"}
         </button>
-        {lastSync && !error && (
+        {lastSync && !error && relativeLabel && (
           <span className="ml-auto text-[10px] text-stone-400">
-            Synced {relativeTime(lastSync)}
+            Synced {relativeLabel}
           </span>
         )}
         {error && (
@@ -131,8 +144,8 @@ export function SyncButton({ accountId, connectionId, lastSyncAt, variant = "def
         <RotateIcon spinning={syncing} />
         {syncing ? "Refreshing…" : "Refresh data"}
       </button>
-      {lastSync && !error && (
-        <p className="text-[10px] text-stone-400">Synced {relativeTime(lastSync)}</p>
+      {lastSync && !error && relativeLabel && (
+        <p className="text-[10px] text-stone-400">Synced {relativeLabel}</p>
       )}
       {error && <p className="text-[10px] text-red-500">{error}</p>}
     </div>

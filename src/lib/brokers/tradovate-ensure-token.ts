@@ -66,6 +66,7 @@ export async function ensureTradovateAccessToken({
       accessTokenEncrypted: true,
       refreshTokenEncrypted: true,
       tokenExpiresAt: true,
+      lastRenewError: true,
     },
   });
 
@@ -94,6 +95,18 @@ export async function ensureTradovateAccessToken({
   });
 
   if (!decision.shouldRenew) {
+    // The token is fresh — if a stale renewal error is stored, clear it
+    // fire-and-forget so a DB hiccup here never blocks the sync path.
+    if (bc.lastRenewError !== null) {
+      prisma.brokerConnection
+        .update({ where: { id: brokerConnectionId }, data: { lastRenewError: null } })
+        .catch((e: unknown) => {
+          console.warn("[tradovate/ensure-token] failed to clear stale lastRenewError", {
+            brokerConnectionId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        });
+    }
     return { renewed: false, tokenExpiresAt: bc.tokenExpiresAt };
   }
 

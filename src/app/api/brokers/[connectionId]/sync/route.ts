@@ -24,10 +24,22 @@ export async function POST(
 
   const connection = await prisma.brokerConnection.findFirst({
     where: { id: connectionId, userId: currentUser.id, platform: "tradovate" },
-    select: { id: true },
+    select: { id: true, connectionStatus: true },
   });
   if (!connection) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Reject sync attempts on expired/errored connections before reaching the
+  // sync function, which would throw and bubble up as a confusing 502.
+  if (
+    connection.connectionStatus === "expired" ||
+    connection.connectionStatus === "connection_error"
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "reconnect_required", connectionStatus: connection.connectionStatus },
+      { status: 409 },
+    );
   }
 
   let syncResult: Awaited<ReturnType<typeof syncTradovateConnection>>;
