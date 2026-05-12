@@ -39,10 +39,24 @@ describe("railway.json — web service config", () => {
 });
 
 describe("railway-cron-config/railway.json — cron service config", () => {
-  it("cron service startCommand is node scripts/cron-renew-tradovate-tokens.mjs", () => {
-    assert.equal(
-      cronConfig.deploy?.startCommand,
-      "node scripts/cron-renew-tradovate-tokens.mjs",
+  it("cron service startCommand does not reference the script file", () => {
+    assert.ok(
+      !cronConfig.deploy?.startCommand?.includes("scripts/cron-renew-tradovate-tokens.mjs"),
+      "startCommand must not reference the .mjs script file",
+    );
+  });
+
+  it("cron service startCommand calls /api/cron/renew-tradovate-tokens", () => {
+    assert.ok(
+      cronConfig.deploy?.startCommand?.includes("/api/cron/renew-tradovate-tokens"),
+      "startCommand must call /api/cron/renew-tradovate-tokens",
+    );
+  });
+
+  it("cron service startCommand is an inline node command", () => {
+    assert.ok(
+      cronConfig.deploy?.startCommand?.startsWith("node "),
+      "startCommand must be a node command",
     );
   });
 
@@ -63,14 +77,6 @@ describe("railway-cron-config/railway.json — cron service config", () => {
 
   it("cron service does NOT use npm run start:railway", () => {
     assert.notEqual(cronConfig.deploy?.startCommand, "npm run start:railway");
-  });
-
-  it("cron script file exists", () => {
-    const scriptSource = readFileSync(
-      join(root, "scripts", "cron-renew-tradovate-tokens.mjs"),
-      "utf8",
-    );
-    assert.ok(scriptSource.length > 0, "cron script should be non-empty");
   });
 });
 
