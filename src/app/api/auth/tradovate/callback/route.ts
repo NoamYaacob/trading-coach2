@@ -295,6 +295,14 @@ export async function GET(request: NextRequest) {
           ...(refreshTokenEncrypted !== null && { refreshTokenEncrypted }),
           tokenExpiresAt,
           errorMessage: null,
+          // Fresh OAuth grant — clear any previous renewal failure so the debug
+          // endpoint and any future alerting do not surface a stale error against
+          // a healthy connection. lastRenewedAt is set here even though this is
+          // an OAuth authorization (not a programmatic refresh-token renewal)
+          // because the net effect is identical: a fresh access token is now
+          // stored and the previous failure is resolved.
+          lastRenewError: null,
+          lastRenewedAt: new Date(),
           ...(token.accountId != null && { brokerUserId: token.accountId }),
           // Clear stale permission level — fresh probe runs below with the new token.
           permissionLevel: null,

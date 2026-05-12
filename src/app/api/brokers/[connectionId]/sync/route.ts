@@ -30,10 +30,19 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const { results, discovery } = await syncTradovateConnection(
-    connectionId,
-    currentUser.id,
-  );
+  let syncResult: Awaited<ReturnType<typeof syncTradovateConnection>>;
+  try {
+    syncResult = await syncTradovateConnection(connectionId, currentUser.id);
+  } catch (err) {
+    const code = err instanceof Error ? err.message : "SYNC_FAILED";
+    console.error("[brokers/sync] syncTradovateConnection threw", {
+      connectionId,
+      error: code,
+    });
+    return NextResponse.json({ ok: false, error: code }, { status: 502 });
+  }
+
+  const { results, discovery } = syncResult;
   const allOk = results.every((r) => r.ok);
 
   return NextResponse.json({

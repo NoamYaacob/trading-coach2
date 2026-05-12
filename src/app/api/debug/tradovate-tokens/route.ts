@@ -124,10 +124,22 @@ export async function GET(_request: NextRequest) {
       tokenExpiresAt: bc.tokenExpiresAt?.toISOString() ?? null,
       minutesUntilExpiry,
       tokenIsExpired: minutesUntilExpiry !== null && minutesUntilExpiry <= 0,
-      // Renewal state
+      // Renewal state.
+      // renewErrorIsStale=true means the error survived a subsequent successful
+      // reconnect and no longer reflects the current token state — the connection
+      // is healthy and the error is purely historical.
       lastRenewedAt: bc.lastRenewedAt?.toISOString() ?? null,
       minutesSinceRenewal,
       lastRenewError: bc.lastRenewError ?? null,
+      renewErrorIsStale:
+        bc.lastRenewError !== null &&
+        (bc.connectionStatus === "connected_readonly" ||
+          bc.connectionStatus === "connected_live"),
+      activeRenewError:
+        bc.lastRenewError !== null &&
+        (bc.connectionStatus === "expired" || bc.connectionStatus === "connection_error")
+          ? bc.lastRenewError
+          : null,
       canRenew,
       renewalDecision: {
         shouldRenew: renewalDecision.shouldRenew,
@@ -152,7 +164,8 @@ export async function GET(_request: NextRequest) {
       reconnectShown: connections.filter((c) => c.dashboardReconnectShown).length,
       willRenewOnNextSync: connections.filter((c) => c.renewalDecision.shouldRenew).length,
       expired: connections.filter((c) => c.connectionStatus === "expired").length,
-      withRenewError: connections.filter((c) => c.lastRenewError !== null).length,
+      withActiveRenewError: connections.filter((c) => c.activeRenewError !== null).length,
+      withStaleRenewError: connections.filter((c) => c.renewErrorIsStale).length,
     },
   });
 }
