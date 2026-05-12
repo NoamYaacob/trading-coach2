@@ -60,6 +60,13 @@ describe("railway-cron-config/railway.json — cron service config", () => {
     );
   });
 
+  it("cron service startCommand guards against missing APP_URL and CRON_SECRET", () => {
+    assert.ok(
+      cronConfig.deploy?.startCommand?.includes("Missing APP_URL or CRON_SECRET"),
+      "startCommand must guard against missing env vars",
+    );
+  });
+
   it("cron service has cronSchedule */10 * * * *", () => {
     assert.equal(cronConfig.deploy?.cronSchedule, "*/10 * * * *");
   });
