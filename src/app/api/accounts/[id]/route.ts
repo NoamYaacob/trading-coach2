@@ -254,17 +254,22 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           try {
             const client = new TradovateClient(existing.id, currentUser.id);
             await client.initialize();
-            const result = await client.applyMaxPositionSize({
-              maxContracts: body.riskRules!.maxContracts ?? null,
-            });
+            const maxContracts = body.riskRules!.maxContracts ?? null;
+            const result = await client.applyMaxPositionSize({ maxContracts });
             console.info("[accounts/patch] broker max position size synced", {
               accountId: id,
+              externalAccountId: existing.externalAccountId,
+              maxContracts,
               action: result.action,
               endpoints: result.endpoints,
+              hardLimitAttached: result.riskParameterPayload !== null,
+              returnedLimitId:
+                (result.positionLimitResponse as { id?: unknown } | null)?.id ?? null,
             });
           } catch (err) {
             console.warn("[accounts/patch] broker max position size sync failed (non-fatal)", {
               accountId: id,
+              externalAccountId: existing.externalAccountId,
               error: err instanceof Error ? err.message : String(err),
             });
           }

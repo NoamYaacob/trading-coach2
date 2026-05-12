@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { promoteAccountPendingRules, type PromoterPrisma } from "@/lib/pending-rule-promoter";
+import { TradovateClient } from "@/lib/brokers/tradovate-client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,6 +24,39 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
   }
 
   const summary = await promoteAccountPendingRules(prisma as unknown as PromoterPrisma, id);
+
+  // After a successful promotion, fire-and-forget broker sync for the updated
+  // maxContracts value. A broker sync failure must NOT roll back the DB promotion —
+  // the Guardrail DB is authoritative and the user can retry via the account page.
+  if (summary.promotedAccountCount > 0 && existing.platform === "tradovate" && existing.externalAccountId) {
+    void (async () => {
+      try {
+        const rules = await prisma.accountRiskRules.findUnique({
+          where: { accountId: id },
+          select: { maxContracts: true },
+        });
+        const maxContracts = rules?.maxContracts ?? null;
+        const client = new TradovateClient(id, currentUser.id);
+        await client.initialize();
+        const result = await client.applyMaxPositionSize({ maxContracts });
+        console.info("[accounts/apply-pending] broker max position size synced", {
+          accountId: id,
+          externalAccountId: existing.externalAccountId,
+          maxContracts,
+          action: result.action,
+          endpoints: result.endpoints,
+          hardLimitAttached: result.riskParameterPayload !== null,
+          returnedLimitId: (result.positionLimitResponse as { id?: unknown } | null)?.id ?? null,
+        });
+      } catch (err) {
+        console.warn("[accounts/apply-pending] broker max position size sync failed (non-fatal)", {
+          accountId: id,
+          externalAccountId: existing.externalAccountId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+  }
 
   return NextResponse.json({
     promoted: summary.promotedAccountCount,

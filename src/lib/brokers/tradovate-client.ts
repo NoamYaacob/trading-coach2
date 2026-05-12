@@ -1882,6 +1882,28 @@ export class TradovateClient {
   }
 
   /**
+   * Fetch the UserAccountRiskParameter records linked to a position limit.
+   *
+   * Endpoint: GET userAccountRiskParameter/deps?masterid={positionLimitId}
+   *
+   * Used by the debug endpoint to check whether hardLimit=true is attached
+   * to an existing Guardrail position limit without triggering a write.
+   * skipMarkExpired=true: a 403 here means a scope gap, not a global auth failure.
+   */
+  async listUserAccountRiskParameters(
+    positionLimitId: number,
+  ): Promise<TvUserAccountRiskParameter[]> {
+    const raw = await this.#request<unknown>(
+      `userAccountRiskParameter/deps?masterid=${positionLimitId}`,
+      "GET",
+      undefined,
+      false,
+      /* skipMarkExpired */ true,
+    );
+    return parseSnapshotItems<TvUserAccountRiskParameter>(raw);
+  }
+
+  /**
    * Apply (or remove) a broker-side Max Position Size limit for this account.
    *
    * When maxContracts is a positive integer: creates or updates the
@@ -1923,6 +1945,8 @@ export class TradovateClient {
       if (!guardrailLimit?.id) {
         console.info("[tradovate/positionLimit] no Guardrail limit exists — nothing to deactivate", {
           accountId: this.#accountId,
+          brokerConnectionId: this.#brokerConnectionId,
+          externalAccountId: this.#tvAccountId,
         });
         return {
           action: "skipped",
@@ -1936,7 +1960,10 @@ export class TradovateClient {
       const payload = buildDeactivatePositionLimitPayload(guardrailLimit.id);
       console.info("[tradovate/positionLimit] deactivating Guardrail limit", {
         accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        externalAccountId: this.#tvAccountId,
         limitId: guardrailLimit.id,
+        endpoint: "userAccountPositionLimit/update",
       });
       const response = await this.#request<TvUserAccountPositionLimit>(
         "userAccountPositionLimit/update",
@@ -1945,6 +1972,11 @@ export class TradovateClient {
         false,
         /* skipMarkExpired */ true,
       );
+      console.info("[tradovate/positionLimit] deactivation complete", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        returnedId: (response as { id?: unknown } | null)?.id ?? null,
+      });
       return {
         action: "deactivated",
         endpoints: ["userAccountPositionLimit/update"],
@@ -1972,9 +2004,12 @@ export class TradovateClient {
 
     console.info("[tradovate/positionLimit] applying max position size", {
       accountId: this.#accountId,
-      tvAccountId: this.#tvAccountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      externalAccountId: this.#tvAccountId,
       maxContracts: params.maxContracts,
+      exposedLimit: params.maxContracts,
       action,
+      endpoint: limitEndpoint,
       existingLimitId: guardrailLimit?.id ?? null,
     });
 
@@ -2026,14 +2061,20 @@ export class TradovateClient {
         );
       }
 
+      const riskParamId = (riskParamResponse as { id?: unknown } | null)?.id ?? null;
       console.info("[tradovate/positionLimit] risk parameter applied", {
         accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
         limitId,
+        riskParamId,
         riskParamAction: existingParam?.id != null ? "updated" : "created",
+        hardLimit: true,
       });
     } else {
       console.warn("[tradovate/positionLimit] could not resolve limitId for risk parameter — skipping", {
         accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        externalAccountId: this.#tvAccountId,
         limitResponseKeys:
           limitResponse != null && typeof limitResponse === "object"
             ? Object.keys(limitResponse as object)
@@ -2044,8 +2085,11 @@ export class TradovateClient {
     const returnedLimitId = (limitResponse as { id?: unknown } | null)?.id ?? null;
     console.info("[tradovate/positionLimit] sync complete", {
       accountId: this.#accountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      externalAccountId: this.#tvAccountId,
       action,
       returnedLimitId,
+      maxContracts: params.maxContracts,
       hardLimitAttached: riskParamPayload !== null,
       endpoints,
     });
