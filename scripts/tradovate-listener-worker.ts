@@ -33,6 +33,7 @@ import WebSocket from "ws";
 import { prisma } from "../src/lib/db.ts";
 import { parseAndDecrypt } from "../src/lib/security/token-crypto.ts";
 import { ensureTradovateAccessToken } from "../src/lib/brokers/tradovate-ensure-token.ts";
+import { getTradovateConfig } from "../src/lib/brokers/tradovate-env.ts";
 import { TradovateListenerManager } from "../src/lib/brokers/tradovate-listener-manager.ts";
 import type {
   WebSocketLike,
@@ -190,6 +191,63 @@ function errMessage(err: unknown): string {
   return "unknown";
 }
 
+function parsePositiveInt(value: string | null): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Resolve the Tradovate-side userId required for `user/syncrequest`.
+ *
+ * 1. If the BrokerConnection already stored a valid numeric brokerUserId, use it.
+ * 2. Otherwise, call /account/list with the connection's access token. Each
+ *    TvAccount carries the Tradovate userId; persist the first one we see back
+ *    to BrokerConnection.brokerUserId so subsequent reconciles read it directly.
+ *
+ * Throws if no accounts are returned or the API call fails — the caller logs
+ * and continues to the next connection (no crash, no flatten).
+ */
+async function resolveTradovateUserId(
+  connectionId: string,
+  userId: string,
+  env: "live" | "demo",
+  brokerUserIdHint: string | null,
+): Promise<number> {
+  const cached = parsePositiveInt(brokerUserIdHint);
+  if (cached !== null) return cached;
+
+  const cfg = getTradovateConfig();
+  if (cfg.state !== "ready") {
+    throw new Error(`Tradovate config not ready: missing ${cfg.missing.join(", ")}`);
+  }
+  const apiBase = cfg.config.apiBaseUrl[env];
+
+  const accessToken = await getAccessTokenForConnection(connectionId, userId);
+  const res = await fetch(`${apiBase}/account/list`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`account/list returned ${res.status}`);
+  }
+  const accounts = (await res.json()) as Array<{ userId?: unknown }>;
+  const first = accounts.find((a) => typeof a.userId === "number" && Number.isFinite(a.userId) && a.userId > 0);
+  const resolved = first?.userId as number | undefined;
+  if (!resolved) {
+    throw new Error("account/list returned no accounts with a usable userId");
+  }
+
+  await prisma.brokerConnection.update({
+    where: { id: connectionId },
+    data: { brokerUserId: String(resolved) },
+  });
+  console.info("[listener-worker] backfilled brokerUserId from /account/list", {
+    connectionId,
+    env,
+  });
+  return resolved;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -221,6 +279,7 @@ async function reconcileListeners(): Promise<void> {
 
   let started = 0;
   let dedup = 0;
+  let resolveFailed = 0;
   for (let i = 0; i < plans.length; i++) {
     const plan = plans[i]!;
     if (manager.hasListener(plan.connectionId)) {
@@ -230,13 +289,32 @@ async function reconcileListeners(): Promise<void> {
     // Stagger to avoid a thundering-herd of socket opens on startup.
     if (i > 0) await sleep(STARTUP_STAGGER_MS);
 
+    let tradovateUserId: number;
+    try {
+      tradovateUserId = await resolveTradovateUserId(
+        plan.connectionId,
+        plan.userId,
+        plan.env,
+        plan.brokerUserIdHint,
+      );
+    } catch (err) {
+      console.error("[listener-worker] failed to resolve tradovateUserId", {
+        connectionId: plan.connectionId,
+        env: plan.env,
+        hadHint: plan.brokerUserIdHint !== null,
+        error: errMessage(err),
+      });
+      resolveFailed++;
+      continue;
+    }
+
     // Mark "connecting" before the socket opens so the dashboard reflects
     // intent immediately.
     await writeListenerStatus(plan.connectionId, "connecting");
 
     const wasStarted = await manager.startListener({
       connectionId: plan.connectionId,
-      tradovateUserId: plan.tradovateUserId,
+      tradovateUserId,
       env: plan.env,
       permissionLevel: plan.permissionLevel,
       getAccessToken: () => getAccessTokenForConnection(plan.connectionId, plan.userId),
@@ -262,6 +340,7 @@ async function reconcileListeners(): Promise<void> {
     started,
     dedup,
     skipped: skipped.length,
+    resolveFailed,
     active: manager.listenerCount,
   });
 }

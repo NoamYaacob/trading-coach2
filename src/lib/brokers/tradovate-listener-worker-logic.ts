@@ -30,7 +30,13 @@ export type BrokerConnectionRow = {
 export type ListenerStartupPlan = {
   connectionId: string;
   userId: string;
-  tradovateUserId: number;
+  /**
+   * Raw `BrokerConnection.brokerUserId` value when the row has one, else null.
+   * Resolution to a numeric Tradovate user id (used by `user/syncrequest`) is
+   * the worker's responsibility — if absent or unparseable, the worker will
+   * back-fill from `/account/list` and persist before starting the listener.
+   */
+  brokerUserIdHint: string | null;
   env: "live" | "demo";
   permissionLevel: "full_access" | "read_only" | null;
 };
@@ -41,8 +47,6 @@ export type SkipReason =
   | "unhealthy_status"
   | "renew_error"
   | "expired_token"
-  | "missing_broker_user_id"
-  | "invalid_broker_user_id"
   | "unsupported_env";
 
 /** Safe (non-secret) snapshot attached to each skipped entry for diagnostics. */
@@ -114,15 +118,6 @@ export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date
       skipped.push({ ...meta, reason: "expired_token" });
       continue;
     }
-    if (!row.brokerUserId) {
-      skipped.push({ ...meta, reason: "missing_broker_user_id" });
-      continue;
-    }
-    const tradovateUserId = Number(row.brokerUserId);
-    if (!Number.isFinite(tradovateUserId) || tradovateUserId <= 0) {
-      skipped.push({ ...meta, reason: "invalid_broker_user_id" });
-      continue;
-    }
     if (row.env !== "live" && row.env !== "demo") {
       skipped.push({ ...meta, reason: "unsupported_env" });
       continue;
@@ -132,10 +127,14 @@ export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date
         ? row.permissionLevel
         : null;
 
+    // brokerUserId is NOT a hard eligibility gate. It is required only when we
+    // send `user/syncrequest`, and the worker can back-fill it from
+    // `/account/list` (each TvAccount carries the Tradovate userId) before
+    // starting the listener. Pass through the raw value as a hint.
     start.push({
       connectionId: row.id,
       userId: row.userId,
-      tradovateUserId,
+      brokerUserIdHint: row.brokerUserId,
       env: row.env,
       permissionLevel,
     });

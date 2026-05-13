@@ -54,7 +54,7 @@ describe("planListenerStartups: healthy connections", () => {
     assert.equal(skipped.length, 0);
     assert.equal(start[0]!.connectionId, "conn-1");
     assert.equal(start[0]!.userId, "user-1");
-    assert.equal(start[0]!.tradovateUserId, 12345);
+    assert.equal(start[0]!.brokerUserIdHint, "12345");
     assert.equal(start[0]!.env, "demo");
     assert.equal(start[0]!.permissionLevel, "full_access");
   });
@@ -129,22 +129,25 @@ describe("planListenerStartups: invalid rows", () => {
     assert.equal(skipped[0]!.reason, "wrong_platform");
   });
 
-  it("skips rows with no brokerUserId", () => {
-    const { skipped } = planListenerStartups([makeRow({ brokerUserId: null })]);
-    assert.equal(skipped.length, 1);
-    assert.equal(skipped[0]!.reason, "missing_broker_user_id");
+  it("does NOT skip rows with a null brokerUserId (worker backfills from /account/list)", () => {
+    const { start, skipped } = planListenerStartups([makeRow({ brokerUserId: null })]);
+    assert.equal(start.length, 1, "missing brokerUserId is not a hard block");
+    assert.equal(skipped.length, 0);
+    assert.equal(start[0]!.brokerUserIdHint, null);
   });
 
-  it("skips rows with non-numeric brokerUserId", () => {
-    const { skipped } = planListenerStartups([makeRow({ brokerUserId: "not-a-number" })]);
-    assert.equal(skipped.length, 1);
-    assert.equal(skipped[0]!.reason, "invalid_broker_user_id");
+  it("passes through a non-numeric brokerUserId as a hint (worker will re-resolve)", () => {
+    const { start, skipped } = planListenerStartups([makeRow({ brokerUserId: "not-a-number" })]);
+    assert.equal(start.length, 1);
+    assert.equal(skipped.length, 0);
+    assert.equal(start[0]!.brokerUserIdHint, "not-a-number");
   });
 
-  it("skips rows with brokerUserId <= 0", () => {
-    const { skipped } = planListenerStartups([makeRow({ brokerUserId: "0" })]);
-    assert.equal(skipped.length, 1);
-    assert.equal(skipped[0]!.reason, "invalid_broker_user_id");
+  it("passes through brokerUserId '0' as a hint (worker treats it as unresolved)", () => {
+    const { start, skipped } = planListenerStartups([makeRow({ brokerUserId: "0" })]);
+    assert.equal(start.length, 1);
+    assert.equal(skipped.length, 0);
+    assert.equal(start[0]!.brokerUserIdHint, "0");
   });
 
   it("skips rows with unsupported env value", () => {
@@ -206,7 +209,9 @@ describe("planListenerStartups: token eligibility", () => {
   });
 
   it("diagnostic snapshot tokenExpired=false when tokenExpiresAt is null", () => {
-    const { skipped } = planListenerStartups([makeRow({ brokerUserId: null })]);
+    const { skipped } = planListenerStartups([
+      makeRow({ connectionStatus: "expired", tokenExpiresAt: null }),
+    ]);
     assert.equal(skipped[0]!.tokenExpired, false);
     assert.equal(skipped[0]!.tokenExpiresAtExists, false);
   });
@@ -220,13 +225,14 @@ describe("planListenerStartups: mixed batch", () => {
       makeRow({ id: "ok-1" }),
       makeRow({ id: "expired-1", connectionStatus: "expired" }),
       makeRow({ id: "ok-2", env: "live" }),
-      makeRow({ id: "no-user", brokerUserId: null, tokenExpiresAt: null }),
+      // brokerUserId: null is NOT a skip reason — worker will back-fill.
+      makeRow({ id: "no-user", brokerUserId: null }),
     ];
     const { start, skipped } = planListenerStartups(rows);
     const startIds = start.map((p) => p.connectionId).sort();
     const skippedIds = skipped.map((s) => s.connectionId).sort();
-    assert.deepEqual(startIds, ["ok-1", "ok-2"]);
-    assert.deepEqual(skippedIds, ["expired-1", "no-user"]);
+    assert.deepEqual(startIds, ["no-user", "ok-1", "ok-2"]);
+    assert.deepEqual(skippedIds, ["expired-1"]);
   });
 });
 
@@ -384,6 +390,36 @@ describe("listener worker source: dedup + shutdown", () => {
     assert.ok(
       WORKER_SRC.includes("RESCAN_INTERVAL_MS"),
       "worker must define a rescan interval constant",
+    );
+  });
+});
+
+describe("listener worker source: brokerUserId backfill", () => {
+  it("has a resolveTradovateUserId helper", () => {
+    assert.ok(
+      WORKER_SRC.includes("resolveTradovateUserId"),
+      "worker must have a resolver that handles missing brokerUserId",
+    );
+  });
+
+  it("calls /account/list to back-fill when brokerUserId is unknown", () => {
+    assert.ok(
+      WORKER_SRC.includes("/account/list"),
+      "worker must back-fill brokerUserId from /account/list",
+    );
+  });
+
+  it("persists the resolved brokerUserId to BrokerConnection", () => {
+    assert.ok(
+      /brokerUserId:\s*String\(/.test(WORKER_SRC),
+      "worker must persist the resolved tradovateUserId back to BrokerConnection.brokerUserId",
+    );
+  });
+
+  it("logs resolve failures without crashing the reconcile loop", () => {
+    assert.ok(
+      WORKER_SRC.includes("failed to resolve tradovateUserId"),
+      "worker must log when resolution fails so operators can see the cause",
     );
   });
 });
