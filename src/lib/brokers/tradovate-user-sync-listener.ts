@@ -301,8 +301,8 @@ export class TradovateUserSyncListener {
     }
   }
 
-  #handleMessage(raw: string): void {
-    const parsed = parseTradovateMessage(raw);
+  #handleMessage(item: unknown): void {
+    const parsed = parseTradovateMessage(item);
 
     if (parsed.kind === "response") {
       const { i: responseId, ...rest } = parsed.data;
@@ -311,19 +311,33 @@ export class TradovateUserSyncListener {
           this.#consecutiveAuthFailures = 0; // reset on success
           console.info("[TradovateUserSyncListener] authorize ok, sending user/syncrequest", {
             connectionId: this.#config.connectionId,
+            command: "authorize",
+            requestId: responseId,
+            status: parsed.data.s,
             phase: "auth_ok",
           });
           this.#setState("syncing");
           this.#pendingAuthId = null;
           const syncId = this.#nextRequestId();
           this.#pendingSyncId = syncId;
-          this.#ws?.send(encodeUserSyncRequest(syncId, this.#config.tradovateUserId));
+          const syncFrame = encodeUserSyncRequest(syncId, this.#config.tradovateUserId);
+          console.info("[TradovateUserSyncListener] sending user/syncrequest", {
+            connectionId: this.#config.connectionId,
+            command: "user/syncrequest",
+            requestId: syncId,
+            payloadLength: syncFrame.length,
+            phase: "user_sync_sent",
+          });
+          this.#ws?.send(syncFrame);
         } else {
-          // Only log the response status code (`s`), never the payload (`p`),
-          // which could in theory echo a sanitized form of the token.
+          // Log the status and any explicit `errorText` field from the payload.
+          // Never log the raw payload — it could echo other request context.
           console.warn("[TradovateUserSyncListener] authorization failed", {
             connectionId: this.#config.connectionId,
+            command: "authorize",
+            requestId: responseId,
             status: parsed.data.s,
+            errorText: extractErrorText(parsed.data.p),
             phase: "auth_failed",
           });
           this.#ws?.close();
@@ -341,7 +355,10 @@ export class TradovateUserSyncListener {
         } else {
           console.warn("[TradovateUserSyncListener] user/syncrequest failed", {
             connectionId: this.#config.connectionId,
+            command: "user/syncrequest",
+            requestId: responseId,
             status: parsed.data.s,
+            errorText: extractErrorText(parsed.data.p),
             phase: "sync_failed",
           });
           this.#ws?.close();
@@ -416,12 +433,19 @@ export class TradovateUserSyncListener {
     this.#setState("authorizing");
     const authId = this.#nextRequestId();
     this.#pendingAuthId = authId;
+    const frame = encodeAuthorizeMessage(authId, token);
     console.info("[TradovateUserSyncListener] sending authorize", {
       connectionId: this.#config.connectionId,
       env: this.#config.env,
+      command: "authorize",
+      requestId: authId,
+      // Log only the frame length, never the token. A correctly formatted
+      // authorize frame is roughly: "authorize\n<id>\n\n\"<token>\"" — the
+      // surrounding JSON quotes around the token are mandatory.
+      payloadLength: frame.length,
       phase: "auth_sent",
     });
-    this.#ws?.send(encodeAuthorizeMessage(authId, token));
+    this.#ws?.send(frame);
   }
 
   // ── Private: state machine ────────────────────────────────────────────────
@@ -435,4 +459,19 @@ export class TradovateUserSyncListener {
   #nextRequestId(): number {
     return this.#requestIdCounter++;
   }
+}
+
+/**
+ * Pull a safe-to-log error string out of a Tradovate response payload, if
+ * the server returned one. Whitelists known fields (`errorText`, `message`)
+ * to avoid accidentally logging other payload contents.
+ */
+function extractErrorText(p: unknown): string | null {
+  if (typeof p === "string") return p;
+  if (p && typeof p === "object") {
+    const rec = p as Record<string, unknown>;
+    if (typeof rec.errorText === "string") return rec.errorText;
+    if (typeof rec.message === "string") return rec.message;
+  }
+  return null;
 }

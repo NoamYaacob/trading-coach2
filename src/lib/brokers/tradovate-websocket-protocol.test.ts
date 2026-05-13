@@ -55,13 +55,27 @@ describe("parseSockJSFrame: close frame", () => {
 });
 
 describe("parseSockJSFrame: data frame", () => {
-  it("extracts array of message strings", () => {
-    const msg = JSON.stringify({ i: 1, s: 200, p: { token: "tok" } });
-    const frame = parseSockJSFrame(`a[${JSON.stringify(msg)}]`);
+  it("extracts array of already-parsed message objects (Tradovate wire format)", () => {
+    // Tradovate sends `a[{...}]` — the inner element is an object, not a string.
+    const raw = `a[${JSON.stringify({ i: 1, s: 200, p: { ok: true } })}]`;
+    const frame = parseSockJSFrame(raw);
     assert.equal(frame.type, "data");
     if (frame.type !== "data") throw new Error("wrong type");
     assert.equal(frame.messages.length, 1);
-    assert.ok(frame.messages[0]?.includes('"s":200'));
+    const m = frame.messages[0] as { s: number; i: number };
+    assert.equal(m.s, 200);
+    assert.equal(m.i, 1);
+  });
+
+  it("also accepts standard-SockJS array-of-strings encoding", () => {
+    // Defensive: if anyone ships a fixture / proxy that wraps each message in
+    // a JSON string, we still get an object out.
+    const inner = JSON.stringify({ i: 1, s: 200, p: {} });
+    const frame = parseSockJSFrame(`a[${JSON.stringify(inner)}]`);
+    assert.equal(frame.type, "data");
+    if (frame.type !== "data") throw new Error();
+    const m = frame.messages[0] as { s: number };
+    assert.equal(m.s, 200);
   });
 
   it("returns empty messages on malformed data frame", () => {
@@ -72,9 +86,7 @@ describe("parseSockJSFrame: data frame", () => {
   });
 
   it("handles multiple messages in one data frame", () => {
-    const m1 = JSON.stringify({ i: 1, s: 200, p: null });
-    const m2 = JSON.stringify({ e: "props", d: {} });
-    const raw = `a[${JSON.stringify(m1)},${JSON.stringify(m2)}]`;
+    const raw = `a[${JSON.stringify({ i: 1, s: 200, p: null })},${JSON.stringify({ e: "props", d: {} })}]`;
     const frame = parseSockJSFrame(raw);
     assert.equal(frame.type, "data");
     if (frame.type !== "data") throw new Error("wrong type");
@@ -85,12 +97,18 @@ describe("parseSockJSFrame: data frame", () => {
 // ── Message encoding ─────────────────────────────────────────────────────────
 
 describe("encodeTradovateMessage", () => {
-  it("produces endpoint\\nid\\nquery\\nbody format", () => {
-    const msg = encodeTradovateMessage({ endpoint: "user/syncrequest", id: 2, body: '{"users":[1]}' });
+  it("produces endpoint\\nid\\nquery\\nJSON.stringify(body) format (official wire)", () => {
+    // Matches tradovate/example-api-js TradovateSocket.send:
+    //   `${url}\n${id}\n${query || ''}\n${JSON.stringify(body)}`
+    const msg = encodeTradovateMessage({
+      endpoint: "user/syncrequest",
+      id: 2,
+      body: { users: [1] },
+    });
     const parts = msg.split("\n");
     assert.equal(parts[0], "user/syncrequest");
     assert.equal(parts[1], "2");
-    assert.equal(parts[2], "");  // empty query
+    assert.equal(parts[2], "");
     assert.equal(parts[3], '{"users":[1]}');
   });
 
@@ -99,20 +117,35 @@ describe("encodeTradovateMessage", () => {
     const parts = msg.split("\n");
     assert.equal(parts[2], "");
   });
+
+  it("omits the body when none is provided", () => {
+    const msg = encodeTradovateMessage({ endpoint: "ping", id: 1 });
+    assert.equal(msg, "ping\n1\n\n");
+  });
 });
 
 describe("encodeAuthorizeMessage", () => {
-  it("uses 'authorize' endpoint with the token as body", () => {
+  it("wraps the access token in JSON quotes (matches official SDK)", () => {
+    // Reference: tradovate/example-api-js TradovateSocket.send does
+    //   `${url}\n${id}\n\n${JSON.stringify(body)}` with body = token.
+    // For a string body that produces `"<token>"` — the quotes are required.
     const msg = encodeAuthorizeMessage(1, "my_access_token");
     const parts = msg.split("\n");
     assert.equal(parts[0], "authorize");
     assert.equal(parts[1], "1");
-    assert.equal(parts[3], "my_access_token");
+    assert.equal(parts[3], '"my_access_token"');
   });
 
-  it("does not include 'Bearer' prefix (token is sent raw)", () => {
+  it("matches the exact bytes the official SDK would produce", () => {
+    const token = "eyJhbGciOiJIUzI1NiJ9.payload.sig";
+    const ours = encodeAuthorizeMessage(0, token);
+    const official = `authorize\n0\n\n${JSON.stringify(token)}`;
+    assert.equal(ours, official);
+  });
+
+  it("does not include 'Bearer' prefix (token is sent raw inside JSON quotes)", () => {
     const msg = encodeAuthorizeMessage(1, "secret_token");
-    assert.ok(!msg.includes("Bearer"), "token must be sent raw, not as Bearer header");
+    assert.ok(!msg.includes("Bearer"), "token must not be wrapped as Bearer header");
   });
 });
 
@@ -124,6 +157,12 @@ describe("encodeUserSyncRequest", () => {
     assert.equal(parts[1], "2");
     const body = JSON.parse(parts[3]!) as { users: number[] };
     assert.deepEqual(body.users, [42]);
+  });
+
+  it("matches the exact bytes the official SDK would produce", () => {
+    const ours = encodeUserSyncRequest(5, 12345);
+    const official = `user/syncrequest\n5\n\n${JSON.stringify({ users: [12345] })}`;
+    assert.equal(ours, official);
   });
 });
 

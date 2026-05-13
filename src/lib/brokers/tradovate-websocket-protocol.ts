@@ -35,16 +35,22 @@ export type SockJSFrame =
   | { type: "open" }
   | { type: "heartbeat" }
   | { type: "close"; code: number; reason: string }
-  | { type: "data"; messages: string[] };
+  | { type: "data"; messages: unknown[] };
 
 /**
  * Parse a raw SockJS frame string into a typed structure.
  *
- * SockJS frame syntax:
+ * Frame syntax used by Tradovate (compatible with SockJS framing letters):
  *   "o"          → open
  *   "h"          → heartbeat (keep-alive)
  *   "c[code,msg]"→ close (server-initiated)
- *   "a[...]"     → data (JSON array of message strings)
+ *   "a[...]"     → data (JSON array)
+ *
+ * Tradovate's `a` frame contains an array of message **objects** directly
+ * (see prepareMessage in tradovate/example-api-js), e.g.
+ *   a[{"i":1,"s":200,"p":{}}]
+ * Standard SockJS encodes each message as a JSON string instead, so we
+ * tolerate both: if an element is a string it is re-parsed.
  */
 export function parseSockJSFrame(raw: string): SockJSFrame {
   if (raw === "o") return { type: "open" };
@@ -59,8 +65,12 @@ export function parseSockJSFrame(raw: string): SockJSFrame {
   }
   if (raw.startsWith("a")) {
     try {
-      const messages = JSON.parse(raw.slice(1)) as string[];
-      return { type: "data", messages: Array.isArray(messages) ? messages : [] };
+      const parsed = JSON.parse(raw.slice(1)) as unknown;
+      if (!Array.isArray(parsed)) return { type: "data", messages: [] };
+      const messages = parsed.map((m) =>
+        typeof m === "string" ? safeJsonParse(m) : m,
+      );
+      return { type: "data", messages };
     } catch {
       return { type: "data", messages: [] };
     }
@@ -68,29 +78,44 @@ export function parseSockJSFrame(raw: string): SockJSFrame {
   return { type: "data", messages: [] };
 }
 
+function safeJsonParse(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
 // ── Tradovate message encoding ───────────────────────────────────────────────
 
 /**
  * Encode a Tradovate WebSocket request message.
  *
- * Wire format: "<endpoint>\n<id>\n<query>\n<body>"
+ * Wire format (matches tradovate/example-api-js TradovateSocket.send):
+ *   `${url}\n${id}\n${query || ''}\n${JSON.stringify(body)}`
+ *
  * - endpoint: e.g. "authorize", "user/syncrequest"
  * - id:       monotonically increasing request ID (correlates responses)
  * - query:    URL query string (empty string for most requests)
- * - body:     JSON string payload (empty string when no body)
+ * - body:     any JSON-serialisable value. The helper applies JSON.stringify
+ *             so callers pass raw objects / strings — exactly like the
+ *             official SDK. For authorize, `body` is the token string and
+ *             JSON.stringify wraps it in quotes: `"eyJ..."`. This is the
+ *             format Tradovate expects; sending the raw token unquoted
+ *             causes the server to close with code 1000 reason "Bye".
  */
 export function encodeTradovateMessage(params: {
   endpoint: string;
   id: number;
   query?: string;
-  body?: string;
+  body?: unknown;
 }): string {
   const query = params.query ?? "";
-  const body = params.body ?? "";
+  const body = params.body === undefined ? "" : JSON.stringify(params.body);
   return `${params.endpoint}\n${params.id}\n${query}\n${body}`;
 }
 
-/** Encode an authorization request. Called immediately after "o" (open). */
+/** Encode an authorization request. Called after the SockJS "o" frame. */
 export function encodeAuthorizeMessage(id: number, accessToken: string): string {
   return encodeTradovateMessage({ endpoint: "authorize", id, body: accessToken });
 }
@@ -100,7 +125,7 @@ export function encodeUserSyncRequest(id: number, tradovateUserId: number): stri
   return encodeTradovateMessage({
     endpoint: "user/syncrequest",
     id,
-    body: JSON.stringify({ users: [tradovateUserId] }),
+    body: { users: [tradovateUserId] },
   });
 }
 
@@ -119,15 +144,23 @@ export type TradovateEvent = {
   d: unknown;  // event data
 };
 
-/** Parse one message string from the SockJS data frame. */
+/**
+ * Classify one message extracted from a SockJS data frame.
+ *
+ * Tradovate's data frame contains parsed objects directly (see
+ * `parseSockJSFrame`), so the input here is `unknown`. A string is tolerated
+ * for legacy / standard-SockJS callers — it is re-parsed before classification.
+ */
 export function parseTradovateMessage(
-  raw: string,
+  item: unknown,
 ): { kind: "response"; data: TradovateResponse } | { kind: "event"; data: TradovateEvent } | { kind: "unknown" } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { kind: "unknown" };
+  let parsed: unknown = item;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return { kind: "unknown" };
+    }
   }
   if (typeof parsed !== "object" || parsed === null) return { kind: "unknown" };
 

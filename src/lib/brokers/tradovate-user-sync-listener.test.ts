@@ -477,11 +477,18 @@ describe("TradovateUserSyncListener source: no token logging", () => {
   });
 
   it("source logs safe phase markers for the handshake", () => {
-    for (const phase of ["socket_open", "auth_sent", "auth_ok", "auth_failed"]) {
+    for (const phase of ["socket_open", "auth_sent", "auth_ok", "auth_failed", "user_sync_sent"]) {
       assert.ok(
         LISTENER_SRC.includes(phase),
         `expected handshake phase log marker: ${phase}`,
       );
     }
+  });
+
+  it("source logs payloadLength (frame size) for diagnostics", () => {
+    assert.ok(
+      LISTENER_SRC.includes("payloadLength"),
+      "must log frame size so operators can verify the auth frame was actually sent",
+    );
   });
 });
