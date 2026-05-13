@@ -41,6 +41,7 @@ function makeRow(overrides: Partial<BrokerConnectionRow> = {}): BrokerConnection
     permissionLevel: "full_access",
     tokenExpiresAt: null,
     lastRenewError: null,
+    listenerStatus: null,
     ...overrides,
   };
 }
@@ -154,6 +155,26 @@ describe("planListenerStartups: invalid rows", () => {
     const { skipped } = planListenerStartups([makeRow({ env: "test" })]);
     assert.equal(skipped.length, 1);
     assert.equal(skipped[0]!.reason, "unsupported_env");
+  });
+});
+
+// ── Persisted terminal-error state ───────────────────────────────────────────
+
+describe("planListenerStartups: listenerStatus='error'", () => {
+  it("skips rows where a previous reconcile marked the listener as 'error'", () => {
+    const { start, skipped } = planListenerStartups([
+      makeRow({ listenerStatus: "error" }),
+    ]);
+    assert.equal(start.length, 0, "must not retry after a terminal auth failure");
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "listener_error");
+  });
+
+  it("still starts when listenerStatus is null / connected / reconnecting", () => {
+    for (const ls of [null, "connected", "reconnecting", "closed"]) {
+      const { start } = planListenerStartups([makeRow({ listenerStatus: ls })]);
+      assert.equal(start.length, 1, `listenerStatus=${ls} must not block startup`);
+    }
   });
 });
 

@@ -168,6 +168,7 @@ describe("TradovateListenerManager: event routing", () => {
     // Trigger a position props event via the mock WS
     const ws = lastWs()!;
     ws.onopen?.(null);
+    ws.onmessage?.({ data: "o" }); // SockJS open → triggers authorize
     const authResp = `a[${JSON.stringify(JSON.stringify({ i: 1, s: 200, p: {} }))}]`;
     ws.onmessage?.({ data: authResp });
     const syncResp = `a[${JSON.stringify(JSON.stringify({ i: 2, s: 200, p: {} }))}]`;
@@ -198,6 +199,7 @@ describe("TradovateListenerManager: event routing", () => {
 
     const ws = lastWs()!;
     ws.onopen?.(null);
+    ws.onmessage?.({ data: "o" }); // SockJS open → triggers authorize
     // Drive through to authorizing → syncing → ready
     const authResp = `a[${JSON.stringify(JSON.stringify({ i: 1, s: 200, p: {} }))}]`;
     ws.onmessage?.({ data: authResp });

@@ -55,6 +55,8 @@ export type ManagedListenerConfig = {
   onHeartbeat?: (connectionId: string, at: Date) => void;
   /** Callback when listener state transitions — for DB listenerStatus update. */
   onStateChange?: (connectionId: string, state: ListenerState) => void;
+  /** Callback when listener gives up (e.g. repeated auth failures). */
+  onTerminalError?: (connectionId: string, reason: string) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -104,6 +106,16 @@ export class TradovateListenerManager {
           state,
         });
         config.onStateChange?.(config.connectionId, state);
+      },
+      onTerminalError: (reason) => {
+        console.warn("[TradovateListenerManager] listener terminal error", {
+          connectionId: config.connectionId,
+          reason,
+        });
+        // Drop from the managed set so a future reconcile can retry only after
+        // operator action clears listenerErrorMessage.
+        this.#listeners.delete(config.connectionId);
+        config.onTerminalError?.(config.connectionId, reason);
       },
     });
 

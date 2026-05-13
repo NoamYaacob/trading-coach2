@@ -99,13 +99,16 @@ function makeListener(overrides?: Partial<TradovateUserSyncListenerConfig>) {
   return { listener, states, positionEvents, propsEvents, getWs: () => ws };
 }
 
-// Complete the connect sequence: open → auth response → sync response
+// Complete the connect sequence: open → SockJS "o" → auth → sync
+// The SockJS "o" frame is what gates the authorize message — Tradovate
+// closes the socket if authorize is sent before "o" arrives.
 function completeConnect(
   ws: MockWebSocket,
   authId = 1,
   syncId = 2,
 ): void {
-  ws.triggerOpen();           // → sends authorize
+  ws.triggerOpen();           // TCP/TLS open, nothing sent yet
+  ws.triggerMessage("o");     // SockJS open frame → sends authorize
   ws.triggerMessage(makeAuthResponse(authId)); // → sends syncrequest
   ws.triggerMessage(makeSyncResponse(syncId)); // → state: ready
 }
@@ -164,22 +167,34 @@ describe("TradovateUserSyncListener: state transitions", () => {
 // ── Authorization ────────────────────────────────────────────────────────────
 
 describe("TradovateUserSyncListener: authorization", () => {
-  it("sends authorize message on open", async () => {
+  it("does NOT send authorize on raw socket open (waits for SockJS 'o')", async () => {
     const { listener, getWs } = makeListener();
     await listener.start();
     const ws = getWs()!;
     ws.triggerOpen();
+    assert.equal(ws.sent.length, 0, "must wait for the SockJS 'o' frame before sending authorize");
+    listener.close();
+  });
 
-    assert.equal(ws.sent.length, 1);
+  it("sends authorize message after SockJS 'o' frame", async () => {
+    const { listener, getWs } = makeListener();
+    await listener.start();
+    const ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o"); // SockJS open frame
+
+    assert.equal(ws.sent.length, 1, "authorize must be sent after 'o' arrives");
     const parts = ws.sent[0]!.split("\n");
     assert.equal(parts[0], "authorize");
+    listener.close();
   });
 
   it("sends user/syncrequest after successful auth", async () => {
     const { listener, getWs } = makeListener();
     await listener.start();
     const ws = getWs()!;
-    ws.triggerOpen();           // → authorize sent (id=1)
+    ws.triggerOpen();
+    ws.triggerMessage("o");     // SockJS open → sends authorize (id=1)
     ws.triggerMessage(makeAuthResponse(1));
 
     assert.equal(ws.sent.length, 2);
@@ -196,6 +211,7 @@ describe("TradovateUserSyncListener: authorization", () => {
     await listener.start();
     const ws = getWs()!;
     ws.triggerOpen();
+    ws.triggerMessage("o");
     ws.triggerMessage(makeAuthResponse(1, false)); // 401
 
     assert.equal(ws.sent.length, 1, "must not send syncrequest after auth failure");
@@ -213,6 +229,64 @@ describe("TradovateUserSyncListener: authorization", () => {
     // The actual no-logging check is done in the source-scan test below.
     listener.close();
     assert.ok(true, "listener started and closed without error");
+  });
+
+  it("emits onTerminalError after N consecutive close-during-auth events", async () => {
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      maxAuthFailures: 2,
+      onTerminalError: (reason) => terminalReasons.push(reason),
+    });
+    await listener.start();
+
+    // First auth attempt closes mid-authorizing
+    let ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");          // sends authorize
+    ws.triggerClose(1000, "Bye");    // close-during-auth #1
+
+    // Reconnect timer fires → second attempt
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerClose(1000, "Bye");    // close-during-auth #2 → terminal
+
+    assert.equal(terminalReasons.length, 1, "onTerminalError fires once after the limit");
+    assert.ok(terminalReasons[0]!.includes("auth failed 2x"), terminalReasons[0]);
+    assert.ok(terminalReasons[0]!.includes("Bye"), "reason must surface the close text");
+    listener.close();
+  });
+
+  it("a successful auth resets the consecutive-failure counter", async () => {
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      maxAuthFailures: 2,
+      onTerminalError: (reason) => terminalReasons.push(reason),
+    });
+    await listener.start();
+
+    // First attempt: close-during-auth #1
+    let ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerClose(1000, "Bye");
+
+    // Reconnect → succeed → close from a healthy state
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    completeConnect(ws);
+    ws.triggerClose(1006, "abnormal"); // not during auth
+
+    // Reconnect → another close-during-auth — but counter was reset
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerClose(1000, "Bye");
+
+    assert.equal(terminalReasons.length, 0, "single failure after success must not terminate");
+    listener.close();
   });
 });
 
@@ -273,6 +347,7 @@ describe("TradovateUserSyncListener: props event dispatch", () => {
     await listener.start();
     const ws = getWs()!;
     ws.triggerOpen();
+    ws.triggerMessage("o");
     ws.triggerMessage(makeAuthResponse(1));
     // Before syncrequest response arrives, send a position event
     ws.triggerMessage(makePropsFrame("Position"));
@@ -368,6 +443,45 @@ describe("TradovateUserSyncListener source: no token logging", () => {
   it("source implements four lifecycle states: connecting, authorizing, syncing, ready", () => {
     for (const state of ["connecting", "authorizing", "syncing", "ready"]) {
       assert.ok(LISTENER_SRC.includes(`"${state}"`), `must include state "${state}"`);
+    }
+  });
+
+  it("source sends authorize only inside the SockJS 'o' frame handler, not in ws.onopen", () => {
+    // Locate the ws.onopen handler body and assert it does NOT call encodeAuthorizeMessage.
+    const onopenMatch = LISTENER_SRC.match(/ws\.onopen\s*=\s*\(\)\s*=>\s*\{[\s\S]*?\n\s*\};/);
+    assert.ok(onopenMatch, "must define a ws.onopen handler");
+    assert.ok(
+      !onopenMatch![0]!.includes("encodeAuthorizeMessage"),
+      "ws.onopen must NOT send authorize directly — wait for SockJS 'o' frame",
+    );
+    // And the o-frame case must call the send helper.
+    assert.ok(
+      /case "open":[\s\S]*?sendAuthorize/.test(LISTENER_SRC),
+      "SockJS 'open' frame case must invoke #sendAuthorize",
+    );
+  });
+
+  it("source has consecutive-auth-failure backoff with onTerminalError", () => {
+    assert.ok(
+      LISTENER_SRC.includes("consecutiveAuthFailures"),
+      "must track consecutive auth failures",
+    );
+    assert.ok(
+      LISTENER_SRC.includes("onTerminalError"),
+      "must expose onTerminalError callback",
+    );
+    assert.ok(
+      LISTENER_SRC.includes("maxAuthFailures"),
+      "must expose maxAuthFailures config",
+    );
+  });
+
+  it("source logs safe phase markers for the handshake", () => {
+    for (const phase of ["socket_open", "auth_sent", "auth_ok", "auth_failed"]) {
+      assert.ok(
+        LISTENER_SRC.includes(phase),
+        `expected handshake phase log marker: ${phase}`,
+      );
     }
   });
 });

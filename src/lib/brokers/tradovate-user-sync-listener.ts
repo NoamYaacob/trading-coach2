@@ -92,6 +92,18 @@ export type TradovateUserSyncListenerConfig = {
   /** Called when the listener receives a heartbeat from the server. */
   onHeartbeat?: (at: Date) => void;
   /**
+   * Called once when the listener gives up (e.g. after N consecutive
+   * close-during-auth events). After this fires, the listener is closed and
+   * will not reconnect. The reason string is safe to surface to operators
+   * but never contains the access token.
+   */
+  onTerminalError?: (reason: string) => void;
+  /**
+   * Number of consecutive close-during-auth events before the listener
+   * stops reconnecting and emits onTerminalError. Default: 3.
+   */
+  maxAuthFailures?: number;
+  /**
    * Max reconnect delay in ms. Actual delay is capped to this value.
    * Default: 30_000 ms (30 s).
    */
@@ -117,6 +129,11 @@ export class TradovateUserSyncListener {
   #lastHeartbeatAt: Date | null = null;
   #lastEventAt: Date | null = null;
   #closed = false;
+  /** Held only between #connect() and the SockJS "o" frame. Cleared right
+   *  after the authorize message is sent. NEVER logged. */
+  #pendingAccessToken: string | null = null;
+  /** Consecutive close-during-auth events. Reset on auth success. */
+  #consecutiveAuthFailures = 0;
 
   constructor(config: TradovateUserSyncListenerConfig) {
     this.#config = config;
@@ -177,16 +194,23 @@ export class TradovateUserSyncListener {
       return;
     }
 
+    // Park the token on the instance so the SockJS "o" frame handler can
+    // send it. Tradovate's protocol requires waiting for "o" before sending
+    // authorize — sending on ws.onopen (TCP/TLS open) gets the socket closed
+    // with code 1000 reason "Bye". The token is cleared the moment authorize
+    // is sent and is NEVER logged.
+    this.#pendingAccessToken = accessToken;
+
     const ws = this.#config.wsFactory(url);
     this.#ws = ws;
 
     ws.onopen = () => {
       if (this.#ws !== ws) return; // stale
-      this.#setState("authorizing");
-      const authId = this.#nextRequestId();
-      this.#pendingAuthId = authId;
-      // Token is used once for the wire message and then discarded.
-      ws.send(encodeAuthorizeMessage(authId, accessToken));
+      console.info("[TradovateUserSyncListener] socket open, waiting for SockJS 'o' frame", {
+        connectionId: this.#config.connectionId,
+        env: this.#config.env,
+        phase: "socket_open",
+      });
     };
 
     ws.onmessage = (event) => {
@@ -206,15 +230,45 @@ export class TradovateUserSyncListener {
     ws.onclose = (event) => {
       if (this.#ws !== ws) return;
       this.#ws = null;
+      // Always discard any pending token on close.
+      this.#pendingAccessToken = null;
       if (this.#closed) {
         this.#setState("closed");
         return;
       }
+
+      // Close-during-auth = either the SockJS handshake never produced "o",
+      // or Tradovate rejected the authorize message. Count these so we can
+      // stop a noisy retry loop on a bad/revoked token.
+      const closedDuringAuth =
+        this.#state === "connecting" || this.#state === "authorizing";
+      if (closedDuringAuth) {
+        this.#consecutiveAuthFailures++;
+        const limit = this.#config.maxAuthFailures ?? 3;
+        if (this.#consecutiveAuthFailures >= limit) {
+          const reason = `auth failed ${this.#consecutiveAuthFailures}x — last close code=${event.code} reason=${event.reason || "(none)"}`;
+          console.warn("[TradovateUserSyncListener] giving up after consecutive auth failures", {
+            connectionId: this.#config.connectionId,
+            attempts: this.#consecutiveAuthFailures,
+            lastCloseCode: event.code,
+            lastCloseReason: event.reason,
+            phase: "auth_terminal",
+          });
+          this.#closed = true;
+          this.#clearReconnectTimer();
+          this.#setState("closed");
+          this.#config.onTerminalError?.(reason);
+          return;
+        }
+      }
+
       console.info("[TradovateUserSyncListener] connection closed, scheduling reconnect", {
         connectionId: this.#config.connectionId,
         code: event.code,
         reason: event.reason,
         reconnectAttempt: this.#reconnectAttempt,
+        consecutiveAuthFailures: this.#consecutiveAuthFailures,
+        phase: "closed",
       });
       this.#scheduleReconnect();
     };
@@ -227,7 +281,7 @@ export class TradovateUserSyncListener {
 
     switch (frame.type) {
       case "open":
-        // Already handled onopen callback above; SockJS sends "o" as the first frame.
+        this.#sendAuthorize();
         break;
 
       case "heartbeat":
@@ -254,21 +308,33 @@ export class TradovateUserSyncListener {
       const { i: responseId, ...rest } = parsed.data;
       if (responseId === this.#pendingAuthId) {
         if (isSuccessResponse(parsed.data)) {
+          this.#consecutiveAuthFailures = 0; // reset on success
+          console.info("[TradovateUserSyncListener] authorize ok, sending user/syncrequest", {
+            connectionId: this.#config.connectionId,
+            phase: "auth_ok",
+          });
           this.#setState("syncing");
           this.#pendingAuthId = null;
           const syncId = this.#nextRequestId();
           this.#pendingSyncId = syncId;
           this.#ws?.send(encodeUserSyncRequest(syncId, this.#config.tradovateUserId));
         } else {
+          // Only log the response status code (`s`), never the payload (`p`),
+          // which could in theory echo a sanitized form of the token.
           console.warn("[TradovateUserSyncListener] authorization failed", {
             connectionId: this.#config.connectionId,
             status: parsed.data.s,
+            phase: "auth_failed",
           });
           this.#ws?.close();
         }
         void rest; // suppress unused variable lint
       } else if (responseId === this.#pendingSyncId) {
         if (isSuccessResponse(parsed.data)) {
+          console.info("[TradovateUserSyncListener] user/syncrequest ok, listener is ready", {
+            connectionId: this.#config.connectionId,
+            phase: "ready",
+          });
           this.#setState("ready");
           this.#pendingSyncId = null;
           this.#reconnectAttempt = 0; // successful connection — reset backoff
@@ -276,6 +342,7 @@ export class TradovateUserSyncListener {
           console.warn("[TradovateUserSyncListener] user/syncrequest failed", {
             connectionId: this.#config.connectionId,
             status: parsed.data.s,
+            phase: "sync_failed",
           });
           this.#ws?.close();
         }
@@ -323,6 +390,38 @@ export class TradovateUserSyncListener {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
     }
+  }
+
+  // ── Private: authorize ─────────────────────────────────────────────────────
+
+  /**
+   * Send the Tradovate `authorize` request. MUST be called only after the
+   * SockJS "o" frame is received — sending earlier causes the server to drop
+   * the connection with code 1000 reason "Bye". The token is read from
+   * #pendingAccessToken, used once for the wire message, then immediately
+   * cleared and never logged.
+   */
+  #sendAuthorize(): void {
+    const token = this.#pendingAccessToken;
+    if (!token) {
+      console.warn("[TradovateUserSyncListener] SockJS 'o' frame arrived with no pending token", {
+        connectionId: this.#config.connectionId,
+        phase: "sockjs_open_no_token",
+      });
+      return;
+    }
+    // Drop the token immediately so a stray log call cannot reach it.
+    this.#pendingAccessToken = null;
+
+    this.#setState("authorizing");
+    const authId = this.#nextRequestId();
+    this.#pendingAuthId = authId;
+    console.info("[TradovateUserSyncListener] sending authorize", {
+      connectionId: this.#config.connectionId,
+      env: this.#config.env,
+      phase: "auth_sent",
+    });
+    this.#ws?.send(encodeAuthorizeMessage(authId, token));
   }
 
   // ── Private: state machine ────────────────────────────────────────────────

@@ -24,6 +24,12 @@ export type BrokerConnectionRow = {
   permissionLevel: string | null;
   tokenExpiresAt: Date | null;
   lastRenewError: string | null;
+  /**
+   * Persisted listener status from a previous reconcile. When set to "error"
+   * the listener gave up after repeated auth failures and must not be retried
+   * until an operator clears the value (e.g. by re-running OAuth).
+   */
+  listenerStatus: string | null;
 };
 
 /** Per-connection startup plan the worker will hand to the listener manager. */
@@ -47,7 +53,8 @@ export type SkipReason =
   | "unhealthy_status"
   | "renew_error"
   | "expired_token"
-  | "unsupported_env";
+  | "unsupported_env"
+  | "listener_error";
 
 /** Safe (non-secret) snapshot attached to each skipped entry for diagnostics. */
 export type SkipDiagnostic = {
@@ -120,6 +127,12 @@ export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date
     }
     if (row.env !== "live" && row.env !== "demo") {
       skipped.push({ ...meta, reason: "unsupported_env" });
+      continue;
+    }
+    // A previous reconcile already gave up on this listener after repeated
+    // auth failures. Refuse to retry until an operator clears the state.
+    if (row.listenerStatus === "error") {
+      skipped.push({ ...meta, reason: "listener_error" });
       continue;
     }
     const permissionLevel =

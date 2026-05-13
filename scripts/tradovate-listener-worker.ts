@@ -107,6 +107,7 @@ async function loadHealthyConnectionRows(): Promise<BrokerConnectionRow[]> {
       permissionLevel: true,
       tokenExpiresAt: true,
       lastRenewError: true,
+      listenerStatus: true,
     },
   });
 }
@@ -180,6 +181,20 @@ async function writeListenerHeartbeat(connectionId: string, at: Date): Promise<v
     });
   } catch (err) {
     console.error("[listener-worker] failed to persist heartbeat", {
+      connectionId,
+      error: errMessage(err),
+    });
+  }
+}
+
+async function writeListenerTerminalError(connectionId: string, reason: string): Promise<void> {
+  try {
+    await prisma.brokerConnection.update({
+      where: { id: connectionId },
+      data: { listenerStatus: "error", listenerErrorMessage: reason },
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist terminal error", {
       connectionId,
       error: errMessage(err),
     });
@@ -326,8 +341,15 @@ async function reconcileListeners(): Promise<void> {
       onHeartbeat: (connectionId, at) => {
         void writeListenerHeartbeat(connectionId, at);
       },
+
       onStateChange: (connectionId, state) => {
         void writeListenerStatus(connectionId, state);
+      },
+      onTerminalError: (connectionId, reason) => {
+        console.warn("[listener-worker] listener gave up — will not reconnect until repaired", {
+          connectionId,
+        });
+        void writeListenerTerminalError(connectionId, reason);
       },
     });
 
