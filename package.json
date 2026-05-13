@@ -13,6 +13,7 @@
     "cron:sync": "node scripts/cron-tradovate-sync.mjs",
     "cron:promote": "node scripts/cron-promote-pending-rules.mjs",
     "cron:renew-tokens": "node scripts/cron-renew-tradovate-tokens.mjs",
+    "start:listener": "tsx scripts/tradovate-listener-worker.ts",
     "lint": "eslint",
     "test:unit": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
     "prisma:generate": "prisma generate",
@@ -32,6 +33,7 @@
     "react-dom": "19.2.4",
     "resend": "^6.12.2",
     "stripe": "^22.1.0",
+    "tsx": "^4.21.0",
     "ws": "^8.20.1"
   },
   "devDependencies": {
