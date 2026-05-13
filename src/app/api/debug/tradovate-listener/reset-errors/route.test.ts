@@ -219,3 +219,47 @@ describe("reset-errors: response shape", () => {
     );
   });
 });
+
+// ── Filter support: connectionId / env ──────────────────────────────────────
+
+describe("reset-errors: optional filter body", () => {
+  it("reads optional connectionId from body", () => {
+    assert.ok(
+      ROUTE_SRC.includes("connectionId"),
+      "route must accept an optional connectionId filter",
+    );
+  });
+
+  it("reads optional env from body", () => {
+    assert.ok(
+      ROUTE_SRC.includes('body.env === "live"') ||
+        ROUTE_SRC.includes('body.env === "demo"'),
+      "route must accept an optional env filter limited to live/demo",
+    );
+  });
+
+  it("env filter only accepts 'live' or 'demo'", () => {
+    // Reject other env strings — must validate
+    const block = ROUTE_SRC.slice(ROUTE_SRC.indexOf("body.env"));
+    assert.ok(
+      block.includes('"live"') && block.includes('"demo"'),
+      "env validation must whitelist live/demo only",
+    );
+  });
+
+  it("returns filter context in the response", () => {
+    assert.ok(
+      ROUTE_SRC.includes("filter:"),
+      "response must echo the filter that was applied for operator clarity",
+    );
+  });
+
+  it("applies filters in the prisma where clause (not in JS post-filter)", () => {
+    // Spread the optional filter into where, not into data
+    assert.ok(
+      /where\s*=\s*\{[\s\S]*connectionIdFilter[\s\S]*envFilter/.test(ROUTE_SRC) ||
+        ROUTE_SRC.includes("...(connectionIdFilter"),
+      "filters must be applied in the prisma where clause so DB does the filtering",
+    );
+  });
+});

@@ -241,7 +241,7 @@ describe("planListenerStartups: token eligibility", () => {
 // ── Mixed batch ──────────────────────────────────────────────────────────────
 
 describe("planListenerStartups: mixed batch", () => {
-  it("returns the healthy ones in 'start' and the rest in 'skipped'", () => {
+  it("returns the healthy ones in 'start' and the rest in 'skipped' (enableLive=true)", () => {
     const rows: BrokerConnectionRow[] = [
       makeRow({ id: "ok-1" }),
       makeRow({ id: "expired-1", connectionStatus: "expired" }),
@@ -249,11 +249,61 @@ describe("planListenerStartups: mixed batch", () => {
       // brokerUserId: null is NOT a skip reason — worker will back-fill.
       makeRow({ id: "no-user", brokerUserId: null }),
     ];
-    const { start, skipped } = planListenerStartups(rows);
+    const { start, skipped } = planListenerStartups(rows, { enableLive: true });
     const startIds = start.map((p) => p.connectionId).sort();
     const skippedIds = skipped.map((s) => s.connectionId).sort();
     assert.deepEqual(startIds, ["no-user", "ok-1", "ok-2"]);
     assert.deepEqual(skippedIds, ["expired-1"]);
+  });
+});
+
+// ── Live gating via enableLive option ────────────────────────────────────────
+
+describe("planListenerStartups: enableLive gating", () => {
+  it("skips live connections by default (enableLive default false)", () => {
+    const { start, skipped } = planListenerStartups([makeRow({ env: "live" })]);
+    assert.equal(start.length, 0);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "live_disabled");
+  });
+
+  it("allows live connections when enableLive=true", () => {
+    const { start, skipped } = planListenerStartups(
+      [makeRow({ env: "live" })],
+      { enableLive: true },
+    );
+    assert.equal(start.length, 1);
+    assert.equal(skipped.length, 0);
+  });
+
+  it("never skips demo connections regardless of enableLive", () => {
+    const demoRow = makeRow({ env: "demo" });
+    const { start: startA } = planListenerStartups([demoRow], { enableLive: false });
+    assert.equal(startA.length, 1, "demo must start even when live is gated");
+    const { start: startB } = planListenerStartups([demoRow], { enableLive: true });
+    assert.equal(startB.length, 1);
+  });
+
+  it("listener_error takes precedence over live_disabled (operator visibility)", () => {
+    const { skipped } = planListenerStartups([
+      makeRow({ env: "live", listenerStatus: "error" }),
+    ]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "listener_error");
+  });
+
+  it("mixed batch: with enableLive=false, live rows show as live_disabled", () => {
+    const rows: BrokerConnectionRow[] = [
+      makeRow({ id: "demo-1", env: "demo" }),
+      makeRow({ id: "live-1", env: "live" }),
+      makeRow({ id: "demo-2", env: "demo" }),
+    ];
+    const { start, skipped } = planListenerStartups(rows);
+    const startIds = start.map((p) => p.connectionId).sort();
+    assert.deepEqual(startIds, ["demo-1", "demo-2"]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.connectionId, "live-1");
+    assert.equal(skipped[0]!.reason, "live_disabled");
   });
 });
 
@@ -441,6 +491,29 @@ describe("listener worker source: brokerUserId backfill", () => {
     assert.ok(
       WORKER_SRC.includes("failed to resolve tradovateUserId"),
       "worker must log when resolution fails so operators can see the cause",
+    );
+  });
+});
+
+describe("listener worker source: live gating", () => {
+  it("reads TRADOVATE_LISTENER_ENABLE_LIVE env var", () => {
+    assert.ok(
+      WORKER_SRC.includes("TRADOVATE_LISTENER_ENABLE_LIVE"),
+      "worker must read TRADOVATE_LISTENER_ENABLE_LIVE to gate live listeners",
+    );
+  });
+
+  it("passes enableLive to planListenerStartups", () => {
+    assert.ok(
+      /planListenerStartups\([^)]*enableLive/.test(WORKER_SRC),
+      "worker must pass enableLive into planListenerStartups",
+    );
+  });
+
+  it("defaults to false (compares env var === 'true')", () => {
+    assert.ok(
+      /TRADOVATE_LISTENER_ENABLE_LIVE\s*===\s*["']true["']/.test(WORKER_SRC),
+      "worker must only enable live when env var is the literal string 'true'",
     );
   });
 });

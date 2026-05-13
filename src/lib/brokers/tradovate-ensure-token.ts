@@ -53,9 +53,17 @@ export type EnsureTokenResult =
 export async function ensureTradovateAccessToken({
   brokerConnectionId,
   userId,
+  forceRefresh = false,
 }: {
   brokerConnectionId: string;
   userId: string;
+  /**
+   * Skip the `shouldRenewToken` time-based check and renew unconditionally.
+   * Used by the listener worker when the broker rejected an authorize with 401
+   * even though the stored token had not yet expired — the broker considers
+   * the token invalid, so we force a refresh before retrying.
+   */
+  forceRefresh?: boolean;
 }): Promise<EnsureTokenResult> {
   const bc = await prisma.brokerConnection.findFirst({
     where: { id: brokerConnectionId, userId },
@@ -92,9 +100,10 @@ export async function ensureTradovateAccessToken({
     shouldRenew: decision.shouldRenew,
     reason: decision.reason,
     msUntilExpiry: decision.msUntilExpiry,
+    forceRefresh,
   });
 
-  if (!decision.shouldRenew) {
+  if (!decision.shouldRenew && !forceRefresh) {
     // The token is fresh — if a stale renewal error is stored, clear it
     // fire-and-forget so a DB hiccup here never blocks the sync path.
     if (bc.lastRenewError !== null) {

@@ -46,7 +46,7 @@ export type ManagedListenerConfig = {
   /** Whether the connection has write permission (full_access). Determines log context. */
   permissionLevel: "full_access" | "read_only" | null;
   /** Called to retrieve the current access token. Never logged. */
-  getAccessToken: () => Promise<string>;
+  getAccessToken: (options?: { forceRefresh?: boolean }) => Promise<string>;
   /** Callback when a position/fill/order event arrives — triggers enforcement. */
   onPositionEvent?: (connectionId: string, props: TradovatePropsEventData) => void;
   /** Callback on any props event — for broad subscription / heartbeat tracking. */
@@ -57,6 +57,15 @@ export type ManagedListenerConfig = {
   onStateChange?: (connectionId: string, state: ListenerState) => void;
   /** Callback when listener gives up (e.g. repeated auth failures). */
   onTerminalError?: (connectionId: string, reason: string) => void;
+  /**
+   * Callback for non-200 authorize responses. Routed from the listener so the
+   * worker can log token-age / env diagnostics alongside. Never receives the
+   * access token.
+   */
+  onAuthFailed?: (
+    connectionId: string,
+    info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean },
+  ) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -117,6 +126,9 @@ export class TradovateListenerManager {
         this.#listeners.delete(config.connectionId);
         config.onTerminalError?.(config.connectionId, reason);
       },
+      onAuthFailed: config.onAuthFailed
+        ? (info) => config.onAuthFailed!(config.connectionId, info)
+        : undefined,
     });
 
     this.#listeners.set(config.connectionId, listener);

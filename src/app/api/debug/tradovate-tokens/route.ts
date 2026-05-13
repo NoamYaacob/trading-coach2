@@ -5,6 +5,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { shouldRenewToken, REFRESH_BUFFER_MS } from "@/lib/brokers/tradovate-client-helpers";
 import { resolveEffectiveConnectionStatus } from "@/app/dashboard/_components/command-center/data-helpers";
+import {
+  planListenerStartups,
+  type BrokerConnectionRow,
+} from "@/lib/brokers/tradovate-listener-worker-logic";
 
 /**
  * GET /api/debug/tradovate-tokens
@@ -36,6 +40,8 @@ export async function GET(_request: NextRequest) {
     where: { userId: currentUser.id, platform: "tradovate" },
     select: {
       id: true,
+      userId: true,
+      platform: true,
       env: true,
       brokerUserId: true,
       connectionStatus: true,
@@ -66,6 +72,28 @@ export async function GET(_request: NextRequest) {
   });
 
   const now = new Date();
+
+  // Compute the same eligibility decision the listener worker uses so operators
+  // can see WHY a connection is or isn't being listened to. Mirrors the worker's
+  // ENABLE_LIVE gate; if the env var isn't set in this service the debug result
+  // shows live_disabled even when the worker has live enabled — set the var on
+  // both services for consistent reporting.
+  const enableLive = process.env.TRADOVATE_LISTENER_ENABLE_LIVE === "true";
+  const rowsForPlan: BrokerConnectionRow[] = brokerConnections.map((bc) => ({
+    id: bc.id,
+    userId: bc.userId,
+    platform: bc.platform,
+    env: bc.env,
+    brokerUserId: bc.brokerUserId,
+    connectionStatus: bc.connectionStatus,
+    permissionLevel: bc.permissionLevel,
+    tokenExpiresAt: bc.tokenExpiresAt,
+    lastRenewError: bc.lastRenewError,
+    listenerStatus: bc.listenerStatus,
+  }));
+  const plan = planListenerStartups(rowsForPlan, { now, enableLive });
+  const startIds = new Set(plan.start.map((p) => p.connectionId));
+  const skipById = new Map(plan.skipped.map((s) => [s.connectionId, s]));
 
   // Collect healthy envs for Reconnect banner simulation (mirrors filterExpiredGroups).
   const HEALTHY = new Set([
@@ -130,6 +158,11 @@ export async function GET(_request: NextRequest) {
         ? Math.round((now.getTime() - bc.listenerLastEventAt.getTime()) / 1_000)
         : null;
 
+    const skip = skipById.get(bc.id) ?? null;
+    const listenerEligibility = startIds.has(bc.id)
+      ? { wouldStart: true as const, skipReason: null }
+      : { wouldStart: false as const, skipReason: skip?.reason ?? null };
+
     return {
       brokerConnectionId: bc.id,
       env: bc.env,
@@ -171,6 +204,7 @@ export async function GET(_request: NextRequest) {
       listenerErrorMessage: bc.listenerErrorMessage ?? null,
       secondsSinceListenerHeartbeat,
       secondsSinceListenerEvent,
+      listenerEligibility,
       // Dashboard impact
       dashboardReconnectShown,
       healthyEnvCoversThisGroup,
@@ -185,6 +219,15 @@ export async function GET(_request: NextRequest) {
   return NextResponse.json({
     userId: currentUser.id,
     now: now2.toISOString(),
+    listenerWorker: {
+      enableLive,
+      wouldStart: plan.start.length,
+      wouldSkip: plan.skipped.length,
+      skipReasonCounts: plan.skipped.reduce<Record<string, number>>((acc, s) => {
+        acc[s.reason] = (acc[s.reason] ?? 0) + 1;
+        return acc;
+      }, {}),
+    },
     connections,
     summary: {
       total: connections.length,

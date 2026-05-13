@@ -258,6 +258,104 @@ describe("TradovateUserSyncListener: authorization", () => {
     listener.close();
   });
 
+  it("on 401 auth response: requests forced refresh on next connect and retries once", async () => {
+    const refreshFlags: boolean[] = [];
+    const authFails: Array<{ status: number; willRetryWithForcedRefresh: boolean }> = [];
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      getAccessToken: async (opts) => {
+        refreshFlags.push(opts?.forceRefresh === true);
+        return "test_access_token";
+      },
+      onAuthFailed: (info) =>
+        authFails.push({ status: info.status, willRetryWithForcedRefresh: info.willRetryWithForcedRefresh }),
+      onTerminalError: (reason) => terminalReasons.push(reason),
+    });
+    await listener.start();
+
+    // First attempt: 401 → schedule retry with forceRefresh=true
+    let ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");                         // authorize sent
+    ws.triggerMessage(makeAuthResponse(1, false));  // 401
+
+    assert.equal(refreshFlags[0], false, "first getAccessToken call must not force refresh");
+    assert.equal(authFails.length, 1);
+    assert.equal(authFails[0]!.status, 401);
+    assert.equal(authFails[0]!.willRetryWithForcedRefresh, true);
+    assert.equal(terminalReasons.length, 0, "first 401 must not terminate");
+
+    // Reconnect fires
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(refreshFlags[1], true, "second getAccessToken call must request forced refresh");
+    listener.close();
+  });
+
+  it("on second 401 (after forced refresh): emits terminal error immediately", async () => {
+    const terminalReasons: string[] = [];
+    const authFails: Array<{ status: number; willRetryWithForcedRefresh: boolean }> = [];
+    const { listener, getWs } = makeListener({
+      getAccessToken: async () => "test_access_token",
+      onAuthFailed: (info) =>
+        authFails.push({ status: info.status, willRetryWithForcedRefresh: info.willRetryWithForcedRefresh }),
+      onTerminalError: (reason) => terminalReasons.push(reason),
+    });
+    await listener.start();
+
+    // First 401 → retry-with-refresh path
+    let ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerMessage(makeAuthResponse(1, false));
+
+    // Reconnect with forced refresh, then second 401
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerMessage(makeAuthResponse(2, false)); // 401 again
+
+    assert.equal(authFails.length, 2);
+    assert.equal(authFails[1]!.willRetryWithForcedRefresh, false, "second 401 must not retry again");
+    assert.equal(terminalReasons.length, 1, "second 401 must emit terminal error");
+    assert.ok(
+      terminalReasons[0]!.includes("401") && terminalReasons[0]!.includes("refresh"),
+      `terminal reason should mention 401 + refresh, got: ${terminalReasons[0]}`,
+    );
+    listener.close();
+  });
+
+  it("successful auth after a 401 retry resets the 401 tracker", async () => {
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      getAccessToken: async () => "test_access_token",
+      onTerminalError: (reason) => terminalReasons.push(reason),
+    });
+    await listener.start();
+
+    // First 401
+    let ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerMessage(makeAuthResponse(1, false));
+
+    // Reconnect → success
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    completeConnect(ws, 2, 3);
+
+    // Close from healthy state, reconnect, then a NEW 401 — must retry again
+    ws.triggerClose(1006, "abnormal");
+    await new Promise((r) => setTimeout(r, 50));
+    ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    ws.triggerMessage(makeAuthResponse(4, false));
+
+    assert.equal(terminalReasons.length, 0, "tracker must reset on success, allowing another retry");
+    listener.close();
+  });
+
   it("a successful auth resets the consecutive-failure counter", async () => {
     const terminalReasons: string[] = [];
     const { listener, getWs } = makeListener({
@@ -489,6 +587,44 @@ describe("TradovateUserSyncListener source: no token logging", () => {
     assert.ok(
       LISTENER_SRC.includes("payloadLength"),
       "must log frame size so operators can verify the auth frame was actually sent",
+    );
+  });
+
+  it("source forwards forceRefresh option to getAccessToken on 401 retry", () => {
+    assert.ok(
+      /getAccessToken\(\{\s*forceRefresh/.test(LISTENER_SRC),
+      "listener must call getAccessToken with forceRefresh option",
+    );
+    assert.ok(
+      LISTENER_SRC.includes("#forceRefreshNextConnect"),
+      "listener must track which next connect should force a refresh",
+    );
+  });
+
+  it("source handles 401 distinctly (force-refresh retry once, then terminal)", () => {
+    assert.ok(
+      LISTENER_SRC.includes("has401Retried"),
+      "listener must track whether it has already retried after 401",
+    );
+    assert.ok(
+      LISTENER_SRC.includes("status === 401") || LISTENER_SRC.includes("status===401"),
+      "listener must branch on status === 401 in the auth-failed handler",
+    );
+    assert.ok(
+      LISTENER_SRC.includes("auth_retry_forced"),
+      "listener must log auth_retry_forced phase when forcing a refresh",
+    );
+  });
+
+  it("auth-failed log includes safe wsHost diagnostic (no token)", () => {
+    assert.ok(
+      LISTENER_SRC.includes("wsHost"),
+      "auth_failed log must include wsHost for env mismatch debugging",
+    );
+    // safeHost helper must extract host only, never the full URL with query
+    assert.ok(
+      LISTENER_SRC.includes("safeHost"),
+      "listener must define a safeHost helper",
     );
   });
 });

@@ -54,7 +54,8 @@ export type SkipReason =
   | "renew_error"
   | "expired_token"
   | "unsupported_env"
-  | "listener_error";
+  | "listener_error"
+  | "live_disabled";
 
 /** Safe (non-secret) snapshot attached to each skipped entry for diagnostics. */
 export type SkipDiagnostic = {
@@ -70,6 +71,17 @@ export type SkipDiagnostic = {
 export type FilterResult = {
   start: ListenerStartupPlan[];
   skipped: SkipDiagnostic[];
+};
+
+export type PlanListenerStartupsOptions = {
+  /** Override "now" for deterministic testing of expired-token gating. */
+  now?: Date;
+  /**
+   * Allow `env: "live"` connections through. Default false — live listeners
+   * are temporarily disabled until demo handshake is verified. Set via the
+   * TRADOVATE_LISTENER_ENABLE_LIVE env var in the worker.
+   */
+  enableLive?: boolean;
 };
 
 /**
@@ -89,7 +101,12 @@ export const HEALTHY_CONNECTION_STATUSES: ReadonlySet<string> = new Set([
  * `connected_live`. A read-only connection cannot enforce, but listening to
  * its position feed still gives us a freshness signal in the dashboard.
  */
-export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date()): FilterResult {
+export function planListenerStartups(
+  rows: BrokerConnectionRow[],
+  options: PlanListenerStartupsOptions = {},
+): FilterResult {
+  const now = options.now ?? new Date();
+  const enableLive = options.enableLive ?? false;
   const start: ListenerStartupPlan[] = [];
   const skipped: SkipDiagnostic[] = [];
 
@@ -133,6 +150,12 @@ export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date
     // auth failures. Refuse to retry until an operator clears the state.
     if (row.listenerStatus === "error") {
       skipped.push({ ...meta, reason: "listener_error" });
+      continue;
+    }
+    // Live is temporarily gated behind TRADOVATE_LISTENER_ENABLE_LIVE so demo
+    // can be validated first. Demo is always allowed.
+    if (row.env === "live" && !enableLive) {
+      skipped.push({ ...meta, reason: "live_disabled" });
       continue;
     }
     const permissionLevel =

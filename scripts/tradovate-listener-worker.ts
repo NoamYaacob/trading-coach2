@@ -52,6 +52,12 @@ const RESCAN_INTERVAL_MS = 60_000; // poll DB every 60 s for new/removed connect
 const STARTUP_STAGGER_MS = 200; // gap between successive listener starts
 const SHUTDOWN_GRACE_MS = 5_000; // max time to wait for Prisma to disconnect on SIGTERM
 
+/**
+ * Live connections are temporarily gated. Set TRADOVATE_LISTENER_ENABLE_LIVE=true
+ * to allow live listeners. Default false until demo handshake is verified.
+ */
+const ENABLE_LIVE = process.env.TRADOVATE_LISTENER_ENABLE_LIVE === "true";
+
 // ── WebSocket adapter ────────────────────────────────────────────────────────
 
 /**
@@ -115,9 +121,15 @@ async function loadHealthyConnectionRows(): Promise<BrokerConnectionRow[]> {
 async function getAccessTokenForConnection(
   connectionId: string,
   userId: string,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
-  // Refresh first if expiring — same code path used by cron sync.
-  await ensureTradovateAccessToken({ brokerConnectionId: connectionId, userId });
+  // Refresh first if expiring (or unconditionally on forceRefresh) — same
+  // code path used by cron sync.
+  await ensureTradovateAccessToken({
+    brokerConnectionId: connectionId,
+    userId,
+    forceRefresh: options.forceRefresh ?? false,
+  });
 
   const bc = await prisma.brokerConnection.findFirst({
     where: { id: connectionId, userId },
@@ -129,6 +141,34 @@ async function getAccessTokenForConnection(
   // parseAndDecrypt returns the cleartext token; it is returned directly to the
   // listener and never stored in a variable that is logged or serialised.
   return parseAndDecrypt(bc.accessTokenEncrypted);
+}
+
+/**
+ * Read non-secret token lifecycle fields for diagnostic logging. Returns ISO
+ * timestamps and derived ages — NEVER the encrypted token blobs or cleartext
+ * token. Safe to log.
+ */
+async function loadAuthDiagnostics(connectionId: string): Promise<{
+  tokenExpiresAt: string | null;
+  minutesUntilExpiry: number | null;
+  lastRenewedAt: string | null;
+  minutesSinceRenewal: number | null;
+}> {
+  const bc = await prisma.brokerConnection.findUnique({
+    where: { id: connectionId },
+    select: { tokenExpiresAt: true, lastRenewedAt: true },
+  });
+  const now = Date.now();
+  const tokenExpiresAt = bc?.tokenExpiresAt ?? null;
+  const lastRenewedAt = bc?.lastRenewedAt ?? null;
+  return {
+    tokenExpiresAt: tokenExpiresAt?.toISOString() ?? null,
+    minutesUntilExpiry:
+      tokenExpiresAt != null ? Math.round((tokenExpiresAt.getTime() - now) / 60_000) : null,
+    lastRenewedAt: lastRenewedAt?.toISOString() ?? null,
+    minutesSinceRenewal:
+      lastRenewedAt != null ? Math.round((now - lastRenewedAt.getTime()) / 60_000) : null,
+  };
 }
 
 async function writeListenerStatus(
@@ -273,7 +313,7 @@ const manager = new TradovateListenerManager(makeWsFactory());
 
 async function reconcileListeners(): Promise<void> {
   const rows = await loadHealthyConnectionRows();
-  const { start: plans, skipped } = planListenerStartups(rows);
+  const { start: plans, skipped } = planListenerStartups(rows, { enableLive: ENABLE_LIVE });
 
   for (const skip of skipped) {
     console.info("[listener-worker] skipping connection", skip);
@@ -332,7 +372,8 @@ async function reconcileListeners(): Promise<void> {
       tradovateUserId,
       env: plan.env,
       permissionLevel: plan.permissionLevel,
-      getAccessToken: () => getAccessTokenForConnection(plan.connectionId, plan.userId),
+      getAccessToken: (opts) =>
+        getAccessTokenForConnection(plan.connectionId, plan.userId, opts ?? {}),
       // Phase 1: observe-only. Do NOT run enforcement, do NOT flatten,
       // do NOT lock the account. We only record that an event arrived.
       onPropsEvent: (connectionId) => {
@@ -350,6 +391,22 @@ async function reconcileListeners(): Promise<void> {
           connectionId,
         });
         void writeListenerTerminalError(connectionId, reason);
+      },
+      onAuthFailed: (connectionId, info) => {
+        void (async () => {
+          const diag = await loadAuthDiagnostics(connectionId).catch(() => null);
+          console.warn("[listener-worker] authorize rejected", {
+            connectionId,
+            env: plan.env,
+            status: info.status,
+            errorText: info.errorText,
+            willRetryWithForcedRefresh: info.willRetryWithForcedRefresh,
+            tokenExpiresAt: diag?.tokenExpiresAt ?? null,
+            minutesUntilExpiry: diag?.minutesUntilExpiry ?? null,
+            lastRenewedAt: diag?.lastRenewedAt ?? null,
+            minutesSinceRenewal: diag?.minutesSinceRenewal ?? null,
+          });
+        })();
       },
     });
 
@@ -400,6 +457,7 @@ async function main(): Promise<void> {
     rescanIntervalMs: RESCAN_INTERVAL_MS,
     staggerMs: STARTUP_STAGGER_MS,
     mode: "observe-only",
+    enableLive: ENABLE_LIVE,
   });
 
   await reconcileListeners();

@@ -80,9 +80,20 @@ export type TradovateUserSyncListenerConfig = {
   /**
    * Async callback to retrieve the current access token for (re)authentication.
    * Called once per connect attempt. Must return the raw token string.
+   * When `forceRefresh` is true the implementation should bypass any
+   * "still fresh" caching and renew the token before returning it — the
+   * listener passes this after the broker rejected the prior token with 401.
    * IMPORTANT: the token must NEVER be logged anywhere in this class.
    */
-  getAccessToken: () => Promise<string>;
+  getAccessToken: (options?: { forceRefresh?: boolean }) => Promise<string>;
+  /**
+   * Optional callback fired when authorize returns a non-200 status. The
+   * worker uses this to log safe diagnostics (token age, env, URL host)
+   * alongside the listener's own auth_failed log. Receives the HTTP-style
+   * status code Tradovate returned and a whitelisted errorText if any.
+   * Never receives the access token.
+   */
+  onAuthFailed?: (info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean }) => void;
   /** Called whenever a props event arrives that triggers enforcement re-evaluation. */
   onPositionEvent?: (props: TradovatePropsEventData) => void;
   /** Called whenever any props event arrives (for broad subscription). */
@@ -134,6 +145,14 @@ export class TradovateUserSyncListener {
   #pendingAccessToken: string | null = null;
   /** Consecutive close-during-auth events. Reset on auth success. */
   #consecutiveAuthFailures = 0;
+  /**
+   * True when the broker has already rejected our token with 401 once on this
+   * connection lifecycle and we've requested a force-refresh on the next
+   * connect. A second 401 after this terminates the listener immediately.
+   */
+  #has401Retried = false;
+  /** Force the next #connect() to request a refreshed access token. */
+  #forceRefreshNextConnect = false;
 
   constructor(config: TradovateUserSyncListenerConfig) {
     this.#config = config;
@@ -182,9 +201,12 @@ export class TradovateUserSyncListener {
     this.#setState("connecting");
     const url = TRADOVATE_WS_URL[this.#config.env];
 
+    const forceRefresh = this.#forceRefreshNextConnect;
+    this.#forceRefreshNextConnect = false;
+
     let accessToken: string;
     try {
-      accessToken = await this.#config.getAccessToken();
+      accessToken = await this.#config.getAccessToken({ forceRefresh });
     } catch (err) {
       console.warn("[TradovateUserSyncListener] failed to retrieve access token, will retry", {
         connectionId: this.#config.connectionId,
@@ -309,6 +331,7 @@ export class TradovateUserSyncListener {
       if (responseId === this.#pendingAuthId) {
         if (isSuccessResponse(parsed.data)) {
           this.#consecutiveAuthFailures = 0; // reset on success
+          this.#has401Retried = false; // reset 401-retry tracker on success
           console.info("[TradovateUserSyncListener] authorize ok, sending user/syncrequest", {
             connectionId: this.#config.connectionId,
             command: "authorize",
@@ -330,17 +353,7 @@ export class TradovateUserSyncListener {
           });
           this.#ws?.send(syncFrame);
         } else {
-          // Log the status and any explicit `errorText` field from the payload.
-          // Never log the raw payload — it could echo other request context.
-          console.warn("[TradovateUserSyncListener] authorization failed", {
-            connectionId: this.#config.connectionId,
-            command: "authorize",
-            requestId: responseId,
-            status: parsed.data.s,
-            errorText: extractErrorText(parsed.data.p),
-            phase: "auth_failed",
-          });
-          this.#ws?.close();
+          this.#handleAuthFailed(parsed.data.s, parsed.data.p, responseId);
         }
         void rest; // suppress unused variable lint
       } else if (responseId === this.#pendingSyncId) {
@@ -448,6 +461,84 @@ export class TradovateUserSyncListener {
     this.#ws?.send(frame);
   }
 
+  /**
+   * Handle a non-200 authorize response.
+   *
+   * On HTTP 401 specifically, we suspect the stored access token went stale on
+   * the broker side (revoked, rotated, or wrong env). The flow:
+   *   1st 401 — force a token refresh on the next connect and let the existing
+   *             reconnect path retry. Logs `auth_failed` + `auth_retry_forced`.
+   *   2nd 401 — give up immediately and emit a terminal error. The forced
+   *             refresh did not help, so further retries waste API calls.
+   *
+   * Non-401 failures fall through to the existing close-during-auth counter,
+   * which terminates the listener after maxAuthFailures consecutive closes.
+   */
+  #handleAuthFailed(status: number, payload: unknown, requestId: number): void {
+    const errorText = extractErrorText(payload);
+    const wsHost = safeHost(TRADOVATE_WS_URL[this.#config.env]);
+
+    if (status === 401) {
+      const willRetryWithForcedRefresh = !this.#has401Retried;
+      console.warn("[TradovateUserSyncListener] authorization failed", {
+        connectionId: this.#config.connectionId,
+        env: this.#config.env,
+        wsHost,
+        command: "authorize",
+        requestId,
+        status,
+        errorText,
+        willRetryWithForcedRefresh,
+        phase: "auth_failed",
+      });
+      this.#config.onAuthFailed?.({ status, errorText, willRetryWithForcedRefresh });
+
+      if (willRetryWithForcedRefresh) {
+        this.#has401Retried = true;
+        this.#forceRefreshNextConnect = true;
+        console.info("[TradovateUserSyncListener] forcing token refresh and retrying once", {
+          connectionId: this.#config.connectionId,
+          env: this.#config.env,
+          phase: "auth_retry_forced",
+        });
+        this.#ws?.close();
+        return;
+      }
+
+      // Second 401 — refresh didn't help. Give up immediately.
+      const reason = `authorize returned 401 after forced token refresh — re-authorize required`;
+      console.warn("[TradovateUserSyncListener] giving up — 401 persisted after forced refresh", {
+        connectionId: this.#config.connectionId,
+        env: this.#config.env,
+        wsHost,
+        status,
+        phase: "auth_terminal",
+      });
+      this.#closed = true;
+      this.#clearReconnectTimer();
+      this.#ws?.close();
+      this.#setState("closed");
+      this.#config.onTerminalError?.(reason);
+      return;
+    }
+
+    // Non-401 failure — log, emit callback, close. The onclose handler will
+    // count this toward the close-during-auth tally and may terminate.
+    console.warn("[TradovateUserSyncListener] authorization failed", {
+      connectionId: this.#config.connectionId,
+      env: this.#config.env,
+      wsHost,
+      command: "authorize",
+      requestId,
+      status,
+      errorText,
+      willRetryWithForcedRefresh: false,
+      phase: "auth_failed",
+    });
+    this.#config.onAuthFailed?.({ status, errorText, willRetryWithForcedRefresh: false });
+    this.#ws?.close();
+  }
+
   // ── Private: state machine ────────────────────────────────────────────────
 
   #setState(state: ListenerState): void {
@@ -474,4 +565,13 @@ function extractErrorText(p: unknown): string | null {
     if (typeof rec.message === "string") return rec.message;
   }
   return null;
+}
+
+/** Extract the host portion of a wss:// URL for safe logging. */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "unknown";
+  }
 }

@@ -419,8 +419,11 @@ describe("Req 1: token expiring soon triggers proactive renewal before any API c
   test("ensureTradovateAccessToken checks shouldRenewToken before making any API call", () => {
     const s = src(ENSURE_FILE);
     assert.ok(s.includes("shouldRenewToken"), "must call shouldRenewToken before any network call");
+    // The early-return must depend on `!decision.shouldRenew` so a fresh token
+    // skips the network call. (Listener worker passes `forceRefresh: true` to
+    // bypass this when the broker rejected the token with 401 — still safe.)
     assert.ok(
-      s.includes("if (!decision.shouldRenew) {"),
+      /if \(!decision\.shouldRenew(?:\s*&&\s*!forceRefresh)?\) \{/.test(s),
       "must return early when token does not need renewal",
     );
     // The shouldRenewToken check must appear before callRenewEndpoint
