@@ -1,21 +1,23 @@
 /**
- * Pure helper for computing mini-equivalent position exposure.
+ * Pure helper for computing standard-equivalent position exposure.
  *
- * Tradovate's risk system can express per-product position limits
- * (UserAccountPositionLimit) but cannot express the equivalence
- * between mini and micro contracts (e.g. 1 NQ = 10 MNQ counting toward
- * the same shared limit). This helper does that computation
- * Guardrail-side so a single "max position size" rule can be evaluated
- * against the user's full mini-equivalent exposure.
+ * Guardrail enforces a single "max position size" rule expressed in
+ * standard-equivalent units (Apex model: 10 micro = 1 standard).
+ * This helper classifies each open position using the central futures
+ * contract registry and accumulates exposure across all known roots.
  *
  * No I/O. No broker calls. No DB. Pure and deterministic.
  *
- * Internally, exposure is tracked in integer "tenths of a mini" to
- * avoid floating-point drift at the breach boundary:
- *   1 mini  = 10 tenths
- *   1 micro = 1 tenth
- * Public values are divided by 10 only for display.
+ * Internally, exposure is tracked in integer millis (×1000) to avoid
+ * IEEE-754 drift for non-0.1 ratios such as FDXS=0.04 or QG=0.25:
+ *   1 NQ    = 1000 millis (ratio 1.0)
+ *   1 MNQ   =  100 millis (ratio 0.1)
+ *   1 FDXM  =  200 millis (ratio 0.2)
+ *   1 FDXS  =   40 millis (ratio 0.04)
+ * Public values are divided by 1000 only for display.
  */
+
+import { getContractMetadata } from "../futures/contracts.ts";
 
 export type PositionExposureInput = {
   symbol: string;
@@ -40,47 +42,7 @@ export type ExposureResult = {
   }>;
 };
 
-const TENTHS_PER_MINI = 10;
-
-// Map of contract root → tenths-per-contract and the shared group key
-// under which mini and its micro pair are summed.
-//
-// Pairs encoded:
-//   NQ  ↔ MNQ  (1:10)
-//   ES  ↔ MES  (1:10)
-//   YM  ↔ MYM  (1:10)
-//   RTY ↔ M2K  (1:10)   — note: micro root is M2K, not MRTY
-//   GC  ↔ MGC  (1:10)
-//   CL  ↔ MCL  (1:10)
-const KNOWN_ROOTS = {
-  NQ:  { tenths: 10, group: "NQ"  },
-  MNQ: { tenths: 1,  group: "NQ"  },
-  ES:  { tenths: 10, group: "ES"  },
-  MES: { tenths: 1,  group: "ES"  },
-  YM:  { tenths: 10, group: "YM"  },
-  MYM: { tenths: 1,  group: "YM"  },
-  RTY: { tenths: 10, group: "RTY" },
-  M2K: { tenths: 1,  group: "RTY" },
-  GC:  { tenths: 10, group: "GC"  },
-  MGC: { tenths: 1,  group: "GC"  },
-  CL:  { tenths: 10, group: "CL"  },
-  MCL: { tenths: 1,  group: "CL"  },
-} as const;
-
-type KnownRoot = keyof typeof KNOWN_ROOTS;
-
-// Sorted longest-first so prefix matching prefers MNQ over NQ.
-const ROOT_KEYS_LONGEST_FIRST = Object.keys(KNOWN_ROOTS).sort(
-  (a, b) => b.length - a.length,
-) as KnownRoot[];
-
-function extractRoot(symbol: string): KnownRoot | null {
-  const upper = symbol.toUpperCase();
-  for (const root of ROOT_KEYS_LONGEST_FIRST) {
-    if (upper === root || upper.startsWith(root)) return root;
-  }
-  return null;
-}
+const MILLIS_PER_UNIT = 1000;
 
 export function computeMiniEquivalentExposure(
   positions: PositionExposureInput[],
@@ -90,48 +52,49 @@ export function computeMiniEquivalentExposure(
     {
       root: string;
       positions: Array<{ symbol: string; netPos: number; miniEquivalent: number }>;
-      totalTenths: number;
+      totalMillis: number;
     }
   >();
   const unsupported: ExposureResult["unsupported"] = [];
-  let totalTenths = 0;
+  let totalMillis = 0;
 
   for (const pos of positions) {
     if (pos.netPos === 0) continue;
 
-    const root = extractRoot(pos.symbol);
-    if (root === null) {
+    const meta = getContractMetadata(pos.symbol);
+    if (meta === null) {
       unsupported.push({
         symbol: pos.symbol,
         netPos: pos.netPos,
-        reason: "Unknown root — not in known mini/micro pair table",
+        reason: "Symbol not in the Guardrail futures contract registry",
       });
       continue;
     }
 
-    const { tenths, group } = KNOWN_ROOTS[root];
-    const exposureTenths = Math.abs(pos.netPos) * tenths;
-    totalTenths += exposureTenths;
+    const ratioMillis = Math.round(meta.exposureRatioToParent * MILLIS_PER_UNIT);
+    const exposureMillis = Math.abs(pos.netPos) * ratioMillis;
+    totalMillis += exposureMillis;
 
+    const group = meta.parentRoot;
     let bucket = groupBuckets.get(group);
     if (!bucket) {
-      bucket = { root: group, positions: [], totalTenths: 0 };
+      bucket = { root: group, positions: [], totalMillis: 0 };
       groupBuckets.set(group, bucket);
     }
     bucket.positions.push({
       symbol: pos.symbol,
       netPos: pos.netPos,
-      miniEquivalent: exposureTenths / TENTHS_PER_MINI,
+      miniEquivalent: exposureMillis / MILLIS_PER_UNIT,
     });
-    bucket.totalTenths += exposureTenths;
+    bucket.totalMillis += exposureMillis;
   }
 
   return {
-    totalMiniEquivalent: totalTenths / TENTHS_PER_MINI,
+    totalMiniEquivalent: totalMillis / MILLIS_PER_UNIT,
     byRoot: Array.from(groupBuckets.values()).map((b) => ({
       root: b.root,
       positions: b.positions,
-      totalMiniEquivalent: b.totalTenths / TENTHS_PER_MINI,
+      totalMiniEquivalent: b.totalMillis / MILLIS_PER_UNIT,
     })),
     unsupported,
   };
@@ -144,7 +107,7 @@ export function computeMiniEquivalentExposure(
 export type MaxPositionSizeDecision = {
   /** Whether the sync should fire the max_position_size enforcement trigger. */
   shouldTrigger: boolean;
-  /** Mini-equivalent exposure summed across known pairs (informational; 0 when no positions). */
+  /** Standard-equivalent exposure summed across known pairs (informational; 0 when no positions). */
   totalMiniEquivalent: number;
   /** True when at least one open position is in a symbol Guardrail can't classify. */
   hasUnsupportedPositions: boolean;
@@ -152,7 +115,7 @@ export type MaxPositionSizeDecision = {
   unsupportedSymbols: string[];
   /**
    * Discriminator for the breach kind:
-   *   "exposure"     — mini-equivalent total exceeds the limit
+   *   "exposure"     — standard-equivalent total exceeds the limit
    *   "unsupported"  — at least one position is in a symbol we can't verify
    *   null           — no breach (no trigger)
    */
@@ -215,7 +178,7 @@ export function deriveMaxPositionSizeBreach(opts: {
       unsupportedSymbols: [],
       reasonKind: "exposure",
       reason:
-        `Max position size exceeded: ${exposure.totalMiniEquivalent} mini-equivalent ` +
+        `Max position size exceeded: ${exposure.totalMiniEquivalent} standard-equivalent ` +
         `contracts open (limit: ${maxContracts}).`,
     };
   }
@@ -231,14 +194,14 @@ export function deriveMaxPositionSizeBreach(opts: {
 }
 
 /**
- * Returns true if total mini-equivalent exposure strictly exceeds the
+ * Returns true if total standard-equivalent exposure strictly exceeds the
  * configured limit. Equality is allowed.
  *
  * - maxPositionSize === null → no rule configured, never breaches.
  * - maxPositionSize === 0    → any non-zero exposure breaches.
  * - maxPositionSize  <  0    → invalid, treated as no rule (never breaches).
  *
- * Comparison is performed in integer tenths-of-a-mini to neutralize
+ * Comparison is performed in integer millis (×1000) to neutralize
  * IEEE-754 drift at the boundary (e.g. 11 * 0.1 === 1.1000000000000001).
  */
 export function isMaxPositionSizeBreached(
@@ -247,7 +210,7 @@ export function isMaxPositionSizeBreached(
 ): boolean {
   if (maxPositionSize === null) return false;
   if (maxPositionSize < 0) return false;
-  const totalTenths = Math.round(totalMiniEquivalent * TENTHS_PER_MINI);
-  const limitTenths = Math.round(maxPositionSize * TENTHS_PER_MINI);
-  return totalTenths > limitTenths;
+  const totalMillis = Math.round(totalMiniEquivalent * MILLIS_PER_UNIT);
+  const limitMillis = Math.round(maxPositionSize * MILLIS_PER_UNIT);
+  return totalMillis > limitMillis;
 }

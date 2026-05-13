@@ -136,18 +136,18 @@ describe("computeMiniEquivalentExposure — symbol parsing edge cases", () => {
 
 describe("computeMiniEquivalentExposure — unsupported handling", () => {
   it("unknown symbol goes to unsupported and is NOT silently absorbed", () => {
-    const r = computeMiniEquivalentExposure([{ symbol: "6EH6", netPos: 1 }]);
+    const r = computeMiniEquivalentExposure([{ symbol: "AAPL", netPos: 1 }]);
     assert.equal(r.totalMiniEquivalent, 0);
     assert.equal(r.unsupported.length, 1);
-    assert.equal(r.unsupported[0].symbol, "6EH6");
+    assert.equal(r.unsupported[0].symbol, "AAPL");
     assert.equal(r.unsupported[0].netPos, 1);
-    assert.match(r.unsupported[0].reason, /unknown root/i);
+    assert.match(r.unsupported[0].reason, /registry/i);
   });
 
   it("unsupported symbols do not pollute byRoot", () => {
     const r = computeMiniEquivalentExposure([
       { symbol: "NQH6", netPos: 1 },
-      { symbol: "6EH6", netPos: 5 },
+      { symbol: "AAPL", netPos: 5 },
     ]);
     assert.equal(r.totalMiniEquivalent, 1);
     assert.equal(r.byRoot.length, 1);
@@ -371,31 +371,31 @@ describe("deriveMaxPositionSizeBreach — limit configuration", () => {
 describe("deriveMaxPositionSizeBreach — unsupported policy", () => {
   it("unsupported symbol triggers with reasonKind=unsupported (NOT silently ignored)", () => {
     const d = deriveMaxPositionSizeBreach({
-      positions: [{ symbol: "6EH6", netPos: 1 }],
+      positions: [{ symbol: "AAPL", netPos: 1 }],
       maxContracts: 2,
     });
     assert.equal(d.shouldTrigger, true);
     assert.equal(d.reasonKind, "unsupported");
     assert.equal(d.hasUnsupportedPositions, true);
-    assert.deepEqual(d.unsupportedSymbols, ["6EH6"]);
+    assert.deepEqual(d.unsupportedSymbols, ["AAPL"]);
     assert.match(d.reason ?? "", /unsupported symbol/i);
   });
 
   it("unsupported symbol does NOT trigger when limit is null (no rule configured)", () => {
     const d = deriveMaxPositionSizeBreach({
-      positions: [{ symbol: "6EH6", netPos: 1 }],
+      positions: [{ symbol: "AAPL", netPos: 1 }],
       maxContracts: null,
     });
     assert.equal(d.shouldTrigger, false);
   });
 
   it("unsupported takes precedence over exposure when both could fire", () => {
-    // 21 MNQ would breach by exposure, but the unsupported 6E breach
+    // 21 MNQ would breach by exposure, but the unknown symbol breach
     // is reported first (Guardrail honestly cannot verify).
     const d = deriveMaxPositionSizeBreach({
       positions: [
         { symbol: "MNQH6", netPos: 21 },
-        { symbol: "6EH6", netPos: 1 },
+        { symbol: "AAPL", netPos: 1 },
       ],
       maxContracts: 2,
     });

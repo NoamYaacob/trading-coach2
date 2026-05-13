@@ -444,7 +444,7 @@ export async function syncTradovateAccount(
       isPendingSessionEndLock,
     });
 
-    // ── Max position size (mini-equivalent exposure) ─────────────────────
+    // ── Max position size (standard-equivalent exposure) ─────────────────
     // Account-specific maxContracts overrides the user-level default.
     // Tradovate cannot express the cross-product equivalence (1 NQ = 10 MNQ),
     // so this is Guardrail-side monitoring only. UserAccountPositionLimit
@@ -496,7 +496,7 @@ export async function syncTradovateAccount(
       newRiskState = "STOPPED";
       enforcementTrigger = "consecutive_losses";
     } else if (maxPositionSizeDecision.shouldTrigger) {
-      // Mini-equivalent exposure exceeds the configured max, OR an open
+      // Standard-equivalent exposure exceeds the configured max, OR an open
       // position is in a symbol Guardrail can't classify (safer policy:
       // lock when verification is impossible).
       newRiskState = "STOPPED";
