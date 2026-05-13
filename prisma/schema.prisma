@@ -385,6 +385,16 @@ model BrokerConnection {
   // lastRenewError: reason string from the most recent failed renewal (cleared on success).
   lastRenewedAt         DateTime?
   lastRenewError        String?
+  // ── Real-time listener tracking ──────────────────────────────────────────
+  // Set by the TradovateListenerManager worker when a user/syncrequest
+  // WebSocket is active for this connection. Used by the dashboard to show
+  // listener freshness ("Live · 5s ago") instead of generic stale warning.
+  // Status values: "connected" | "connecting" | "reconnecting" | "closed" | null
+  listenerStatus        String?
+  listenerConnectedAt   DateTime?
+  listenerLastEventAt   DateTime?
+  listenerLastHeartbeatAt DateTime?
+  listenerErrorMessage  String?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
