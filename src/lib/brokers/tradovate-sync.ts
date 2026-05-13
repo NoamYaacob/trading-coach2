@@ -37,6 +37,7 @@ import {
   type PositionExposureInput,
 } from "./position-exposure";
 import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
+import { loadLivePositions } from "./tradovate/load-live-positions";
 
 /**
  * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
@@ -147,31 +148,25 @@ export async function syncTradovateAccount(
     }
 
     // ── Open positions → unrealised P&L ────────────────────────────────────
-    // Prefer openPl from the snapshot; fall back to summing position data.
-    // toPositions() returns only non-zero netPos positions (already filtered).
-    // Hoisted here (not scoped to the try block) so the same data feeds the
-    // max-position-size enforcement check below.
+    // Uses the shared loadLivePositions helper (same code path as the debug
+    // endpoint) so both surfaces apply identical account filtering and
+    // contract resolution — preventing parity bugs.
     let openPnl: number | null = openPnlFromSnapshot;
     let hasOpenPositions = false;
     let openPositionContractIds: number[] = [];
     type SyncPosition = { symbol: string; side: "LONG" | "SHORT"; quantity: number; unrealizedPnL: number | null };
     let openPositions: SyncPosition[] = [];
     try {
-      const rawPositions = await client.getPositions();
-      const nonZeroRaw = rawPositions.filter((p) => p.netPos !== null && p.netPos !== 0);
-      hasOpenPositions = nonZeroRaw.length > 0;
-      // contractId is the Tradovate numeric ID — the correct key for flatten payloads.
-      // Do NOT use the resolved symbol string as the flatten key.
-      openPositionContractIds = nonZeroRaw.map((p) => p.contractId);
+      const externalAccountId = client.getExternalAccountId() ?? "";
+      const posResult = await loadLivePositions(client, externalAccountId);
+      hasOpenPositions = posResult.hasOpenPositions;
+      openPositionContractIds = posResult.openPositionContractIds;
+      openPositions = posResult.openPositions;
+      console.info("[tradovate/sync] position load diagnostics", {
+        accountId,
+        ...posResult.diagnostics,
+      });
       if (hasOpenPositions) {
-        const uniqueIds = [...new Set(nonZeroRaw.map((p) => p.contractId))];
-        const contractMap = await client.resolveContracts(uniqueIds);
-        openPositions = nonZeroRaw.map((p) => ({
-          symbol: contractMap.get(p.contractId) ?? String(p.contractId),
-          side: (p.netPos ?? 0) > 0 ? ("LONG" as const) : ("SHORT" as const),
-          quantity: Math.abs(p.netPos ?? 0),
-          unrealizedPnL: p.openPl ?? null,
-        }));
         const sum = openPositions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
         const hasAnyPnl = openPositions.some((p) => p.unrealizedPnL !== null);
         if (openPnl == null && hasAnyPnl) openPnl = sum;

@@ -115,7 +115,7 @@ type TvCashBalanceSnapshot = {
   openPl?: number | null;
 };
 
-type TvPosition = {
+export type TvPosition = {
   id: number;
   accountId: number;
   contractId: number;
@@ -228,6 +228,8 @@ export class TradovateClient {
   #tokenExpiresAt: Date | null = null;
   /** Tradovate's integer account ID — resolved from externalAccountId or /account/list. */
   #tvAccountId: number | null = null;
+  /** Raw externalAccountId string from the DB — exposed via getExternalAccountId(). */
+  #externalAccountId: string | null = null;
   /** Set when this account's tokens live on a BrokerConnection row. */
   #brokerConnectionId: string | null = null;
   #baseUrl: string | null = null;
@@ -304,6 +306,7 @@ export class TradovateClient {
     this.#clientSecret = config.clientSecret;
 
     if (account.externalAccountId) {
+      this.#externalAccountId = account.externalAccountId;
       const parsed = parseInt(account.externalAccountId, 10);
       if (!Number.isNaN(parsed)) this.#tvAccountId = parsed;
     }
@@ -940,6 +943,11 @@ export class TradovateClient {
     return all;
   }
 
+  /** All positions from position/list with NO account filter. Use for diagnostics only. */
+  async getRawPositions(): Promise<TvPosition[]> {
+    return this.#request<TvPosition[]>("position/list");
+  }
+
   /** Working orders, filtered to the stored Tradovate account ID when set. */
   async getOrders(): Promise<TvOrder[]> {
     const all = await this.#request<TvOrder[]>("order/list");
@@ -1100,6 +1108,11 @@ export class TradovateClient {
    */
   getLastFillsScopingVerdict(): FillsScopingVerdict {
     return this.#lastFillsScopingVerdict;
+  }
+
+  /** The externalAccountId string from the DB, set during initialize(). null when absent. */
+  getExternalAccountId(): string | null {
+    return this.#externalAccountId;
   }
 
   // ── Per-account trade count sources ──────────────────────────────────────

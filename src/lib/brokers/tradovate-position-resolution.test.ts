@@ -218,8 +218,13 @@ describe("debug endpoint: unresolved contractId produces unsupportedPositions (s
   });
 
   it("debug route exposes contractId in livePositions (not just the symbol string)", () => {
+    // livePositions must include contractId for traceability.
+    // The field comes from the parallel resolvedContractIds array (index-matched to positions).
+    const livePositionsMapIdx = DEBUG_ROUTE_SRC.indexOf("livePositions = resolvedOpenPositions.map(");
+    assert.ok(livePositionsMapIdx !== -1, "debug route must build livePositions via resolvedOpenPositions.map");
+    const mapBlock = DEBUG_ROUTE_SRC.slice(livePositionsMapIdx, livePositionsMapIdx + 600);
     assert.ok(
-      DEBUG_ROUTE_SRC.includes("contractId: p.contractId"),
+      mapBlock.includes("contractId"),
       "livePositions must include the raw contractId for traceability",
     );
   });

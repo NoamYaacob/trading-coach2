@@ -17,6 +17,7 @@ import {
 } from "@/lib/brokers/position-exposure";
 import { decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { isTradovateOrderActionsEnabled } from "@/lib/brokers/order-actions-flag";
+import { loadLivePositions, type PositionLoadDiagnostics } from "@/lib/brokers/tradovate/load-live-positions";
 
 /**
  * GET /api/debug/tradovate-position-limit?accountId=...
@@ -168,22 +169,26 @@ export async function GET(request: NextRequest) {
   let unsupportedPositions: Array<{ contractId: number; contractName: string | null; netPos: number; reason: string }> = [];
   let wouldBreach: boolean | null = null;
   let positionFetchError: string | null = null;
+  let positionLoadDiagnostics: PositionLoadDiagnostics | null = null;
 
   if (account.externalAccountId) {
     try {
       const client = new TradovateClient(accountId, currentUser.id);
       await client.initialize();
 
-      // Fetch position limits and raw positions in parallel.
-      // We use getPositions() (not toPositions()) to retain contractId for
-      // richer debug output and to detect resolution failures explicitly.
-      const [limits, tvPositions] = await Promise.all([
+      // Fetch position limits and live positions in parallel.
+      // loadLivePositions uses getRawPositions() + explicit numeric account filter —
+      // the same code path as tradovate-sync.ts to prevent parity bugs.
+      const [limits, posResult] = await Promise.all([
         client.listUserAccountPositionLimits(),
-        client.getPositions().catch((err) => {
+        loadLivePositions(client, account.externalAccountId).catch((err) => {
           positionFetchError = err instanceof Error ? err.message : String(err);
-          return [];
+          return null;
         }),
       ]);
+      if (posResult) {
+        positionLoadDiagnostics = posResult.diagnostics;
+      }
 
       allLimitCount = limits.length;
 
@@ -205,25 +210,23 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Resolve contractId → contract name for all non-zero positions.
-      // The per-request map prevents duplicate API calls when multiple
-      // positions share the same contractId.
-      const nonZero = tvPositions.filter((p) => p.netPos !== null && p.netPos !== 0);
-      const uniqueIds = [...new Set(nonZero.map((p) => p.contractId))];
-      const contractMap =
-        uniqueIds.length > 0 ? await client.resolveContracts(uniqueIds) : new Map<number, string>();
+      // Build rich livePositions from helper results, augmenting with contract metadata.
+      // posResult is null only when loadLivePositions threw (positionFetchError is set instead).
+      const resolvedOpenPositions = posResult?.openPositions ?? [];
+      const resolvedContractIds = posResult?.openPositionContractIds ?? [];
 
-      // Build rich position details.
-      livePositions = nonZero.map((p) => {
-        const qty = p.netPos!;
-        const contractName = contractMap.get(p.contractId) ?? null;
+      // resolvedOpenPositions[i] and resolvedContractIds[i] are parallel arrays.
+      livePositions = resolvedOpenPositions.map((p, i) => {
+        const contractId = resolvedContractIds[i] ?? 0;
+        const contractName = /^\d+$/.test(p.symbol) ? null : p.symbol;
         const meta = contractName !== null ? getContractMetadata(contractName) : null;
+        const qty = p.side === "SHORT" ? -p.quantity : p.quantity;
         return {
-          contractId: p.contractId,
+          contractId,
           contractName,
           symbolRoot: meta?.symbolRoot ?? null,
           netPos: qty,
-          side: qty > 0 ? "LONG" : "SHORT",
+          side: p.side,
           parentRoot: meta?.parentRoot ?? null,
           exposureRatioToParent: meta?.exposureRatioToParent ?? null,
           standardEquivalentQty:
@@ -231,33 +234,32 @@ export async function GET(request: NextRequest) {
         };
       });
 
-      // Build exposure inputs for positions whose contractId was resolved to a
-      // known futures symbol. Unresolved or unrecognised contractIds are
-      // reported as unsupportedPositions.
+      // Build exposure inputs for known symbols; report unknowns as unsupportedPositions.
       const exposureInputs: PositionExposureInput[] = [];
-      for (const p of nonZero) {
-        const contractName = contractMap.get(p.contractId) ?? null;
-        const qty = p.netPos!;
+      for (let i = 0; i < resolvedOpenPositions.length; i++) {
+        const p = resolvedOpenPositions[i]!;
+        const contractId = resolvedContractIds[i] ?? 0;
+        const contractName = /^\d+$/.test(p.symbol) ? null : p.symbol;
+        const qty = p.side === "SHORT" ? -p.quantity : p.quantity;
         if (contractName === null) {
           unsupportedPositions.push({
-            contractId: p.contractId,
+            contractId,
             contractName: null,
             netPos: qty,
-            reason: `contract/item resolution failed for contractId ${p.contractId}`,
+            reason: `contract/item resolution failed for contractId ${contractId}`,
           });
           continue;
         }
         const meta = getContractMetadata(contractName);
         if (meta === null) {
           unsupportedPositions.push({
-            contractId: p.contractId,
+            contractId,
             contractName,
             netPos: qty,
-            reason: `${contractName} (root: ${contractName}) is not in the Guardrail futures registry`,
+            reason: `${contractName} is not in the Guardrail futures registry`,
           });
           continue;
         }
-        // Pass signed netPos — computeMiniEquivalentExposure uses Math.abs internally.
         exposureInputs.push({ symbol: contractName, netPos: qty });
       }
 
@@ -430,6 +432,7 @@ export async function GET(request: NextRequest) {
     wouldBreach,
     guardrailAction,
     positionFetchError,
+    positionLoadDiagnostics,
     // ── Current state ─────────────────────────────────────────────────────────
     // currentRiskState: what the DB shows NOW (after last sync already ran).
     // If this shows STOPPED right after a breach sync, the violation was created by that sync.

@@ -208,19 +208,36 @@ describe("tradovate-sync: flatten suppression gates have correct priority order"
 });
 
 // ── Flatten uses contractId, not contractName ──────────────────────────────────
+// Position loading (and contractId capture) is now in the shared load-live-positions.ts helper.
+// Verify that sync delegates to the helper (so these invariants are preserved there).
 
 describe("tradovate-sync: flatten uses Tradovate contractId as the key", () => {
-  it("openPositionContractIds is built from contractId (numeric Tradovate ID)", () => {
+  it("sync delegates position loading to loadLivePositions helper (contractId captured there)", () => {
     assert.ok(
-      SYNC_SRC.includes("openPositionContractIds = nonZeroRaw.map((p) => p.contractId)"),
-      "openPositionContractIds must be the numeric contractId from position/list, not a string symbol",
+      SYNC_SRC.includes("loadLivePositions(client, externalAccountId)"),
+      "sync must use loadLivePositions helper — contractId capture is inside the helper",
     );
   });
 
-  it("positions are resolved via resolveContracts for symbol names (not used as flatten key)", () => {
+  it("shared helper openPositionContractIds is built from p.contractId", () => {
+    const helperSrc = readFileSync(
+      resolve(import.meta.dirname, "./tradovate/load-live-positions.ts"),
+      "utf8",
+    );
     assert.ok(
-      SYNC_SRC.includes("resolveContracts(uniqueIds)"),
-      "contract resolution via resolveContracts must exist (used for symbol names, not flatten key)",
+      helperSrc.includes("openPositionContractIds = nonZero.map((p) => p.contractId)"),
+      "helper must build openPositionContractIds from p.contractId (numeric Tradovate ID)",
+    );
+  });
+
+  it("shared helper resolves contractIds via resolveContracts for symbol names", () => {
+    const helperSrc = readFileSync(
+      resolve(import.meta.dirname, "./tradovate/load-live-positions.ts"),
+      "utf8",
+    );
+    assert.ok(
+      helperSrc.includes("resolveContracts(uniqueIds)"),
+      "helper must call resolveContracts (symbol names used for exposure engine, not as flatten key)",
     );
   });
 });

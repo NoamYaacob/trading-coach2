@@ -1573,17 +1573,16 @@ describe("max_position_size — pre-flatten in tradovate-sync (source audit)", (
     );
   });
 
-  it("sync uses getPositions() + resolveContracts() to resolve contractId → symbol name", () => {
-    // getPositions() returns raw TvPosition with numeric contractId.
-    // resolveContracts() resolves those to symbol names for the exposure engine,
-    // while contractIds are separately captured for diagnostics and flatten payloads.
+  it("sync uses shared loadLivePositions helper to load positions and resolve contractId → symbol name", () => {
+    // loadLivePositions centralises position fetching (getRawPositions + explicit numeric
+    // account filter + resolveContracts), so sync and debug always use identical logic.
     assert.ok(
-      SYNC_SRC.includes("client.getPositions()"),
-      "tradovate-sync must call getPositions() to get raw positions with contractId",
+      SYNC_SRC.includes("loadLivePositions(client, externalAccountId)"),
+      "tradovate-sync must call loadLivePositions helper (not getPositions directly)",
     );
     assert.ok(
-      SYNC_SRC.includes("resolveContracts(uniqueIds)"),
-      "tradovate-sync must call resolveContracts to get symbol names from contractIds",
+      SYNC_SRC.includes("tradovate/load-live-positions"),
+      "tradovate-sync must import loadLivePositions from the shared helper module",
     );
   });
 
