@@ -6,6 +6,7 @@ import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
 import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
+import { MaxPositionSizeConversionTable } from "./max-position-size-conversion-table";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
@@ -560,6 +561,7 @@ export function AccountRulesForm({
             pendingNote={defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+            <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
           </Field>
         </div>
       </div>
