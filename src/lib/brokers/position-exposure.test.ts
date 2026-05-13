@@ -549,20 +549,14 @@ describe("isMaxPositionSizeBreached — sub-tenth precision", () => {
 });
 
 describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
-  it("label is 'Max position size (mini-equivalent)' (not the old 'Max contracts / position size')", () => {
-    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size (mini-equivalent)");
-    assert.ok(MAX_POSITION_SIZE_COPY.label.includes("mini-equivalent"));
+  it("label is 'Max standard-equivalent contracts' (Apex prop-firm framing)", () => {
+    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max standard-equivalent contracts");
+    assert.ok(MAX_POSITION_SIZE_COPY.label.includes("standard-equivalent"));
   });
 
-  it("hint preserves the app-level fallback wording for accounts without broker sync", () => {
-    // After applyMaxPositionSize was wired, the hint changed from
-    // "App-level monitoring. Broker-side blocking is not active yet." to
-    // text that mentions both broker sync (via Tradovate) AND the
-    // app-level fallback (for non-Tradovate / no-permission cases).
-    // Both halves of the message must be present.
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /app[- ]level/i);
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /Tradovate/);
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /broker[- ]side/i);
+  it("hint explains the Apex 10-micro = 1-standard rule", () => {
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /10 micro/i);
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /standard/i);
   });
 
   it("hint does not imply fractional tradable contracts", () => {

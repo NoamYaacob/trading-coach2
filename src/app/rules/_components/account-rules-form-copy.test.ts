@@ -319,17 +319,18 @@ test("pending save status copy uses 'Saved as pending — these rules will activ
   );
 });
 
-test("Max position size hint reflects broker sync (not 'app-level monitoring only')", () => {
-  // After wiring applyMaxPositionSize, the hint must mention Tradovate
-  // broker-side enforcement. Both forms read MAX_POSITION_SIZE_COPY from
-  // position-size-copy.ts so checking the hint text via the file is enough
-  // to catch regressions.
+test("Max position size copy uses standard-equivalent model (Apex prop-firm framing)", () => {
+  // The hint was updated to reflect the Apex '10 micro = 1 standard' model and
+  // to warn that broker hard limits may be raw-contract based. Both forms read
+  // MAX_POSITION_SIZE_COPY from position-size-copy.ts so checking the source
+  // file is enough to catch regressions.
   const copySrc = readFileSync(
     resolve(import.meta.dirname, "position-size-copy.ts"),
     "utf8",
   );
-  assert.match(copySrc, /Tradovate/, "max position size hint must mention Tradovate");
-  assert.match(copySrc, /broker-side/i, "max position size hint must mention broker-side enforcement");
+  assert.match(copySrc, /standard-equivalent/i, "copy must use standard-equivalent framing");
+  assert.match(copySrc, /10 micro/i, "hint must explain the Apex 10-micro = 1-standard rule");
+  assert.match(copySrc, /raw-contract/i, "hint must warn that broker limit may be raw-contract based");
   assert.ok(
     !copySrc.includes("Broker-side blocking is not active yet"),
     "stale 'not active yet' wording must be removed from MAX_POSITION_SIZE_COPY",
