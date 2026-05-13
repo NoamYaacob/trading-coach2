@@ -36,6 +36,47 @@ import {
   deriveMaxPositionSizeBreach,
   type PositionExposureInput,
 } from "./position-exposure";
+import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
+
+/**
+ * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
+ * null on sync failure (the enforcement path was never reached).
+ */
+export type MaxPositionSizeSyncDiagnostics = {
+  /** riskState read from DB at the start of this sync (before any writes). */
+  riskStateAtSyncStart: string;
+  /** riskState written to DB at the end of this sync. */
+  riskStateAtSyncEnd: string;
+  /** Whether standard-equivalent exposure exceeded maxContracts. null when exposure unavailable. */
+  wouldBreach: boolean | null;
+  /** Whether max_position_size became the enforcement trigger this cycle. */
+  ruleTriggered: boolean;
+  /** Whether a GuardianIntervention was created (NORMAL → STOPPED transition). */
+  violationCreated: boolean;
+  /** Why no violation was created. null when violationCreated=true. */
+  violationSuppressedReason: "already_stopped" | "rule_not_triggered" | null;
+  /** Whether position flatten was attempted this cycle. */
+  flattenAttempted: boolean;
+  /** Gate that blocked flatten. null when flattenAttempted=true or flatten was not applicable. */
+  flattenSuppressedReason:
+    | "no_open_positions"
+    | "enforcement_dry_run"
+    | "feature_flag_disabled"
+    | "read_only_connection"
+    | null;
+  /** Whether ENABLE_TRADOVATE_ORDER_ACTIONS=true at sync time. */
+  orderActionFeatureFlagEnabled: boolean;
+  /** Whether ENFORCEMENT_DRY_RUN=true at sync time. */
+  dryRun: boolean;
+  /** Whether the broker connection is connected_readonly. */
+  isReadOnlyConnection: boolean;
+  /** Whether there were any open positions at sync time. */
+  hasOpenPositions: boolean;
+  /** contractIds (Tradovate numeric IDs) of open positions at sync time. */
+  openPositionContractIds: number[];
+  /** Outcome of the flatten attempt. null when not attempted. */
+  flattenResult: { status: string; message: string } | null;
+};
 
 export type SyncResult = {
   ok: boolean;
@@ -50,6 +91,8 @@ export type SyncResult = {
   lastSyncAt: Date | null;
   errorCode: string | null;
   errorMessage: string | null;
+  /** Enforcement diagnostics for max_position_size. null when sync failed before reaching enforcement. */
+  maxPositionSize: MaxPositionSizeSyncDiagnostics | null;
 };
 
 /**
@@ -108,11 +151,25 @@ export async function syncTradovateAccount(
     // max-position-size enforcement check below.
     let openPnl: number | null = openPnlFromSnapshot;
     let hasOpenPositions = false;
-    let openPositions: Awaited<ReturnType<typeof client.toPositions>> = [];
+    let openPositionContractIds: number[] = [];
+    type SyncPosition = { symbol: string; side: "LONG" | "SHORT"; quantity: number; unrealizedPnL: number | null };
+    let openPositions: SyncPosition[] = [];
     try {
-      openPositions = await client.toPositions();
-      hasOpenPositions = openPositions.length > 0;
+      const rawPositions = await client.getPositions();
+      const nonZeroRaw = rawPositions.filter((p) => p.netPos !== null && p.netPos !== 0);
+      hasOpenPositions = nonZeroRaw.length > 0;
+      // contractId is the Tradovate numeric ID — the correct key for flatten payloads.
+      // Do NOT use the resolved symbol string as the flatten key.
+      openPositionContractIds = nonZeroRaw.map((p) => p.contractId);
       if (hasOpenPositions) {
+        const uniqueIds = [...new Set(nonZeroRaw.map((p) => p.contractId))];
+        const contractMap = await client.resolveContracts(uniqueIds);
+        openPositions = nonZeroRaw.map((p) => ({
+          symbol: contractMap.get(p.contractId) ?? String(p.contractId),
+          side: (p.netPos ?? 0) > 0 ? ("LONG" as const) : ("SHORT" as const),
+          quantity: Math.abs(p.netPos ?? 0),
+          unrealizedPnL: p.openPl ?? null,
+        }));
         const sum = openPositions.reduce((s, p) => s + (p.unrealizedPnL ?? 0), 0);
         const hasAnyPnl = openPositions.some((p) => p.unrealizedPnL !== null);
         if (openPnl == null && hasAnyPnl) openPnl = sum;
@@ -527,19 +584,36 @@ export async function syncTradovateAccount(
     // intended action. Dry-run mode records a simulated payload without
     // calling Tradovate.
     let preFlattened: BrokerFlattenResult | undefined;
+    const orderActionFeatureFlagEnabled = isTradovateOrderActionsEnabled();
+    const syncDryRun = isEnforcementDryRun();
+    let flattenAttemptedThisSync = false;
+    type FlattenSuppressedReason = "no_open_positions" | "enforcement_dry_run" | "feature_flag_disabled" | "read_only_connection";
+    let flattenSuppressedReason: FlattenSuppressedReason | null = null;
+
     const wantsFlatten =
       (enforcementTrigger === "session_end" && sessionEndAction === "flatten_then_lock") ||
       (enforcementTrigger === "max_position_size" && hasOpenPositions);
     if (wantsFlatten) {
       const flattenContext =
         enforcementTrigger === "max_position_size" ? "max-position-size" : "session-end";
-      if (isEnforcementDryRun()) {
+      if (syncDryRun) {
         preFlattened = {
           flattenStatus: "dry_run",
           flattenMessage: `Test mode · ${flattenContext} position exit simulated. No Tradovate write was sent.`,
           flattenPayload: { positions: ["(position IDs from position/deps)"], admin: false },
           flattenResponse: null,
         };
+        flattenSuppressedReason = "enforcement_dry_run";
+      } else if (!orderActionFeatureFlagEnabled) {
+        preFlattened = {
+          flattenStatus: "dry_run",
+          flattenMessage:
+            `ENABLE_TRADOVATE_ORDER_ACTIONS is not set — ${flattenContext} flatten skipped. ` +
+            "Guardrail's internal lock still applies.",
+          flattenPayload: null,
+          flattenResponse: null,
+        };
+        flattenSuppressedReason = "feature_flag_disabled";
       } else if (isReadOnlyConnection) {
         preFlattened = {
           flattenStatus: "unavailable_read_only",
@@ -549,7 +623,9 @@ export async function syncTradovateAccount(
           flattenPayload: null,
           flattenResponse: null,
         };
+        flattenSuppressedReason = "read_only_connection";
       } else {
+        flattenAttemptedThisSync = true;
         try {
           preFlattened = await client.applyFlattenOpenPositions();
         } catch (flattenErr) {
@@ -560,6 +636,8 @@ export async function syncTradovateAccount(
           });
         }
       }
+    } else if (enforcementTrigger === "max_position_size" && !hasOpenPositions) {
+      flattenSuppressedReason = "no_open_positions";
     }
 
     // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──
@@ -603,7 +681,8 @@ export async function syncTradovateAccount(
     }
 
     // ── Trigger enforcement on STOPPED transition ──────────────────────────
-    if (enforcementTrigger != null && prevRiskState !== "STOPPED" && newRiskState === "STOPPED") {
+    const violationCreated = enforcementTrigger != null && prevRiskState !== "STOPPED" && newRiskState === "STOPPED";
+    if (violationCreated) {
       const reason =
         enforcementTrigger === "daily_loss_limit"
           ? "Daily loss limit reached"
@@ -619,7 +698,7 @@ export async function syncTradovateAccount(
       triggerEnforcement({
         accountId,
         userId,
-        trigger: enforcementTrigger,
+        trigger: enforcementTrigger!,
         reason,
         // Pass current loss/profit so the broker threshold is set exactly at the
         // amount already earned/lost, ensuring the account is immediately past the limit.
@@ -639,7 +718,26 @@ export async function syncTradovateAccount(
       hasOpenPnl: openPnl != null,
       hasDailyPnl: resolvedDailyPnl != null,
       tradesCount,
+      riskStateAtSyncStart: prevRiskState,
+      riskStateAtSyncEnd: newRiskState,
+      maxPositionSizeRuleTriggered: enforcementTrigger === "max_position_size",
+      violationCreated,
     });
+
+    // ── max_position_size-specific diagnostics ────────────────────────────────
+    const maxPosRuleTriggered = enforcementTrigger === "max_position_size";
+    const maxPosViolationCreated = maxPosRuleTriggered && violationCreated;
+    let maxPosViolationSuppressedReason: MaxPositionSizeSyncDiagnostics["violationSuppressedReason"] = null;
+    if (!maxPosViolationCreated) {
+      if (prevRiskState === "STOPPED") {
+        maxPosViolationSuppressedReason = "already_stopped";
+      } else if (!maxPositionSizeDecision.shouldTrigger) {
+        maxPosViolationSuppressedReason = "rule_not_triggered";
+      }
+      // else: max_pos would breach but another rule took priority — no specific suppression
+    }
+    // null when maxContracts unconfigured (rule is inactive); false means configured but no breach.
+    const wouldBreach = effectiveMaxContracts !== null ? maxPositionSizeDecision.shouldTrigger : null;
 
     return {
       ok: true,
@@ -650,6 +748,24 @@ export async function syncTradovateAccount(
       lastSyncAt: syncedAt,
       errorCode: null,
       errorMessage: null,
+      maxPositionSize: {
+        riskStateAtSyncStart: prevRiskState,
+        riskStateAtSyncEnd: newRiskState,
+        wouldBreach,
+        ruleTriggered: maxPosRuleTriggered,
+        violationCreated: maxPosViolationCreated,
+        violationSuppressedReason: maxPosViolationSuppressedReason,
+        flattenAttempted: flattenAttemptedThisSync,
+        flattenSuppressedReason,
+        orderActionFeatureFlagEnabled,
+        dryRun: syncDryRun,
+        isReadOnlyConnection,
+        hasOpenPositions,
+        openPositionContractIds,
+        flattenResult: preFlattened
+          ? { status: preFlattened.flattenStatus, message: preFlattened.flattenMessage }
+          : null,
+      },
     };
   } catch (err) {
     const code = err instanceof TradovateClientError ? err.code : "SYNC_FAILED";
@@ -673,6 +789,7 @@ export async function syncTradovateAccount(
       lastSyncAt: null,
       errorCode: code,
       errorMessage: message,
+      maxPositionSize: null,
     };
   }
 }
@@ -744,6 +861,7 @@ export async function syncTradovateConnection(
       errorCode: "SYNC_FAILED",
       errorMessage:
         r.reason instanceof Error ? r.reason.message : "Unknown error.",
+      maxPositionSize: null,
     };
   });
 

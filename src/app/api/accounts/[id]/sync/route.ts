@@ -54,5 +54,6 @@ export async function POST(
     openPnl: result.openPnl,
     dailyPnl: result.dailyPnl,
     lastSyncAt: result.lastSyncAt,
+    maxPositionSize: result.maxPositionSize,
   });
 }

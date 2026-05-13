@@ -1573,13 +1573,17 @@ describe("max_position_size — pre-flatten in tradovate-sync (source audit)", (
     );
   });
 
-  it("sync uses toPositions() which resolves contractId → symbol name for max_position_size", () => {
-    // toPositions() calls resolveContracts() which now has a per-ID GET fallback,
-    // ensuring numeric contractIds are resolved to futures symbol names before
-    // computeMiniEquivalentExposure is called.
+  it("sync uses getPositions() + resolveContracts() to resolve contractId → symbol name", () => {
+    // getPositions() returns raw TvPosition with numeric contractId.
+    // resolveContracts() resolves those to symbol names for the exposure engine,
+    // while contractIds are separately captured for diagnostics and flatten payloads.
     assert.ok(
-      SYNC_SRC.includes("client.toPositions()"),
-      "tradovate-sync must call toPositions() to get symbol-resolved positions",
+      SYNC_SRC.includes("client.getPositions()"),
+      "tradovate-sync must call getPositions() to get raw positions with contractId",
+    );
+    assert.ok(
+      SYNC_SRC.includes("resolveContracts(uniqueIds)"),
+      "tradovate-sync must call resolveContracts to get symbol names from contractIds",
     );
   });
 

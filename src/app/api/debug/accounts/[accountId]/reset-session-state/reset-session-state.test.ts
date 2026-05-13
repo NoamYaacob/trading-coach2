@@ -224,14 +224,14 @@ describe("tradovate-position-limit debug endpoint: resetSessionEndpoint visibili
     );
   });
 
-  it("alreadyStopped field is derived from riskStateBefore", () => {
+  it("alreadyStoppedNow field is derived from currentRiskState", () => {
     assert.ok(
-      DEBUG_ENDPOINT_SRC.includes("alreadyStopped"),
-      "debug endpoint must expose alreadyStopped field",
+      DEBUG_ENDPOINT_SRC.includes("alreadyStoppedNow"),
+      "debug endpoint must expose alreadyStoppedNow field (renamed from alreadyStopped)",
     );
     assert.ok(
-      DEBUG_ENDPOINT_SRC.includes('riskStateBefore === "STOPPED"'),
-      "alreadyStopped must be derived from riskStateBefore === 'STOPPED'",
+      DEBUG_ENDPOINT_SRC.includes('currentRiskState === "STOPPED"'),
+      "alreadyStoppedNow must be derived from currentRiskState === 'STOPPED'",
     );
   });
 

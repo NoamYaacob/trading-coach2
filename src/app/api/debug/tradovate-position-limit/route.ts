@@ -16,6 +16,7 @@ import {
   type PositionExposureInput,
 } from "@/lib/brokers/position-exposure";
 import { decideConsentGate } from "@/lib/brokers/automated-actions-consent";
+import { isTradovateOrderActionsEnabled } from "@/lib/brokers/order-actions-flag";
 
 /**
  * GET /api/debug/tradovate-position-limit?accountId=...
@@ -289,12 +290,14 @@ export async function GET(request: NextRequest) {
     fetchError = "no_external_account_id";
   }
 
-  // ── Projected enforcement state ───────────────────────────────────────────
-  // These fields project what the *next* sync would do given the current state.
-  // They are read-only estimates — no enforcement is performed here.
-  const riskStateBefore = liveSessionState?.riskState ?? null;
+  // ── Current state and projected enforcement (next-sync projection; no writes) ──
+  // currentRiskState: what the DB shows NOW (after last sync already ran).
+  // projected* fields: what the NEXT sync would do if current state persists.
+  const currentRiskState = liveSessionState?.riskState ?? null;
+  const alreadyStoppedNow = currentRiskState === "STOPPED";
   const isReadOnlyConnection =
     brokerConnection?.connectionStatus === "connected_readonly";
+  const orderActionFeatureFlagEnabled = isTradovateOrderActionsEnabled();
   const consentDecision = decideConsentGate({
     accountRiskRules: accountConsentRules
       ? {
@@ -309,23 +312,40 @@ export async function GET(request: NextRequest) {
         }
       : null,
   });
-  const orderActionsEnabled = consentDecision.allowed;
-  const ruleTriggered = wouldBreach === true;
-  // Sync only transitions to STOPPED when not already stopped.
-  const riskStateAfter: string | null =
-    ruleTriggered && riskStateBefore !== "STOPPED"
+  const consentGranted = consentDecision.allowed;
+  const projectedRuleWouldTrigger = wouldBreach === true;
+  const projectedViolationWouldBeCreated = projectedRuleWouldTrigger && !alreadyStoppedNow;
+  // Projected risk state after next sync evaluation.
+  const projectedRiskStateAfterEvaluation: string =
+    projectedRuleWouldTrigger && !alreadyStoppedNow
       ? "STOPPED"
-      : (riskStateBefore ?? "NORMAL");
-  const violationCreated = ruleTriggered && riskStateBefore !== "STOPPED";
-  // Flatten is attempted only when: violation fires, there are open positions,
-  // the connection has write access, and automated-action consent was given.
-  const flattenAttempted =
-    violationCreated &&
+      : (currentRiskState ?? "NORMAL");
+  // Flatten would be attempted only when: violation would fire, there are open positions,
+  // feature flag is on, connection has write access, and consent was given.
+  const projectedFlattenWouldBeAttempted =
+    projectedViolationWouldBeCreated &&
     livePositions.length > 0 &&
+    orderActionFeatureFlagEnabled &&
     !isReadOnlyConnection &&
-    orderActionsEnabled;
+    consentGranted;
+  // Expose the specific gate blocking the projected flatten.
+  let flattenBlockedReason: string | null = null;
+  if (!projectedFlattenWouldBeAttempted) {
+    if (alreadyStoppedNow) {
+      flattenBlockedReason = "already_stopped";
+    } else if (!projectedViolationWouldBeCreated) {
+      flattenBlockedReason = "no_violation";
+    } else if (livePositions.length === 0) {
+      flattenBlockedReason = "no_positions";
+    } else if (!orderActionFeatureFlagEnabled) {
+      flattenBlockedReason = "feature_flag_disabled";
+    } else if (isReadOnlyConnection) {
+      flattenBlockedReason = "read_only_connection";
+    } else if (!consentGranted) {
+      flattenBlockedReason = "consent_missing";
+    }
+  }
 
-  const alreadyStopped = riskStateBefore === "STOPPED";
   // Expose the session-reset endpoint only in non-production (or when CRON_SECRET
   // is available), to avoid advertising the endpoint in production responses.
   const isNonProduction = process.env.NODE_ENV !== "production";
@@ -410,15 +430,21 @@ export async function GET(request: NextRequest) {
     wouldBreach,
     guardrailAction,
     positionFetchError,
+    // ── Current state ─────────────────────────────────────────────────────────
+    // currentRiskState: what the DB shows NOW (after last sync already ran).
+    // If this shows STOPPED right after a breach sync, the violation was created by that sync.
+    currentRiskState,
+    alreadyStoppedNow,
     // ── Projected enforcement state (next-sync projection; no writes performed) ──
-    riskStateBefore,
-    alreadyStopped,
-    ruleTriggered,
-    riskStateAfter,
-    violationCreated,
-    flattenAttempted,
-    // flattenSucceeded / flattenError cannot be projected without executing flatten.
-    orderActionsEnabled,
+    // These fields answer: "what would the NEXT sync do if the current state persists?"
+    projectedRuleWouldTrigger,
+    projectedRiskStateAfterEvaluation,
+    projectedViolationWouldBeCreated,
+    projectedFlattenWouldBeAttempted,
+    flattenBlockedReason,
+    // Feature flag and consent gates (separate from each other)
+    orderActionFeatureFlagEnabled,
+    consentGranted,
     // ── QA tools ──────────────────────────────────────────────────────────────
     // Only present in non-production (null in production to avoid advertising the endpoint).
     resetSessionEndpoint,
