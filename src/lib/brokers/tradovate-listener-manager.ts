@@ -53,6 +53,8 @@ export type ManagedListenerConfig = {
   onPropsEvent?: (connectionId: string, props: TradovatePropsEventData) => void;
   /** Callback when listener heartbeat arrives — for DB staleness update. */
   onHeartbeat?: (connectionId: string, at: Date) => void;
+  /** Callback when listener state transitions — for DB listenerStatus update. */
+  onStateChange?: (connectionId: string, state: ListenerState) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -101,6 +103,7 @@ export class TradovateListenerManager {
           connectionId: config.connectionId,
           state,
         });
+        config.onStateChange?.(config.connectionId, state);
       },
     });
 

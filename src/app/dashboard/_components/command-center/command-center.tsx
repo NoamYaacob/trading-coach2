@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
+import { BrokerListenerStatus } from "@/app/dashboard/_components/broker-listener-status";
 import { formatPropFirmDescriptor } from "@/app/accounts/_components/account-rule-helpers";
 import { ArchiveAccountButton } from "./archive-account-button";
 import {
@@ -925,10 +926,25 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
                 {SETUP_NEEDED_REASON_TEXT[account.setupNeededReason]}
               </p>
             )}
-            {account.lastSyncAt && !account.breachReason && !account.setupNeededReason && (
-              <p className="mt-0.5 text-[10px] text-stone-400">
-                Synced {SYNC_DATE_FORMAT.format(account.lastSyncAt)}
-              </p>
+            {!account.breachReason && !account.setupNeededReason && (
+              account.listenerStatus != null ? (
+                <div className="mt-0.5">
+                  <BrokerListenerStatus
+                    data={{
+                      listenerStatus: account.listenerStatus,
+                      listenerLastEventAt: account.listenerLastEventAt,
+                      listenerLastHeartbeatAt: account.listenerLastHeartbeatAt,
+                      lastSyncAt: account.lastSyncAt,
+                      hasMaxPositionSize: account.hasMaxPositionSize,
+                      rawBrokerHardLimitEnabled: account.rawBrokerHardLimitEnabled,
+                    }}
+                  />
+                </div>
+              ) : account.lastSyncAt ? (
+                <p className="mt-0.5 text-[10px] text-stone-400">
+                  Synced {SYNC_DATE_FORMAT.format(account.lastSyncAt)}
+                </p>
+              ) : null
             )}
           </div>
         </div>

@@ -72,6 +72,17 @@ export type CommandCenterAccount = {
   openPnl: number | null;
   lastSyncAt: Date | null;
   fillsSyncedAt: Date | null;
+  /** BrokerConnection.listenerStatus — set by the listener worker. Null when
+   *  no listener has run for this connection (dashboard falls back to lastSyncAt). */
+  listenerStatus: string | null;
+  /** Timestamp of the last WebSocket props event observed by the listener. */
+  listenerLastEventAt: Date | null;
+  /** Timestamp of the last WebSocket heartbeat ("h" frame). */
+  listenerLastHeartbeatAt: Date | null;
+  /** True when this account has a max position size rule (account or default). */
+  hasMaxPositionSize: boolean;
+  /** True when raw broker hard limit mode is enabled (account-level only). */
+  rawBrokerHardLimitEnabled: boolean;
   /** true when maxDailyLoss > balance for personal accounts — effective budget is capped */
   balanceLimitedWarning: boolean;
   /** true when a personal account has maxDailyLoss configured but balance hasn't synced yet */

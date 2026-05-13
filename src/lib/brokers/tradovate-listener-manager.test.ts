@@ -183,6 +183,35 @@ describe("TradovateListenerManager: event routing", () => {
     assert.equal(received[0], "conn-1");
     manager.closeAll();
   });
+
+  it("onStateChange callback receives connectionId + new state", async () => {
+    const { factory, lastWs } = makeFactory();
+    const transitions: Array<{ id: string; state: string }> = [];
+    const manager = new TradovateListenerManager(factory);
+
+    await manager.startListener(
+      makeConfig("conn-1", {
+        onStateChange: (connectionId: string, state: string) =>
+          transitions.push({ id: connectionId, state }),
+      }),
+    );
+
+    const ws = lastWs()!;
+    ws.onopen?.(null);
+    // Drive through to authorizing → syncing → ready
+    const authResp = `a[${JSON.stringify(JSON.stringify({ i: 1, s: 200, p: {} }))}]`;
+    ws.onmessage?.({ data: authResp });
+    const syncResp = `a[${JSON.stringify(JSON.stringify({ i: 2, s: 200, p: {} }))}]`;
+    ws.onmessage?.({ data: syncResp });
+
+    assert.ok(transitions.length > 0, "expected at least one state transition");
+    for (const t of transitions) {
+      assert.equal(t.id, "conn-1");
+    }
+    const states = transitions.map((t) => t.state);
+    assert.ok(states.includes("ready"), `expected 'ready' in transitions: ${states.join(",")}`);
+    manager.closeAll();
+  });
 });
 
 // ── listenerFreshnessLabel ───────────────────────────────────────────────────

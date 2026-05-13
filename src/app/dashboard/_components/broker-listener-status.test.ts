@@ -73,6 +73,25 @@ describe("computeListenerFreshness: reconnecting", () => {
 });
 
 describe("computeListenerFreshness: fallback (no listener)", () => {
+  it("falls back to lastSyncAt when listenerStatus is null (worker never ran)", () => {
+    // Acceptance: if listener is down/never started, dashboard must show cron freshness.
+    const result = computeListenerFreshness(
+      makeData({ listenerStatus: null, lastSyncAt: new Date(Date.now() - 90_000) }),
+    );
+    assert.equal(result.isLive, false);
+    assert.equal(result.isReconnecting, false);
+    assert.ok(result.label.includes("Fallback sync"), result.label);
+  });
+
+  it("falls back to lastSyncAt when listenerStatus is 'closed'", () => {
+    const result = computeListenerFreshness(
+      makeData({ listenerStatus: "closed", lastSyncAt: new Date(Date.now() - 90_000) }),
+    );
+    assert.equal(result.isLive, false);
+    assert.equal(result.isReconnecting, false);
+    assert.ok(result.label.includes("Fallback sync"), result.label);
+  });
+
   it("isStale=false when lastSyncAt is recent", () => {
     const result = computeListenerFreshness(
       makeData({ lastSyncAt: new Date(Date.now() - 2 * 60_000) }), // 2m ago

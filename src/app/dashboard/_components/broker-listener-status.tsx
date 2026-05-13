@@ -34,7 +34,7 @@ export function BrokerListenerStatus({ data }: { data: BrokerListenerStatusData 
   const freshness = computeListenerFreshness(data);
 
   return (
-    <div className="flex flex-col gap-0.5 text-right">
+    <div className="flex flex-col gap-0.5">
       {/* Freshness label */}
       <span
         className={[
