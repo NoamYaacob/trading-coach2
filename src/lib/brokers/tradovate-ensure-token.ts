@@ -25,9 +25,9 @@
  *       throws so the caller records the failure
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db.ts";
 import { getTradovateConfig } from "./tradovate-env";
-import { encryptAndSerialize, parseAndDecrypt } from "@/lib/security/token-crypto";
+import { encryptAndSerialize, parseAndDecrypt } from "../security/token-crypto.ts";
 import {
   TradovateClientError,
   REFRESH_BUFFER_MS,
