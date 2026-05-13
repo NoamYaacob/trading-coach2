@@ -1,3 +1,5 @@
+import { MAX_POSITION_SIZE_COPY } from "./position-size-copy.ts";
+
 export type AccountRulesFormBanner =
   | { kind: "none" }
   | { kind: "first_time"; message: string }
@@ -240,7 +242,7 @@ export function computePendingFieldRows(input: {
   if (mtpd !== null) push("Max trades / day", input.activeBaseline.maxTradesPerDay, mtpd, fmtCount);
   if (sal !== null) push("Stop after losses", input.activeBaseline.stopAfterLosses, sal, fmtCount);
   if (aeh !== null) push("Cutoff time", input.activeBaseline.allowedEndHour, aeh, fmtCutoff);
-  if (mc !== null) push("Max position size", input.activeBaseline.maxContracts, mc, fmtCount);
+  if (mc !== null) push(MAX_POSITION_SIZE_COPY.label, input.activeBaseline.maxContracts, mc, fmtCount);
 
   return rows;
 }
@@ -307,7 +309,7 @@ export function computePendingFieldRowsWithSource(input: {
   if (mtpd !== null) push("Max trades / day", o.maxTradesPerDay, d.maxTradesPerDay, mtpd, fmtCount);
   if (sal !== null) push("Stop after losses", o.stopAfterLosses, d.stopAfterLosses, sal, fmtCount);
   if (aeh !== null) push("Cutoff time", o.allowedEndHour, d.allowedEndHour, aeh, fmtCutoff);
-  if (mc !== null) push("Max position size", o.maxContracts, d.maxContracts, mc, fmtCount);
+  if (mc !== null) push(MAX_POSITION_SIZE_COPY.label, o.maxContracts, d.maxContracts, mc, fmtCount);
 
   return rows;
 }

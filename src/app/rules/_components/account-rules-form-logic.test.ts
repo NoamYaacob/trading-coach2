@@ -462,7 +462,7 @@ test("pending field rows: returns multiple rows when several fields differ", () 
     "Max trades / day",
     "Stop after losses",
     "Cutoff time",
-    "Max position size",
+    "Max standard-equivalent contracts",
   ]);
   // Spot-check the formatting of each kind of value (money, count, cutoff).
   assert.deepEqual(
@@ -614,8 +614,8 @@ test("EFFECTIVE BASELINE: missing account override does NOT produce '—' if def
     active: "5",
     pending: "4",
   });
-  assert.deepEqual(rows.find((r) => r.label === "Max position size"), {
-    label: "Max position size",
+  assert.deepEqual(rows.find((r) => r.label === "Max standard-equivalent contracts"), {
+    label: "Max standard-equivalent contracts",
     active: "3",
     pending: "1",
   });
@@ -645,7 +645,7 @@ test("EFFECTIVE BASELINE: only renders '— → value' when neither account nor 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "Not set", pending: "2" },
+    { label: "Max standard-equivalent contracts", active: "Not set", pending: "2" },
   ]);
 });
 
@@ -832,13 +832,13 @@ test("REGRESSION: inherited account when default has only maxRiskPerTrade — ri
   ]);
 });
 
-// ─── Max position size (maxContracts) end-to-end inheritance ─────────────────
+// ─── Max standard-equivalent contracts (maxContracts) end-to-end inheritance ──
 //
 // Pins the maxContracts field plumbing across the four layers it touches:
 //   1. mapDefaultRulesToAccountForm — reads `row.maxContracts`
 //   2. effectiveBaseline composition — effectiveValue(initial, default)
 //   3. computePendingFieldRows — reads `payload.maxContracts` as a number
-//   4. label `Max position size`
+//   4. label `Max standard-equivalent contracts`
 // A regression at any of these layers shows up as `— → N` in the live UI.
 
 test("MAX POSITION SIZE: account override exists → diff shows '2 → 1'", () => {
@@ -857,7 +857,7 @@ test("MAX POSITION SIZE: account override exists → diff shows '2 → 1'", () =
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "2", pending: "1" },
+    { label: "Max standard-equivalent contracts", active: "2", pending: "1" },
   ]);
 });
 
@@ -877,7 +877,7 @@ test("MAX POSITION SIZE: account inherits from default → diff shows '2 → 1' 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "2", pending: "1" },
+    { label: "Max standard-equivalent contracts", active: "2", pending: "1" },
   ]);
   assert.notEqual(
     rows[0].active,
@@ -901,12 +901,12 @@ test("MAX POSITION SIZE: account override + default both empty → 'Not set → 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "Not set", pending: "1" },
+    { label: "Max standard-equivalent contracts", active: "Not set", pending: "1" },
   ]);
 });
 
 test("MAX POSITION SIZE: pending payload key is 'maxContracts' (not 'maxPositionSize' / 'maxPosition')", () => {
-  // The user-facing label is 'Max position size' but the storage key is
+  // The user-facing label is 'Max standard-equivalent contracts' but the storage key is
   // 'maxContracts' — same name across AccountRiskRules, RiskRules, the form
   // submit body, and pendingPayloadJson. A drift here would silently break
   // the diff: the payload would still contain a value but
@@ -921,14 +921,14 @@ test("MAX POSITION SIZE: pending payload key is 'maxContracts' (not 'maxPosition
   });
   assert.deepEqual(noRows, [], "diff helper must NOT pick up alternate key names");
 
-  // Correct key produces a row with the user-facing 'Max position size' label.
+  // Correct key produces a row with the user-facing 'Max standard-equivalent contracts' label.
   const rows = computePendingFieldRows({
     activeBaseline: baseline,
     pendingPayload: { maxContracts: 1 },
     pendingIsDelete: false,
   });
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].label, "Max position size");
+  assert.equal(rows[0].label, "Max standard-equivalent contracts");
 });
 
 test("MAX POSITION SIZE: mapping reads row.maxContracts identically to its sibling Int fields", () => {
@@ -949,7 +949,7 @@ test("MAX POSITION SIZE: mapping reads row.maxContracts identically to its sibli
   );
 });
 
-test("REGRESSION (live bug): inherited Max position size must NOT render '— → 1' when default has maxContracts", () => {
+test("REGRESSION (live bug): inherited Max standard-equivalent contracts must NOT render '— → 1' when default has maxContracts", () => {
   // Reproduces the exact live observation: most fields work, but Max position
   // size renders '— → 1' even though every other field on the default has
   // values and the account inherits. The fix is: defaultValues.maxContracts
@@ -1013,7 +1013,7 @@ test("REGRESSION (live bug): inherited Max position size must NOT render '— �
     "Max trades / day: 100 → 4",
     "Stop after losses: 50 → 2",
     "Cutoff time: 18:00 CME → 3:00 CME",
-    "Max position size: 2 → 1",
+    "Max standard-equivalent contracts: 2 → 1",
   ]);
 });
 
@@ -1035,7 +1035,7 @@ test("NOT SET COPY: empty active baseline renders 'Not set' instead of '—'", (
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "Not set", pending: "5" },
+    { label: "Max standard-equivalent contracts", active: "Not set", pending: "5" },
   ]);
   assert.notEqual(rows[0].active, "—", "the dash placeholder must be retired");
 });
@@ -1078,7 +1078,7 @@ test("PRODUCT SPEC: default null + account null + pending 5 → 'Not set → 5'"
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "Not set", pending: "5" },
+    { label: "Max standard-equivalent contracts", active: "Not set", pending: "5" },
   ]);
 });
 
@@ -1095,7 +1095,7 @@ test("PRODUCT SPEC: default 2 + account null + pending 5 → '2 → 5'", () => {
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "2", pending: "5" },
+    { label: "Max standard-equivalent contracts", active: "2", pending: "5" },
   ]);
 });
 
@@ -1112,7 +1112,7 @@ test("PRODUCT SPEC: account 3 + default 2 + pending 5 → '3 → 5' (override be
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "3", pending: "5" },
+    { label: "Max standard-equivalent contracts", active: "3", pending: "5" },
   ]);
 });
 
@@ -1188,7 +1188,7 @@ const emptyBaseline: PendingDiffBaseline = {
 };
 
 test("INHERITED: default maxContracts=4 + account override empty + pending=4 produces NO row", () => {
-  // Live bug observed: account form rendered "Max position size: Not set → 4"
+  // Live bug observed: account form rendered "Max standard-equivalent contracts: Not set → 4"
   // even though the default template has maxContracts=4. With the source-aware
   // helper, the inherited 4 is recognised on the active side, formatted matches
   // the pending 4, and the row is filtered out — pending panel hides.
@@ -1209,7 +1209,7 @@ test("INHERITED: default maxContracts=4 + account override empty + pending=3 pro
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "4", pending: "3", activeSource: "inherited" },
+    { label: "Max standard-equivalent contracts", active: "4", pending: "3", activeSource: "inherited" },
   ]);
 });
 
@@ -1221,7 +1221,7 @@ test("NOT SET: both default and account empty + pending=3 produces 'Not set → 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "Not set", pending: "3", activeSource: "not_set" },
+    { label: "Max standard-equivalent contracts", active: "Not set", pending: "3", activeSource: "not_set" },
   ]);
 });
 
@@ -1234,7 +1234,7 @@ test("OVERRIDE: account override=2 (default also=4) + pending=1 produces '2 → 
     pendingIsDelete: false,
   });
   assert.deepEqual(rows, [
-    { label: "Max position size", active: "2", pending: "1", activeSource: "override" },
+    { label: "Max standard-equivalent contracts", active: "2", pending: "1", activeSource: "override" },
   ]);
 });
 
@@ -1279,7 +1279,7 @@ test("WITH SOURCE: multiple fields differing — each row carries its own active
   });
   assert.equal(rows.length, 2);
   const dailyLoss = rows.find((r) => r.label === "Daily loss limit")!;
-  const positionSize = rows.find((r) => r.label === "Max position size")!;
+  const positionSize = rows.find((r) => r.label === "Max standard-equivalent contracts")!;
   assert.equal(dailyLoss.activeSource, "override");
   assert.equal(positionSize.activeSource, "inherited");
 });

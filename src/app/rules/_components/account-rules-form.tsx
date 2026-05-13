@@ -374,7 +374,7 @@ export function AccountRulesForm({
       { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
       { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
       { label: "Cutoff time (CME)", value: defaultValues?.allowedEndHour ?? "" },
-      { label: "Max position size", value: defaultValues?.maxContracts ?? "" },
+      { label: MAX_POSITION_SIZE_COPY.label, value: defaultValues?.maxContracts ?? "" },
     ];
     return (
       <div className="grid gap-4">
