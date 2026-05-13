@@ -55,7 +55,7 @@ export type PositionLimitAction =
   /**
    * Returned when brokerEnforcementMode is "app_side_only": any existing
    * Guardrail-owned global raw limit was deactivated (or was absent) and no new
-   * raw limit was written. App-side mini-equivalent enforcement handles the cap.
+   * raw limit was written. App-side standard-equivalent enforcement handles the cap.
    */
   | "app_side_only";
 

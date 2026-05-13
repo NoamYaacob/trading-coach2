@@ -1935,11 +1935,11 @@ export class TradovateClient {
      * "global_raw" (legacy): write maxContracts as a raw account-level cap.
      *   This mode incorrectly rejects micro contracts — e.g., setting
      *   exposedLimit=1 blocks 2 MNQ even though 2 MNQ is only 0.2 NQ-equivalent.
-     *   Use only when mini-equivalent scaling is not in effect.
+     *   Use only when standard-equivalent scaling is not in effect.
      *
-     * "app_side_only" (default for mini-equivalent mode): deactivate any
+     * "app_side_only" (default for standard-equivalent mode): deactivate any
      *   existing Guardrail-owned global limit and rely entirely on the
-     *   Guardrail app-side mini-equivalent enforcement engine. No raw broker
+     *   Guardrail app-side standard-equivalent enforcement engine. No raw broker
      *   cap is applied, so micro contracts are not incorrectly blocked.
      *   Product-specific broker limits (totalBy="PerContract") are unverified
      *   and will be added when confirmed against a live Tradovate account.
@@ -1956,8 +1956,8 @@ export class TradovateClient {
     const existing = await this.listUserAccountPositionLimits();
     const guardrailLimit = findGuardrailPositionLimit(existing);
 
-    // ── App-side-only path (mini-equivalent mode, no raw global limit) ───────
-    // In mini-equivalent mode we do NOT write a raw account-level contract cap
+    // ── App-side-only path (standard-equivalent mode, no raw global limit) ──
+    // In standard-equivalent mode we do NOT write a raw account-level contract cap
     // because it would incorrectly block micro products. Example: setting
     // exposedLimit=1 to enforce "1 NQ-equivalent" also blocks 2 MNQ (0.2
     // NQ-equiv), which is within the user's intended limit. Instead, deactivate

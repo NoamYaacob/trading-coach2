@@ -540,10 +540,10 @@ describe("isMaxPositionSizeBreached — sub-tenth precision", () => {
     assert.equal(isMaxPositionSizeBreached(2.1, 2), true);
   });
 
-  it("sub-tenth float 2.0001 rounds to nearest tenth — does not falsely trigger at limit 2", () => {
+  it("sub-tenth float 2.0001 rounds to nearest milli — does not falsely trigger at limit 2", () => {
     // Positions are whole contracts; the minimum real increment is 0.1 (one micro).
     // A sub-tenth value like 2.0001 is not achievable from positions and rounds to
-    // 2.0 tenths in the integer-tenths system, so it correctly does not breach.
+    // 2000 millis in the integer-millis system, so it correctly does not breach.
     assert.equal(isMaxPositionSizeBreached(2.0001, 2), false);
   });
 });
@@ -566,6 +566,104 @@ describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
     assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ NQ/));
     assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ ES/));
     assert.ok(!MAX_POSITION_SIZE_COPY.hint.match(/\d+\.\d+ MNQ/));
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — all four Apex equity-index pairs at max=1", () => {
+  // NQ/MNQ already covered in the "generic limits" block; this block adds MES, MYM, M2K
+  // and verifies 6E is recognised as a supported (non-unsupported) registry entry.
+
+  it("maxContracts=1: 10 MES (1.0 standard-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MESH6", netPos: 10 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+    assert.equal(d.hasUnsupportedPositions, false);
+  });
+
+  it("maxContracts=1: 11 MES (1.1 standard-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MESH6", netPos: 11 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 1.1);
+  });
+
+  it("maxContracts=1: 10 MYM (1.0 standard-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MYMH6", netPos: 10 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+  });
+
+  it("maxContracts=1: 11 MYM (1.1 standard-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MYMH6", netPos: 11 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 1.1);
+  });
+
+  it("maxContracts=1: 10 M2K (1.0 RTY-equivalent) does not breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "M2KH6", netPos: 10 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+    assert.equal(d.hasUnsupportedPositions, false);
+  });
+
+  it("maxContracts=1: 11 M2K (1.1 RTY-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "M2KH6", netPos: 11 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 1.1);
+  });
+
+  it("maxContracts=1: 1 6E (1.0 standard-equivalent) is recognised from registry and does not breach", () => {
+    // 6E (Euro FX) is in the registry with exposureRatioToParent=1; it must NOT be
+    // classified as unsupported now that the registry covers all Apex-listed contracts.
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "6EH6", netPos: 1 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, false);
+    assert.equal(d.hasUnsupportedPositions, false);
+    assert.equal(d.totalMiniEquivalent, 1);
+  });
+
+  it("maxContracts=1: 2 6E (2.0 standard-equivalent) breaches", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "6EH6", netPos: 2 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+    assert.equal(d.totalMiniEquivalent, 2);
+    assert.equal(d.hasUnsupportedPositions, false);
+  });
+
+  it("AAPL (not a futures root) is unsupported — safe fallback, does NOT claim exact enforcement", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "AAPL", netPos: 1 }],
+      maxContracts: 1,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "unsupported");
+    assert.equal(d.hasUnsupportedPositions, true);
+    assert.deepEqual(d.unsupportedSymbols, ["AAPL"]);
   });
 });
 

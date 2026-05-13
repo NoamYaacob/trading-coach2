@@ -141,7 +141,7 @@ export const ENFORCEMENT_CAPABILITIES = {
     capability: "internal_only" as const,
     notes:
       "BREACH-RESPONSE trigger (this entry): Guardrail-side monitor on " +
-      "mini-equivalent total exposure (sum of NQ+0.1·MNQ, ES+0.1·MES, …). " +
+      "standard-equivalent total exposure (sum of NQ+0.1·MNQ, ES+0.1·MES, …). " +
       "Tradovate's UserAccountPositionLimit cannot express cross-product " +
       "weighted equivalence, so the breach trigger remains Guardrail-side. " +
       "May still flatten via order/liquidatepositions when permission allows. " +
@@ -153,7 +153,7 @@ export const ENFORCEMENT_CAPABILITIES = {
       "Product-specific limits (totalBy='PerContract') exist in the Tradovate API " +
       "type definition but are unverified against a live account — will be enabled " +
       "once confirmed. Until then, enforcement is entirely app-side. " +
-      "See src/lib/futures/contracts.ts for the mini-equivalent registry.",
+      "See src/lib/futures/contracts.ts for the standard-equivalent registry.",
   },
   manual: {
     capability: "internal_only" as const,
