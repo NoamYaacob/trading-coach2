@@ -22,6 +22,8 @@ export type BrokerConnectionRow = {
   brokerUserId: string | null;
   connectionStatus: string;
   permissionLevel: string | null;
+  tokenExpiresAt: Date | null;
+  lastRenewError: string | null;
 };
 
 /** Per-connection startup plan the worker will hand to the listener manager. */
@@ -37,13 +39,26 @@ export type ListenerStartupPlan = {
 export type SkipReason =
   | "wrong_platform"
   | "unhealthy_status"
+  | "renew_error"
+  | "expired_token"
   | "missing_broker_user_id"
   | "invalid_broker_user_id"
   | "unsupported_env";
 
+/** Safe (non-secret) snapshot attached to each skipped entry for diagnostics. */
+export type SkipDiagnostic = {
+  connectionId: string;
+  reason: SkipReason;
+  env: string;
+  connectionStatus: string;
+  permissionLevel: string | null;
+  tokenExpiresAtExists: boolean;
+  tokenExpired: boolean;
+};
+
 export type FilterResult = {
   start: ListenerStartupPlan[];
-  skipped: Array<{ connectionId: string; reason: SkipReason }>;
+  skipped: SkipDiagnostic[];
 };
 
 /**
@@ -63,30 +78,53 @@ export const HEALTHY_CONNECTION_STATUSES: ReadonlySet<string> = new Set([
  * `connected_live`. A read-only connection cannot enforce, but listening to
  * its position feed still gives us a freshness signal in the dashboard.
  */
-export function planListenerStartups(rows: BrokerConnectionRow[]): FilterResult {
+export function planListenerStartups(rows: BrokerConnectionRow[], now = new Date()): FilterResult {
   const start: ListenerStartupPlan[] = [];
-  const skipped: FilterResult["skipped"] = [];
+  const skipped: SkipDiagnostic[] = [];
 
   for (const row of rows) {
+    const tokenExpired = row.tokenExpiresAt !== null && row.tokenExpiresAt < now;
+    const meta: Omit<SkipDiagnostic, "reason"> = {
+      connectionId: row.id,
+      env: row.env,
+      connectionStatus: row.connectionStatus,
+      permissionLevel: row.permissionLevel,
+      tokenExpiresAtExists: row.tokenExpiresAt !== null,
+      tokenExpired,
+    };
+
     if (row.platform !== "tradovate") {
-      skipped.push({ connectionId: row.id, reason: "wrong_platform" });
+      skipped.push({ ...meta, reason: "wrong_platform" });
       continue;
     }
     if (!HEALTHY_CONNECTION_STATUSES.has(row.connectionStatus)) {
-      skipped.push({ connectionId: row.id, reason: "unhealthy_status" });
+      skipped.push({ ...meta, reason: "unhealthy_status" });
+      continue;
+    }
+    // An active renewal error means the broker rejected recent renewal attempts.
+    // Skip rather than hammer the API — the cron renewer will clear this on success.
+    if (row.lastRenewError !== null) {
+      skipped.push({ ...meta, reason: "renew_error" });
+      continue;
+    }
+    // A definitively expired token with no recent renew attempt is a hard skip.
+    // ensureTradovateAccessToken will attempt renewal; if tokenExpiresAt is in
+    // the past but lastRenewError is null, we still attempt (covered above).
+    if (tokenExpired) {
+      skipped.push({ ...meta, reason: "expired_token" });
       continue;
     }
     if (!row.brokerUserId) {
-      skipped.push({ connectionId: row.id, reason: "missing_broker_user_id" });
+      skipped.push({ ...meta, reason: "missing_broker_user_id" });
       continue;
     }
     const tradovateUserId = Number(row.brokerUserId);
     if (!Number.isFinite(tradovateUserId) || tradovateUserId <= 0) {
-      skipped.push({ connectionId: row.id, reason: "invalid_broker_user_id" });
+      skipped.push({ ...meta, reason: "invalid_broker_user_id" });
       continue;
     }
     if (row.env !== "live" && row.env !== "demo") {
-      skipped.push({ connectionId: row.id, reason: "unsupported_env" });
+      skipped.push({ ...meta, reason: "unsupported_env" });
       continue;
     }
     const permissionLevel =

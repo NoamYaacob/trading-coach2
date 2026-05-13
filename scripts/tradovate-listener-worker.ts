@@ -104,6 +104,8 @@ async function loadHealthyConnectionRows(): Promise<BrokerConnectionRow[]> {
       brokerUserId: true,
       connectionStatus: true,
       permissionLevel: true,
+      tokenExpiresAt: true,
+      lastRenewError: true,
     },
   });
 }
@@ -199,6 +201,10 @@ const manager = new TradovateListenerManager(makeWsFactory());
 async function reconcileListeners(): Promise<void> {
   const rows = await loadHealthyConnectionRows();
   const { start: plans, skipped } = planListenerStartups(rows);
+
+  for (const skip of skipped) {
+    console.info("[listener-worker] skipping connection", skip);
+  }
 
   // Stop any managed listeners whose connection is no longer healthy.
   const healthyIds = new Set(plans.map((p) => p.connectionId));

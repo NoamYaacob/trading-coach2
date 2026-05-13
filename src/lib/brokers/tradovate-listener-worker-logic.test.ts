@@ -39,6 +39,8 @@ function makeRow(overrides: Partial<BrokerConnectionRow> = {}): BrokerConnection
     brokerUserId: "12345",
     connectionStatus: "connected_live",
     permissionLevel: "full_access",
+    tokenExpiresAt: null,
+    lastRenewError: null,
     ...overrides,
   };
 }
@@ -152,6 +154,64 @@ describe("planListenerStartups: invalid rows", () => {
   });
 });
 
+// ── Token eligibility ────────────────────────────────────────────────────────
+
+describe("planListenerStartups: token eligibility", () => {
+  it("starts a connection when tokenExpiresAt is null (no expiry known)", () => {
+    const { start, skipped } = planListenerStartups([makeRow({ tokenExpiresAt: null })]);
+    assert.equal(start.length, 1);
+    assert.equal(skipped.length, 0);
+  });
+
+  it("starts a connection when tokenExpiresAt is in the future", () => {
+    const future = new Date(Date.now() + 60_000);
+    const { start, skipped } = planListenerStartups([makeRow({ tokenExpiresAt: future })]);
+    assert.equal(start.length, 1);
+    assert.equal(skipped.length, 0);
+  });
+
+  it("skips with expired_token when tokenExpiresAt is in the past", () => {
+    const past = new Date(Date.now() - 60_000);
+    const { skipped } = planListenerStartups([makeRow({ tokenExpiresAt: past })]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "expired_token");
+  });
+
+  it("skips with renew_error when lastRenewError is set (even with valid token)", () => {
+    const future = new Date(Date.now() + 60_000);
+    const { skipped } = planListenerStartups([
+      makeRow({ tokenExpiresAt: future, lastRenewError: "auth_invalid" }),
+    ]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "renew_error");
+  });
+
+  it("renew_error takes priority over expired_token", () => {
+    const past = new Date(Date.now() - 60_000);
+    const { skipped } = planListenerStartups([
+      makeRow({ tokenExpiresAt: past, lastRenewError: "auth_invalid" }),
+    ]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "renew_error");
+  });
+
+  it("diagnostic snapshot includes tokenExpired and tokenExpiresAtExists", () => {
+    const past = new Date(Date.now() - 60_000);
+    const { skipped } = planListenerStartups([makeRow({ tokenExpiresAt: past })]);
+    assert.equal(skipped[0]!.tokenExpired, true);
+    assert.equal(skipped[0]!.tokenExpiresAtExists, true);
+    assert.equal(skipped[0]!.connectionId, "conn-1");
+    assert.equal(skipped[0]!.connectionStatus, "connected_live");
+    assert.equal(skipped[0]!.permissionLevel, "full_access");
+  });
+
+  it("diagnostic snapshot tokenExpired=false when tokenExpiresAt is null", () => {
+    const { skipped } = planListenerStartups([makeRow({ brokerUserId: null })]);
+    assert.equal(skipped[0]!.tokenExpired, false);
+    assert.equal(skipped[0]!.tokenExpiresAtExists, false);
+  });
+});
+
 // ── Mixed batch ──────────────────────────────────────────────────────────────
 
 describe("planListenerStartups: mixed batch", () => {
@@ -160,7 +220,7 @@ describe("planListenerStartups: mixed batch", () => {
       makeRow({ id: "ok-1" }),
       makeRow({ id: "expired-1", connectionStatus: "expired" }),
       makeRow({ id: "ok-2", env: "live" }),
-      makeRow({ id: "no-user", brokerUserId: null }),
+      makeRow({ id: "no-user", brokerUserId: null, tokenExpiresAt: null }),
     ];
     const { start, skipped } = planListenerStartups(rows);
     const startIds = start.map((p) => p.connectionId).sort();
