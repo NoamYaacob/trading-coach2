@@ -516,6 +516,12 @@ model AccountRiskRules {
   propFirmDrawdownRemaining Decimal?  @db.Decimal(10, 2)
   propFirmProfitTarget      Decimal?  @db.Decimal(10, 2)
   propFirmMinTradingDays    Int?
+  // Optional broker-side raw hard limit for max position size.
+  // OFF by default. When true, Guardrail writes a global raw contract cap
+  // (totalBy="Overall") to Tradovate. WARNING: this counts all contracts
+  // equally — with max=1, even 2 MNQ (0.2 NQ-equivalent) will be rejected.
+  // Default (false): standard-equivalent detection-response only; NQ 1 = MNQ 10.
+  rawBrokerHardLimitEnabled Boolean @default(false)
   // Persisted consent for automated broker actions on this specific account.
   // Set when the user explicitly checks the consent checkbox while saving
   // account-specific rules. Null blocks broker writes; old versions also block.

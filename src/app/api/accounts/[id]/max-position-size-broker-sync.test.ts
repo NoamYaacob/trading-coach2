@@ -565,3 +565,118 @@ describe("GET /api/debug/tradovate-position-limit: manual cleanup instructions",
     );
   });
 });
+
+// ── 7. Raw broker hard limit: opt-in only, default app_side_only ─────────────
+//
+// The "Broker raw hard limit" advanced mode writes a global raw contract cap
+// (totalBy="Overall") to Tradovate only when rawBrokerHardLimitEnabled===true.
+// Default is always app_side_only (standard-equivalent detection-response).
+
+const ACCOUNT_RULES_FORM_SRC = readFileSync(
+  resolve(import.meta.dirname, "../../../rules/_components/account-rules-form.tsx"),
+  "utf8",
+);
+
+const RISK_RULES_DATA_SRC = readFileSync(
+  resolve(import.meta.dirname, "./risk-rules-data.ts"),
+  "utf8",
+);
+
+describe("raw broker hard limit: default is app_side_only", () => {
+  it("route defaults to app_side_only when rawBrokerHardLimitEnabled is absent/false", () => {
+    const s = src(ACCOUNT_ROUTE);
+    // The default enforcement mode must be app_side_only.
+    assert.ok(s.includes('"app_side_only"'), "route must have app_side_only as default enforcement mode");
+  });
+
+  it("route only uses global_raw when rawBrokerHardLimitEnabled is explicitly true", () => {
+    const s = src(ACCOUNT_ROUTE);
+    // global_raw must be gated on rawBrokerHardLimitEnabled === true.
+    assert.ok(
+      s.includes("rawBrokerHardLimitEnabled === true"),
+      "route must gate global_raw on rawBrokerHardLimitEnabled === true",
+    );
+    assert.ok(
+      s.includes('"global_raw"'),
+      "route must reference global_raw so the conditional is reachable",
+    );
+  });
+
+  it("route sets brokerEnforcementMode from rawBrokerHardLimitEnabled flag (not hardcoded)", () => {
+    const s = src(ACCOUNT_ROUTE);
+    // There must be a conditional that selects between the two modes.
+    const rawIdx = s.indexOf("rawBrokerHardLimitEnabled");
+    assert.ok(rawIdx !== -1, "route must read rawBrokerHardLimitEnabled from the request body");
+    // The variable holding the mode must be passed to applyMaxPositionSize.
+    assert.ok(
+      s.includes("brokerEnforcementMode,") || s.includes("brokerEnforcementMode\n"),
+      "route must pass brokerEnforcementMode variable (not a literal) to applyMaxPositionSize",
+    );
+  });
+
+  it("route logs brokerEnforcementMode in the success path", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const logIdx = s.indexOf("[accounts/patch] broker max position size synced");
+    assert.ok(logIdx !== -1, "must have a success log line");
+    const logBlock = s.slice(logIdx, logIdx + 600);
+    assert.ok(logBlock.includes("brokerEnforcementMode"), "success log must include brokerEnforcementMode");
+  });
+});
+
+describe("raw broker hard limit: UI toggle has warning copy", () => {
+  it("account-rules-form has rawBrokerHardLimitEnabled toggle", () => {
+    assert.ok(
+      ACCOUNT_RULES_FORM_SRC.includes("rawBrokerHardLimitEnabled"),
+      "account-rules-form must have rawBrokerHardLimitEnabled toggle",
+    );
+  });
+
+  it("toggle warning explains raw contract count (counts all contracts equally)", () => {
+    assert.ok(
+      ACCOUNT_RULES_FORM_SRC.includes("counts all contracts equally") ||
+        ACCOUNT_RULES_FORM_SRC.includes("counts all contracts the same") ||
+        ACCOUNT_RULES_FORM_SRC.includes("counts all contracts"),
+      "toggle warning must explain that raw limit counts all contracts equally",
+    );
+  });
+
+  it("toggle warning includes MNQ example (concrete illustration of the limitation)", () => {
+    assert.ok(
+      ACCOUNT_RULES_FORM_SRC.includes("MNQ"),
+      "toggle warning must include MNQ example so users understand the micro-contract impact",
+    );
+  });
+
+  it("toggle warning does not call this mode 'standard-equivalent'", () => {
+    // The warning is specifically for the RAW mode — it must not imply it is
+    // the same as Guardrail's default standard-equivalent detection-response.
+    const toggleIdx = ACCOUNT_RULES_FORM_SRC.indexOf("rawBrokerHardLimitEnabled");
+    assert.ok(toggleIdx !== -1);
+    const toggleBlock = ACCOUNT_RULES_FORM_SRC.slice(Math.max(0, toggleIdx - 200), toggleIdx + 800);
+    assert.ok(
+      !toggleBlock.includes("standard-equivalent") ||
+        toggleBlock.includes("detection-response") ||
+        toggleBlock.includes("default"),
+      "toggle warning context must distinguish raw mode from standard-equivalent mode",
+    );
+  });
+});
+
+describe("raw broker hard limit: schema and data layer", () => {
+  it("risk-rules-data.ts includes rawBrokerHardLimitEnabled in RiskRulesBody", () => {
+    assert.ok(
+      RISK_RULES_DATA_SRC.includes("rawBrokerHardLimitEnabled"),
+      "RiskRulesBody must include rawBrokerHardLimitEnabled so the field is persisted",
+    );
+  });
+
+  it("risk-rules-data.ts writes rawBrokerHardLimitEnabled to the DB payload", () => {
+    const fnIdx = RISK_RULES_DATA_SRC.indexOf("export function riskRulesData");
+    assert.ok(fnIdx !== -1, "riskRulesData function must exist");
+    const fnBody = RISK_RULES_DATA_SRC.slice(fnIdx, fnIdx + 1000);
+    assert.ok(
+      fnBody.includes("rawBrokerHardLimitEnabled"),
+      "riskRulesData must map rawBrokerHardLimitEnabled to the DB payload",
+    );
+  });
+});

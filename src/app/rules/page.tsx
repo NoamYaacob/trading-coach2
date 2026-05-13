@@ -96,6 +96,7 @@ export default async function RulesPage({
             pendingPayloadJson: true,
             pendingEffectiveDate: true,
             maxContracts: true,
+            rawBrokerHardLimitEnabled: true,
             automatedActionsConsentAt: true,
             automatedActionsConsentVersion: true,
           },
@@ -263,6 +264,7 @@ export default async function RulesPage({
     sessionTimezone: selectedAccount?.riskRules?.sessionTimezone ?? "",
     ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
+    rawBrokerHardLimitEnabled: selectedAccount?.riskRules?.rawBrokerHardLimitEnabled ?? false,
     // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   };
 

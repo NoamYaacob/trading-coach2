@@ -255,17 +255,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
             const client = new TradovateClient(existing.id, currentUser.id);
             await client.initialize();
             const maxContracts = body.riskRules!.maxContracts ?? null;
-            // app_side_only: a global raw cap blocks micro products incorrectly
-            // (2 MNQ rejected when limit means 1 NQ-equivalent). App engine enforces.
+            // global_raw only when user explicitly opts into raw broker hard limit;
+            // default is app_side_only (standard-equivalent detection-response).
+            // global_raw writes totalBy="Overall" — counts all contracts equally,
+            // so 2 MNQ is rejected even when the standard-equivalent limit allows 10.
+            const brokerEnforcementMode =
+              body.riskRules!.rawBrokerHardLimitEnabled === true
+                ? ("global_raw" as const)
+                : ("app_side_only" as const);
             const result = await client.applyMaxPositionSize({
               maxContracts,
-              brokerEnforcementMode: "app_side_only",
+              brokerEnforcementMode,
             });
             console.info("[accounts/patch] broker max position size synced", {
               accountId: id,
               externalAccountId: existing.externalAccountId,
               maxContracts,
-              brokerEnforcementMode: "app_side_only",
+              brokerEnforcementMode,
               action: result.action,
               endpoints: result.endpoints,
             });

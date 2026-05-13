@@ -536,6 +536,22 @@ export async function syncTradovateAccount(
     // so this is Guardrail-side monitoring only. UserAccountPositionLimit
     // writes are intentionally NOT performed here — see ENFORCEMENT_CAPABILITIES
     // for max_position_size capability classification.
+    //
+    // ── Near-instant enforcement roadmap ─────────────────────────────────
+    // Current: cron sync every ~5 min detects breach after orders fill.
+    // Planned improvements (ordered by detection latency):
+    //   1. Websocket / event-driven position listener (lowest latency):
+    //      Subscribe to Tradovate's MD/user websocket for position-change
+    //      events. On each event, re-evaluate exposure and lock/flatten
+    //      immediately without waiting for the next cron cycle.
+    //   2. Fast polling fallback with rate-limit backoff:
+    //      During active sessions, poll positions every 15–30 s instead of
+    //      every 5 min. Back off exponentially on rate-limit (429) responses
+    //      to stay within Tradovate's API limits.
+    //   3. Sync immediately after detected order / fill:
+    //      Use the webhook feed (Tradovate order-status events or the
+    //      GuardianIntervention log) to trigger a targeted re-sync for the
+    //      affected account within seconds of a fill event being observed.
     const effectiveMaxContracts: number | null =
       accountRules?.maxContracts ?? defaultRules?.maxContracts ?? null;
     const exposureInputs: PositionExposureInput[] = openPositions.map((p) => ({

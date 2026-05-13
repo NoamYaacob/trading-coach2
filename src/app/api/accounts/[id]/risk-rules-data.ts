@@ -18,6 +18,11 @@ export type RiskRulesBody = {
   sessionEndTime?: string | null;
   sessionTimezone?: string | null;
   ruleEditLockBufferMinutes?: number | null;
+  // Advanced broker enforcement mode: when true, writes a global raw contract cap
+  // (totalBy="Overall") to Tradovate. WARNING: counts all contracts equally —
+  // with max=1, 2 MNQ (0.2 NQ-equivalent) will be rejected.
+  // Default (false/absent): standard-equivalent detection-response enforcement only.
+  rawBrokerHardLimitEnabled?: boolean;
   // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   propFirmAccountSize?: number | null;
   propFirmPhase?: string | null;
@@ -46,6 +51,7 @@ export function riskRulesData(r: RiskRulesBody) {
     sessionTimezone: r.sessionTimezone ?? null,
     ruleEditLockBufferMinutes: r.ruleEditLockBufferMinutes ?? null,
     maxContracts: r.maxContracts ?? null,
+    ...(r.rawBrokerHardLimitEnabled !== undefined && { rawBrokerHardLimitEnabled: r.rawBrokerHardLimitEnabled ?? false }),
     // propFirm fields: only written when explicitly present in the payload so
     // that saves from the Trading Plan (which omit them) preserve existing values.
     ...(r.propFirmAccountSize !== undefined && { propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null }),

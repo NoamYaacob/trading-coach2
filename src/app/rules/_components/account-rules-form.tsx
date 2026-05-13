@@ -48,6 +48,9 @@ export type AccountRulesValues = {
   sessionTimezone: string;
   ruleEditLockBufferMinutes: string;
   maxContracts: string;
+  /** When true, Guardrail writes a global raw contract cap to Tradovate.
+   *  WARNING: counts all contracts equally (2 MNQ blocked with max=1). Default: false. */
+  rawBrokerHardLimitEnabled: boolean;
   // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
 };
 
@@ -315,6 +318,7 @@ export function AccountRulesForm({
           sessionTimezone: values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null,
           ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
           maxContracts: int(values.maxContracts),
+          rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
         },
         // Stamp consent only on submissions where the user explicitly checked
         // the box. Re-saves of rules on already-consented accounts pass false
@@ -562,6 +566,29 @@ export function AccountRulesForm({
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
+            {values.maxContracts.trim() !== "" && (
+              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
+                <p className="font-semibold text-amber-900">Advanced: Broker raw hard limit</p>
+                <p className="mt-1 text-amber-800">
+                  When enabled, Guardrail writes a global raw contract cap to Tradovate (immediate broker
+                  reject before execution). However, Tradovate counts all contracts equally — with
+                  max&nbsp;=&nbsp;1, even 2&nbsp;MNQ (0.2 NQ-equivalent, within your standard-equivalent
+                  limit) will be rejected. The default detection-response mode allows NQ&nbsp;1 or
+                  MNQ&nbsp;10 for the same limit.
+                </p>
+                <label className="mt-2 flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                    checked={values.rawBrokerHardLimitEnabled}
+                    onChange={(e) => update("rawBrokerHardLimitEnabled", e.target.checked)}
+                  />
+                  <span className="text-amber-900">
+                    Enable raw hard limit at broker (counts all contracts equally)
+                  </span>
+                </label>
+              </div>
+            )}
           </Field>
         </div>
       </div>
