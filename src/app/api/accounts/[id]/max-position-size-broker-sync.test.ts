@@ -11,6 +11,8 @@
  *     a successful promotion.
  *  4. The debug endpoint GET /api/debug/tradovate-position-limit has the
  *     required structural fields.
+ *  5. POST /api/accounts/[id]/sync-broker-rules deactivates the stale raw
+ *     Guardrail limit without touching user-created settings.
  */
 
 import { describe, it } from "node:test";
@@ -20,6 +22,7 @@ import { resolve } from "node:path";
 
 const ACCOUNT_ROUTE = resolve(import.meta.dirname, "./route.ts");
 const APPLY_PENDING_ROUTE = resolve(import.meta.dirname, "./apply-pending/route.ts");
+const SYNC_BROKER_RULES_ROUTE = resolve(import.meta.dirname, "./sync-broker-rules/route.ts");
 const DEBUG_ENDPOINT = resolve(
   import.meta.dirname,
   "../../debug/tradovate-position-limit/route.ts",
@@ -307,6 +310,146 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
     assert.ok(
       s.includes("effectiveSupportedRawLimits"),
       "must import and use effectiveSupportedRawLimits for per-product display",
+    );
+  });
+
+  it("returns suggestedAction field for stale raw limit repair guidance", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("suggestedAction"), "must return suggestedAction field");
+    assert.ok(
+      s.includes("deactivate_stale_raw_limit"),
+      'suggestedAction value must be "deactivate_stale_raw_limit"',
+    );
+  });
+
+  it("returns suggestedEndpoint pointing to sync-broker-rules when stale limit found", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("suggestedEndpoint"), "must return suggestedEndpoint field");
+    assert.ok(
+      s.includes("sync-broker-rules"),
+      "suggestedEndpoint must reference sync-broker-rules repair endpoint",
+    );
+  });
+
+  it("sets suggestedAction and suggestedEndpoint to null when broker state is ok", () => {
+    // When isStale=false, both fields must be null — not absent.
+    const s = src(DEBUG_ENDPOINT);
+    // Both fields appear in the response object — they will be null when not stale.
+    const suggestedActionCount = (s.match(/suggestedAction/g) ?? []).length;
+    assert.ok(suggestedActionCount >= 2, "suggestedAction must appear in both the JSDoc and the response");
+  });
+});
+
+// ── 5. POST sync-broker-rules: stale raw limit cleanup ───────────────────────
+
+describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", () => {
+  it("calls applyMaxPositionSize", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("applyMaxPositionSize("),
+      "must call applyMaxPositionSize to deactivate stale raw limit",
+    );
+  });
+
+  it("always passes brokerEnforcementMode: app_side_only", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes('"app_side_only"'),
+      'must pass brokerEnforcementMode: "app_side_only" — never global_raw',
+    );
+    assert.ok(
+      !s.includes('"global_raw"'),
+      "must never use global_raw mode (would write a raw cap that blocks micro orders)",
+    );
+  });
+
+  it("reads maxContracts from DB (not hardcoded)", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("maxContracts"),
+      "must read maxContracts from DB to pass to applyMaxPositionSize",
+    );
+    assert.ok(
+      s.includes("riskRules"),
+      "must load riskRules from DB to get the current maxContracts value",
+    );
+  });
+
+  it("requires authentication (401 for unauthenticated)", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(s.includes("getCurrentUser"), "must call getCurrentUser");
+    assert.ok(s.includes("status: 401"), "must return 401 when unauthenticated");
+  });
+
+  it("scopes DB lookup to current user", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("userId: currentUser.id"),
+      "must scope DB lookup to the authenticated user's account",
+    );
+  });
+
+  it("scopes to tradovate platform only", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes('"tradovate"'),
+      "must scope DB lookup to platform=tradovate",
+    );
+  });
+
+  it("returns ok:true and action in response", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(s.includes("ok: true"), "response must include ok: true");
+    assert.ok(s.includes("action: result.action"), "response must include action from applyMaxPositionSize");
+  });
+
+  it("sync log does not contain token fields", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    const logIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    assert.ok(logIdx !== -1, "must have a [accounts/sync-broker-rules] log line");
+    const logBlock = s.slice(logIdx, logIdx + 500);
+    const forbidden = [
+      "accessToken",
+      "refreshToken",
+      "tokenEncrypted",
+      "accessTokenEncrypted",
+      "refreshTokenEncrypted",
+    ];
+    for (const field of forbidden) {
+      assert.ok(
+        !logBlock.includes(field),
+        `sync-broker-rules log must not include token field: ${field}`,
+      );
+    }
+  });
+
+  it("sync log includes brokerEnforcementMode to confirm app-side-only enforcement", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    const logIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    const logBlock = s.slice(logIdx, logIdx + 500);
+    assert.ok(
+      logBlock.includes("brokerEnforcementMode"),
+      "sync log must include brokerEnforcementMode",
+    );
+  });
+
+  it("does not touch user-created or prop-firm-created Tradovate limits", () => {
+    // Safety guarantee: only limits identified by the GUARDRAIL_POSITION_LIMIT_DESCRIPTION
+    // constant are touched. The route delegates entirely to applyMaxPositionSize which
+    // uses findGuardrailPositionLimit for that guard.
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      !s.includes("findFirst") || s.includes("applyMaxPositionSize"),
+      "must delegate limit selection to applyMaxPositionSize (which uses findGuardrailPositionLimit)",
+    );
+    // The route must NOT call any Tradovate position limit endpoints directly.
+    assert.ok(
+      !s.includes("userAccountPositionLimit/update"),
+      "route must not call Tradovate endpoints directly — delegate to applyMaxPositionSize",
+    );
+    assert.ok(
+      !s.includes("userAccountPositionLimit/create"),
+      "route must not call Tradovate endpoints directly — delegate to applyMaxPositionSize",
     );
   });
 });

@@ -45,6 +45,8 @@ import {
  *   allLimitCount               — total position limits at Tradovate
  *   fetchError                  — set when the Tradovate API call fails
  *   brokerStateOk               — true when no active raw limit exists at broker (expected normal state)
+ *   suggestedAction             — "deactivate_stale_raw_limit" when brokerStateOk=false; null otherwise
+ *   suggestedEndpoint           — POST endpoint to call for the suggested action; null when not needed
  */
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -130,13 +132,15 @@ export async function GET(request: NextRequest) {
   }
 
   // Normal state: no active Guardrail limit at broker (app_side_only mode).
-  // Warning when a limit is still active (may be a stale raw limit from before the mode change).
-  const staleRawLimitWarning =
-    guardrailLimitFound && limitActive === true
-      ? "A Guardrail-owned position limit is still active at Tradovate. In app_side_only mode " +
-        "this should be deactivated. Save maxContracts again to trigger cleanup, or check " +
-        "applyMaxPositionSize logs."
-      : null;
+  // Warning when a limit is still active (stale raw limit from before the mode change).
+  const isStale = guardrailLimitFound && limitActive === true;
+  const staleRawLimitWarning = isStale
+    ? "A Guardrail-owned position limit is still active at Tradovate. In app_side_only mode " +
+      "this should be deactivated. POST to suggestedEndpoint to repair, or save maxContracts " +
+      "again to trigger cleanup automatically."
+    : null;
+
+  const brokerStateOk = !guardrailLimitFound || limitActive === false;
 
   return NextResponse.json({
     accountId,
@@ -169,6 +173,9 @@ export async function GET(request: NextRequest) {
     allLimitCount,
     fetchError,
     // Diagnosis
-    brokerStateOk: !guardrailLimitFound || limitActive === false,
+    brokerStateOk,
+    // Repair guidance when a stale raw limit is blocking micro orders
+    suggestedAction: isStale ? ("deactivate_stale_raw_limit" as const) : null,
+    suggestedEndpoint: isStale ? (`/api/accounts/${accountId}/sync-broker-rules` as const) : null,
   });
 }

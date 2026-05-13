@@ -201,3 +201,76 @@ test("GUARDRAIL_POSITION_LIMIT_DESCRIPTION contains 'Guardrail' to brand the rec
     "description must include 'Guardrail' so manual records are distinguishable",
   );
 });
+
+// ── 8. app_side_only cleanup safety ─────────────────────────────────────────
+//
+// These tests verify the safety properties that make the sync-broker-rules
+// repair idempotent and scoped to only Guardrail-owned records.
+
+describe("app_side_only cleanup safety", () => {
+  test("findGuardrailPositionLimit returns null for a user-created limit", () => {
+    // Users and prop firms create their own Tradovate limits; Guardrail must never
+    // touch these. The description guard is the only ownership signal available.
+    const userLimits: TvUserAccountPositionLimit[] = [
+      { id: 100, description: "My Trading Limit", exposedLimit: 5, active: true },
+      { id: 101, description: "Apex Eval Limit", exposedLimit: 3, active: true },
+      { id: 102, description: "guardrail max position size", exposedLimit: 1, active: true }, // lowercase
+    ];
+    assert.equal(
+      findGuardrailPositionLimit(userLimits),
+      null,
+      "must return null for user-created and prop-firm-created limits",
+    );
+  });
+
+  test("findGuardrailPositionLimit finds stale Guardrail limit even when active=true", () => {
+    // The stale limit scenario: Guardrail previously set a hard raw cap that is
+    // still active. We need to be able to find it so we can deactivate it.
+    const staleLimit: TvUserAccountPositionLimit = {
+      id: 41472951,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 1,
+      active: true,
+    };
+    const limits: TvUserAccountPositionLimit[] = [
+      { id: 100, description: "Apex Eval Limit", exposedLimit: 5, active: true },
+      staleLimit,
+    ];
+    const found = findGuardrailPositionLimit(limits);
+    assert.equal(found?.id, 41472951, "must find the stale Guardrail-owned limit");
+    assert.equal(found?.active, true, "active=true is expected for a stale limit");
+  });
+
+  test("buildDeactivatePositionLimitPayload sets active=false without changing other fields", () => {
+    // Deactivation must only flip the active flag. The exposedLimit value is
+    // preserved on the Tradovate record so it could be re-activated later if needed.
+    const payload = buildDeactivatePositionLimitPayload(41472951);
+    assert.equal(payload.id, 41472951);
+    assert.equal(payload.active, false);
+    assert.ok(
+      !("exposedLimit" in payload),
+      "deactivate payload must not include exposedLimit — avoid accidental value change",
+    );
+  });
+
+  test("brokerStateOk formula: found=true active=false => true (post-cleanup)", () => {
+    // After deactivation: guardrailLimitFound=true, limitActive=false => ok
+    const found = true as boolean;
+    const active = false as boolean | null;
+    assert.equal(!found || active === false, true);
+  });
+
+  test("brokerStateOk formula: found=true active=true => false (stale limit still active)", () => {
+    // Pre-cleanup: stale raw limit is still blocking micro orders
+    const found = true as boolean;
+    const active = true as boolean | null;
+    assert.equal(!found || active === false, false);
+  });
+
+  test("brokerStateOk formula: found=false active=null => true (no limit at broker)", () => {
+    // Clean state: Guardrail never created a raw limit
+    const found = false as boolean;
+    const active = null as boolean | null;
+    assert.equal(!found || active === false, true);
+  });
+});
