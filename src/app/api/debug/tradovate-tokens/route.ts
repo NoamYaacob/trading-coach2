@@ -37,6 +37,7 @@ export async function GET(_request: NextRequest) {
     select: {
       id: true,
       env: true,
+      brokerUserId: true,
       connectionStatus: true,
       permissionLevel: true,
       permissionsProbedAt: true,
@@ -44,6 +45,11 @@ export async function GET(_request: NextRequest) {
       lastRenewedAt: true,
       lastRenewError: true,
       refreshTokenEncrypted: true,
+      listenerStatus: true,
+      listenerConnectedAt: true,
+      listenerLastEventAt: true,
+      listenerLastHeartbeatAt: true,
+      listenerErrorMessage: true,
       createdAt: true,
       accounts: {
         select: {
@@ -114,9 +120,20 @@ export async function GET(_request: NextRequest) {
       : bc.connectionStatus;
     const finalUiStatus = effectiveStatus;
 
+    const secondsSinceListenerHeartbeat =
+      bc.listenerLastHeartbeatAt != null
+        ? Math.round((now.getTime() - bc.listenerLastHeartbeatAt.getTime()) / 1_000)
+        : null;
+
+    const secondsSinceListenerEvent =
+      bc.listenerLastEventAt != null
+        ? Math.round((now.getTime() - bc.listenerLastEventAt.getTime()) / 1_000)
+        : null;
+
     return {
       brokerConnectionId: bc.id,
       env: bc.env,
+      brokerUserId: bc.brokerUserId ?? null,
       connectionStatus: bc.connectionStatus,
       permissionLevel: bc.permissionLevel,
       permissionsProbedAt: bc.permissionsProbedAt?.toISOString() ?? null,
@@ -146,6 +163,14 @@ export async function GET(_request: NextRequest) {
         reason: renewalDecision.reason,
         msUntilExpiry: renewalDecision.msUntilExpiry,
       },
+      // Listener worker
+      listenerStatus: bc.listenerStatus ?? null,
+      listenerConnectedAt: bc.listenerConnectedAt?.toISOString() ?? null,
+      listenerLastEventAt: bc.listenerLastEventAt?.toISOString() ?? null,
+      listenerLastHeartbeatAt: bc.listenerLastHeartbeatAt?.toISOString() ?? null,
+      listenerErrorMessage: bc.listenerErrorMessage ?? null,
+      secondsSinceListenerHeartbeat,
+      secondsSinceListenerEvent,
       // Dashboard impact
       dashboardReconnectShown,
       healthyEnvCoversThisGroup,
@@ -153,6 +178,8 @@ export async function GET(_request: NextRequest) {
       accountCount: bc.accounts.length,
     };
   });
+
+  const LISTENER_STALE_S = 120; // heartbeat overdue threshold in seconds
 
   const now2 = new Date();
   return NextResponse.json({
@@ -166,6 +193,19 @@ export async function GET(_request: NextRequest) {
       expired: connections.filter((c) => c.connectionStatus === "expired").length,
       withActiveRenewError: connections.filter((c) => c.activeRenewError !== null).length,
       withStaleRenewError: connections.filter((c) => c.renewErrorIsStale).length,
+      listenerConnected: connections.filter((c) => c.listenerStatus === "connected").length,
+      listenerReconnecting: connections.filter(
+        (c) => c.listenerStatus === "reconnecting" || c.listenerStatus === "connecting",
+      ).length,
+      listenerStale: connections.filter(
+        (c) =>
+          c.listenerStatus === "connected" &&
+          (c.secondsSinceListenerHeartbeat === null ||
+            c.secondsSinceListenerHeartbeat > LISTENER_STALE_S),
+      ).length,
+      listenerMissingHeartbeat: connections.filter(
+        (c) => c.listenerStatus === "connected" && c.listenerLastHeartbeatAt === null,
+      ).length,
     },
   });
 }
