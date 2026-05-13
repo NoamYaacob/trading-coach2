@@ -351,6 +351,14 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
     );
   });
 
+  it("passes maxContracts: null to trigger the deactivation path", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("maxContracts: null"),
+      "must pass maxContracts: null to applyMaxPositionSize — this targets the deactivate path",
+    );
+  });
+
   it("always passes brokerEnforcementMode: app_side_only", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(
@@ -363,22 +371,63 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
     );
   });
 
-  it("reads maxContracts from DB (not hardcoded)", () => {
-    const s = src(SYNC_BROKER_RULES_ROUTE);
-    assert.ok(
-      s.includes("maxContracts"),
-      "must read maxContracts from DB to pass to applyMaxPositionSize",
-    );
-    assert.ok(
-      s.includes("riskRules"),
-      "must load riskRules from DB to get the current maxContracts value",
-    );
-  });
-
   it("requires authentication (401 for unauthenticated)", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(s.includes("getCurrentUser"), "must call getCurrentUser");
     assert.ok(s.includes("status: 401"), "must return 401 when unauthenticated");
+  });
+
+  it("returns JSON error (not raw 500) when account is not found", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(s.includes("not_found"), "must return not_found JSON error when account missing");
+    assert.ok(s.includes("status: 404"), "must return 404 for not_found");
+  });
+
+  it("returns JSON error when account has no external Tradovate ID", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("no_external_account_id"),
+      "must return no_external_account_id JSON error when externalAccountId is absent",
+    );
+    assert.ok(s.includes("status: 422"), "must return 422 for no_external_account_id");
+  });
+
+  it("wraps broker calls in try/catch — never returns raw 500 on TradovateClientError", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    const tryIdx = s.indexOf("try {");
+    const catchIdx = s.indexOf("} catch (err)");
+    assert.ok(tryIdx !== -1, "must have a try block around broker calls");
+    assert.ok(catchIdx !== -1, "must have a catch block for broker errors");
+    assert.ok(tryIdx < catchIdx, "try must precede catch");
+    // The initialize() and applyMaxPositionSize() calls must be inside the try block.
+    const applyIdx = s.indexOf("applyMaxPositionSize(");
+    assert.ok(
+      applyIdx > tryIdx && applyIdx < catchIdx,
+      "applyMaxPositionSize must be inside the try block",
+    );
+  });
+
+  it("returns ok:false JSON on broker failure (never raw 500)", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(s.includes("broker_cleanup_failed"), "catch block must return broker_cleanup_failed error");
+    assert.ok(s.includes("ok: false"), "error response must include ok: false");
+    assert.ok(s.includes("status: 502"), "broker failure must return HTTP 502");
+  });
+
+  it("includes TradovateClientError code in error response", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("TradovateClientError"),
+      "must import and check TradovateClientError to extract code",
+    );
+    assert.ok(s.includes("err.code"), "must include error code in response");
+  });
+
+  it("returns ok:true and deactivated in success response", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(s.includes("ok: true"), "success response must include ok: true");
+    assert.ok(s.includes("deactivated"), "success response must include deactivated field");
+    assert.ok(s.includes("action: result.action"), "response must include action from applyMaxPositionSize");
   });
 
   it("scopes DB lookup to current user", () => {
@@ -397,16 +446,10 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
     );
   });
 
-  it("returns ok:true and action in response", () => {
-    const s = src(SYNC_BROKER_RULES_ROUTE);
-    assert.ok(s.includes("ok: true"), "response must include ok: true");
-    assert.ok(s.includes("action: result.action"), "response must include action from applyMaxPositionSize");
-  });
-
-  it("sync log does not contain token fields", () => {
+  it("success log does not contain token fields", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     const logIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
-    assert.ok(logIdx !== -1, "must have a [accounts/sync-broker-rules] log line");
+    assert.ok(logIdx !== -1, "must have a [accounts/sync-broker-rules] success log line");
     const logBlock = s.slice(logIdx, logIdx + 500);
     const forbidden = [
       "accessToken",
@@ -416,20 +459,42 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
       "refreshTokenEncrypted",
     ];
     for (const field of forbidden) {
-      assert.ok(
-        !logBlock.includes(field),
-        `sync-broker-rules log must not include token field: ${field}`,
-      );
+      assert.ok(!logBlock.includes(field), `success log must not include token field: ${field}`);
     }
   });
 
-  it("sync log includes brokerEnforcementMode to confirm app-side-only enforcement", () => {
+  it("error log does not contain token fields", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
-    const logIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    const logIdx = s.indexOf("[accounts/sync-broker-rules] broker cleanup failed");
+    assert.ok(logIdx !== -1, "must have a [accounts/sync-broker-rules] error log line");
     const logBlock = s.slice(logIdx, logIdx + 500);
+    const forbidden = [
+      "accessToken",
+      "refreshToken",
+      "tokenEncrypted",
+      "accessTokenEncrypted",
+      "refreshTokenEncrypted",
+    ];
+    for (const field of forbidden) {
+      assert.ok(!logBlock.includes(field), `error log must not include token field: ${field}`);
+    }
+  });
+
+  it("logs brokerConnectionId in both success and error paths", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    const successLogIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    const errorLogIdx = s.indexOf("[accounts/sync-broker-rules] broker cleanup failed");
+    const successBlock = s.slice(successLogIdx, successLogIdx + 500);
+    const errorBlock = s.slice(errorLogIdx, errorLogIdx + 500);
+    assert.ok(successBlock.includes("brokerConnectionId"), "success log must include brokerConnectionId");
+    assert.ok(errorBlock.includes("brokerConnectionId"), "error log must include brokerConnectionId");
+  });
+
+  it("params are awaited (Next.js App Router pattern)", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(
-      logBlock.includes("brokerEnforcementMode"),
-      "sync log must include brokerEnforcementMode",
+      s.includes("await ctx.params") || s.includes("await params"),
+      "params must be awaited — Next.js App Router requires this",
     );
   });
 
@@ -438,10 +503,6 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
     // constant are touched. The route delegates entirely to applyMaxPositionSize which
     // uses findGuardrailPositionLimit for that guard.
     const s = src(SYNC_BROKER_RULES_ROUTE);
-    assert.ok(
-      !s.includes("findFirst") || s.includes("applyMaxPositionSize"),
-      "must delegate limit selection to applyMaxPositionSize (which uses findGuardrailPositionLimit)",
-    );
     // The route must NOT call any Tradovate position limit endpoints directly.
     assert.ok(
       !s.includes("userAccountPositionLimit/update"),
