@@ -1,11 +1,15 @@
 /**
- * Dev/research probe: tests whether Tradovate supports product-scoped position
+ * Research probe: tests whether Tradovate supports product-scoped position
  * limits (totalBy="PerContract" / totalBy="PerProduct").
  *
- * Returns 404 in production.
- * Only operates on demo accounts (accountType === "demo") — will 403 on live.
+ * Protection:
+ *   - In production: requires x-cron-secret header matching CRON_SECRET env var.
+ *     Returns 403 without it. (Same pattern as /api/debug/accounts/[id]/reset-session-state.)
+ *   - In all environments: requires an authenticated user session.
+ *   - Only operates on demo accounts (accountType === "demo") — returns 403 on live.
  *
  * GET /api/dev/tradovate-product-limits-probe?accountId=<connectedAccountId>
+ * Headers: x-cron-secret: <CRON_SECRET>   (required in production)
  *
  * What this does:
  *   1. Reads existing UserAccountPositionLimit rows for context (no writes).
@@ -36,8 +40,23 @@ import { effectiveSupportedRawLimits } from "@/lib/futures/contracts";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
-    return new NextResponse("Not found", { status: 404 });
+  // ── Secret gate (production only) ──────────────────────────────────────────
+  const isProduction = process.env.NODE_ENV === "production";
+  const secret = request.headers.get("x-cron-secret");
+  const expectedSecret = process.env.CRON_SECRET;
+  const hasValidSecret = expectedSecret != null && secret === expectedSecret;
+
+  if (isProduction && !hasValidSecret) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "forbidden",
+        message:
+          "This endpoint is restricted. " +
+          "Provide the x-cron-secret header with the CRON_SECRET value to use it in production.",
+      },
+      { status: 403 },
+    );
   }
 
   const currentUser = await getCurrentUser();

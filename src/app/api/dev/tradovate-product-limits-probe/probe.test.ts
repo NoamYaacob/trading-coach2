@@ -31,13 +31,50 @@ const LIMIT_SRC = readFileSync(
   "utf8",
 );
 
-// ── Route: production guard ───────────────────────────────────────────────────
+// ── Route: production guard (x-cron-secret) ──────────────────────────────────
 
-describe("probe route: production guard", () => {
-  it("returns 404 when NODE_ENV is production", () => {
+describe("probe route: production secret guard", () => {
+  it("checks NODE_ENV === production", () => {
     assert.ok(
       ROUTE_SRC.includes('NODE_ENV === "production"'),
-      "route must check NODE_ENV and return 404 in production",
+      "route must check NODE_ENV to gate secret requirement",
+    );
+  });
+
+  it("reads x-cron-secret header", () => {
+    assert.ok(
+      ROUTE_SRC.includes('request.headers.get("x-cron-secret")'),
+      "route must read x-cron-secret header",
+    );
+  });
+
+  it("compares against CRON_SECRET env var", () => {
+    assert.ok(
+      ROUTE_SRC.includes("CRON_SECRET"),
+      "route must compare against CRON_SECRET env var",
+    );
+  });
+
+  it("returns 403 without valid secret in production", () => {
+    assert.ok(
+      ROUTE_SRC.includes("status: 403"),
+      "route must return 403 when secret is missing or wrong in production",
+    );
+  });
+
+  it("does not return 404 as the production secret-gate response", () => {
+    // The secret gate must return 403 (forbidden), not 404 (not found).
+    // A bare 404 would hide the endpoint entirely; 403 tells callers to add the header.
+    assert.ok(
+      !ROUTE_SRC.includes('"Not found"'),
+      "route must not return a bare 404 Not Found as the production gate response",
+    );
+  });
+
+  it("error field is 'forbidden' for the secret gate", () => {
+    assert.ok(
+      ROUTE_SRC.includes('"forbidden"'),
+      "secret gate error must be forbidden",
     );
   });
 });
