@@ -1495,3 +1495,148 @@ describe("deriveSessionEndAction", () => {
     );
   });
 });
+
+// ── max_position_size: broker enforcement model ───────────────────────────────
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const SYNC_SRC = readFileSync(
+  resolve(import.meta.dirname, "./tradovate-sync.ts"),
+  "utf8",
+);
+
+describe("max_position_size — shouldSkipBrokerEnforcement", () => {
+  it("max_position_size → skip=true with monitoring_only (internal_only capability)", () => {
+    // max_position_size uses Guardrail-side detection only. Tradovate's
+    // UserAccountPositionLimit cannot express cross-product equivalence
+    // so there is no broker API call — applyBrokerDayLockout returns
+    // monitoring_only via the default switch branch.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "max_position_size",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) {
+      assert.equal(
+        result.lockStatus,
+        "monitoring_only",
+        "max_position_size must not attempt a Tradovate broker API call",
+      );
+    }
+  });
+
+  it("max_position_size on read-only Tradovate → skip=true with monitoring_only (not unavailable_read_only)", () => {
+    // max_position_size is internal_only — the trigger check fires before the
+    // read-only check, so the skip reason is monitoring_only in all cases.
+    // The read-only flatten guard lives in the sync pre-flatten step, not here.
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradovate",
+      trigger: "max_position_size",
+      connectionStatus: "connected_readonly",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+
+  it("max_position_size on non-Tradovate platform → skip=true with monitoring_only", () => {
+    const result = shouldSkipBrokerEnforcement({
+      platform: "tradingview",
+      trigger: "max_position_size",
+      connectionStatus: "connected_live",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+});
+
+describe("max_position_size — pre-flatten in tradovate-sync (source audit)", () => {
+  it("sync pre-flatten step fires for max_position_size when hasOpenPositions", () => {
+    // The pre-flatten step in tradovate-sync.ts runs BEFORE triggerEnforcement
+    // so the flatten outcome is recorded atomically on GuardianIntervention.
+    // Verify the condition includes the max_position_size trigger.
+    assert.ok(
+      SYNC_SRC.includes('"max_position_size" && hasOpenPositions'),
+      "tradovate-sync wantsFlatten must include max_position_size + hasOpenPositions condition",
+    );
+  });
+
+  it("sync skips flatten for read-only connections (isReadOnlyConnection guard)", () => {
+    assert.ok(
+      SYNC_SRC.includes("isReadOnlyConnection"),
+      "tradovate-sync must guard flatten behind isReadOnlyConnection check",
+    );
+    assert.ok(
+      SYNC_SRC.includes('"unavailable_read_only"'),
+      "tradovate-sync must record unavailable_read_only status for read-only flatten skip",
+    );
+  });
+
+  it("sync uses toPositions() which resolves contractId → symbol name for max_position_size", () => {
+    // toPositions() calls resolveContracts() which now has a per-ID GET fallback,
+    // ensuring numeric contractIds are resolved to futures symbol names before
+    // computeMiniEquivalentExposure is called.
+    assert.ok(
+      SYNC_SRC.includes("client.toPositions()"),
+      "tradovate-sync must call toPositions() to get symbol-resolved positions",
+    );
+  });
+
+  it("sync passes signed netPos to deriveMaxPositionSizeBreach (abs handled inside exposure engine)", () => {
+    // The sync converts BrokerPosition.quantity (always positive) + side back to
+    // signed netPos, which computeMiniEquivalentExposure handles via Math.abs.
+    assert.ok(
+      SYNC_SRC.includes('p.side === "SHORT" ? -p.quantity : p.quantity'),
+      "tradovate-sync must convert BrokerPosition side+qty to signed netPos",
+    );
+  });
+});
+
+describe("max_position_size — violation feed account-scoped (source audit)", () => {
+  it("triggerEnforcement call passes accountId for GuardianIntervention scoping", () => {
+    // triggerEnforcement stores accountId on GuardianIntervention so violations
+    // are scoped to the specific account — not global.
+    assert.ok(
+      SYNC_SRC.includes("trigger: enforcementTrigger"),
+      "triggerEnforcement call must pass the trigger (max_position_size) to enforcement",
+    );
+    assert.ok(
+      SYNC_SRC.includes("accountId,"),
+      "triggerEnforcement call must include accountId for account-scoped violation",
+    );
+  });
+
+  it("max_position_size reason includes exposure and limit values", () => {
+    // The reason string passed to triggerEnforcement must include exposure context
+    // so GuardianIntervention.message is informative.
+    assert.ok(
+      SYNC_SRC.includes("maxPositionSizeDecision.reason"),
+      "sync must use maxPositionSizeDecision.reason as the enforcement trigger reason",
+    );
+  });
+});
+
+describe("max_position_size — no token fields in sync path (source audit)", () => {
+  const FORBIDDEN = [
+    "accessToken",
+    "refreshToken",
+    "tokenEncrypted",
+    "accessTokenEncrypted",
+    "refreshTokenEncrypted",
+  ];
+
+  // Narrow to the max_position_size enforcement block.
+  const maxPosStart = SYNC_SRC.indexOf("Max position size (standard-equivalent");
+  const maxPosSection =
+    maxPosStart !== -1 ? SYNC_SRC.slice(maxPosStart, maxPosStart + 3000) : SYNC_SRC;
+
+  for (const field of FORBIDDEN) {
+    it(`max_position_size enforcement section must not reference token field '${field}'`, () => {
+      assert.ok(
+        !maxPosSection.includes(field),
+        `enforcement section must not log token field: ${field}`,
+      );
+    });
+  }
+});

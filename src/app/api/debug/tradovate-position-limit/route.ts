@@ -15,6 +15,7 @@ import {
   deriveMaxPositionSizeBreach,
   type PositionExposureInput,
 } from "@/lib/brokers/position-exposure";
+import { decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 
 /**
  * GET /api/debug/tradovate-position-limit?accountId=...
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const [brokerConnection, defaultRules] = await Promise.all([
+  const [brokerConnection, defaultRules, accountConsentRules, liveSessionState] = await Promise.all([
     account.brokerConnectionId
       ? prisma.brokerConnection.findFirst({
           where: { id: account.brokerConnectionId, userId: currentUser.id },
@@ -107,7 +108,22 @@ export async function GET(request: NextRequest) {
       : null,
     prisma.riskRules.findUnique({
       where: { userId: currentUser.id },
-      select: { maxContracts: true },
+      select: {
+        maxContracts: true,
+        automatedActionsConsentAt: true,
+        automatedActionsConsentVersion: true,
+      },
+    }),
+    prisma.accountRiskRules.findUnique({
+      where: { accountId },
+      select: {
+        automatedActionsConsentAt: true,
+        automatedActionsConsentVersion: true,
+      },
+    }),
+    prisma.liveSessionState.findUnique({
+      where: { accountId },
+      select: { riskState: true },
     }),
   ]);
 
@@ -273,6 +289,42 @@ export async function GET(request: NextRequest) {
     fetchError = "no_external_account_id";
   }
 
+  // ── Projected enforcement state ───────────────────────────────────────────
+  // These fields project what the *next* sync would do given the current state.
+  // They are read-only estimates — no enforcement is performed here.
+  const riskStateBefore = liveSessionState?.riskState ?? null;
+  const isReadOnlyConnection =
+    brokerConnection?.connectionStatus === "connected_readonly";
+  const consentDecision = decideConsentGate({
+    accountRiskRules: accountConsentRules
+      ? {
+          consentAt: accountConsentRules.automatedActionsConsentAt,
+          consentVersion: accountConsentRules.automatedActionsConsentVersion,
+        }
+      : null,
+    defaultRiskRules: defaultRules
+      ? {
+          consentAt: defaultRules.automatedActionsConsentAt,
+          consentVersion: defaultRules.automatedActionsConsentVersion,
+        }
+      : null,
+  });
+  const orderActionsEnabled = consentDecision.allowed;
+  const ruleTriggered = wouldBreach === true;
+  // Sync only transitions to STOPPED when not already stopped.
+  const riskStateAfter: string | null =
+    ruleTriggered && riskStateBefore !== "STOPPED"
+      ? "STOPPED"
+      : (riskStateBefore ?? "NORMAL");
+  const violationCreated = ruleTriggered && riskStateBefore !== "STOPPED";
+  // Flatten is attempted only when: violation fires, there are open positions,
+  // the connection has write access, and automated-action consent was given.
+  const flattenAttempted =
+    violationCreated &&
+    livePositions.length > 0 &&
+    !isReadOnlyConnection &&
+    orderActionsEnabled;
+
   // Normal state: no active Guardrail limit at broker (app_side_only mode).
   const isStale = guardrailLimitFound && limitActive === true;
   const staleRawLimitWarning = isStale
@@ -350,5 +402,13 @@ export async function GET(request: NextRequest) {
     wouldBreach,
     guardrailAction,
     positionFetchError,
+    // ── Projected enforcement state (next-sync projection; no writes performed) ──
+    riskStateBefore,
+    ruleTriggered,
+    riskStateAfter,
+    violationCreated,
+    flattenAttempted,
+    // flattenSucceeded / flattenError cannot be projected without executing flatten.
+    orderActionsEnabled,
   });
 }
