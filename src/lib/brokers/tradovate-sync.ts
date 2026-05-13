@@ -32,6 +32,7 @@ import {
   type SessionEndBehavior,
   type BrokerFlattenResult,
 } from "./enforcement-helpers";
+import { decideConsentGate } from "./automated-actions-consent";
 import {
   deriveMaxPositionSizeBreach,
   type PositionExposureInput,
@@ -63,7 +64,8 @@ export type MaxPositionSizeSyncDiagnostics = {
     | "no_open_positions"
     | "enforcement_dry_run"
     | "feature_flag_disabled"
-    | "read_only_connection"
+    | "permission_read_only"
+    | "consent_required"
     | null;
   /** Whether ENABLE_TRADOVATE_ORDER_ACTIONS=true at sync time. */
   orderActionFeatureFlagEnabled: boolean;
@@ -71,7 +73,17 @@ export type MaxPositionSizeSyncDiagnostics = {
   dryRun: boolean;
   /** Whether the broker OAuth token has Orders: Full Access (permissionLevel !== "read_only"). */
   permissionAllowsOrders: boolean;
-  /** Whether the broker connection is connected_readonly. */
+  /**
+   * Whether the user has granted consent for automated broker actions.
+   * Without consent, flatten is blocked even when all other gates pass.
+   */
+  consentGranted: boolean;
+  /**
+   * Whether BrokerConnection.connectionStatus is "connected_readonly".
+   * Informational only — the order-permission gate uses permissionAllowsOrders,
+   * not this field. A connection can be connected_readonly (no webhook events yet)
+   * while still having full order permissions.
+   */
   isReadOnlyConnection: boolean;
   /** Whether there were any open positions at sync time. */
   hasOpenPositions: boolean;
@@ -418,6 +430,8 @@ export async function syncTradovateAccount(
           allowedEndHour: true,
           sessionEndBehavior: true,
           maxContracts: true,
+          automatedActionsConsentAt: true,
+          automatedActionsConsentVersion: true,
         },
       }),
       prisma.riskRules.findUnique({
@@ -430,6 +444,8 @@ export async function syncTradovateAccount(
           sessionEndHour: true,
           sessionEndBehavior: true,
           maxContracts: true,
+          automatedActionsConsentAt: true,
+          automatedActionsConsentVersion: true,
         },
       }),
       prisma.connectedAccount.findUnique({
@@ -437,12 +453,24 @@ export async function syncTradovateAccount(
         select: { brokerConnection: { select: { connectionStatus: true, permissionLevel: true } } },
       }),
     ]);
+    // connectionStatus reflects webhook activity (connected_readonly → connected_live on
+    // first event). Kept for diagnostics only — NOT used as the order-permission gate.
     const isReadOnlyConnection =
       accountConnInfo?.brokerConnection?.connectionStatus === "connected_readonly";
-    // permissionLevel is set from the OAuth token scope at connection time.
+    // permissionLevel is set from the OAuth permission probe at connection time.
     // "read_only" means Orders: Full Access is absent — flatten writes will fail.
     const permissionAllowsOrders =
       accountConnInfo?.brokerConnection?.permissionLevel !== "read_only";
+    // Consent must be explicitly granted before automated broker writes run.
+    const consentDecision = decideConsentGate({
+      accountRiskRules: accountRules
+        ? { consentAt: accountRules.automatedActionsConsentAt, consentVersion: accountRules.automatedActionsConsentVersion }
+        : null,
+      defaultRiskRules: defaultRules
+        ? { consentAt: defaultRules.automatedActionsConsentAt, consentVersion: defaultRules.automatedActionsConsentVersion }
+        : null,
+    });
+    const consentGranted = consentDecision.allowed;
     const effectiveMaxDailyLoss =
       accountRules?.maxDailyLoss != null
         ? Number(accountRules.maxDailyLoss)
@@ -588,7 +616,7 @@ export async function syncTradovateAccount(
     const orderActionFeatureFlagEnabled = isTradovateOrderActionsEnabled();
     const syncDryRun = isEnforcementDryRun();
     let flattenAttemptedThisSync = false;
-    type FlattenSuppressedReason = "no_open_positions" | "enforcement_dry_run" | "feature_flag_disabled" | "read_only_connection";
+    type FlattenSuppressedReason = "no_open_positions" | "enforcement_dry_run" | "feature_flag_disabled" | "permission_read_only" | "consent_required";
     let flattenSuppressedReason: FlattenSuppressedReason | null = null;
 
     const wantsFlatten =
@@ -615,16 +643,29 @@ export async function syncTradovateAccount(
           flattenResponse: null,
         };
         flattenSuppressedReason = "feature_flag_disabled";
-      } else if (isReadOnlyConnection) {
+      } else if (!permissionAllowsOrders) {
+        // permissionLevel is "read_only" — the OAuth token lacks Orders: Full Access.
+        // This is distinct from connectionStatus: a "connected_readonly" account (no webhook
+        // events yet) may still have full_access permissionLevel and CAN flatten.
         preFlattened = {
           flattenStatus: "unavailable_read_only",
           flattenMessage:
-            `Connection is read-only — ${flattenContext} flatten skipped. ` +
+            `Token permission is read-only (Orders: Full Access not granted) — ${flattenContext} flatten skipped. ` +
             "Guardrail's internal lock still applies.",
           flattenPayload: null,
           flattenResponse: null,
         };
-        flattenSuppressedReason = "read_only_connection";
+        flattenSuppressedReason = "permission_read_only";
+      } else if (!consentGranted) {
+        preFlattened = {
+          flattenStatus: "unavailable_consent_missing",
+          flattenMessage:
+            `Automated-action consent not granted — ${flattenContext} flatten skipped. ` +
+            "Confirm consent in Trading Plan to enable automated position exit.",
+          flattenPayload: null,
+          flattenResponse: null,
+        };
+        flattenSuppressedReason = "consent_required";
       } else {
         flattenAttemptedThisSync = true;
         try {
@@ -761,6 +802,7 @@ export async function syncTradovateAccount(
         orderActionFeatureFlagEnabled,
         dryRun: syncDryRun,
         permissionAllowsOrders,
+        consentGranted,
         isReadOnlyConnection,
         hasOpenPositions,
         openPositionContractIds,

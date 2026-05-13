@@ -17,6 +17,7 @@ import {
 } from "@/lib/brokers/position-exposure";
 import { decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { isTradovateOrderActionsEnabled } from "@/lib/brokers/order-actions-flag";
+import { isEnforcementDryRun } from "@/lib/brokers/enforcement-helpers";
 import { loadLivePositions, type PositionLoadDiagnostics } from "@/lib/brokers/tradovate/load-live-positions";
 
 /**
@@ -297,9 +298,15 @@ export async function GET(request: NextRequest) {
   // projected* fields: what the NEXT sync would do if current state persists.
   const currentRiskState = liveSessionState?.riskState ?? null;
   const alreadyStoppedNow = currentRiskState === "STOPPED";
-  const isReadOnlyConnection =
-    brokerConnection?.connectionStatus === "connected_readonly";
+  // connectionStatus reflects webhook activity (connected_readonly → connected_live on first event).
+  // This is NOT the order-permission gate. A freshly-OAuth'd account stays connected_readonly
+  // until the first webhook arrives, even when it has full_access permissionLevel.
+  const connectionStatusNow = brokerConnection?.connectionStatus ?? null;
+  const permissionLevelNow = brokerConnection?.permissionLevel ?? null;
+  // Order permission is derived from the OAuth permission probe result, not connectionStatus.
+  const permissionAllowsOrders = permissionLevelNow !== "read_only";
   const orderActionFeatureFlagEnabled = isTradovateOrderActionsEnabled();
+  const computedDryRun = isEnforcementDryRun();
   const consentDecision = decideConsentGate({
     accountRiskRules: accountConsentRules
       ? {
@@ -314,7 +321,7 @@ export async function GET(request: NextRequest) {
         }
       : null,
   });
-  const consentGranted = consentDecision.allowed;
+  const userConsentGranted = consentDecision.allowed;
   const projectedRuleWouldTrigger = wouldBreach === true;
   const projectedViolationWouldBeCreated = projectedRuleWouldTrigger && !alreadyStoppedNow;
   // Projected risk state after next sync evaluation.
@@ -322,18 +329,21 @@ export async function GET(request: NextRequest) {
     projectedRuleWouldTrigger && !alreadyStoppedNow
       ? "STOPPED"
       : (currentRiskState ?? "NORMAL");
-  // Flatten would be attempted only when: violation would fire, there are open positions,
-  // feature flag is on, connection has write access, and consent was given.
+  // Flatten gate mirrors tradovate-sync.ts exactly (dryRun → featureFlag → permission → consent).
+  // NOT gated on connectionStatus — that is webhook liveness, not order capability.
   const projectedFlattenWouldBeAttempted =
+    !computedDryRun &&
     projectedViolationWouldBeCreated &&
     livePositions.length > 0 &&
     orderActionFeatureFlagEnabled &&
-    !isReadOnlyConnection &&
-    consentGranted;
-  // Expose the specific gate blocking the projected flatten.
+    permissionAllowsOrders &&
+    userConsentGranted;
+  // Expose the specific gate blocking the projected flatten (first-hit order matches sync).
   let flattenBlockedReason: string | null = null;
   if (!projectedFlattenWouldBeAttempted) {
-    if (alreadyStoppedNow) {
+    if (computedDryRun) {
+      flattenBlockedReason = "enforcement_dry_run";
+    } else if (alreadyStoppedNow) {
       flattenBlockedReason = "already_stopped";
     } else if (!projectedViolationWouldBeCreated) {
       flattenBlockedReason = "no_violation";
@@ -341,12 +351,16 @@ export async function GET(request: NextRequest) {
       flattenBlockedReason = "no_positions";
     } else if (!orderActionFeatureFlagEnabled) {
       flattenBlockedReason = "feature_flag_disabled";
-    } else if (isReadOnlyConnection) {
-      flattenBlockedReason = "read_only_connection";
-    } else if (!consentGranted) {
+    } else if (!permissionAllowsOrders) {
+      flattenBlockedReason = "permission_read_only";
+    } else if (!userConsentGranted) {
       flattenBlockedReason = "consent_missing";
     }
   }
+  // Summary: first failing gate or "eligible"
+  const finalFlattenEligibility: string = projectedFlattenWouldBeAttempted
+    ? "eligible"
+    : (flattenBlockedReason ?? "not_applicable");
 
   // Expose the session-reset endpoint only in non-production (or when CRON_SECRET
   // is available), to avoid advertising the endpoint in production responses.
@@ -438,6 +452,16 @@ export async function GET(request: NextRequest) {
     // If this shows STOPPED right after a breach sync, the violation was created by that sync.
     currentRiskState,
     alreadyStoppedNow,
+    // ── Flatten eligibility gates (evaluated independently) ───────────────────
+    // These mirror the four-gate model in tradovate-sync.ts.
+    // Note: connectionStatus (webhook liveness) is NOT a flatten gate —
+    //       permissionAllowsOrders (from the OAuth probe) is the correct permission gate.
+    orderActionFeatureFlagEnabled,         // ENABLE_TRADOVATE_ORDER_ACTIONS=true
+    computedDryRun,                        // ENFORCEMENT_DRY_RUN=true overrides everything
+    connectionStatusNow,                   // webhook liveness — informational only, not a gate
+    permissionLevelNow,                    // "full_access" | "read_only" | null
+    permissionAllowsOrders,               // permissionLevelNow !== "read_only"
+    userConsentGranted,                    // automatedActionsConsent on file
     // ── Projected enforcement state (next-sync projection; no writes performed) ──
     // These fields answer: "what would the NEXT sync do if the current state persists?"
     projectedRuleWouldTrigger,
@@ -445,9 +469,7 @@ export async function GET(request: NextRequest) {
     projectedViolationWouldBeCreated,
     projectedFlattenWouldBeAttempted,
     flattenBlockedReason,
-    // Feature flag and consent gates (separate from each other)
-    orderActionFeatureFlagEnabled,
-    consentGranted,
+    finalFlattenEligibility,              // "eligible" | first failing gate label
     // ── QA tools ──────────────────────────────────────────────────────────────
     // Only present in non-production (null in production to avoid advertising the endpoint).
     resetSessionEndpoint,

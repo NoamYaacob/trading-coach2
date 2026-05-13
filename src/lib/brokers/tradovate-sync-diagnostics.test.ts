@@ -78,6 +78,13 @@ describe("tradovate-sync: MaxPositionSizeSyncDiagnostics type is exported", () =
     );
   });
 
+  it("diagnostic type includes consentGranted (automated-action consent gate)", () => {
+    assert.ok(
+      SYNC_SRC.includes("consentGranted"),
+      "must include consentGranted (user must consent before automated flatten runs)",
+    );
+  });
+
   it("diagnostic type includes openPositionContractIds (numeric IDs)", () => {
     assert.ok(
       SYNC_SRC.includes("openPositionContractIds"),
@@ -157,17 +164,38 @@ describe("tradovate-sync: flatten suppression gates have correct priority order"
     );
   });
 
-  it("feature flag check precedes read-only connection check in if/else chain", () => {
+  it("feature flag check precedes permission check in if/else chain", () => {
     const wantsFlattenIdx = SYNC_SRC.indexOf("if (wantsFlatten)");
     assert.ok(wantsFlattenIdx !== -1, "wantsFlatten block must exist");
     const chainSection = SYNC_SRC.slice(wantsFlattenIdx);
     const flagIdx = chainSection.indexOf("!orderActionFeatureFlagEnabled");
-    const readOnlyIdx = chainSection.indexOf("isReadOnlyConnection");
+    const permIdx = chainSection.indexOf("!permissionAllowsOrders");
     assert.ok(flagIdx !== -1, "orderActionFeatureFlagEnabled check must exist in chain");
-    assert.ok(readOnlyIdx !== -1, "isReadOnlyConnection check must exist in chain");
+    assert.ok(permIdx !== -1, "permissionAllowsOrders check must exist in chain");
     assert.ok(
-      flagIdx < readOnlyIdx,
-      "ENABLE_TRADOVATE_ORDER_ACTIONS check must precede isReadOnlyConnection check",
+      flagIdx < permIdx,
+      "ENABLE_TRADOVATE_ORDER_ACTIONS check must precede permissionAllowsOrders check",
+    );
+  });
+
+  it("permission check precedes consent check in if/else chain", () => {
+    const wantsFlattenIdx = SYNC_SRC.indexOf("if (wantsFlatten)");
+    assert.ok(wantsFlattenIdx !== -1, "wantsFlatten block must exist");
+    const chainSection = SYNC_SRC.slice(wantsFlattenIdx);
+    const permIdx = chainSection.indexOf("!permissionAllowsOrders");
+    const consentIdx = chainSection.indexOf("!consentGranted");
+    assert.ok(permIdx !== -1, "permissionAllowsOrders check must exist in chain");
+    assert.ok(consentIdx !== -1, "consentGranted check must exist in chain");
+    assert.ok(permIdx < consentIdx, "permission check must precede consent check");
+  });
+
+  it("flatten gate uses permissionAllowsOrders, NOT isReadOnlyConnection, as the permission gate", () => {
+    const wantsFlattenIdx = SYNC_SRC.indexOf("if (wantsFlatten)");
+    assert.ok(wantsFlattenIdx !== -1, "wantsFlatten block must exist");
+    const chainSection = SYNC_SRC.slice(wantsFlattenIdx, wantsFlattenIdx + 1000);
+    assert.ok(
+      chainSection.includes("!permissionAllowsOrders"),
+      "flatten gate must use !permissionAllowsOrders (token permission) not connectionStatus",
     );
   });
 
@@ -185,10 +213,21 @@ describe("tradovate-sync: flatten suppression gates have correct priority order"
     );
   });
 
-  it("flattenSuppressedReason=read_only_connection for connected_readonly", () => {
+  it("flattenSuppressedReason=permission_read_only (not read_only_connection) when permissionLevel is read_only", () => {
     assert.ok(
-      SYNC_SRC.includes('"read_only_connection"'),
-      "must set flattenSuppressedReason to read_only_connection",
+      SYNC_SRC.includes('"permission_read_only"'),
+      "must use permission_read_only (based on permissionLevel, not connectionStatus)",
+    );
+    assert.ok(
+      !SYNC_SRC.includes('"read_only_connection"'),
+      "must not use the stale read_only_connection reason — permissionAllowsOrders is the gate",
+    );
+  });
+
+  it("flattenSuppressedReason=consent_required when automated-action consent not granted", () => {
+    assert.ok(
+      SYNC_SRC.includes('"consent_required"'),
+      "must set flattenSuppressedReason to consent_required when consentGranted=false",
     );
   });
 
@@ -339,10 +378,14 @@ describe("debug tradovate-position-limit: flattenBlockedReason exposes exact gat
     );
   });
 
-  it("read_only_connection is a possible flattenBlockedReason", () => {
+  it("permission_read_only is a possible flattenBlockedReason (permissionLevel gate, not connectionStatus)", () => {
     assert.ok(
-      DEBUG_ROUTE_SRC.includes('"read_only_connection"'),
-      "flattenBlockedReason must include read_only_connection gate",
+      DEBUG_ROUTE_SRC.includes('"permission_read_only"'),
+      "flattenBlockedReason must use permission_read_only (permissionLevel gate, not connectionStatus)",
+    );
+    assert.ok(
+      !DEBUG_ROUTE_SRC.includes('"read_only_connection"'),
+      '"read_only_connection" must not appear — connectionStatus is not the permission gate',
     );
   });
 
@@ -369,10 +412,10 @@ describe("debug tradovate-position-limit: orderActionFeatureFlagEnabled is separ
     );
   });
 
-  it("consentGranted is included as the consent-gate field", () => {
+  it("userConsentGranted is included as the consent-gate field", () => {
     assert.ok(
-      DEBUG_ROUTE_SRC.includes("consentGranted"),
-      "debug endpoint must include consentGranted as the consent-gate field",
+      DEBUG_ROUTE_SRC.includes("userConsentGranted"),
+      "debug endpoint must include userConsentGranted as the consent-gate field",
     );
   });
 });
