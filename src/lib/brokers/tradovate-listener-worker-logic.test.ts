@@ -368,14 +368,10 @@ const RAILWAY_WORKER_CONFIG = JSON.parse(
 };
 
 describe("railway-listener-worker-config/railway.json", () => {
-  it("startCommand runs the worker script via tsx-stripped node", () => {
+  it("startCommand runs the worker script via the start:listener npm script", () => {
     assert.ok(
-      RAILWAY_WORKER_CONFIG.deploy.startCommand.includes("scripts/tradovate-listener-worker.ts"),
-      "startCommand must run the worker script",
-    );
-    assert.ok(
-      RAILWAY_WORKER_CONFIG.deploy.startCommand.includes("--experimental-strip-types"),
-      "must use --experimental-strip-types to run .ts directly",
+      RAILWAY_WORKER_CONFIG.deploy.startCommand.includes("start:listener"),
+      "startCommand must invoke the start:listener npm script (tsx-backed)",
     );
   });
 
