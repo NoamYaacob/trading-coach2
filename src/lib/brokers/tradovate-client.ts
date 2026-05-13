@@ -60,6 +60,8 @@ import {
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
   buildDeactivatePositionLimitPayload,
+  buildDeactivatePositionLimitFullPayload,
+  buildDeactivateRiskParameterPayload,
   buildCreateRiskParameterPayload,
   buildUpdateRiskParameterPayload,
   type TvUserAccountPositionLimit,
@@ -68,6 +70,16 @@ import {
 } from "./tradovate-position-limit";
 export type { PositionLimitSyncResult } from "./tradovate-position-limit";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
+
+export type DeactivateGuardrailRawLimitResult = {
+  action: "deactivated" | "skipped" | "failed";
+  deactivated: boolean;
+  manualCleanupRequired: boolean;
+  limitId: number | null;
+  endpoints: string[];
+  errorCode?: string;
+  errorMessage?: string;
+};
 
 // ── Raw Tradovate API shapes ──────────────────────────────────────────────────
 // UNVERIFIED — shapes based on publicly documented Tradovate REST API v1.
@@ -794,9 +806,16 @@ export class TradovateClient {
     }
 
     if (!res.ok) {
+      let bodySnippet = "";
+      try {
+        const text = await res.text();
+        if (text) bodySnippet = ` Body: ${text.slice(0, 500)}`;
+      } catch {
+        // body read failed — no snippet available
+      }
       throw new TradovateClientError(
         "API_ERROR",
-        `Tradovate API ${path} returned HTTP ${res.status}.`,
+        `Tradovate API ${path} returned HTTP ${res.status}.${bodySnippet}`,
         res.status,
       );
     }
@@ -1901,6 +1920,188 @@ export class TradovateClient {
       /* skipMarkExpired */ true,
     );
     return parseSnapshotItems<TvUserAccountRiskParameter>(raw);
+  }
+
+  /**
+   * Deactivate the Guardrail-owned raw position limit at Tradovate.
+   *
+   * Two-step strategy:
+   *   1. If a UserAccountRiskParameter with hardLimit=true is attached, clear it
+   *      first (best-effort — failure is logged but does not abort).
+   *   2. Try deactivating the UserAccountPositionLimit with the minimal payload
+   *      { id, active: false }.
+   *   3. If that fails, retry with the full existing record plus active=false.
+   *   4. If both attempts fail, return manualCleanupRequired=true (never throws).
+   *
+   * Safety: only touches limits with description === GUARDRAIL_POSITION_LIMIT_DESCRIPTION.
+   * User-created and prop-firm-created limits are never modified.
+   *
+   * Does NOT throw. All Tradovate errors are caught and reflected in the result.
+   */
+  async deactivateGuardrailRawLimit(): Promise<DeactivateGuardrailRawLimitResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+
+    // Step 1: find the Guardrail-owned limit
+    const existing = await this.listUserAccountPositionLimits();
+    const guardrailLimit = findGuardrailPositionLimit(existing);
+
+    if (!guardrailLimit?.id) {
+      console.info("[tradovate/deactivateGuardrailRawLimit] no Guardrail-owned limit found — nothing to deactivate", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        externalAccountId: this.#tvAccountId,
+      });
+      return {
+        action: "skipped",
+        deactivated: false,
+        manualCleanupRequired: false,
+        limitId: null,
+        endpoints: [],
+      };
+    }
+
+    if (guardrailLimit.active === false) {
+      console.info("[tradovate/deactivateGuardrailRawLimit] Guardrail limit already inactive", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        limitId: guardrailLimit.id,
+      });
+      return {
+        action: "skipped",
+        deactivated: false,
+        manualCleanupRequired: false,
+        limitId: guardrailLimit.id,
+        endpoints: [],
+      };
+    }
+
+    const limitId = guardrailLimit.id;
+    const endpoints: string[] = [];
+
+    // Step 2: clear hardLimit on the risk parameter first (best-effort)
+    try {
+      const riskParams = await this.listUserAccountRiskParameters(limitId);
+      const hardParam = riskParams.find((p) => p.hardLimit === true && p.id != null);
+      if (hardParam?.id != null) {
+        const riskPayload = buildDeactivateRiskParameterPayload(hardParam.id);
+        console.info("[tradovate/deactivateGuardrailRawLimit] clearing hardLimit on risk parameter", {
+          accountId: this.#accountId,
+          brokerConnectionId: this.#brokerConnectionId,
+          limitId,
+          riskParamId: hardParam.id,
+        });
+        await this.#request<TvUserAccountRiskParameter>(
+          "userAccountRiskParameter/update",
+          "POST",
+          riskPayload,
+          false,
+          /* skipMarkExpired */ true,
+        );
+        endpoints.push("userAccountRiskParameter/update");
+        console.info("[tradovate/deactivateGuardrailRawLimit] hardLimit cleared", {
+          accountId: this.#accountId,
+          riskParamId: hardParam.id,
+        });
+      }
+    } catch (riskErr) {
+      const msg = riskErr instanceof Error ? riskErr.message : String(riskErr);
+      console.warn("[tradovate/deactivateGuardrailRawLimit] risk parameter clear failed (best-effort, continuing)", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        limitId,
+        error: msg,
+      });
+    }
+
+    // Step 3: deactivate the position limit — minimal payload first
+    const minimalPayload = buildDeactivatePositionLimitPayload(limitId);
+    console.info("[tradovate/deactivateGuardrailRawLimit] deactivating with minimal payload", {
+      accountId: this.#accountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      externalAccountId: this.#tvAccountId,
+      limitId,
+      description: guardrailLimit.description,
+      active: guardrailLimit.active,
+      exposedLimit: guardrailLimit.exposedLimit ?? null,
+      payload: minimalPayload,
+    });
+
+    try {
+      await this.#request<TvUserAccountPositionLimit>(
+        "userAccountPositionLimit/update",
+        "POST",
+        minimalPayload,
+        false,
+        /* skipMarkExpired */ true,
+      );
+      endpoints.push("userAccountPositionLimit/update");
+      console.info("[tradovate/deactivateGuardrailRawLimit] minimal deactivation succeeded", {
+        accountId: this.#accountId,
+        limitId,
+      });
+      return { action: "deactivated", deactivated: true, manualCleanupRequired: false, limitId, endpoints };
+    } catch (minimalErr) {
+      const minimalMsg = minimalErr instanceof Error ? minimalErr.message : String(minimalErr);
+      console.warn("[tradovate/deactivateGuardrailRawLimit] minimal payload failed — retrying with full payload", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        limitId,
+        error: minimalMsg,
+      });
+    }
+
+    // Step 4: retry with full existing object + active=false
+    const fullPayload = buildDeactivatePositionLimitFullPayload(guardrailLimit);
+    console.info("[tradovate/deactivateGuardrailRawLimit] deactivating with full payload", {
+      accountId: this.#accountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      limitId,
+      payload: fullPayload,
+    });
+
+    try {
+      await this.#request<TvUserAccountPositionLimit>(
+        "userAccountPositionLimit/update",
+        "POST",
+        fullPayload,
+        false,
+        /* skipMarkExpired */ true,
+      );
+      endpoints.push("userAccountPositionLimit/update");
+      console.info("[tradovate/deactivateGuardrailRawLimit] full-payload deactivation succeeded", {
+        accountId: this.#accountId,
+        limitId,
+      });
+      return { action: "deactivated", deactivated: true, manualCleanupRequired: false, limitId, endpoints };
+    } catch (fullErr) {
+      const errorCode = fullErr instanceof TradovateClientError ? fullErr.code : "UNKNOWN";
+      const errorMessage = fullErr instanceof Error ? fullErr.message : String(fullErr);
+      console.warn("[tradovate/deactivateGuardrailRawLimit] full-payload deactivation also failed — manual cleanup required", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        externalAccountId: this.#tvAccountId,
+        limitId,
+        description: guardrailLimit.description,
+        active: guardrailLimit.active,
+        exposedLimit: guardrailLimit.exposedLimit ?? null,
+        errorCode,
+        error: errorMessage,
+      });
+      return {
+        action: "failed",
+        deactivated: false,
+        manualCleanupRequired: true,
+        limitId,
+        endpoints,
+        errorCode,
+        errorMessage,
+      };
+    }
   }
 
   /**

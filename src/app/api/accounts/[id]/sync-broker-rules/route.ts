@@ -23,6 +23,11 @@ type Ctx = { params: Promise<{ id: string }> };
  * prop-firm-created Tradovate settings are never modified.
  *
  * Idempotent: safe to call repeatedly.
+ *
+ * Responses:
+ *   200 — deactivated or already clean
+ *   409 — Tradovate rejected deactivation; manual cleanup required
+ *   502 — auth/network failure talking to Tradovate
  */
 export async function POST(_req: NextRequest, ctx: Ctx) {
   const currentUser = await getCurrentUser();
@@ -60,31 +65,43 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const client = new TradovateClient(id, currentUser.id);
     await client.initialize();
 
-    // maxContracts: null → deactivate path in applyMaxPositionSize: removes any
-    // Guardrail-owned raw limit (description="Guardrail Max Position Size").
-    // User-created and prop-firm-created limits are never touched.
-    const result = await client.applyMaxPositionSize({
-      maxContracts: null,
-      brokerEnforcementMode: "app_side_only",
-    });
+    const result = await client.deactivateGuardrailRawLimit();
 
-    const deactivated = result.action === "deactivated";
-
-    console.info("[accounts/sync-broker-rules] broker position limit synced", {
+    console.info("[accounts/sync-broker-rules] deactivateGuardrailRawLimit completed", {
       accountId: id,
       externalAccountId: account.externalAccountId,
       brokerConnectionId: account.brokerConnectionId ?? null,
-      brokerEnforcementMode: "app_side_only",
       action: result.action,
+      deactivated: result.deactivated,
+      manualCleanupRequired: result.manualCleanupRequired,
+      limitId: result.limitId,
       endpoints: result.endpoints,
     });
+
+    if (result.manualCleanupRequired) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "manual_cleanup_required",
+          limitId: result.limitId,
+          message:
+            "Guardrail could not deactivate the stale position limit at Tradovate. " +
+            "Please log in to your Tradovate account, go to Risk Settings, find the " +
+            `limit with ID ${result.limitId} (description: "Guardrail Max Position Size"), ` +
+            "and deactivate or delete it manually.",
+          details: result.errorMessage ?? null,
+        },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
       action: result.action,
-      deactivated,
+      deactivated: result.deactivated,
+      limitId: result.limitId,
       brokerEnforcementMode: "app_side_only",
-      message: deactivated
+      message: result.deactivated
         ? "Stale raw Guardrail position limit deactivated. Tradovate will no longer reject micro orders."
         : "No active Guardrail-owned raw position limit found at Tradovate. Broker state is already clean.",
     });
@@ -98,7 +115,6 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
       accountId: id,
       externalAccountId: account.externalAccountId,
       brokerConnectionId: account.brokerConnectionId ?? null,
-      brokerEnforcementMode: "app_side_only",
       code,
       statusCode,
       error: message,

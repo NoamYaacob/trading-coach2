@@ -343,27 +343,19 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
 // ── 5. POST sync-broker-rules: stale raw limit cleanup ───────────────────────
 
 describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", () => {
-  it("calls applyMaxPositionSize", () => {
+  it("calls deactivateGuardrailRawLimit (two-step safer strategy)", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(
-      s.includes("applyMaxPositionSize("),
-      "must call applyMaxPositionSize to deactivate stale raw limit",
+      s.includes("deactivateGuardrailRawLimit("),
+      "must call deactivateGuardrailRawLimit for two-step safe deactivation",
     );
   });
 
-  it("passes maxContracts: null to trigger the deactivation path", () => {
-    const s = src(SYNC_BROKER_RULES_ROUTE);
-    assert.ok(
-      s.includes("maxContracts: null"),
-      "must pass maxContracts: null to applyMaxPositionSize — this targets the deactivate path",
-    );
-  });
-
-  it("always passes brokerEnforcementMode: app_side_only", () => {
+  it("never writes a global raw limit (brokerEnforcementMode is app_side_only)", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(
       s.includes('"app_side_only"'),
-      'must pass brokerEnforcementMode: "app_side_only" — never global_raw',
+      'response must include brokerEnforcementMode: "app_side_only"',
     );
     assert.ok(
       !s.includes('"global_raw"'),
@@ -399,35 +391,58 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
     assert.ok(tryIdx !== -1, "must have a try block around broker calls");
     assert.ok(catchIdx !== -1, "must have a catch block for broker errors");
     assert.ok(tryIdx < catchIdx, "try must precede catch");
-    // The initialize() and applyMaxPositionSize() calls must be inside the try block.
-    const applyIdx = s.indexOf("applyMaxPositionSize(");
+    const deactivateIdx = s.indexOf("deactivateGuardrailRawLimit(");
     assert.ok(
-      applyIdx > tryIdx && applyIdx < catchIdx,
-      "applyMaxPositionSize must be inside the try block",
+      deactivateIdx > tryIdx && deactivateIdx < catchIdx,
+      "deactivateGuardrailRawLimit must be inside the try block",
     );
   });
 
-  it("returns ok:false JSON on broker failure (never raw 500)", () => {
+  it("returns 409 manual_cleanup_required when Tradovate rejects deactivation", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    assert.ok(
+      s.includes("manual_cleanup_required"),
+      "must return manual_cleanup_required error when deactivation fails",
+    );
+    assert.ok(
+      s.includes("status: 409"),
+      "manual_cleanup_required must return HTTP 409",
+    );
+    assert.ok(
+      s.includes("manualCleanupRequired"),
+      "must check result.manualCleanupRequired to distinguish 409 from 200",
+    );
+  });
+
+  it("409 response includes limitId to help user find the record in Tradovate UI", () => {
+    const s = src(SYNC_BROKER_RULES_ROUTE);
+    const idx = s.indexOf("manual_cleanup_required");
+    const block = s.slice(idx - 100, idx + 800);
+    assert.ok(block.includes("limitId"), "409 response must include limitId");
+  });
+
+  it("returns ok:false JSON on broker auth/network failure (never raw 500)", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(s.includes("broker_cleanup_failed"), "catch block must return broker_cleanup_failed error");
     assert.ok(s.includes("ok: false"), "error response must include ok: false");
     assert.ok(s.includes("status: 502"), "broker failure must return HTTP 502");
   });
 
-  it("includes TradovateClientError code in error response", () => {
+  it("includes TradovateClientError code in 502 error response", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(
       s.includes("TradovateClientError"),
       "must import and check TradovateClientError to extract code",
     );
-    assert.ok(s.includes("err.code"), "must include error code in response");
+    assert.ok(s.includes("err.code"), "must include error code in 502 response");
   });
 
-  it("returns ok:true and deactivated in success response", () => {
+  it("returns ok:true with deactivated and limitId in success response", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
     assert.ok(s.includes("ok: true"), "success response must include ok: true");
-    assert.ok(s.includes("deactivated"), "success response must include deactivated field");
-    assert.ok(s.includes("action: result.action"), "response must include action from applyMaxPositionSize");
+    assert.ok(s.includes("result.deactivated"), "success response must include deactivated from result");
+    assert.ok(s.includes("result.limitId"), "success response must include limitId from result");
+    assert.ok(s.includes("result.action"), "success response must include action from result");
   });
 
   it("scopes DB lookup to current user", () => {
@@ -448,9 +463,9 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
 
   it("success log does not contain token fields", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
-    const logIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    const logIdx = s.indexOf("[accounts/sync-broker-rules] deactivateGuardrailRawLimit completed");
     assert.ok(logIdx !== -1, "must have a [accounts/sync-broker-rules] success log line");
-    const logBlock = s.slice(logIdx, logIdx + 500);
+    const logBlock = s.slice(logIdx, logIdx + 600);
     const forbidden = [
       "accessToken",
       "refreshToken",
@@ -482,9 +497,9 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
 
   it("logs brokerConnectionId in both success and error paths", () => {
     const s = src(SYNC_BROKER_RULES_ROUTE);
-    const successLogIdx = s.indexOf("[accounts/sync-broker-rules] broker position limit synced");
+    const successLogIdx = s.indexOf("[accounts/sync-broker-rules] deactivateGuardrailRawLimit completed");
     const errorLogIdx = s.indexOf("[accounts/sync-broker-rules] broker cleanup failed");
-    const successBlock = s.slice(successLogIdx, successLogIdx + 500);
+    const successBlock = s.slice(successLogIdx, successLogIdx + 600);
     const errorBlock = s.slice(errorLogIdx, errorLogIdx + 500);
     assert.ok(successBlock.includes("brokerConnectionId"), "success log must include brokerConnectionId");
     assert.ok(errorBlock.includes("brokerConnectionId"), "error log must include brokerConnectionId");
@@ -500,17 +515,53 @@ describe("POST /api/accounts/[id]/sync-broker-rules: stale raw limit repair", ()
 
   it("does not touch user-created or prop-firm-created Tradovate limits", () => {
     // Safety guarantee: only limits identified by the GUARDRAIL_POSITION_LIMIT_DESCRIPTION
-    // constant are touched. The route delegates entirely to applyMaxPositionSize which
+    // constant are touched. The route delegates entirely to deactivateGuardrailRawLimit which
     // uses findGuardrailPositionLimit for that guard.
     const s = src(SYNC_BROKER_RULES_ROUTE);
     // The route must NOT call any Tradovate position limit endpoints directly.
     assert.ok(
       !s.includes("userAccountPositionLimit/update"),
-      "route must not call Tradovate endpoints directly — delegate to applyMaxPositionSize",
+      "route must not call Tradovate endpoints directly — delegate to deactivateGuardrailRawLimit",
     );
     assert.ok(
       !s.includes("userAccountPositionLimit/create"),
-      "route must not call Tradovate endpoints directly — delegate to applyMaxPositionSize",
+      "route must not call Tradovate endpoints directly — delegate to deactivateGuardrailRawLimit",
+    );
+  });
+});
+
+// ── 6. debug endpoint: manualCleanupInstructions field ───────────────────────
+
+describe("GET /api/debug/tradovate-position-limit: manual cleanup instructions", () => {
+  it("returns manualCleanupInstructions field", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(
+      s.includes("manualCleanupInstructions"),
+      "must return manualCleanupInstructions for stale-limit repair guidance",
+    );
+  });
+
+  it("manualCleanupInstructions is null when broker state is ok", () => {
+    const s = src(DEBUG_ENDPOINT);
+    // The field must be null-able (only set when isStale=true).
+    // Implementation guard: it must use the isStale flag.
+    const instrIdx = s.indexOf("manualCleanupInstructions");
+    assert.ok(instrIdx !== -1);
+    const nearBy = s.slice(Math.max(0, instrIdx - 200), instrIdx + 400);
+    assert.ok(
+      nearBy.includes("isStale") || nearBy.includes("null"),
+      "manualCleanupInstructions must be null when broker state is clean",
+    );
+  });
+
+  it("manualCleanupInstructions mentions sync-broker-rules endpoint", () => {
+    const s = src(DEBUG_ENDPOINT);
+    const instrIdx = s.indexOf("manualCleanupInstructions");
+    assert.ok(instrIdx !== -1);
+    const block = s.slice(instrIdx, instrIdx + 800);
+    assert.ok(
+      block.includes("sync-broker-rules"),
+      "manualCleanupInstructions must reference the automated repair endpoint",
     );
   });
 });

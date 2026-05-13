@@ -142,6 +142,14 @@ export async function GET(request: NextRequest) {
 
   const brokerStateOk = !guardrailLimitFound || limitActive === false;
 
+  const manualCleanupInstructions =
+    isStale && limitId != null
+      ? `If the automated repair (POST ${`/api/accounts/${accountId}/sync-broker-rules`}) returns ` +
+        `409 manual_cleanup_required, log in to your Tradovate account, go to Risk Settings, ` +
+        `find the position limit with ID ${limitId} (description: "Guardrail Max Position Size"), ` +
+        "and deactivate or delete it manually."
+      : null;
+
   return NextResponse.json({
     accountId,
     externalAccountId: account.externalAccountId ?? null,
@@ -177,5 +185,6 @@ export async function GET(request: NextRequest) {
     // Repair guidance when a stale raw limit is blocking micro orders
     suggestedAction: isStale ? ("deactivate_stale_raw_limit" as const) : null,
     suggestedEndpoint: isStale ? (`/api/accounts/${accountId}/sync-broker-rules` as const) : null,
+    manualCleanupInstructions,
   });
 }

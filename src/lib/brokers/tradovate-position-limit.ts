@@ -142,3 +142,25 @@ export function buildCreateRiskParameterPayload(
 export function buildUpdateRiskParameterPayload(id: number): Record<string, unknown> {
   return { id, hardLimit: true };
 }
+
+/**
+ * Builds the POST body for `userAccountRiskParameter/update` to clear the
+ * hard limit before deactivating the parent position limit record.
+ * Clearing hardLimit first avoids Tradovate rejecting the position limit
+ * deactivation while an active hard-limit enforcement record is still attached.
+ */
+export function buildDeactivateRiskParameterPayload(id: number): Record<string, unknown> {
+  return { id, hardLimit: false };
+}
+
+/**
+ * Builds the POST body for `userAccountPositionLimit/update` using the full
+ * existing record with active=false. Some Tradovate account tiers reject a
+ * minimal `{ id, active: false }` payload and require all fields to be present.
+ * Used as a retry after the minimal deactivation payload fails.
+ */
+export function buildDeactivatePositionLimitFullPayload(
+  existing: TvUserAccountPositionLimit,
+): Record<string, unknown> {
+  return { ...existing, active: false };
+}
