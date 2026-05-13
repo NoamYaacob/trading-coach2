@@ -15,6 +15,7 @@ export const MAX_POSITION_SIZE_COPY = {
   label: "Max standard-equivalent contracts",
   hint:
     "1 standard-equivalent allows up to 10 micro contracts on supported micro futures " +
-    "(e.g. MNQ, MES, MYM, M2K). " +
-    "Broker hard limit may be raw-contract based unless product-specific limits are confirmed.",
+    "(e.g. 1 NQ-equivalent = 10 MNQ, 1 ES-equivalent = 10 MES). " +
+    "The broker hard limit at Tradovate is raw-contract based and cannot express standard-equivalent weighting — " +
+    "Guardrail monitors exposure and can alert, lock, or flatten after detection when order permissions are enabled.",
 } as const;

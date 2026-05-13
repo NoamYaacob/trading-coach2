@@ -256,6 +256,149 @@ describe("shouldSkipBrokerEnforcement — trading_day_disabled trigger", () => {
   });
 });
 
+// ── max_position_size rule ────────────────────────────────────────────────────
+
+describe("max_position_size rule", () => {
+  // NQ has a mini-equivalent ratio of 1 (it is the standard).
+  // MNQ has a ratio of 0.1 (10 MNQ = 1 NQ-equivalent).
+  // currentMiniEquivalentExposure is the sum of all positions expressed in
+  // standard-equivalent units as computed by computeMiniEquivalentExposure.
+
+  it("status=triggered when NQ qty=2 breaches max=1", () => {
+    // 2 NQ = 2.0 standard-equivalent → breaches limit of 1
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 2 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size");
+    assert.ok(rule, "max_position_size rule must be present when maxContracts is set");
+    assert.equal(rule.status, "triggered");
+    assert.equal(rule.severity, "critical");
+  });
+
+  it("status=ok when NQ qty=1 is within max=1", () => {
+    // 1 NQ = 1.0 standard-equivalent → exactly at limit (not over)
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 1 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "ok");
+  });
+
+  it("status=ok when MNQ qty=10 is within max=1 (10 MNQ = 1 NQ-equivalent)", () => {
+    // 10 MNQ × 0.1 = 1.0 standard-equivalent → exactly at limit
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 1 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "ok");
+  });
+
+  it("status=triggered when MNQ qty=11 breaches max=1 (11 × 0.1 = 1.1)", () => {
+    // 11 MNQ × 0.1 = 1.1 standard-equivalent → breaches limit of 1
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 1.1 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "triggered");
+  });
+
+  it("mixed NQ + MNQ exposure is summed: 1 NQ + 5 MNQ = 1.5 standard-equivalent, breaches max=1", () => {
+    // 1 NQ (1.0) + 5 MNQ (0.5) = 1.5 total → breaches 1
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 1.5 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "triggered");
+  });
+
+  it("rule is absent when maxContracts is null (no rule configured)", () => {
+    const results = evaluateRules(
+      baseInput({ maxContracts: null, currentMiniEquivalentExposure: 99 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size");
+    assert.equal(rule, undefined);
+  });
+
+  it("rule is absent when maxContracts is undefined", () => {
+    const results = evaluateRules(baseInput({ currentMiniEquivalentExposure: 99 }));
+    const rule = results.find((r) => r.ruleId === "max_position_size");
+    assert.equal(rule, undefined);
+  });
+
+  it("rule is absent when maxContracts is 0 (treated as unconfigured)", () => {
+    const results = evaluateRules(
+      baseInput({ maxContracts: 0, currentMiniEquivalentExposure: 99 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size");
+    assert.equal(rule, undefined);
+  });
+
+  it("rule is skipped silently when currentMiniEquivalentExposure is null (data unavailable)", () => {
+    // Positions not yet fetched — should not produce a spurious result
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: null }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size");
+    assert.equal(rule, undefined);
+  });
+
+  it("status=triggered with severity=high when hasUnsupportedPositions=true (cannot verify exposure)", () => {
+    const results = evaluateRules(
+      baseInput({
+        maxContracts: 1,
+        currentMiniEquivalentExposure: 0,
+        hasUnsupportedPositions: true,
+        unsupportedSymbols: ["XYZUSD"],
+      }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "triggered");
+    assert.equal(rule.severity, "high");
+    assert.ok(
+      rule.reason.includes("XYZUSD"),
+      `reason must mention the unrecognized symbol, got: ${rule.reason}`,
+    );
+  });
+
+  it("unsupported-position trigger fires even when currentMiniEquivalentExposure=0 (no falsely safe pass)", () => {
+    // hasUnsupportedPositions takes precedence — we cannot verify the limit is clear
+    const results = evaluateRules(
+      baseInput({
+        maxContracts: 2,
+        currentMiniEquivalentExposure: 0,
+        hasUnsupportedPositions: true,
+      }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    assert.equal(rule.status, "triggered");
+  });
+
+  it("triggered message mentions detection-response model", () => {
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 2 }),
+    );
+    const rule = results.find((r) => r.ruleId === "max_position_size")!;
+    // Must not imply that Tradovate blocked the order (it didn't) — enforcement is post-execution
+    assert.ok(
+      rule.message.toLowerCase().includes("flatten") ||
+        rule.message.toLowerCase().includes("sync") ||
+        rule.message.toLowerCase().includes("detect"),
+      `message must describe detection-response model, got: ${rule.message}`,
+    );
+  });
+
+  it("rule is evaluated per-account (other rules in the same batch are unaffected)", () => {
+    // Feeding maxContracts+exposure only affects max_position_size, not max_daily_loss
+    const results = evaluateRules(
+      baseInput({ maxContracts: 1, currentMiniEquivalentExposure: 2, maxDailyLoss: 500, todayPnL: -100 }),
+    );
+    const posRule = results.find((r) => r.ruleId === "max_position_size")!;
+    const lossRule = results.find((r) => r.ruleId === "max_daily_loss")!;
+    assert.equal(posRule.status, "triggered");
+    assert.equal(lossRule.status, "ok");
+  });
+});
+
 // ── shouldSkipBrokerEnforcement — non-live connection states ──────────────────
 // Live-readiness gate: regardless of permissionLevel, a broker write must not
 // be attempted on a connection that is expired, errored, never connected, or

@@ -14,6 +14,7 @@
  */
 
 import type { GuardianSnapshot } from "@/lib/guardian";
+import { isMaxPositionSizeBreached } from "./brokers/position-exposure.ts";
 
 // ─── Rule types ────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,8 @@ export type RuleType =
   | "session_not_started"
   | "session_closed"
   | "guardian_disabled"
-  | "manual_rule_breach";
+  | "manual_rule_breach"
+  | "max_position_size";
 
 export type RuleStatus = "ok" | "warning" | "blocked" | "triggered";
 export type RuleSeverity = "low" | "medium" | "high" | "critical";
@@ -107,6 +109,26 @@ export type RuleEngineInput = {
    */
   manualSignals?: ManualEventSignals | null;
   now?: Date;
+
+  // ── Max position size (standard-equivalent exposure) ────────────────────────
+  /**
+   * Configured max standard-equivalent contracts for this account.
+   * null = no rule configured → max_position_size rule is skipped.
+   */
+  maxContracts?: number | null;
+  /**
+   * Current total standard-equivalent exposure computed from live positions.
+   * null = positions unavailable or not yet fetched.
+   */
+  currentMiniEquivalentExposure?: number | null;
+  /**
+   * True when at least one open position is in a symbol Guardrail cannot
+   * classify. When true and maxContracts is set, the rule triggers to avoid
+   * silently passing an unverifiable breach.
+   */
+  hasUnsupportedPositions?: boolean | null;
+  /** Unsupported symbol names, populated when hasUnsupportedPositions is true. */
+  unsupportedSymbols?: string[] | null;
 };
 
 // ─── Violation feed ────────────────────────────────────────────────────────────
@@ -522,6 +544,52 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       severity: "low",
       timestamp: now,
     });
+  }
+
+  // ── max_position_size ───────────────────────────────────────────────────────
+  // Skipped when maxContracts is null/undefined (no rule configured) or when
+  // exposure data is unavailable (positions not yet fetched). This rule is
+  // detection-only: Guardrail cannot intercept orders before they execute at
+  // Tradovate. Enforcement is breach-response (detect → alert → flatten/lock).
+  if (input.maxContracts != null && input.maxContracts > 0) {
+    if (input.hasUnsupportedPositions) {
+      const syms = (input.unsupportedSymbols ?? []).join(", ");
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "triggered",
+        reason: `Open position in symbol Guardrail cannot classify (${syms || "unknown"}). Max position size cannot be verified.`,
+        message: `Position in unrecognized symbol — max position size cannot be verified. Close the position to clear this alert.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Close the unrecognized position. Guardrail will cancel working orders and may flatten on next sync if order actions are enabled.",
+      });
+    } else if (
+      input.currentMiniEquivalentExposure != null &&
+      isMaxPositionSizeBreached(input.currentMiniEquivalentExposure, input.maxContracts)
+    ) {
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "triggered",
+        reason: `Standard-equivalent exposure ${input.currentMiniEquivalentExposure} exceeds limit ${input.maxContracts}.`,
+        message: `Max position size exceeded: ${input.currentMiniEquivalentExposure} standard-equivalent contracts open (limit: ${input.maxContracts}). Guardrail will flatten on next sync if order actions are enabled.`,
+        severity: "critical",
+        timestamp: now,
+        recommendedAction: "Reduce open positions immediately. Guardrail detected the breach and will lock the account on next sync.",
+      });
+    } else if (input.currentMiniEquivalentExposure != null) {
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "ok",
+        reason: `Exposure ${input.currentMiniEquivalentExposure} within limit ${input.maxContracts}.`,
+        message: `Position size: ${input.currentMiniEquivalentExposure} of ${input.maxContracts} standard-equivalent.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+    // If currentMiniEquivalentExposure is null (data unavailable), skip silently.
   }
 
   // ── manual_rule_breach ──────────────────────────────────────────────────────

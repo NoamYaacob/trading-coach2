@@ -9,6 +9,11 @@ import {
   effectiveSupportedRawLimits,
   getSupportedRoots,
 } from "@/lib/futures/contracts";
+import {
+  computeMiniEquivalentExposure,
+  deriveMaxPositionSizeBreach,
+  type PositionExposureInput,
+} from "@/lib/brokers/position-exposure";
 
 /**
  * GET /api/debug/tradovate-position-limit?accountId=...
@@ -31,22 +36,39 @@ import {
  *   - Standard-equivalent enforcement runs in Guardrail's app engine only.
  *   - Product-specific broker limits (totalBy="PerContract") are unverified.
  *
+ * ── Enforcement model (app-side only) ─────────────────────────────────────────
+ * Guardrail CANNOT intercept orders before they execute at Tradovate.
+ * Orders placed directly in trader.tradovate.com will fill before Guardrail
+ * sees them. Enforcement is detection-response only:
+ *   1. Cron sync (every ~5 min) reads live positions via Tradovate API.
+ *   2. computeMiniEquivalentExposure computes standard-equivalent total.
+ *   3. If exposure > maxContracts: account is locked (riskState=STOPPED),
+ *      GuardianIntervention is logged, and positions are flattened if order
+ *      actions are enabled and the connection has write permissions.
+ *
  * Fields:
- *   guardrailMaxMiniEquivalent  — DB value (AccountRiskRules.maxContracts) in standard-equiv units
- *   supportedSymbols            — equity index roots with confirmed 1:10 micro/standard pairs
- *   effectiveMicroLimits        — per-product raw limits (app-side reference only; not broker-enforced)
- *   brokerEnforcementMode       — always "app_side_only" (global raw cap is not applied)
- *   brokerEnforcementWarning    — explains why the global raw limit is not used
- *   staleRawLimitWarning        — set when a Guardrail raw limit is still active at Tradovate
- *   guardrailLimitFound         — whether a Guardrail-owned limit still exists at Tradovate
- *   exposedLimit                — raw cap value currently stored at Tradovate (should be absent/inactive)
- *   limitActive                 — whether the Tradovate limit is active (should be false in normal state)
- *   hardLimitAttached           — whether userAccountRiskParameter.hardLimit=true is set
- *   allLimitCount               — total position limits at Tradovate
- *   fetchError                  — set when the Tradovate API call fails
- *   brokerStateOk               — true when no active raw limit exists at broker (expected normal state)
- *   suggestedAction             — "deactivate_stale_raw_limit" when brokerStateOk=false; null otherwise
- *   suggestedEndpoint           — POST endpoint to call for the suggested action; null when not needed
+ *   guardrailMaxMiniEquivalent   — DB value in standard-equiv units
+ *   supportedSymbols             — equity index roots with confirmed 1:10 pairs
+ *   effectiveMicroLimits         — per-product raw limits (app-side reference only)
+ *   brokerEnforcementMode        — always "app_side_only"
+ *   brokerEnforcementWarning     — explains why global raw cap is not applied
+ *   staleRawLimitWarning         — set when a stale Guardrail raw limit is still active
+ *   guardrailLimitFound          — whether a Guardrail-owned limit exists at Tradovate
+ *   exposedLimit                 — raw cap currently at Tradovate (should be absent/inactive)
+ *   limitActive                  — whether the Tradovate limit is active (should be false)
+ *   hardLimitAttached            — whether userAccountRiskParameter.hardLimit=true
+ *   allLimitCount                — total position limits at Tradovate
+ *   fetchError                   — set when the Tradovate API call fails
+ *   brokerStateOk                — true when no active raw limit exists
+ *   suggestedAction              — "deactivate_stale_raw_limit" when needed; null otherwise
+ *   suggestedEndpoint            — POST endpoint for the suggested action
+ *   livePositions                — current open positions from Tradovate API
+ *   exposureByRoot               — standard-equivalent breakdown per parent root
+ *   totalMiniEquivalentExposure  — total standard-equivalent exposure across all open positions
+ *   unsupportedPositions         — positions in symbols Guardrail cannot classify
+ *   wouldBreach                  — true if current exposure exceeds maxContracts
+ *   guardrailAction              — what Guardrail would do next sync if breach persists
+ *   positionFetchError           — set when live position fetch fails separately
  */
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -75,14 +97,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const brokerConnection = account.brokerConnectionId
-    ? await prisma.brokerConnection.findFirst({
-        where: { id: account.brokerConnectionId, userId: currentUser.id },
-        select: { id: true, connectionStatus: true, permissionLevel: true, lastRenewError: true },
-      })
-    : null;
+  const [brokerConnection, defaultRules] = await Promise.all([
+    account.brokerConnectionId
+      ? prisma.brokerConnection.findFirst({
+          where: { id: account.brokerConnectionId, userId: currentUser.id },
+          select: { id: true, connectionStatus: true, permissionLevel: true, lastRenewError: true },
+        })
+      : null,
+    prisma.riskRules.findUnique({
+      where: { userId: currentUser.id },
+      select: { maxContracts: true },
+    }),
+  ]);
 
-  const guardrailMaxMiniEquivalent = account.riskRules?.maxContracts ?? null;
+  const guardrailMaxMiniEquivalent =
+    account.riskRules?.maxContracts ?? defaultRules?.maxContracts ?? null;
   const supportedSymbols = getSupportedRoots();
 
   // Per-product raw limits — app-side reference only (broker does not enforce these).
@@ -100,11 +129,37 @@ export async function GET(request: NextRequest) {
   let allLimitCount: number | null = null;
   let fetchError: string | null = null;
 
+  // ── Live positions + exposure ─────────────────────────────────────────────
+  type LivePosition = {
+    symbol: string;
+    netPos: number;
+    side: "LONG" | "SHORT" | "FLAT";
+  };
+  let livePositions: LivePosition[] = [];
+  let exposureByRoot: Array<{
+    root: string;
+    totalMiniEquivalent: number;
+    positions: Array<{ symbol: string; netPos: number; miniEquivalent: number }>;
+  }> = [];
+  let totalMiniEquivalentExposure: number | null = null;
+  let unsupportedPositions: Array<{ symbol: string; netPos: number; reason: string }> = [];
+  let wouldBreach: boolean | null = null;
+  let positionFetchError: string | null = null;
+
   if (account.externalAccountId) {
     try {
       const client = new TradovateClient(accountId, currentUser.id);
       await client.initialize();
-      const limits = await client.listUserAccountPositionLimits();
+
+      // Fetch position limits and live positions in parallel.
+      const [limits, rawPositions] = await Promise.all([
+        client.listUserAccountPositionLimits(),
+        client.toPositions().catch((err) => {
+          positionFetchError = err instanceof Error ? err.message : String(err);
+          return [];
+        }),
+      ]);
+
       allLimitCount = limits.length;
 
       const guardrailLimit = findGuardrailPositionLimit(limits);
@@ -124,6 +179,33 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+
+      // Compute standard-equivalent exposure from live positions.
+      if (rawPositions.length > 0 || positionFetchError === null) {
+        livePositions = rawPositions.map((p) => ({
+          symbol: p.symbol,
+          netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
+          side: p.side,
+        }));
+
+        const exposureInputs: PositionExposureInput[] = rawPositions.map((p) => ({
+          symbol: p.symbol,
+          netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
+        }));
+
+        const exposure = computeMiniEquivalentExposure(exposureInputs);
+        totalMiniEquivalentExposure = exposure.totalMiniEquivalent;
+        exposureByRoot = exposure.byRoot;
+        unsupportedPositions = exposure.unsupported;
+
+        if (guardrailMaxMiniEquivalent !== null) {
+          const decision = deriveMaxPositionSizeBreach({
+            positions: exposureInputs,
+            maxContracts: guardrailMaxMiniEquivalent,
+          });
+          wouldBreach = decision.shouldTrigger;
+        }
+      }
     } catch (err) {
       fetchError = err instanceof Error ? err.message : String(err);
     }
@@ -132,7 +214,6 @@ export async function GET(request: NextRequest) {
   }
 
   // Normal state: no active Guardrail limit at broker (app_side_only mode).
-  // Warning when a limit is still active (stale raw limit from before the mode change).
   const isStale = guardrailLimitFound && limitActive === true;
   const staleRawLimitWarning = isStale
     ? "A Guardrail-owned position limit is still active at Tradovate. In app_side_only mode " +
@@ -150,6 +231,16 @@ export async function GET(request: NextRequest) {
         "and deactivate or delete it manually."
       : null;
 
+  // What Guardrail would do on the next sync if the current state persists.
+  const guardrailAction =
+    wouldBreach === true && livePositions.length > 0
+      ? "lock_and_flatten: account will be locked (riskState=STOPPED) and open positions flattened (if order actions are enabled and connection has write access)"
+      : wouldBreach === true
+        ? "lock: account will be locked (riskState=STOPPED); no open positions to flatten"
+        : wouldBreach === false
+          ? "no_action: exposure is within limit"
+          : null;
+
   return NextResponse.json({
     accountId,
     externalAccountId: account.externalAccountId ?? null,
@@ -157,7 +248,7 @@ export async function GET(request: NextRequest) {
     brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
     permissionLevel: brokerConnection?.permissionLevel ?? null,
     lastRenewError: brokerConnection?.lastRenewError ?? null,
-    // Guardrail DB value (standard-equivalent units per the Apex 10-micro=1-standard model)
+    // Guardrail DB value (standard-equivalent units per Apex 10-micro=1-standard model)
     guardrailMaxMiniEquivalent,
     // Supported mini/micro pairs
     supportedSymbols,
@@ -171,6 +262,11 @@ export async function GET(request: NextRequest) {
       "(0.2 NQ-equivalent, within the 1-standard-equivalent limit). Product-specific limits " +
       "(totalBy=PerContract) are unverified. Standard-equivalent enforcement is Guardrail " +
       "app-side only — no product-specific broker enforcement is active.",
+    appSideEnforcementNote:
+      "Guardrail cannot intercept orders before they execute at Tradovate. " +
+      "Enforcement is detection-response: cron sync (every ~5 min) reads live positions, " +
+      "computes standard-equivalent exposure, and locks/flattens if the limit is exceeded. " +
+      "Orders placed directly in trader.tradovate.com will fill before Guardrail sees them.",
     staleRawLimitWarning,
     // Live Tradovate state (in app_side_only mode: limit should be absent or inactive)
     guardrailLimitFound,
@@ -186,5 +282,13 @@ export async function GET(request: NextRequest) {
     suggestedAction: isStale ? ("deactivate_stale_raw_limit" as const) : null,
     suggestedEndpoint: isStale ? (`/api/accounts/${accountId}/sync-broker-rules` as const) : null,
     manualCleanupInstructions,
+    // ── Live position exposure ─────────────────────────────────────────────
+    livePositions,
+    exposureByRoot,
+    totalMiniEquivalentExposure,
+    unsupportedPositions,
+    wouldBreach,
+    guardrailAction,
+    positionFetchError,
   });
 }
