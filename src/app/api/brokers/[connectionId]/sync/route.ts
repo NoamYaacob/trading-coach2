@@ -65,6 +65,7 @@ export async function POST(
       balance: r.balance,
       lastSyncAt: r.lastSyncAt,
       errorCode: r.errorCode,
+      maxPositionSize: r.maxPositionSize,
     })),
     discovery: {
       ok: discovery.ok,

@@ -171,6 +171,76 @@ describe("sync-all: only syncs healthy connections", () => {
   });
 });
 
+// ── maxPositionSize pass-through ──────────────────────────────────────────────
+
+describe("POST /api/brokers/[connectionId]/sync: maxPositionSize diagnostics in response", () => {
+  it("results map includes maxPositionSize field from SyncResult", () => {
+    const s = src();
+    // Find the results.map block
+    const mapIdx = s.indexOf("results.map(");
+    assert.ok(mapIdx !== -1, "route must call results.map");
+    const mapBlock = s.slice(mapIdx, s.indexOf("})),", mapIdx) + 4);
+    assert.ok(
+      mapBlock.includes("maxPositionSize: r.maxPositionSize"),
+      "results map must include maxPositionSize: r.maxPositionSize (not omit it)",
+    );
+  });
+
+  it("route does NOT filter out maxPositionSize (all SyncResult diagnostic fields pass through)", () => {
+    const s = src();
+    // The map must not be an exhaustive allowlist that drops maxPositionSize.
+    // Verify maxPositionSize appears in the results.map body.
+    assert.ok(
+      s.includes("maxPositionSize"),
+      "maxPositionSize must appear in the route source — was it accidentally filtered?",
+    );
+  });
+
+  it("SyncResult type includes all required max_position_size diagnostic fields", () => {
+    const syncSrc = readFileSync(
+      resolve(import.meta.dirname, "../../../../../lib/brokers/tradovate-sync.ts"),
+      "utf8",
+    );
+    const required = [
+      "riskStateAtSyncStart",
+      "riskStateAtSyncEnd",
+      "wouldBreach",
+      "ruleTriggered",
+      "violationCreated",
+      "violationSuppressedReason",
+      "flattenAttempted",
+      "flattenSuppressedReason",
+      "orderActionFeatureFlagEnabled",
+      "dryRun",
+      "permissionAllowsOrders",
+      "isReadOnlyConnection",
+      "hasOpenPositions",
+      "openPositionContractIds",
+    ];
+    for (const field of required) {
+      assert.ok(
+        syncSrc.includes(field),
+        `MaxPositionSizeSyncDiagnostics must include field: ${field}`,
+      );
+    }
+  });
+
+  it("permissionAllowsOrders is derived from brokerConnection.permissionLevel (not just connectionStatus)", () => {
+    const syncSrc = readFileSync(
+      resolve(import.meta.dirname, "../../../../../lib/brokers/tradovate-sync.ts"),
+      "utf8",
+    );
+    assert.ok(
+      syncSrc.includes("permissionAllowsOrders"),
+      "sync must compute permissionAllowsOrders",
+    );
+    assert.ok(
+      syncSrc.includes("permissionLevel"),
+      "permissionAllowsOrders must be derived from the OAuth permissionLevel field",
+    );
+  });
+});
+
 describe("sync-button: hydration safety", () => {
   const SYNC_BUTTON_FILE = resolve(
     import.meta.dirname,

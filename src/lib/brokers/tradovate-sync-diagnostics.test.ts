@@ -71,6 +71,13 @@ describe("tradovate-sync: MaxPositionSizeSyncDiagnostics type is exported", () =
     );
   });
 
+  it("diagnostic type includes permissionAllowsOrders", () => {
+    assert.ok(
+      SYNC_SRC.includes("permissionAllowsOrders"),
+      "must include permissionAllowsOrders (whether OAuth token has Orders: Full Access)",
+    );
+  });
+
   it("diagnostic type includes openPositionContractIds (numeric IDs)", () => {
     assert.ok(
       SYNC_SRC.includes("openPositionContractIds"),

@@ -68,6 +68,8 @@ export type MaxPositionSizeSyncDiagnostics = {
   orderActionFeatureFlagEnabled: boolean;
   /** Whether ENFORCEMENT_DRY_RUN=true at sync time. */
   dryRun: boolean;
+  /** Whether the broker OAuth token has Orders: Full Access (permissionLevel !== "read_only"). */
+  permissionAllowsOrders: boolean;
   /** Whether the broker connection is connected_readonly. */
   isReadOnlyConnection: boolean;
   /** Whether there were any open positions at sync time. */
@@ -437,11 +439,15 @@ export async function syncTradovateAccount(
       }),
       prisma.connectedAccount.findUnique({
         where: { id: accountId },
-        select: { brokerConnection: { select: { connectionStatus: true } } },
+        select: { brokerConnection: { select: { connectionStatus: true, permissionLevel: true } } },
       }),
     ]);
     const isReadOnlyConnection =
       accountConnInfo?.brokerConnection?.connectionStatus === "connected_readonly";
+    // permissionLevel is set from the OAuth token scope at connection time.
+    // "read_only" means Orders: Full Access is absent — flatten writes will fail.
+    const permissionAllowsOrders =
+      accountConnInfo?.brokerConnection?.permissionLevel !== "read_only";
     const effectiveMaxDailyLoss =
       accountRules?.maxDailyLoss != null
         ? Number(accountRules.maxDailyLoss)
@@ -759,6 +765,7 @@ export async function syncTradovateAccount(
         flattenSuppressedReason,
         orderActionFeatureFlagEnabled,
         dryRun: syncDryRun,
+        permissionAllowsOrders,
         isReadOnlyConnection,
         hasOpenPositions,
         openPositionContractIds,
