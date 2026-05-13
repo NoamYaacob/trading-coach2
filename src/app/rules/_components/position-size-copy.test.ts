@@ -4,12 +4,12 @@ import assert from "node:assert/strict";
 import { MAX_POSITION_SIZE_COPY } from "./position-size-copy.ts";
 
 describe("MAX_POSITION_SIZE_COPY — label", () => {
-  it("label is 'Max position size'", () => {
-    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size");
+  it("label is 'Max position size (mini-equivalent)'", () => {
+    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size (mini-equivalent)");
   });
 
-  it("label does not contain 'contracts' (old label wording removed)", () => {
-    assert.ok(!MAX_POSITION_SIZE_COPY.label.toLowerCase().includes("contracts"));
+  it("label includes 'mini-equivalent' to clarify the unit", () => {
+    assert.ok(MAX_POSITION_SIZE_COPY.label.toLowerCase().includes("mini-equivalent"));
   });
 });
 
@@ -74,5 +74,34 @@ describe("MAX_POSITION_SIZE_COPY — hint copy", () => {
         `hint must not contain "${f}"`,
       );
     }
+  });
+
+  it("hint explains the mini-equivalent concept with a concrete example", () => {
+    // Users need to know that micro contracts count as 0.1 mini, so 1 mini = 10 MNQ.
+    assert.match(
+      MAX_POSITION_SIZE_COPY.hint,
+      /0\.1 mini|0\.1 of a mini/i,
+      "hint must explain micro contracts count as 0.1 mini",
+    );
+    assert.match(
+      MAX_POSITION_SIZE_COPY.hint,
+      /MNQ|MES/,
+      "hint must mention at least one micro contract example",
+    );
+  });
+
+  it("hint clarifies that broker enforcement is raw contract count, not mini-equivalent weighted", () => {
+    // This distinction is critical: users must understand that the Tradovate
+    // broker limit is global and does not apply mini-equivalent scaling.
+    assert.match(
+      MAX_POSITION_SIZE_COPY.hint,
+      /raw contract|raw contract count/i,
+      "hint must mention raw contract count limitation",
+    );
+    assert.match(
+      MAX_POSITION_SIZE_COPY.hint,
+      /app[- ]level/i,
+      "hint must note mini-equivalent weighting is app-level only",
+    );
   });
 });

@@ -549,9 +549,9 @@ describe("isMaxPositionSizeBreached — sub-tenth precision", () => {
 });
 
 describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
-  it("label is 'Max position size' (not the old 'Max contracts / position size')", () => {
-    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size");
-    assert.ok(!MAX_POSITION_SIZE_COPY.label.includes("contracts"));
+  it("label is 'Max position size (mini-equivalent)' (not the old 'Max contracts / position size')", () => {
+    assert.equal(MAX_POSITION_SIZE_COPY.label, "Max position size (mini-equivalent)");
+    assert.ok(MAX_POSITION_SIZE_COPY.label.includes("mini-equivalent"));
   });
 
   it("hint preserves the app-level fallback wording for accounts without broker sync", () => {

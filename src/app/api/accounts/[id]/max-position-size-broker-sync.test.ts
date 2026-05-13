@@ -190,9 +190,38 @@ describe("POST /api/accounts/[id]/apply-pending: broker max position size sync",
 // ── 4. Debug endpoint has required structural fields ─────────────────────────
 
 describe("GET /api/debug/tradovate-position-limit: response shape", () => {
-  it("returns guardrailMaxContracts", () => {
+  it("returns guardrailMaxMiniEquivalent (renamed from guardrailMaxContracts)", () => {
     const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes("guardrailMaxContracts"), "must return guardrailMaxContracts");
+    assert.ok(s.includes("guardrailMaxMiniEquivalent"), "must return guardrailMaxMiniEquivalent");
+  });
+
+  it("returns effectiveMicroLimits (per-product raw limits for display)", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("effectiveMicroLimits"), "must return effectiveMicroLimits");
+  });
+
+  it("returns brokerRawLimit (the raw cap value at Tradovate)", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("brokerRawLimit"), "must return brokerRawLimit");
+  });
+
+  it("returns brokerEnforcementType", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("brokerEnforcementType"), "must return brokerEnforcementType");
+  });
+
+  it("brokerEnforcementType is raw_contract_global", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes('"raw_contract_global"'), 'brokerEnforcementType must be "raw_contract_global"');
+  });
+
+  it("returns brokerEnforcementNote explaining the limitation", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("brokerEnforcementNote"), "must return brokerEnforcementNote");
+    assert.ok(
+      s.includes("totalBy") || s.includes("mini-equivalent"),
+      "brokerEnforcementNote must explain the global-vs-weighted limitation",
+    );
   });
 
   it("returns externalAccountId", () => {
@@ -237,12 +266,10 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
 
   it("calls listUserAccountRiskParameters directly (no hacky cast)", () => {
     const s = src(DEBUG_ENDPOINT);
-    // The direct call must be present
     assert.ok(
       s.includes("client.listUserAccountRiskParameters("),
       "must call client.listUserAccountRiskParameters directly",
     );
-    // The hacky cast must be gone
     assert.ok(
       !s.includes("as unknown as"),
       "debug endpoint must not use hacky type cast for listUserAccountRiskParameters",
@@ -260,6 +287,14 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
     assert.ok(
       s.includes("userId: currentUser.id"),
       "must scope DB lookup to current user's account",
+    );
+  });
+
+  it("imports effectiveRawLimits from the contract equivalence helper", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(
+      s.includes("effectiveRawLimits"),
+      "must import and use effectiveRawLimits for per-product display",
     );
   });
 });

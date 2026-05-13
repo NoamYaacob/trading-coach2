@@ -8,27 +8,38 @@ import {
   findGuardrailPositionLimit,
   type TvUserAccountRiskParameter,
 } from "@/lib/brokers/tradovate-position-limit";
+import { effectiveRawLimits } from "@/lib/brokers/tradovate-contract-equivalence";
 
 /**
  * GET /api/debug/tradovate-position-limit?accountId=...
  *
  * Returns the current state of the Guardrail-owned Tradovate position limit
- * for the given ConnectedAccount. Useful for confirming whether the limit
- * was created, what exposedLimit value was written, and whether
- * userAccountRiskParameter.hardLimit=true is attached.
+ * for the given ConnectedAccount.
+ *
+ * Mini-equivalent vs raw contract distinction:
+ *   Guardrail stores maxContracts as mini-equivalents (1 NQ = 1, 1 MNQ = 0.1).
+ *   The Tradovate broker limit is a global raw contract count (totalBy="Overall")
+ *   that cannot express mini-equivalent weighting — it enforces the same integer
+ *   cap across all open positions regardless of product. Mini-equivalent scaling
+ *   is applied by Guardrail at the app level only.
  *
  * Fields returned:
- *   guardrailMaxContracts   — Guardrail DB value (AccountRiskRules.maxContracts)
- *   externalAccountId       — Tradovate numeric account ID stored in our DB
- *   brokerConnectionStatus  — BrokerConnection.connectionStatus
- *   permissionLevel         — BrokerConnection.permissionLevel
- *   guardrailLimitFound     — whether a Guardrail-owned limit exists at Tradovate
- *   limitId                 — Tradovate internal ID of the limit, if found
- *   exposedLimit            — max contracts value stored at Tradovate
- *   active                  — whether the limit is active at Tradovate
- *   hardLimitAttached       — whether userAccountRiskParameter.hardLimit=true is set
- *   allLimitCount           — total position limits returned by Tradovate for the account
- *   fetchError              — set when the Tradovate API call fails
+ *   guardrailMaxMiniEquivalent — Guardrail DB value in mini-equivalents
+ *   brokerRawLimit             — the raw exposedLimit stored at Tradovate (= guardrailMaxMiniEquivalent,
+ *                                since we send them 1:1; the scaling is only app-side)
+ *   brokerEnforcementType      — "raw_contract_global": broker cap is uniform across all products
+ *   effectiveMicroLimits       — what guardrailMaxMiniEquivalent means in raw contracts per product
+ *                                (NQ=N, MNQ=N×10, ES=N, MES=N×10, etc.) — app-side reference only
+ *   externalAccountId          — Tradovate numeric account ID stored in our DB
+ *   brokerConnectionStatus     — BrokerConnection.connectionStatus
+ *   permissionLevel            — BrokerConnection.permissionLevel
+ *   guardrailLimitFound        — whether a Guardrail-owned limit exists at Tradovate
+ *   limitId                    — Tradovate internal ID of the limit, if found
+ *   exposedLimit               — raw cap value stored at Tradovate
+ *   limitActive                — whether the limit is active at Tradovate
+ *   hardLimitAttached          — whether userAccountRiskParameter.hardLimit=true is set
+ *   allLimitCount              — total position limits returned by Tradovate for the account
+ *   fetchError                 — set when the Tradovate API call fails
  */
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -64,7 +75,11 @@ export async function GET(request: NextRequest) {
       })
     : null;
 
-  const guardrailMaxContracts = account.riskRules?.maxContracts ?? null;
+  const guardrailMaxMiniEquivalent = account.riskRules?.maxContracts ?? null;
+
+  // Pre-compute per-product raw limit examples for display (app-side reference).
+  const effectiveMicroLimits =
+    guardrailMaxMiniEquivalent !== null ? effectiveRawLimits(guardrailMaxMiniEquivalent) : null;
 
   // ── Fetch live Tradovate state ────────────────────────────────────────────
   let guardrailLimitFound = false;
@@ -114,8 +129,19 @@ export async function GET(request: NextRequest) {
     brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
     permissionLevel: brokerConnection?.permissionLevel ?? null,
     lastRenewError: brokerConnection?.lastRenewError ?? null,
-    // Guardrail DB value
-    guardrailMaxContracts,
+    // Guardrail DB value (mini-equivalent units)
+    guardrailMaxMiniEquivalent,
+    // Per-product raw limit examples — what guardrailMaxMiniEquivalent means for each product.
+    // These are app-side reference values only; the broker enforces a single global raw cap.
+    effectiveMicroLimits,
+    // Broker enforcement metadata
+    brokerEnforcementType: "raw_contract_global" as const,
+    brokerEnforcementNote:
+      "Tradovate enforces a single raw contract count across all positions " +
+      "(totalBy=Overall). Mini-equivalent weighting (e.g., 10 MNQ = 1 NQ) " +
+      "is Guardrail-side only.",
+    // Broker raw limit (= guardrailMaxMiniEquivalent, sent 1:1 to Tradovate)
+    brokerRawLimit: exposedLimit,
     // Live Tradovate state
     guardrailLimitFound,
     limitId,
@@ -126,11 +152,11 @@ export async function GET(request: NextRequest) {
     fetchError,
     // Diagnosis
     limitMatchesGuardrail:
-      guardrailLimitFound && exposedLimit === guardrailMaxContracts,
+      guardrailLimitFound && exposedLimit === guardrailMaxMiniEquivalent,
     readyForDemo:
       guardrailLimitFound &&
       limitActive === true &&
       hardLimitAttached === true &&
-      exposedLimit === guardrailMaxContracts,
+      exposedLimit === guardrailMaxMiniEquivalent,
   });
 }
