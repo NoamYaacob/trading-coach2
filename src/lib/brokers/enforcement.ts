@@ -145,12 +145,15 @@ export const ENFORCEMENT_CAPABILITIES = {
       "Tradovate's UserAccountPositionLimit cannot express cross-product " +
       "weighted equivalence, so the breach trigger remains Guardrail-side. " +
       "May still flatten via order/liquidatepositions when permission allows. " +
-      "PRE-EMPTIVE CAP (separate mechanism): Guardrail also syncs maxContracts " +
-      "to a Tradovate userAccountPositionLimit (totalBy='Overall', " +
-      "userAccountRiskParameter.hardLimit=true) on rule save via " +
-      "TradovateClient.applyMaxPositionSize. That cap is broker-enforced 1:1 " +
-      "across contracts (not weighted). Live reject behavior pending demo " +
-      "verification — see docs/ops/tradovate-position-limit-demo.md.",
+      "PRE-EMPTIVE CAP: Guardrail does NOT apply a global raw account-level hard " +
+      "limit because totalBy='Overall' is product-blind — setting exposedLimit=1 " +
+      "incorrectly rejects 2 MNQ (only 0.2 NQ-equivalent, within the limit). " +
+      "TradovateClient.applyMaxPositionSize uses brokerEnforcementMode='app_side_only': " +
+      "any existing Guardrail limit is deactivated; no new raw limit is written. " +
+      "Product-specific limits (totalBy='PerContract') exist in the Tradovate API " +
+      "type definition but are unverified against a live account — will be enabled " +
+      "once confirmed. Until then, enforcement is entirely app-side. " +
+      "See src/lib/futures/contracts.ts for the mini-equivalent registry.",
   },
   manual: {
     capability: "internal_only" as const,

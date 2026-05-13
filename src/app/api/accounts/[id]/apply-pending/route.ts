@@ -38,15 +38,18 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
         const maxContracts = rules?.maxContracts ?? null;
         const client = new TradovateClient(id, currentUser.id);
         await client.initialize();
-        const result = await client.applyMaxPositionSize({ maxContracts });
+        // app_side_only: a global raw cap blocks micro products incorrectly.
+        const result = await client.applyMaxPositionSize({
+          maxContracts,
+          brokerEnforcementMode: "app_side_only",
+        });
         console.info("[accounts/apply-pending] broker max position size synced", {
           accountId: id,
           externalAccountId: existing.externalAccountId,
           maxContracts,
+          brokerEnforcementMode: "app_side_only",
           action: result.action,
           endpoints: result.endpoints,
-          hardLimitAttached: result.riskParameterPayload !== null,
-          returnedLimitId: (result.positionLimitResponse as { id?: unknown } | null)?.id ?? null,
         });
       } catch (err) {
         console.warn("[accounts/apply-pending] broker max position size sync failed (non-fatal)", {

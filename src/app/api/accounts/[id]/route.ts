@@ -255,16 +255,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
             const client = new TradovateClient(existing.id, currentUser.id);
             await client.initialize();
             const maxContracts = body.riskRules!.maxContracts ?? null;
-            const result = await client.applyMaxPositionSize({ maxContracts });
+            // app_side_only: a global raw cap blocks micro products incorrectly
+            // (2 MNQ rejected when limit means 1 NQ-equivalent). App engine enforces.
+            const result = await client.applyMaxPositionSize({
+              maxContracts,
+              brokerEnforcementMode: "app_side_only",
+            });
             console.info("[accounts/patch] broker max position size synced", {
               accountId: id,
               externalAccountId: existing.externalAccountId,
               maxContracts,
+              brokerEnforcementMode: "app_side_only",
               action: result.action,
               endpoints: result.endpoints,
-              hardLimitAttached: result.riskParameterPayload !== null,
-              returnedLimitId:
-                (result.positionLimitResponse as { id?: unknown } | null)?.id ?? null,
             });
           } catch (err) {
             console.warn("[accounts/patch] broker max position size sync failed (non-fatal)", {

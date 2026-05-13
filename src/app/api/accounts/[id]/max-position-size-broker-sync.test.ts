@@ -34,11 +34,9 @@ function src(f: string): string {
 describe("broker sync log safety", () => {
   it("PATCH /api/accounts/[id] broker sync log does not log token fields", () => {
     const s = src(ACCOUNT_ROUTE);
-    // Find the accounts/patch broker sync log block
     const logIdx = s.indexOf("[accounts/patch] broker max position size synced");
     assert.ok(logIdx !== -1, "patch broker sync log must exist");
-    // Grab a conservative window around the log statement
-    const logBlock = s.slice(logIdx, logIdx + 500);
+    const logBlock = s.slice(logIdx, logIdx + 600);
     const forbidden = ["accessToken", "refreshToken", "tokenEncrypted", "accessTokenEncrypted", "refreshTokenEncrypted"];
     for (const field of forbidden) {
       assert.ok(
@@ -46,6 +44,16 @@ describe("broker sync log safety", () => {
         `broker sync log must not include token field: ${field}`,
       );
     }
+  });
+
+  it("PATCH /api/accounts/[id] broker sync log includes brokerEnforcementMode", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const logIdx = s.indexOf("[accounts/patch] broker max position size synced");
+    const logBlock = s.slice(logIdx, logIdx + 600);
+    assert.ok(
+      logBlock.includes("brokerEnforcementMode"),
+      "sync log must include brokerEnforcementMode to show enforcement is app-side",
+    );
   });
 
   it("apply-pending broker sync log does not log token fields", () => {
@@ -200,28 +208,32 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
     assert.ok(s.includes("effectiveMicroLimits"), "must return effectiveMicroLimits");
   });
 
-  it("returns brokerRawLimit (the raw cap value at Tradovate)", () => {
+  it("returns brokerEnforcementMode as app_side_only", () => {
     const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes("brokerRawLimit"), "must return brokerRawLimit");
-  });
-
-  it("returns brokerEnforcementType", () => {
-    const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes("brokerEnforcementType"), "must return brokerEnforcementType");
-  });
-
-  it("brokerEnforcementType is raw_contract_global", () => {
-    const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes('"raw_contract_global"'), 'brokerEnforcementType must be "raw_contract_global"');
-  });
-
-  it("returns brokerEnforcementNote explaining the limitation", () => {
-    const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes("brokerEnforcementNote"), "must return brokerEnforcementNote");
+    assert.ok(s.includes("brokerEnforcementMode"), "must return brokerEnforcementMode");
     assert.ok(
-      s.includes("totalBy") || s.includes("mini-equivalent"),
-      "brokerEnforcementNote must explain the global-vs-weighted limitation",
+      s.includes('"app_side_only"'),
+      'brokerEnforcementMode must be "app_side_only"',
     );
+  });
+
+  it("returns brokerEnforcementWarning explaining the global limit limitation", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("brokerEnforcementWarning"), "must return brokerEnforcementWarning");
+    assert.ok(
+      s.includes("totalBy") || s.includes("PerContract") || s.includes("raw contract"),
+      "warning must explain the global-vs-mini-equivalent limitation",
+    );
+  });
+
+  it("returns staleRawLimitWarning for detecting leftover broker limits", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("staleRawLimitWarning"), "must return staleRawLimitWarning");
+  });
+
+  it("returns supportedSymbols list", () => {
+    const s = src(DEBUG_ENDPOINT);
+    assert.ok(s.includes("supportedSymbols"), "must return supportedSymbols");
   });
 
   it("returns externalAccountId", () => {
@@ -259,9 +271,9 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
     assert.ok(s.includes("hardLimitAttached"), "must return hardLimitAttached");
   });
 
-  it("returns readyForDemo composite flag", () => {
+  it("returns brokerStateOk composite flag", () => {
     const s = src(DEBUG_ENDPOINT);
-    assert.ok(s.includes("readyForDemo"), "must return readyForDemo composite flag");
+    assert.ok(s.includes("brokerStateOk"), "must return brokerStateOk composite flag");
   });
 
   it("calls listUserAccountRiskParameters directly (no hacky cast)", () => {
@@ -290,11 +302,11 @@ describe("GET /api/debug/tradovate-position-limit: response shape", () => {
     );
   });
 
-  it("imports effectiveRawLimits from the contract equivalence helper", () => {
+  it("imports effectiveSupportedRawLimits from the futures contracts registry", () => {
     const s = src(DEBUG_ENDPOINT);
     assert.ok(
-      s.includes("effectiveRawLimits"),
-      "must import and use effectiveRawLimits for per-product display",
+      s.includes("effectiveSupportedRawLimits"),
+      "must import and use effectiveSupportedRawLimits for per-product display",
     );
   });
 });

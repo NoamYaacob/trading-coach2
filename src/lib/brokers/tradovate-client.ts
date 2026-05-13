@@ -1929,6 +1929,22 @@ export class TradovateClient {
    */
   async applyMaxPositionSize(params: {
     maxContracts: number | null;
+    /**
+     * Controls whether a raw global contract count is written to Tradovate.
+     *
+     * "global_raw" (legacy): write maxContracts as a raw account-level cap.
+     *   This mode incorrectly rejects micro contracts — e.g., setting
+     *   exposedLimit=1 blocks 2 MNQ even though 2 MNQ is only 0.2 NQ-equivalent.
+     *   Use only when mini-equivalent scaling is not in effect.
+     *
+     * "app_side_only" (default for mini-equivalent mode): deactivate any
+     *   existing Guardrail-owned global limit and rely entirely on the
+     *   Guardrail app-side mini-equivalent enforcement engine. No raw broker
+     *   cap is applied, so micro contracts are not incorrectly blocked.
+     *   Product-specific broker limits (totalBy="PerContract") are unverified
+     *   and will be added when confirmed against a live Tradovate account.
+     */
+    brokerEnforcementMode?: "global_raw" | "app_side_only";
   }): Promise<PositionLimitSyncResult> {
     if (this.#tvAccountId === null) {
       throw new TradovateClientError(
@@ -1939,6 +1955,63 @@ export class TradovateClient {
 
     const existing = await this.listUserAccountPositionLimits();
     const guardrailLimit = findGuardrailPositionLimit(existing);
+
+    // ── App-side-only path (mini-equivalent mode, no raw global limit) ───────
+    // In mini-equivalent mode we do NOT write a raw account-level contract cap
+    // because it would incorrectly block micro products. Example: setting
+    // exposedLimit=1 to enforce "1 NQ-equivalent" also blocks 2 MNQ (0.2
+    // NQ-equiv), which is within the user's intended limit. Instead, deactivate
+    // any existing Guardrail limit and defer enforcement to the app engine.
+    if (
+      params.brokerEnforcementMode !== "global_raw" &&
+      params.maxContracts !== null
+    ) {
+      if (guardrailLimit?.id != null && guardrailLimit.active !== false) {
+        // Deactivate the stale raw limit so it no longer blocks micro orders.
+        const payload = buildDeactivatePositionLimitPayload(guardrailLimit.id);
+        console.info("[tradovate/positionLimit] deactivating raw limit for app_side_only mode", {
+          accountId: this.#accountId,
+          brokerConnectionId: this.#brokerConnectionId,
+          externalAccountId: this.#tvAccountId,
+          limitId: guardrailLimit.id,
+          maxContracts: params.maxContracts,
+        });
+        const response = await this.#request<TvUserAccountPositionLimit>(
+          "userAccountPositionLimit/update",
+          "POST",
+          payload,
+          false,
+          /* skipMarkExpired */ true,
+        );
+        console.info("[tradovate/positionLimit] raw limit deactivated; app-side enforcement active", {
+          accountId: this.#accountId,
+          brokerConnectionId: this.#brokerConnectionId,
+          returnedId: (response as { id?: unknown } | null)?.id ?? null,
+        });
+        return {
+          action: "app_side_only",
+          endpoints: ["userAccountPositionLimit/update"],
+          positionLimitPayload: payload,
+          riskParameterPayload: null,
+          positionLimitResponse: response,
+          riskParameterResponse: null,
+        };
+      }
+      console.info("[tradovate/positionLimit] app_side_only mode; no active raw limit to deactivate", {
+        accountId: this.#accountId,
+        brokerConnectionId: this.#brokerConnectionId,
+        externalAccountId: this.#tvAccountId,
+        maxContracts: params.maxContracts,
+      });
+      return {
+        action: "app_side_only",
+        endpoints: [],
+        positionLimitPayload: null,
+        riskParameterPayload: null,
+        positionLimitResponse: null,
+        riskParameterResponse: null,
+      };
+    }
 
     // ── Deactivate path (maxContracts removed) ───────────────────────────────
     if (params.maxContracts === null) {
