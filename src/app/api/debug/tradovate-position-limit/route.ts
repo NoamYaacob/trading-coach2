@@ -325,6 +325,14 @@ export async function GET(request: NextRequest) {
     !isReadOnlyConnection &&
     orderActionsEnabled;
 
+  const alreadyStopped = riskStateBefore === "STOPPED";
+  // Expose the session-reset endpoint only in non-production (or when CRON_SECRET
+  // is available), to avoid advertising the endpoint in production responses.
+  const isNonProduction = process.env.NODE_ENV !== "production";
+  const resetSessionEndpoint = isNonProduction
+    ? `/api/debug/accounts/${accountId}/reset-session-state`
+    : null;
+
   // Normal state: no active Guardrail limit at broker (app_side_only mode).
   const isStale = guardrailLimitFound && limitActive === true;
   const staleRawLimitWarning = isStale
@@ -404,11 +412,15 @@ export async function GET(request: NextRequest) {
     positionFetchError,
     // ── Projected enforcement state (next-sync projection; no writes performed) ──
     riskStateBefore,
+    alreadyStopped,
     ruleTriggered,
     riskStateAfter,
     violationCreated,
     flattenAttempted,
     // flattenSucceeded / flattenError cannot be projected without executing flatten.
     orderActionsEnabled,
+    // ── QA tools ──────────────────────────────────────────────────────────────
+    // Only present in non-production (null in production to avoid advertising the endpoint).
+    resetSessionEndpoint,
   });
 }
