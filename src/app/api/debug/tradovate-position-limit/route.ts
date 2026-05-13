@@ -412,17 +412,22 @@ export async function GET(request: NextRequest) {
     effectiveMicroLimits,
     // Broker enforcement metadata
     brokerEnforcementMode: "app_side_only" as const,
+    productSpecificBrokerRejectSupported: false,
+    brokerRejectReason:
+      "Tradovate userAccountPositionLimit only supports totalBy='Overall' (global raw contract count). " +
+      "PerContract and PerProduct were probed against the live Tradovate API (2026-05) and returned " +
+      "HTTP 400 'illegal enum value'. Standard-equivalent max position size cannot be enforced " +
+      "at the broker level — Guardrail enforces it app-side (detection-response) only.",
     brokerEnforcementWarning:
-      "Tradovate's global position limit (totalBy=Overall) enforces a single raw contract " +
-      "count across all positions. Setting it to maxContracts=1 incorrectly blocks 2 MNQ " +
-      "(0.2 NQ-equivalent, within the 1-standard-equivalent limit). Product-specific limits " +
-      "(totalBy=PerContract) are unverified. Standard-equivalent enforcement is Guardrail " +
-      "app-side only — no product-specific broker enforcement is active.",
+      "Tradovate's position limit API only supports totalBy='Overall' (global raw contract count). " +
+      "Setting the cap to maxContracts=1 incorrectly blocks 2 MNQ (0.2 NQ-equivalent, within limit). " +
+      "Product-specific limits (PerContract/PerProduct) were confirmed not supported by the API — " +
+      "they return HTTP 400. Standard-equivalent enforcement is Guardrail app-side only.",
     appSideEnforcementNote:
       "Guardrail cannot intercept orders before they execute at Tradovate. " +
-      "Enforcement is detection-response: cron sync (every ~5 min) reads live positions, " +
+      "Enforcement is detection-response: cron sync (~every 5 min) reads live positions, " +
       "computes standard-equivalent exposure, and locks/flattens if the limit is exceeded. " +
-      "Orders placed directly in trader.tradovate.com will fill before Guardrail sees them.",
+      "Orders placed before detection will fill first.",
     staleRawLimitWarning,
     // Live Tradovate state (in app_side_only mode: limit should be absent or inactive)
     guardrailLimitFound,

@@ -90,9 +90,9 @@ export class TradovateAdapter implements BrokerAdapter {
       },
       maxPositionSize: {
         key: "maxPositionSize",
-        label: "Max position size (broker-enforced)",
-        status: "coming_soon",
-        note: "Requires 'Account Risk Settings: Full Access' OAuth scope. Enforced via userAccountPositionLimit with hardLimit=true.",
+        label: "Max position size",
+        status: "not_supported",
+        note: "Tradovate's position limit API (userAccountPositionLimit) only supports totalBy='Overall' — a global raw contract count. Product-specific limits (PerContract/PerProduct) were tested against the live API and return HTTP 400. Standard-equivalent max position size is enforced by Guardrail (detection-response) only, not as a broker-level pre-trade block.",
       },
     };
   }

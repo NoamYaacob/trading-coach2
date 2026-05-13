@@ -30,16 +30,19 @@ describe("MAX_POSITION_SIZE_COPY — hint copy", () => {
     );
   });
 
-  it("hint warns that broker hard limit may be raw-contract based", () => {
-    assert.match(
-      MAX_POSITION_SIZE_COPY.hint,
-      /broker hard limit/i,
-      "hint must warn that broker limit may be raw-contract based",
+  it("hint warns that broker-side enforcement uses raw contract counts (cannot express standard-equivalent)", () => {
+    // Tradovate's position limit API only supports totalBy=Overall (global raw count).
+    // PerContract/PerProduct were confirmed invalid by API probe. The hint must convey
+    // that the global cap is intentionally not set because it can't express standard-equivalent weighting.
+    assert.ok(
+      MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("raw") &&
+        MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("standard-equivalent"),
+      "hint must warn that the broker uses raw counts which cannot express standard-equivalent weighting",
     );
-    assert.match(
-      MAX_POSITION_SIZE_COPY.hint,
-      /raw-contract/i,
-      "hint must mention raw-contract limitation",
+    assert.ok(
+      MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("intentionally not set") ||
+        MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("not set"),
+      "hint must explain why the global raw cap is intentionally not applied",
     );
   });
 

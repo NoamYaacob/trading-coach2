@@ -1,6 +1,12 @@
 /**
- * Research probe: tests whether Tradovate supports product-scoped position
+ * Diagnostic probe: tests whether Tradovate supports product-scoped position
  * limits (totalBy="PerContract" / totalBy="PerProduct").
+ *
+ * VERIFICATION STATUS (2026-05):
+ *   Both PerContract and PerProduct returned HTTP 400 "illegal enum value" against
+ *   the live Tradovate API. Product-specific broker-level limits are NOT supported.
+ *   brokerEnforcementMode remains "app_side_only" permanently unless the API adds
+ *   support. This probe is retained for re-verification if the API changes.
  *
  * Protection:
  *   - In production: requires x-cron-secret header matching CRON_SECRET env var.
@@ -18,13 +24,6 @@
  *   3. For each that succeeds, attaches a UserAccountRiskParameter (hardLimit=true).
  *   4. Immediately deactivates every probe limit that was created (cleanup).
  *   5. Returns full non-sensitive payload + response for each attempt.
- *
- * Reading the results:
- *   - If createSuccess=true and createResponse contains fields beyond the known
- *     TvUserAccountPositionLimit type, those are new product-scoping fields to add.
- *   - If createSuccess=false (createError set), that totalBy value is not supported.
- *   - If multiple PerContract limits can be created: product-specific limits are feasible.
- *   - If only one limit is allowed per account: we're limited to a single global cap.
  *
  * No tokens appear in the response. No live/funded accounts may be probed.
  */
@@ -114,9 +113,17 @@ export async function GET(request: NextRequest) {
     referenceLimits,
     probeResult,
     probeError,
+    verificationResult: {
+      verifiedAt: "2026-05",
+      outcome: "not_supported",
+      detail:
+        "PerContract and PerProduct returned HTTP 400 'illegal enum value' from the live Tradovate API. " +
+        "Product-specific broker-level position limits are not available. " +
+        "brokerEnforcementMode remains app_side_only.",
+    },
     interpretation: {
       goal:
-        "Determine if Tradovate supports per-product position limits so Guardrail can enforce standard-equivalent rules at the broker level.",
+        "Verify whether Tradovate supports per-product position limits for standard-equivalent enforcement.",
       standardEquivalentModel:
         "1 NQ-equivalent allows NQ=1 OR MNQ=10 (10 micro = 1 standard, Apex model).",
       successCriteria: [
@@ -125,7 +132,8 @@ export async function GET(request: NextRequest) {
         "Multiple distinct limits can be created with different exposedLimit values",
       ],
       failureMeaning:
-        "If all attempts fail or no product-scoping field is present, broker-side enforcement remains app_side_only.",
+        "All attempts fail (createError set) — broker-side standard-equivalent enforcement is not possible. " +
+        "Guardrail enforces the rule app-side (detection-response) only.",
     },
   });
 }

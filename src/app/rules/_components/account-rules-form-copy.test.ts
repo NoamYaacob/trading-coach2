@@ -330,7 +330,7 @@ test("Max position size copy uses standard-equivalent model (Apex prop-firm fram
   );
   assert.match(copySrc, /standard-equivalent/i, "copy must use standard-equivalent framing");
   assert.match(copySrc, /10 micro/i, "hint must explain the Apex 10-micro = 1-standard rule");
-  assert.match(copySrc, /raw-contract/i, "hint must warn that broker limit may be raw-contract based");
+  assert.match(copySrc, /raw.{0,20}contract/i, "hint must warn that broker-side limits use raw contract counts, not standard-equivalent weighting");
   assert.ok(
     !copySrc.includes("Broker-side blocking is not active yet"),
     "stale 'not active yet' wording must be removed from MAX_POSITION_SIZE_COPY",
