@@ -1266,23 +1266,47 @@ export class TradovateClient {
   }
 
   /**
+   * Resolve a single Tradovate contractId to its contract object.
+   * Throws TradovateClientError on failure (callers should catch).
+   */
+  async getContractById(id: number | string): Promise<TvContract> {
+    return this.#request<TvContract>(`contract/item?id=${id}`);
+  }
+
+  /**
    * Resolve Tradovate contractIds to symbol names (e.g. "ESM5").
-   * Best-effort — falls back silently on failure so callers receive
-   * contractId.toString() as the symbol.
+   *
+   * Strategy:
+   *   1. Batch POST to contract/items — resolves all IDs in one round-trip.
+   *   2. If the batch fails or leaves IDs unresolved, fall back to individual
+   *      GET contract/item?id=<n> calls for each missing ID.
+   *
+   * Best-effort: IDs that cannot be resolved via either path are omitted from
+   * the returned map so callers can detect and report them.
    */
   async resolveContracts(ids: number[]): Promise<Map<number, string>> {
     const map = new Map<number, string>();
     if (ids.length === 0) return map;
+
+    // Step 1: batch POST
     try {
-      const contracts = await this.#request<TvContract[]>(
-        "contract/items",
-        "POST",
-        ids,
-      );
+      const contracts = await this.#request<TvContract[]>("contract/items", "POST", ids);
       for (const c of contracts) map.set(c.id, c.name);
     } catch {
-      // Contract resolution is best-effort; callers fall back to contractId.
+      // Batch failed — proceed to per-ID fallback below.
     }
+
+    // Step 2: per-ID GET fallback for any IDs not resolved by the batch.
+    const missing = ids.filter((id) => !map.has(id));
+    for (const id of missing) {
+      try {
+        const contract = await this.getContractById(id);
+        map.set(contract.id, contract.name);
+      } catch {
+        // Best-effort: leave this ID unresolved.
+      }
+    }
+
     return map;
   }
 

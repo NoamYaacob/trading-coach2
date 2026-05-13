@@ -8,6 +8,7 @@ import { findGuardrailPositionLimit } from "@/lib/brokers/tradovate-position-lim
 import {
   effectiveSupportedRawLimits,
   getSupportedRoots,
+  getContractMetadata,
 } from "@/lib/futures/contracts";
 import {
   computeMiniEquivalentExposure,
@@ -131,9 +132,14 @@ export async function GET(request: NextRequest) {
 
   // ── Live positions + exposure ─────────────────────────────────────────────
   type LivePosition = {
-    symbol: string;
+    contractId: number;
+    contractName: string | null;
+    symbolRoot: string | null;
     netPos: number;
-    side: "LONG" | "SHORT" | "FLAT";
+    side: "LONG" | "SHORT";
+    parentRoot: string | null;
+    exposureRatioToParent: number | null;
+    standardEquivalentQty: number | null;
   };
   let livePositions: LivePosition[] = [];
   let exposureByRoot: Array<{
@@ -142,7 +148,7 @@ export async function GET(request: NextRequest) {
     positions: Array<{ symbol: string; netPos: number; miniEquivalent: number }>;
   }> = [];
   let totalMiniEquivalentExposure: number | null = null;
-  let unsupportedPositions: Array<{ symbol: string; netPos: number; reason: string }> = [];
+  let unsupportedPositions: Array<{ contractId: number; contractName: string | null; netPos: number; reason: string }> = [];
   let wouldBreach: boolean | null = null;
   let positionFetchError: string | null = null;
 
@@ -151,10 +157,12 @@ export async function GET(request: NextRequest) {
       const client = new TradovateClient(accountId, currentUser.id);
       await client.initialize();
 
-      // Fetch position limits and live positions in parallel.
-      const [limits, rawPositions] = await Promise.all([
+      // Fetch position limits and raw positions in parallel.
+      // We use getPositions() (not toPositions()) to retain contractId for
+      // richer debug output and to detect resolution failures explicitly.
+      const [limits, tvPositions] = await Promise.all([
         client.listUserAccountPositionLimits(),
-        client.toPositions().catch((err) => {
+        client.getPositions().catch((err) => {
           positionFetchError = err instanceof Error ? err.message : String(err);
           return [];
         }),
@@ -180,31 +188,83 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Compute standard-equivalent exposure from live positions.
-      if (rawPositions.length > 0 || positionFetchError === null) {
-        livePositions = rawPositions.map((p) => ({
-          symbol: p.symbol,
-          netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
-          side: p.side,
-        }));
+      // Resolve contractId → contract name for all non-zero positions.
+      // The per-request map prevents duplicate API calls when multiple
+      // positions share the same contractId.
+      const nonZero = tvPositions.filter((p) => p.netPos !== null && p.netPos !== 0);
+      const uniqueIds = [...new Set(nonZero.map((p) => p.contractId))];
+      const contractMap =
+        uniqueIds.length > 0 ? await client.resolveContracts(uniqueIds) : new Map<number, string>();
 
-        const exposureInputs: PositionExposureInput[] = rawPositions.map((p) => ({
-          symbol: p.symbol,
-          netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
-        }));
+      // Build rich position details.
+      livePositions = nonZero.map((p) => {
+        const qty = p.netPos!;
+        const contractName = contractMap.get(p.contractId) ?? null;
+        const meta = contractName !== null ? getContractMetadata(contractName) : null;
+        return {
+          contractId: p.contractId,
+          contractName,
+          symbolRoot: meta?.symbolRoot ?? null,
+          netPos: qty,
+          side: qty > 0 ? "LONG" : "SHORT",
+          parentRoot: meta?.parentRoot ?? null,
+          exposureRatioToParent: meta?.exposureRatioToParent ?? null,
+          standardEquivalentQty:
+            meta !== null ? Math.abs(qty) * meta.exposureRatioToParent : null,
+        };
+      });
 
-        const exposure = computeMiniEquivalentExposure(exposureInputs);
-        totalMiniEquivalentExposure = exposure.totalMiniEquivalent;
-        exposureByRoot = exposure.byRoot;
-        unsupportedPositions = exposure.unsupported;
-
-        if (guardrailMaxMiniEquivalent !== null) {
-          const decision = deriveMaxPositionSizeBreach({
-            positions: exposureInputs,
-            maxContracts: guardrailMaxMiniEquivalent,
+      // Build exposure inputs for positions whose contractId was resolved to a
+      // known futures symbol. Unresolved or unrecognised contractIds are
+      // reported as unsupportedPositions.
+      const exposureInputs: PositionExposureInput[] = [];
+      for (const p of nonZero) {
+        const contractName = contractMap.get(p.contractId) ?? null;
+        const qty = p.netPos!;
+        if (contractName === null) {
+          unsupportedPositions.push({
+            contractId: p.contractId,
+            contractName: null,
+            netPos: qty,
+            reason: `contract/item resolution failed for contractId ${p.contractId}`,
           });
-          wouldBreach = decision.shouldTrigger;
+          continue;
         }
+        const meta = getContractMetadata(contractName);
+        if (meta === null) {
+          unsupportedPositions.push({
+            contractId: p.contractId,
+            contractName,
+            netPos: qty,
+            reason: `${contractName} (root: ${contractName}) is not in the Guardrail futures registry`,
+          });
+          continue;
+        }
+        // Pass signed netPos — computeMiniEquivalentExposure uses Math.abs internally.
+        exposureInputs.push({ symbol: contractName, netPos: qty });
+      }
+
+      const exposure = computeMiniEquivalentExposure(exposureInputs);
+      totalMiniEquivalentExposure = exposure.totalMiniEquivalent;
+      exposureByRoot = exposure.byRoot;
+      // computeMiniEquivalentExposure also catches any further unknown symbols
+      // (shouldn't happen here since we filtered by registry above, but include for safety).
+      for (const u of exposure.unsupported) {
+        unsupportedPositions.push({
+          contractId: 0,
+          contractName: u.symbol,
+          netPos: u.netPos,
+          reason: u.reason,
+        });
+      }
+
+      if (guardrailMaxMiniEquivalent !== null) {
+        const decision = deriveMaxPositionSizeBreach({
+          positions: exposureInputs,
+          maxContracts: guardrailMaxMiniEquivalent,
+        });
+        // Also trigger if there are any unresolved/unsupported positions.
+        wouldBreach = decision.shouldTrigger || unsupportedPositions.length > 0;
       }
     } catch (err) {
       fetchError = err instanceof Error ? err.message : String(err);
