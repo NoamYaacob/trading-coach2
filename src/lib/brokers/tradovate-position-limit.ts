@@ -164,3 +164,30 @@ export function buildDeactivatePositionLimitFullPayload(
 ): Record<string, unknown> {
   return { ...existing, active: false };
 }
+
+// ── Probe types (dev/research only) ──────────────────────────────────────────
+
+export const GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX = "Guardrail Probe";
+
+export type ProbeAttempt = {
+  description: string;
+  totalBy: string;
+  exposedLimit: number;
+  createPayload: Record<string, unknown>;
+  createResponse: unknown;
+  createSuccess: boolean;
+  createError: string | null;
+  createdLimitId: number | null;
+  riskParamPayload: Record<string, unknown> | null;
+  riskParamResponse: unknown;
+  riskParamError: string | null;
+  cleanupPayload: Record<string, unknown> | null;
+  cleanupResponse: unknown;
+  cleanupError: string | null;
+};
+
+export type ProbePerContractResult = {
+  tvAccountId: number | null;
+  existingLimitsCount: number;
+  attempts: ProbeAttempt[];
+};

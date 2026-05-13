@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 
 import {
   GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+  GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX,
   findGuardrailPositionLimit,
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
@@ -383,5 +384,46 @@ describe("two-step cleanup ownership safety", () => {
       !("userAccountPositionLimitId" in payload),
       "deactivate must not re-link the risk parameter to a different position limit",
     );
+  });
+});
+
+// ── 12. Probe description safety ─────────────────────────────────────────────
+
+describe("probe description safety", () => {
+  test("GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX is distinct from GUARDRAIL_POSITION_LIMIT_DESCRIPTION", () => {
+    assert.notEqual(
+      GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX,
+      GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      "probe prefix must not equal the production Guardrail description",
+    );
+  });
+
+  test("GUARDRAIL_POSITION_LIMIT_DESCRIPTION does not start with the probe prefix", () => {
+    assert.ok(
+      !GUARDRAIL_POSITION_LIMIT_DESCRIPTION.startsWith(GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX),
+      "production description must not start with the probe prefix — avoids findGuardrailPositionLimit collision",
+    );
+  });
+
+  test("probe descriptions (prefixed) are not matched by findGuardrailPositionLimit", () => {
+    // Probe limits carry descriptions like "Guardrail Probe NQ PerContract" which
+    // must never be treated as production Guardrail limits.
+    const probeLimits: TvUserAccountPositionLimit[] = [
+      { id: 1, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerContract`, exposedLimit: 2 },
+      { id: 2, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} MNQ PerContract`, exposedLimit: 20 },
+      { id: 3, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerProduct`, exposedLimit: 2 },
+    ];
+    assert.equal(
+      findGuardrailPositionLimit(probeLimits),
+      null,
+      "probe limits must not be matched by findGuardrailPositionLimit",
+    );
+  });
+
+  test("buildCreatePositionLimitPayload uses Overall (never PerContract) for production limits", () => {
+    const payload = buildCreatePositionLimitPayload(12345, 2);
+    assert.equal(payload.totalBy, "Overall", "production create payload must use Overall");
+    assert.notEqual(payload.totalBy, "PerContract");
+    assert.notEqual(payload.totalBy, "PerProduct");
   });
 });

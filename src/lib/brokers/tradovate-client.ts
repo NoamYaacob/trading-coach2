@@ -64,11 +64,14 @@ import {
   buildDeactivateRiskParameterPayload,
   buildCreateRiskParameterPayload,
   buildUpdateRiskParameterPayload,
+  GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX,
   type TvUserAccountPositionLimit,
   type TvUserAccountRiskParameter,
   type PositionLimitSyncResult,
+  type ProbeAttempt,
+  type ProbePerContractResult,
 } from "./tradovate-position-limit";
-export type { PositionLimitSyncResult } from "./tradovate-position-limit";
+export type { PositionLimitSyncResult, ProbePerContractResult } from "./tradovate-position-limit";
 export { TradovateClientError, mapOrderStatus, mapOrderType, mapSide };
 
 export type DeactivateGuardrailRawLimitResult = {
@@ -2413,5 +2416,131 @@ export class TradovateClient {
       positionLimitResponse: limitResponse,
       riskParameterResponse: riskParamResponse,
     };
+  }
+
+  /**
+   * Dev/research probe: attempt to create UserAccountPositionLimit records
+   * with totalBy="PerContract" and totalBy="PerProduct" to verify whether
+   * Tradovate supports product-scoped limits.
+   *
+   * Each probe limit is immediately deactivated after creation.
+   * Only limits whose description starts with GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX
+   * are created/touched — never production Guardrail or user-owned limits.
+   *
+   * Does NOT throw. All errors are captured in ProbeAttempt.createError.
+   */
+  async probePerContractPositionLimits(): Promise<ProbePerContractResult> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+    const tvAccountId = this.#tvAccountId;
+    const existing = await this.listUserAccountPositionLimits();
+
+    const probeSpecs: Array<{ totalBy: string; exposedLimit: number; description: string }> = [
+      {
+        totalBy: "PerContract",
+        exposedLimit: 2,
+        description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerContract`,
+      },
+      {
+        totalBy: "PerContract",
+        exposedLimit: 20,
+        description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} MNQ PerContract`,
+      },
+      {
+        totalBy: "PerProduct",
+        exposedLimit: 2,
+        description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerProduct`,
+      },
+    ];
+
+    const attempts: ProbeAttempt[] = [];
+
+    for (const spec of probeSpecs) {
+      const createPayload: Record<string, unknown> = {
+        accountId: tvAccountId,
+        exposedLimit: spec.exposedLimit,
+        totalBy: spec.totalBy,
+        active: true,
+        description: spec.description,
+      };
+
+      let createResponse: unknown = null;
+      let createSuccess = false;
+      let createError: string | null = null;
+      let createdLimitId: number | null = null;
+      let riskParamPayload: Record<string, unknown> | null = null;
+      let riskParamResponse: unknown = null;
+      let riskParamError: string | null = null;
+      let cleanupPayload: Record<string, unknown> | null = null;
+      let cleanupResponse: unknown = null;
+      let cleanupError: string | null = null;
+
+      try {
+        createResponse = await this.#request<TvUserAccountPositionLimit>(
+          "userAccountPositionLimit/create",
+          "POST",
+          createPayload,
+          false,
+          /* skipMarkExpired */ true,
+        );
+        createSuccess = true;
+        createdLimitId = (createResponse as { id?: number } | null)?.id ?? null;
+
+        if (createdLimitId != null) {
+          riskParamPayload = { userAccountPositionLimitId: createdLimitId, hardLimit: true };
+          try {
+            riskParamResponse = await this.#request(
+              "userAccountRiskParameter/create",
+              "POST",
+              riskParamPayload,
+              false,
+              /* skipMarkExpired */ true,
+            );
+          } catch (rpErr) {
+            riskParamError = rpErr instanceof Error ? rpErr.message : String(rpErr);
+          }
+        }
+      } catch (createErr) {
+        createError = createErr instanceof Error ? createErr.message : String(createErr);
+      }
+
+      if (createdLimitId != null) {
+        cleanupPayload = { id: createdLimitId, active: false };
+        try {
+          cleanupResponse = await this.#request(
+            "userAccountPositionLimit/update",
+            "POST",
+            cleanupPayload,
+            false,
+            /* skipMarkExpired */ true,
+          );
+        } catch (cleanupErr) {
+          cleanupError = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        }
+      }
+
+      attempts.push({
+        description: spec.description,
+        totalBy: spec.totalBy,
+        exposedLimit: spec.exposedLimit,
+        createPayload,
+        createResponse,
+        createSuccess,
+        createError,
+        createdLimitId,
+        riskParamPayload,
+        riskParamResponse,
+        riskParamError,
+        cleanupPayload,
+        cleanupResponse,
+        cleanupError,
+      });
+    }
+
+    return { tvAccountId, existingLimitsCount: existing.length, attempts };
   }
 }
