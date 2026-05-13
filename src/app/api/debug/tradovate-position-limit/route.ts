@@ -16,33 +16,35 @@ import {
  * Returns the current state of the Guardrail-owned Tradovate position limit
  * for the given ConnectedAccount.
  *
- * ── Mini-equivalent vs raw contract distinction ───────────────────────────────
- * Guardrail stores maxContracts as parent-equivalent ("mini-equivalent") units:
- *   1 NQ = 1, 1 MNQ = 0.1, 1 ES = 1, 1 MES = 0.1, etc.
+ * ── Standard-equivalent vs raw contract distinction ───────────────────────────
+ * Guardrail stores maxContracts in standard-equivalent units (Apex model):
+ *   1 NQ = 1, 1 MNQ = 0.1, 1 ES = 1, 1 MES = 0.1  (10 micro = 1 standard)
  *
  * Tradovate's UserAccountPositionLimit (totalBy="Overall") is a global raw
  * contract cap — it applies the same integer ceiling to every open position
  * regardless of product. Setting it to 1 blocks ANY second contract including
- * 2 MNQ (= 0.2 NQ-equivalent, well within the 1-NQ-equivalent limit).
+ * 2 MNQ (= 0.2 NQ-equivalent, well within a 1-standard-equivalent limit).
  *
  * Therefore, Guardrail uses "app_side_only" broker enforcement mode:
  *   - No global raw limit is written to Tradovate.
  *   - Any previously-written Guardrail limit is deactivated.
- *   - Exact mini-equivalent enforcement runs in Guardrail's app engine.
+ *   - Standard-equivalent enforcement runs in Guardrail's app engine only.
  *   - Product-specific broker limits (totalBy="PerContract") are unverified.
  *
  * Fields:
- *   guardrailMaxMiniEquivalent  — DB value (AccountRiskRules.maxContracts) in mini-equiv units
- *   supportedSymbols            — equity index roots with confirmed 1:10 mini/micro pairs
- *   effectiveMicroLimits        — per-product raw limits (app-side reference only)
- *   brokerEnforcementMode       — "app_side_only" | "raw_account_level" (legacy)
- *   brokerEnforcementWarning    — why the global raw limit is not used
+ *   guardrailMaxMiniEquivalent  — DB value (AccountRiskRules.maxContracts) in standard-equiv units
+ *   supportedSymbols            — equity index roots with confirmed 1:10 micro/standard pairs
+ *   effectiveMicroLimits        — per-product raw limits (app-side reference only; not broker-enforced)
+ *   brokerEnforcementMode       — always "app_side_only" (global raw cap is not applied)
+ *   brokerEnforcementWarning    — explains why the global raw limit is not used
+ *   staleRawLimitWarning        — set when a Guardrail raw limit is still active at Tradovate
  *   guardrailLimitFound         — whether a Guardrail-owned limit still exists at Tradovate
  *   exposedLimit                — raw cap value currently stored at Tradovate (should be absent/inactive)
  *   limitActive                 — whether the Tradovate limit is active (should be false in normal state)
  *   hardLimitAttached           — whether userAccountRiskParameter.hardLimit=true is set
  *   allLimitCount               — total position limits at Tradovate
  *   fetchError                  — set when the Tradovate API call fails
+ *   brokerStateOk               — true when no active raw limit exists at broker (expected normal state)
  */
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -143,7 +145,7 @@ export async function GET(request: NextRequest) {
     brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
     permissionLevel: brokerConnection?.permissionLevel ?? null,
     lastRenewError: brokerConnection?.lastRenewError ?? null,
-    // Guardrail DB value (mini-equivalent units)
+    // Guardrail DB value (standard-equivalent units per the Apex 10-micro=1-standard model)
     guardrailMaxMiniEquivalent,
     // Supported mini/micro pairs
     supportedSymbols,
@@ -154,8 +156,9 @@ export async function GET(request: NextRequest) {
     brokerEnforcementWarning:
       "Tradovate's global position limit (totalBy=Overall) enforces a single raw contract " +
       "count across all positions. Setting it to maxContracts=1 incorrectly blocks 2 MNQ " +
-      "(0.2 NQ-equivalent). Product-specific limits (PerContract) are unverified. " +
-      "Mini-equivalent enforcement is Guardrail app-side only.",
+      "(0.2 NQ-equivalent, within the 1-standard-equivalent limit). Product-specific limits " +
+      "(totalBy=PerContract) are unverified. Standard-equivalent enforcement is Guardrail " +
+      "app-side only — no product-specific broker enforcement is active.",
     staleRawLimitWarning,
     // Live Tradovate state (in app_side_only mode: limit should be absent or inactive)
     guardrailLimitFound,
