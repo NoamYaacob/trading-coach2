@@ -452,9 +452,9 @@ export class TradovateUserSyncListener {
       env: this.#config.env,
       command: "authorize",
       requestId: authId,
-      // Log only the frame length, never the token. A correctly formatted
-      // authorize frame is roughly: "authorize\n<id>\n\n\"<token>\"" — the
-      // surrounding JSON quotes around the token are mandatory.
+      // Log only the frame length, never the token. The on-wire format is
+      // `authorize\n<id>\n\n<token>` — the token is sent raw, NOT JSON-quoted
+      // (probe variant B_raw confirmed against demo.tradovateapi.com).
       payloadLength: frame.length,
       phase: "auth_sent",
     });

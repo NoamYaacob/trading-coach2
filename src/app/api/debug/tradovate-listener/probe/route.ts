@@ -24,8 +24,8 @@ export const dynamic = "force-dynamic";
  * One-shot, end-to-end probe of a single Tradovate connection that tests four
  * authorize frame formats against the same access token:
  *
- *   A. JSON-stringified body (current protocol): authorize\n1\n\n"<token>"
- *   B. Raw body (no quotes):                     authorize\n1\n\n<token>
+ *   A. JSON-stringified body:                    authorize\n1\n\n"<token>"
+ *   B. Raw body (CONFIRMED WORKING — production): authorize\n1\n\n<token>
  *   C. Bearer body:                              authorize\n1\n\n"Bearer <token>"
  *   D. SockJS array-wrapped:                     ["authorize\n1\n\n\"<token>\""]
  *
@@ -49,6 +49,7 @@ const AUTHORIZE_RESPONSE_TIMEOUT_MS = 10_000;
 
 type VariantProbeResult = {
   variantName: string;
+  confirmedWorkingFormat: boolean;
   sentAfterSockJsOpen: boolean;
   authStatus: number | null;
   authOk: boolean;
@@ -63,22 +64,38 @@ type VariantProbeResult = {
  * Four authorize payload formats to probe. A fresh WS connection is opened for
  * each variant. The token is passed to buildPayload at call time — never stored
  * in the array or returned in any response field.
+ *
+ * `B_raw` is the confirmed-working production format (probe run 2026-05-14:
+ * A=401, B=200, C=401, D=closed/Bye). `encodeAuthorizeMessage` now emits this
+ * format. The other variants are kept for ongoing diagnostics — if Tradovate
+ * changes their handshake, this probe will flag it.
  */
-const PROBE_VARIANTS: Array<{ name: string; buildPayload: (t: string) => string }> = [
+const PROBE_VARIANTS: Array<{
+  name: string;
+  confirmedWorkingFormat: boolean;
+  buildPayload: (t: string) => string;
+}> = [
   {
     name: "A_json_stringified",
-    buildPayload: (t) => encodeAuthorizeMessage(1, t),
+    confirmedWorkingFormat: false,
+    // Inline JSON.stringify — must NOT call encodeAuthorizeMessage, which now
+    // produces the raw (B_raw) format.
+    buildPayload: (t) => `authorize\n1\n\n${JSON.stringify(t)}`,
   },
   {
     name: "B_raw",
-    buildPayload: (t) => `authorize\n1\n\n${t}`,
+    confirmedWorkingFormat: true,
+    // Production format. Equivalent to encodeAuthorizeMessage(1, t).
+    buildPayload: (t) => encodeAuthorizeMessage(1, t),
   },
   {
     name: "C_bearer",
-    buildPayload: (t) => encodeAuthorizeMessage(1, `Bearer ${t}`),
+    confirmedWorkingFormat: false,
+    buildPayload: (t) => `authorize\n1\n\n${JSON.stringify(`Bearer ${t}`)}`,
   },
   {
     name: "D_sockjs_array",
+    confirmedWorkingFormat: false,
     buildPayload: (t) => JSON.stringify([`authorize\n1\n\n${JSON.stringify(t)}`]),
   },
 ];
@@ -226,6 +243,7 @@ export async function POST(request: NextRequest) {
     const result = await probeWebSocketVariant(
       wsUrl,
       variant.name,
+      variant.confirmedWorkingFormat,
       variant.buildPayload,
       accessToken,
     );
@@ -244,6 +262,7 @@ export async function POST(request: NextRequest) {
 async function probeWebSocketVariant(
   url: string,
   variantName: string,
+  confirmedWorkingFormat: boolean,
   buildPayload: (token: string) => string,
   accessToken: string,
 ): Promise<VariantProbeResult> {
@@ -257,12 +276,21 @@ async function probeWebSocketVariant(
     const ws = new WebSocket(url);
 
     const settle = (
-      partial: Omit<VariantProbeResult, "variantName" | "sentAfterSockJsOpen" | "payloadLength">,
+      partial: Omit<
+        VariantProbeResult,
+        "variantName" | "confirmedWorkingFormat" | "sentAfterSockJsOpen" | "payloadLength"
+      >,
     ) => {
       if (settled) return;
       settled = true;
       try { ws.close(); } catch { /* ignore */ }
-      resolve({ variantName, sentAfterSockJsOpen, payloadLength, ...partial });
+      resolve({
+        variantName,
+        confirmedWorkingFormat,
+        sentAfterSockJsOpen,
+        payloadLength,
+        ...partial,
+      });
     };
 
     const openTimer = setTimeout(() => {

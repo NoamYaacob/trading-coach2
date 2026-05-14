@@ -134,6 +134,29 @@ describe("probe: multi-variant format coverage", () => {
     // Variants array must be populated in the loop and included in NextResponse.json
     assert.ok(ROUTE_SRC.includes("variants.push") || ROUTE_SRC.includes("variants:"));
   });
+
+  it("marks B_raw as the confirmed-working production format", () => {
+    assert.ok(
+      ROUTE_SRC.includes("confirmedWorkingFormat"),
+      "variants must expose confirmedWorkingFormat",
+    );
+    // B_raw must declare confirmedWorkingFormat: true; the others must declare false.
+    const bRawBlock = ROUTE_SRC.match(/name:\s*"B_raw"[\s\S]*?buildPayload:/);
+    assert.ok(bRawBlock, "B_raw variant block not found");
+    assert.ok(
+      /confirmedWorkingFormat:\s*true/.test(bRawBlock![0]),
+      "B_raw must be marked confirmedWorkingFormat: true",
+    );
+    for (const name of ["A_json_stringified", "C_bearer", "D_sockjs_array"]) {
+      const re = new RegExp(`name:\\s*"${name}"[\\s\\S]*?buildPayload:`);
+      const block = ROUTE_SRC.match(re);
+      assert.ok(block, `${name} variant block not found`);
+      assert.ok(
+        /confirmedWorkingFormat:\s*false/.test(block![0]),
+        `${name} must be marked confirmedWorkingFormat: false`,
+      );
+    }
+  });
 });
 
 describe("probe: token safety (absolute)", () => {
