@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { createSession, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getOnboardingRedirect } from "@/lib/onboarding";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
 type LoginRequest = {
   email?: string;
@@ -9,6 +11,22 @@ type LoginRequest = {
 };
 
 export async function POST(request: Request) {
+  const ip = getRequestIp(request);
+  const limitPerMin = checkRateLimit(`login:min:${ip}`, 5, 60_000);
+  if (!limitPerMin.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(limitPerMin.retryAfterSeconds) } },
+    );
+  }
+  const limitPerHr = checkRateLimit(`login:hr:${ip}`, 20, 3_600_000);
+  if (!limitPerHr.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(limitPerHr.retryAfterSeconds) } },
+    );
+  }
+
   const body = (await request.json()) as LoginRequest;
   const email = body.email?.trim().toLowerCase();
   const password = body.password?.trim();
@@ -51,8 +69,11 @@ export async function POST(request: Request) {
 
   await createSession(user.id);
 
+  const redirectTo = await getOnboardingRedirect(user.id);
+
   return NextResponse.json({
     ok: true,
+    redirectTo,
     user: {
       id: user.id,
       email: user.email,

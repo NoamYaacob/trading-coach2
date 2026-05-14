@@ -7,6 +7,7 @@ type TelegramAccessInput = {
   trialEndsAt: Date | null;
   onboardingComplete: boolean;
   telegramConnected: boolean;
+  email: string;
 };
 
 export type TelegramDashboardState =
@@ -20,8 +21,9 @@ export function evaluateTelegramAccess({
   trialEndsAt,
   onboardingComplete,
   telegramConnected,
+  email,
 }: TelegramAccessInput) {
-  const accessActive = hasBotAccess(subscriptionStatus, trialEndsAt);
+  const accessActive = hasBotAccess(subscriptionStatus, trialEndsAt, email);
 
   let dashboardState: TelegramDashboardState;
 

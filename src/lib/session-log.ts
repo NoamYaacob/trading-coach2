@@ -12,6 +12,8 @@ type LogCoachEventInput = {
   coachMode: string;
   traderState: TraderCurrentState;
   cooldownActive: boolean;
+  coachReply?: string;
+  coachingMove?: string;
   metadataJson?: Prisma.InputJsonValue;
 };
 
@@ -30,7 +32,7 @@ export type TodaySessionSummary = {
   stayedUnstable: boolean;
 };
 
-function getTodayRange() {
+export function getTodayRange() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
 
@@ -77,6 +79,16 @@ function inferEventType(input: {
 }
 
 export async function logCoachEvent(input: LogCoachEventInput) {
+  const base = (input.metadataJson as Record<string, unknown> | undefined) ?? {};
+  const metadataJson =
+    input.coachReply || input.coachingMove
+      ? {
+          ...base,
+          ...(input.coachReply ? { coachReply: input.coachReply } : {}),
+          ...(input.coachingMove ? { coachingMove: input.coachingMove } : {}),
+        }
+      : input.metadataJson;
+
   return prisma.dailySessionEvent.create({
     data: {
       userId: input.userId,
@@ -90,9 +102,52 @@ export async function logCoachEvent(input: LogCoachEventInput) {
         detectedIntent: input.detectedIntent,
         traderState: input.traderState,
       }),
-      metadataJson: input.metadataJson,
+      metadataJson,
     },
   });
+}
+
+export type CoachingExchange = {
+  userMessage: string;
+  coachReply: string;
+  coachingMove?: string;
+  traderState: string;
+  createdAt: Date;
+};
+
+export async function getRecentCoachingExchanges(
+  userId: string,
+  limit = 3,
+): Promise<CoachingExchange[]> {
+  const events = await prisma.dailySessionEvent.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: limit * 4,
+    select: { message: true, metadataJson: true, traderState: true, createdAt: true },
+  });
+
+  const result: CoachingExchange[] = [];
+  let lastUserMessage = "";
+
+  for (const event of events) {
+    const meta = event.metadataJson as Record<string, unknown> | null;
+    const reply = typeof meta?.coachReply === "string" ? meta.coachReply.trim() : "";
+    // Skip empty, very short (locale fallback strings), or identical consecutive messages
+    if (reply.length < 20) continue;
+    if (event.message === lastUserMessage) continue;
+    lastUserMessage = event.message;
+    const coachingMove = typeof meta?.coachingMove === "string" ? meta.coachingMove : undefined;
+    result.push({
+      userMessage: event.message,
+      coachReply: reply,
+      coachingMove,
+      traderState: String(event.traderState ?? "NONE"),
+      createdAt: event.createdAt,
+    });
+    if (result.length >= limit) break;
+  }
+
+  return result.reverse(); // oldest-first for prompt ordering
 }
 
 export async function getTodaySessionEvents(

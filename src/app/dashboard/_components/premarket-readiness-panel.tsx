@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { PremarketReadiness } from "@/lib/guardian";
+import { StartSessionButton } from "./start-session-button";
 
 type PremarketReadinessPanelProps = {
   readiness: PremarketReadiness;
@@ -49,19 +50,30 @@ export function PremarketReadinessPanel({
             {readiness.headline}
           </p>
           <p className="mt-1 text-sm text-stone-700">{readiness.detail}</p>
-          {readiness.upcomingEventNote ? (
-            <p className="mt-3 text-sm text-stone-700">
-              {readiness.upcomingEventNote}
-            </p>
+          {readiness.upcomingEvent ? (
+            <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-white/60 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-700">
+                {readiness.upcomingEvent.eyebrow}
+              </p>
+              <p className="mt-2 text-base font-medium text-stone-950">{readiness.upcomingEvent.stateLabel}</p>
+              <p className="mt-1 text-sm text-stone-600">{readiness.upcomingEvent.title}</p>
+              <p className="mt-1 text-sm text-stone-500">{readiness.upcomingEvent.time}</p>
+            </div>
+          ) : readiness.upcomingEventNote ? (
+            <p className="mt-3 text-sm text-stone-700">{readiness.upcomingEventNote}</p>
           ) : null}
         </div>
 
-        <Link
-          href={readiness.actionHref}
-          className="inline-flex shrink-0 rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-        >
-          {readiness.actionLabel}
-        </Link>
+        {readiness.actionHref === "/dashboard" ? (
+          <StartSessionButton className="inline-flex w-fit shrink-0 self-start rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60" />
+        ) : (
+          <Link
+            href={readiness.actionHref}
+            className="inline-flex w-fit shrink-0 self-start rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            {readiness.actionLabel}
+          </Link>
+        )}
       </div>
     </section>
   );

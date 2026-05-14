@@ -6,7 +6,9 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 
 const SESSION_COOKIE_NAME = "trading-coach-session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+// TODO(future): "Log out from all devices" — expose prisma.session.deleteMany({ where: { userId } })
+//               as an authenticated API route so users can invalidate all their own sessions.
 
 function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -54,6 +56,63 @@ export async function clearSession() {
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
+}
+
+// ── Password reset tokens ──────────────────────────────────────────────────
+
+const RESET_TOKEN_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+
+export function hashResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function createPasswordResetToken(
+  userId: string,
+  requestedIp?: string,
+  userAgent?: string,
+): Promise<string> {
+  // Invalidate any existing unused tokens for this user
+  await prisma.passwordResetToken.updateMany({
+    where: { userId, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = hashResetToken(token);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MS);
+
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+      requestedIp: requestedIp ?? null,
+      userAgent: userAgent ?? null,
+    },
+  });
+
+  return token;
+}
+
+type ValidTokenResult =
+  | { valid: true; userId: string; tokenId: string }
+  | { valid: false };
+
+export async function validatePasswordResetToken(
+  token: string,
+): Promise<ValidTokenResult> {
+  const tokenHash = hashResetToken(token);
+
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash },
+    select: { id: true, userId: true, expiresAt: true, usedAt: true },
+  });
+
+  if (!record) return { valid: false };
+  if (record.usedAt !== null) return { valid: false };
+  if (record.expiresAt < new Date()) return { valid: false };
+
+  return { valid: true, userId: record.userId, tokenId: record.id };
 }
 
 export async function getCurrentUser() {

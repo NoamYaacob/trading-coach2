@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 
+import { requireEnv } from "@/lib/env";
+
 export function generateTelegramLinkToken() {
   return randomBytes(24).toString("hex");
 }
@@ -17,11 +19,7 @@ export async function sendTelegramMessage(
     replyMarkup?: TelegramReplyMarkup;
   },
 ) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!botToken) {
-    throw new Error("TELEGRAM_BOT_TOKEN is not configured.");
-  }
+  const botToken = requireEnv("TELEGRAM_BOT_TOKEN");
 
   const response = await fetch(
     `https://api.telegram.org/bot${botToken}/sendMessage`,

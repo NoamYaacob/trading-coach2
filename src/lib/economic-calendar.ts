@@ -305,20 +305,26 @@ function formatEconomicEventTime(value: Date, timeZone: string) {
   }).format(value)} ${timeZone}`;
 }
 
+export function formatEconomicEventTimeNoTz(value: Date, timeZone: string): string {
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
+}
+
 export function getEconomicCalendarProviderDisplay(
   provider: EconomicCalendarProviderIdentity,
 ) {
   switch (provider.key) {
     case "tradingeconomics_stub":
       return {
-        providerLabel: "TradingEconomics calendar stub",
-        sourceLabel: "External calendar stub. Live data is not connected yet.",
+        providerLabel: "TradingEconomics stub",
+        sourceLabel: "Calendar stub. Live provider sync is not connected yet.",
       };
     case "mock":
     default:
       return {
-        providerLabel: "Mock calendar feed",
-        sourceLabel: "Internal demo calendar for pre-news policy testing.",
+        providerLabel: "Demo calendar",
+        sourceLabel: "Demo data. Live calendar provider is not connected.",
       };
   }
 }

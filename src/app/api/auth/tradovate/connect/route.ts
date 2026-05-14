@@ -1,0 +1,115 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { cookies } from "next/headers";
+
+import { getCurrentUser } from "@/lib/auth";
+import { getTradovateConfig, resolveRedirectUri, resolveAppBaseUrl } from "@/lib/brokers/tradovate-env";
+import {
+  encodeOAuthState,
+  generateOAuthNonce,
+} from "@/lib/brokers/tradovate-oauth-state";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+const OAUTH_STATE_COOKIE = "tradovate_oauth_state";
+
+// All errors in this GET handler redirect the browser rather than returning
+// JSON — the route is navigated to directly by the browser after router.push(),
+// so a JSON body would render as raw text.
+function backToConnectPage(request: NextRequest, error: string) {
+  const base = resolveAppBaseUrl(request.url);
+  return NextResponse.redirect(
+    `${base}/accounts/connect/tradovate?error=${encodeURIComponent(error)}`,
+  );
+}
+
+export async function GET(request: NextRequest) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    const base = resolveAppBaseUrl(request.url);
+    return NextResponse.redirect(`${base}/login`);
+  }
+
+  const connectLimit = checkRateLimit(`tradovate_connect:${currentUser.id}`, 5, 3_600_000);
+  if (!connectLimit.ok) {
+    return backToConnectPage(request, "too_many_requests");
+  }
+
+  // Read env before config check so we can emit env-specific error codes.
+  const env = request.nextUrl.searchParams.get("env") === "demo" ? "demo" : "live";
+  const setupId = request.nextUrl.searchParams.get("setupId") ?? undefined;
+  const reconnectId = request.nextUrl.searchParams.get("reconnect") ?? undefined;
+
+  const status = getTradovateConfig();
+
+  // Until ALL required env vars are present (including the token-encryption
+  // key), do not start OAuth. Otherwise a successful authorization at
+  // Tradovate would leave us with tokens we cannot store securely — that
+  // is exactly the kind of "fake connected" state we promised never to
+  // ship.
+  if (status.state !== "ready") {
+    return backToConnectPage(
+      request,
+      env === "live" ? "live_oauth_not_configured" : "oauth_not_configured",
+    );
+  }
+
+  const { config } = status;
+
+  // The selected env determines BOTH the auth URL (config.authUrl[env]) and
+  // the token URL (config.tokenUrl[env]) — they must be paired or Tradovate
+  // returns invalid_client at the token exchange.
+  const clientId = config.clientId;
+  const redirectUri = resolveRedirectUri(config, request.url);
+
+  // State encodes enough context to resume after the callback without a DB
+  // round-trip plus a random nonce for CSRF.
+  const nonce = generateOAuthNonce();
+  const state = encodeOAuthState({
+    nonce,
+    userId: currentUser.id,
+    env,
+    setupId,
+    reconnectId,
+  });
+
+  // Persist nonce in an httpOnly cookie so the callback can verify CSRF.
+  const cookieStore = await cookies();
+  cookieStore.set(OAUTH_STATE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/auth/tradovate/callback",
+    maxAge: 60 * 10, // 10-minute window
+  });
+
+  // Tradovate permissions are controlled at the API-key level in their
+  // dashboard — not via the OAuth scope string. Omitting scope matches the
+  // official Tradovate OAuth example and avoids inadvertently capping the
+  // token at read-only: passing scope: "read" may prevent the user from
+  // granting Account Risk Settings access even when their app supports it.
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state,
+  });
+
+  const authUrl = `${config.authUrl[env]}?${params.toString()}`;
+
+  // Debug-safe diagnostics — logs what was used, never secrets or tokens.
+  const redirectUriSource = config.redirectUriOverride
+    ? "TRADOVATE_REDIRECT_URI"
+    : config.appUrl
+      ? "APP_URL/NEXT_PUBLIC_APP_URL"
+      : "request.url (fallback)";
+  console.info("[tradovate/connect] starting OAuth redirect", {
+    env,
+    authBase: config.authUrl[env],
+    redirectUri,
+    redirectUriSource,
+    redirectUriEncoded: params.get("redirect_uri"),
+    hasClientId: Boolean(clientId),
+  });
+
+  return NextResponse.redirect(authUrl);
+}

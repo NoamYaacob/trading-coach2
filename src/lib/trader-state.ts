@@ -150,6 +150,26 @@ export function deriveTraderStateUpdate(message: string) {
     };
   }
 
+  if (normalized.includes("נגררתי")) {
+    return {
+      nextState: TraderCurrentState.FOMO,
+      extraData: {
+        stateNotes: "Impulsive entry — got dragged in without a setup",
+      },
+    };
+  }
+
+  if (normalized.includes("עצור אותי")) {
+    return {
+      nextState: TraderCurrentState.TILTED,
+      extraData: {
+        stateNotes: "Hard-stop request — trader flagging themselves before doing something wrong",
+        needsCooldown: true,
+        cooldownUntil: new Date(Date.now() + COOL_DOWN_MINUTES * 60_000),
+      },
+    };
+  }
+
   if (normalized.includes("הפסדתי פעמיים")) {
     return {
       nextState: TraderCurrentState.JUST_TOOK_TWO_LOSSES,

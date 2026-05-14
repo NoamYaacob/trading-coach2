@@ -1,6 +1,7 @@
 import type { DailyGuardianSession } from "@prisma/client";
 
 import type { GuardianSnapshot } from "@/lib/guardian";
+import type { ViolationFeed } from "@/lib/rule-engine";
 import type { TodaySessionSummary } from "@/lib/session-log";
 import type { TodayActivityItem } from "@/lib/today-activity";
 
@@ -9,7 +10,6 @@ export type PostSessionReview = {
   endedAt: Date;
   meaningfulEventCount: number;
   guardianIntervened: boolean;
-  showGuardianLinkout: boolean;
   bullets: string[];
   takeaway: string;
 };
@@ -23,6 +23,7 @@ export function buildPostSessionReview(input: {
   summary: TodaySessionSummary;
   activityItems: TodayActivityItem[];
   guardian: GuardianSnapshot;
+  violationFeed?: ViolationFeed | null;
 }): PostSessionReview | null {
   const session = input.session;
 
@@ -57,6 +58,62 @@ export function buildPostSessionReview(input: {
     bullets.push("You returned to control before the day ended.");
   }
 
+  // Rule engine violation context — surfaces things not captured by Guardian lockout
+  if (input.violationFeed) {
+    const feed = input.violationFeed;
+
+    const preNewsFired = feed.activeViolations.find(
+      (v) => v.ruleId === "no_trade_before_major_news" && v.status === "blocked",
+    );
+    if (preNewsFired) {
+      bullets.push("A major news event blocked or restricted the session.");
+    }
+
+    const approachingLoss = feed.activeViolations.find(
+      (v) =>
+        v.ruleId === "max_daily_loss" &&
+        v.status === "warning" &&
+        !feed.triggeredViolations.some((t) => t.ruleId === "max_daily_loss"),
+    );
+    if (approachingLoss) {
+      bullets.push("The session approached the daily loss limit without breaching it.");
+    }
+
+    const approachingTrades = feed.activeViolations.find(
+      (v) =>
+        v.ruleId === "max_trades_per_day" &&
+        v.status === "warning" &&
+        !feed.triggeredViolations.some((t) => t.ruleId === "max_trades_per_day"),
+    );
+    if (approachingTrades) {
+      bullets.push("The session came close to the max daily trade count.");
+    }
+
+    if (
+      feed.activeViolations.some(
+        (v) => v.ruleId === "guardian_disabled" && v.status === "warning",
+      )
+    ) {
+      bullets.push("Guardian was off during this session.");
+    }
+  }
+
+  // Manual trade events logged during the session
+  const manualWins = input.activityItems.filter((i) => i.title === "Win logged").length;
+  const manualLosses = input.activityItems.filter((i) => i.title === "Loss logged").length;
+  const manualRuleBreach = input.activityItems.some((i) => i.title === "Rule breach logged");
+
+  if (manualWins > 0 || manualLosses > 0) {
+    const parts: string[] = [];
+    if (manualWins > 0) parts.push(`${manualWins} win${manualWins > 1 ? "s" : ""}`);
+    if (manualLosses > 0) parts.push(`${manualLosses} loss${manualLosses > 1 ? "es" : ""}`);
+    bullets.push(`Manual trade log: ${parts.join(", ")}.`);
+  }
+
+  if (manualRuleBreach) {
+    bullets.push("A rule breach was logged manually during the session.");
+  }
+
   if (bullets.length === 0) {
     bullets.push("The session stayed quiet and controlled.");
   }
@@ -82,7 +139,6 @@ export function buildPostSessionReview(input: {
     endedAt: session.endedAt,
     meaningfulEventCount,
     guardianIntervened,
-    showGuardianLinkout: guardianIntervened,
     bullets,
     takeaway,
   };

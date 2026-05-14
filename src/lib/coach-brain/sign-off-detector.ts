@@ -1,0 +1,84 @@
+// Conservative sign-off detection — exact match after stripping trailing punctuation.
+// Add new phrases here; no other file needs to change.
+
+const SIGN_OFF_PHRASES = new Set([
+  // Hebrew — night / sleep
+  "לילה טוב",
+  "לילה",
+  "לילה אחי",
+  "לילה חבר",
+  "יאללה לילה",
+  "נו לילה",
+  "אוקי לילה",
+  "אני הולך לישון",
+  "הולך לישון",
+
+  // Hebrew — done for today
+  "סיימתי להיום",
+  "סיימתי",
+  "גמרתי להיום",
+  "גמרתי",
+  "פרשתי",
+  "פורש",
+  "סוגר להיום",
+  "סגרתי להיום",
+  "זהו להיום",
+  "זהו",
+  "מסיים",
+  "אוקי סיימתי",
+  "יאללה סיימתי",
+
+  // Hebrew — farewell
+  "ביי",
+  "שב שיר",
+  "להתראות",
+  "יאללה ביי",
+
+  // English — night / sleep
+  "good night",
+  "night",
+  "going to sleep",
+
+  // English — done
+  "done for today",
+  "done trading",
+  "done for the day",
+  "that's it for today",
+  "that's a wrap",
+  "enough for today",
+  "calling it",
+  "calling it a day",
+  "signing off",
+  "wrapping up",
+  "wrapping it up",
+  "cya",
+  "see ya",
+  "bye",
+  "goodbye",
+]);
+
+function normalize(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[״׳.!?,؟،]+$/u, ""); // strip trailing punctuation (incl. Hebrew)
+}
+
+/** Exact match — handles pure sign-off messages (e.g. "לילה טוב"). */
+export function isSignOffMessage(text: string): boolean {
+  const n = normalize(text);
+  return SIGN_OFF_PHRASES.has(n);
+}
+
+/**
+ * Handles multi-sentence messages that END with a sign-off phrase
+ * (e.g. "סיימתי להיום, עשיתי 6 עסקאות... לילה טוב").
+ * Takes priority over simple free-text routing so the EOD pipeline runs.
+ */
+export function endsWithSignOff(text: string): boolean {
+  const n = normalize(text);
+  for (const phrase of SIGN_OFF_PHRASES) {
+    if (n.endsWith(phrase)) return true;
+  }
+  return false;
+}

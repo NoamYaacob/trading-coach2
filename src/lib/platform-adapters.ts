@@ -47,8 +47,8 @@ class MockPlatformAdapter implements PlatformAdapter {
   readonly platformName = "Mock Platform";
 
   readonly display = {
-    label: "Mock internal feed",
-    shortDescription: "Internal mock adapter for local Guardian and session metrics.",
+    label: "Demo feed",
+    shortDescription: "Guardian runs on demo data. No live broker sync is active.",
     connectionMode: "INTERNAL_MOCK" as const,
   };
 
@@ -60,9 +60,9 @@ class MockPlatformAdapter implements PlatformAdapter {
     return {
       source: this.source,
       platformName: context.guardianPlatformName?.trim() || this.platformName,
-      externalAccountId: mockConnected ? "mock-primary" : null,
+      externalAccountId: null,
       connectionState: mockConnected ? "CONNECTED" : "NOT_CONNECTED",
-      connectionLabel: mockConnected ? "Mock connected" : "Not connected",
+      connectionLabel: mockConnected ? "Demo mode active" : "Not connected",
       syncReadiness: mockConnected ? "MOCK_READY" : "NOT_READY",
       adapterDisplay: this.display,
     };
@@ -117,9 +117,9 @@ class TradovateAdapterStub implements PlatformAdapter {
     return {
       source: this.source,
       platformName: context.guardianPlatformName?.trim() || this.platformName,
-      externalAccountId: connected ? "tradovate-demo-001" : null,
+      externalAccountId: null,
       connectionState: connected ? "CONNECTED" : "NOT_CONNECTED",
-      connectionLabel: connected ? "Stub connected" : "Stub not connected",
+      connectionLabel: connected ? "Adapter ready — no live sync" : "Adapter not connected",
       syncReadiness: connected ? "MOCK_READY" : "NOT_READY",
       adapterDisplay: this.display,
     };
@@ -143,8 +143,8 @@ class TradovateAdapterStub implements PlatformAdapter {
 
     return [
       {
-        title: "Stub trade sync ready",
-        detail: "Tradovate stub can surface normalized trade activity here later.",
+        title: "No trade activity yet",
+        detail: "Trade activity will appear here once live sync is connected.",
         recordedAt: context.syncedAt,
         traderState: null,
       },

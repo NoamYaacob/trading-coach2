@@ -1,8 +1,11 @@
-import { SubscriptionStatus } from "@prisma/client";
+import { GuardianLockoutReason } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getLocale } from "@/lib/i18n";
+import { getTelegramQuickActionKeyboard } from "@/lib/coach-actions";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 type OnboardingRequest = {
   traderProfile?: {
@@ -27,6 +30,10 @@ type OnboardingRequest = {
     coachingTone?: string;
     interruptionStyle?: string;
     responseStyle?: string;
+    preferredAddress?: string;
+    tradingWhy?: string;
+    tradingGoal?: string;
+    groundingReminder?: string;
   };
   coachingPreferences?: {
     premarketCheckinEnabled?: boolean;
@@ -38,6 +45,7 @@ type OnboardingRequest = {
     highImpactOnly?: boolean;
     economicCalendarProviderKey?: string;
     economicCalendarStubScenario?: string;
+    preferredLanguage?: string;
   };
 };
 
@@ -96,8 +104,12 @@ function normalizeMentalProfile(
     coachingTone: mentalProfile.coachingTone,
     interruptionStyle: mentalProfile.interruptionStyle,
     responseStyle: mentalProfile.responseStyle,
+    preferredAddress: mentalProfile.preferredAddress,
     tiltTriggers: mentalProfile.tiltTrigger ? [mentalProfile.tiltTrigger] : [],
     confidenceNotes: mentalProfile.tiltThought,
+    tradingWhy: mentalProfile.tradingWhy,
+    tradingGoal: mentalProfile.tradingGoal,
+    groundingReminder: mentalProfile.groundingReminder,
   };
 }
 
@@ -118,6 +130,7 @@ function normalizeCoachingPreferences(
     highImpactOnly: coachingPreferences.highImpactOnly ?? false,
     economicCalendarProviderKey: coachingPreferences.economicCalendarProviderKey,
     economicCalendarStubScenario: coachingPreferences.economicCalendarStubScenario,
+    preferredLanguage: coachingPreferences.preferredLanguage,
     checkInFrequency:
       coachingPreferences.premarketCheckinEnabled ||
       coachingPreferences.postmarketReviewEnabled
@@ -128,6 +141,22 @@ function normalizeCoachingPreferences(
       (coachingPreferences.newsAlertsEnabled ?? false),
     reflectionStyle: coachingPreferences.reviewFocus,
   };
+}
+
+async function refreshTelegramKeyboard(userId: string, language: string) {
+  const connection = await prisma.telegramConnection.findUnique({
+    where: { userId },
+    select: { telegramChatId: true },
+  });
+  if (!connection?.telegramChatId) return;
+  const locale = getLocale(language);
+  await sendTelegramMessage(connection.telegramChatId, locale.system.languageUpdated, {
+    replyMarkup: {
+      keyboard: getTelegramQuickActionKeyboard(locale),
+      resize_keyboard: true,
+      input_field_placeholder: locale.system.inputPlaceholder,
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -144,56 +173,122 @@ export async function POST(request: Request) {
   const coachingPreferences = normalizeCoachingPreferences(
     body.coachingPreferences,
   );
-  const coachingPreferencesData = coachingPreferences as Record<string, unknown>;
 
-  const user = await prisma.user.upsert({
+  if (
+    riskRules?.maxTradesPerDay !== undefined &&
+    riskRules.maxTradesPerDay !== null &&
+    riskRules?.stopAfterLosses !== undefined &&
+    riskRules.stopAfterLosses !== null &&
+    riskRules.stopAfterLosses > riskRules.maxTradesPerDay
+  ) {
+    return NextResponse.json(
+      { error: "Stop after consecutive losses cannot exceed max trades per day." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.riskRules?.riskPerTrade !== undefined &&
+    body.riskRules.riskPerTrade !== null &&
+    body.riskRules?.maxDailyLoss !== undefined &&
+    body.riskRules.maxDailyLoss !== null &&
+    body.riskRules.riskPerTrade > body.riskRules.maxDailyLoss
+  ) {
+    return NextResponse.json(
+      { error: "Risk per trade cannot exceed max daily loss." },
+      { status: 400 },
+    );
+  }
+
+  const newLanguage = body.coachingPreferences?.preferredLanguage;
+  const existingPrefs = newLanguage
+    ? await prisma.coachingPreferences.findUnique({
+        where: { userId: currentUser.id },
+        select: { preferredLanguage: true },
+      })
+    : null;
+  const languageChanged = Boolean(
+    newLanguage && newLanguage !== existingPrefs?.preferredLanguage,
+  );
+
+  try {
+    await Promise.all([
+      traderProfile
+        ? prisma.traderProfile.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...traderProfile },
+            update: traderProfile,
+          })
+        : null,
+      riskRules
+        ? prisma.riskRules.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...riskRules },
+            update: riskRules,
+          })
+        : null,
+      // Keep GuardianProfile in sync with RiskRules — Guardian reads from
+      // GuardianProfile, not RiskRules, so changes here must propagate.
+      riskRules
+        ? prisma.guardianProfile.upsert({
+            where: { userId: currentUser.id },
+            create: {
+              userId: currentUser.id,
+              guardianEnabled: false,
+              maxTradesPerDay: riskRules.maxTradesPerDay ?? null,
+              maxDailyLoss: riskRules.maxDailyLoss ?? null,
+              stopAfterConsecutiveLosses: riskRules.stopAfterLosses ?? null,
+            },
+            update: {
+              maxTradesPerDay: riskRules.maxTradesPerDay ?? null,
+              maxDailyLoss: riskRules.maxDailyLoss ?? null,
+              stopAfterConsecutiveLosses: riskRules.stopAfterLosses ?? null,
+            },
+          })
+        : null,
+      // Pre-create guardianStatus so concurrent getGuardianSnapshot calls after
+      // onboarding never race to INSERT the same row for the first time.
+      prisma.guardianStatus.upsert({
+        where: { userId: currentUser.id },
+        create: {
+          userId: currentUser.id,
+          todayTradesCount: 0,
+          todayPnL: 0,
+          consecutiveLosses: 0,
+          currentLockoutActive: false,
+          lockoutReason: GuardianLockoutReason.NONE,
+        },
+        update: {},
+      }),
+      mentalProfile
+        ? prisma.mentalProfile.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...mentalProfile },
+            update: mentalProfile,
+          })
+        : null,
+      coachingPreferences
+        ? prisma.coachingPreferences.upsert({
+            where: { userId: currentUser.id },
+            create: { userId: currentUser.id, ...coachingPreferences },
+            update: coachingPreferences,
+          })
+        : null,
+    ]);
+  } catch (err) {
+    console.error("[onboarding] save error:", err);
+    return NextResponse.json(
+      { error: "Failed to save onboarding data." },
+      { status: 500 },
+    );
+  }
+
+  if (languageChanged && newLanguage) {
+    refreshTelegramKeyboard(currentUser.id, newLanguage).catch(() => {});
+  }
+
+  const user = await prisma.user.findUnique({
     where: { id: currentUser.id },
-    create: {
-      email: currentUser.email.toLowerCase(),
-      subscriptionStatus: SubscriptionStatus.TRIALING,
-      trialStartedAt: currentUser.trialStartedAt,
-      trialEndsAt: currentUser.trialEndsAt,
-      traderProfile: traderProfile ? { create: traderProfile } : undefined,
-      riskRules: riskRules ? { create: riskRules } : undefined,
-      mentalProfile: mentalProfile ? { create: mentalProfile } : undefined,
-      coachingPreferences: coachingPreferences
-        ? { create: coachingPreferencesData }
-        : undefined,
-    },
-    update: {
-      traderProfile: traderProfile
-        ? {
-            upsert: {
-              create: traderProfile,
-              update: traderProfile,
-            },
-          }
-        : undefined,
-      riskRules: riskRules
-        ? {
-            upsert: {
-              create: riskRules,
-              update: riskRules,
-            },
-          }
-        : undefined,
-      mentalProfile: mentalProfile
-        ? {
-            upsert: {
-              create: mentalProfile,
-              update: mentalProfile,
-            },
-          }
-        : undefined,
-      coachingPreferences: coachingPreferences
-        ? {
-            upsert: {
-              create: coachingPreferencesData,
-              update: coachingPreferencesData,
-            },
-          }
-        : undefined,
-    },
     select: {
       id: true,
       email: true,

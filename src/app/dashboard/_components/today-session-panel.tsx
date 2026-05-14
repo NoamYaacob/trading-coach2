@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type LiveSummary = { todayTradesCount: number; todayPnL: number; consecutiveLosses: number };
 
 import type { TodaySessionState } from "@/lib/guardian";
 import type { TelegramDashboardState } from "@/lib/telegram-access";
@@ -16,18 +18,39 @@ type TodaySessionPanelProps = {
   };
   telegramBotLink: string | null;
   displayTimeZone: string;
+  /** Mobile-only compact stats for small screens. */
+  mobileStats?: {
+    todayPnL: number;
+    todayTradesCount: number;
+    remainingDailyLossBudget: number | null;
+    consecutiveLosses: number;
+  };
 };
+
+function fmtShortTime(value: Date | null, timeZone: string): string {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(value);
+}
+
+function fmtMoney(n: number): string {
+  return `${n >= 0 ? "" : "−"}$${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 function formatGuardianDate(value: Date | null, timeZone: string) {
   if (!value) {
     return "Not scheduled";
   }
 
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
 }
 
 function getPanelStyles(kind: TodaySessionState["kind"]) {
@@ -71,9 +94,23 @@ export function TodaySessionPanel({
   telegramAccess,
   telegramBotLink,
   displayTimeZone,
+  mobileStats,
 }: TodaySessionPanelProps) {
   const router = useRouter();
-  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null);
+
+  useEffect(() => {
+    function handleUpdate(e: Event) {
+      setLiveSummary((e as CustomEvent<LiveSummary>).detail);
+    }
+    window.addEventListener("session-summary-update", handleUpdate);
+    return () => window.removeEventListener("session-summary-update", handleUpdate);
+  }, []);
+
+  const todayTradesCount = liveSummary?.todayTradesCount ?? sessionState.todayTradesCount;
+  const todayPnL = liveSummary?.todayPnL ?? sessionState.todayPnL;
+  const consecutiveLosses = liveSummary?.consecutiveLosses ?? sessionState.consecutiveLosses;
+
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const styles = getPanelStyles(sessionState.kind);
@@ -98,16 +135,16 @@ export function TodaySessionPanel({
     preNewsPolicyStatus?.policy.mode === "SOFT_CAUTION";
   const cta =
     sessionState.kind === "ONBOARDING_REQUIRED"
-      ? { label: "Complete onboarding", href: "/onboarding" }
+      ? { label: "Continue setup →", href: "/onboarding" }
       : sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted
         ? isPreNewsStartBlocked
-          ? { label: "Review status", href: "/guardian" }
+          ? { label: "Review rules", href: "/rules" }
           : isPreNewsCaution
-            ? { label: "Start session with caution", href: "/guardian" }
-            : { label: "Start session", href: "/guardian" }
+            ? { label: "Start session with caution", href: "/rules" }
+            : { label: "Start session", href: "/rules" }
         : sessionState.kind === "GUARDIAN_DISABLED"
-          ? { label: "Enable Guardian", href: "/guardian" }
-          : { label: "Open Guardian", href: "/guardian" };
+          ? { label: "Enable protection", href: "/rules#guardian-toggle" }
+          : { label: "Edit rules", href: "/rules" };
   const resetText =
     sessionState.resetMode === "DAILY"
       ? formatGuardianDate(sessionState.nextResetAt, displayTimeZone)
@@ -149,31 +186,6 @@ export function TodaySessionPanel({
     }
   }
 
-  async function handleStartSession() {
-    setIsStartingSession(true);
-    setStartError(null);
-
-    try {
-      const response = await fetch("/api/guardian/start-session", {
-        method: "POST",
-      });
-
-      const result = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(result.error ?? "Unable to start session.");
-      }
-
-      router.refresh();
-    } catch (error) {
-      setStartError(
-        error instanceof Error ? error.message : "Unable to start session.",
-      );
-    } finally {
-      setIsStartingSession(false);
-    }
-  }
-
   async function handleEndSession() {
     setIsEndingSession(true);
     setStartError(null);
@@ -201,7 +213,7 @@ export function TodaySessionPanel({
 
   return (
     <section
-      className={`rounded-[2rem] border px-6 py-6 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] ${styles.shell}`}
+      className={`w-full min-w-0 rounded-[2rem] border px-4 py-4 shadow-[0_25px_70px_-45px_rgba(28,25,23,0.4)] sm:px-6 sm:py-5 ${styles.shell}`}
     >
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
         <div>
@@ -210,13 +222,23 @@ export function TodaySessionPanel({
           >
             {sessionState.statusLabel}
           </span>
-          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
+          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
             {sessionState.headline}
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-700">
+          {/* Desktop: full detail text */}
+          <p className={`mt-3 max-w-2xl text-sm leading-6 text-stone-700${isSessionEnded && sessionState.sessionStartedAt ? " hidden md:block" : ""}`}>
             {sessionState.detail}
           </p>
-          <div className="mt-5 rounded-[1.4rem] border border-white/70 bg-white/80 px-4 py-4">
+          {/* Mobile: short session timestamps when session has ended */}
+          {isSessionEnded && sessionState.sessionStartedAt ? (
+            <p className="mt-3 text-sm leading-6 text-stone-700 md:hidden">
+              Started {fmtShortTime(sessionState.sessionStartedAt, displayTimeZone)}
+              {sessionState.sessionEndedAt
+                ? ` · Ended ${fmtShortTime(sessionState.sessionEndedAt, displayTimeZone)}`
+                : ""}
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-col rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 sm:mt-5 sm:px-4 sm:py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               What to do next
             </p>
@@ -225,36 +247,25 @@ export function TodaySessionPanel({
                 ? "Session is closed for this Guardian day. Review what happened and wait for the next reset window."
                 : isSessionActive
                 ? telegramAccess.dashboardState === "connected"
-                  ? "Your session started on the dashboard. Continue live coaching in Telegram."
+                  ? "Session active. Guardian is monitoring your limits and will alert you via Telegram if a rule is hit."
                   : telegramAccess.dashboardState === "not_connected"
-                    ? "Your session is active. Connect Telegram now so coaching can continue in the bot."
+                    ? "Session active. Connect Telegram to receive Guardian lockout alerts and enforcement notifications."
                     : sessionState.nextStep
                 : sessionState.nextStep}
             </p>
-            {sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted ? (
-              isPreNewsStartBlocked ? (
-                <Link
-                  href={cta.href}
-                  className="mt-4 inline-flex rounded-full bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700"
-                >
-                  {cta.label}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  disabled={isStartingSession}
-                  className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
-                >
-                  {isStartingSession ? "Starting session..." : cta.label}
-                </button>
-              )
+            {sessionState.kind === "READY_TO_TRADE" && !sessionState.sessionStarted && isPreNewsStartBlocked ? (
+              <Link
+                href={cta.href}
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-amber-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700"
+              >
+                {cta.label}
+              </Link>
             ) : isSessionActive ? (
               <button
                 type="button"
                 onClick={handleEndSession}
                 disabled={isEndingSession}
-                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
                 {isEndingSession ? "Ending session..." : "End session"}
               </button>
@@ -263,38 +274,73 @@ export function TodaySessionPanel({
                 href={telegramBotLink ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                Open Telegram coach
+                Open Telegram alerts
               </a>
             ) : canConnectTelegram ? (
               <button
                 type="button"
                 onClick={handleConnectTelegram}
                 disabled={isConnectingTelegram}
-                className="mt-4 inline-flex rounded-full bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-400"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
               >
-                {isConnectingTelegram ? "Connecting Telegram..." : "Connect Telegram"}
+                {isConnectingTelegram ? "Connecting..." : "Connect Telegram alerts"}
               </button>
-            ) : (
+            ) : sessionState.kind !== "READY_TO_TRADE" || sessionState.sessionStarted ? (
               <Link
                 href={cta.href}
-                className="mt-4 inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                className="mt-4 inline-flex !w-fit max-w-full items-center justify-center self-start rounded-full bg-stone-950 px-6 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                {cta.label}
+                {isSessionEnded ? (
+                  <>
+                    <span className="md:hidden">Review status</span>
+                    <span className="hidden md:inline">{cta.label}</span>
+                  </>
+                ) : cta.label}
               </Link>
-            )}
+            ) : null}
             {startError ? (
               <p className="mt-3 text-sm text-red-700">{startError}</p>
             ) : null}
           </div>
+
+          {/* Mobile compact stats */}
+          {mobileStats && (
+            <div className="mt-4 grid grid-cols-2 gap-2 md:hidden">
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Today P&amp;L</p>
+                <p className={`mt-1 text-base font-semibold tabular-nums ${mobileStats.todayPnL > 0 ? "text-emerald-700" : mobileStats.todayPnL < 0 ? "text-red-700" : "text-stone-950"}`}>
+                  {fmtMoney(mobileStats.todayPnL)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Trades</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.todayTradesCount}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Budget left</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.remainingDailyLossBudget !== null ? fmtMoney(mobileStats.remainingDailyLossBudget) : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Loss streak</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-stone-950">
+                  {mobileStats.consecutiveLosses}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="grid gap-3">
+        <div className="hidden gap-3 md:grid">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Today status
+                {sessionState.kind === "GUARDIAN_DISABLED" ? "Rule enforcement" : "Today status"}
               </p>
               <p className={`mt-2 text-lg font-semibold ${styles.accent}`}>
                 {sessionState.kind === "ONBOARDING_REQUIRED"
@@ -304,40 +350,48 @@ export function TodaySessionPanel({
                     : sessionState.kind === "READY_TO_TRADE"
                   ? "Trading open"
                   : sessionState.kind === "GUARDIAN_DISABLED"
-                    ? "Guardian off"
+                    ? "Paused"
                     : "Trading locked"}
               </p>
-              {sessionState.primaryReasonLabel ? (
+              {sessionState.kind === "GUARDIAN_DISABLED" ? (
                 <p className="mt-2 text-sm text-stone-700">
-                  Reason: {sessionState.primaryReasonLabel}
+                  Limits resume when Guardian is enabled.
                 </p>
-              ) : null}
-              {sessionState.sessionStartedAt ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Started {formatGuardianDate(sessionState.sessionStartedAt, displayTimeZone)}
-                </p>
-              ) : null}
-              {sessionState.sessionEndedAt ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Ended {formatGuardianDate(sessionState.sessionEndedAt, displayTimeZone)}
-                </p>
-              ) : null}
-              {sessionState.sessionStarted && sessionState.sessionStartSource ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Started from {sessionState.sessionStartSource}.
-                </p>
-              ) : null}
-              {sessionState.sessionEnded && sessionState.sessionEndSource ? (
-                <p className="mt-2 text-sm text-stone-700">
-                  Ended from {sessionState.sessionEndSource}.
-                </p>
-              ) : null}
-              {additionalTriggeredRulesCount > 0 ? (
-                <p className="mt-1 text-xs text-stone-600">
-                  +{additionalTriggeredRulesCount} additional Guardian rule
-                  {additionalTriggeredRulesCount > 1 ? "s" : ""} hit
-                </p>
-              ) : null}
+              ) : (
+                <>
+                  {sessionState.primaryReasonLabel ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Reason: {sessionState.primaryReasonLabel}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionStartedAt ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Started {formatGuardianDate(sessionState.sessionStartedAt, displayTimeZone)}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionEndedAt ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Ended {formatGuardianDate(sessionState.sessionEndedAt, displayTimeZone)}
+                    </p>
+                  ) : null}
+                  {sessionState.sessionStarted && sessionState.sessionStartSource ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Started from {sessionState.sessionStartSource}.
+                    </p>
+                  ) : null}
+                  {sessionState.sessionEnded && sessionState.sessionEndSource ? (
+                    <p className="mt-2 text-sm text-stone-700">
+                      Ended from {sessionState.sessionEndSource}.
+                    </p>
+                  ) : null}
+                  {additionalTriggeredRulesCount > 0 ? (
+                    <p className="mt-1 text-xs text-stone-600">
+                      +{additionalTriggeredRulesCount} additional Guardian rule
+                      {additionalTriggeredRulesCount > 1 ? "s" : ""} hit
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
@@ -347,10 +401,10 @@ export function TodaySessionPanel({
               {sessionState.kind === "ONBOARDING_REQUIRED" ? (
                 <>
                   <p className="mt-2 text-base font-semibold text-stone-950">
-                    Finish onboarding
+                    Finish setup
                   </p>
                   <p className="mt-2 text-sm text-stone-600">
-                    Add your trading profile, rules, and coaching preferences first.
+                    Your trading profile and risk rules need to be in place first.
                   </p>
                 </>
               ) : (
@@ -370,7 +424,7 @@ export function TodaySessionPanel({
                 Trades
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.todayTradesCount}
+                {todayTradesCount}
               </p>
             </div>
 
@@ -379,7 +433,7 @@ export function TodaySessionPanel({
                 P&amp;L
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.todayPnL}
+                {todayPnL}
               </p>
             </div>
 
@@ -388,7 +442,7 @@ export function TodaySessionPanel({
                 Loss streak
               </p>
               <p className="mt-1 text-lg font-semibold text-stone-950">
-                {sessionState.consecutiveLosses}
+                {consecutiveLosses}
               </p>
             </div>
           </div>
@@ -397,21 +451,20 @@ export function TodaySessionPanel({
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               Active limits
             </p>
-            {sessionState.sessionStarted && sessionState.sessionStartSource ? (
-              <p className="mt-2 text-sm text-stone-600">
-                Started from {sessionState.sessionStartSource}.
-              </p>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {sessionState.activeRules.slice(0, 4).map((rule) => (
-                <span
-                  key={rule}
-                  className="rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700"
-                >
-                  {rule}
-                </span>
-              ))}
-            </div>
+            {sessionState.activeRules.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {sessionState.activeRules.map((rule) => (
+                  <span
+                    key={rule}
+                    className="rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700"
+                  >
+                    {rule}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-stone-500">No limits configured yet.</p>
+            )}
           </div>
         </div>
       </div>

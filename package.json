@@ -2,15 +2,26 @@
   "name": "trading-coach-v2",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
+    "start:railway": "prisma migrate deploy && next start -p ${PORT:-3000}",
+    "cron:sync": "node scripts/cron-tradovate-sync.mjs",
+    "cron:promote": "node scripts/cron-promote-pending-rules.mjs",
+    "cron:renew-tokens": "node scripts/cron-renew-tradovate-tokens.mjs",
+    "start:listener": "tsx scripts/tradovate-listener-worker.ts",
     "lint": "eslint",
+    "test:unit": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "bcryptjs": "^3.0.3",
@@ -19,13 +30,18 @@
     "pg": "^8.20.0",
     "prisma": "^7.7.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "resend": "^6.12.2",
+    "stripe": "^22.1.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",

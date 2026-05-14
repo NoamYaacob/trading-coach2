@@ -2,228 +2,481 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
-import { SectionCard } from "@/components/ui/section-card";
+import { getCurrentUser } from "@/lib/auth";
+import {
+  PAIN_SCENARIOS,
+  STEPS,
+  PROP_FIRM_CARDS,
+  INCLUDED_FEATURES,
+  FAQS,
+} from "@/lib/marketing-data";
 
 export const metadata: Metadata = {
-  title: "Trading Coach",
+  title: "Guardrail — Trading rules that hold under pressure",
+  description:
+    "Set daily loss, max trades, and session rules before the market opens. Guardrail evaluates every trade in real time and locks the session when a rule breaks.",
 };
 
-const workflowSteps = [
-  {
-    title: "Prepare the day",
-    detail:
-      "Set the session up from the dashboard, confirm readiness, and make the day explicit before the first trade.",
-  },
-  {
-    title: "Start the session",
-    detail:
-      "Open the trading day deliberately, with live limits, reset timing, and Guardian status already visible.",
-  },
-  {
-    title: "Continue in Telegram",
-    detail:
-      "Use the coach in real time during the session for check-ins, pressure moments, resets, and day review.",
-  },
-  {
-    title: "Guardian enforces boundaries",
-    detail:
-      "When limits are hit, the product moves from coaching into protection and closes the day cleanly.",
-  },
-  {
-    title: "Review after close",
-    detail:
-      "Finish with activity context, post-session review, and the takeaway to carry into the next session.",
-  },
+const ACTIVE_RULE_NAMES = [
+  "Daily Loss Limit",
+  "Max Trades Per Day",
+  "Stop After Consecutive Losses",
+  "News Blackout",
+  "Session Hours",
 ];
 
-const productPillars = [
-  {
-    title: "Session control",
-    detail:
-      "This product starts from the day itself: readiness, session start, active state, session end, and post-session review.",
-  },
-  {
-    title: "Guardian protection",
-    detail:
-      "Guardian is the decision layer that determines whether trading is open, locked, or waiting for reset.",
-  },
-  {
-    title: "Live coaching in Telegram",
-    detail:
-      "The Telegram coach stays aware of the real product state, not just isolated messages.",
-  },
-  {
-    title: "Activity and review",
-    detail:
-      "Today Activity and Post-Session Review make the day readable without turning the product into a bulky journal.",
-  },
-  {
-    title: "Future-ready platform integration",
-    detail:
-      "The current build runs on a mock/internal flow, with adapter contracts and integration planning already prepared for future live platform work.",
-  },
-];
+export default async function Home() {
+  const user = await getCurrentUser();
 
-const differencePoints = [
-  "Not just a journal after the fact. The product controls the live session state while the day is happening.",
-  "Not just an alert bot. Telegram coaching is tied to Guardian, Today Session, and the real website workflow.",
-  "Not pretending to be broker-connected yet. The current build is demo-ready, with a mock/internal flow and future integration boundaries already in place.",
-];
+  const heroActions = user ? (
+    <Link
+      href="/dashboard"
+      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+    >
+      Open today&rsquo;s session
+    </Link>
+  ) : (
+    <>
+      <Link
+        href="/signup"
+        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      >
+        Start free week
+      </Link>
+      <a
+        href="#how-it-works"
+        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+      >
+        See how it works ↓
+      </a>
+    </>
+  );
 
-export default function Home() {
   return (
     <AppShell
-      eyebrow="Trading Discipline System"
-      title="A session-first trading guardian with live coaching and real daily control."
-      description="Trading Coach combines dashboard operations, Guardian protection, and Telegram coaching into one daily discipline loop. It is built for traders who need clearer boundaries, better state control, and a cleaner close to the day."
-      actions={
+      eyebrow="FOR FUTURES & PROP FIRM TRADERS"
+      title={
         <>
-          <Link
-            href="/signup"
-            className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-          >
-            Sign up
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/dashboard"
-            className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-          >
-            View product flow
-          </Link>
+          You know your rules.
+          <br />
+          Guardrail makes them hold.
         </>
       }
+      description="Set your daily loss, max trades, session hours, and loss-streak rules before the open. When pressure hits, Guardrail keeps the session inside those limits."
+      note={
+        <>
+          <span className="hidden sm:inline">Account-level monitoring · Broker enforcement when supported and verified</span>
+          <span className="sm:hidden">Account-level monitoring. Broker enforcement when supported and verified.</span>
+        </>
+      }
+      actions={heroActions}
+      heroPreview={user ? undefined : <HeroStatusPreview />}
     >
-      <div className="grid gap-6">
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <SectionCard
-            title="What this product is"
-            description="A trading discipline system for active traders who need the day managed as an operating process, not as a loose collection of notes and reminders."
-          >
-            <div className="grid gap-3 text-sm leading-6 text-stone-700">
-              <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                The product is built around one practical question: is today open, protected,
-                or already closed?
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                It combines website session control, Guardian enforcement, and Telegram
-                coaching into one operating loop.
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                The goal is not more trader content. The goal is cleaner decisions, better
-                boundaries, and a more controlled trading day.
-              </div>
-            </div>
-          </SectionCard>
+      <div className="grid gap-8 sm:gap-12 lg:gap-16">
 
-          <section className="rounded-[1.75rem] border border-amber-200 bg-amber-50/90 p-6 shadow-[0_20px_60px_-40px_rgba(120,53,15,0.35)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-              Demo-ready build
+        {/* ── Pain ─────────────────────────────────────────────────────── */}
+        <section>
+          <div className="mb-4 max-w-2xl sm:mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              The real problem
             </p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">
-              Serious product flow today, live broker sync later.
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+              You know your rules.{" "}
+              <span className="text-stone-400">You break them anyway.</span>
             </h2>
-            <p className="mt-3 text-sm leading-6 text-stone-700">
-              The current build is ready to demonstrate the real operating model: session
-              readiness, Guardian lockout, Telegram coaching, day activity, and post-session
-              review.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+              Every futures trader sets rules before the market opens. Then the session starts,
+              pressure builds, and the rules you made when thinking clearly are the ones you break.
             </p>
-            <p className="mt-3 text-sm leading-6 text-stone-700">
-              Platform integration is intentionally honest: the product currently runs on a
-              mock/internal flow, while the adapter layer and integration plan are already
-              prepared for future live connections.
-            </p>
-          </section>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {PAIN_SCENARIOS.map((s) => (
+              <div
+                key={s.title}
+                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
+              >
+                <p className="text-sm font-semibold text-stone-950">{s.title}</p>
+                <p className="mt-2 text-sm leading-6 text-stone-600">{s.body}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <SectionCard
-          title="How the daily loop works"
-          description="The product is designed around the actual trading day, not around disconnected tools."
-        >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {workflowSteps.map((step, index) => (
+        {/* ── How it works ─────────────────────────────────────────────── */}
+        <section id="how-it-works">
+          <div className="mb-4 max-w-2xl sm:mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              How it works
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+              Three steps. One operating loop.
+            </h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {STEPS.map((step) => (
               <div
-                key={step.title}
-                className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4"
+                key={step.n}
+                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-                  Step {index + 1}
-                </p>
-                <h3 className="mt-2 text-base font-semibold text-stone-950">{step.title}</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-2xl font-bold text-stone-200">{step.n}</p>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${step.tagCls}`}
+                  >
+                    {step.tag}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
+                  {step.title}
+                </h3>
                 <p className="mt-2 text-sm leading-6 text-stone-600">{step.detail}</p>
               </div>
             ))}
           </div>
-        </SectionCard>
-
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <SectionCard
-            title="Why it is different"
-            description="This is not a generic journal, and it is not just a coaching bot."
-          >
-            <ul className="grid gap-3 text-sm leading-6 text-stone-700">
-              {differencePoints.map((point) => (
-                <li key={point} className="rounded-2xl bg-stone-50 px-4 py-4">
-                  {point}
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
-
-          <SectionCard
-            title="Core product pillars"
-            description="The current build already shows the system working as one operational product."
-          >
-            <ul className="grid gap-3 text-sm leading-6 text-stone-700">
-              {productPillars.map((pillar) => (
-                <li
-                  key={pillar.title}
-                  className="rounded-2xl border border-stone-200 bg-white px-4 py-4"
-                >
-                  <p className="font-medium text-stone-950">{pillar.title}</p>
-                  <p className="mt-2 text-stone-600">{pillar.detail}</p>
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
+          <div className="mt-4">
+            <Link
+              href="/how-it-works"
+              className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+            >
+              Session states and enforcement scope →
+            </Link>
+          </div>
         </section>
 
-        <section className="rounded-[1.9rem] border border-stone-200 bg-white/90 p-8 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.35)]">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                Next step
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">
-                Open the product flow and see the day as a controlled system.
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-stone-600">
-                Sign up to move through onboarding, Today Session, Guardian, Telegram handoff,
-                and post-session review in the current demo-ready product.
-              </p>
+        {/* ── Features highlight ────────────────────────────────────────── */}
+        <section>
+          <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <div className="mb-4 max-w-2xl sm:mb-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                  Rule engine
+                </p>
+                <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+                  Five active rules. Nine more on the way.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  Loss limits, trade caps, session windows, and news locks — evaluated in real time
+                  against every trade event.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {ACTIVE_RULE_NAMES.map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]"
+                  >
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                    <span className="text-sm font-medium text-stone-950">{name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4">
+                <Link
+                  href="/features"
+                  className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+                >
+                  View all 14 rules — Active, Partial, and Coming Soon →
+                </Link>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/signup"
-                className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+            <div className="hidden lg:block">
+              <RulesConfigCard />
+            </div>
+          </div>
+        </section>
+
+        {/* ── Prop firm ─────────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-amber-200/80 bg-amber-50/30 p-5 sm:p-8">
+          <div className="mb-5 max-w-2xl sm:mb-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+              Prop firm pressure
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              Prop firm rules do not forgive emotional trades.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              One rule break can cost the challenge, the funded account, or the payout.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {PROP_FIRM_CARDS.map((card) => (
+              <div
+                key={card.title}
+                className="rounded-2xl border border-amber-100 bg-white/80 px-5 py-5"
               >
-                Sign up
-              </Link>
+                <p className="text-sm font-semibold text-stone-950">{card.title}</p>
+                <p className="mt-2 text-sm leading-6 text-stone-600">{card.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5">
+            <Link
+              href="/prop-firms"
+              className="text-sm font-medium text-amber-800 underline-offset-2 transition hover:text-amber-950 hover:underline"
+            >
+              Built for prop firms: evaluation, funded, and payout protection →
+            </Link>
+          </div>
+        </section>
+
+        {/* ── Trust summary ─────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-800 bg-stone-950 p-5 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">
+            Your data, your control
+          </p>
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-50 sm:text-2xl">
+            Read-only first. No trading credentials.
+          </h2>
+          <ul className="mt-5 grid gap-3">
+            <li className="flex items-start gap-3 text-sm text-stone-300">
+              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+              Read-only connection — Guardrail receives trade events. It cannot place or cancel orders.
+            </li>
+            <li className="flex items-start gap-3 text-sm text-stone-300">
+              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+              No broker password stored — connections use broker authorization or scoped tokens.
+            </li>
+            <li className="flex items-start gap-3 text-sm text-stone-300">
+              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
+              Disconnect any time from account settings. Rule configuration is kept, data is not.
+            </li>
+          </ul>
+          <div className="mt-5">
+            <Link
+              href="/security"
+              className="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-200 hover:underline"
+            >
+              Security & read-only access details →
+            </Link>
+          </div>
+        </section>
+
+        {/* ── Pricing preview ───────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8">
+          <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                Pricing
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+                First week free.
+              </h2>
+              <p className="mt-3 text-base leading-7 text-stone-600">
+                Full access for 7 days — no credit card required. Then $25/month.
+              </p>
+              <div className="mt-5 flex items-baseline gap-2">
+                <span className="text-4xl font-bold tracking-[-0.04em] text-stone-950">$25</span>
+                <span className="text-base text-stone-500">/ month after trial</span>
+              </div>
+              <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
+              <div className="mt-5 flex flex-row flex-wrap gap-3">
+                {user ? (
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  >
+                    Open today&rsquo;s session
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      href="/signup"
+                      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                    >
+                      Start free week
+                    </Link>
+                    <Link
+                      href="/pricing"
+                      className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+                    >
+                      See pricing details
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="mb-3 text-sm font-semibold text-stone-950">Included:</p>
+              <ul className="grid gap-2">
+                {INCLUDED_FEATURES.slice(0, 4).map((feature) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-3 py-2 text-sm text-stone-700 sm:px-4 sm:py-3"
+                  >
+                    <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
               <Link
-                href="/login"
-                className="rounded-full border border-stone-300 px-5 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                href="/pricing"
+                className="mt-3 block text-xs text-stone-400 underline-offset-2 transition hover:text-stone-700 hover:underline"
               >
-                Log in
+                All included features & cost calculator →
               </Link>
             </div>
           </div>
         </section>
+
+        {/* ── FAQ ──────────────────────────────────────────────────────── */}
+        <section id="faq">
+          <div className="mb-4 sm:mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              FAQ
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              Common questions.
+            </h2>
+          </div>
+          <div className="grid gap-3">
+            {FAQS.slice(0, 4).map((faq) => (
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore – `name` on <details> is valid HTML (Chrome 120+, Firefox 130+, Safari 17.2+) but missing from older React types
+              <details
+                key={faq.q}
+                name="faq"
+                className="group rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 transition-colors hover:bg-stone-50/60 sm:px-6 sm:py-4"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold tracking-[-0.02em] text-stone-950 sm:text-base">
+                  {faq.q}
+                  <span className="shrink-0 text-stone-500 transition-transform group-open:rotate-45">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-stone-600">{faq.a}</p>
+              </details>
+            ))}
+          </div>
+          <div className="mt-4">
+            <Link
+              href="/faq"
+              className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+            >
+              Read all 9 questions →
+            </Link>
+          </div>
+        </section>
+
+        {/* ── Final CTA ────────────────────────────────────────────────── */}
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8 lg:p-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl lg:text-3xl">
+                Your rules, enforced. Starting now.
+              </h2>
+              <p className="mt-3 text-base leading-7 text-stone-600">
+                Configure your limits. Run today&rsquo;s session. Let Guardrail lock the moment a
+                rule breaks.
+              </p>
+            </div>
+            <div className="flex flex-row flex-wrap gap-3">
+              {user ? (
+                <Link
+                  href="/dashboard"
+                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                >
+                  Open today&rsquo;s session
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/signup"
+                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  >
+                    Start free week
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+                  >
+                    Log in
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
       </div>
     </AppShell>
+  );
+}
+
+// ─── Rule engine config card ───────────────────────────────────────────────────
+
+function RulesConfigCard() {
+  return (
+    <div className="w-56 rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(28,25,23,0.10)]">
+      <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-400">
+        Trading plan
+      </p>
+      <div className="grid gap-1.5">
+        {[
+          { rule: "Daily loss limit", value: "$500" },
+          { rule: "Max trades", value: "5 / day" },
+          { rule: "Loss streak stop", value: "3 losses" },
+          { rule: "Session hours", value: "9:30 – 12:00" },
+        ].map(({ rule, value }) => (
+          <div
+            key={rule}
+            className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-1.5"
+          >
+            <span className="text-[11px] text-stone-600">{rule}</span>
+            <span className="shrink-0 font-mono text-[11px] font-semibold text-stone-950">
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 border-t border-stone-100 pt-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+        <span className="text-[10px] text-stone-500">4 rules active · session live</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Hero locked-state preview ─────────────────────────────────────────────────
+
+function HeroStatusPreview() {
+  return (
+    <div className="w-full rounded-2xl border border-red-300/60 bg-white/95 p-3 shadow-[0_8px_28px_-8px_rgba(185,28,28,0.18)] lg:w-60 lg:p-4">
+      <div className="mb-1 flex items-center justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+          Today&rsquo;s session
+        </p>
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          Locked
+        </span>
+      </div>
+      <p className="mb-1 text-sm font-semibold tracking-[-0.02em] text-stone-950">Session locked</p>
+      <p className="mb-2 text-[11px] text-red-700">Daily loss limit reached</p>
+      <div className="flex flex-col gap-2">
+        <div>
+          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+            <span>Loss used</span>
+            <span className="font-semibold text-red-700">$500 / $500</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-red-100">
+            <div className="h-full w-full rounded-full bg-red-500" />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+            <span>Trades</span>
+            <span>5 / 5</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-full w-full rounded-full bg-stone-400" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between border-t border-stone-100 pt-2">
+        <p className="text-[10px] text-stone-400">Next reset: tomorrow</p>
+        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">
+          New entries disabled
+        </span>
+      </div>
+    </div>
   );
 }

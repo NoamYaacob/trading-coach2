@@ -1,12 +1,17 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import Link from "next/link";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { SectionCard } from "@/components/ui/section-card";
+import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
+import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
+import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
+import { SummaryStrip } from "@/app/dashboard/_components/command-center/summary-strip";
+import { AutoSync } from "@/app/dashboard/_components/auto-sync";
+import { DashboardAutoRefresh } from "@/app/dashboard/_components/dashboard-auto-refresh";
 import { DashboardActions } from "@/app/dashboard/_components/dashboard-actions";
-import { EconomicEventsPanel } from "@/app/dashboard/_components/economic-events-panel";
 import { PostSessionReviewPanel } from "@/app/dashboard/_components/post-session-review-panel";
 import { PremarketReadinessPanel } from "@/app/dashboard/_components/premarket-readiness-panel";
 import { TodayActivityTimeline } from "@/app/dashboard/_components/today-activity-timeline";
@@ -18,88 +23,54 @@ import {
   deriveTodaySessionState,
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
+  type TodaySessionState,
 } from "@/lib/guardian";
+import { getTradingDayWindow } from "@/lib/trading-day";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { buildPostSessionReview } from "@/lib/post-session-review";
+import {
+  buildRuleEngineInputFromGuardianSnapshot,
+  buildViolationFeed,
+} from "@/lib/rule-engine";
 import { getTodaySessionEvents, getTodaySessionSummary } from "@/lib/session-log";
-import { buildTodayActivityTimeline } from "@/lib/today-activity";
-import { deriveShortLivedCoachingFlags } from "@/lib/trader-state";
-import { isTrialActive } from "@/lib/trial";
+import {
+  buildTodayActivityTimeline,
+  buildViolationActivityItems,
+} from "@/lib/today-activity";
+import { RuleNoticeList } from "@/components/ui/rule-notice-card";
 import {
   getSelectedEconomicCalendarSnapshot,
   getCurrentPreNewsPolicy,
   getNextHighImpactEconomicEvent,
   buildEconomicCalendarVisibility,
   getEconomicCalendarSelection,
+  formatEconomicEventTimeNoTz,
 } from "@/lib/economic-calendar";
 import {
   DISPLAY_TIME_ZONE_COOKIE,
   resolveDisplayTimeZone,
 } from "@/lib/timezone";
+import { needsSync } from "@/lib/sync-freshness";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Dashboard — Guardrail",
 };
-
-function formatDate(value: Date | null, timeZone: string) {
-  if (!value) {
-    return "Not set";
-  }
-
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
-}
-
-
-function humanizeTraderState(value: string) {
-  return value.replaceAll("_", " ").toLowerCase();
-}
 
 export default async function DashboardPage() {
   const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    redirect("/login");
-  }
+  if (!currentUser) redirect("/login");
 
   const user = await prisma.user.findUnique({
     where: { id: currentUser.id },
     select: {
-      email: true,
-      role: true,
       subscriptionStatus: true,
-      trialStartedAt: true,
       trialEndsAt: true,
-      traderProfile: {
-        select: { id: true, timezone: true },
-      },
-      telegramConnection: {
-        select: {
-          id: true,
-          telegramUsername: true,
-          connectedAt: true,
-        },
-      },
-      traderState: {
-        select: {
-          currentState: true,
-          stateNotes: true,
-          recentLossStreak: true,
-          needsCooldown: true,
-          cooldownUntil: true,
-          lastStateAt: true,
-        },
-      },
+      traderProfile: { select: { id: true, timezone: true } },
+      telegramConnection: { select: { id: true, telegramUsername: true, connectedAt: true } },
       coachingPreferences: true,
     },
   });
-
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login");
 
   const onboardingComplete = Boolean(user.traderProfile);
   const cookieStore = await cookies();
@@ -108,75 +79,146 @@ export default async function DashboardPage() {
     browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
   });
   const telegramConnected = Boolean(user.telegramConnection);
-  const trialActive = isTrialActive(user.trialEndsAt);
-  const liveStateFlags = deriveShortLivedCoachingFlags(user.traderState);
-  const [todaySessionSummary, todaySessionEvents, guardian, todayGuardianSessionStart] =
-    await Promise.all([
-      getTodaySessionSummary(currentUser.id),
-      getTodaySessionEvents(currentUser.id, undefined, "asc"),
-      getGuardianSnapshot(currentUser.id),
-      getTodayGuardianSessionStart(currentUser.id),
-    ]);
+  const economicCalendarSelection = getEconomicCalendarSelection(user.coachingPreferences);
+
+  const riskRules = await prisma.riskRules.findUnique({ where: { userId: currentUser.id } });
+  const tradingDay = getTradingDayWindow({
+    timezone: displayTimeZone,
+    sessionStartHour: riskRules?.sessionStartHour ?? null,
+    sessionEndHour: riskRules?.sessionEndHour ?? null,
+  });
+  const now = new Date();
+
+  const [
+    todaySessionSummary,
+    todaySessionEvents,
+    guardian,
+    todayGuardianSessionStart,
+    commandCenter,
+    economicCalendarSnapshot,
+  ] = await Promise.all([
+    getTodaySessionSummary(currentUser.id),
+    getTodaySessionEvents(currentUser.id, undefined, "asc"),
+    getGuardianSnapshot(currentUser.id),
+    getTodayGuardianSessionStart(currentUser.id),
+    loadCommandCenterData(currentUser.id, currentUser.email),
+    getSelectedEconomicCalendarSnapshot(user.coachingPreferences),
+  ]);
+
+  // ── Determine which branch to render ───────────────────────────────────────
+  // noAccounts: true when no active broker accounts are connected.
+  const hasBrokerAccount = commandCenter.accounts.length > 0;
+  const noAccounts = !hasBrokerAccount;
+
+  // ── Economic calendar + rule-of-engagement computations ───────────────────
+  const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
+  const nextHighImpactEvent = getNextHighImpactEconomicEvent(economicCalendarSnapshot);
+  const economicCalendarVisibility = buildEconomicCalendarVisibility({
+    snapshot: economicCalendarSnapshot,
+    policyStatus: economicCalendarPolicy,
+    nextHighImpactEvent,
+    timeZone: displayTimeZone,
+    scenario: economicCalendarSelection.stubScenario,
+  });
+
   const guardianAdditionalRulesCount = Math.max(
     guardian.evaluation.triggeredRuleLabels.length - 1,
     0,
   );
-  const economicCalendarSelection = getEconomicCalendarSelection(user.coachingPreferences);
-  const economicCalendarSnapshot = await getSelectedEconomicCalendarSnapshot(
-    user.coachingPreferences,
-  );
-  const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
-  const economicCalendarVisibility = buildEconomicCalendarVisibility({
-    snapshot: economicCalendarSnapshot,
-    policyStatus: economicCalendarPolicy,
-    nextHighImpactEvent: getNextHighImpactEconomicEvent(economicCalendarSnapshot),
-    timeZone: displayTimeZone,
-    scenario: economicCalendarSelection.stubScenario,
-  });
+
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete,
     sessionStart: todayGuardianSessionStart,
     preNewsPolicyStatus: economicCalendarPolicy,
   });
+
   const premarketReadiness = derivePremarketReadiness(todaySessionState);
   const premarketReadinessWithEvent = premarketReadiness
     ? {
         ...premarketReadiness,
+        upcomingEvent:
+          nextHighImpactEvent && economicCalendarVisibility.tone !== "clear"
+            ? {
+                eyebrow: economicCalendarVisibility.providerLabel,
+                stateLabel: economicCalendarVisibility.stateLabel,
+                title: nextHighImpactEvent.title,
+                time: formatEconomicEventTimeNoTz(nextHighImpactEvent.startTime, displayTimeZone),
+              }
+            : undefined,
         upcomingEventNote:
-          economicCalendarVisibility.tone === "clear"
+          !nextHighImpactEvent && economicCalendarVisibility.tone === "clear"
             ? `${economicCalendarVisibility.providerLabel}: ${economicCalendarVisibility.stateLabel}.`
-            : `${economicCalendarVisibility.providerLabel}: ${economicCalendarVisibility.stateLabel}. ${economicCalendarVisibility.detail}`,
+            : undefined,
       }
     : null;
+
   const telegramAccess = evaluateTelegramAccess({
     subscriptionStatus: user.subscriptionStatus,
     trialEndsAt: user.trialEndsAt,
     onboardingComplete,
     telegramConnected,
+    email: currentUser.email,
   });
 
   const telegramBotUsername =
     process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? null;
-  const telegramBotLink = telegramBotUsername
-    ? `https://t.me/${telegramBotUsername}`
-    : null;
+  const telegramBotLink = telegramBotUsername ? `https://t.me/${telegramBotUsername}` : null;
+
+  const violationFeed = buildViolationFeed(
+    buildRuleEngineInputFromGuardianSnapshot(guardian, {
+      sessionStarted: todaySessionState.sessionStarted,
+      sessionEnded: todaySessionState.sessionEnded,
+      todaySessionStateKind: todaySessionState.kind,
+      preNewsPolicy: economicCalendarPolicy.isActive
+        ? {
+            isActive: economicCalendarPolicy.isActive,
+            mode: economicCalendarPolicy.policy.mode,
+            message: economicCalendarPolicy.message,
+          }
+        : null,
+    }),
+  );
+
   const todayActivityTimeline = buildTodayActivityTimeline({
     sessionStart: todayGuardianSessionStart,
     guardian,
     sessionEvents: todaySessionEvents,
   });
+
+  const violationActivityItems = buildViolationActivityItems(violationFeed);
+  const mergedActivityTimeline = [
+    ...todayActivityTimeline,
+    ...violationActivityItems,
+  ].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+
+  const dashboardNotices = [
+    ...violationFeed.warningViolations.filter(
+      (v) =>
+        v.ruleId !== "guardian_disabled" &&
+        v.ruleId !== "session_not_started" &&
+        !(v.ruleId === "no_trade_before_major_news" && !todaySessionState.sessionStarted),
+    ),
+  ];
+
   const postSessionReview = buildPostSessionReview({
     session: todayGuardianSessionStart,
     summary: todaySessionSummary,
-    activityItems: todayActivityTimeline,
+    activityItems: mergedActivityTimeline,
     guardian,
+    violationFeed,
   });
+
   const isSessionEnded = todaySessionState.sessionEnded;
   const isSessionActive =
     todaySessionState.kind === "READY_TO_TRADE" &&
     todaySessionState.sessionStarted &&
     !todaySessionState.sessionEnded;
-  const showPremarketReadiness = Boolean(premarketReadiness);
+
+  const showPremarketReadiness =
+    Boolean(premarketReadiness) &&
+    todaySessionState.kind !== "GUARDIAN_DISABLED" &&
+    todaySessionState.kind !== "RESET_PENDING";
+
   const activityTitle = isSessionEnded ? "Today activity recap" : "Today activity";
   const activityDescription = isSessionEnded
     ? "The sequence that led into the close."
@@ -186,9 +228,10 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      eyebrow="Dashboard"
-      title="Your trading coach account."
-      description="Move through the day in one place: get ready, manage the live session, and close it cleanly."
+      eyebrow="RISK COMMAND CENTER"
+      title="All accounts at a glance."
+      description="Status, stop budget, trades used, and connection mode for every account — grouped by prop firm."
+      compactHero={noAccounts}
       actions={
         <DashboardActions
           telegramConnected={telegramConnected}
@@ -196,273 +239,158 @@ export default async function DashboardPage() {
         />
       }
     >
-      <div className="grid gap-6">
-        <div className="grid gap-4">
-          {showPremarketReadiness ? (
-            <PremarketReadinessPanel readiness={premarketReadinessWithEvent!} />
-          ) : null}
-          <TodaySessionPanel
-            sessionState={todaySessionState}
-            additionalTriggeredRulesCount={guardianAdditionalRulesCount}
-            telegramAccess={telegramAccess}
-            telegramBotLink={telegramBotLink}
-            displayTimeZone={displayTimeZone}
-          />
+      <div className="grid min-w-0 gap-8">
+
+        {/* ── Interval auto-refresh — keeps data live while tab is open ──────── */}
+        {/* Only active when there are real broker accounts (not the demo view). */}
+        {hasBrokerAccount && <DashboardAutoRefresh />}
+
+        {/* ── One-shot auto-sync for accounts that were stale at page load ───── */}
+        {/* Connection-level sync runs discovery first (marks missing accounts). */}
+        {(() => {
+          const staleAccounts = commandCenter.accounts.filter(
+            (a) => a.platform === "tradovate" && needsSync(a.lastSyncAt),
+          );
+          const staleConnectionIds = [
+            ...new Set(
+              staleAccounts
+                .filter((a) => a.brokerConnectionId != null)
+                .map((a) => a.brokerConnectionId!),
+            ),
+          ];
+          const staleAccountIds = staleAccounts
+            .filter((a) => a.brokerConnectionId == null)
+            .map((a) => a.id);
+          return staleConnectionIds.length > 0 || staleAccountIds.length > 0 ? (
+            <AutoSync staleConnectionIds={staleConnectionIds} staleAccountIds={staleAccountIds} />
+          ) : null;
+        })()}
+
+        {/* ── Command center — real data, or demo preview when no accounts ──── */}
+        <div className="grid gap-3">
+          {noAccounts ? (
+            <>
+              <div className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50/60 px-4 py-2.5 text-xs text-sky-800">
+                <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
+                <span>
+                  <span className="font-semibold">Dashboard preview · </span>
+                  Sample accounts only. These are not live broker accounts and the balances are not real.
+                  Connect a broker to replace this with live account data.
+                </span>
+              </div>
+              <SummaryStrip summary={DEMO_COMMAND_CENTER_DATA.summary} />
+              <CommandCenter data={DEMO_COMMAND_CENTER_DATA} />
+            </>
+          ) : (
+            <>
+              <SummaryStrip summary={commandCenter.summary} />
+              <CommandCenter data={commandCenter} />
+            </>
+          )}
         </div>
 
-        <EconomicEventsPanel
-          events={economicCalendarSnapshot.events}
-          providerLabel={economicCalendarVisibility.providerLabel}
-          sourceLabel={economicCalendarVisibility.sourceLabel}
-          scenarioLabel={economicCalendarVisibility.scenarioLabel}
-          timeZone={displayTimeZone}
-        />
-
-        {postSessionReview ? (
-          <div className="grid gap-4">
-            <PostSessionReviewPanel
-              review={postSessionReview}
-              timeZone={displayTimeZone}
-            />
-            <TodayActivityTimeline
-              items={todayActivityTimeline}
-              title={activityTitle}
-              description={activityDescription}
-              timeZone={displayTimeZone}
-            />
-          </div>
-        ) : (
-          <TodayActivityTimeline
-            items={todayActivityTimeline}
-            title={activityTitle}
-            description={activityDescription}
-            timeZone={displayTimeZone}
-          />
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <SectionCard title="Account" description="Authenticated website account details.">
-            <dl className="grid gap-4 text-sm text-stone-700">
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Email
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">{user.email}</dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Role
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">{user.role}</dd>
-              </div>
-            </dl>
-          </SectionCard>
-
-          <SectionCard
-            title="Access status"
-            description="Your trial and subscription state determines dashboard and bot availability."
-          >
-            <dl className="grid gap-4 text-sm text-stone-700">
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Subscription status
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {user.subscriptionStatus}
-                </dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Trial started
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {formatDate(user.trialStartedAt, displayTimeZone)}
-                </dd>
-              </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Trial ends
-                </dt>
-                <dd className="mt-1 text-base font-medium text-stone-950">
-                  {formatDate(user.trialEndsAt, displayTimeZone)}
-                </dd>
-              </div>
-              <div
-                className={`rounded-2xl px-4 py-3 ${
-                  trialActive
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "bg-amber-50 text-amber-900"
-                }`}
-              >
-                <dt className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-                  Trial active
-                </dt>
-                <dd className="mt-1 text-base font-medium">
-                  {trialActive ? "Yes, trial access is active." : "No, trial access has ended."}
-                </dd>
-              </div>
-            </dl>
-          </SectionCard>
-
-          <SectionCard
-            title="Onboarding status"
-            description="Core profile status for the coaching account."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              <p className="font-medium text-stone-950">
-                {onboardingComplete
-                  ? "Onboarding profile is in place."
-                  : "Onboarding is not complete yet."}
-              </p>
-              {!onboardingComplete ? (
-                <p className="mt-3 text-sm text-stone-600">
-                  Finish onboarding here to unlock the day’s session flow.
-                </p>
-              ) : null}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Telegram status"
-            description="Connection status for the mental coach bot."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              <p className="font-medium text-stone-950">
-                {telegramAccess.dashboardState === "not_connected"
-                  ? "Telegram is not connected yet."
-                  : telegramAccess.dashboardState === "connected"
-                    ? "Telegram is connected and bot access is active."
-                    : telegramAccess.dashboardState === "connected_onboarding_incomplete"
-                      ? "Telegram is connected, but onboarding is still needed."
-                      : "Telegram is connected, but account access is inactive."}
-              </p>
-              {telegramAccess.dashboardState === "connected" ? (
-                <p className="mt-2 text-stone-600">
-                  {user.telegramConnection?.telegramUsername
-                    ? `Connected as @${user.telegramConnection.telegramUsername}`
-                    : `Connected on ${formatDate(user.telegramConnection?.connectedAt ?? null, displayTimeZone)}`}
-                </p>
-              ) : telegramAccess.dashboardState === "connected_onboarding_incomplete" ? (
-                <p className="mt-2 text-stone-600">
-                  Finish onboarding for the bot to start coaching you.
-                </p>
-              ) : (
-                <p className="mt-2 text-stone-600">
-                  Connect Telegram to continue the session flow in the coach bot.
-                </p>
-              )}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Trading Guardian"
-            description="Supporting Guardian context for the session flow."
-          >
-            <div className="grid gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-stone-50 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Guardian
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    {guardian.evaluation.guardianActive ? "Active" : "Inactive"}
-                  </p>
-                  <p className="mt-2 text-sm text-stone-600">
-                    Connection: {guardian.evaluation.connectionLabel}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-4 text-sm text-stone-700">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Guardian read
-                  </p>
-                  <p className="mt-2 font-medium text-stone-950">
-                    {todaySessionState.kind === "ONBOARDING_REQUIRED"
-                      ? "Guardian is set up and waiting for onboarding to complete."
-                      : todaySessionState.sessionEnded
-                        ? "This Guardian day has been ended from the dashboard."
-                        : todaySessionState.sessionStarted
-                          ? "The session is active and Guardian is tracking it."
-                          : todaySessionState.kind === "READY_TO_TRADE"
-                            ? "Guardian is ready and limits are enforcing the session."
-                            : todaySessionState.kind === "GUARDIAN_DISABLED"
-                            ? "Guardian is off, so session limits are not enforcing the day."
-                            : "Guardian has closed the session for today."}
-                  </p>
-                </div>
-              </div>
-
+        {/* ── State A: No accounts — setup prompt ───────────────────────────── */}
+        {noAccounts && (
+          <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+              Getting started
+            </p>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+              Connect your first trading account.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+              Guardrail starts working once it can read account activity. Connect Tradovate to
+              monitor daily loss, trades used, account status, and rule breaches.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <Link
-                href="/guardian"
-                className="inline-flex w-fit rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-900"
+                href="/accounts/connect/tradovate"
+                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
               >
-                Open Guardian
+                Connect Tradovate
+              </Link>
+              <Link
+                href="/rules"
+                className="rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-500 transition hover:border-stone-400 hover:text-stone-700"
+              >
+                Set up rules first
               </Link>
             </div>
-          </SectionCard>
+          </section>
+        )}
 
-          <SectionCard
-            title="Trader context"
-            description="Short-term session signals that support the main Guardian flow."
-          >
-            <div className="rounded-2xl bg-stone-50 px-4 py-4 text-sm text-stone-700">
-              {guardian.evaluation.lockoutActive ? (
-                <div className="mb-4 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-700">
-                  <p className="font-medium text-stone-950">
-                    Trading permission is already set by Today Session.
-                  </p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    These metrics are supporting session context, not the primary flow.
-                  </p>
-                </div>
-              ) : null}
-              <p className="font-medium text-stone-950">
-                Current state: {humanizeTraderState(user.traderState?.currentState ?? "NONE")}
-              </p>
-              <p className="mt-2 text-stone-600">
-                {user.traderState?.stateNotes
-                  ? user.traderState.stateNotes
-                  : "No live state is active right now."}
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Cooldown
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {liveStateFlags.cooldownActive ? "Active" : "Not active"}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Until {formatDate(user.traderState?.cooldownUntil ?? null, displayTimeZone)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Recent loss streak
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {user.traderState?.recentLossStreak ?? 0}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Updated {formatDate(user.traderState?.lastStateAt ?? null, displayTimeZone)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Events today
-                  </p>
-                  <p className="mt-1 font-medium text-stone-950">
-                    {todaySessionSummary.eventCount}
-                  </p>
-                  <p className="mt-1 text-stone-600">
-                    Distress moments: {todaySessionSummary.distressCount}
-                  </p>
-                </div>
-              </div>
+        {/* ── State B: Broker-connected — configuration nav only ────────────── */}
+        {hasBrokerAccount && (
+          <div className="grid gap-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+              Configuration
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NavCard
+                href="/rules"
+                title="Trading Plan"
+                description="Set or edit account risk rules."
+              />
+              <NavCard
+                href="/alerts"
+                title="Alerts"
+                description="Configure Telegram and rule breach alerts."
+              />
             </div>
-          </SectionCard>
-        </div>
+          </div>
+        )}
+
+
       </div>
     </AppShell>
+  );
+}
+
+// ── Helper components ──────────────────────────────────────────────────────────
+
+function GuardianPausedPanel() {
+  return (
+    <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-4 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
+      <span className="inline-flex rounded-full bg-stone-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white">
+        Paused
+      </span>
+      <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+        Protection is paused.
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+        Your rules are saved. Enable protection before the session starts.
+      </p>
+      <div className="mt-4">
+        <a
+          href="/rules#guardian-toggle"
+          className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        >
+          Enable protection
+        </a>
+      </div>
+    </section>
+  );
+}
+
+function NavCard({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 px-3 py-2 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
+    >
+      <p className="text-sm font-semibold text-stone-950">{title}</p>
+      <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
+      <p className="mt-2 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">
+        →
+      </p>
+    </Link>
   );
 }

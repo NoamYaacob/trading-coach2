@@ -1,28 +1,54 @@
 import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { TraderCurrentState } from "@prisma/client";
 
-import { buildCoachContext, generateCoachReply } from "@/lib/coach";
-import { getTelegramQuickActionKeyboard } from "@/lib/coach-actions";
+import {
+  isAICoachEnabled,
+  EMOTIONAL_ACTION_IDS,
+  STRUCTURED_COACHING_ACTION_IDS,
+  detectConversationMode,
+} from "@/lib/ai-coach";
+import { generateCoachReply } from "@/lib/coach-brain";
+import type { CoachBrainInput } from "@/lib/coach-brain";
+import { isSignOffMessage, endsWithSignOff } from "@/lib/coach-brain/sign-off-detector";
+import { filterActionableInterventions } from "@/lib/intervention-engine";
+import type { InterventionEvent } from "@/lib/intervention-engine";
+import type { CoachIntent } from "@/lib/coach";
+import {
+  findActionByLocaleText,
+  getLocaleReplyForQuickAction,
+  getTelegramQuickActionKeyboard,
+} from "@/lib/coach-actions";
 import { prisma } from "@/lib/db";
+import { getLocale } from "@/lib/i18n";
+import type { BotLocale } from "@/lib/i18n";
 import {
   deriveTodaySessionState,
   getGuardianSnapshot,
   getTodayGuardianSessionStart,
 } from "@/lib/guardian";
-import { getRecentSessionContext, logCoachEvent } from "@/lib/session-log";
+import type { GuardianSnapshot } from "@/lib/guardian";
+import {
+  buildRuleEngineInputFromGuardianSnapshot,
+  buildViolationFeed,
+} from "@/lib/rule-engine";
+import type { ViolationFeed } from "@/lib/rule-engine";
+import { getRecentCoachingExchanges, logCoachEvent } from "@/lib/session-log";
 import { evaluateTelegramAccess } from "@/lib/telegram-access";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
   getSelectedEconomicCalendarSnapshot,
   getCurrentPreNewsPolicy,
-  getNextHighImpactEconomicEvent,
   isInsidePreNewsWarningWindow,
 } from "@/lib/economic-calendar";
 import {
+  deriveShortLivedCoachingFlags,
   deriveTraderStateUpdate,
   getCurrentTraderState,
   setCurrentTraderState,
 } from "@/lib/trader-state";
+import { getMarketStatus } from "@/lib/market-hours";
+import { getTradingPermission } from "@/lib/trading-status";
 
 type TelegramWebhookPayload = {
   message?: {
@@ -38,12 +64,12 @@ type TelegramWebhookPayload = {
   startToken?: string;
 };
 
-async function replyToTelegram(chatId: string, text: string) {
+async function replyToTelegram(chatId: string, text: string, locale: BotLocale) {
   await sendTelegramMessage(chatId, text, {
     replyMarkup: {
-      keyboard: getTelegramQuickActionKeyboard(),
+      keyboard: getTelegramQuickActionKeyboard(locale),
       resize_keyboard: true,
-      input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
+      input_field_placeholder: locale.system.inputPlaceholder,
     },
   });
   return NextResponse.json({ ok: true });
@@ -56,6 +82,7 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
       user: {
         select: {
           id: true,
+          email: true,
           subscriptionStatus: true,
           trialEndsAt: true,
           traderProfile: {
@@ -63,6 +90,7 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
               id: true,
               primaryMarket: true,
               tradingStyle: true,
+              timezone: true,
             },
           },
           riskRules: {
@@ -76,12 +104,19 @@ async function loadLinkedUserByTelegramUserId(telegramUserId: string) {
           },
           mentalProfile: {
             select: {
-              primaryChallenge: true,
-              tiltTrigger: true,
-              tiltThought: true,
               coachingTone: true,
               interruptionStyle: true,
               responseStyle: true,
+              primaryChallenge: true,
+              tiltTrigger: true,
+              tiltThought: true,
+              tradingWhy: true,
+              tradingGoal: true,
+              groundingReminder: true,
+              preferredAddress: true,
+              disciplineBreakPattern: true,
+              whatHelpsRefocus: true,
+              reminderAnchors: true,
             },
           },
           coachingPreferences: true,
@@ -112,30 +147,29 @@ async function connectTelegramAccount(params: {
       user: {
         select: {
           id: true,
+          email: true,
           subscriptionStatus: true,
           trialEndsAt: true,
           traderProfile: {
             select: { id: true },
+          },
+          coachingPreferences: {
+            select: { preferredLanguage: true },
           },
         },
       },
     },
   });
 
-  if (!linkToken || linkToken.usedAt || linkToken.expiresAt < new Date()) {
-    await sendTelegramMessage(
-      params.telegramChatId,
-      "This link is invalid or expired. Please create a fresh Telegram connection link from your website dashboard.",
-      {
-        replyMarkup: {
-          keyboard: getTelegramQuickActionKeyboard(),
-          resize_keyboard: true,
-          input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
-        },
-      },
-    );
+  if (linkToken?.usedAt) {
+    // Token already consumed — connection was created on a previous delivery.
+    // Return 200 silently so Telegram stops retrying this update.
+    return NextResponse.json({ ok: true });
+  }
 
-    return NextResponse.json({ ok: false }, { status: 400 });
+  if (!linkToken || linkToken.expiresAt < new Date()) {
+    const defaultLocale = getLocale();
+    return replyToTelegram(params.telegramChatId, defaultLocale.system.invalidLink, defaultLocale);
   }
 
   await prisma.$transaction([
@@ -166,40 +200,121 @@ async function connectTelegramAccount(params: {
     trialEndsAt: linkToken.user.trialEndsAt,
     onboardingComplete: Boolean(linkToken.user.traderProfile),
     telegramConnected: true,
+    email: linkToken.user.email,
   });
+
+  const connectLocale = getLocale(linkToken.user.coachingPreferences?.preferredLanguage);
 
   if (!linkToken.user.traderProfile) {
     return replyToTelegram(
       params.telegramChatId,
-      "Telegram connected successfully. Complete onboarding on the website before using the coach.",
+      connectLocale.system.connectSuccessIncomplete,
+      connectLocale,
     );
   }
 
   if (!access.accessActive) {
     return replyToTelegram(
       params.telegramChatId,
-      "Telegram connected successfully, but access is inactive. You need an active trial or plan to use the coach.",
+      connectLocale.system.connectSuccessNoAccess,
+      connectLocale,
     );
   }
 
   return replyToTelegram(
     params.telegramChatId,
-    "Telegram connected successfully. Bot coaching access is active.",
+    connectLocale.system.connectSuccess,
+    connectLocale,
   );
 }
 
+function deriveInterventionAlertContext(params: {
+  violationFeed: ViolationFeed;
+  currentState: string;
+  guardian: GuardianSnapshot;
+  tradingGoal: string | null;
+  wantsGoalReminders: boolean;
+}): string | null {
+  const events: InterventionEvent[] = [];
+
+  for (const v of params.violationFeed.warningViolations) {
+    if (v.ruleId === "max_daily_loss" && params.guardian.profile.maxDailyLoss) {
+      const maxLoss = parseFloat(String(params.guardian.profile.maxDailyLoss));
+      const todayPnL = params.guardian.evaluation.todayPnL;
+      const used = Math.abs(Math.min(todayPnL, 0));
+      const remaining = Math.max(0, maxLoss - used);
+      const pctUsed = maxLoss > 0 ? used / maxLoss : 0;
+      events.push({ type: "near_daily_loss_limit", pctUsed, remaining });
+    } else if (v.ruleId === "stop_after_consecutive_losses" && params.guardian.profile.stopAfterConsecutiveLosses) {
+      events.push({
+        type: "consecutive_losses_warning",
+        streak: params.guardian.evaluation.consecutiveLosses,
+        limit: params.guardian.profile.stopAfterConsecutiveLosses,
+      });
+    }
+  }
+
+  const state = params.currentState.toLowerCase();
+  if (state.includes("revenge") || state.includes("tilt") || state.includes("out_of_control")) {
+    events.push({ type: "revenge_trading_signal", traderState: params.currentState });
+  }
+
+  if (events.length === 0) return null;
+
+  const results = filterActionableInterventions(events);
+  if (results.length === 0) return null;
+
+  const top = results[0];
+  if (top.urgency === "low") return null;
+
+  let context = top.coachingPrompt;
+  if (params.wantsGoalReminders && params.tradingGoal && (top.urgency === "high" || top.urgency === "critical")) {
+    context += ` (Their stated goal: "${params.tradingGoal}" — surface it only if it genuinely strengthens this.)`;
+  }
+  return context;
+}
+
+function deriveLogIntent(actionId: string | null, rawText: string): CoachIntent {
+  if (actionId) {
+    if (actionId === "check-in") return "check_in";
+    if (actionId === "day-summary") return "day_summary";
+    if (actionId === "rule-limits" || actionId === "remaining") return "rule_question";
+    return "emotional_distress";
+  }
+  if (!rawText) return "check_in";
+  return "generic_coaching";
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
 export async function POST(request: Request) {
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
+    if (!timingSafeStringEqual(provided, webhookSecret)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail closed: reject all webhook requests in production when the secret
+    // is not configured. Set TELEGRAM_WEBHOOK_SECRET and pass the same value
+    // to Telegram's setWebhook call to enable the webhook.
+    return NextResponse.json({ error: "webhook_not_configured" }, { status: 403 });
+  }
+
   const payload = (await request.json()) as TelegramWebhookPayload;
   const rawText = payload.message?.text?.trim() ?? "";
-  const token = payload.startToken ?? rawText.replace("/start ", "").trim();
+  const startMatch = rawText.match(/^\/start\s+(\S+)/);
+  const token = payload.startToken ?? startMatch?.[1] ?? "";
   const telegramUserId = payload.message?.from?.id;
   const telegramChatId = payload.message?.chat?.id;
 
   if (!telegramUserId || !telegramChatId) {
-    return NextResponse.json(
-      { ok: false, error: "telegram identifiers are required" },
-      { status: 400 },
-    );
+    // Non-message update type (channel post, poll, etc.) — acknowledge and ignore.
+    return NextResponse.json({ ok: true });
   }
 
   const chatId = String(telegramChatId);
@@ -213,34 +328,35 @@ export async function POST(request: Request) {
     });
   }
 
+  // /start without a token — not yet linked or just starting the bot fresh
+  if (rawText === "/start") {
+    const defaultLocale = getLocale();
+    return replyToTelegram(chatId, defaultLocale.commands.welcome, defaultLocale);
+  }
+
   const connection = await loadLinkedUserByTelegramUserId(String(telegramUserId));
 
   if (!connection) {
-    return replyToTelegram(
-      chatId,
-      "This Telegram account is not linked yet. Please connect Telegram from your website dashboard first.",
-    );
+    const defaultLocale = getLocale();
+    return replyToTelegram(chatId, defaultLocale.system.notLinked, defaultLocale);
   }
+
+  const locale = getLocale(connection.user.coachingPreferences?.preferredLanguage);
 
   const access = evaluateTelegramAccess({
     subscriptionStatus: connection.user.subscriptionStatus,
     trialEndsAt: connection.user.trialEndsAt,
     onboardingComplete: Boolean(connection.user.traderProfile),
     telegramConnected: true,
+    email: connection.user.email,
   });
 
   if (!connection.user.traderProfile) {
-    return replyToTelegram(
-      chatId,
-      "Your Telegram account is connected, but onboarding is incomplete. Please complete onboarding on the website first.",
-    );
+    return replyToTelegram(chatId, locale.system.onboardingIncomplete, locale);
   }
 
   if (!access.accessActive) {
-    return replyToTelegram(
-      chatId,
-      "Your coaching access is inactive. Please start an active trial or plan on the website to continue.",
-    );
+    return replyToTelegram(chatId, locale.system.accessInactive, locale);
   }
 
   await prisma.telegramConnection.update({
@@ -252,7 +368,33 @@ export async function POST(request: Request) {
     },
   });
 
-  const stateUpdate = rawText ? deriveTraderStateUpdate(rawText) : null;
+  // Slash command shortcuts — resolve to canonical keyboard text so the rest
+  // of the pipeline handles them identically to button taps.
+  const SLASH_COMMAND_OVERRIDES: Record<string, string> = {
+    "/checkin": locale.keyboard.checkIn,
+    "/review": locale.keyboard.daySummary,
+    "/limits": locale.keyboard.ruleLimits,
+  };
+
+  if (rawText === "/help") {
+    return replyToTelegram(chatId, locale.commands.help, locale);
+  }
+
+  if (rawText === "/menu") {
+    return replyToTelegram(chatId, locale.commands.welcome, locale);
+  }
+
+  // Unknown slash commands (not /start, /help, /menu, or our shortcuts)
+  if (rawText.startsWith("/") && !SLASH_COMMAND_OVERRIDES[rawText]) {
+    return replyToTelegram(chatId, locale.commands.unknownCommand, locale);
+  }
+
+  const effectiveText = SLASH_COMMAND_OVERRIDES[rawText] ?? rawText;
+
+  const matchedAction = effectiveText ? findActionByLocaleText(effectiveText, locale) : null;
+  const canonicalText = matchedAction?.message ?? effectiveText;
+
+  const stateUpdate = canonicalText ? deriveTraderStateUpdate(canonicalText) : null;
 
   const activeTraderState = stateUpdate
     ? (
@@ -263,103 +405,206 @@ export async function POST(request: Request) {
         )
       ).traderState
     : (await getCurrentTraderState(connection.user.id)).traderState;
-  const [sessionContext, guardian, todayGuardianSession, economicCalendarSnapshot] = await Promise.all([
-    getRecentSessionContext(connection.user.id),
+
+  const flags = deriveShortLivedCoachingFlags(activeTraderState);
+
+  const isFreeText = effectiveText.length > 0 && matchedAction === null && !effectiveText.startsWith("/");
+  const isSignOff = isFreeText && (isSignOffMessage(effectiveText) || endsWithSignOff(effectiveText));
+  const [guardian, todayGuardianSession, economicCalendarSnapshot, recentCoachingExchanges] = await Promise.all([
     getGuardianSnapshot(connection.user.id),
     getTodayGuardianSessionStart(connection.user.id),
     getSelectedEconomicCalendarSnapshot(connection.user.coachingPreferences),
+    isAICoachEnabled() ? getRecentCoachingExchanges(connection.user.id, 3) : Promise.resolve([]),
   ]);
+
   const todaySessionState = deriveTodaySessionState(guardian, {
     onboardingComplete: Boolean(connection.user.traderProfile),
     sessionStart: todayGuardianSession,
   });
 
-  const nextHighImpactEconomicEvent = getNextHighImpactEconomicEvent(
-    economicCalendarSnapshot,
-  );
   const economicCalendarPolicy = getCurrentPreNewsPolicy(economicCalendarSnapshot);
-  const coachContext = buildCoachContext({
-    traderProfile: connection.user.traderProfile,
-    riskRules: connection.user.riskRules,
-    mentalProfile: connection.user.mentalProfile,
-    coachingPreferences: connection.user.coachingPreferences,
-    traderState: activeTraderState,
-    todaySessionSummary: sessionContext.summary,
-    recentSessionEvents: sessionContext.recentEvents.map((event) => ({
-      message: event.message,
-      detectedIntent: event.detectedIntent,
-      traderState: event.traderState,
-      createdAt: event.createdAt,
-    })),
-    guardian: {
-      guardianEnabled: guardian.evaluation.guardianActive,
-      currentLockoutActive: guardian.evaluation.lockoutActive,
-      primaryReason: guardian.evaluation.primaryReason,
-      primaryReasonLabel: guardian.evaluation.primaryReasonLabel,
-      triggeredRules: guardian.evaluation.triggeredRules,
-      triggeredRuleLabels: guardian.evaluation.triggeredRuleLabels,
-      actionGuidance: guardian.evaluation.actionGuidance,
-      resetMode: guardian.evaluation.resetMode,
-      resetTimezone: guardian.evaluation.resetTimezone,
-      nextAllowedResetAt: guardian.evaluation.nextAllowedResetAt,
-      lastResetAt: guardian.evaluation.lastResetAt,
-      resetAllowedNow: guardian.evaluation.resetAllowedNow,
-    },
-    economicCalendar: {
-      nextHighImpactEvent: nextHighImpactEconomicEvent,
-      hasUpcomingHighImpactEvent: Boolean(nextHighImpactEconomicEvent),
-      isInsidePreNewsWarningWindow: isInsidePreNewsWarningWindow(
-        economicCalendarSnapshot,
-      ),
-      preNewsPolicy: economicCalendarPolicy,
-    },
-    sessionLifecycle: {
-      todaySessionStateKind: todaySessionState.kind,
+
+  const violationFeed = buildViolationFeed(
+    buildRuleEngineInputFromGuardianSnapshot(guardian, {
       sessionStarted: todaySessionState.sessionStarted,
-      sessionStartedAt: todaySessionState.sessionStartedAt,
       sessionEnded: todaySessionState.sessionEnded,
-      sessionEndedAt: todaySessionState.sessionEndedAt,
-      resetTimezone: todaySessionState.resetTimezone,
-    },
+      todaySessionStateKind: todaySessionState.kind,
+      preNewsPolicy: economicCalendarPolicy.isActive
+        ? {
+            isActive: economicCalendarPolicy.isActive,
+            mode: economicCalendarPolicy.policy.mode,
+            message: economicCalendarPolicy.message,
+          }
+        : null,
+    }),
+  );
+
+  // rule-limits and remaining use meta mode (factual); check-in/day-summary use coaching mode via EMOTIONAL_ACTION_IDS
+  const rawConversationMode = detectConversationMode({
+    message: effectiveText,
+    hasEmotionalAction: matchedAction !== null && EMOTIONAL_ACTION_IDS.has(matchedAction.id),
+    guardianLocked: guardian.evaluation.lockoutActive,
+  });
+  const isMetaAction = matchedAction?.id === "rule-limits" || matchedAction?.id === "remaining";
+  const conversationMode = isMetaAction ? "meta" : rawConversationMode;
+
+  const isCoachingMode = conversationMode === "coaching";
+
+  const wantsGoalReminders = connection.user.coachingPreferences?.wantsGoalReminders ?? true;
+  const wantsToughInterventionWhenTilting = connection.user.coachingPreferences?.wantsToughInterventionWhenTilting ?? true;
+
+  // Build intervention alert context only for free-text coaching messages.
+  // Button presses already carry clear intent — stacking English context on top
+  // risks language leakage and creates duplicate/contradictory signals.
+  const interventionAlertContext = isCoachingMode && isFreeText
+    ? deriveInterventionAlertContext({
+        violationFeed,
+        currentState: String(flags.currentState),
+        guardian,
+        tradingGoal: connection.user.mentalProfile?.tradingGoal ?? null,
+        wantsGoalReminders,
+      })
+    : null;
+
+  const useAI =
+    isAICoachEnabled() &&
+    (isFreeText ||
+      (matchedAction !== null &&
+        (EMOTIONAL_ACTION_IDS.has(matchedAction.id) ||
+          STRUCTURED_COACHING_ACTION_IDS.has(matchedAction.id))) ||
+      guardian.evaluation.lockoutActive ||
+      violationFeed.hasBlockingViolation ||
+      flags.cooldownActive);
+
+  const marketStatus = getMarketStatus(
+    connection.user.traderProfile?.primaryMarket ?? null,
+    connection.user.traderProfile?.timezone ?? null,
+  );
+
+  const tradingPermission = getTradingPermission({
+    marketStatus,
+    violationFeed,
+    guardianLocked: guardian.evaluation.lockoutActive,
+    sessionEnded: todaySessionState.sessionEnded,
+    maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
+    todayTradesCount: guardian.evaluation.todayTradesCount,
+    maxDailyLoss: connection.user.riskRules?.maxDailyLoss
+      ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
+      : null,
+    todayPnL: guardian.evaluation.todayPnL,
+    stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
+    consecutiveLosses: guardian.evaluation.consecutiveLosses,
   });
 
-  const coachReply = generateCoachReply(rawText || "check in", coachContext);
-  const cooldownActive = Boolean(
-    activeTraderState?.needsCooldown &&
-      activeTraderState.cooldownUntil &&
-      activeTraderState.cooldownUntil > new Date(),
-  );
+  const coachBrainInput: CoachBrainInput = {
+    userId: connection.user.id,
+    message: effectiveText || (matchedAction ? canonicalText : "") || locale.keyboard.checkIn,
+    language: connection.user.coachingPreferences?.preferredLanguage ?? "he",
+    actionId: isSignOff ? "eod-summary" : (matchedAction?.id ?? null),
+    traderState: isCoachingMode ? String(flags.currentState) : "NONE",
+    rules: {
+      accountSize: connection.user.riskRules?.accountSize
+        ? parseFloat(String(connection.user.riskRules.accountSize))
+        : null,
+      maxDailyLoss: connection.user.riskRules?.maxDailyLoss
+        ? parseFloat(String(connection.user.riskRules.maxDailyLoss))
+        : null,
+      maxTradesPerDay: connection.user.riskRules?.maxTradesPerDay ?? null,
+      stopAfterLosses: connection.user.riskRules?.stopAfterLosses ?? null,
+    },
+    usage: {
+      todayPnL: guardian.evaluation.todayPnL,
+      todayTradesCount: guardian.evaluation.todayTradesCount,
+      consecutiveLosses: guardian.evaluation.consecutiveLosses,
+    },
+    coachingTone: connection.user.mentalProfile?.coachingTone ?? null,
+    preferredAddress: connection.user.mentalProfile?.preferredAddress ?? null,
+    responseStyle: connection.user.mentalProfile?.responseStyle ?? null,
+    tradingWhy: connection.user.mentalProfile?.tradingWhy ?? null,
+    tiltTrigger: connection.user.mentalProfile?.tiltTrigger ?? null,
+    reminderAnchors: connection.user.mentalProfile?.reminderAnchors ?? [],
+    recentContext: recentCoachingExchanges.slice(-2).map((e) => ({
+      userMessage: e.userMessage,
+      coachReply: e.coachReply,
+    })),
+    guardianLocked: guardian.evaluation.lockoutActive,
+    lockoutReason: guardian.evaluation.primaryReason,
+    cooldownActive: flags.cooldownActive,
+    hasBlockingViolation: violationFeed.hasBlockingViolation,
+    violationMessage: violationFeed.primaryViolation?.message ?? null,
+    sessionStarted: todaySessionState.sessionStarted,
+    sessionEnded: todaySessionState.sessionEnded,
+    alertContext: interventionAlertContext,
+    marketStatus,
+    tradingPermission,
+  };
+
+  const brainOutput = useAI ? await generateCoachReply(coachBrainInput) : null;
+  const aiReply = brainOutput?.reply ?? null;
+  const coachingMove = brainOutput?.coachingMove;
+
+  // Fallback priority: quick-action locale reply → state-derived reply → session-state reply → generic
+  const stateToActionId: Partial<Record<TraderCurrentState, string>> = {
+    [TraderCurrentState.FOMO]: "fomo",
+    [TraderCurrentState.REVENGE]: "revenge",
+    [TraderCurrentState.JUST_TOOK_LOSS]: "angry",
+    [TraderCurrentState.JUST_TOOK_TWO_LOSSES]: "out-of-control",
+    [TraderCurrentState.TILTED]: "out-of-control",
+    [TraderCurrentState.RESETTING]: "stop-me",
+    [TraderCurrentState.CALM]: "back-in-control",
+  };
+  const stateActionId = stateUpdate?.nextState
+    ? (stateToActionId[stateUpdate.nextState] ?? null)
+    : null;
+
+  const fallbackText =
+    (matchedAction && getLocaleReplyForQuickAction(matchedAction.id, locale)) ??
+    (stateActionId && getLocaleReplyForQuickAction(stateActionId, locale)) ??
+    (todaySessionState.sessionEnded ? locale.prompts.review : null) ??
+    (todaySessionState.sessionStarted ? locale.prompts.checkIn : locale.prompts.sessionNotStarted);
+
+  const replyText = aiReply ?? fallbackText;
+
   const loggedTraderState = stateUpdate
-    ? activeTraderState?.currentState ?? coachContext.currentState
+    ? (activeTraderState?.currentState ?? TraderCurrentState.NONE)
     : TraderCurrentState.NONE;
 
   await logCoachEvent({
     userId: connection.user.id,
     source: "telegram",
-    message: rawText || "check in",
-    detectedIntent: coachReply.intent,
-    coachMode: coachReply.mode,
+    message: effectiveText || locale.keyboard.checkIn,
+    detectedIntent: deriveLogIntent(matchedAction?.id ?? null, effectiveText),
+    coachMode: useAI ? "AI_COACH" : "RULE_BASED",
     traderState: loggedTraderState,
-    cooldownActive,
+    cooldownActive: flags.cooldownActive,
+    coachReply: replyText,
+    coachingMove,
     metadataJson: {
-      replyBehavior: coachReply.behavior,
-      stateSnapshot: activeTraderState?.currentState ?? coachContext.currentState,
+      aiReplyGenerated: aiReply !== null,
+      stateSnapshot: flags.currentState,
       guardianLockoutActive: guardian.evaluation.lockoutActive,
       guardianPrimaryReason: guardian.evaluation.primaryReason,
       guardianTriggeredRules: guardian.evaluation.triggeredRules,
       todaySessionState: todaySessionState.kind,
       sessionStarted: todaySessionState.sessionStarted,
       sessionEnded: todaySessionState.sessionEnded,
+      ruleViolations: {
+        hasBlockingViolation: violationFeed.hasBlockingViolation,
+        primaryViolation: violationFeed.primaryViolation
+          ? {
+              ruleId: violationFeed.primaryViolation.ruleId,
+              status: violationFeed.primaryViolation.status,
+              severity: violationFeed.primaryViolation.severity,
+              message: violationFeed.primaryViolation.message,
+            }
+          : null,
+        activeCount: violationFeed.activeViolations.length,
+        triggeredRules: violationFeed.triggeredViolations.map((v) => v.ruleId),
+        blockedRules: violationFeed.blockedViolations.map((v) => v.ruleId),
+        warningRules: violationFeed.warningViolations.map((v) => v.ruleId),
+      },
     },
   });
 
-  await sendTelegramMessage(chatId, coachReply.reply, {
-    replyMarkup: {
-      keyboard: getTelegramQuickActionKeyboard(),
-      resize_keyboard: true,
-      input_field_placeholder: "בחר פעולה מהירה או כתוב הודעה...",
-    },
-  });
-
-  return NextResponse.json({ ok: true });
+  return replyToTelegram(chatId, replyText, locale);
 }

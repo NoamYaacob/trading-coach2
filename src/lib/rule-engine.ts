@@ -1,0 +1,704 @@
+/**
+ * Rule Engine v1
+ *
+ * A shared evaluation layer for trader discipline rules.
+ * Returns normalized, structured results consumable by:
+ * - Dashboard (readiness / Guardian context)
+ * - Telegram coach (status replies + log metadata)
+ * - Today Activity (violation-derived items)
+ * - Post-Session Review (violation bullets)
+ *
+ * This is NOT a replacement for Guardian's control/enforcement layer.
+ * Guardian remains responsible for lockouts, resets, and persistence.
+ * This layer is purely evaluative and side-effect-free.
+ */
+
+import type { GuardianSnapshot } from "@/lib/guardian";
+import { isMaxPositionSizeBreached } from "./brokers/position-exposure.ts";
+
+// ─── Rule types ────────────────────────────────────────────────────────────────
+
+export type RuleType =
+  | "max_trades_per_day"
+  | "max_daily_loss"
+  | "daily_profit_target"
+  | "stop_after_consecutive_losses"
+  | "trading_day_disabled"
+  | "no_trade_before_major_news"
+  | "session_not_started"
+  | "session_closed"
+  | "guardian_disabled"
+  | "manual_rule_breach"
+  | "max_position_size";
+
+export type RuleStatus = "ok" | "warning" | "blocked" | "triggered";
+export type RuleSeverity = "low" | "medium" | "high" | "critical";
+
+// ─── Normalized output ─────────────────────────────────────────────────────────
+
+export type RuleResult = {
+  /** Stable identifier matching RuleType */
+  ruleId: RuleType;
+  ruleType: RuleType;
+  /** ok = within limits; warning = approaching / soft caution; blocked = hard stop (session/news); triggered = limit breached */
+  status: RuleStatus;
+  /** Technical description of why this status was set */
+  reason: string;
+  /** Short product-facing message */
+  message: string;
+  severity: RuleSeverity;
+  timestamp: Date;
+  /** Optional next step surfaced to the trader */
+  recommendedAction?: string;
+};
+
+// ─── Manual event signals ──────────────────────────────────────────────────────
+
+/**
+ * Derived signals from manually logged session events.
+ * Optional augmentation — rules degrade gracefully when absent.
+ */
+export type ManualEventSignals = {
+  /** Number of trade_opened + trade_closed events logged */
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  /** Current consecutive loss streak from the manual event sequence */
+  consecutiveLosses: number;
+  /** Net PnL from manual win/loss/pnl_update events; null when no PnL values were provided */
+  netPnL: number | null;
+  /** True if a rule_breach event was logged */
+  hasRuleBreach: boolean;
+  /** True if any trade_opened or trade_closed event was logged */
+  tradeActivityLogged: boolean;
+};
+
+// ─── Input ─────────────────────────────────────────────────────────────────────
+
+export type RuleEngineInput = {
+  guardianEnabled: boolean;
+  maxTradesPerDay: number | null;
+  todayTradesCount: number;
+  maxDailyLoss: number | null;
+  todayPnL: number;
+  /** Optional daily profit target. When set, reaching/exceeding it locks the account. */
+  dailyProfitTarget?: number | null;
+  stopAfterConsecutiveLosses: number | null;
+  consecutiveLosses: number;
+  /**
+   * Configured trading days as 3-letter codes: "MON"|"TUE"|"WED"|"THU"|"FRI".
+   * When set, today (derived from `now` in America/Chicago) must be in the list
+   * or trading is blocked for the day.
+   * null / empty array = no restriction.
+   */
+  tradingDays?: string[] | null;
+  sessionStarted: boolean;
+  sessionEnded: boolean;
+  /** TodaySessionStateKind from guardian.ts */
+  todaySessionStateKind: string;
+  preNewsPolicy?: {
+    isActive: boolean;
+    /** "HARD_BLOCK_MAJOR" | "SOFT_CAUTION" | "WARNING_ONLY" | "OFF" */
+    mode: string;
+    message?: string | null;
+  } | null;
+  /**
+   * Optional signals derived from manually logged trade events.
+   * When provided, the engine can use them to augment Guardian-sourced values.
+   * Rules that consume manual signals degrade gracefully when this is null.
+   */
+  manualSignals?: ManualEventSignals | null;
+  now?: Date;
+
+  // ── Max position size (standard-equivalent exposure) ────────────────────────
+  /**
+   * Configured max standard-equivalent contracts for this account.
+   * null = no rule configured → max_position_size rule is skipped.
+   */
+  maxContracts?: number | null;
+  /**
+   * Current total standard-equivalent exposure computed from live positions.
+   * null = positions unavailable or not yet fetched.
+   */
+  currentMiniEquivalentExposure?: number | null;
+  /**
+   * True when at least one open position is in a symbol Guardrail cannot
+   * classify. When true and maxContracts is set, the rule triggers to avoid
+   * silently passing an unverifiable breach.
+   */
+  hasUnsupportedPositions?: boolean | null;
+  /** Unsupported symbol names, populated when hasUnsupportedPositions is true. */
+  unsupportedSymbols?: string[] | null;
+};
+
+// ─── Violation feed ────────────────────────────────────────────────────────────
+
+export type ViolationFeed = {
+  /** All evaluated rule results (ok + non-ok) */
+  results: RuleResult[];
+  /** Results with status !== "ok" */
+  activeViolations: RuleResult[];
+  /** Results with status === "blocked" */
+  blockedViolations: RuleResult[];
+  /** Results with status === "triggered" (limit breached) */
+  triggeredViolations: RuleResult[];
+  /** Results with status === "warning" */
+  warningViolations: RuleResult[];
+  /** True if any rule is blocked or triggered */
+  hasBlockingViolation: boolean;
+  /** Highest-priority non-ok violation, or null if all ok */
+  primaryViolation: RuleResult | null;
+};
+
+// ─── CME day helper ────────────────────────────────────────────────────────────
+
+const CME_TIMEZONE = "America/Chicago";
+
+/**
+ * Returns the 3-letter weekday code for `date` in America/Chicago.
+ * "Monday" → "MON", "Tuesday" → "TUE", ..., "Sunday" → "SUN".
+ * Matches the codes stored in RiskRules.tradingDays.
+ */
+function cmeDayCode(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: CME_TIMEZONE, weekday: "long" })
+    .format(date)
+    .toUpperCase()
+    .slice(0, 3);
+}
+
+// ─── Internal helpers ──────────────────────────────────────────────────────────
+
+function severityOrder(severity: RuleSeverity): number {
+  switch (severity) {
+    case "critical":
+      return 4;
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+  }
+}
+
+function statusOrder(status: RuleStatus): number {
+  switch (status) {
+    case "triggered":
+      return 4;
+    case "blocked":
+      return 3;
+    case "warning":
+      return 2;
+    case "ok":
+      return 1;
+  }
+}
+
+// ─── Evaluation ────────────────────────────────────────────────────────────────
+
+/**
+ * Evaluate all v1 discipline rules against the provided input.
+ * Pure function — no DB calls, no side effects.
+ */
+export function evaluateRules(input: RuleEngineInput): RuleResult[] {
+  const now = input.now ?? new Date();
+  const results: RuleResult[] = [];
+
+  // ── guardian_disabled ───────────────────────────────────────────────────────
+  if (!input.guardianEnabled) {
+    results.push({
+      ruleId: "guardian_disabled",
+      ruleType: "guardian_disabled",
+      status: "warning",
+      reason: "Guardian is not enabled for this session.",
+      message: "Guardian is paused — rules are saved, but not monitoring this session.",
+      severity: "medium",
+      timestamp: now,
+      recommendedAction: "Enable Guardian before trading.",
+    });
+  } else {
+    results.push({
+      ruleId: "guardian_disabled",
+      ruleType: "guardian_disabled",
+      status: "ok",
+      reason: "Guardian is active.",
+      message: "Guardian is active.",
+      severity: "low",
+      timestamp: now,
+    });
+  }
+
+  // ── max_trades_per_day ──────────────────────────────────────────────────────
+  if (input.maxTradesPerDay !== null && input.maxTradesPerDay !== undefined) {
+    const manualTradeCount =
+      input.manualSignals !== null && input.manualSignals !== undefined
+        ? input.manualSignals.winCount + input.manualSignals.lossCount + input.manualSignals.tradeCount
+        : 0;
+    const effectiveTodayTradesCount = Math.max(input.todayTradesCount, manualTradeCount);
+    if (effectiveTodayTradesCount >= input.maxTradesPerDay) {
+      results.push({
+        ruleId: "max_trades_per_day",
+        ruleType: "max_trades_per_day",
+        status: "triggered",
+        reason: `Trade count ${effectiveTodayTradesCount} reached or exceeded limit of ${input.maxTradesPerDay}.`,
+        message: `Daily trade limit reached (${input.maxTradesPerDay}). No more entries today.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Stop. Do not enter any more trades today.",
+      });
+    } else if (
+      input.maxTradesPerDay > 1 &&
+      effectiveTodayTradesCount >= input.maxTradesPerDay - 1
+    ) {
+      results.push({
+        ruleId: "max_trades_per_day",
+        ruleType: "max_trades_per_day",
+        status: "warning",
+        reason: `Trade count ${effectiveTodayTradesCount} is one away from the limit of ${input.maxTradesPerDay}.`,
+        message: `One trade left before the daily limit (${input.maxTradesPerDay}).`,
+        severity: "medium",
+        timestamp: now,
+        recommendedAction: "Choose the next entry carefully.",
+      });
+    } else {
+      results.push({
+        ruleId: "max_trades_per_day",
+        ruleType: "max_trades_per_day",
+        status: "ok",
+        reason: `Trade count ${effectiveTodayTradesCount} is within limit of ${input.maxTradesPerDay}.`,
+        message: `${effectiveTodayTradesCount} of ${input.maxTradesPerDay} trades taken today.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  // ── max_daily_loss ──────────────────────────────────────────────────────────
+  if (input.maxDailyLoss !== null && input.maxDailyLoss !== undefined) {
+    // If manual PnL data is available, take the more negative of the two values.
+    // Guardian PnL is the authoritative enforcement source; manual signals augment it.
+    const effectivePnL =
+      input.manualSignals?.netPnL !== null && input.manualSignals?.netPnL !== undefined
+        ? Math.min(input.todayPnL, input.manualSignals.netPnL)
+        : input.todayPnL;
+
+    if (effectivePnL <= -input.maxDailyLoss) {
+      results.push({
+        ruleId: "max_daily_loss",
+        ruleType: "max_daily_loss",
+        status: "triggered",
+        reason: `Daily PnL ${effectivePnL} breached max daily loss limit of -${input.maxDailyLoss}.`,
+        message: `Daily loss limit hit (${input.maxDailyLoss}). Trading is stopped.`,
+        severity: "critical",
+        timestamp: now,
+        recommendedAction: "Stop completely. Wait for the reset window before resuming.",
+      });
+    } else {
+      const warningThreshold = input.maxDailyLoss * 0.8;
+      const approachingLimit =
+        effectivePnL < 0 && Math.abs(effectivePnL) >= warningThreshold;
+
+      results.push({
+        ruleId: "max_daily_loss",
+        ruleType: "max_daily_loss",
+        status: approachingLimit ? "warning" : "ok",
+        reason: approachingLimit
+          ? `Daily PnL ${effectivePnL} is approaching max daily loss of -${input.maxDailyLoss}.`
+          : `Daily PnL ${effectivePnL} is within max daily loss limit of -${input.maxDailyLoss}.`,
+        message: approachingLimit
+          ? `Approaching the daily loss limit. P&L: ${effectivePnL}, limit: -${input.maxDailyLoss}.`
+          : `Today's P&L: ${effectivePnL}. Limit is -${input.maxDailyLoss}.`,
+        severity: approachingLimit ? "high" : "low",
+        timestamp: now,
+        recommendedAction: approachingLimit
+          ? "Reduce size and consider stopping early."
+          : undefined,
+      });
+    }
+  }
+
+  // ── daily_profit_target ─────────────────────────────────────────────────────
+  if (input.dailyProfitTarget !== null && input.dailyProfitTarget !== undefined) {
+    const target = input.dailyProfitTarget;
+    if (input.todayPnL >= target) {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "triggered",
+        reason: `Daily P&L ${input.todayPnL} reached or exceeded profit target of ${target}.`,
+        message: `Daily profit target reached ($${target}). Trading locked for the rest of the session.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Stop trading. You have hit your daily profit goal.",
+      });
+    } else if (target > 0 && input.todayPnL >= target * 0.9) {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "warning",
+        reason: `Daily P&L ${input.todayPnL} is within 10% of profit target ${target}.`,
+        message: `Approaching daily profit target ($${target}). Trade carefully.`,
+        severity: "medium",
+        timestamp: now,
+        recommendedAction: "Consider scaling down — one bad trade could erase the day.",
+      });
+    } else {
+      results.push({
+        ruleId: "daily_profit_target",
+        ruleType: "daily_profit_target",
+        status: "ok",
+        reason: `Daily P&L ${input.todayPnL} is below profit target of ${target}.`,
+        message: `P&L: $${input.todayPnL}. Target: $${target}.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  // ── stop_after_consecutive_losses ───────────────────────────────────────────
+  if (
+    input.stopAfterConsecutiveLosses !== null &&
+    input.stopAfterConsecutiveLosses !== undefined
+  ) {
+    // Use the higher streak between Guardian status and manual event signals.
+    // Manual events may reflect a current streak not yet updated in Guardian status.
+    const effectiveConsecutiveLosses = Math.max(
+      input.consecutiveLosses,
+      input.manualSignals?.consecutiveLosses ?? 0,
+    );
+
+    if (effectiveConsecutiveLosses >= input.stopAfterConsecutiveLosses) {
+      results.push({
+        ruleId: "stop_after_consecutive_losses",
+        ruleType: "stop_after_consecutive_losses",
+        status: "triggered",
+        reason: `Consecutive losses ${effectiveConsecutiveLosses} reached limit of ${input.stopAfterConsecutiveLosses}.`,
+        message: `${effectiveConsecutiveLosses} consecutive losses — limit is ${input.stopAfterConsecutiveLosses}. Stop now.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Stop. Take a break before entering another trade.",
+      });
+    } else if (effectiveConsecutiveLosses > 0) {
+      results.push({
+        ruleId: "stop_after_consecutive_losses",
+        ruleType: "stop_after_consecutive_losses",
+        status: "warning",
+        reason: `${effectiveConsecutiveLosses} consecutive losses, limit is ${input.stopAfterConsecutiveLosses}.`,
+        message: `${effectiveConsecutiveLosses} consecutive losses. Limit is ${input.stopAfterConsecutiveLosses}.`,
+        severity: "medium",
+        timestamp: now,
+        recommendedAction: "Stay disciplined. One more loss will stop you.",
+      });
+    } else {
+      results.push({
+        ruleId: "stop_after_consecutive_losses",
+        ruleType: "stop_after_consecutive_losses",
+        status: "ok",
+        reason: "No consecutive losses.",
+        message: "No consecutive losses.",
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  // ── trading_day_disabled ────────────────────────────────────────────────────
+  if (input.tradingDays !== null && input.tradingDays !== undefined && input.tradingDays.length > 0) {
+    const today = cmeDayCode(now);
+    if (!input.tradingDays.includes(today)) {
+      results.push({
+        ruleId: "trading_day_disabled",
+        ruleType: "trading_day_disabled",
+        status: "blocked",
+        reason: `Today (${today}) is not in the configured trading days: ${input.tradingDays.join(", ")}.`,
+        message: `${today} is not a selected trading day. Trading is blocked for today.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "No trading today. Your plan only allows the selected days.",
+      });
+    } else {
+      results.push({
+        ruleId: "trading_day_disabled",
+        ruleType: "trading_day_disabled",
+        status: "ok",
+        reason: `Today (${today}) is in the configured trading days.`,
+        message: `${today} is a trading day.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  // ── no_trade_before_major_news ──────────────────────────────────────────────
+  if (input.preNewsPolicy?.isActive) {
+    const mode = input.preNewsPolicy.mode;
+
+    if (mode === "HARD_BLOCK_MAJOR") {
+      results.push({
+        ruleId: "no_trade_before_major_news",
+        ruleType: "no_trade_before_major_news",
+        status: "blocked",
+        reason: "Major economic event active. Trading blocked by pre-news policy.",
+        message:
+          input.preNewsPolicy.message ??
+          "Major economic event active — trading is blocked until the window closes.",
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Wait for the event window to close before trading.",
+      });
+    } else if (mode === "SOFT_CAUTION") {
+      results.push({
+        ruleId: "no_trade_before_major_news",
+        ruleType: "no_trade_before_major_news",
+        status: "warning",
+        reason: "Major economic event approaching. Caution mode active.",
+        message:
+          input.preNewsPolicy.message ??
+          "Major economic event approaching — proceed with caution.",
+        severity: "medium",
+        timestamp: now,
+        recommendedAction: "Keep position size small and have a clear plan.",
+      });
+    } else {
+      // WARNING_ONLY
+      results.push({
+        ruleId: "no_trade_before_major_news",
+        ruleType: "no_trade_before_major_news",
+        status: "warning",
+        reason: "Economic event nearby. Warning mode active.",
+        message:
+          input.preNewsPolicy.message ?? "Economic event nearby — stay alert.",
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  } else {
+    results.push({
+      ruleId: "no_trade_before_major_news",
+      ruleType: "no_trade_before_major_news",
+      status: "ok",
+      reason: "No active economic event policy.",
+      message: "No active economic event.",
+      severity: "low",
+      timestamp: now,
+    });
+  }
+
+  // ── session_not_started ─────────────────────────────────────────────────────
+  if (!input.sessionStarted && !input.sessionEnded) {
+    results.push({
+      ruleId: "session_not_started",
+      ruleType: "session_not_started",
+      status: "warning",
+      reason: "Trading session has not been started for today.",
+      message: "The daily session has not been started.",
+      severity: "low",
+      timestamp: now,
+      recommendedAction: "Start the session before trading.",
+    });
+  } else {
+    results.push({
+      ruleId: "session_not_started",
+      ruleType: "session_not_started",
+      status: "ok",
+      reason: "Session has been started or the day is closed.",
+      message: "Session is open.",
+      severity: "low",
+      timestamp: now,
+    });
+  }
+
+  // ── session_closed ──────────────────────────────────────────────────────────
+  if (input.sessionEnded) {
+    results.push({
+      ruleId: "session_closed",
+      ruleType: "session_closed",
+      status: "blocked",
+      reason: "The trading session for today has been closed.",
+      message: "The daily session has ended.",
+      severity: "medium",
+      timestamp: now,
+      recommendedAction: "Wait for tomorrow's session.",
+    });
+  } else if (
+    input.todaySessionStateKind === "LOCKED_BY_GUARDIAN" ||
+    input.todaySessionStateKind === "RESET_PENDING"
+  ) {
+    results.push({
+      ruleId: "session_closed",
+      ruleType: "session_closed",
+      status: "blocked",
+      reason: "Guardian has locked the session.",
+      message: "Guardian has locked the session.",
+      severity: "high",
+      timestamp: now,
+      recommendedAction: "Wait for the reset window.",
+    });
+  } else {
+    results.push({
+      ruleId: "session_closed",
+      ruleType: "session_closed",
+      status: "ok",
+      reason: "Session is not closed.",
+      message: "Session is active.",
+      severity: "low",
+      timestamp: now,
+    });
+  }
+
+  // ── max_position_size ───────────────────────────────────────────────────────
+  // Skipped when maxContracts is null/undefined (no rule configured) or when
+  // exposure data is unavailable (positions not yet fetched). This rule is
+  // detection-only: Guardrail cannot intercept orders before they execute at
+  // Tradovate. Enforcement is breach-response (detect → alert → flatten/lock).
+  if (input.maxContracts != null && input.maxContracts > 0) {
+    if (input.hasUnsupportedPositions) {
+      const syms = (input.unsupportedSymbols ?? []).join(", ");
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "triggered",
+        reason: `Open position in symbol Guardrail cannot classify (${syms || "unknown"}). Max position size cannot be verified.`,
+        message: `Position in unrecognized symbol — max position size cannot be verified. Close the position to clear this alert.`,
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Close the unrecognized position. Guardrail will cancel working orders and may flatten on next sync if order actions are enabled.",
+      });
+    } else if (
+      input.currentMiniEquivalentExposure != null &&
+      isMaxPositionSizeBreached(input.currentMiniEquivalentExposure, input.maxContracts)
+    ) {
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "triggered",
+        reason: `Standard-equivalent exposure ${input.currentMiniEquivalentExposure} exceeds limit ${input.maxContracts}.`,
+        message: `Max position size exceeded: ${input.currentMiniEquivalentExposure} standard-equivalent contracts open (limit: ${input.maxContracts}). Guardrail will flatten on next sync if order actions are enabled.`,
+        severity: "critical",
+        timestamp: now,
+        recommendedAction: "Reduce open positions immediately. Guardrail detected the breach and will lock the account on next sync.",
+      });
+    } else if (input.currentMiniEquivalentExposure != null) {
+      results.push({
+        ruleId: "max_position_size",
+        ruleType: "max_position_size",
+        status: "ok",
+        reason: `Exposure ${input.currentMiniEquivalentExposure} within limit ${input.maxContracts}.`,
+        message: `Position size: ${input.currentMiniEquivalentExposure} of ${input.maxContracts} standard-equivalent.`,
+        severity: "low",
+        timestamp: now,
+      });
+    }
+    // If currentMiniEquivalentExposure is null (data unavailable), skip silently.
+  }
+
+  // ── manual_rule_breach ──────────────────────────────────────────────────────
+  // Only evaluated when manual signals are present. Skipped entirely when
+  // no manual event data is available so callers without signals see no noise.
+  if (input.manualSignals !== null && input.manualSignals !== undefined) {
+    if (input.manualSignals.hasRuleBreach) {
+      results.push({
+        ruleId: "manual_rule_breach",
+        ruleType: "manual_rule_breach",
+        status: "triggered",
+        reason: "A rule breach was manually logged during this session.",
+        message: "A rule breach was manually logged — review the session.",
+        severity: "high",
+        timestamp: now,
+        recommendedAction: "Pause and check if any risk limits were exceeded.",
+      });
+    } else {
+      results.push({
+        ruleId: "manual_rule_breach",
+        ruleType: "manual_rule_breach",
+        status: "ok",
+        reason: "No manual rule breach logged.",
+        message: "No rule breach logged.",
+        severity: "low",
+        timestamp: now,
+      });
+    }
+  }
+
+  return results;
+}
+
+// ─── Violation feed builder ────────────────────────────────────────────────────
+
+/**
+ * Run rule evaluation and return a structured violation feed.
+ * Violations are sorted by severity (triggered > blocked > warning).
+ */
+export function buildViolationFeed(input: RuleEngineInput): ViolationFeed {
+  const results = evaluateRules(input);
+  const activeViolations = results.filter((r) => r.status !== "ok");
+  const blockedViolations = results.filter((r) => r.status === "blocked");
+  const triggeredViolations = results.filter((r) => r.status === "triggered");
+  const warningViolations = results.filter((r) => r.status === "warning");
+
+  const sorted = [...activeViolations].sort((a, b) => {
+    const statusDiff = statusOrder(b.status) - statusOrder(a.status);
+    if (statusDiff !== 0) return statusDiff;
+    return severityOrder(b.severity) - severityOrder(a.severity);
+  });
+
+  return {
+    results,
+    activeViolations,
+    blockedViolations,
+    triggeredViolations,
+    warningViolations,
+    hasBlockingViolation:
+      blockedViolations.length > 0 || triggeredViolations.length > 0,
+    primaryViolation: sorted[0] ?? null,
+  };
+}
+
+// ─── Bridge helper: GuardianSnapshot → RuleEngineInput ────────────────────────
+
+/**
+ * Build a RuleEngineInput from an already-computed GuardianSnapshot.
+ * This bridges the Guardian domain into the Rule Engine without coupling the two.
+ */
+export function buildRuleEngineInputFromGuardianSnapshot(
+  snapshot: GuardianSnapshot,
+  options?: {
+    sessionStarted?: boolean;
+    sessionEnded?: boolean;
+    todaySessionStateKind?: string;
+    preNewsPolicy?: {
+      isActive: boolean;
+      mode: string;
+      message?: string | null;
+    } | null;
+    manualSignals?: ManualEventSignals | null;
+    now?: Date;
+  },
+): RuleEngineInput {
+  const { profile, evaluation } = snapshot;
+
+  const maxDailyLoss = profile.maxDailyLoss
+    ? Number(profile.maxDailyLoss.toString())
+    : null;
+
+  const dailyProfitTarget = profile.dailyProfitTarget
+    ? Number(profile.dailyProfitTarget.toString())
+    : null;
+
+  return {
+    guardianEnabled: profile.guardianEnabled,
+    maxTradesPerDay: profile.maxTradesPerDay ?? null,
+    todayTradesCount: evaluation.todayTradesCount,
+    maxDailyLoss,
+    todayPnL: evaluation.todayPnL,
+    dailyProfitTarget,
+    stopAfterConsecutiveLosses: profile.stopAfterConsecutiveLosses ?? null,
+    consecutiveLosses: evaluation.consecutiveLosses,
+    sessionStarted: options?.sessionStarted ?? false,
+    sessionEnded: options?.sessionEnded ?? false,
+    todaySessionStateKind: options?.todaySessionStateKind ?? "READY_TO_TRADE",
+    preNewsPolicy: options?.preNewsPolicy ?? null,
+    manualSignals: options?.manualSignals ?? null,
+    now: options?.now ?? new Date(),
+  };
+}

@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 
 import type { GuardianSnapshot } from "@/lib/guardian";
+import type { ViolationFeed } from "@/lib/rule-engine";
 
 export type TodayActivityItemTone =
   | "neutral"
@@ -40,14 +41,69 @@ function humanizeSource(source: string) {
     return "Telegram";
   }
 
+  if (source === "dashboard") {
+    return "the Guardrail dashboard";
+  }
+
   if (source === "debug") {
     return "local debug";
+  }
+
+  if (source === "manual") {
+    return "the dashboard";
   }
 
   return source;
 }
 
+type ManualEventDisplay = {
+  title: string;
+  badge: string;
+  tone: TodayActivityItemTone;
+  /** Detail shown when the event carries no user note (message equals the default label) */
+  defaultDetail: string;
+};
+
+const MANUAL_EVENT_DISPLAY: Record<string, ManualEventDisplay> = {
+  trade_opened: { title: "Trade opened", badge: "Trade", tone: "info", defaultDetail: "Trade entry recorded." },
+  trade_closed: { title: "Trade closed", badge: "Trade", tone: "info", defaultDetail: "Trade exit recorded." },
+  win:          { title: "Win logged",   badge: "Win",   tone: "success", defaultDetail: "Profitable trade." },
+  loss:         { title: "Loss logged",  badge: "Loss",  tone: "warning", defaultDetail: "Losing trade." },
+  pnl_update:   { title: "P&L updated",  badge: "P&L",   tone: "neutral", defaultDetail: "P&L updated." },
+  rule_breach:  { title: "Rule breach logged", badge: "Rule", tone: "danger", defaultDetail: "Review if session limits were exceeded." },
+  manual_note:  { title: "Note logged",  badge: "Note",  tone: "neutral", defaultDetail: "Session note." },
+};
+
+// Short default messages set by logManualTradeEvent when no note is provided.
+// When event.message matches one of these, the richer defaultDetail is used instead.
+const MANUAL_EVENT_DEFAULT_MESSAGES = new Set([
+  "Trade opened", "Trade closed", "Win", "Loss", "P&L update", "Rule breach", "Note",
+]);
+
+function buildManualTradeEventItem(event: DailySessionEvent): TodayActivityItem | null {
+  const display = event.detectedIntent ? MANUAL_EVENT_DISPLAY[event.detectedIntent] : undefined;
+  if (!display) return null;
+
+  const detail = MANUAL_EVENT_DEFAULT_MESSAGES.has(event.message)
+    ? display.defaultDetail
+    : event.message;
+
+  return {
+    id: `event-${event.id}`,
+    occurredAt: event.createdAt,
+    title: display.title,
+    detail,
+    badge: display.badge,
+    tone: display.tone,
+  };
+}
+
 function buildSessionEventItem(event: DailySessionEvent): TodayActivityItem | null {
+  // Manual trade events logged via the dashboard entry panel
+  if (event.source === "manual" && event.eventType === "TRADE_EVENT") {
+    return buildManualTradeEventItem(event);
+  }
+
   const sourceLabel = event.source === "telegram" ? "Reported in Telegram" : "Logged from local debug";
 
   switch (event.traderState) {
@@ -228,4 +284,73 @@ export function getRecentTodayActivityItems(
   return [...items]
     .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
     .slice(0, limit);
+}
+
+/**
+ * Convert active rule violations into activity items.
+ * Only surfaces violations that are not already covered by the main timeline
+ * (Guardian lockout is already handled via guardian.status.lockoutStartedAt).
+ * Call this separately and merge with buildTodayActivityTimeline output if desired.
+ */
+export function buildViolationActivityItems(
+  violations: ViolationFeed,
+  now?: Date,
+): TodayActivityItem[] {
+  const at = now ?? new Date();
+  const items: TodayActivityItem[] = [];
+
+  for (const violation of violations.activeViolations) {
+    // Guardian lockout + reset are already surfaced from guardian.status timestamps —
+    // skip triggered guard rules to avoid duplication.
+    if (
+      violation.ruleId === "max_trades_per_day" ||
+      violation.ruleId === "max_daily_loss" ||
+      violation.ruleId === "stop_after_consecutive_losses"
+    ) {
+      continue;
+    }
+
+    if (violation.ruleId === "guardian_disabled" && violation.status === "warning") {
+      items.push({
+        id: `violation-guardian-disabled`,
+        occurredAt: at,
+        title: "Guardian paused",
+        detail: "Protection is paused. Enable it to start monitoring.",
+        badge: "Warning",
+        tone: "warning",
+      });
+      continue;
+    }
+
+    if (violation.ruleId === "no_trade_before_major_news") {
+      const tone: TodayActivityItemTone =
+        violation.status === "blocked" ? "danger" : "warning";
+      items.push({
+        id: `violation-pre-news`,
+        occurredAt: at,
+        title:
+          violation.status === "blocked"
+            ? "Session blocked by news policy"
+            : "News caution active",
+        detail: violation.message,
+        badge: "News",
+        tone,
+      });
+      continue;
+    }
+
+    if (violation.ruleId === "session_not_started" && violation.status === "warning") {
+      items.push({
+        id: `violation-session-not-started`,
+        occurredAt: at,
+        title: "Session not started",
+        detail: "The trading session has not been opened yet today.",
+        badge: "Session",
+        tone: "neutral",
+      });
+      continue;
+    }
+  }
+
+  return items;
 }

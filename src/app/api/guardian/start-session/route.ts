@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth";
 import { startTodayGuardianSession } from "@/lib/guardian";
@@ -12,6 +13,9 @@ export async function POST() {
 
   try {
     const session = await startTodayGuardianSession(currentUser.id);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/guardian");
 
     return NextResponse.json({ ok: true, session });
   } catch (error) {

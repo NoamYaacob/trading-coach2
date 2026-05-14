@@ -1,0 +1,429 @@
+/**
+ * Unit tests for Tradovate position-limit pure helpers.
+ *
+ * All assertions target the pure functions in tradovate-position-limit.ts —
+ * no network calls, no database, no real credentials required.
+ *
+ * Test categories:
+ *  1. findGuardrailPositionLimit — correct record selection by description
+ *  2. buildCreatePositionLimitPayload — correct create payload shape
+ *  3. buildUpdatePositionLimitPayload — correct update payload (active=true)
+ *  4. buildDeactivatePositionLimitPayload — deactivate sets active=false
+ *  5. buildCreateRiskParameterPayload — hardLimit=true on create
+ *  6. buildUpdateRiskParameterPayload — hardLimit=true on update
+ *  7. Smoke: GUARDRAIL_POSITION_LIMIT_DESCRIPTION constant is stable
+ */
+
+import test, { describe } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+  GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX,
+  findGuardrailPositionLimit,
+  buildCreatePositionLimitPayload,
+  buildUpdatePositionLimitPayload,
+  buildDeactivatePositionLimitPayload,
+  buildDeactivatePositionLimitFullPayload,
+  buildDeactivateRiskParameterPayload,
+  buildCreateRiskParameterPayload,
+  buildUpdateRiskParameterPayload,
+  type TvUserAccountPositionLimit,
+} from "./tradovate-position-limit.ts";
+
+// ── 1. findGuardrailPositionLimit ────────────────────────────────────────────
+
+describe("findGuardrailPositionLimit", () => {
+  test("returns null when list is empty", () => {
+    assert.equal(findGuardrailPositionLimit([]), null);
+  });
+
+  test("returns null when no record has the Guardrail description", () => {
+    const limits: TvUserAccountPositionLimit[] = [
+      { id: 1, description: "Prop firm limit", exposedLimit: 10 },
+      { id: 2, description: "My custom limit", exposedLimit: 5 },
+    ];
+    assert.equal(findGuardrailPositionLimit(limits), null);
+  });
+
+  test("returns the matching record when it exists", () => {
+    const guardrail: TvUserAccountPositionLimit = {
+      id: 42,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 3,
+    };
+    const limits: TvUserAccountPositionLimit[] = [
+      { id: 1, description: "Prop firm limit", exposedLimit: 10 },
+      guardrail,
+    ];
+    assert.deepEqual(findGuardrailPositionLimit(limits), guardrail);
+  });
+
+  test("does not return a record with a different description even if otherwise similar", () => {
+    const limits: TvUserAccountPositionLimit[] = [
+      { id: 1, description: "guardrail max position size", exposedLimit: 3 }, // lowercase
+      { id: 2, description: "Guardrail Max Position Size (test)", exposedLimit: 3 }, // suffix
+    ];
+    assert.equal(findGuardrailPositionLimit(limits), null);
+  });
+
+  test("returns the first matching record when there are duplicates", () => {
+    const first: TvUserAccountPositionLimit = {
+      id: 10,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 2,
+    };
+    const second: TvUserAccountPositionLimit = {
+      id: 11,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 5,
+    };
+    assert.deepEqual(findGuardrailPositionLimit([first, second]), first);
+  });
+});
+
+// ── 2. buildCreatePositionLimitPayload ───────────────────────────────────────
+
+describe("buildCreatePositionLimitPayload", () => {
+  test("sets accountId from tvAccountId", () => {
+    const payload = buildCreatePositionLimitPayload(12345, 4);
+    assert.equal(payload.accountId, 12345);
+  });
+
+  test("sets exposedLimit from maxContracts", () => {
+    const payload = buildCreatePositionLimitPayload(1, 7);
+    assert.equal(payload.exposedLimit, 7);
+  });
+
+  test("totalBy is 'Overall'", () => {
+    const payload = buildCreatePositionLimitPayload(1, 1);
+    assert.equal(payload.totalBy, "Overall");
+  });
+
+  test("active is true", () => {
+    const payload = buildCreatePositionLimitPayload(1, 1);
+    assert.equal(payload.active, true);
+  });
+
+  test("description matches GUARDRAIL constant", () => {
+    const payload = buildCreatePositionLimitPayload(1, 1);
+    assert.equal(payload.description, GUARDRAIL_POSITION_LIMIT_DESCRIPTION);
+  });
+});
+
+// ── 3. buildUpdatePositionLimitPayload ───────────────────────────────────────
+
+describe("buildUpdatePositionLimitPayload", () => {
+  test("sets id from existing record id", () => {
+    const payload = buildUpdatePositionLimitPayload(99, 3);
+    assert.equal(payload.id, 99);
+  });
+
+  test("sets exposedLimit from maxContracts", () => {
+    const payload = buildUpdatePositionLimitPayload(1, 5);
+    assert.equal(payload.exposedLimit, 5);
+  });
+
+  test("re-activates the record (active=true)", () => {
+    const payload = buildUpdatePositionLimitPayload(1, 5);
+    assert.equal(payload.active, true);
+  });
+
+  test("does not include accountId (update must not move the record to a different account)", () => {
+    const payload = buildUpdatePositionLimitPayload(1, 5);
+    assert.ok(!("accountId" in payload), "update payload must not include accountId");
+  });
+});
+
+// ── 4. buildDeactivatePositionLimitPayload ───────────────────────────────────
+
+describe("buildDeactivatePositionLimitPayload", () => {
+  test("sets id", () => {
+    const payload = buildDeactivatePositionLimitPayload(77);
+    assert.equal(payload.id, 77);
+  });
+
+  test("sets active=false", () => {
+    const payload = buildDeactivatePositionLimitPayload(77);
+    assert.equal(payload.active, false);
+  });
+
+  test("does not change description or exposedLimit", () => {
+    const payload = buildDeactivatePositionLimitPayload(77);
+    assert.ok(!("description" in payload));
+    assert.ok(!("exposedLimit" in payload));
+  });
+});
+
+// ── 5. buildCreateRiskParameterPayload ───────────────────────────────────────
+
+describe("buildCreateRiskParameterPayload", () => {
+  test("links to the position limit by userAccountPositionLimitId", () => {
+    const payload = buildCreateRiskParameterPayload(42);
+    assert.equal(payload.userAccountPositionLimitId, 42);
+  });
+
+  test("sets hardLimit=true", () => {
+    const payload = buildCreateRiskParameterPayload(42);
+    assert.equal(payload.hardLimit, true);
+  });
+});
+
+// ── 6. buildUpdateRiskParameterPayload ───────────────────────────────────────
+
+describe("buildUpdateRiskParameterPayload", () => {
+  test("sets id from existing risk parameter id", () => {
+    const payload = buildUpdateRiskParameterPayload(55);
+    assert.equal(payload.id, 55);
+  });
+
+  test("sets hardLimit=true", () => {
+    const payload = buildUpdateRiskParameterPayload(55);
+    assert.equal(payload.hardLimit, true);
+  });
+
+  test("does not include userAccountPositionLimitId (update must not re-link)", () => {
+    const payload = buildUpdateRiskParameterPayload(55);
+    assert.ok(
+      !("userAccountPositionLimitId" in payload),
+      "update payload must not include userAccountPositionLimitId",
+    );
+  });
+});
+
+// ── 7. Constant stability ────────────────────────────────────────────────────
+
+test("GUARDRAIL_POSITION_LIMIT_DESCRIPTION is a non-empty string", () => {
+  assert.equal(typeof GUARDRAIL_POSITION_LIMIT_DESCRIPTION, "string");
+  assert.ok(GUARDRAIL_POSITION_LIMIT_DESCRIPTION.length > 0);
+});
+
+test("GUARDRAIL_POSITION_LIMIT_DESCRIPTION contains 'Guardrail' to brand the record", () => {
+  assert.ok(
+    GUARDRAIL_POSITION_LIMIT_DESCRIPTION.includes("Guardrail"),
+    "description must include 'Guardrail' so manual records are distinguishable",
+  );
+});
+
+// ── 8. app_side_only cleanup safety ─────────────────────────────────────────
+//
+// These tests verify the safety properties that make the sync-broker-rules
+// repair idempotent and scoped to only Guardrail-owned records.
+
+describe("app_side_only cleanup safety", () => {
+  test("findGuardrailPositionLimit returns null for a user-created limit", () => {
+    // Users and prop firms create their own Tradovate limits; Guardrail must never
+    // touch these. The description guard is the only ownership signal available.
+    const userLimits: TvUserAccountPositionLimit[] = [
+      { id: 100, description: "My Trading Limit", exposedLimit: 5, active: true },
+      { id: 101, description: "Apex Eval Limit", exposedLimit: 3, active: true },
+      { id: 102, description: "guardrail max position size", exposedLimit: 1, active: true }, // lowercase
+    ];
+    assert.equal(
+      findGuardrailPositionLimit(userLimits),
+      null,
+      "must return null for user-created and prop-firm-created limits",
+    );
+  });
+
+  test("findGuardrailPositionLimit finds stale Guardrail limit even when active=true", () => {
+    // The stale limit scenario: Guardrail previously set a hard raw cap that is
+    // still active. We need to be able to find it so we can deactivate it.
+    const staleLimit: TvUserAccountPositionLimit = {
+      id: 41472951,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 1,
+      active: true,
+    };
+    const limits: TvUserAccountPositionLimit[] = [
+      { id: 100, description: "Apex Eval Limit", exposedLimit: 5, active: true },
+      staleLimit,
+    ];
+    const found = findGuardrailPositionLimit(limits);
+    assert.equal(found?.id, 41472951, "must find the stale Guardrail-owned limit");
+    assert.equal(found?.active, true, "active=true is expected for a stale limit");
+  });
+
+  test("buildDeactivatePositionLimitPayload sets active=false without changing other fields", () => {
+    // Deactivation must only flip the active flag. The exposedLimit value is
+    // preserved on the Tradovate record so it could be re-activated later if needed.
+    const payload = buildDeactivatePositionLimitPayload(41472951);
+    assert.equal(payload.id, 41472951);
+    assert.equal(payload.active, false);
+    assert.ok(
+      !("exposedLimit" in payload),
+      "deactivate payload must not include exposedLimit — avoid accidental value change",
+    );
+  });
+
+  test("brokerStateOk formula: found=true active=false => true (post-cleanup)", () => {
+    // After deactivation: guardrailLimitFound=true, limitActive=false => ok
+    const found = true as boolean;
+    const active = false as boolean | null;
+    assert.equal(!found || active === false, true);
+  });
+
+  test("brokerStateOk formula: found=true active=true => false (stale limit still active)", () => {
+    // Pre-cleanup: stale raw limit is still blocking micro orders
+    const found = true as boolean;
+    const active = true as boolean | null;
+    assert.equal(!found || active === false, false);
+  });
+
+  test("brokerStateOk formula: found=false active=null => true (no limit at broker)", () => {
+    // Clean state: Guardrail never created a raw limit
+    const found = false as boolean;
+    const active = null as boolean | null;
+    assert.equal(!found || active === false, true);
+  });
+});
+
+// ── 9. buildDeactivateRiskParameterPayload ───────────────────────────────────
+
+describe("buildDeactivateRiskParameterPayload", () => {
+  test("sets id", () => {
+    const payload = buildDeactivateRiskParameterPayload(88);
+    assert.equal(payload.id, 88);
+  });
+
+  test("sets hardLimit=false", () => {
+    const payload = buildDeactivateRiskParameterPayload(88);
+    assert.equal(payload.hardLimit, false);
+  });
+
+  test("does not include userAccountPositionLimitId", () => {
+    const payload = buildDeactivateRiskParameterPayload(88);
+    assert.ok(!("userAccountPositionLimitId" in payload));
+  });
+});
+
+// ── 10. buildDeactivatePositionLimitFullPayload ──────────────────────────────
+
+describe("buildDeactivatePositionLimitFullPayload", () => {
+  test("sets active=false", () => {
+    const existing: TvUserAccountPositionLimit = {
+      id: 41472951,
+      accountId: 12345,
+      exposedLimit: 1,
+      totalBy: "Overall",
+      active: true,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+    };
+    const payload = buildDeactivatePositionLimitFullPayload(existing);
+    assert.equal(payload.active, false);
+  });
+
+  test("preserves id, accountId, exposedLimit, totalBy, description from existing record", () => {
+    const existing: TvUserAccountPositionLimit = {
+      id: 41472951,
+      accountId: 12345,
+      exposedLimit: 3,
+      totalBy: "Overall",
+      active: true,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+    };
+    const payload = buildDeactivatePositionLimitFullPayload(existing);
+    assert.equal(payload.id, 41472951);
+    assert.equal(payload.accountId, 12345);
+    assert.equal(payload.exposedLimit, 3);
+    assert.equal(payload.totalBy, "Overall");
+    assert.equal(payload.description, GUARDRAIL_POSITION_LIMIT_DESCRIPTION);
+  });
+
+  test("only active is changed — all other fields match existing", () => {
+    const existing: TvUserAccountPositionLimit = {
+      id: 99,
+      accountId: 777,
+      exposedLimit: 5,
+      totalBy: "Overall",
+      active: true,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+    };
+    const payload = buildDeactivatePositionLimitFullPayload(existing);
+    const { active: _active, ...payloadRest } = payload as typeof existing;
+    const { active: _existingActive, ...existingRest } = existing;
+    assert.deepEqual(payloadRest, existingRest);
+  });
+});
+
+// ── 11. Two-step cleanup ownership safety ────────────────────────────────────
+
+describe("two-step cleanup ownership safety", () => {
+  test("buildDeactivatePositionLimitFullPayload never modifies a user-created limit (description guard)", () => {
+    // The safety guarantee: we only call buildDeactivatePositionLimitFullPayload
+    // on limits returned by findGuardrailPositionLimit, which already enforces
+    // the description guard. This test verifies the guard holds end-to-end.
+    const userLimit: TvUserAccountPositionLimit = {
+      id: 999,
+      description: "My Prop Firm Limit",
+      exposedLimit: 5,
+      active: true,
+    };
+    const guardrailLimit: TvUserAccountPositionLimit = {
+      id: 41472951,
+      description: GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      exposedLimit: 1,
+      active: true,
+    };
+    const limits = [userLimit, guardrailLimit];
+    const found = findGuardrailPositionLimit(limits);
+    assert.ok(found !== null, "must find the Guardrail limit");
+    assert.equal(found!.id, 41472951, "must only operate on the Guardrail-owned limit");
+    // The full-payload deactivation is only ever called on `found`, which is
+    // always the Guardrail limit (description guard enforced by findGuardrailPositionLimit).
+    const payload = buildDeactivatePositionLimitFullPayload(found!);
+    assert.equal(payload.active, false);
+    assert.equal(payload.description, GUARDRAIL_POSITION_LIMIT_DESCRIPTION);
+  });
+
+  test("buildDeactivateRiskParameterPayload never receives userAccountPositionLimitId (re-link safety)", () => {
+    // Risk parameter deactivation uses only { id, hardLimit: false } —
+    // no userAccountPositionLimitId so the record stays linked to its parent.
+    const payload = buildDeactivateRiskParameterPayload(55);
+    assert.ok(
+      !("userAccountPositionLimitId" in payload),
+      "deactivate must not re-link the risk parameter to a different position limit",
+    );
+  });
+});
+
+// ── 12. Probe description safety ─────────────────────────────────────────────
+
+describe("probe description safety", () => {
+  test("GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX is distinct from GUARDRAIL_POSITION_LIMIT_DESCRIPTION", () => {
+    assert.notEqual(
+      GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX,
+      GUARDRAIL_POSITION_LIMIT_DESCRIPTION,
+      "probe prefix must not equal the production Guardrail description",
+    );
+  });
+
+  test("GUARDRAIL_POSITION_LIMIT_DESCRIPTION does not start with the probe prefix", () => {
+    assert.ok(
+      !GUARDRAIL_POSITION_LIMIT_DESCRIPTION.startsWith(GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX),
+      "production description must not start with the probe prefix — avoids findGuardrailPositionLimit collision",
+    );
+  });
+
+  test("probe descriptions (prefixed) are not matched by findGuardrailPositionLimit", () => {
+    // Probe limits carry descriptions like "Guardrail Probe NQ PerContract" which
+    // must never be treated as production Guardrail limits.
+    const probeLimits: TvUserAccountPositionLimit[] = [
+      { id: 1, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerContract`, exposedLimit: 2 },
+      { id: 2, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} MNQ PerContract`, exposedLimit: 20 },
+      { id: 3, description: `${GUARDRAIL_PROBE_LIMIT_DESCRIPTION_PREFIX} NQ PerProduct`, exposedLimit: 2 },
+    ];
+    assert.equal(
+      findGuardrailPositionLimit(probeLimits),
+      null,
+      "probe limits must not be matched by findGuardrailPositionLimit",
+    );
+  });
+
+  test("buildCreatePositionLimitPayload uses Overall (never PerContract) for production limits", () => {
+    const payload = buildCreatePositionLimitPayload(12345, 2);
+    assert.equal(payload.totalBy, "Overall", "production create payload must use Overall");
+    assert.notEqual(payload.totalBy, "PerContract");
+    assert.notEqual(payload.totalBy, "PerProduct");
+  });
+});

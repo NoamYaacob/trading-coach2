@@ -92,9 +92,9 @@ export function TodayActivityTimeline({
           })}
         </div>
       ) : (
-        <div className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50 px-4 py-5 text-sm text-stone-600">
-          No meaningful activity has been logged today yet.
-        </div>
+        <p className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-500">
+          No activity yet — events appear here as the session progresses.
+        </p>
       )}
     </SectionCard>
   );

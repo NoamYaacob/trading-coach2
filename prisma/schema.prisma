@@ -54,9 +54,11 @@ model User {
   email              String               @unique
   passwordHash       String?
   role               UserRole             @default(USER)
-  subscriptionStatus SubscriptionStatus   @default(TRIALING)
-  trialStartedAt     DateTime?
-  trialEndsAt        DateTime?
+  subscriptionStatus   SubscriptionStatus   @default(TRIALING)
+  trialStartedAt       DateTime?
+  trialEndsAt          DateTime?
+  stripeCustomerId     String?              @unique
+  stripeSubscriptionId String?              @unique
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   sessions           Session[]
@@ -71,6 +73,13 @@ model User {
   dailyGuardianSessions DailyGuardianSession[]
   guardianProfile    GuardianProfile?
   guardianStatus     GuardianStatus?
+  connectedAccounts  ConnectedAccount[]
+  brokerConnections  BrokerConnection[]
+  pendingBrokerSetups PendingBrokerSetup[]
+  oauthConnections   OAuthConnection[]
+  manualTradeEntries ManualTradeEntry[]
+  alertPreferences   AlertPreferences?
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Session {
@@ -111,6 +120,21 @@ model TelegramLinkToken {
   @@index([userId, expiresAt])
 }
 
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  requestedIp String?
+  userAgent   String?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
 model TraderProfile {
   id                    String   @id @default(cuid())
   userId                String   @unique
@@ -132,10 +156,46 @@ model RiskRules {
   userId                String   @unique
   accountSize           Decimal? @db.Decimal(12, 2)
   maxDailyLoss          Decimal? @db.Decimal(10, 2)
+  dailyProfitTarget     Decimal? @db.Decimal(10, 2)
   riskPerTrade          Decimal? @db.Decimal(10, 2)
   maxRiskPerTrade       Decimal? @db.Decimal(10, 2)
   maxTradesPerDay       Int?
   stopAfterLosses       Int?
+  maxContracts          Int?
+  allowedSymbols        String?
+  sessionStartHour      Int?
+  sessionEndHour        Int?
+  sessionTimezone       String?
+  ruleEditLockBufferMinutes Int?
+  // Minute-precise rule-edit session window (replaces integer hour fields for new rows).
+  // sessionPreset: "ny" | "london" | "asia" | "custom" | null (null = not configured, legacy)
+  sessionPreset         String?
+  sessionStartTime      String?  // HH:mm in sessionTimezone, e.g. "09:30"
+  sessionEndTime        String?  // HH:mm in sessionTimezone, e.g. "16:00"
+  // Multi-select session presets — JSON array of preset IDs e.g. '["ny_am","london"]'.
+  // When set, takes precedence over sessionPreset/sessionStartTime/sessionEndTime for lock-window logic.
+  sessionPresetsJson    String?
+  tradingDays           String?
+  sessionEndBehavior    String?
+  newsLockoutEnabled    Boolean  @default(false)
+  onBreachWarn          Boolean  @default(true)
+  onBreachAppLock       Boolean  @default(true)
+  onBreachCancelOrders  Boolean  @default(false)
+  onBreachFlatten       Boolean  @default(false)
+  // Protection-lock cutoff: how many minutes before session start the user can
+  // still change account protection / rule limits for today's session.
+  protectionLockCutoffMinutes Int @default(5)
+  // Persisted consent for automated broker actions (lockout + position close).
+  // Set when the user explicitly checks the consent checkbox while saving the
+  // default rule template. Null means consent has never been recorded; old
+  // versions block broker writes until the user re-confirms. Internal lock
+  // (Guardrail STOPPED state) does not require this consent.
+  automatedActionsConsentAt      DateTime?
+  automatedActionsConsentVersion String?
+  // Pending rule changes saved after the cutoff — applied when the next trading
+  // day starts. JSON payload mirrors the editable fields above.
+  pendingPayloadJson    Json?
+  pendingEffectiveDate  String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -152,6 +212,13 @@ model MentalProfile {
   responseStyle         String?
   tiltTriggers          String[]
   confidenceNotes       String?
+  tradingWhy            String?
+  tradingGoal           String?
+  groundingReminder     String?
+  preferredAddress      String?  // MASCULINE | FEMININE | NEUTRAL | NO_PREFERENCE
+  disciplineBreakPattern String?
+  whatHelpsRefocus      String?
+  reminderAnchors       String[]
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -173,6 +240,10 @@ model CoachingPreferences {
   highImpactOnly        Boolean  @default(false)
   economicCalendarProviderKey String? @default("mock")
   economicCalendarStubScenario String? @default("mixed_day")
+  preferredLanguage     String?  @default("he")
+  wantsMidSessionCheckIns      Boolean @default(false)
+  wantsGoalReminders           Boolean @default(true)
+  wantsToughInterventionWhenTilting Boolean @default(true)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -267,4 +338,396 @@ model GuardianStatus {
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([currentLockoutActive, lockoutReason])
+}
+
+enum TradingPlatform {
+  tradovate
+  tradingview
+  manual
+}
+
+enum AccountType {
+  evaluation
+  funded
+  personal
+  demo
+}
+
+enum AccountRiskState {
+  NORMAL
+  WARNING
+  STOPPED
+}
+
+// Stores one OAuth token set per broker connection. Multiple ConnectedAccount
+// rows (one per discovered account) reference a single BrokerConnection so
+// tokens are not duplicated.
+model BrokerConnection {
+  id                    String           @id @default(cuid())
+  userId                String
+  platform              TradingPlatform
+  env                   String           // "live" | "demo"
+  brokerUserId          String?
+  connectionStatus      String           @default("connected_readonly")
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  errorMessage          String?
+  // Probed permission level — set by the capability probe that calls a
+  // safe Tradovate read endpoint requiring Account Risk Settings access.
+  // "full_access" = probe succeeded (write capability confirmed)
+  // "read_only"   = probe returned 401/403 (broker writes will fail)
+  // null          = not yet probed (treat conservatively in classification)
+  permissionLevel       String?
+  permissionsProbedAt   DateTime?
+  // Token renewal tracking — set by persistRenewedTokens / #storeRefreshedTokens.
+  // lastRenewedAt: timestamp of the most recent successful renewal.
+  // lastRenewError: reason string from the most recent failed renewal (cleared on success).
+  lastRenewedAt         DateTime?
+  lastRenewError        String?
+  // ── Real-time listener tracking ──────────────────────────────────────────
+  // Set by the TradovateListenerManager worker when a user/syncrequest
+  // WebSocket is active for this connection. Used by the dashboard to show
+  // listener freshness ("Live · 5s ago") instead of generic stale warning.
+  // Status values: "connected" | "connecting" | "reconnecting" | "closed" | null
+  listenerStatus        String?
+  listenerConnectedAt   DateTime?
+  listenerLastEventAt   DateTime?
+  listenerLastHeartbeatAt DateTime?
+  listenerErrorMessage  String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts              ConnectedAccount[]
+  pendingSetups         PendingBrokerSetup[]
+
+  @@index([userId, platform])
+}
+
+// Short-lived record (15-min TTL) that holds pre-OAuth form data and, after
+// the callback, the broker's discovered accounts. Cleaned up on finalize or expiry.
+model PendingBrokerSetup {
+  id                     String            @id @default(cuid())
+  userId                 String
+  platform               String            @default("tradovate")
+  env                    String            // "live" | "demo"
+  displayName            String?
+  accountSource          String            // "prop_firm" | "personal" | "demo" | "other"
+  propFirmName           String?
+  brokerConnectionId     String?
+  discoveredAccountsJson Json?
+  expiresAt              DateTime
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  user                   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerConnection       BrokerConnection? @relation(fields: [brokerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, expiresAt])
+}
+
+model ConnectedAccount {
+  id                String           @id @default(cuid())
+  userId            String
+  label             String
+  externalAccountId String?
+  platform          TradingPlatform  @default(manual)
+  propFirm          String?
+  accountType       AccountType      @default(personal)
+  currency          String           @default("USD")
+  isActive          Boolean          @default(true)
+  // Broker connection lifecycle — updated by API on create/edit, by webhook on first event.
+  // Values: not_connected | pending_webhook | oauth_pending_storage | connected_live | connection_error | expired
+  connectionStatus  String           @default("not_connected")
+  brokerUserId      String?          // broker-side user ID (populated by future OAuth)
+  connectedAt       DateTime?        // when the connection became live (first event received)
+  // Shared token store — set when this account was imported via the multi-account flow.
+  // When set, tokens are read from BrokerConnection; legacy columns below are ignored.
+  brokerConnectionId    String?
+  // ── Legacy per-account token storage (pre-BrokerConnection) ────────────
+  // Only written for accounts created before the BrokerConnection model shipped.
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  // Snapshot of the broker's reported capabilities at connect time.
+  capabilitiesJson      Json?
+  // Last successful read from the broker (account snapshot, executions, etc).
+  lastSyncAt            DateTime?
+  // Set when fills/executions were last successfully fetched (even if 0 fills).
+  // Null means fills have never been synced; tradesCount in LiveSessionState is unknown.
+  fillsSyncedAt         DateTime?
+  // Surfaced in the UI when the connection is degraded or errored.
+  errorMessage          String?
+  // Broker-synced account snapshot — updated by syncTradovateAccount.
+  // balance: account equity (Tradovate "amount" from cashBalance endpoint)
+  // cashBalance: cash available (same source)
+  // openPnl: sum of unrealised P&L across open positions
+  balance               Decimal?         @db.Decimal(14, 2)
+  cashBalance           Decimal?         @db.Decimal(14, 2)
+  openPnl               Decimal?         @db.Decimal(10, 2)
+  // ── Protection layer ──────────────────────────────────────────────────
+  // protectionStatus: protected | monitor_only | ignored | archived | pending_decision
+  // pending_decision: newly discovered broker account awaiting user choice.
+  // Existing accounts are migrated to "protected" — they were already in use.
+  protectionStatus              String   @default("protected")
+  // Pending change saved after today's cutoff; applies on its effective date.
+  pendingProtectionStatus       String?
+  pendingProtectionEffectiveDate String?
+  // Sync-discovery tracking: set every time the broker returns this account.
+  lastSeenInBrokerAt            DateTime?
+  // Cleared on the first sync that re-finds it; set when broker omits the
+  // account from /account/list. Used to surface "missing from broker" copy.
+  missingFromBrokerSince        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerConnection  BrokerConnection? @relation(fields: [brokerConnectionId], references: [id], onDelete: SetNull)
+  riskRules         AccountRiskRules?
+  sessionState      LiveSessionState?
+  tradeEvents       NormalizedTradeEvent[]
+  interventions     GuardianIntervention[]
+  dailyProtections  DailyAccountProtection[]
+  orderActionLogs   BrokerOrderActionLog[]
+
+  @@unique([userId, externalAccountId, platform])
+  @@index([userId, isActive])
+  @@index([userId, protectionStatus])
+}
+
+model AccountRiskRules {
+  id               String            @id @default(cuid())
+  accountId        String            @unique
+  maxDailyLoss     Decimal?          @db.Decimal(10, 2)
+  riskPerTrade     Decimal?          @db.Decimal(10, 2)
+  maxTradesPerDay  Int?
+  stopAfterLosses  Int?
+  allowedStartHour Int?
+  allowedEndHour   Int?
+  sessionTimezone  String?
+  sessionEndBehavior String?
+  sessionPreset         String?
+  sessionStartTime      String?
+  sessionEndTime        String?
+  sessionPresetsJson    String?
+  ruleEditLockBufferMinutes Int?
+  maxContracts     Int?
+  // Prop firm limits — only relevant for evaluation / funded accounts.
+  // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,
+  // propFirmDrawdownRemaining). Set propFirmDrawdownRemaining to the account's current
+  // remaining drawdown so the dashboard reflects the tightest limit in effect.
+  propFirmAccountSize       Decimal?  @db.Decimal(14, 2)
+  propFirmPhase             String?   // evaluation / funded / pa / sim
+  propFirmDailyLossLimit    Decimal?  @db.Decimal(10, 2)
+  propFirmMaxDrawdown       Decimal?  @db.Decimal(10, 2)
+  propFirmEODDrawdown       Decimal?  @db.Decimal(10, 2)
+  propFirmTrailingDrawdown  Boolean   @default(false)
+  propFirmDrawdownRemaining Decimal?  @db.Decimal(10, 2)
+  propFirmProfitTarget      Decimal?  @db.Decimal(10, 2)
+  propFirmMinTradingDays    Int?
+  // Optional broker-side raw hard limit for max position size.
+  // OFF by default. When true, Guardrail writes a global raw contract cap
+  // (totalBy="Overall") to Tradovate. WARNING: this counts all contracts
+  // equally — with max=1, even 2 MNQ (0.2 NQ-equivalent) will be rejected.
+  // Default (false): standard-equivalent detection-response only; NQ 1 = MNQ 10.
+  rawBrokerHardLimitEnabled Boolean @default(false)
+  // Persisted consent for automated broker actions on this specific account.
+  // Set when the user explicitly checks the consent checkbox while saving
+  // account-specific rules. Null blocks broker writes; old versions also block.
+  // Internal lock (Guardrail STOPPED state) does not require this consent.
+  automatedActionsConsentAt      DateTime?
+  automatedActionsConsentVersion String?
+  // Pending rule changes saved after the cutoff — applied when the next
+  // trading day starts. JSON mirrors the editable fields above.
+  pendingPayloadJson    Json?
+  pendingEffectiveDate  String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  account          ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// Daily snapshot of an account's protection state — locked at the cutoff time.
+// Once `lockedAt` is set, the user cannot reduce protection for `tradingDay`;
+// changes are saved to ConnectedAccount.pendingProtectionStatus instead.
+model DailyAccountProtection {
+  id                  String           @id @default(cuid())
+  userId              String
+  connectedAccountId  String
+  tradingDay          String           // YYYY-MM-DD in user's timezone
+  protectionStatus    String           // snapshot of "protected" | "monitor_only" | "ignored" at lock time
+  ruleSource          String           // "default_trading_plan" | "account_specific" | "monitor_only" | "none"
+  lockedAt            DateTime?
+  canChangeUntil      DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  account             ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([connectedAccountId, tradingDay])
+  @@index([userId, tradingDay])
+}
+
+model LiveSessionState {
+  id                String            @id @default(cuid())
+  accountId         String            @unique
+  sessionDate       String
+  dailyPnl          Decimal           @default(0) @db.Decimal(10, 2)
+  tradesCount       Int               @default(0)
+  /// How tradesCount was derived this sync:
+  ///   verified    — account-scoped broker source we trust
+  ///   estimated   — derived from fills that may include other accounts
+  ///                 (multi-account OAuth tokens where fills lack account IDs)
+  ///   unavailable — fills could not be fetched at all this sync
+  /// Trade-limit enforcement is suppressed when this is not "verified".
+  tradeCountSource  String            @default("verified")
+  consecutiveLosses Int               @default(0)
+  lastTradeAt       DateTime?
+  cooldownActive    Boolean           @default(false)
+  cooldownUntil     DateTime?
+  riskState             AccountRiskState  @default(NORMAL)
+  pendingSessionEndLock Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  account           ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model NormalizedTradeEvent {
+  id              String            @id @default(cuid())
+  accountId       String
+  eventType       String
+  externalTradeId String?
+  /// Broker contract/instrument ID — used for per-symbol position tracking to
+  /// distinguish entry fills from exit fills when counting trades.
+  contractId      Int?
+  side            String?
+  quantity        Decimal?          @db.Decimal(10, 4)
+  price           Decimal?          @db.Decimal(12, 4)
+  pnl             Decimal?          @db.Decimal(10, 2)
+  rawPayload      Json?
+  occurredAt      DateTime
+  createdAt       DateTime          @default(now())
+
+  account         ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, occurredAt])
+  @@index([accountId, eventType, occurredAt])
+  @@index([accountId, contractId, occurredAt])
+}
+
+model GuardianIntervention {
+  id                 String            @id @default(cuid())
+  accountId          String
+  userId             String
+  triggerType        String
+  outcome            String
+  message            String?
+  sentAt             DateTime?
+  createdAt          DateTime          @default(now())
+  /// Tradovate endpoint path that was called (e.g. "userAccountAutoLiq/update")
+  brokerEndpoint     String?
+  /// Exact JSON payload sent to the broker API
+  brokerPayloadJson  Json?
+  /// Raw JSON response received from the broker API
+  brokerResponseJson Json?
+  /// "broker_locked" | "monitoring_only" | "broker_lock_failed" | "unavailable_read_only" | "unavailable_permission" | "dry_run"
+  brokerLockStatus   String?
+  /// "not_needed" | "attempted" | "flattened" | "unavailable_read_only" | "unavailable_permission" | "failed" | "dry_run"
+  flattenStatus      String?
+  /// Human-readable description of the position-exit outcome
+  flattenMessage     String?
+  /// Exact JSON payload sent to order/liquidatepositions (null when no write was made)
+  flattenPayloadJson Json?
+  /// Raw JSON response from order/liquidatepositions (null when no write was made)
+  flattenResponseJson Json?
+
+  account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model BrokerOrderActionLog {
+  id                 String   @id @default(cuid())
+  userId             String
+  connectedAccountId String
+  externalAccountId  String?
+  /// "cancel_orders" | "flatten_positions"
+  actionType         String
+  /// Human label for what triggered this action — e.g. "manual_test", "rule_breach"
+  triggerReason      String
+  dryRun             Boolean
+  /// JSON snapshot of what was requested (order IDs, position IDs, counts)
+  requestSummary     Json?
+  /// JSON snapshot of the structured result returned to the caller
+  responseSummary    Json?
+  success            Boolean
+  errorMessage       String?
+  createdAt          DateTime @default(now())
+
+  account     ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([connectedAccountId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model OAuthConnection {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String   // e.g. "google"
+  providerAccountId String   // provider's unique user ID (Google sub)
+  email             String?
+  displayName       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId, provider])
+}
+
+model ManualTradeEntry {
+  id           String   @id @default(cuid())
+  userId       String
+  symbol       String
+  direction    String
+  entryPrice   Decimal? @db.Decimal(12, 4)
+  exitPrice    Decimal? @db.Decimal(12, 4)
+  stopPrice    Decimal? @db.Decimal(12, 4)
+  targetPrice  Decimal? @db.Decimal(12, 4)
+  quantity     Decimal? @db.Decimal(10, 4)
+  pnl          Decimal? @db.Decimal(10, 2)
+  fees         Decimal? @db.Decimal(10, 2)
+  grossPnl     Decimal? @db.Decimal(10, 2)
+  pnlSource    String?
+  riskAmount   Decimal? @db.Decimal(10, 2)
+  rMultiple    Decimal? @db.Decimal(6, 2)
+  strategy     String?
+  ruleBreached Boolean  @default(false)
+  breachReason String?
+  notes        String?
+  tradedAt     DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tradedAt])
+}
+
+model AlertPreferences {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  inAppEnabled    Boolean  @default(true)
+  emailEnabled    Boolean  @default(false)
+  telegramEnabled Boolean  @default(false)
+  onDailyLoss     Boolean  @default(true)
+  onMaxTrades     Boolean  @default(true)
+  onConsecLosses  Boolean  @default(true)
+  onProfitTarget  Boolean  @default(false)
+  onMarketClose   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

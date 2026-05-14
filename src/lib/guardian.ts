@@ -192,11 +192,9 @@ function calculateNextAllowedResetAt(profile: Pick<
 }
 
 function formatResetTimestamp(value: Date, timeZone: string) {
-  return `${new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value)} ${timeZone}`;
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone }).format(value);
+  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(value);
+  return `${date} · ${time}`;
 }
 
 function formatSessionDateKey(value: { year: number; month: number; day: number }) {
@@ -224,7 +222,7 @@ function getCurrentGuardianSessionDateKey(
 
 function humanizeConnectionStatus(status: GuardianConnectionStatus) {
   return status === GuardianConnectionStatus.MOCK_CONNECTED
-    ? "Mock connected"
+    ? "Demo mode active"
     : "Not connected";
 }
 
@@ -314,6 +312,12 @@ export type PremarketReadiness = {
   actionHref: string;
   tone: "ready" | "blocked" | "warning" | "setup";
   upcomingEventNote?: string;
+  upcomingEvent?: {
+    eyebrow: string;
+    stateLabel: string;
+    title: string;
+    time: string;
+  };
 };
 
 function evaluateGuardianRules(
@@ -353,15 +357,9 @@ function evaluateGuardianRules(
       profile.maxTradesPerDay ? `Max trades per day: ${profile.maxTradesPerDay}` : null,
       maxDailyLoss !== null ? `Max daily loss: ${maxDailyLoss}` : null,
       profile.stopAfterConsecutiveLosses
-        ? `Stop after consecutive losses: ${profile.stopAfterConsecutiveLosses}`
+        ? `Stop after ${profile.stopAfterConsecutiveLosses} consecutive losses`
         : null,
       dailyProfitTarget !== null ? `Daily profit target: ${dailyProfitTarget}` : null,
-      `Reset mode: ${humanizeResetMode(profile.resetMode)}`,
-      `Reset time zone: ${resolveTimeZone(profile.dailyResetTimezone)}`,
-      profile.resetMode === GuardianResetMode.DAILY
-        ? `Daily reset hour: ${clampResetHour(profile.dailyResetHour)}:00`
-        : null,
-      `Copy trade mode: ${profile.copyTradeMode ? "On" : "Off"}`,
     ].filter(Boolean) as string[],
     todayTradesCount: status.todayTradesCount,
     todayPnL,
@@ -399,17 +397,23 @@ async function syncGuardianResetTimezone(
 }
 
 async function ensureGuardianRecords(userId: string) {
-  return ensureGuardianRecordsWithRetries(userId, 1);
+  return ensureGuardianRecordsWithRetries(userId, 3);
 }
 
 async function ensureGuardianRecordsWithRetries(
   userId: string,
   retries: number,
 ) {
-  const onboardingProfile = await prisma.traderProfile.findUnique({
-    where: { userId },
-    select: { timezone: true },
-  });
+  const [onboardingProfile, savedRiskRules] = await Promise.all([
+    prisma.traderProfile.findUnique({
+      where: { userId },
+      select: { timezone: true },
+    }),
+    prisma.riskRules.findUnique({
+      where: { userId },
+      select: { maxTradesPerDay: true, maxDailyLoss: true, stopAfterLosses: true },
+    }),
+  ]);
   const fallbackTimezone = resolveTimeZone(onboardingProfile?.timezone);
   const initialNextResetAt = calculateNextDailyResetAt(9, fallbackTimezone, new Date());
 
@@ -419,13 +423,13 @@ async function ensureGuardianRecordsWithRetries(
         where: { userId },
         create: {
           userId,
-          guardianEnabled: true,
+          guardianEnabled: false,
           adapterKey: "mock",
           platformName: "Mock Platform",
           connectionStatus: GuardianConnectionStatus.MOCK_CONNECTED,
-          maxTradesPerDay: 4,
-          maxDailyLoss: 500,
-          stopAfterConsecutiveLosses: 2,
+          maxTradesPerDay: savedRiskRules?.maxTradesPerDay ?? null,
+          maxDailyLoss: savedRiskRules?.maxDailyLoss ?? null,
+          stopAfterConsecutiveLosses: savedRiskRules?.stopAfterLosses ?? null,
           dailyProfitTarget: null,
           copyTradeMode: false,
           resetMode: GuardianResetMode.DAILY,
@@ -680,9 +684,9 @@ export function deriveTodaySessionState(
     return {
       kind: "ONBOARDING_REQUIRED",
       statusLabel: "Onboarding required",
-      headline: "Complete onboarding before starting the day.",
-      detail: "Your trading profile and rules need to be set before the session can open.",
-      nextStep: "Finish onboarding first, then come back here to start clean.",
+      headline: "Finish setup before starting a session.",
+      detail: "Your trading profile and risk rules need to be in place first. Broker connection can be added later.",
+      nextStep: "Complete your trading profile and risk rules, then come back here to start.",
       primaryReasonLabel: null,
       nextResetAt: evaluation.nextAllowedResetAt,
       resetMode: evaluation.resetMode,
@@ -703,10 +707,10 @@ export function deriveTodaySessionState(
   if (!evaluation.guardianActive) {
     return {
       kind: "GUARDIAN_DISABLED",
-      statusLabel: "Guardian off",
-      headline: "Guardian is disabled.",
-      detail: "Protection rules are not enforcing today’s session.",
-      nextStep: "Turn Guardian back on before relying on the session boundaries.",
+      statusLabel: "Paused",
+      headline: "Guardian is paused.",
+      detail: "Your rules are saved, but Guardian is not monitoring this session.",
+      nextStep: "Enable Guardian to start monitoring this session.",
       primaryReasonLabel: null,
       nextResetAt: evaluation.nextAllowedResetAt,
       resetMode: evaluation.resetMode,
@@ -830,7 +834,7 @@ export function deriveTodaySessionState(
       ? "Session is closed for today."
       : sessionStart
         ? "Session is active."
-        : "Trading is open.",
+        : "Today is open.",
     detail: sessionEnded
       ? `Started at ${formatResetTimestamp(
           sessionStart!.startedAt,
@@ -845,10 +849,10 @@ export function deriveTodaySessionState(
           evaluation.resetTimezone,
         )}${sessionStart.source ? ` from ${sessionStart.source}.` : "."}`
       : profile.resetMode === GuardianResetMode.DAILY && evaluation.nextAllowedResetAt
-        ? `Next reset window is ${formatResetTimestamp(
+        ? `Next reset: ${formatResetTimestamp(
             evaluation.nextAllowedResetAt,
             evaluation.resetTimezone,
-          )}.`
+          )}`
         : "Guardian is active and the session is within limits.",
     nextStep: sessionEnded
       ? "The day is wrapped. Review what happened and wait for the next Guardian day before starting again."
@@ -884,17 +888,17 @@ export function derivePremarketReadiness(
     case "ONBOARDING_REQUIRED":
       return {
         status: "Onboarding required",
-        headline: "Complete onboarding before the session can begin.",
-        detail: "Your profile, trading rules, and coaching setup need to be in place first.",
-        actionLabel: "Complete onboarding",
+        headline: "Finish setup before starting a session.",
+        detail: "Your trading profile and risk rules need to be in place first. Broker connection can be added later.",
+        actionLabel: "Continue setup →",
         actionHref: "/onboarding",
         tone: "setup",
       };
     case "GUARDIAN_DISABLED":
       return {
-        status: "Guardian off",
-        headline: "Guardian is not enforcing the day.",
-        detail: "Turn Guardian back on before relying on session boundaries.",
+        status: "Paused",
+        headline: "Guardian is paused.",
+        detail: "Your rules are saved, but Guardian is not monitoring this session.",
         actionLabel: "Enable Guardian",
         actionHref: "/guardian",
         tone: "warning",

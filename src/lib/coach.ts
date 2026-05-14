@@ -13,6 +13,21 @@ export type CoachIntent =
   | "rule_question"
   | "generic_coaching";
 
+/**
+ * Manual trade-event signals from today's manually logged entries.
+ * Structurally mirrors ManualEventSignals from rule-engine; defined locally
+ * to keep the coach layer independent of the rule engine import graph.
+ */
+type ManualActivitySignals = {
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  consecutiveLosses: number;
+  netPnL: number | null;
+  hasRuleBreach: boolean;
+  tradeActivityLogged: boolean;
+};
+
 type CoachContextInput = {
   traderProfile: {
     primaryMarket: string | null;
@@ -89,6 +104,7 @@ type CoachContextInput = {
     isInsidePreNewsWarningWindow: boolean;
     preNewsPolicy?: EconomicPreNewsPolicyStatus | null;
   } | null;
+  manualActivity?: ManualActivitySignals | null;
 };
 
 export type CoachContext = {
@@ -159,6 +175,7 @@ export type CoachContext = {
     isInsidePreNewsWarningWindow: boolean;
     preNewsPolicy: EconomicPreNewsPolicyStatus | null;
   };
+  manualActivity: ManualActivitySignals | null;
 };
 
 type NormalizedTone = "TOUGH" | "CALM_SHARP" | "DIRECT" | "SUPPORTIVE";
@@ -871,6 +888,7 @@ export function buildCoachContext(input: CoachContextInput): CoachContext {
         input.economicCalendar?.isInsidePreNewsWarningWindow ?? false,
       preNewsPolicy: input.economicCalendar?.preNewsPolicy ?? null,
     },
+    manualActivity: input.manualActivity ?? null,
   };
 }
 
@@ -928,6 +946,73 @@ export function detectCoachIntent(message: string): CoachIntent {
   return "generic_coaching";
 }
 
+/**
+ * Produce 0-3 operational lines about today's manual trade activity.
+ * Surfaces breach, consecutive loss streak, and PnL pressure.
+ * Used in check-in, rule-question, and generic reply paths.
+ */
+function buildManualActivityStatusLines(
+  context: CoachContext,
+  options?: { include1LossStreak?: boolean },
+): string[] {
+  const m = context.manualActivity;
+  if (!m) return [];
+
+  const lines: string[] = [];
+
+  if (m.hasRuleBreach) {
+    lines.push("הפרת חוק ידנית נרשמה בסשן הזה.");
+  }
+
+  // Skip the streak line when shouldStopTrading is already active — the
+  // caller's reply already has a loss-streak stop line and repeating it is redundant.
+  if (!context.shouldStopTrading) {
+    if (m.consecutiveLosses >= 2) {
+      lines.push(`נרשמו ${m.consecutiveLosses} הפסדים ידניים ברצף היום.`);
+    } else if (m.consecutiveLosses === 1 && options?.include1LossStreak) {
+      lines.push("הפסד ידני אחד ברצף כרגע.");
+    }
+  }
+
+  if (m.netPnL !== null && m.netPnL < 0) {
+    const maxLoss = context.maxDailyLoss ? parseFloat(context.maxDailyLoss) : null;
+    if (maxLoss && Math.abs(m.netPnL) >= maxLoss * 0.6) {
+      lines.push(`ה-PnL הידני מקרב אותך לגבול היומי (${m.netPnL}).`);
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Produce a compact win/loss/PnL/breach summary for the day-summary reply.
+ * Emits lines when any meaningful manual data is present — wins, losses,
+ * trade count, a breach, or a PnL figure. Does not require trade_opened /
+ * trade_closed events; win/loss/pnl_update/rule_breach all qualify.
+ */
+function buildManualActivityDaySummaryLines(context: CoachContext): string[] {
+  const m = context.manualActivity;
+  if (
+    !m ||
+    (m.tradeCount === 0 && m.winCount === 0 && m.lossCount === 0 && !m.hasRuleBreach)
+  ) return [];
+
+  const lines: string[] = [];
+  const parts: string[] = [];
+  if (m.winCount > 0) parts.push(`${m.winCount} ניצחונות`);
+  if (m.lossCount > 0) parts.push(`${m.lossCount} הפסדים`);
+  if (parts.length > 0) {
+    lines.push(`יומן ידני: ${parts.join(", ")}.`);
+  }
+  if (m.netPnL !== null) {
+    lines.push(`PnL ידני: ${m.netPnL}.`);
+  }
+  if (m.hasRuleBreach) {
+    lines.push("הפרת חוק ידנית נרשמה.");
+  }
+  return lines;
+}
+
 function buildCheckInReply(context: CoachContext) {
   const challenge = localizeTerm(context.primaryChallenge)?.toLowerCase();
   const prompts = context.checkinFormat?.toLowerCase().includes("conversation")
@@ -961,6 +1046,7 @@ function buildCheckInReply(context: CoachContext) {
     context.shouldStopTrading
       ? "יש כבר רצף הפסדים חי. תכבד את חוק העצירה לפני כל מחשבה על עוד עסקה."
       : null,
+    ...buildManualActivityStatusLines(context),
     ...prompts.slice(0, 3),
   ].filter(Boolean) as string[];
 
@@ -1046,6 +1132,7 @@ function buildDaySummaryReply(
     escalationLine,
     recoveryLine,
     progressionLine,
+    ...buildManualActivityDaySummaryLines(context),
     summary.distressCount > 0
       ? "מחר המטרה היא לזהות את הרגע שבו אתה מתחיל לרדוף, לפני שאתה כבר בפנים."
       : "מחר המטרה היא להישאר קרוב לתהליך גם כשהקצב עולה.",
@@ -1189,6 +1276,7 @@ function buildRuleQuestionReply(context: CoachContext) {
       ? `אחרי ${context.stopAfterLosses} הפסדים אתה עוצר.`
       : "עצירה אחרי הפסדים: לא הוגדר",
     "אם הגעת לגבול, ההחלטה כבר התקבלה.",
+    ...buildManualActivityStatusLines(context, { include1LossStreak: true }),
   ].filter(Boolean) as string[];
 
   return formatList(lines);
@@ -1218,6 +1306,7 @@ function buildGenericReply(context: CoachContext) {
     context.resetInProgress
       ? "אתה באיפוס. אל תמהר להכריז שחזרת לפני שהגוף והראש באמת נרגעו."
       : null,
+    ...buildManualActivityStatusLines(context),
     "תישאר עם התהליך. תן רק לסטאפ ברור להרוויח את תשומת הלב שלך.",
     buildRuleLine(context),
   ].filter(Boolean) as string[];

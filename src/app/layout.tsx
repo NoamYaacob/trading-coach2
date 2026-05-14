@@ -16,11 +16,11 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Trading Coach",
-    template: "%s | Trading Coach",
+    default: "Guardrail",
+    template: "%s | Guardrail",
   },
   description:
-    "Mental coaching infrastructure for traders: onboarding, access control, and Telegram bot foundations.",
+    "Broker-connected trading risk enforcement. Define your rules, watch your account live, and lock the session when limits are hit.",
 };
 
 export default function RootLayout({
@@ -31,9 +31,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${ibmPlexMono.variable} h-full overflow-x-hidden antialiased`}
     >
-      <body className="min-h-full bg-canvas text-ink">
+      <body className="min-h-full overflow-x-hidden bg-canvas text-ink">
         <BrowserTimeZoneSync />
         {children}
       </body>

@@ -70,22 +70,22 @@ export function derivePlatformConnectionProgression(input: {
   if (isMock && isConnected) {
     return {
       kind: "MOCK_ACTIVE",
-      label: "Mock feed active",
-      description: "Internal mock data is driving the current integration layer.",
+      label: "Demo mode active",
+      description: "Guardian is running on demo data. No live broker sync is active.",
       liveSyncAvailable: false,
       connectionMode: brokerIntegration.account.adapterDisplay.connectionMode,
-      nextStep: "Use this mode for Guardian testing until a live adapter is added.",
+      nextStep: "Continue in demo mode until live sync is connected.",
     };
   }
 
   if (isMock) {
     return {
       kind: "ADAPTER_SELECTED",
-      label: "Mock adapter selected",
-      description: "Internal mock feed is selected, but no sync source is active right now.",
+      label: "Demo mode selected",
+      description: "Demo mode is selected. No session data is currently active.",
       liveSyncAvailable: false,
       connectionMode: brokerIntegration.account.adapterDisplay.connectionMode,
-      nextStep: "Keep mock selected for internal testing, or switch to an external stub.",
+      nextStep: "Stay in demo mode, or switch to an adapter stub when ready.",
     };
   }
 
