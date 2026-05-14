@@ -96,7 +96,25 @@ export type TradovateUserSyncListenerConfig = {
   onAuthFailed?: (info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean }) => void;
   /** Called whenever a props event arrives that triggers enforcement re-evaluation. */
   onPositionEvent?: (props: TradovatePropsEventData) => void;
-  /** Called whenever any props event arrives (for broad subscription). */
+  /**
+   * Called when the WebSocket closes unexpectedly (not via `close()`). Receives
+   * the close code/reason plus a snapshot of post-ready frame diagnostics so
+   * the worker can persist `listenerLastCloseCode`/`listenerLastCloseReason` and
+   * operators can see how long the connection lived after "ready" and what the
+   * last frame was before the drop.
+   *
+   * Not fired on clean `close()` calls or terminal-error shutdowns.
+   */
+  onClose?: (info: {
+    code: number;
+    reason: string;
+    stateAtClose: ListenerState;
+    msSinceReady: number | null;
+    lastFrameType: string | null;
+    lastFrameAt: Date | null;
+  }) => void;
+  /**
+   * Called whenever any props event arrives (for broad subscription). */
   onPropsEvent?: (props: TradovatePropsEventData) => void;
   /** Called when the listener transitions to a new state. */
   onStateChange?: (state: ListenerState) => void;
@@ -139,6 +157,12 @@ export class TradovateUserSyncListener {
   #pendingSyncId: number | null = null;
   #lastHeartbeatAt: Date | null = null;
   #lastEventAt: Date | null = null;
+  /** Stamped when the listener first enters "ready" on the current connection. */
+  #readyAt: Date | null = null;
+  /** SockJS frame type of the most recent frame on the current connection. */
+  #lastFrameType: string | null = null;
+  /** Timestamp of the most recent frame on the current connection. */
+  #lastFrameAt: Date | null = null;
   #closed = false;
   /** Held only between #connect() and the SockJS "o" frame. Cleared right
    *  after the authorize message is sent. NEVER logged. */
@@ -198,6 +222,11 @@ export class TradovateUserSyncListener {
   // ── Private: connect ───────────────────────────────────────────────────────
 
   async #connect(): Promise<void> {
+    // Reset per-connection diagnostics so the close handler always reflects
+    // the current connection, not a stale one from a previous attempt.
+    this.#readyAt = null;
+    this.#lastFrameType = null;
+    this.#lastFrameAt = null;
     this.#setState("connecting");
     const url = TRADOVATE_WS_URL[this.#config.env];
 
@@ -259,11 +288,30 @@ export class TradovateUserSyncListener {
         return;
       }
 
+      // Capture diagnostics before any state transitions.
+      const stateAtClose = this.#state;
+      const msSinceReady = this.#readyAt !== null
+        ? Date.now() - this.#readyAt.getTime()
+        : null;
+      const lastFrameType = this.#lastFrameType;
+      const lastFrameAt = this.#lastFrameAt;
+
+      // Notify the worker so it can persist the close code/reason to DB and
+      // surface them in the debug endpoint (code 1006 = abnormal/no-close-frame).
+      this.#config.onClose?.({
+        code: event.code,
+        reason: event.reason,
+        stateAtClose,
+        msSinceReady,
+        lastFrameType,
+        lastFrameAt,
+      });
+
       // Close-during-auth = either the SockJS handshake never produced "o",
       // or Tradovate rejected the authorize message. Count these so we can
       // stop a noisy retry loop on a bad/revoked token.
       const closedDuringAuth =
-        this.#state === "connecting" || this.#state === "authorizing";
+        stateAtClose === "connecting" || stateAtClose === "authorizing";
       if (closedDuringAuth) {
         this.#consecutiveAuthFailures++;
         const limit = this.#config.maxAuthFailures ?? 3;
@@ -287,10 +335,14 @@ export class TradovateUserSyncListener {
       console.info("[TradovateUserSyncListener] connection closed, scheduling reconnect", {
         connectionId: this.#config.connectionId,
         code: event.code,
-        reason: event.reason,
+        reason: event.reason || null,
+        stateAtClose,
+        msSinceReady,
+        lastFrameType,
+        lastFrameAt: lastFrameAt?.toISOString() ?? null,
         reconnectAttempt: this.#reconnectAttempt,
         consecutiveAuthFailures: this.#consecutiveAuthFailures,
-        phase: "closed",
+        phase: "connection_closed",
       });
       this.#scheduleReconnect();
     };
@@ -300,6 +352,8 @@ export class TradovateUserSyncListener {
 
   #handleRawFrame(raw: string): void {
     const frame = parseSockJSFrame(raw);
+    this.#lastFrameType = frame.type;
+    this.#lastFrameAt = new Date();
 
     switch (frame.type) {
       case "open":
@@ -312,6 +366,16 @@ export class TradovateUserSyncListener {
         break;
 
       case "close":
+        // Server-initiated SockJS session close. Log the code/reason before
+        // closing the underlying WebSocket — the subsequent ws.onclose will
+        // carry the transport-level code (often 1000) rather than this value.
+        console.info("[TradovateUserSyncListener] SockJS close frame received", {
+          connectionId: this.#config.connectionId,
+          sockjsCode: frame.code,
+          sockjsReason: frame.reason,
+          state: this.#state,
+          phase: "sockjs_close",
+        });
         this.#ws?.close();
         break;
 
@@ -544,6 +608,7 @@ export class TradovateUserSyncListener {
   #setState(state: ListenerState): void {
     if (this.#state === state) return;
     this.#state = state;
+    if (state === "ready") this.#readyAt = new Date();
     this.#config.onStateChange?.(state);
   }
 

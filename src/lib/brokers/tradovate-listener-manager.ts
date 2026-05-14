@@ -66,6 +66,22 @@ export type ManagedListenerConfig = {
     connectionId: string,
     info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean },
   ) => void;
+  /**
+   * Callback when the WebSocket closes unexpectedly (not via `close()`). Used
+   * by the worker to persist `listenerLastCloseCode` / `listenerLastCloseReason`
+   * and to log post-ready frame diagnostics.
+   */
+  onClose?: (
+    connectionId: string,
+    info: {
+      code: number;
+      reason: string;
+      stateAtClose: ListenerState;
+      msSinceReady: number | null;
+      lastFrameType: string | null;
+      lastFrameAt: Date | null;
+    },
+  ) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -128,6 +144,9 @@ export class TradovateListenerManager {
       },
       onAuthFailed: config.onAuthFailed
         ? (info) => config.onAuthFailed!(config.connectionId, info)
+        : undefined,
+      onClose: config.onClose
+        ? (info) => config.onClose!(config.connectionId, info)
         : undefined,
     });
 

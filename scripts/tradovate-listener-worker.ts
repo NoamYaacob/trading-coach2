@@ -330,6 +330,28 @@ async function writeListenerTerminalError(connectionId: string, reason: string):
   }
 }
 
+/** Persist the close code and reason from the most recent unexpected close. */
+async function writeListenerClose(
+  connectionId: string,
+  code: number,
+  reason: string,
+): Promise<void> {
+  try {
+    await prisma.brokerConnection.update({
+      where: { id: connectionId },
+      data: {
+        listenerLastCloseCode: code,
+        listenerLastCloseReason: reason || null,
+      },
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist close info", {
+      connectionId,
+      error: errMessage(err),
+    });
+  }
+}
+
 /** Persist the most recent authorize-response status for diagnostics. */
 async function writeListenerAuthStatus(
   connectionId: string,
@@ -586,6 +608,21 @@ async function reconcileListeners(): Promise<void> {
             ...buildEndpointChainDiag(plan.env),
           });
         })();
+      },
+      onClose: (connectionId, info) => {
+        // Persist close code/reason for the debug endpoint and alert surface.
+        // Code 1006 = abnormal closure (TCP drop without WS close frame).
+        void writeListenerClose(connectionId, info.code, info.reason);
+        console.info("[listener-worker] listener WebSocket closed", {
+          connectionId,
+          code: info.code,
+          reason: info.reason || null,
+          stateAtClose: info.stateAtClose,
+          msSinceReady: info.msSinceReady,
+          lastFrameType: info.lastFrameType,
+          lastFrameAt: info.lastFrameAt?.toISOString() ?? null,
+          phase: "ws_closed",
+        });
       },
     });
 
