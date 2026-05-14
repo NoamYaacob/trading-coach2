@@ -43,6 +43,7 @@ import type {
 import {
   planListenerStartups,
   listenerStateToDbStatus,
+  computeRetryDelayMs,
   type BrokerConnectionRow,
 } from "../src/lib/brokers/tradovate-listener-worker-logic.ts";
 import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
@@ -58,6 +59,23 @@ const SHUTDOWN_GRACE_MS = 5_000; // max time to wait for Prisma to disconnect on
  * to allow live listeners. Default false until demo handshake is verified.
  */
 const ENABLE_LIVE = process.env.TRADOVATE_LISTENER_ENABLE_LIVE === "true";
+
+/**
+ * Global kill-switch. When set to "true", the worker boots, logs that listeners
+ * are disabled, runs reconcile (which skips every row with reason
+ * "listener_globally_disabled"), and never opens a WebSocket. Use this to keep
+ * the worker process alive on Railway while pausing all real-time activity.
+ */
+const LISTENER_DISABLED = process.env.TRADOVATE_LISTENER_DISABLED === "true";
+
+/**
+ * Debug filter. When set to a BrokerConnection id, only that connection is
+ * considered by reconcile — every other row is skipped with reason
+ * "single_connection_filter". Lets us isolate one broken connection without
+ * stopping the rest.
+ */
+const SINGLE_CONNECTION_ID =
+  process.env.TRADOVATE_LISTENER_CONNECTION_ID?.trim() || null;
 
 // ── WebSocket adapter ────────────────────────────────────────────────────────
 
@@ -115,6 +133,8 @@ async function loadHealthyConnectionRows(): Promise<BrokerConnectionRow[]> {
       tokenExpiresAt: true,
       lastRenewError: true,
       listenerStatus: true,
+      listenerNextRetryAt: true,
+      listenerDisabledAt: true,
     },
   });
 }
@@ -220,9 +240,16 @@ async function writeListenerStatus(
       where: { id: connectionId },
       data: {
         listenerStatus: dbStatus,
-        // Stamp listenerConnectedAt on first transition to "connected".
+        // Stamp listenerConnectedAt on first transition to "connected" and
+        // reset the retry tracker — we made it past authorize.
         ...(dbStatus === "connected"
-          ? { listenerConnectedAt: new Date(), listenerErrorMessage: null }
+          ? {
+              listenerConnectedAt: new Date(),
+              listenerErrorMessage: null,
+              listenerNextRetryAt: null,
+              listenerRetryCount: 0,
+              listenerLastAuthFailureAt: null,
+            }
           : {}),
         ...(dbStatus === "closed"
           ? { listenerErrorMessage: null }
@@ -267,13 +294,54 @@ async function writeListenerHeartbeat(connectionId: string, at: Date): Promise<v
 }
 
 async function writeListenerTerminalError(connectionId: string, reason: string): Promise<void> {
+  // Soft-retry tracking: when the listener gives up, schedule the next retry
+  // using an exponential backoff instead of marking the connection dead.
+  // The planner skips with "listener_retry_cooldown" until nextRetryAt passes.
   try {
+    const current = await prisma.brokerConnection.findUnique({
+      where: { id: connectionId },
+      select: { listenerRetryCount: true },
+    });
+    const retryCount = current?.listenerRetryCount ?? 0;
+    const delayMs = computeRetryDelayMs(retryCount);
+    const now = new Date();
+    const nextRetryAt = new Date(now.getTime() + delayMs);
     await prisma.brokerConnection.update({
       where: { id: connectionId },
-      data: { listenerStatus: "error", listenerErrorMessage: reason },
+      data: {
+        listenerStatus: "error",
+        listenerErrorMessage: reason,
+        listenerLastAuthFailureAt: now,
+        listenerNextRetryAt: nextRetryAt,
+        listenerRetryCount: retryCount + 1,
+      },
+    });
+    console.warn("[listener-worker] terminal error — scheduled retry", {
+      connectionId,
+      retryCount: retryCount + 1,
+      nextRetryAt: nextRetryAt.toISOString(),
+      delayMs,
     });
   } catch (err) {
     console.error("[listener-worker] failed to persist terminal error", {
+      connectionId,
+      error: errMessage(err),
+    });
+  }
+}
+
+/** Persist the most recent authorize-response status for diagnostics. */
+async function writeListenerAuthStatus(
+  connectionId: string,
+  status: number,
+): Promise<void> {
+  try {
+    await prisma.brokerConnection.update({
+      where: { id: connectionId },
+      data: { listenerLastAuthStatus: status },
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist auth status", {
       connectionId,
       error: errMessage(err),
     });
@@ -382,7 +450,39 @@ const manager = new TradovateListenerManager(makeWsFactory());
 
 async function reconcileListeners(): Promise<void> {
   const rows = await loadHealthyConnectionRows();
-  const { start: plans, skipped } = planListenerStartups(rows, { enableLive: ENABLE_LIVE });
+  const { start: plans, skipped } = planListenerStartups(rows, {
+    enableLive: ENABLE_LIVE,
+    globallyDisabled: LISTENER_DISABLED,
+    singleConnectionId: SINGLE_CONNECTION_ID,
+  });
+
+  // Before starting any listener, clear `listenerStatus = "error"` for rows
+  // whose cooldown has elapsed so the next reconcile loop sees a fresh slate.
+  // (The planner already lets these rows through; this update keeps the DB
+  // status accurate for the dashboard and the /status endpoint.)
+  const now = new Date();
+  const cooldownExpired = rows.filter(
+    (r) =>
+      r.listenerStatus === "error" &&
+      r.listenerNextRetryAt !== null &&
+      r.listenerNextRetryAt <= now,
+  );
+  for (const r of cooldownExpired) {
+    try {
+      await prisma.brokerConnection.update({
+        where: { id: r.id },
+        data: { listenerStatus: null, listenerErrorMessage: null },
+      });
+      console.info("[listener-worker] retry cooldown expired — clearing error", {
+        connectionId: r.id,
+      });
+    } catch (err) {
+      console.error("[listener-worker] failed to clear expired cooldown", {
+        connectionId: r.id,
+        error: errMessage(err),
+      });
+    }
+  }
 
   for (const skip of skipped) {
     console.info("[listener-worker] skipping connection", skip);
@@ -471,6 +571,7 @@ async function reconcileListeners(): Promise<void> {
       },
       onAuthFailed: (connectionId, info) => {
         void (async () => {
+          await writeListenerAuthStatus(connectionId, info.status);
           const diag = await loadAuthDiagnostics(connectionId).catch(() => null);
           console.warn("[listener-worker] authorize rejected", {
             connectionId,
@@ -536,7 +637,20 @@ async function main(): Promise<void> {
     staggerMs: STARTUP_STAGGER_MS,
     mode: "observe-only",
     enableLive: ENABLE_LIVE,
+    listenerDisabled: LISTENER_DISABLED,
+    singleConnectionId: SINGLE_CONNECTION_ID,
   });
+  if (LISTENER_DISABLED) {
+    console.warn(
+      "[listener-worker] TRADOVATE_LISTENER_DISABLED=true — no WebSockets will be opened",
+    );
+  }
+  if (SINGLE_CONNECTION_ID) {
+    console.warn(
+      "[listener-worker] TRADOVATE_LISTENER_CONNECTION_ID is set — scoping reconcile to a single connection",
+      { connectionId: SINGLE_CONNECTION_ID },
+    );
+  }
 
   await reconcileListeners();
 
