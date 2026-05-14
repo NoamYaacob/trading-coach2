@@ -85,28 +85,35 @@
 // error before any callback is hit.
 //
 // Tradovate's account model is per-user, not per-OAuth-env: a single user
-// can have live, demo/sim, and prop-firm accounts under one login. After a
-// successful OAuth at the host that recognizes the CID, /account/list
-// returns all of those accounts. The user picks which to import; the
-// account_type / prop_firm / label are local metadata.
+// can have live, demo/sim, and prop-firm accounts under one login. The
+// authorization URL is the same for both environments; the issued
+// authorization code is exchanged at the environment-specific token endpoint.
+// The env selector in the connect form controls which Tradovate token endpoint
+// issues the access token; the resulting token works only for that environment
+// (live tokens authenticate on live.tradovateapi.com WS; demo tokens
+// authenticate on demo.tradovateapi.com WS).
 //
-// Therefore: both demo and live OAuth use the same URL pair. The "env"
-// selector in the connect form is currently local metadata only (it does
-// not drive Tradovate URL selection). If Tradovate later confirms that
-// demo OAuth requires a separate CID, env-specific
-// TRADOVATE_DEMO_CLIENT_ID/_SECRET vars can be added here.
+// IMPORTANT: existing demo BrokerConnection rows that were created before this
+// token-URL split (when tokenUrlDemo incorrectly used live-api.tradovate.com)
+// hold live-env tokens that the demo WebSocket will reject with 401. Those
+// connections must be re-authorized to receive a proper demo token.
+//
+// If Tradovate later confirms that demo OAuth requires a separate CID, add
+// TRADOVATE_DEMO_CLIENT_ID/_SECRET vars here.
 
 const DEFAULTS = {
   // ── Authorization + token endpoints (OAuth authorization-code flow) ───────
-  // Both env keys point to the same URL pair. Override per env via
-  // TRADOVATE_AUTH_URL_LIVE/_DEMO and TRADOVATE_TOKEN_URL_LIVE/_DEMO if a
-  // future configuration ever needs to split them again.
+  // Both envs share the same authorization URL; the token URL differs so each
+  // env issues environment-scoped tokens. Override per env via
+  // TRADOVATE_AUTH_URL_LIVE/_DEMO and TRADOVATE_TOKEN_URL_LIVE/_DEMO.
   authUrlLive: "https://trader.tradovate.com/oauth",
   authUrlDemo: "https://trader.tradovate.com/oauth",
 
   // Path is /auth/oauthtoken — NOT /oauth/token, NOT /v1/auth/oauthtoken.
+  // Live and demo use their respective API host so the issued token is scoped
+  // to the correct environment (demo WS rejects live-api tokens).
   tokenUrlLive: "https://live-api.tradovate.com/auth/oauthtoken",
-  tokenUrlDemo: "https://live-api.tradovate.com/auth/oauthtoken",
+  tokenUrlDemo: "https://demo.tradovateapi.com/auth/oauthtoken",
 
   // ── REST API base (read pipeline — separate from OAuth) ───────────────────
   // TODO: unverified against a real account — see docs/broker-integration-plan.md.
@@ -314,5 +321,7 @@ export function logTradovateConfigDiagnostic(): void {
     authUrlDemo: config.authUrl.demo,
     tokenUrlLive: config.tokenUrl.live,
     tokenUrlDemo: config.tokenUrl.demo,
+    apiBaseUrlLive: config.apiBaseUrl.live,
+    apiBaseUrlDemo: config.apiBaseUrl.demo,
   });
 }

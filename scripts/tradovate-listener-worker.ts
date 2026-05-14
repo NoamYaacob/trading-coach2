@@ -45,6 +45,7 @@ import {
   listenerStateToDbStatus,
   type BrokerConnectionRow,
 } from "../src/lib/brokers/tradovate-listener-worker-logic.ts";
+import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -144,23 +145,60 @@ async function getAccessTokenForConnection(
 }
 
 /**
+ * Decode public JWT claims from a token for diagnostic logging.
+ * The token string itself is NEVER logged — only derived metadata.
+ * Returns null if the token is not a JWT or cannot be parsed.
+ */
+function tryDecodeJwtPublicClaims(
+  token: string,
+): { exp: number | null; iat: number | null; env: string | null; scope: string | null } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(
+      Buffer.from(parts[1]!, "base64url").toString(),
+    ) as Record<string, unknown>;
+    return {
+      exp: typeof payload.exp === "number" ? payload.exp : null,
+      iat: typeof payload.iat === "number" ? payload.iat : null,
+      env: typeof payload.env === "string" ? payload.env : null,
+      scope: typeof payload.scope === "string" ? payload.scope : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read non-secret token lifecycle fields for diagnostic logging. Returns ISO
- * timestamps and derived ages — NEVER the encrypted token blobs or cleartext
- * token. Safe to log.
+ * timestamps, derived ages, and decoded JWT public claims (if the token is a
+ * JWT). NEVER logs encrypted token blobs or cleartext token values.
  */
 async function loadAuthDiagnostics(connectionId: string): Promise<{
   tokenExpiresAt: string | null;
   minutesUntilExpiry: number | null;
   lastRenewedAt: string | null;
   minutesSinceRenewal: number | null;
+  tokenJwtClaims: { exp: number | null; iat: number | null; env: string | null; scope: string | null } | null;
 }> {
   const bc = await prisma.brokerConnection.findUnique({
     where: { id: connectionId },
-    select: { tokenExpiresAt: true, lastRenewedAt: true },
+    select: { tokenExpiresAt: true, lastRenewedAt: true, accessTokenEncrypted: true },
   });
   const now = Date.now();
   const tokenExpiresAt = bc?.tokenExpiresAt ?? null;
   const lastRenewedAt = bc?.lastRenewedAt ?? null;
+
+  let tokenJwtClaims = null;
+  if (bc?.accessTokenEncrypted) {
+    try {
+      const token = parseAndDecrypt(bc.accessTokenEncrypted);
+      tokenJwtClaims = tryDecodeJwtPublicClaims(token);
+    } catch {
+      // Decryption failed — skip JWT claims
+    }
+  }
+
   return {
     tokenExpiresAt: tokenExpiresAt?.toISOString() ?? null,
     minutesUntilExpiry:
@@ -168,6 +206,7 @@ async function loadAuthDiagnostics(connectionId: string): Promise<{
     lastRenewedAt: lastRenewedAt?.toISOString() ?? null,
     minutesSinceRenewal:
       lastRenewedAt != null ? Math.round((now - lastRenewedAt.getTime()) / 60_000) : null,
+    tokenJwtClaims,
   };
 }
 
@@ -246,6 +285,29 @@ function errMessage(err: unknown): string {
   return "unknown";
 }
 
+function safeUrlHost(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+
+/**
+ * Build a safe per-connection endpoint chain object for diagnostic logging.
+ * Shows which token URL, REST base, and WS host will be used for this env —
+ * a token issued by the wrong host will be rejected by the WS with 401.
+ */
+function buildEndpointChainDiag(env: "live" | "demo") {
+  const cfg = getTradovateConfig();
+  if (cfg.state !== "ready") return { env, configReady: false };
+  return {
+    env,
+    configReady: true,
+    tokenUrlHost: safeUrlHost(cfg.config.tokenUrl[env]),
+    restBaseHost: safeUrlHost(cfg.config.apiBaseUrl[env]),
+    wsHost: safeUrlHost(TRADOVATE_WS_URL[env]),
+    tokenAndRestSameHost:
+      safeUrlHost(cfg.config.tokenUrl[env]) === safeUrlHost(cfg.config.apiBaseUrl[env]),
+  };
+}
+
 function parsePositiveInt(value: string | null): number | null {
   if (!value) return null;
   const n = Number(value);
@@ -279,17 +341,23 @@ async function resolveTradovateUserId(
   const apiBase = cfg.config.apiBaseUrl[env];
 
   const accessToken = await getAccessTokenForConnection(connectionId, userId);
-  const res = await fetch(`${apiBase}/account/list`, {
+  const accountListUrl = `${apiBase}/account/list`;
+  console.info("[listener-worker] probing /account/list for userId", {
+    connectionId,
+    env,
+    restBaseHost: safeUrlHost(apiBase),
+  });
+  const res = await fetch(accountListUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) {
-    throw new Error(`account/list returned ${res.status}`);
+    throw new Error(`account/list returned ${res.status} from ${safeUrlHost(apiBase)}`);
   }
   const accounts = (await res.json()) as Array<{ userId?: unknown }>;
   const first = accounts.find((a) => typeof a.userId === "number" && Number.isFinite(a.userId) && a.userId > 0);
   const resolved = first?.userId as number | undefined;
   if (!resolved) {
-    throw new Error("account/list returned no accounts with a usable userId");
+    throw new Error(`account/list returned no accounts with a usable userId (from ${safeUrlHost(apiBase)})`);
   }
 
   await prisma.brokerConnection.update({
@@ -299,6 +367,7 @@ async function resolveTradovateUserId(
   console.info("[listener-worker] backfilled brokerUserId from /account/list", {
     connectionId,
     env,
+    restBaseHost: safeUrlHost(apiBase),
   });
   return resolved;
 }
@@ -363,6 +432,14 @@ async function reconcileListeners(): Promise<void> {
       continue;
     }
 
+    // Log the full env→endpoint chain so any host mismatch is visible before
+    // the first authorize attempt. A token issued by the wrong host will cause
+    // a 401 on the WS even with a valid, unexpired token.
+    console.info("[listener-worker] connection endpoint chain", {
+      connectionId: plan.connectionId,
+      ...buildEndpointChainDiag(plan.env),
+    });
+
     // Mark "connecting" before the socket opens so the dashboard reflects
     // intent immediately.
     await writeListenerStatus(plan.connectionId, "connecting");
@@ -397,7 +474,6 @@ async function reconcileListeners(): Promise<void> {
           const diag = await loadAuthDiagnostics(connectionId).catch(() => null);
           console.warn("[listener-worker] authorize rejected", {
             connectionId,
-            env: plan.env,
             status: info.status,
             errorText: info.errorText,
             willRetryWithForcedRefresh: info.willRetryWithForcedRefresh,
@@ -405,6 +481,8 @@ async function reconcileListeners(): Promise<void> {
             minutesUntilExpiry: diag?.minutesUntilExpiry ?? null,
             lastRenewedAt: diag?.lastRenewedAt ?? null,
             minutesSinceRenewal: diag?.minutesSinceRenewal ?? null,
+            tokenJwtClaims: diag?.tokenJwtClaims ?? null,
+            ...buildEndpointChainDiag(plan.env),
           });
         })();
       },
