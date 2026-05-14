@@ -21,20 +21,20 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/debug/tradovate-listener/probe
  *
- * One-shot, end-to-end probe of a single Tradovate connection:
+ * One-shot, end-to-end probe of a single Tradovate connection that tests four
+ * authorize frame formats against the same access token:
  *
- *   1. Ensure-token (refresh if expiring) and decrypt to RAM.
- *   2. Log the endpoint chain (tokenUrlHost / restBaseHost / wsHost).
- *   3. Call `/account/list` on the env-specific REST base.
- *   4. Open the env-specific WebSocket.
- *   5. Wait for the SockJS "o" frame.
- *   6. Send the official authorize frame: `authorize\n<id>\n\n"<token>"`.
- *   7. Wait for the authorize response (timeout enforced).
- *   8. Close the WS and return sanitized results.
+ *   A. JSON-stringified body (current protocol): authorize\n1\n\n"<token>"
+ *   B. Raw body (no quotes):                     authorize\n1\n\n<token>
+ *   C. Bearer body:                              authorize\n1\n\n"Bearer <token>"
+ *   D. SockJS array-wrapped:                     ["authorize\n1\n\n\"<token>\""]
  *
- * The token value is never logged, persisted, or returned. Only response
- * status codes, close codes, error texts, and timing metadata leave this
- * endpoint.
+ * Each variant opens a fresh WebSocket, waits for the SockJS "o" open frame,
+ * sends its payload, and waits up to 10 seconds for a response. Results are
+ * returned in the `variants` array.
+ *
+ * The access token value is never logged, persisted, or returned. Only
+ * payloadLength (byte count) is reported per variant.
  *
  * Body: { connectionId: string }
  *
@@ -46,6 +46,42 @@ export const dynamic = "force-dynamic";
 
 const SOCKJS_OPEN_TIMEOUT_MS = 10_000;
 const AUTHORIZE_RESPONSE_TIMEOUT_MS = 10_000;
+
+type VariantProbeResult = {
+  variantName: string;
+  sentAfterSockJsOpen: boolean;
+  authStatus: number | null;
+  authOk: boolean;
+  errorText: string | null;
+  closeCode: number | null;
+  closeReason: string | null;
+  timing: { openMs: number | null; authorizeMs: number | null };
+  payloadLength: number | null;
+};
+
+/**
+ * Four authorize payload formats to probe. A fresh WS connection is opened for
+ * each variant. The token is passed to buildPayload at call time — never stored
+ * in the array or returned in any response field.
+ */
+const PROBE_VARIANTS: Array<{ name: string; buildPayload: (t: string) => string }> = [
+  {
+    name: "A_json_stringified",
+    buildPayload: (t) => encodeAuthorizeMessage(1, t),
+  },
+  {
+    name: "B_raw",
+    buildPayload: (t) => `authorize\n1\n\n${t}`,
+  },
+  {
+    name: "C_bearer",
+    buildPayload: (t) => encodeAuthorizeMessage(1, `Bearer ${t}`),
+  },
+  {
+    name: "D_sockjs_array",
+    buildPayload: (t) => JSON.stringify([`authorize\n1\n\n${JSON.stringify(t)}`]),
+  },
+];
 
 export async function POST(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -183,51 +219,56 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  // Step 3–5: open WS, wait for "o", send authorize, wait for response
-  const wsResult = await probeWebSocket(TRADOVATE_WS_URL[env], accessToken);
+  // Step 3: probe each authorize variant with a fresh connection per variant
+  const wsUrl = TRADOVATE_WS_URL[env];
+  const variants: VariantProbeResult[] = [];
+  for (const variant of PROBE_VARIANTS) {
+    const result = await probeWebSocketVariant(
+      wsUrl,
+      variant.name,
+      variant.buildPayload,
+      accessToken,
+    );
+    variants.push(result);
+  }
 
   return NextResponse.json({
-    ok: wsResult.outcome === "auth_ok",
+    ok: variants.some((v) => v.authOk),
     connectionId,
     endpointChain,
     accountList: accountListResult,
-    ws: wsResult,
+    variants,
   });
 }
 
-type WsProbeResult = {
-  outcome: "auth_ok" | "auth_failed" | "open_timeout" | "auth_timeout" | "closed_before_authorize" | "error";
-  authStatus: number | null;
-  authErrorText: string | null;
-  closeCode: number | null;
-  closeReason: string | null;
-  errorText: string | null;
-  timing: {
-    openMs: number | null;
-    authorizeMs: number | null;
-  };
-};
-
-async function probeWebSocket(url: string, accessToken: string): Promise<WsProbeResult> {
-  return new Promise<WsProbeResult>((resolve) => {
+async function probeWebSocketVariant(
+  url: string,
+  variantName: string,
+  buildPayload: (token: string) => string,
+  accessToken: string,
+): Promise<VariantProbeResult> {
+  return new Promise<VariantProbeResult>((resolve) => {
     const start = Date.now();
     let openAt: number | null = null;
     let authorizeSentAt: number | null = null;
+    let payloadLength: number | null = null;
+    let sentAfterSockJsOpen = false;
     let settled = false;
     const ws = new WebSocket(url);
 
-    const settle = (result: WsProbeResult) => {
+    const settle = (
+      partial: Omit<VariantProbeResult, "variantName" | "sentAfterSockJsOpen" | "payloadLength">,
+    ) => {
       if (settled) return;
       settled = true;
       try { ws.close(); } catch { /* ignore */ }
-      resolve(result);
+      resolve({ variantName, sentAfterSockJsOpen, payloadLength, ...partial });
     };
 
     const openTimer = setTimeout(() => {
       settle({
-        outcome: "open_timeout",
         authStatus: null,
-        authErrorText: null,
+        authOk: false,
         closeCode: null,
         closeReason: null,
         errorText: `no SockJS open frame within ${SOCKJS_OPEN_TIMEOUT_MS}ms`,
@@ -247,16 +288,16 @@ async function probeWebSocket(url: string, accessToken: string): Promise<WsProbe
 
       if (frame.type === "open") {
         clearTimeout(openTimer);
-        // Send authorize frame after SockJS "o"
         try {
-          const frameStr = encodeAuthorizeMessage(1, accessToken);
-          ws.send(frameStr);
+          const payload = buildPayload(accessToken);
+          payloadLength = Buffer.byteLength(payload, "utf8");
+          ws.send(payload);
+          sentAfterSockJsOpen = true;
           authorizeSentAt = Date.now();
           authTimer = setTimeout(() => {
             settle({
-              outcome: "auth_timeout",
               authStatus: null,
-              authErrorText: null,
+              authOk: false,
               closeCode: null,
               closeReason: null,
               errorText: `no authorize response within ${AUTHORIZE_RESPONSE_TIMEOUT_MS}ms`,
@@ -268,9 +309,8 @@ async function probeWebSocket(url: string, accessToken: string): Promise<WsProbe
           }, AUTHORIZE_RESPONSE_TIMEOUT_MS);
         } catch (err) {
           settle({
-            outcome: "error",
             authStatus: null,
-            authErrorText: null,
+            authOk: false,
             closeCode: null,
             closeReason: null,
             errorText: err instanceof Error ? err.message : "send_failed",
@@ -290,15 +330,14 @@ async function probeWebSocket(url: string, accessToken: string): Promise<WsProbe
           if (parsed.data.i !== 1) continue;
           if (authTimer) clearTimeout(authTimer);
           const status = parsed.data.s;
-          const errorText =
-            status === 200 ? null : sanitizeErrorText(JSON.stringify(parsed.data.p ?? null));
           settle({
-            outcome: status === 200 ? "auth_ok" : "auth_failed",
             authStatus: status,
-            authErrorText: errorText,
+            authOk: status === 200,
             closeCode: null,
             closeReason: null,
-            errorText: null,
+            errorText: sanitizeErrorText(
+              status === 200 ? null : JSON.stringify(parsed.data.p ?? null),
+            ),
             timing: {
               openMs: openAt !== null ? openAt - start : null,
               authorizeMs: authorizeSentAt !== null ? Date.now() - authorizeSentAt : null,
@@ -316,9 +355,8 @@ async function probeWebSocket(url: string, accessToken: string): Promise<WsProbe
         ? reasonBuf
         : reasonBuf?.toString("utf8") ?? "";
       settle({
-        outcome: authorizeSentAt === null ? "closed_before_authorize" : "error",
         authStatus: null,
-        authErrorText: null,
+        authOk: false,
         closeCode: code,
         closeReason: sanitizeErrorText(reason),
         errorText: null,
@@ -333,9 +371,8 @@ async function probeWebSocket(url: string, accessToken: string): Promise<WsProbe
       if (authTimer) clearTimeout(authTimer);
       clearTimeout(openTimer);
       settle({
-        outcome: "error",
         authStatus: null,
-        authErrorText: null,
+        authOk: false,
         closeCode: null,
         closeReason: null,
         errorText: err instanceof Error ? err.message : "ws_error",

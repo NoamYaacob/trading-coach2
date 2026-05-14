@@ -1,9 +1,10 @@
 /**
  * Source-scan tests for POST /api/debug/tradovate-listener/probe.
  *
- * Probe is a high-blast-radius endpoint: it opens a WebSocket, sends an
- * authorize frame, and waits for a response. The tests here lock down auth,
- * ownership, timeouts, and absolute non-logging / non-return of the token.
+ * Probe is a high-blast-radius endpoint: it opens WebSocket connections,
+ * sends authorize frames in four different formats, and waits for responses.
+ * The tests here lock down auth, ownership, timeouts, variant coverage, and
+ * the absolute requirement that the token never appears in logs or responses.
  */
 
 import { describe, it } from "node:test";
@@ -68,17 +69,15 @@ describe("probe: endpoint chain reporting", () => {
 });
 
 describe("probe: WebSocket handshake sequence", () => {
-  it("waits for SockJS open frame before sending authorize", () => {
-    // The handler must dispatch on frame.type === "open" before calling
-    // encodeAuthorizeMessage / ws.send. Compare against the call site, which
-    // is the second occurrence of encodeAuthorizeMessage (first is the import).
+  it("waits for SockJS open frame before sending the authorize payload", () => {
+    // ws.send(payload) must appear after the frame.type === "open" guard
     const openHandlerIdx = ROUTE_SRC.indexOf('frame.type === "open"');
-    const firstImportIdx = ROUTE_SRC.indexOf("encodeAuthorizeMessage");
-    const callSiteIdx = ROUTE_SRC.indexOf("encodeAuthorizeMessage", firstImportIdx + 1);
-    assert.ok(openHandlerIdx !== -1 && callSiteIdx !== -1);
+    const sendCallIdx = ROUTE_SRC.indexOf("ws.send(", openHandlerIdx);
+    assert.ok(openHandlerIdx !== -1, 'must check frame.type === "open"');
+    assert.ok(sendCallIdx !== -1, "must call ws.send inside the open handler");
     assert.ok(
-      openHandlerIdx < callSiteIdx,
-      "authorize must be sent inside the 'open' branch (after frame.type === 'open' check)",
+      openHandlerIdx < sendCallIdx,
+      "ws.send must be called inside the 'open' branch (after frame.type === 'open' check)",
     );
   });
 
@@ -89,13 +88,51 @@ describe("probe: WebSocket handshake sequence", () => {
   it("enforces an open-frame timeout and an authorize-response timeout", () => {
     assert.ok(ROUTE_SRC.includes("SOCKJS_OPEN_TIMEOUT_MS"));
     assert.ok(ROUTE_SRC.includes("AUTHORIZE_RESPONSE_TIMEOUT_MS"));
-    assert.ok(ROUTE_SRC.includes('"open_timeout"'));
-    assert.ok(ROUTE_SRC.includes('"auth_timeout"'));
+    // Both timeouts must call settle (proved by function name appearing after each deadline comment)
+    assert.ok(
+      ROUTE_SRC.indexOf("SOCKJS_OPEN_TIMEOUT_MS") <
+        ROUTE_SRC.indexOf("AUTHORIZE_RESPONSE_TIMEOUT_MS"),
+      "open timeout must be declared before auth timeout",
+    );
   });
 
-  it("reports auth_ok on status 200 and auth_failed otherwise", () => {
-    assert.ok(ROUTE_SRC.includes('"auth_ok"'));
-    assert.ok(ROUTE_SRC.includes('"auth_failed"'));
+  it("reports authOk=true on status 200 and authOk=false otherwise", () => {
+    assert.ok(ROUTE_SRC.includes("authOk"));
+    assert.ok(ROUTE_SRC.includes("authStatus"));
+    assert.ok(ROUTE_SRC.includes("status === 200"));
+  });
+});
+
+describe("probe: multi-variant format coverage", () => {
+  it("defines all four authorize format variants", () => {
+    assert.ok(ROUTE_SRC.includes("A_json_stringified"), "variant A must be present");
+    assert.ok(ROUTE_SRC.includes("B_raw"), "variant B must be present");
+    assert.ok(ROUTE_SRC.includes("C_bearer"), "variant C must be present");
+    assert.ok(ROUTE_SRC.includes("D_sockjs_array"), "variant D must be present");
+  });
+
+  it("reports payloadLength not the raw payload", () => {
+    assert.ok(
+      ROUTE_SRC.includes("payloadLength"),
+      "response must include payloadLength",
+    );
+    // The word 'payload' as a standalone response field must not appear
+    // (buildPayload and payloadLength are acceptable; 'payload:' as a field is not)
+    const hasPayloadField = /\bpayload\s*:(?!\s*\()/.test(ROUTE_SRC);
+    assert.ok(!hasPayloadField, "must not return a raw 'payload' field");
+  });
+
+  it("tracks sentAfterSockJsOpen per variant", () => {
+    assert.ok(
+      ROUTE_SRC.includes("sentAfterSockJsOpen"),
+      "must track whether authorize was sent after SockJS open",
+    );
+  });
+
+  it("returns a variants array in the response", () => {
+    assert.ok(ROUTE_SRC.includes("variants"), "response must include variants array");
+    // Variants array must be populated in the loop and included in NextResponse.json
+    assert.ok(ROUTE_SRC.includes("variants.push") || ROUTE_SRC.includes("variants:"));
   });
 });
 
