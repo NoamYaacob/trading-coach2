@@ -1,58 +1,108 @@
 # Phase 2C-D: Demo Canary Runbook — First Real Broker Write
 
-**Status: PLANNING ONLY. No broker write has been sent. Do not execute until all pre-flight checks pass and a human confirms the checkpoint in Step 5.**
+**Status: PLANNING ONLY. No broker write has been sent. Do not execute the real canary until the full rehearsal (Section 3) passes and a human confirms the checkpoint in Section 4.**
 
 **Safety boundaries in effect:**
-- `BROKER_ENFORCEMENT_ENABLED` must remain absent/false until Step 5 checkpoint
+- `BROKER_ENFORCEMENT_ENABLED` must remain absent/false until the checkpoint in Section 4
 - `TRADOVATE_LISTENER_ENABLE_LIVE=false` — unchanged throughout, live accounts never touched
 - No flatten, no order cancellation, no order placement
 - Only account `cmottd1z200020do1knjxq582` (demo) is eligible for this canary
-- Abort immediately on any abort condition in Section 6
+- Abort immediately on any abort condition in Section 7
 
 ---
 
-## 1. Env Vars Required
+## 1. Env Vars by Railway Service
 
-These must be set in the **listener-worker process only** (not the web process, not the cron process) before the canary step that enables enforcement. All other env vars remain unchanged.
+### listener-worker service — rest state (current)
 
-### Must be set before canary
+These are the values the listener-worker runs with at rest. Do not change any of these until the canary sequence explicitly requires it.
 
-```
-BROKER_ENFORCEMENT_ENABLED=true
-BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST=cmottd1z200020do1knjxq582
-GUARDRAIL_INTERNAL_LOCK_ENABLED=true
-```
+| Var | Rest value | Notes |
+|---|---|---|
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` | **Never change.** Gate 2. |
+| `ENFORCEMENT_DRY_RUN` | `true` | Broker writes are simulated. Must stay `true` until the real canary step. |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` | Off at rest. Set to `true` only during rehearsal and real canary. |
+| `BROKER_ENFORCEMENT_ENABLED` | absent or `false` | Off at rest. Set to `true` only at the real canary checkpoint. |
+| `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` | `cmottd1z200020do1knjxq582` | Already set. Gate 4. |
 
-### Must already be set (verify, do not change)
+### listener-worker service — rehearsal state (Section 3)
 
-```
-TRADOVATE_LISTENER_ENABLE_LIVE=false      # gate 2 — must remain false
-ENFORCEMENT_DRY_RUN=false                 # see note below
-```
+| Var | Rehearsal value | Change from rest |
+|---|---|---|
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `true` | Set temporarily to create a test lock |
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or absent | **Unchanged** |
+| `ENFORCEMENT_DRY_RUN` | `true` | **Unchanged** |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` | **Unchanged** |
+| `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` | `cmottd1z200020do1knjxq582` | **Unchanged** |
+
+### listener-worker service — real canary state (Section 4 checkpoint only)
+
+Set all of these together in one Railway redeploy, only after human sign-off:
+
+| Var | Real canary value | Change from rest |
+|---|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `true` | ← The final switch |
+| `ENFORCEMENT_DRY_RUN` | `false` or remove | ← Required for real HTTP call |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `true` | Set if not already from rehearsal |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` | **Unchanged** |
+| `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` | `cmottd1z200020do1knjxq582` | **Unchanged** |
+
+### listener-worker service — rollback state (Section 6)
+
+Set all of these together immediately on abort:
+
+| Var | Rollback value |
+|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or remove |
+| `ENFORCEMENT_DRY_RUN` | `true` |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` |
+
+### web / app service (trading-coach2) — unchanged throughout
+
+| Var | Value | Notes |
+|---|---|---|
+| `BROKER_ENFORCEMENT_SIMULATION_ENABLED` | `true` | Enables `/api/debug/broker-enforcement-simulation`. Web process only. |
+| `CRON_SECRET` | existing value | Required for all debug endpoint `x-cron-secret` calls |
 
 ### ENFORCEMENT_DRY_RUN note
 
-`ENFORCEMENT_DRY_RUN` is checked inside `applyBrokerDayLockout` **after** all connection/permission gates pass. When `ENFORCEMENT_DRY_RUN=true`, the broker write is fully simulated — `riskState` still becomes `STOPPED`, a `GuardianIntervention` row is written with `brokerLockStatus = "dry_run"`, but **no HTTP call is made to Tradovate**. This is the current state.
+`ENFORCEMENT_DRY_RUN` is checked inside `applyBrokerDayLockout` after all 10 gate checks pass. When `true`:
+- `riskState` still becomes `STOPPED` (internal lock fires normally)
+- A `GuardianIntervention` row is written with `brokerLockStatus = "dry_run"`
+- **No HTTP request is made to Tradovate**
 
-For the first real broker write, `ENFORCEMENT_DRY_RUN` must be `false` (or absent). Confirm the current value:
-
-```bash
-# In the listener-worker process environment:
-echo $ENFORCEMENT_DRY_RUN   # must be empty or "false"
-```
-
-If `ENFORCEMENT_DRY_RUN=true` is set, the broker write will be silently skipped and `GuardianIntervention.brokerLockStatus` will read `"dry_run"` — not `"broker_locked"`. That is not a canary success.
+A `"dry_run"` result is not a canary success. For the first real broker write, both `BROKER_ENFORCEMENT_ENABLED=true` AND `ENFORCEMENT_DRY_RUN=false` (or absent) must be set together at the real canary checkpoint.
 
 ---
 
 ## 2. Pre-Flight Checks
 
-Run all checks before touching any env var. All must pass. **Do not proceed if any check fails.**
+Run all checks at baseline — before changing any env var, before creating a test lock. All must pass. **Do not proceed to the rehearsal (Section 3) if any check fails.**
 
-### 2A. Account is clean — no active locks, no existing enforcements
+All endpoints require an authenticated session cookie and `x-cron-secret: $CRON_SECRET` header.
+
+### 2A. Listener is connected
 
 ```bash
-# Check 1: no active InternalLockEvents for the canary account
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/tradovate-listener/status" \
+  | jq '{connectionStatus: .activeDemo.connectionStatus, listenerStatus: .activeDemo.listener.status}'
+```
+
+Expected:
+```json
+{
+  "connectionStatus": "connected_readonly",
+  "listenerStatus": "connected"
+}
+```
+
+`listenerStatus` may also be `"reconnecting"` if a heartbeat was received recently (within the last 30 seconds) — check freshness. Abort if `connectionStatus` is in `{expired, connection_error, not_connected, pending_webhook, oauth_pending_storage}` or if `listenerStatus` is `"error"` or `"disconnected"`.
+
+### 2B. Account is clean — no active locks, no existing broker enforcements
+
+```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/internal-lock-events?accountId=cmottd1z200020do1knjxq582" \
   | jq '{activeCount, brokerEnforcements}'
@@ -62,22 +112,21 @@ Expected:
 ```json
 {
   "activeCount": 0,
-  "brokerEnforcements": { "count": 0, "hasAnyBrokerLocked": false }
+  "brokerEnforcements": { "count": 0, "hasAnyBrokerLocked": false, "items": [] }
 }
 ```
 
 Abort if `activeCount > 0` or `brokerEnforcements.count > 0`.
 
-### 2B. Account connection state — permissionLevel, env, connectionStatus
+### 2C. Gate baseline — allowlist, env, permissionLevel confirmed clean
 
 ```bash
-# Check 2: account has full_access, demo env, live connection
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/broker-enforcement-gates" \
   | jq '{brokerEnforcementEnabled, listenerLiveEnabled, allowlist, activeLockCount, candidates}'
 ```
 
-Expected at this stage (before creating the trigger lock):
+Expected:
 ```json
 {
   "brokerEnforcementEnabled": false,
@@ -88,86 +137,79 @@ Expected at this stage (before creating the trigger lock):
 }
 ```
 
-If the endpoint returns any candidate with `env != "demo"`, `permissionLevel != "full_access"`, or `connectionStatus` in the non-live set — abort.
+Abort if: `listenerLiveEnabled: true`, `allowlist` is empty or missing `cmottd1z200020do1knjxq582`, any candidate with `env != "demo"`.
 
-### 2C. Account riskState is NORMAL
+### 2D. riskState is NORMAL
 
 ```bash
-# Check 3: riskState must be NORMAL before the test
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/internal-lock-diagnostic?accountId=cmottd1z200020do1knjxq582" \
-  | jq '{gates: {sessionRiskState: .gates.sessionRiskState}}'
+  | jq '{sessionRiskState: .gates.sessionRiskState}'
 ```
 
-Expected:
-```json
-{ "gates": { "sessionRiskState": "NORMAL" } }
-```
+Expected: `{ "sessionRiskState": "NORMAL" }`.
 
-Abort if `sessionRiskState` is `"STOPPED"`. Run `POST /api/debug/accounts/cmottd1z200020do1knjxq582/reset-session-state` to clear, then re-verify.
-
-### 2D. No live-env accounts eligible
-
-```bash
-# Check 4: confirm no live accounts appear in broker-enforcement-gates
-curl -s -H "x-cron-secret: $CRON_SECRET" \
-  "$BASE_URL/api/debug/broker-enforcement-gates" \
-  | jq '[.candidates[] | select(.env != "demo")] | length'
-```
-
-Expected: `0`. Abort if any non-demo account appears.
+Abort if `"STOPPED"`. Reset with `POST /api/debug/accounts/cmottd1z200020do1knjxq582/reset-session-state`, then re-verify.
 
 ### 2E. Dedup key slot is free
 
-Compute the expected dedup key: `cmottd1z200020do1knjxq582:daily_loss_limit:<YYYY-MM-DD>:broker_enforcement`
-(where `<YYYY-MM-DD>` is today's trading day in the session).
-
-Verify no `GuardianIntervention` exists with this key:
 ```bash
-# Check 5: the dedup key slot must be empty
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/internal-lock-events?accountId=cmottd1z200020do1knjxq582" \
   | jq '.brokerEnforcements.items'
 ```
 
-Expected: `[]`. Abort if any item has a `listenerBrokerDedupKey` matching today's date.
+Expected: `[]`. Abort if any item has a `listenerBrokerDedupKey` matching today's date (`<YYYY-MM-DD>`).
 
-### 2F. Rules baseline — record current values before modifying
+### 2F. Record rules baseline before modifying
 
 ```bash
-# Check 6: record baseline risk rules before the canary
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/rule-baseline-state?accountId=cmottd1z200020do1knjxq582" \
   | jq '{maxDailyLoss, maxTradesPerDay, stopAfterLosses}'
 ```
 
-**Write down the returned values.** You will restore them exactly in the rollback step.
+**Write down the returned values.** You will restore them exactly in rollback Step R3.
 
 ---
 
-## 3. Canary Steps
+## 3. Rehearsal — Gate Verification Without Broker Write
 
-Execute in order. Do not skip steps. Do not proceed past Step 5 without human confirmation.
+Run this section in full before the real canary. It confirms the wiring and all gates work correctly while `BROKER_ENFORCEMENT_ENABLED` remains false and no broker write can occur.
 
-### Step 1 — Set Max Daily Loss low enough to trigger immediately
+### R-Step 1 — Set GUARDRAIL_INTERNAL_LOCK_ENABLED=true on listener-worker
 
-Set `AccountRiskRules.maxDailyLoss` to a small amount (e.g., `$5.00`) so that the next filled tick puts the account over the limit without requiring a real losing trade.
+In the listener-worker Railway service, set:
+```
+GUARDRAIL_INTERNAL_LOCK_ENABLED=true
+```
+Leave all other vars at rest state. Redeploy the listener-worker.
 
-Do this via the app's risk rules UI or the appropriate admin endpoint. Confirm the rule is saved:
+Verify it reconnects:
+```bash
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/tradovate-listener/status" \
+  | jq '.activeDemo.listener.status'
+```
+Expected: `"connected"` (or `"reconnecting"` with a recent heartbeat). Wait and retry if still reconnecting.
 
+### R-Step 2 — Set maxDailyLoss low to trigger a violation
+
+Set `AccountRiskRules.maxDailyLoss` for `cmottd1z200020do1knjxq582` to `$5.00` (or another small value that will be exceeded by the account's current session P&L). Use the app's risk rules UI or admin endpoint.
+
+Verify:
 ```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/rule-baseline-state?accountId=cmottd1z200020do1knjxq582" \
   | jq '.maxDailyLoss'
 ```
+Expected: `5`.
 
-Expected: `5` (or whatever small value was set).
+### R-Step 3 — Trigger a P&L update that breaches the threshold
 
-### Step 2 — Simulate a daily loss that exceeds the threshold
-
-Trigger a P&L update that puts `dailyPnl` below `-maxDailyLoss` so `evaluateDryRunRules` returns a `daily_loss_limit` violation. This can be done by:
-- Simulating a small losing trade on the demo account, or
-- Using the fire-test-event debug endpoint to inject a props update with a negative `pnl` field below the threshold
+Cause `dailyPnl` to go below `-maxDailyLoss` so `evaluateDryRunRules` returns a `daily_loss_limit` violation. Options:
+- Place a small losing trade on the demo account
+- Use `/api/debug/fire-test-event` to inject a props update with a negative `pnl` below threshold
 
 Verify the violation is detected:
 ```bash
@@ -175,14 +217,12 @@ curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/internal-lock-diagnostic?accountId=cmottd1z200020do1knjxq582" \
   | jq '{violations, wouldCreateLock}'
 ```
-
 Expected: `violations` contains one entry with `ruleType: "daily_loss_limit"`, `wouldCreateLock: true`.
 
-### Step 3 — Wait for GUARDRAIL_INTERNAL_LOCK_ENABLED=true to create the InternalLockEvent
+### R-Step 4 — Wait for InternalLockEvent to be created
 
-With `GUARDRAIL_INTERNAL_LOCK_ENABLED=true` set in the listener worker, the next props event for the account will cause `applyInternalLockForConnection` to run. This creates an `InternalLockEvent` row and sets `riskState = STOPPED`.
+With `GUARDRAIL_INTERNAL_LOCK_ENABLED=true`, the next props event triggers `applyInternalLockForConnection`. Wait up to 30 seconds, then verify:
 
-Verify:
 ```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/internal-lock-events?accountId=cmottd1z200020do1knjxq582" \
@@ -191,152 +231,39 @@ curl -s -H "x-cron-secret: $CRON_SECRET" \
 
 Expected: `activeCount: 1`, one item with `ruleType: "daily_loss_limit"`, `clearedAt: null`.
 
-Record the `InternalLockEvent.id` — you will need it for rollback.
+Record the `InternalLockEvent.id` — needed for rollback if cleanup is required after this step.
 
-### Step 4 — Verify gateResult.allowed=true before enabling the broker write
-
-With `BROKER_ENFORCEMENT_ENABLED=false` still set, call the gate debug endpoint:
+### R-Step 5 — Confirm gate check: only BROKER_ENFORCEMENT_ENABLED is blocking
 
 ```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/broker-enforcement-gates" \
-  | jq '.candidates[0].gateResult'
+  | jq '{
+      brokerEnforcementEnabled,
+      candidates: [.candidates[] | {
+        accountId,
+        inAllowlist,
+        env,
+        permissionLevel,
+        gateResult: { allowed: .gateResult.allowed, skipReason: .gateResult.skipReason }
+      }]
+    }'
 ```
 
-Expected:
-```json
-{
-  "allowed": false,
-  "skipReason": "BROKER_ENFORCEMENT_ENABLED is not true — broker writes are disabled...",
-  "dedupKey": "cmottd1z200020do1knjxq582:daily_loss_limit:<YYYY-MM-DD>:broker_enforcement",
-  "brokerActionType": null,
-  "payloadPreview": null
-}
-```
+**Rehearsal passes if and only if ALL of the following are true:**
 
-This confirms: all other 9 gates pass. The only gate blocking the write is gate 1 (the feature flag). The candidate count must be exactly 1.
+- `brokerEnforcementEnabled: false`
+- `candidates.length == 1`
+- `candidates[0].accountId == "cmottd1z200020do1knjxq582"`
+- `candidates[0].inAllowlist == true`
+- `candidates[0].env == "demo"`
+- `candidates[0].permissionLevel == "full_access"`
+- `candidates[0].gateResult.allowed == false`
+- `candidates[0].gateResult.skipReason` mentions only `BROKER_ENFORCEMENT_ENABLED` (no other gate)
 
-**Abort if `candidates.length != 1` or if `skipReason` references any gate other than `BROKER_ENFORCEMENT_ENABLED`.**
+Abort the rehearsal if `skipReason` references any other gate — diagnose before proceeding.
 
-Also verify the simulation endpoint agrees:
-```bash
-curl -s -H "x-cron-secret: $CRON_SECRET" \
-  "$BASE_URL/api/debug/broker-enforcement-simulation" \
-  | jq '.candidates[0] | {brokerEligible, skipReason, simulatedPayloadPreview}'
-```
-
-Expected: `brokerEligible: true`, `simulatedPayloadPreview.changesLocked: true`, `simulatedPayloadPreview.dailyLossAutoLiq >= 0`.
-
-**The `simulatedPayloadPreview.dailyLossAutoLiq` value is the exact dollar amount that will be written to Tradovate. Confirm it is the absolute value of the account's current daily loss, and that `doNotUnlock` is not present.**
-
----
-
-## ⚠️ Checkpoint — Human Confirmation Required Before Continuing ⚠️
-
-Before proceeding to Step 5, a human must confirm all of the following in writing:
-
-- [ ] Pre-flight checks 2A–2F all passed
-- [ ] `activeLockCount = 1`, `candidates.length = 1`
-- [ ] The single candidate is `cmottd1z200020do1knjxq582`
-- [ ] `env = "demo"` for the candidate
-- [ ] `gateResult.skipReason` references only `BROKER_ENFORCEMENT_ENABLED`
-- [ ] `simulatedPayloadPreview.doNotUnlock` is absent
-- [ ] `ENFORCEMENT_DRY_RUN` is false or absent
-- [ ] `TRADOVATE_LISTENER_ENABLE_LIVE=false` confirmed in listener env
-- [ ] Rollback procedure (Section 5) is understood and ready
-
-**Do not set `BROKER_ENFORCEMENT_ENABLED=true` without this confirmation.**
-
----
-
-### Step 5 — Enable BROKER_ENFORCEMENT_ENABLED and trigger enforcement
-
-Set `BROKER_ENFORCEMENT_ENABLED=true` in the **listener-worker process environment only**. Restart the listener worker.
-
-The next props event for account `cmottd1z200020do1knjxq582` will cause `maybeAttemptBrokerDailyLossLockoutForInternalLock` to be called (once it is wired into the listener — see note below). All 10 gates will pass, and `triggerEnforcement` will call `applyBrokerDayLockout` → `applyDailyLossLock`.
-
-> **Note (updated Phase 2C-E):** The listener wiring is now complete. `maybeAttemptBrokerDailyLossLockoutForInternalLock` is imported and called from the `onPropsEvent` handler, but only when `BROKER_ENFORCEMENT_ENABLED=true`. While the flag is absent or false, the `.then()` handler returns immediately and no broker service call is made. Setting `BROKER_ENFORCEMENT_ENABLED=true` is the only remaining step required to activate enforcement. No code changes are needed.
-
-The real broker write moment: when `applyBrokerDayLockout` reaches the `case "daily_loss_limit":` branch inside `TradovateClient.applyDailyLossLock()` and POSTs to `userAccountAutoLiq/update` (or `/create`).
-
----
-
-## 4. Expected Broker Write
-
-### Endpoint sequence
-
-```
-Step 1 (read):    GET  userAccountAutoLiq/deps?masterid={tvAccountId}
-                  → determine if record exists (update path) or must be created (create path)
-
-Step 2 (write):   POST userAccountAutoLiq/update  (if record exists)
-                    or
-                  POST userAccountAutoLiq/create  (if no record)
-
-Step 3 (confirm): check response.dailyLossAutoLiq ≈ sent value (tolerance: $0.01)
-                  if absent: GET userAccountAutoLiq/deps?masterid={tvAccountId} again
-                  → brokerLockStatus = "broker_locked" only when confirmed
-                  → brokerLockStatus = "broker_lock_failed" when unconfirmed
-```
-
-### Update payload (when record already exists)
-
-```json
-{
-  "id": <existing-record-id>,
-  "dailyLossAutoLiq": <absolute-value-of-current-daily-loss>,
-  "changesLocked": true
-}
-```
-
-### Create payload (when no record exists)
-
-```json
-{
-  "accountId": <tradovate-numeric-account-id>,
-  "dailyLossAutoLiq": <absolute-value-of-current-daily-loss>,
-  "changesLocked": true
-}
-```
-
-### What the payload must contain
-
-| Field | Value | Why |
-|---|---|---|
-| `dailyLossAutoLiq` | `Math.max(0, Math.abs(dailyPnl))` | Sets loss threshold at current loss — Tradovate immediately enforces |
-| `changesLocked` | `true` | Prevents the setting from being removed mid-session |
-
-### What must NOT be in the payload
-
-| Field | Reason |
-|---|---|
-| `doNotUnlock` | Traps account permanently — Tradovate will not auto-unlock at next session open |
-| `weeklyLossAutoLiq` | Not used in Phase 2C — would add an unintended weekly constraint |
-| `flattenTimestamp` | Session-end scheduler not implemented — would trigger unexpected position exit |
-| `trailingMaxDrawdown` | Not used — would add an unintended drawdown constraint |
-| `dailyProfitAutoLiq` | Wrong rule — only set for `profit_target` trigger, not `daily_loss_limit` |
-
-### What `changesLocked: true` does and does NOT do
-
-- **Does:** prevents changes to `userAccountAutoLiq` settings until the next session open (approximately 5:00 PM CT for CME futures).
-- **Does NOT:** prevent position exits, manual trades, or account access.
-- **Auto-clears:** Tradovate auto-unlocks `changesLocked` at the next session open, since `doNotUnlock` is omitted.
-
-### How to verify from the Tradovate side
-
-After the write completes, verify by calling the read endpoint:
-
-```
-GET userAccountAutoLiq/deps?masterid={tvAccountId}
-```
-
-The response must show:
-- `dailyLossAutoLiq` ≈ the sent value (within $0.01)
-- `changesLocked: true`
-
-This is done automatically by the code (Step 3 of the three-step pattern). If the code returns `broker_locked`, the read-back confirmed it. If it returns `broker_lock_failed`, the value was not confirmed — see abort/rollback.
-
-### Verify from the GuardianIntervention audit row
+### R-Step 6 — Confirm no broker write occurred
 
 ```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
@@ -344,7 +271,119 @@ curl -s -H "x-cron-secret: $CRON_SECRET" \
   | jq '.brokerEnforcements'
 ```
 
-Expected after a successful canary:
+Expected: `{ "count": 0, "hasAnyBrokerLocked": false, "items": [] }`.
+
+If `count > 0`: something bypassed gate 1 — stop immediately, check logs, do not proceed.
+
+### R-Step 7 — Rehearsal cleanup
+
+Reset the internal lock and restore rules:
+
+```bash
+# Clear riskState and InternalLockEvent
+curl -s -X POST -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/accounts/cmottd1z200020do1knjxq582/reset-session-state"
+
+# Verify clean
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/internal-lock-events?accountId=cmottd1z200020do1knjxq582" \
+  | jq '{activeCount}'
+```
+
+Expected: `{ "activeCount": 0 }`.
+
+Then restore `maxDailyLoss` to the value recorded in pre-flight check 2F.
+
+On the listener-worker Railway service:
+```
+Set GUARDRAIL_INTERNAL_LOCK_ENABLED=false   ← back to rest state
+```
+Redeploy.
+
+---
+
+## 4. Real Canary — First Actual Broker Write
+
+Do not execute this section until the full rehearsal (Section 3) has passed and a human confirms the checkpoint below.
+
+### C-Step 1 — Set maxDailyLoss low to trigger violation
+
+Same as R-Step 2. Set `AccountRiskRules.maxDailyLoss` to `$5.00`. Verify the rule is saved.
+
+### C-Step 2 — Trigger P&L breach
+
+Same as R-Step 3. Cause `dailyPnl` to go below `-maxDailyLoss`.
+
+Verify via `/api/debug/internal-lock-diagnostic`: `wouldCreateLock: true`.
+
+### C-Step 3 — Verify simulation payload before enabling enforcement
+
+```bash
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/broker-enforcement-simulation" \
+  | jq '.candidates[0] | {brokerEligible, simulatedPayloadPreview}'
+```
+
+Expected:
+```json
+{
+  "brokerEligible": true,
+  "simulatedPayloadPreview": {
+    "dailyLossAutoLiq": <positive number equal to |dailyPnl|>,
+    "changesLocked": true
+  }
+}
+```
+
+**Abort if `simulatedPayloadPreview.doNotUnlock` is present.** That field must never appear.
+
+---
+
+### ⚠️ Human Confirmation Checkpoint ⚠️
+
+Before C-Step 4, a named person must confirm all of the following in writing:
+
+- [ ] Rehearsal (Section 3) completed and passed — `candidates[0].gateResult.skipReason` referenced only `BROKER_ENFORCEMENT_ENABLED`
+- [ ] Pre-flight checks 2A–2F all passed
+- [ ] `wouldCreateLock: true` confirmed for `daily_loss_limit`
+- [ ] `brokerEligible: true` confirmed in simulation
+- [ ] `simulatedPayloadPreview.doNotUnlock` absent
+- [ ] `simulatedPayloadPreview.dailyLossAutoLiq` is the correct positive dollar value
+- [ ] Original `maxDailyLoss` rule value recorded for rollback
+- [ ] Rollback procedure (Section 6) understood and ready
+- [ ] No live accounts in scope — `listenerLiveEnabled: false` confirmed
+
+**Do not change any env var without this sign-off.**
+
+---
+
+### C-Step 4 — Enable broker enforcement (listener-worker service only)
+
+In the **listener-worker** Railway service, set all of the following in one deploy:
+
+```
+BROKER_ENFORCEMENT_ENABLED=true
+ENFORCEMENT_DRY_RUN=false           ← remove or set to false
+GUARDRAIL_INTERNAL_LOCK_ENABLED=true
+TRADOVATE_LISTENER_ENABLE_LIVE=false  ← confirm unchanged
+BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST=cmottd1z200020do1knjxq582  ← confirm unchanged
+```
+
+Redeploy the listener-worker.
+
+**The real Tradovate HTTP call occurs on the first props event for account `cmottd1z200020do1knjxq582` after the listener reconnects.**
+
+### C-Step 5 — Verify within 60 seconds
+
+Wait for the listener to reconnect, then on the next props event:
+
+```bash
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/internal-lock-events?accountId=cmottd1z200020do1knjxq582" \
+  | jq '.brokerEnforcements'
+```
+
+Expected:
 ```json
 {
   "count": 1,
@@ -356,35 +395,113 @@ Expected after a successful canary:
 }
 ```
 
-If `brokerLockStatus` is `"dry_run"`, `ENFORCEMENT_DRY_RUN` was still `true` — the write was simulated, not real.
-If `brokerLockStatus` is `"broker_lock_failed"`, the POST succeeded but the read-back did not confirm — see abort/rollback.
+| `brokerLockStatus` value | Meaning | Action |
+|---|---|---|
+| `"broker_locked"` | Tradovate confirmed the write via read-back | Canary success |
+| `"dry_run"` | `ENFORCEMENT_DRY_RUN` was still `true` — write was simulated | Rollback, fix env, retry |
+| `"broker_lock_failed"` | POST accepted by Tradovate but read-back did not confirm value | Rollback immediately |
+| Row absent after 60s | Props event may not have fired yet | Wait one more cycle or trigger manually |
 
 ---
 
-## 5. Rollback
+## 5. Expected Broker Write
 
-Run these steps in order immediately after the canary, or at any abort condition.
-
-### Step R1 — Disable broker enforcement flag
+### Endpoint sequence
 
 ```
-Set BROKER_ENFORCEMENT_ENABLED=false (or remove it entirely)
-Restart listener worker
+Step 1 (read):    GET  userAccountAutoLiq/deps?masterid={tvAccountId}
+                  → determine if record exists (update path) or must be created (create path)
+
+Step 2 (write):   POST userAccountAutoLiq/update  { id, dailyLossAutoLiq, changesLocked: true }
+                    or
+                  POST userAccountAutoLiq/create  { accountId: tvAccountId, dailyLossAutoLiq, changesLocked: true }
+
+Step 3 (confirm): check response.dailyLossAutoLiq ≈ sent value (tolerance: $0.01)
+                  if absent in response: GET userAccountAutoLiq/deps?masterid={tvAccountId} again
+                  → brokerLockStatus = "broker_locked" only when confirmed
+                  → brokerLockStatus = "broker_lock_failed" when value not confirmed
 ```
 
-Gate 1 now fails for every call. No further broker writes will occur regardless of InternalLockEvent state.
+### Update payload (record already exists)
 
-### Step R2 — Reset internal app lock (riskState and InternalLockEvent)
+```json
+{
+  "id": <existing-record-id>,
+  "dailyLossAutoLiq": <Math.max(0, Math.abs(dailyPnl))>,
+  "changesLocked": true
+}
+```
+
+### Create payload (no record exists)
+
+```json
+{
+  "accountId": <tradovate-numeric-account-id>,
+  "dailyLossAutoLiq": <Math.max(0, Math.abs(dailyPnl))>,
+  "changesLocked": true
+}
+```
+
+### Required fields
+
+| Field | Value |
+|---|---|
+| `dailyLossAutoLiq` | `Math.max(0, Math.abs(dailyPnl))` — sets broker threshold at current loss so Tradovate enforces immediately |
+| `changesLocked` | `true` — prevents removal mid-session |
+
+### Fields that must never appear in the payload
+
+| Field | Reason |
+|---|---|
+| `doNotUnlock` | Traps account permanently — Tradovate will not auto-unlock at next session open |
+| `weeklyLossAutoLiq` | Not used in Phase 2C — adds unintended weekly constraint |
+| `flattenTimestamp` | Session-end scheduler not implemented |
+| `trailingMaxDrawdown` | Not used |
+| `dailyProfitAutoLiq` | Wrong rule — only for `profit_target`, not `daily_loss_limit` |
+
+### What `changesLocked: true` does and does NOT do
+
+- **Does:** prevents changes to `userAccountAutoLiq` settings until the next session open (~5:00 PM CT, CME futures).
+- **Does NOT:** prevent position exits, manual trades, or account access.
+- **Auto-clears:** Tradovate auto-unlocks at next session open since `doNotUnlock` is omitted.
+
+---
+
+## 6. Rollback
+
+Run in order. Safe to run at any abort condition, even if the canary was never fully executed.
+
+### R1 — Disable broker enforcement (listener-worker service)
+
+In the listener-worker Railway service, set all of the following in one deploy:
+
+```
+BROKER_ENFORCEMENT_ENABLED=false   (or remove)
+ENFORCEMENT_DRY_RUN=true
+GUARDRAIL_INTERNAL_LOCK_ENABLED=false
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+```
+
+Redeploy. Gate 1 now fails on every props event. No further broker enforcement calls occur.
+
+### R2 — Verify listener reconnects
+
+```bash
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/tradovate-listener/status" \
+  | jq '.activeDemo.listener.status'
+```
+
+Expected: `"connected"`. If crashing, check Railway deploy logs.
+
+### R3 — Reset internal app lock
 
 ```bash
 curl -s -X POST -H "x-cron-secret: $CRON_SECRET" \
   "$BASE_URL/api/debug/accounts/cmottd1z200020do1knjxq582/reset-session-state"
 ```
 
-This:
-- Sets `riskState = NORMAL`
-- Sets `LiveSessionState.dailyPnl = 0`, `tradesCount = 0`, `consecutiveLosses = 0`
-- Clears all active `InternalLockEvent` rows for the account (`clearedAt = now`, `activeDedupKey = null`)
+This sets `riskState = NORMAL`, zeros session P&L/trades/losses, and nulls `activeDedupKey` on all active InternalLockEvent rows.
 
 Verify:
 ```bash
@@ -393,11 +510,11 @@ curl -s -H "x-cron-secret: $CRON_SECRET" \
   | jq '{activeCount}'
 ```
 
-Expected: `{ "activeCount": 0 }`
+Expected: `{ "activeCount": 0 }`.
 
-### Step R3 — Restore original risk rules
+### R4 — Restore original risk rules
 
-Set `AccountRiskRules.maxDailyLoss` back to the value recorded in pre-flight check 2F. Use the app's risk rules UI or admin endpoint.
+Set `AccountRiskRules.maxDailyLoss` back to the value recorded in pre-flight check 2F.
 
 Verify:
 ```bash
@@ -406,72 +523,87 @@ curl -s -H "x-cron-secret: $CRON_SECRET" \
   | jq '.maxDailyLoss'
 ```
 
-Expected: the original value from check 2F.
+Expected: original value from 2F.
 
-### Step R4 — Clear the broker-side lock (if broker write was sent)
+### R5 — Clear broker-side lock (if `brokerLockStatus = "broker_locked"` was written)
 
-`changesLocked: true` prevents changes to `userAccountAutoLiq` **until the next session open** (approximately 5:00 PM CT). The lock auto-clears at session open because `doNotUnlock` was not set.
+`changesLocked: true` prevents changes to `userAccountAutoLiq` until the next session open.
 
-**Option A (preferred): wait for session open.** The lock auto-clears at the next Tradovate session open. No manual action needed. Verify via Tradovate UI or `GET userAccountAutoLiq/deps?masterid={tvAccountId}` the following trading day — `changesLocked` should be absent or `false`.
-
-**Option B (if clearing before session close is required):** Contact Tradovate support or use the Tradovate Risk Manager UI (available to account admins) to manually set `changesLocked: false` and `dailyLossAutoLiq` back to its pre-canary value. This requires Account Risk Settings: Full Access permission in the Tradovate portal.
-
-> **Do NOT attempt to unlock by sending `POST userAccountAutoLiq/update { changesLocked: false }` from this app while `changesLocked: true` is in effect.** Tradovate will reject the update — `changesLocked` prevents any setting changes, including unlocking itself. The Tradovate Risk Manager UI bypasses this restriction.
-
-### Step R5 — Verify no active broker lock remains
-
-After session open (or after manual UI unlock):
+**Option A (preferred):** Wait for the next Tradovate session open (~5:00 PM CT). `changesLocked` auto-clears because `doNotUnlock` was omitted. Verify the following trading day:
 ```
 GET userAccountAutoLiq/deps?masterid={tvAccountId}
 ```
+`changesLocked` should be absent or `false`.
 
-Confirm:
-- `changesLocked` is absent, `false`, or `null`
-- `dailyLossAutoLiq` has been cleared or reset to the intended value
+**Option B (same session, admin required):** Use the Tradovate Risk Manager UI to manually clear `changesLocked` and reset `dailyLossAutoLiq`. This requires Account Risk Settings: Full Access in the Tradovate portal.
+
+> **Do NOT send `POST userAccountAutoLiq/update { changesLocked: false }` from this app while `changesLocked: true` is in effect.** Tradovate rejects the request — `changesLocked` prevents all setting changes, including unlocking itself via the API.
+
+### R6 — Final verification
+
+```bash
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "$BASE_URL/api/debug/broker-enforcement-gates" \
+  | jq '{brokerEnforcementEnabled, activeLockCount, candidates}'
+```
+
+Expected after full rollback:
+```json
+{
+  "brokerEnforcementEnabled": false,
+  "activeLockCount": 0,
+  "candidates": []
+}
+```
 
 ---
 
-## 6. Abort Conditions
+## 7. Abort Conditions
 
-Stop immediately and execute rollback (Section 5) if any of the following occur at any point.
+Stop immediately and execute rollback (Section 6) if any of the following occur at any point.
 
 | Condition | Why |
 |---|---|
-| Any candidate has `env != "demo"` | Live account would be touched — never permitted |
+| Any candidate has `env != "demo"` | Live account in scope — never permitted |
 | `candidates.length > 1` | More than one account eligible — canary must be single-account |
-| `allowlist` is empty or does not contain `cmottd1z200020do1knjxq582` | Gate 4 would not protect other accounts |
-| `listenerLiveEnabled: true` | Live listener enabled — gate 2 would not block live path |
-| Dedup key already exists in `GuardianIntervention` | A previous attempt was made — investigate before retrying |
-| `permissionLevel != "full_access"` | Write would fail at broker layer |
-| `gateResult.skipReason` references any gate other than `BROKER_ENFORCEMENT_ENABLED` (in Step 4) | An unexpected gate is blocking — diagnose before enabling the flag |
-| Simulation `payloadPreview` contains `doNotUnlock` | Would permanently trap account — code regression |
-| `ENFORCEMENT_DRY_RUN=true` confirmed in listener env | Real broker write cannot occur — must be false |
-| `candidates[0].skipReason` contains "live" after enabling the flag | Live path somehow activated |
-| Listener worker restarts unexpectedly during canary | Possible props event duplication — check duplicate GuardianIntervention rows |
-| `brokerLockStatus` = `"broker_lock_failed"` after write | API accepted but read-back failed — account may be partially locked, rollback required |
-| Any error from `triggerEnforcement` propagates | Unexpected exception — check logs, rollback |
+| `listenerLiveEnabled: true` at any check | Gate 2 would be bypassed |
+| `allowlist` empty or missing `cmottd1z200020do1knjxq582` | Gate 4 would not protect other accounts |
+| `candidates[0].inAllowlist != true` | Account not gated — stop |
+| `gateResult.skipReason` references any gate other than `BROKER_ENFORCEMENT_ENABLED` during rehearsal R-Step 5 | An unexpected prerequisite is not met |
+| `simulatedPayloadPreview.doNotUnlock` present | Code regression — would permanently trap account |
+| `brokerEnforcements.count > 0` at end of rehearsal R-Step 6 | Broker write occurred while flag was false — investigate |
+| `ENFORCEMENT_DRY_RUN=true` confirmed in listener env after C-Step 4 restart | Real write cannot have occurred — dry-run was still in effect |
+| Listener does not reconnect within 90 seconds of C-Step 4 restart | Worker may be crashing — check Railway logs before proceeding |
+| `brokerLockStatus = "broker_lock_failed"` | Tradovate accepted write but read-back failed — account may be partially locked |
+| `brokerLockStatus = "dry_run"` after C-Step 4 | `ENFORCEMENT_DRY_RUN` was not cleared — write was simulated |
+| More than one `GuardianIntervention` row with same dedup key | DB unique constraint should prevent this — stop if observed |
+| `candidates[0].permissionLevel != "full_access"` | Write would fail at broker layer |
+| Listener `connectionStatus` not `"connected_readonly"` during pre-flight | Connection not healthy |
 
 ---
 
-## 7. Reference: Relevant Debug Endpoints
+## 8. Reference: Debug Endpoints
 
-All require `Authorization: session` (authenticated user) and `x-cron-secret` header.
+All require an authenticated session cookie and `x-cron-secret: $CRON_SECRET` header.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/debug/broker-enforcement-gates` | GET | Per-lock gate evaluation; shows which gate blocks or allows |
-| `/api/debug/broker-enforcement-simulation` | GET | Simulation of broker eligibility (gated on `BROKER_ENFORCEMENT_SIMULATION_ENABLED=true`) |
+| `/api/debug/tradovate-listener/status` | GET | Listener WebSocket status and connection state |
+| `/api/debug/broker-enforcement-gates` | GET | Per-lock gate evaluation; `inAllowlist`, `env`, `permissionLevel`, `gateResult` |
+| `/api/debug/broker-enforcement-simulation` | GET | Broker eligibility simulation (requires `BROKER_ENFORCEMENT_SIMULATION_ENABLED=true` in web service) |
 | `/api/debug/internal-lock-events?accountId=<id>` | GET | Active locks + `brokerEnforcements` audit rows |
 | `/api/debug/internal-lock-diagnostic?accountId=<id>` | GET | Full gate trace for `applyInternalLockForConnection` |
-| `/api/debug/accounts/<accountId>/reset-session-state` | POST | Reset `riskState=NORMAL`, clear active locks, zero session P&L |
+| `/api/debug/rule-baseline-state?accountId=<id>` | GET | Current `maxDailyLoss` and other risk rule values |
+| `/api/debug/accounts/<accountId>/reset-session-state` | POST | Set `riskState=NORMAL`, clear active locks, zero session P&L |
 
 ---
 
-## 8. Key Invariants That Must Hold Throughout
+## 9. Key Invariants That Must Hold Throughout
 
 1. **At most one active `InternalLockEvent`** per `(accountId, ruleType, tradingDay)` — enforced by `activeDedupKey @unique`.
 2. **At most one `GuardianIntervention`** per `listenerBrokerDedupKey` — enforced by `listenerBrokerDedupKey @unique`.
 3. **`brokerLockStatus = "broker_locked"` only when Tradovate read-back confirms** the stored value matches the sent value (tolerance $0.01).
 4. **`doNotUnlock` never appears in any payload** — omitting it preserves Tradovate's default auto-unlock at next session open.
-5. **`changesLocked: true` auto-clears** at Tradovate session open (since `doNotUnlock` is absent).
+5. **`changesLocked: true` auto-clears** at Tradovate session open since `doNotUnlock` is absent.
 6. **`TRADOVATE_LISTENER_ENABLE_LIVE=false` is never changed** — live account enforcement is not implemented.
+7. **`ENFORCEMENT_DRY_RUN=true` at rest** — broker writes are simulated until the real canary checkpoint. A `"dry_run"` `GuardianIntervention` row is not a canary success.
