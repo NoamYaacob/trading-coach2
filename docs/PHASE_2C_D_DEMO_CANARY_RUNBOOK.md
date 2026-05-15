@@ -1,6 +1,8 @@
 # Phase 2C-D: Demo Canary Runbook — First Real Broker Write
 
-**Status: PLANNING ONLY. No broker write has been sent. Do not execute the real canary until the full rehearsal (Section 3) passes and a human confirms the checkpoint in Section 4.**
+**Status: READY FOR RE-CANARY. Phase 2C-E fix applied (see Section 9, invariant #8). First real canary attempt completed without a broker write — root cause identified and fixed. No broker write has been confirmed. Do not execute the real canary until the full rehearsal (Section 3) passes and a human confirms the checkpoint in Section 4.**
+
+**Phase 2C-E fix (2026-05-15):** `applyInternalLockForConnection` now returns the existing active InternalLockEvent ID when `riskState` is already `STOPPED`. Previously, a pre-existing lock (created before `BROKER_ENFORCEMENT_ENABLED` was enabled) caused `internalLockEventId=null` in the result, silently bypassing `maybeAttemptBrokerDailyLossLockoutForInternalLock`. The broker enforcement service's own dedup gate (`listenerBrokerDedupKey @unique`) prevents duplicate `GuardianIntervention` rows from being written across repeated props events.
 
 **Safety boundaries in effect:**
 - `BROKER_ENFORCEMENT_ENABLED` must remain absent/false until the checkpoint in Section 4
@@ -607,3 +609,4 @@ All require an authenticated session cookie and `x-cron-secret: $CRON_SECRET` he
 5. **`changesLocked: true` auto-clears** at Tradovate session open since `doNotUnlock` is absent.
 6. **`TRADOVATE_LISTENER_ENABLE_LIVE=false` is never changed** — live account enforcement is not implemented.
 7. **`ENFORCEMENT_DRY_RUN=true` at rest** — broker writes are simulated until the real canary checkpoint. A `"dry_run"` `GuardianIntervention` row is not a canary success.
+8. **Pre-existing active locks are surfaced on every props event** — when `riskState` is already `STOPPED`, `applyInternalLockForConnection` queries for the existing active `InternalLockEvent` (`clearedAt=null`, `activeDedupKey IS NOT NULL`, newest first) and returns its ID. This ensures `BROKER_ENFORCEMENT_ENABLED` can be flipped on at any time and the broker enforcement service will be called on the next props event, even if the internal lock predates the flag change. Dedup is handled by the `GuardianIntervention.listenerBrokerDedupKey @unique` constraint inside the service — not by the caller.

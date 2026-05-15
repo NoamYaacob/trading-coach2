@@ -112,11 +112,36 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
         flagEnabled: true, // already checked at top of function
       })
     ) {
-      const reason =
-        env !== "demo"
-          ? `env="${env}" (must be demo)`
-          : `riskState="${session.riskState}" (already STOPPED — idempotent skip)`;
-      results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: reason });
+      if (env !== "demo") {
+        results.push({
+          accountId: account.id,
+          createdOrUpdated: false,
+          internalLockEventId: null,
+          ruleType: null,
+          skipReason: `env="${env}" (must be demo)`,
+        });
+        continue;
+      }
+      // Account is already STOPPED. Look up the existing active lock so broker
+      // enforcement can be attempted for locks created before BROKER_ENFORCEMENT_ENABLED
+      // was flipped on. The broker enforcement service's dedup gate prevents a
+      // duplicate GuardianIntervention from being written if enforcement already ran.
+      const existingLock = await prisma.internalLockEvent.findFirst({
+        where: {
+          accountId: account.id,
+          clearedAt: null,
+          activeDedupKey: { not: null },
+        },
+        select: { id: true, ruleType: true },
+        orderBy: { createdAt: "desc" },
+      });
+      results.push({
+        accountId: account.id,
+        createdOrUpdated: false,
+        internalLockEventId: existingLock?.id ?? null,
+        ruleType: existingLock?.ruleType ?? null,
+        skipReason: `riskState="${session.riskState}" (already STOPPED — idempotent skip)`,
+      });
       continue;
     }
 

@@ -238,6 +238,75 @@ describe("applyInternalLockForConnection — structured return value (Phase 2C-E
 });
 
 // ---------------------------------------------------------------------------
+// Source-scan: pre-existing lock lookup when account already STOPPED (Phase 2C-E fix)
+//
+// Root cause fixed: applyInternalLockForConnection previously returned
+// internalLockEventId=null for any account with riskState=STOPPED, even when
+// an active InternalLockEvent existed. The listener's null guard then skipped
+// maybeAttemptBrokerDailyLossLockoutForInternalLock entirely. The fix queries
+// for an existing active lock in the STOPPED branch and returns its ID.
+// ---------------------------------------------------------------------------
+
+describe("applyInternalLockForConnection — pre-existing lock lookup when already STOPPED (Phase 2C-E fix)", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+
+  it("queries for an existing active InternalLockEvent when account is already STOPPED", () => {
+    assert.ok(
+      dbSrc.includes("internalLockEvent.findFirst"),
+      "STOPPED branch must call findFirst to surface a pre-existing active lock to the broker enforcement service",
+    );
+  });
+
+  it("restricts lookup to active locks only — clearedAt: null", () => {
+    assert.ok(
+      dbSrc.includes("clearedAt: null"),
+      "lookup must require clearedAt: null so cleared (reset) locks are not returned",
+    );
+  });
+
+  it("restricts lookup to active locks only — activeDedupKey IS NOT NULL", () => {
+    assert.ok(
+      dbSrc.includes("activeDedupKey: { not: null }"),
+      "lookup must require activeDedupKey IS NOT NULL — cleared locks have activeDedupKey=null",
+    );
+  });
+
+  it("returns existing lock id as internalLockEventId with null-safe fallback", () => {
+    assert.ok(
+      dbSrc.includes("existingLock?.id ?? null"),
+      "must use existingLock?.id ?? null so no-lock case returns null internalLockEventId",
+    );
+  });
+
+  it("returns existing lock ruleType with null-safe fallback", () => {
+    assert.ok(
+      dbSrc.includes("existingLock?.ruleType ?? null"),
+      "must use existingLock?.ruleType ?? null so no-lock case returns null ruleType",
+    );
+  });
+
+  it("does not create a new InternalLockEvent in the STOPPED branch", () => {
+    assert.ok(
+      !dbSrc.includes("internalLockEvent.create"),
+      "STOPPED branch must never call create — only findFirst to look up existing rows",
+    );
+  });
+
+  it("prefers newest lock by createdAt desc", () => {
+    assert.ok(
+      dbSrc.includes('orderBy: { createdAt: "desc" }'),
+      "lookup must order by createdAt desc to prefer the most recent active lock",
+    );
+  });
+
+  it("does not call any broker API in the lookup path", () => {
+    for (const banned of ["applyBrokerDayLockout", "triggerEnforcement", "userAccountAutoLiq"]) {
+      assert.ok(!dbSrc.includes(banned), `STOPPED branch lookup must not call ${banned}`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Source-scan: reset endpoint nulls activeDedupKey on clear
 // ---------------------------------------------------------------------------
 
