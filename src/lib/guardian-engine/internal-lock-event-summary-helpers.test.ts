@@ -500,7 +500,21 @@ describe("source-scan: manage-connection page shows broker protection status", (
   it("shows 'Demo broker protection test completed.' for demo accounts", () => {
     assert.ok(
       ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
-      "edit page must use demo-specific friendly copy when accountType is demo",
+      "edit page must use demo-specific friendly copy for demo broker env",
+    );
+  });
+
+  it("demo detection uses brokerConnection.env, not accountType", () => {
+    // accountType is the prop-firm category (evaluation/funded/personal/demo) and
+    // is unrelated to the broker environment. An evaluation account on the Tradovate
+    // demo env must show demo copy. brokerEnv = brokerConnection?.env is the signal.
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("brokerConnection?.env"),
+      "demo detection must read from brokerConnection.env, not accountType",
+    );
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes('brokerEnv === "demo"'),
+      "isDemo condition must compare brokerEnv to 'demo'",
     );
   });
 

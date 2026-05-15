@@ -135,7 +135,7 @@ export default async function EditAccountPage({
           cooldownUntil: true,
         },
       },
-      brokerConnection: { select: { permissionLevel: true, connectionStatus: true } },
+      brokerConnection: { select: { permissionLevel: true, connectionStatus: true, env: true } },
     },
   });
 
@@ -512,7 +512,7 @@ export default async function EditAccountPage({
               brokerLockStatus: r.brokerLockStatus ?? null,
             }))}
             riskState={account.sessionState?.riskState ?? null}
-            accountType={account.accountType}
+            brokerEnv={account.brokerConnection?.env ?? null}
           />
         )}
 
@@ -553,15 +553,15 @@ type BrokerEnforcementRecord = {
 function BrokerEnforcementHistoryPanel({
   records,
   riskState,
-  accountType,
+  brokerEnv,
 }: {
   records: BrokerEnforcementRecord[];
   riskState: string | null;
-  accountType: string;
+  brokerEnv: string | null;
 }) {
   const noActiveLock = riskState !== "STOPPED";
   const hasConfirmedLock = records.some((r) => r.brokerLockStatus === "broker_locked");
-  const isDemo = accountType === "demo";
+  const isDemo = brokerEnv === "demo";
 
   return (
     <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
