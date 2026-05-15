@@ -96,6 +96,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
             listenerStatus: true,
             listenerLastEventAt: true,
             listenerLastHeartbeatAt: true,
+            listenerLastCloseCode: true,
+            listenerLastCloseReason: true,
           },
         },
       },
@@ -122,6 +124,41 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     },
     orderBy: { lastSeenInBrokerAt: "desc" },
   });
+
+  // Find all BrokerConnections for this user that currently have an active
+  // listener. Used below to fill in listener freshness when an account's direct
+  // brokerConnectionId points to an older connection (common after an OAuth
+  // reconnect creates a new BrokerConnection while existing ConnectedAccount rows
+  // still reference the previous one).
+  const activeListenerConnections = await prisma.brokerConnection.findMany({
+    where: {
+      userId,
+      platform: "tradovate",
+      connectionStatus: { in: ["connected_live", "connected_readonly"] },
+      listenerStatus: { in: ["connected", "connecting", "reconnecting"] },
+    },
+    select: {
+      id: true,
+      env: true,
+      listenerStatus: true,
+      listenerLastEventAt: true,
+      listenerLastHeartbeatAt: true,
+      listenerLastCloseCode: true,
+      listenerLastCloseReason: true,
+    },
+    orderBy: { listenerConnectedAt: "desc" },
+  });
+
+  // env → most-recently-connected active listener (first row wins after desc sort)
+  const activeListenerByEnv = new Map<
+    string,
+    (typeof activeListenerConnections)[number]
+  >();
+  for (const conn of activeListenerConnections) {
+    if (!activeListenerByEnv.has(conn.env)) {
+      activeListenerByEnv.set(conn.env, conn);
+    }
+  }
 
   const isDryRun = process.env.ENFORCEMENT_DRY_RUN === "true";
 
@@ -387,9 +424,29 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       stopAfterLosses,
       lastSyncAt: account.lastSyncAt,
       fillsSyncedAt: account.fillsSyncedAt,
-      listenerStatus: account.brokerConnection?.listenerStatus ?? null,
-      listenerLastEventAt: account.brokerConnection?.listenerLastEventAt ?? null,
-      listenerLastHeartbeatAt: account.brokerConnection?.listenerLastHeartbeatAt ?? null,
+      // Resolve effective listener data: the account's direct brokerConnection may
+      // point to an older OAuth grant whose listener is closed, while a newer
+      // connection for the same env has the active listener. Prefer the active
+      // connection's listener fields so the dashboard shows Live when applicable.
+      ...(() => {
+        const direct = account.brokerConnection;
+        const directStatus = direct?.listenerStatus ?? null;
+        const isDirectActive =
+          directStatus === "connected" ||
+          directStatus === "connecting" ||
+          directStatus === "reconnecting";
+        const effective =
+          isDirectActive || !direct?.env
+            ? direct
+            : (activeListenerByEnv.get(direct.env) ?? direct);
+        return {
+          listenerStatus: effective?.listenerStatus ?? null,
+          listenerLastEventAt: effective?.listenerLastEventAt ?? null,
+          listenerLastHeartbeatAt: effective?.listenerLastHeartbeatAt ?? null,
+          listenerLastCloseCode: effective?.listenerLastCloseCode ?? null,
+          listenerLastCloseReason: effective?.listenerLastCloseReason ?? null,
+        };
+      })(),
       hasMaxPositionSize: (accountRules?.maxContracts ?? defaultRules?.maxContracts) != null,
       rawBrokerHardLimitEnabled: accountRules?.rawBrokerHardLimitEnabled ?? false,
       balanceLimitedWarning,

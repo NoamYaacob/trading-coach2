@@ -18,6 +18,10 @@ export type BrokerListenerStatusData = {
   listenerLastHeartbeatAt: Date | null;
   /** Timestamp of the last cron sync (ConnectedAccount.lastSyncAt). */
   lastSyncAt: Date | null;
+  /** WebSocket close code from the most recent close (BrokerConnection.listenerLastCloseCode). */
+  listenerLastCloseCode: number | null;
+  /** WebSocket close reason from the most recent close (BrokerConnection.listenerLastCloseReason). */
+  listenerLastCloseReason: string | null;
   /** Whether the account has max position size configured. */
   hasMaxPositionSize: boolean;
   /** Whether raw broker hard limit mode is enabled for this account. */
@@ -60,7 +64,14 @@ export const STALE_THRESHOLD_MS = 5 * 60_000; // 5 min — same as cron cycle
 export const RECONNECT_LIVE_THRESHOLD_MS = 90_000; // 90 s
 
 export function computeListenerFreshness(data: BrokerListenerStatusData): FreshnessInfo {
-  const { listenerStatus, listenerLastEventAt, listenerLastHeartbeatAt, lastSyncAt } = data;
+  const {
+    listenerStatus,
+    listenerLastEventAt,
+    listenerLastHeartbeatAt,
+    lastSyncAt,
+    listenerLastCloseCode,
+    listenerLastCloseReason,
+  } = data;
 
   // ── Live listener ──────────────────────────────────────────────────────────
   if (listenerStatus === "connected") {
@@ -95,6 +106,24 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
       isStale: false,
       isReconnecting: true,
     };
+  }
+
+  // ── Closed after graceful 1000/Bye recycle ────────────────────────────────
+  // The worker writes "closed" on SIGTERM/process restart. If the last close was
+  // a normal Tradovate session recycle (code=1000, reason="Bye") and the heartbeat
+  // is still fresh, keep the dashboard green rather than flashing "Fallback sync"
+  // during the brief restart window.
+  if (listenerStatus === "closed" && listenerLastCloseCode === 1000 && listenerLastCloseReason === "Bye") {
+    const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
+    if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
+      const agoStr = shortAgo(lastSignal);
+      return {
+        label: `Live · ${agoStr} · reconnecting`,
+        isLive: true,
+        isStale: false,
+        isReconnecting: true,
+      };
+    }
   }
 
   // ── Fallback: cron sync ────────────────────────────────────────────────────

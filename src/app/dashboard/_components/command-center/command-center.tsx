@@ -935,6 +935,8 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
                       listenerLastEventAt: account.listenerLastEventAt,
                       listenerLastHeartbeatAt: account.listenerLastHeartbeatAt,
                       lastSyncAt: account.lastSyncAt,
+                      listenerLastCloseCode: account.listenerLastCloseCode,
+                      listenerLastCloseReason: account.listenerLastCloseReason,
                       hasMaxPositionSize: account.hasMaxPositionSize,
                       rawBrokerHardLimitEnabled: account.rawBrokerHardLimitEnabled,
                     }}

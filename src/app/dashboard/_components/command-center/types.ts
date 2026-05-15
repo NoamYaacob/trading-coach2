@@ -79,6 +79,10 @@ export type CommandCenterAccount = {
   listenerLastEventAt: Date | null;
   /** Timestamp of the last WebSocket heartbeat ("h" frame). */
   listenerLastHeartbeatAt: Date | null;
+  /** WS close code from the most recent close (1000 = normal/Bye, 1006 = abnormal). */
+  listenerLastCloseCode: number | null;
+  /** WS close reason from the most recent close ("Bye" for Tradovate recycles). */
+  listenerLastCloseReason: string | null;
   /** True when this account has a max position size rule (account or default). */
   hasMaxPositionSize: boolean;
   /** True when raw broker hard limit mode is enabled (account-level only). */
