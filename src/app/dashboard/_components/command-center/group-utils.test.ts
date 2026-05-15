@@ -42,6 +42,8 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     listenerStatus: null,
     listenerLastEventAt: null,
     listenerLastHeartbeatAt: null,
+    listenerLastCloseCode: null,
+    listenerLastCloseReason: null,
     hasMaxPositionSize: false,
     rawBrokerHardLimitEnabled: false,
     balanceLimitedWarning: false,
