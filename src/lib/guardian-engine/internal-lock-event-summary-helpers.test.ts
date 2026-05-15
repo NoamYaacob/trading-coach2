@@ -518,79 +518,39 @@ describe("source-scan: manage-connection page shows broker protection status", (
     );
   });
 
-  it("does not show interventionId/internalLockEventId/dedupKey in the top-level customer view", () => {
-    // Technical IDs must be inside <details> (collapsed), not in the customer-visible header.
-    const detailsStart = ACCOUNT_EDIT_SRC.indexOf("<details");
-    assert.ok(detailsStart !== -1, "technical fields must be inside a <details> element");
-    // The customer-facing section (before <details>) must not contain these raw IDs.
-    const customerSrc = ACCOUNT_EDIT_SRC.slice(0, detailsStart);
+  it("does not contain 'Technical audit details' — removed from normal customer UI", () => {
     assert.ok(
-      !customerSrc.includes("Intervention ID:"),
-      "Intervention ID must not appear outside <details>",
-    );
-    assert.ok(
-      !customerSrc.includes("Internal lock ID:"),
-      "Internal lock ID must not appear outside <details>",
-    );
-    assert.ok(
-      !customerSrc.includes("Dedup key:"),
-      "Dedup key must not appear outside <details>",
+      !ACCOUNT_EDIT_SRC.includes("Technical audit details"),
+      "Technical audit details must not appear on the normal Manage Connection page",
     );
   });
 
-  it("technical audit details are inside a collapsed <details> element", () => {
+  it("does not render Intervention ID / Internal lock ID / Dedup key to the customer", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Technical audit details"),
-      "technical fields must be labelled 'Technical audit details' inside <details>",
+      !ACCOUNT_EDIT_SRC.includes("Intervention ID:"),
+      "Intervention ID must not appear on the normal Manage Connection page",
     );
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("<details"),
-      "technical fields must be wrapped in a <details> element so they are collapsed by default",
-    );
-  });
-
-  it("technical details include Intervention ID:, Internal lock ID:, Dedup key: inside <details>", () => {
-    assert.ok(ACCOUNT_EDIT_SRC.includes("Intervention ID:"), "must label intervention ID field");
-    assert.ok(ACCOUNT_EDIT_SRC.includes("Internal lock ID:"), "must label internal lock ID field");
-    assert.ok(ACCOUNT_EDIT_SRC.includes("Dedup key:"), "must label dedup key field");
-  });
-
-  it("internalLockEventId and listenerBrokerDedupKey are surfaced inside technical details", () => {
-    assert.ok(
-      ACCOUNT_EDIT_SRC.includes("internalLockEventId"),
-      "edit page must surface internalLockEventId in technical audit details",
+      !ACCOUNT_EDIT_SRC.includes("Internal lock ID:"),
+      "Internal lock ID must not appear on the normal Manage Connection page",
     );
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
-      "edit page must surface listenerBrokerDedupKey in technical audit details",
+      !ACCOUNT_EDIT_SRC.includes("Dedup key:"),
+      "Dedup key must not appear on the normal Manage Connection page",
     );
   });
 
-  it("does not show 'broker locked' in customer-facing copy when lock is historical", () => {
-    // Scan the JSX region between the two comment markers that bracket the customer copy
-    // and the technical <details> block. "Broker lock confirmed" is allowed in the lookup
-    // map (a module-level constant) and inside <details>, but NOT in the rendered
-    // customer-friendly paragraph section.
-    const customerStart = ACCOUNT_EDIT_SRC.indexOf("Customer-friendly copy");
-    const customerEnd = ACCOUNT_EDIT_SRC.indexOf("Technical audit details");
+  it("does not use <details> for any content on the broker protection card", () => {
     assert.ok(
-      customerStart !== -1 && customerEnd !== -1 && customerStart < customerEnd,
-      "file must have Customer-friendly copy and Technical audit details comment markers",
-    );
-    const customerSection = ACCOUNT_EDIT_SRC.slice(customerStart, customerEnd);
-    assert.ok(
-      !customerSection.includes("Broker lock confirmed"),
-      "customer-visible copy must not say 'Broker lock confirmed' — use friendly copy instead",
+      !ACCOUNT_EDIT_SRC.includes("<details"),
+      "broker protection status card must not use a <details> element — technical fields are gone entirely",
     );
   });
 
-  it("panel uses only neutral styling (no red or amber borders on rows)", () => {
-    const panelStart = ACCOUNT_EDIT_SRC.indexOf("BrokerEnforcementHistoryPanel");
-    const panelEnd = ACCOUNT_EDIT_SRC.lastIndexOf("BrokerEnforcementHistoryPanel");
-    const panelSrc = ACCOUNT_EDIT_SRC.slice(panelStart, panelEnd + 100);
+  it("does not say 'Broker lock confirmed' anywhere in the customer page", () => {
     assert.ok(
-      !panelSrc.includes("border-red-") && !panelSrc.includes("border-amber-"),
-      "broker protection status panel must not use red or amber border styling",
+      !ACCOUNT_EDIT_SRC.includes("Broker lock confirmed"),
+      "customer Manage Connection page must not say 'Broker lock confirmed'",
     );
   });
 });

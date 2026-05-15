@@ -174,17 +174,7 @@ export default async function EditAccountPage({
           where: { accountId: account.id, listenerBrokerDedupKey: { not: null } },
           orderBy: { createdAt: "desc" },
           take: 10,
-          select: {
-            id: true,
-            triggerType: true,
-            outcome: true,
-            brokerLockStatus: true,
-            listenerBrokerDedupKey: true,
-            internalLockEventId: true,
-            tradingDay: true,
-            createdAt: true,
-            message: true,
-          },
+          select: { brokerLockStatus: true },
         })
       : [];
 
@@ -519,13 +509,7 @@ export default async function EditAccountPage({
         {brokerEnforcementHistory.length > 0 && (
           <BrokerEnforcementHistoryPanel
             records={brokerEnforcementHistory.map((r) => ({
-              id: r.id,
-              triggerType: r.triggerType,
               brokerLockStatus: r.brokerLockStatus ?? null,
-              listenerBrokerDedupKey: r.listenerBrokerDedupKey ?? null,
-              internalLockEventId: r.internalLockEventId ?? null,
-              tradingDay: r.tradingDay ?? null,
-              createdAt: r.createdAt.toISOString(),
             }))}
             riskState={account.sessionState?.riskState ?? null}
             accountType={account.accountType}
@@ -562,23 +546,8 @@ export default async function EditAccountPage({
 
 // ── Broker protection status panel ───────────────────────────────────────────
 
-const BROKER_LOCK_STATUS_LABEL: Record<string, string> = {
-  broker_locked: "Broker lock confirmed",
-  dry_run: "Test mode (dry run)",
-  monitoring_only: "Monitoring only",
-  broker_lock_failed: "Broker lock failed",
-  unavailable_read_only: "Unavailable — read-only connection",
-  unavailable_permission: "Unavailable — insufficient permissions",
-};
-
 type BrokerEnforcementRecord = {
-  id: string;
-  triggerType: string;
   brokerLockStatus: string | null;
-  listenerBrokerDedupKey: string | null;
-  internalLockEventId: string | null;
-  tradingDay: string | null;
-  createdAt: string;
 };
 
 function BrokerEnforcementHistoryPanel({
@@ -606,8 +575,6 @@ function BrokerEnforcementHistoryPanel({
           </span>
         )}
       </div>
-
-      {/* Customer-friendly copy */}
       <div className="grid gap-1">
         {hasConfirmedLock && noActiveLock ? (
           <>
@@ -628,68 +595,6 @@ function BrokerEnforcementHistoryPanel({
           </p>
         )}
       </div>
-
-      {/* Technical audit details — collapsed by default */}
-      <details className="mt-4">
-        <summary className="cursor-pointer select-none text-xs font-medium text-stone-400 hover:text-stone-600">
-          Technical audit details
-        </summary>
-        <div className="mt-3 grid gap-3">
-          {records.map((r) => (
-            <div
-              key={r.id}
-              className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <dl className="grid gap-1 text-xs">
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 font-medium text-stone-500">Status:</dt>
-                    <dd className="text-stone-400">
-                      {BROKER_LOCK_STATUS_LABEL[r.brokerLockStatus ?? ""] ??
-                        r.brokerLockStatus ??
-                        "Unknown"}
-                    </dd>
-                  </div>
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 font-medium text-stone-500">Rule:</dt>
-                    <dd className="text-stone-400">
-                      {r.triggerType.replace(/_/g, " ")}
-                      {r.tradingDay ? ` · ${r.tradingDay}` : ""}
-                    </dd>
-                  </div>
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 font-medium text-stone-500">Intervention ID:</dt>
-                    <dd className="font-mono text-stone-400 break-all">…{r.id.slice(-10)}</dd>
-                  </div>
-                  {r.internalLockEventId && (
-                    <div className="flex gap-2">
-                      <dt className="shrink-0 font-medium text-stone-500">Internal lock ID:</dt>
-                      <dd className="font-mono text-stone-400 break-all">
-                        …{r.internalLockEventId.slice(-10)}
-                      </dd>
-                    </div>
-                  )}
-                  {r.listenerBrokerDedupKey && (
-                    <div className="flex gap-2">
-                      <dt className="shrink-0 font-medium text-stone-500">Dedup key:</dt>
-                      <dd className="font-mono text-stone-400 break-all">
-                        {r.listenerBrokerDedupKey}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-                <p className="shrink-0 text-xs text-stone-400">
-                  {new Date(r.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </details>
     </div>
   );
 }
