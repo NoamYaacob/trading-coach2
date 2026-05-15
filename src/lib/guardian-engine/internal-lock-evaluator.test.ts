@@ -164,6 +164,80 @@ describe("applyInternalLockForConnection — idempotency fix", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Source-scan: applyInternalLockForConnection returns InternalLockResult[]
+// Phase 2C-E: structured return so listener can pass lock event IDs to the
+// broker enforcement service without an extra DB round-trip.
+// ---------------------------------------------------------------------------
+
+describe("applyInternalLockForConnection — structured return value (Phase 2C-E)", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+
+  it("exports InternalLockResult type", () => {
+    assert.ok(
+      dbSrc.includes("InternalLockResult"),
+      "must export InternalLockResult type for the listener to type-check the result",
+    );
+  });
+
+  it("returns InternalLockResult[] instead of void", () => {
+    assert.ok(
+      dbSrc.includes("Promise<InternalLockResult[]>"),
+      "function must return Promise<InternalLockResult[]> so listener can read lock event IDs",
+    );
+    assert.ok(
+      !dbSrc.includes("Promise<void>"),
+      "void return is no longer allowed — listener needs the structured result",
+    );
+  });
+
+  it("returns [] on feature flag disabled (early exit)", () => {
+    assert.ok(
+      dbSrc.includes("return [];"),
+      "must return [] (not void/undefined) when feature flag is off or no accounts found",
+    );
+  });
+
+  it("captures upsert result to obtain the lock event id", () => {
+    // The transaction destructures [liveSessionStateResult, lockEvent] so lockEvent.id is accessible.
+    assert.ok(
+      dbSrc.includes("lockEvent"),
+      "upsert result must be captured as lockEvent to surface its id to the caller",
+    );
+  });
+
+  it("includes internalLockEventId in the returned result", () => {
+    assert.ok(
+      dbSrc.includes("internalLockEventId: lockEvent.id"),
+      "result must include internalLockEventId: lockEvent.id so the listener can pass it to the broker enforcement service",
+    );
+  });
+
+  it("includes skipReason in the returned result when skipping", () => {
+    assert.ok(
+      dbSrc.includes("skipReason"),
+      "result must include skipReason so skip conditions are observable without a separate DB query",
+    );
+  });
+
+  it("createdOrUpdated is true only when lock was applied", () => {
+    assert.ok(
+      dbSrc.includes("createdOrUpdated: true"),
+      "result must set createdOrUpdated=true when a lock was upserted",
+    );
+    assert.ok(
+      dbSrc.includes("createdOrUpdated: false"),
+      "result must set createdOrUpdated=false when the account was skipped",
+    );
+  });
+
+  it("still does not call any broker API", () => {
+    for (const banned of ["applyBrokerDayLockout", "triggerEnforcement", "userAccountAutoLiq"]) {
+      assert.ok(!dbSrc.includes(banned), `internal-lock-evaluator-db must not call ${banned} even with new return type`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Source-scan: reset endpoint nulls activeDedupKey on clear
 // ---------------------------------------------------------------------------
 

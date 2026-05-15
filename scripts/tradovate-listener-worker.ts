@@ -49,6 +49,7 @@ import {
 import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
 import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry-run-rule-evaluator-db.ts";
 import { applyInternalLockForConnection } from "../src/lib/guardian-engine/internal-lock-evaluator-db.ts";
+import { maybeAttemptBrokerDailyLossLockoutForInternalLock } from "../src/lib/guardian-engine/broker-enforcement-service.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -582,6 +583,12 @@ async function reconcileListeners(): Promise<void> {
       // Phase 2B: internal app lock when GUARDRAIL_INTERNAL_LOCK_ENABLED=true.
       // Demo accounts only. Sets riskState=STOPPED + writes InternalLockEvent.
       // No broker writes, no flatten, no cancel, no Tradovate API calls.
+      //
+      // Phase 2C-E: broker enforcement wiring — dormant while BROKER_ENFORCEMENT_ENABLED=false.
+      // When BROKER_ENFORCEMENT_ENABLED=true and the internal lock step returns a lock event
+      // id, maybeAttemptBrokerDailyLossLockoutForInternalLock re-evaluates all 10 gates and
+      // (only if all pass) writes the Tradovate risk setting via the broker enforcement service.
+      // Demo-only, daily_loss_limit only, explicit allowlist, full_access permission required.
       onPropsEvent: (connectionId) => {
         void writeListenerEventTimestamp(connectionId);
         if (process.env.ENFORCEMENT_DRY_RUN === "true") {
@@ -590,7 +597,23 @@ async function reconcileListeners(): Promise<void> {
           });
         }
         if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
-          void applyInternalLockForConnection(connectionId).catch((err) => {
+          void applyInternalLockForConnection(connectionId).then((results) => {
+            // Broker enforcement: dormant while BROKER_ENFORCEMENT_ENABLED is absent or false.
+            // All 10 gates are re-evaluated inside the service — this outer check is only an
+            // early-exit optimisation to avoid a DB fetch on every props event when disabled.
+            if (process.env.BROKER_ENFORCEMENT_ENABLED !== "true") return;
+            for (const result of results) {
+              if (result.internalLockEventId == null) continue;
+              void maybeAttemptBrokerDailyLossLockoutForInternalLock(result.internalLockEventId).catch((err) => {
+                console.error("[listener-worker] broker enforcement error", {
+                  connectionId,
+                  internalLockEventId: result.internalLockEventId,
+                  errorName: err instanceof Error ? err.name : typeof err,
+                  errorMessage: err instanceof Error ? err.message : String(err),
+                });
+              });
+            }
+          }).catch((err) => {
             // Surface the full error so migration/schema failures are visible in logs.
             // A PrismaClientKnownRequestError here most likely means the
             // activeDedupKey column does not exist — migration not deployed.

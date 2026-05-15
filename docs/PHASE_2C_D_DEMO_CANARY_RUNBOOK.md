@@ -255,7 +255,7 @@ Set `BROKER_ENFORCEMENT_ENABLED=true` in the **listener-worker process environme
 
 The next props event for account `cmottd1z200020do1knjxq582` will cause `maybeAttemptBrokerDailyLossLockoutForInternalLock` to be called (once it is wired into the listener — see note below). All 10 gates will pass, and `triggerEnforcement` will call `applyBrokerDayLockout` → `applyDailyLossLock`.
 
-> **Note:** As of Phase 2C-C, `maybeAttemptBrokerDailyLossLockoutForInternalLock` is implemented but NOT yet called from the listener worker. Wiring it in is a separate step that must be reviewed and approved before this canary step is meaningful. This runbook covers the full canary flow assuming that wiring has been completed.
+> **Note (updated Phase 2C-E):** The listener wiring is now complete. `maybeAttemptBrokerDailyLossLockoutForInternalLock` is imported and called from the `onPropsEvent` handler, but only when `BROKER_ENFORCEMENT_ENABLED=true`. While the flag is absent or false, the `.then()` handler returns immediately and no broker service call is made. Setting `BROKER_ENFORCEMENT_ENABLED=true` is the only remaining step required to activate enforcement. No code changes are needed.
 
 The real broker write moment: when `applyBrokerDayLockout` reaches the `case "daily_loss_limit":` branch inside `TradovateClient.applyDailyLossLock()` and POSTs to `userAccountAutoLiq/update` (or `/create`).
 

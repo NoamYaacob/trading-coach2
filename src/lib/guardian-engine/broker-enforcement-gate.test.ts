@@ -519,10 +519,12 @@ describe("broker-enforcement-service source scan — no direct broker calls", ()
 });
 
 // ---------------------------------------------------------------------------
-// Source-scan: listener worker still has no broker write path
+// Source-scan: listener worker — no direct broker write strings
+// (Phase 2C-E: service is now imported and called, but only via the service
+//  function — no direct Tradovate endpoint strings in the listener file)
 // ---------------------------------------------------------------------------
 
-describe("listener worker source scan — no broker write unless gate helper passes", () => {
+describe("listener worker source scan — no direct broker write strings (Phase 2C-E)", () => {
   const listenerSrc = readSrc("scripts/tradovate-listener-worker.ts");
 
   it("does not call applyBrokerDayLockout directly", () => {
@@ -532,10 +534,10 @@ describe("listener worker source scan — no broker write unless gate helper pas
     );
   });
 
-  it("does not call userAccountAutoLiq", () => {
+  it("does not reference userAccountAutoLiq endpoint", () => {
     assert.ok(
       !listenerSrc.includes("userAccountAutoLiq"),
-      "listener must not call Tradovate userAccountAutoLiq endpoint",
+      "listener must not reference Tradovate userAccountAutoLiq endpoint — all broker calls go through the service",
     );
   });
 
@@ -550,6 +552,74 @@ describe("listener worker source scan — no broker write unless gate helper pas
     assert.ok(
       !listenerSrc.includes("cancelOrder"),
       "listener must not cancel orders",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: listener worker — Phase 2C-E wiring contract
+// Verifies the wiring exists and is guarded correctly.
+// ---------------------------------------------------------------------------
+
+describe("listener worker source scan — Phase 2C-E wiring contract", () => {
+  const listenerSrc = readSrc("scripts/tradovate-listener-worker.ts");
+
+  it("imports maybeAttemptBrokerDailyLossLockoutForInternalLock from broker-enforcement-service", () => {
+    assert.ok(
+      listenerSrc.includes("maybeAttemptBrokerDailyLossLockoutForInternalLock"),
+      "listener must import maybeAttemptBrokerDailyLossLockoutForInternalLock so the wiring is statically present",
+    );
+    assert.ok(
+      listenerSrc.includes("broker-enforcement-service"),
+      "listener must import from broker-enforcement-service (not from enforcement.ts directly)",
+    );
+  });
+
+  it("gates the call on BROKER_ENFORCEMENT_ENABLED !== 'true' check", () => {
+    assert.ok(
+      listenerSrc.includes("BROKER_ENFORCEMENT_ENABLED"),
+      "listener must check BROKER_ENFORCEMENT_ENABLED before calling the broker enforcement service",
+    );
+  });
+
+  it("guards: if no internalLockEventId, broker service is not called", () => {
+    // The listener must check result.internalLockEventId before calling the service.
+    assert.ok(
+      listenerSrc.includes("internalLockEventId"),
+      "listener must check result.internalLockEventId — null means no lock was created, skip broker enforcement",
+    );
+  });
+
+  it("does not import enforcement.ts triggerEnforcement directly", () => {
+    // triggerEnforcement is called internally by the service — the listener
+    // must not bypass the gate layer by importing it directly.
+    const lines = listenerSrc.split("\n");
+    const importLines = lines.filter((l) => l.trimStart().startsWith("import"));
+    const hasDirect = importLines.some((l) => l.includes("enforcement") && !l.includes("broker-enforcement-service") && !l.includes("internal-lock-evaluator"));
+    assert.ok(
+      !hasDirect,
+      "listener must not import from enforcement.ts directly — use broker-enforcement-service which applies all 10 gates",
+    );
+  });
+
+  it("broker enforcement call site is after the GUARDRAIL_INTERNAL_LOCK_ENABLED guard", () => {
+    // The broker enforcement wiring must be downstream of the internal lock step —
+    // it can only fire when an InternalLockEvent was created/updated this cycle.
+    // Compare guard position vs call site position (not import position).
+    assert.ok(
+      listenerSrc.includes("GUARDRAIL_INTERNAL_LOCK_ENABLED"),
+      "GUARDRAIL_INTERNAL_LOCK_ENABLED conditional must be present in the listener",
+    );
+    const guardIdx = listenerSrc.indexOf("GUARDRAIL_INTERNAL_LOCK_ENABLED");
+    // Use the call site pattern (function name with opening paren) not the import line.
+    const callSiteIdx = listenerSrc.indexOf("maybeAttemptBrokerDailyLossLockoutForInternalLock(");
+    assert.ok(
+      callSiteIdx !== -1,
+      "call site maybeAttemptBrokerDailyLossLockoutForInternalLock(...) must exist in listener",
+    );
+    assert.ok(
+      guardIdx < callSiteIdx,
+      "GUARDRAIL_INTERNAL_LOCK_ENABLED guard must appear before the call site",
     );
   });
 });

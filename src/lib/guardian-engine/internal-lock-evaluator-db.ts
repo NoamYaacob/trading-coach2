@@ -1,5 +1,7 @@
 /**
  * Phase 2B: DB persistence and connection-level entry point for internal app lock.
+ * Phase 2C-E: now returns structured results so the listener can pass lock event
+ * IDs to the broker enforcement service without an extra DB round-trip.
  *
  * Safety contract:
  *   - Only applies to demo accounts (env === "demo")
@@ -15,9 +17,30 @@ import { prisma } from "../db";
 import { evaluateDryRunRules, type DryRunRuleInput } from "./dry-run-rule-evaluator";
 import { canApplyInternalLock, buildInternalLockDedupKey } from "./internal-lock-evaluator";
 
+/** Per-account outcome from a single applyInternalLockForConnection call. */
+export type InternalLockResult = {
+  accountId: string;
+  /** True when a lock row was created or refreshed (upsert updated) this cycle. */
+  createdOrUpdated: boolean;
+  /**
+   * ID of the InternalLockEvent that was created or updated.
+   * Null when the account was skipped for any reason.
+   * Passed directly to maybeAttemptBrokerDailyLossLockoutForInternalLock
+   * by the listener when BROKER_ENFORCEMENT_ENABLED=true.
+   */
+  internalLockEventId: string | null;
+  /** Primary rule type of the violation. Null when no violation found. */
+  ruleType: string | null;
+  /** Human-readable reason the lock step was skipped. Null when lock was applied. */
+  skipReason: string | null;
+};
+
 /**
  * Evaluate rules and apply an internal app lock to any demo account in breach.
  * Called from the worker's onPropsEvent when GUARDRAIL_INTERNAL_LOCK_ENABLED=true.
+ *
+ * Returns one InternalLockResult per eligible account on the connection.
+ * Returns [] when the feature flag is off or no eligible accounts exist.
  *
  * Writes:
  *   - LiveSessionState.riskState = "STOPPED"    (on the breaching account)
@@ -28,8 +51,8 @@ import { canApplyInternalLock, buildInternalLockDedupKey } from "./internal-lock
  *   - Broker risk settings
  *   - Any Tradovate endpoint
  */
-export async function applyInternalLockForConnection(connectionId: string): Promise<void> {
-  if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED !== "true") return;
+export async function applyInternalLockForConnection(connectionId: string): Promise<InternalLockResult[]> {
+  if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED !== "true") return [];
 
   const accounts = await prisma.connectedAccount.findMany({
     where: {
@@ -62,16 +85,23 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
     },
   });
 
-  if (accounts.length === 0) return;
+  if (accounts.length === 0) return [];
 
   const today = new Date().toISOString().slice(0, 10);
+  const results: InternalLockResult[] = [];
 
   for (const account of accounts) {
     const session = account.sessionState;
-    if (!session) continue;
+    if (!session) {
+      results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: "no LiveSessionState row" });
+      continue;
+    }
 
     const rules = account.riskRules;
-    if (!rules) continue;
+    if (!rules) {
+      results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: "no AccountRiskRules row" });
+      continue;
+    }
 
     const env = account.brokerConnection?.env ?? "demo";
 
@@ -82,6 +112,11 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
         flagEnabled: true, // already checked at top of function
       })
     ) {
+      const reason =
+        env !== "demo"
+          ? `env="${env}" (must be demo)`
+          : `riskState="${session.riskState}" (already STOPPED — idempotent skip)`;
+      results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: reason });
       continue;
     }
 
@@ -103,7 +138,10 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
     };
 
     const { violations } = evaluateDryRunRules(input);
-    if (violations.length === 0) continue;
+    if (violations.length === 0) {
+      results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: "no violations detected" });
+      continue;
+    }
 
     // Primary violation: first by evaluation order (daily_loss_limit > trade_limit > max_loss_streak).
     const primary = violations[0];
@@ -126,7 +164,10 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
       activeDedupKey,
     });
 
-    await prisma.$transaction([
+    // Capture the upsert result so its id can be returned to the caller.
+    // On create: new row id. On update (conflict on activeDedupKey): same id
+    // as the existing row — the broker enforcement service uses it for dedup.
+    const [, lockEvent] = await prisma.$transaction([
       prisma.liveSessionState.update({
         where: { accountId: account.id },
         data: { riskState: "STOPPED" },
@@ -155,5 +196,15 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
         },
       }),
     ]);
+
+    results.push({
+      accountId: account.id,
+      createdOrUpdated: true,
+      internalLockEventId: lockEvent.id,
+      ruleType: primary.ruleType,
+      skipReason: null,
+    });
   }
+
+  return results;
 }

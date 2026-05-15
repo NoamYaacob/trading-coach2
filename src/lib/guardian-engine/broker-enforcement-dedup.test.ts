@@ -93,10 +93,10 @@ describe("listener worker — no broker writes", () => {
     );
   });
 
-  it("does not call triggerEnforcement from the listener path", () => {
+  it("does not import triggerEnforcement directly (routes through broker-enforcement-service)", () => {
     assert.ok(
       !listenerSrc.includes("triggerEnforcement"),
-      "listener worker must not call triggerEnforcement (broker enforcement not yet wired)",
+      "listener worker must not reference triggerEnforcement directly — broker writes go through maybeAttemptBrokerDailyLossLockoutForInternalLock which applies all 10 gates",
     );
   });
 });

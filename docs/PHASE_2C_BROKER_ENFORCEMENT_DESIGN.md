@@ -720,3 +720,49 @@ TRADOVATE_LISTENER_ENABLE_LIVE=false                         # Already false —
 - No flatten, no order cancellation, no order placement
 - Listener worker not modified — service not wired in
 - All existing tests continue to pass
+
+---
+
+## 15. Phase 2C-E: Listener Wiring — Dormant While BROKER_ENFORCEMENT_ENABLED=false
+
+**Status: Wiring complete. Broker enforcement still disabled. No broker write executed.**
+
+### What changed
+
+`applyInternalLockForConnection` now returns `InternalLockResult[]` instead of `void`. Each element carries:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `accountId` | `string` | Which account the result is for |
+| `createdOrUpdated` | `boolean` | True when a lock row was upserted this cycle |
+| `internalLockEventId` | `string \| null` | ID to pass to the broker enforcement service |
+| `ruleType` | `string \| null` | Primary rule that fired |
+| `skipReason` | `string \| null` | Why the account was skipped (null when lock applied) |
+
+The listener worker now chains `.then(results => { ... })` on `applyInternalLockForConnection`. Inside the `.then`, it checks `BROKER_ENFORCEMENT_ENABLED !== "true"` and returns early — so while the flag is absent or false, **zero broker enforcement calls occur**. When the flag is true and a result has a non-null `internalLockEventId`, `maybeAttemptBrokerDailyLossLockoutForInternalLock` is called, which re-evaluates all 10 gates before any broker write.
+
+### Call path (when BROKER_ENFORCEMENT_ENABLED=true in future)
+
+```
+onPropsEvent(connectionId)
+  └── applyInternalLockForConnection(connectionId)   [GUARDRAIL_INTERNAL_LOCK_ENABLED=true]
+        └── returns InternalLockResult[]
+              └── for each result where internalLockEventId != null:
+                    └── maybeAttemptBrokerDailyLossLockoutForInternalLock(id)  [BROKER_ENFORCEMENT_ENABLED=true]
+                          └── evaluateBrokerEnforcementGates() — all 10 gates
+                                └── triggerEnforcement()  [only when all gates pass]
+```
+
+### Current state (BROKER_ENFORCEMENT_ENABLED absent/false)
+
+The `.then()` handler runs and returns immediately on the second line:
+```typescript
+if (process.env.BROKER_ENFORCEMENT_ENABLED !== "true") return;
+```
+No call to `maybeAttemptBrokerDailyLossLockoutForInternalLock` is ever made. Behavior is identical to Phase 2C-C from the user's perspective.
+
+### Tests added
+
+- 8 new source-scan tests on `internal-lock-evaluator-db.ts` — verify `InternalLockResult[]` return type, structured fields, lock event ID capture from upsert
+- 5 new source-scan tests on `tradovate-listener-worker.ts` — verify import present, `BROKER_ENFORCEMENT_ENABLED` guard, `internalLockEventId` null-check, no direct `triggerEnforcement` import, guard precedes call site
+- Total: 4219 tests pass (13 new)
