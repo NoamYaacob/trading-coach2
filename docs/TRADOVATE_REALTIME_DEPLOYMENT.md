@@ -37,6 +37,28 @@ TRADOVATE_LISTENER_ENABLE_LIVE=false
 
 ---
 
+## Phase 2B — Verified Checklist (2026-05-15)
+
+Phase 2B internal app lock verified in production with DEMO7433035.
+
+| # | Check | Status |
+|---|---|---|
+| 1 | InternalLockEvent created | ✓ `accountId=cmottd1z200020do1knjxq582`, `ruleType=trade_limit`, `thresholdCount=1`, `observedCount=4` |
+| 2 | `internalOnly=true` | ✓ confirmed on created row |
+| 3 | `brokerActionTaken=false` | ✓ confirmed on created row |
+| 4 | No `GuardianIntervention` rows | ✓ zero broker-enforcement records created |
+| 5 | `riskState=STOPPED` set on demo account | ✓ confirmed via LiveSessionState |
+| 6 | No Tradovate API calls | ✓ no `userAccountAutoLiq/update`, no `order/liquidatepositions` |
+| 7 | Reset endpoint cleared the lock | ✓ `previousRiskState=STOPPED`, `newRiskState=NORMAL`, active InternalLockEvent count=0 |
+| 8 | Reset stamps `clearedAt` / `clearedBy` | ✓ `clearedBy=manual_reset`, history row preserved |
+| 9 | Rules restored after reset | ✓ `maxTradesPerDay=100`, `stopAfterLosses=50` |
+| 10 | `wouldFireCount=0` after reset | ✓ evaluation state confirms no pending violations |
+| 11 | `GUARDRAIL_INTERNAL_LOCK_ENABLED` set back to false | ✓ flag disabled after validation |
+| 12 | `TRADOVATE_LISTENER_ENABLE_LIVE=false` unchanged | ✓ live accounts never touched |
+| 13 | Broker enforcement still not implemented | ✓ Phase 2C not started |
+
+---
+
 ## Phase 2A — Dry-Run Rule Evaluation (observe-only)
 
 ### What Phase 2A does
@@ -155,6 +177,9 @@ When `GUARDRAIL_INTERNAL_LOCK_ENABLED=true`, every WebSocket props event that tr
 | `src/lib/guardian-engine/internal-lock-evaluator.ts` | Pure gate logic (no DB, testable) |
 | `src/lib/guardian-engine/internal-lock-evaluator-db.ts` | DB writes: riskState + InternalLockEvent |
 | `src/lib/guardian-engine/internal-lock-evaluator.test.ts` | 11 unit tests |
+| `src/lib/guardian-engine/internal-lock-event-summary-helpers.ts` | Pure helpers for history endpoint |
+| `src/lib/guardian-engine/internal-lock-event-summary-helpers.test.ts` | 58 tests (source-scans + pure logic) |
+| `src/app/api/debug/internal-lock-events/route.ts` | Read-only lock history endpoint |
 | `prisma/schema.prisma` → `InternalLockEvent` | Audit table (internalOnly=true, brokerActionTaken=false always) |
 
 ### How to enable
@@ -173,16 +198,55 @@ if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
 }
 ```
 
+### How to view lock history
+
+```bash
+curl -H "Authorization: Bearer $SESSION_TOKEN" \
+     -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/internal-lock-events?days=7"
+```
+
+Response shape:
+```json
+{
+  "note": "Internal app lock only — no broker action was sent.",
+  "internalLockEnabled": false,
+  "queryDays": 7,
+  "total": 1,
+  "activeCount": 0,
+  "clearedCount": 1,
+  "recent": [{ "id": "...", "ruleType": "trade_limit", "brokerActionTaken": false, ... }],
+  "byAccount": [{ "accountId": "...", "active": 0, "cleared": 1, ... }],
+  "byRuleType": [{ "ruleType": "trade_limit", "total": 1, "active": 0, "cleared": 1, ... }]
+}
+```
+
+Filter by account: `?accountId={connectedAccountId}&days=30`
+
 ### How to unlock / reset
 
 Use the existing reset endpoint (requires x-cron-secret):
 
 ```bash
-curl -X POST -H "x-cron-secret: $CRON_SECRET" \
+curl -X POST \
+     -H "Authorization: Bearer $SESSION_TOKEN" \
+     -H "x-cron-secret: $CRON_SECRET" \
   "https://your-domain/api/debug/accounts/{accountId}/reset-session-state"
 ```
 
-This sets `riskState = "NORMAL"` and stamps `clearedAt` on all active `InternalLockEvent` rows for the account. The dashboard banner disappears immediately on next load.
+What the reset endpoint does and does NOT do:
+
+| Action | Done? |
+|---|---|
+| Sets `riskState = "NORMAL"` | ✓ Yes |
+| Stamps `clearedAt` on active `InternalLockEvent` rows | ✓ Yes (`clearedBy = "manual_reset"`) |
+| Preserves full lock history (no row deletion) | ✓ Yes — rows remain, only `clearedAt` is set |
+| Clears `pendingSessionEndLock`, `cooldownActive` | ✓ Yes |
+| Calls any Tradovate broker API | ✗ No — strictly DB-only |
+| Flattens positions or cancels orders | ✗ No |
+| Deletes `InternalLockEvent` rows | ✗ No — history is permanent |
+
+The dashboard banner disappears immediately on next load once `clearedAt` is stamped.
 
 ### Dashboard display
 
@@ -194,7 +258,29 @@ This copy deliberately differs from broker-enforcement messages (which say "Brok
 
 ### Rollback
 
-Set `GUARDRAIL_INTERNAL_LOCK_ENABLED=false` (or unset it) on the listener-worker service. In-flight locks already applied are not reversed automatically — use the reset endpoint per account.
+Set `GUARDRAIL_INTERNAL_LOCK_ENABLED=false` (or unset it) on the listener-worker service. No worker restart required — the flag is checked at runtime on each props event.
+
+In-flight locks already applied are not reversed automatically. Use the reset endpoint per account, or query the lock history endpoint to find all active locks:
+
+```bash
+# Find active locks to reset:
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/internal-lock-events?days=1" \
+  | jq '.byAccount[] | select(.active > 0) | .accountId'
+```
+
+### Broker enforcement status (Phase 2C)
+
+**Broker enforcement is NOT implemented.** Phase 2B is the internal app lock only.
+
+The following are **not active** and have never been called by Phase 2B:
+- `userAccountAutoLiq/update` (Tradovate risk settings write)
+- `order/liquidatepositions` (Tradovate position flatten)
+- Any Tradovate write API
+
+No `GuardianIntervention` rows are created by Phase 2B. The `InternalLockEvent` table is the only audit record.
+
+Phase 2C broker enforcement requires explicit authorization and a separate implementation.
 
 ### Safety gates in force during Phase 2B
 
