@@ -14,11 +14,11 @@
  * API JSON response, or a client cookie.
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import {
   parseAndDecrypt,
   TokenCryptoError,
-} from "@/lib/security/token-crypto";
+} from "../security/token-crypto";
 
 export type TradovateTokens = {
   accountId: string;

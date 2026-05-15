@@ -631,14 +631,30 @@ describe("listener worker source scan — Phase 2C-E wiring contract", () => {
 // ---------------------------------------------------------------------------
 
 describe("listener-worker import graph — no @/ path aliases", () => {
-  // These are the files newly introduced into the listener's import graph by
-  // Phase 2C-E. All must use relative imports because tsx cannot resolve '@/'.
+  // Every file reachable from scripts/tradovate-listener-worker.ts via
+  // static imports. tsx does not resolve Next.js '@/' path aliases, so
+  // any '@/' alias in this graph causes a startup crash.
+  // When adding a new import to the listener or its dependencies, add it here.
   const listenerGraphFiles = [
+    "scripts/tradovate-listener-worker.ts",
     "src/lib/guardian-engine/broker-enforcement-service.ts",
+    "src/lib/guardian-engine/broker-enforcement-gate.ts",
+    "src/lib/guardian-engine/broker-enforcement-dedup.ts",
+    "src/lib/guardian-engine/internal-lock-evaluator-db.ts",
+    "src/lib/guardian-engine/internal-lock-evaluator.ts",
+    "src/lib/guardian-engine/dry-run-rule-evaluator-db.ts",
+    "src/lib/guardian-engine/dry-run-rule-evaluator.ts",
     "src/lib/brokers/enforcement.ts",
-    "src/lib/brokers/tradovate-client.ts",
     "src/lib/brokers/enforcement-helpers.ts",
     "src/lib/brokers/automated-actions-consent.ts",
+    "src/lib/brokers/tradovate-client.ts",
+    "src/lib/brokers/tradovate-tokens.ts",
+    "src/lib/brokers/tradovate-env.ts",
+    "src/lib/brokers/tradovate-ensure-token.ts",
+    "src/lib/brokers/tradovate-listener-manager.ts",
+    "src/lib/brokers/tradovate-websocket-protocol.ts",
+    "src/lib/security/token-crypto.ts",
+    "src/lib/db.ts",
   ] as const;
 
   for (const rel of listenerGraphFiles) {
