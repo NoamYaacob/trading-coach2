@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   deriveOverallSeverity,
   deriveSafetyAlerts,
+  isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
   type EnforcementFlags,
@@ -475,52 +476,74 @@ describe("deriveSafetyAlerts — listener health (rollout-relevant only)", () =>
   });
 });
 
+// ── isAccountRolloutRelevant ─────────────────────────────────────────────────
+
+describe("isAccountRolloutRelevant", () => {
+  it("allowlisted account → true regardless of lock/history", () => {
+    assert.equal(
+      isAccountRolloutRelevant({ isInAllowlist: true, activeLockCount: 0, historicalEnforcementCount: 0 }),
+      true,
+    );
+  });
+
+  it("account with active lock → true", () => {
+    assert.equal(
+      isAccountRolloutRelevant({ isInAllowlist: false, activeLockCount: 1, historicalEnforcementCount: 0 }),
+      true,
+    );
+  });
+
+  it("account with historical enforcement → true", () => {
+    assert.equal(
+      isAccountRolloutRelevant({ isInAllowlist: false, activeLockCount: 0, historicalEnforcementCount: 3 }),
+      true,
+    );
+  });
+
+  it("active protected account with no allowlist/lock/history → false", () => {
+    assert.equal(
+      isAccountRolloutRelevant({ isInAllowlist: false, activeLockCount: 0, historicalEnforcementCount: 0 }),
+      false,
+    );
+  });
+});
+
 // ── isConnectionRolloutRelevant ──────────────────────────────────────────────
 
 describe("isConnectionRolloutRelevant", () => {
-  it("expired connection → false even when allowlisted", () => {
-    const r = isConnectionRolloutRelevant({
-      connectionStatus: "expired",
-      activeProtectedAccountCount: 1,
-      hasAllowlistedAccount: true,
-    });
-    assert.equal(r, false);
+  it("expired connection → false even when it has rollout-relevant accounts", () => {
+    assert.equal(
+      isConnectionRolloutRelevant({ connectionStatus: "expired", hasRolloutRelevantAccount: true }),
+      false,
+    );
   });
 
-  it("active protected account → true", () => {
-    const r = isConnectionRolloutRelevant({
-      connectionStatus: "connected_live",
-      activeProtectedAccountCount: 1,
-      hasAllowlistedAccount: false,
-    });
-    assert.equal(r, true);
+  it("connection with a rollout-relevant account → true", () => {
+    assert.equal(
+      isConnectionRolloutRelevant({ connectionStatus: "connected_readonly", hasRolloutRelevantAccount: true }),
+      true,
+    );
   });
 
-  it("no active accounts but allowlisted → true", () => {
-    const r = isConnectionRolloutRelevant({
-      connectionStatus: "connected_readonly",
-      activeProtectedAccountCount: 0,
-      hasAllowlistedAccount: true,
-    });
-    assert.equal(r, true);
+  it("connection with no rollout-relevant accounts → false", () => {
+    assert.equal(
+      isConnectionRolloutRelevant({ connectionStatus: "connected_readonly", hasRolloutRelevantAccount: false }),
+      false,
+    );
   });
 
-  it("no active accounts and not allowlisted → false", () => {
-    const r = isConnectionRolloutRelevant({
-      connectionStatus: "connection_error",
-      activeProtectedAccountCount: 0,
-      hasAllowlistedAccount: false,
-    });
-    assert.equal(r, false);
+  it("connected_live with no rollout-relevant accounts → false (protected-only does not qualify)", () => {
+    assert.equal(
+      isConnectionRolloutRelevant({ connectionStatus: "connected_live", hasRolloutRelevantAccount: false }),
+      false,
+    );
   });
 
-  it("not_connected with no active accounts → false", () => {
-    const r = isConnectionRolloutRelevant({
-      connectionStatus: "not_connected",
-      activeProtectedAccountCount: 0,
-      hasAllowlistedAccount: false,
-    });
-    assert.equal(r, false);
+  it("not_connected with no rollout-relevant accounts → false", () => {
+    assert.equal(
+      isConnectionRolloutRelevant({ connectionStatus: "not_connected", hasRolloutRelevantAccount: false }),
+      false,
+    );
   });
 });
 

@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import {
   deriveOverallSeverity,
   deriveSafetyAlerts,
+  isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
   type SafetyAlert,
@@ -133,14 +134,21 @@ export default async function SafetyConsolePage() {
     accountsByConnection.set(a.brokerConnectionId, list);
   }
 
-  // Per-connection rollout relevance.
+  // Per-connection rollout relevance — derived from account-level relevance.
+  // A connection is only rollout-relevant when at least one of its accounts is
+  // explicitly in scope: allowlisted, has active locks, or has enforcement history.
   const rolloutRelevantByConnection = new Map<string, boolean>();
   for (const c of brokerConnections) {
     const conAccounts = accountsByConnection.get(c.id) ?? [];
     const relevant = isConnectionRolloutRelevant({
       connectionStatus: c.connectionStatus,
-      activeProtectedAccountCount: conAccounts.filter((a) => a.isActive).length,
-      hasAllowlistedAccount: conAccounts.some((a) => allowlistSet.has(a.id)),
+      hasRolloutRelevantAccount: conAccounts.some((a) =>
+        isAccountRolloutRelevant({
+          isInAllowlist: allowlistSet.has(a.id),
+          activeLockCount: activeLockCountByAccount.get(a.id) ?? 0,
+          historicalEnforcementCount: historicalCountByAccount.get(a.id) ?? 0,
+        }),
+      ),
     });
     rolloutRelevantByConnection.set(c.id, relevant);
   }
@@ -151,9 +159,6 @@ export default async function SafetyConsolePage() {
     const activeCount = activeLockCountByAccount.get(a.id) ?? 0;
     const hasActiveInternalLock = activeCount > 0;
     const isInAllowlist = allowlistSet.has(a.id);
-    const connectionRolloutRelevant = a.brokerConnectionId
-      ? (rolloutRelevantByConnection.get(a.brokerConnectionId) ?? false)
-      : false;
     return {
       accountId: a.id,
       label: a.label,
@@ -161,7 +166,11 @@ export default async function SafetyConsolePage() {
       accountType: a.accountType,
       isActive: a.isActive,
       isInAllowlist,
-      isRolloutScoped: isInAllowlist || (a.isActive && connectionRolloutRelevant),
+      isRolloutRelevant: isAccountRolloutRelevant({
+        isInAllowlist,
+        activeLockCount: activeCount,
+        historicalEnforcementCount: histCount,
+      }),
       riskState: a.sessionState?.riskState ?? null,
       hasActiveInternalLock,
       activeLockCount: activeCount,
@@ -273,7 +282,7 @@ export default async function SafetyConsolePage() {
         </SectionCard>
         <SectionCard
           title="Listener health — rollout-relevant connections"
-          description="Connections with active protected accounts or in the rollout allowlist. Only these affect overall severity."
+          description="Connections with at least one allowlisted, locked, or broker-enforced account. Only these affect overall severity."
         >
           {rolloutListeners.length === 0 ? (
             <p className="text-sm text-stone-500">No rollout-relevant connections.</p>
@@ -526,7 +535,7 @@ function ListenerTable({
                   </span>
                 ) : (
                   <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold text-stone-600">
-                    Ignored inactive connection
+                    Not in rollout scope
                   </span>
                 )}
                 <span className="font-semibold">
@@ -567,7 +576,7 @@ function AccountTable({
     accountType: string;
     isActive: boolean;
     isInAllowlist: boolean;
-    isRolloutScoped: boolean;
+    isRolloutRelevant: boolean;
     riskState: string | null;
     hasActiveInternalLock: boolean;
     activeLockCount: number;
@@ -579,14 +588,11 @@ function AccountTable({
   if (rows.length === 0) {
     return <p className="text-sm text-stone-500">No protected accounts.</p>;
   }
-  const visibleRows = rows.filter(
-    (r) =>
-      r.hasActiveInternalLock ||
-      r.historicalBrokerEnforcementCount > 0 ||
-      r.isInAllowlist ||
-      r.isActive,
-  );
-  const inactiveCount = rows.length - visibleRows.length;
+  // Only show accounts that are explicitly in rollout scope: allowlisted,
+  // active lock, or enforcement history. Generic active-protected accounts
+  // are hidden to avoid noise.
+  const visibleRows = rows.filter((r) => r.isRolloutRelevant);
+  const hiddenCount = rows.length - visibleRows.length;
   return (
     <div className="grid gap-2 text-xs">
       {visibleRows.map((r) => {
@@ -602,16 +608,9 @@ function AccountTable({
         const labels: string[] = [];
         if (r.isInAllowlist) labels.push("Rollout target");
         if (r.hasActiveInternalLock) labels.push("Active lock");
-        else if (r.hasHistoricalBrokerLockOnly)
-          labels.push("Historical broker audit only");
-        if (!r.isActive) labels.push("Ignored inactive connection");
-        if (
-          !r.hasActiveInternalLock &&
-          r.historicalBrokerEnforcementCount === 0 &&
-          r.isActive
-        ) {
-          labels.push("No active lock");
-        }
+        else if (r.hasHistoricalBrokerLockOnly) labels.push("Historical broker audit only");
+        if (!r.isActive) labels.push("Inactive");
+        if (r.isInAllowlist && !r.hasActiveInternalLock) labels.push("No active lock");
         return (
           <div key={r.accountId} className={`rounded-lg border px-3 py-2 ${cls}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -659,10 +658,9 @@ function AccountTable({
           </div>
         );
       })}
-      {inactiveCount > 0 && (
+      {hiddenCount > 0 && (
         <p className="text-[11px] italic text-stone-400">
-          + {inactiveCount} inactive account(s) hidden (no rollout relevance, no
-          history).
+          + {hiddenCount} account(s) hidden — active protected but no allowlist, lock, or enforcement history.
         </p>
       )}
     </div>
@@ -673,7 +671,7 @@ const LABEL_CLS: Record<string, string> = {
   "Rollout target": "bg-sky-100 text-sky-700",
   "Active lock": "bg-amber-200 text-amber-900",
   "Historical broker audit only": "bg-emerald-100 text-emerald-700",
-  "Ignored inactive connection": "bg-stone-200 text-stone-600",
+  "Inactive": "bg-stone-200 text-stone-600",
   "No active lock": "bg-emerald-100 text-emerald-700",
 };
 

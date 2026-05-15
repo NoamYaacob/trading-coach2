@@ -49,18 +49,35 @@ export type ListenerSnapshot = {
 };
 
 /**
+ * Determine whether an account is in scope for the current rollout.
+ * An account is rollout-relevant only when it has been explicitly targeted:
+ * in the allowlist, has an active enforcement lock, or has historical
+ * broker enforcement records. Generic "active protected" status alone is
+ * not sufficient — that would cause noise from all protected accounts.
+ */
+export function isAccountRolloutRelevant(input: {
+  isInAllowlist: boolean;
+  activeLockCount: number;
+  historicalEnforcementCount: number;
+}): boolean {
+  if (input.isInAllowlist) return true;
+  if (input.activeLockCount > 0) return true;
+  if (input.historicalEnforcementCount > 0) return true;
+  return false;
+}
+
+/**
  * Determine whether a broker connection is in scope for the current rollout.
+ * A connection is rollout-relevant only when at least one of its accounts is
+ * rollout-relevant (allowlisted, active lock, or enforcement history).
  * Used to suppress noise from old/expired/unused connections in the console.
  */
 export function isConnectionRolloutRelevant(input: {
   connectionStatus: string;
-  activeProtectedAccountCount: number;
-  hasAllowlistedAccount: boolean;
+  hasRolloutRelevantAccount: boolean;
 }): boolean {
   if (input.connectionStatus === "expired") return false;
-  if (input.hasAllowlistedAccount) return true;
-  if (input.activeProtectedAccountCount > 0) return true;
-  return false;
+  return input.hasRolloutRelevantAccount;
 }
 
 /**
