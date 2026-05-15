@@ -419,7 +419,7 @@ const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
   protection_locked:
-    "Protection locked for today · Rule changes apply at the next session.",
+    "Rule changes queued for next session · Protection settings are locked during live trading.",
 };
 
 function ProtectionStatusPanel({

@@ -168,6 +168,26 @@ export default async function EditAccountPage({
         })
       : [];
 
+  const brokerEnforcementHistory =
+    account.platform === "tradovate"
+      ? await prisma.guardianIntervention.findMany({
+          where: { accountId: account.id, listenerBrokerDedupKey: { not: null } },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            triggerType: true,
+            outcome: true,
+            brokerLockStatus: true,
+            listenerBrokerDedupKey: true,
+            internalLockEventId: true,
+            tradingDay: true,
+            createdAt: true,
+            message: true,
+          },
+        })
+      : [];
+
   // Readiness checks
   const hasAccountId = !!account.externalAccountId;
   const rr = account.riskRules;
@@ -496,6 +516,21 @@ export default async function EditAccountPage({
           </div>
         )}
 
+        {brokerEnforcementHistory.length > 0 && (
+          <BrokerEnforcementHistoryPanel
+            records={brokerEnforcementHistory.map((r) => ({
+              id: r.id,
+              triggerType: r.triggerType,
+              brokerLockStatus: r.brokerLockStatus ?? null,
+              listenerBrokerDedupKey: r.listenerBrokerDedupKey ?? null,
+              internalLockEventId: r.internalLockEventId ?? null,
+              tradingDay: r.tradingDay ?? null,
+              createdAt: r.createdAt.toISOString(),
+            }))}
+            riskState={account.sessionState?.riskState ?? null}
+          />
+        )}
+
         {isTradovate && showDiagnostics && (
           <DiagnosticsPanel
             accountId={account.id}
@@ -521,5 +556,95 @@ export default async function EditAccountPage({
         )}
       </div>
     </AppShell>
+  );
+}
+
+// ── Broker Enforcement History panel ─────────────────────────────────────────
+
+const BROKER_LOCK_STATUS_LABEL: Record<string, string> = {
+  broker_locked: "Broker lock confirmed",
+  dry_run: "Test mode (dry run)",
+  monitoring_only: "Monitoring only",
+  broker_lock_failed: "Broker lock failed",
+  unavailable_read_only: "Unavailable — read-only connection",
+  unavailable_permission: "Unavailable — insufficient permissions",
+};
+
+type BrokerEnforcementRecord = {
+  id: string;
+  triggerType: string;
+  brokerLockStatus: string | null;
+  listenerBrokerDedupKey: string | null;
+  internalLockEventId: string | null;
+  tradingDay: string | null;
+  createdAt: string;
+};
+
+function BrokerEnforcementHistoryPanel({
+  records,
+  riskState,
+}: {
+  records: BrokerEnforcementRecord[];
+  riskState: string | null;
+}) {
+  const noActiveLock = riskState !== "STOPPED";
+  return (
+    <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+            Broker Enforcement History
+          </p>
+          <p className="mt-0.5 text-sm text-stone-500">
+            Historical audit record — Phase 2C realtime enforcement events for this account.
+          </p>
+        </div>
+        {noActiveLock && (
+          <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+            No active Guardrail lock
+          </span>
+        )}
+      </div>
+      <div className="grid gap-3">
+        {records.map((r) => (
+          <div
+            key={r.id}
+            className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="grid gap-1">
+                <p className="font-medium text-stone-900">
+                  {BROKER_LOCK_STATUS_LABEL[r.brokerLockStatus ?? ""] ?? r.brokerLockStatus ?? "Unknown"}
+                  <span className="font-normal text-stone-500">
+                    {" · "}
+                    {r.triggerType.replace(/_/g, " ")}
+                    {r.tradingDay ? ` · ${r.tradingDay}` : ""}
+                  </span>
+                </p>
+                <p className="text-xs text-stone-400">
+                  Historical audit record — Tradovate auto-clears at next session open.
+                </p>
+                <div className="mt-1 grid gap-0.5 font-mono text-[10px] text-stone-400 break-all">
+                  <span>Intervention ID …{r.id.slice(-10)}</span>
+                  {r.internalLockEventId && (
+                    <span>InternalLock ID …{r.internalLockEventId.slice(-10)}</span>
+                  )}
+                  {r.listenerBrokerDedupKey && (
+                    <span>Dedup key: {r.listenerBrokerDedupKey}</span>
+                  )}
+                </div>
+              </div>
+              <p className="shrink-0 text-xs text-stone-400">
+                {new Date(r.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

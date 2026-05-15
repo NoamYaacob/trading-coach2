@@ -622,3 +622,41 @@ describe("deriveBrokerEnforcementNoteCopy — internalLockActive=false", () => {
     assert.equal(result.kind, "dry_run");
   });
 });
+
+// ── Post-canary UI scenarios ──────────────────────────────────────────────────
+//
+// Post-canary state: riskState=NORMAL, activeCount=0, historical broker_locked row.
+// The dashboard should show "Allowed to trade" with no conflicting lock copy.
+
+describe("post-canary: tradable account with historical broker_locked record", () => {
+  it("internalLockActive=false + broker_locked does NOT say 'Guardrail internal lock active'", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      !result.text.includes("Guardrail internal lock active"),
+      `tradable account must not show 'Guardrail internal lock active': ${result.text}`,
+    );
+  });
+
+  it("'Allowed to trade' headline matches the allowed level", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [{ status: "allowed", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    assert.ok(result !== null);
+    assert.equal(result.level, "allowed");
+    assert.equal(result.headline, "Allowed to trade");
+  });
+
+  it("allowed level does not require locked accounts", () => {
+    const locked = deriveTradingPermissionStatus({
+      accounts: [{ status: "locked", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    const allowed = deriveTradingPermissionStatus({
+      accounts: [{ status: "allowed", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    assert.notEqual(locked?.level, "allowed");
+    assert.equal(allowed?.level, "allowed");
+  });
+});

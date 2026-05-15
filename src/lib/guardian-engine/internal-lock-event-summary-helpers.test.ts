@@ -45,6 +45,10 @@ const RESET_SRC = readFileSync(
   resolve(__dirname, "../../app/api/debug/accounts/[accountId]/reset-session-state/route.ts"),
   "utf8",
 );
+const ACCOUNT_EDIT_SRC = readFileSync(
+  resolve(__dirname, "../../app/accounts/[id]/edit/page.tsx"),
+  "utf8",
+);
 
 // ── Source-scan: route is read-only ──────────────────────────────────────────
 
@@ -440,5 +444,68 @@ describe("buildLockEventSummary — byRuleType grouping", () => {
     ];
     const result = buildLockEventSummary(rows);
     assert.ok(result.byRuleType[0].affectedAccounts.includes("acct-xyz"));
+  });
+});
+
+// ── Source-scan: post-canary UI — banner copy and account details ─────────────
+
+describe("source-scan: protection-locked banner does not imply trading is locked", () => {
+  it("banner copy does not say 'Protection locked for today'", () => {
+    assert.ok(
+      !DASHBOARD_SRC.includes("Protection locked for today"),
+      "banner must not say 'Protection locked for today' — it sounds like the account is locked for trading",
+    );
+  });
+
+  it("banner copy conveys rule changes are queued, not account locked", () => {
+    assert.ok(
+      DASHBOARD_SRC.includes("Rule changes queued for next session") ||
+        DASHBOARD_SRC.includes("Protection settings are locked"),
+      "banner must convey that rule changes are deferred to next session, not that the account is locked",
+    );
+  });
+});
+
+describe("source-scan: manage-connection page shows broker enforcement history", () => {
+  it("queries GuardianIntervention with listenerBrokerDedupKey filter", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
+      "edit page must query GuardianIntervention rows by listenerBrokerDedupKey",
+    );
+  });
+
+  it("renders a Broker Enforcement History section", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Broker Enforcement History"),
+      "edit page must show a 'Broker Enforcement History' section",
+    );
+  });
+
+  it("shows 'Historical audit record' label on each enforcement row", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Historical audit record"),
+      "edit page must label broker enforcement rows as historical audit records",
+    );
+  });
+
+  it("shows 'No active Guardrail lock' badge when riskState is not STOPPED", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("No active Guardrail lock"),
+      "edit page must show 'No active Guardrail lock' when riskState is not STOPPED",
+    );
+  });
+
+  it("shows internalLockEventId in the audit record", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("internalLockEventId"),
+      "edit page must surface internalLockEventId in the broker enforcement history",
+    );
+  });
+
+  it("surfaces dedup key for each enforcement row", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
+      "edit page must show the listenerBrokerDedupKey dedup key",
+    );
   });
 });
