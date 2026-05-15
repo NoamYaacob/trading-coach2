@@ -836,3 +836,68 @@ Before running another real broker canary:
 3. Confirm `brokerEnforcements.count` is 0 for today's trading day (not yesterday's historical row).
 4. Confirm `activeCount > 0` — a fresh internal lock must exist for today.
 5. Human sign-off on the checkpoint in Section 4.
+
+---
+
+## 17. Phase 2C Final Status — 2026-05-15
+
+**Phase 2C demo canary is complete. The system is back in safe mode. No further broker enforcement action is required or permitted without a fresh pre-flight review.**
+
+### Canary summary (single source of truth)
+
+| Field | Value |
+|---|---|
+| Date | 2026-05-15 |
+| Account label | DEMO7433035 |
+| `accountId` | `cmottd1z200020do1knjxq582` |
+| Broker connection | Tradovate demo |
+| `ruleType` | `daily_loss_limit` |
+| `InternalLockEvent` id | `cmp79yy0e00010onn9wl1sthv` |
+| `GuardianIntervention` id | `cmp7a2hlw00000on41irjkb1c` |
+| `listenerBrokerDedupKey` | `cmottd1z200020do1knjxq582:daily_loss_limit:2026-05-14:broker_enforcement` |
+| `brokerLockStatus` | `broker_locked` |
+| `brokerEnforcements.count` | 1 |
+| `hasHistoricalBrokerLockOnly` | `true` |
+| `activeCount` after cleanup | 0 |
+| `reset-session-state` | succeeded — `previousRiskState=STOPPED`, `newRiskState=NORMAL`, `changed=true` |
+
+### Current safe-mode env state
+
+**listener-worker service:**
+
+| Variable | Value |
+|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or absent |
+| `ENFORCEMENT_DRY_RUN` | `true` |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` |
+| `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` | `cmottd1z200020do1knjxq582` |
+
+**web/app service (trading-coach2):**
+
+| Variable | Value |
+|---|---|
+| `BROKER_ENFORCEMENT_SIMULATION_ENABLED` | `true` |
+
+### Product / UI status
+
+The Manage Connection page for DEMO7433035 now shows clean, customer-friendly copy with no technical audit fields:
+
+```
+Broker protection status                    [No active Guardrail lock]
+Demo broker protection test completed.
+No active Guardrail lock right now.
+```
+
+- Technical fields (Intervention ID, Internal lock ID, Dedup key, raw `brokerLockStatus`) are not rendered anywhere in the normal customer UI.
+- The `/api/debug/internal-lock-events` debug endpoint retains all audit fields including `hasHistoricalBrokerLockOnly`.
+- The dashboard correctly shows "Allowed to trade" and "Risk state: Normal" for DEMO7433035.
+- The "Broker protection status" card appears only when `brokerEnforcementHistory.length > 0` (guarded in page.tsx).
+
+### Safety notes for future canaries
+
+1. **Do not run another broker canary without a fresh pre-flight review.** The runbook Section 4 pre-flight checklist must be completed from scratch.
+2. **Do not attempt live enforcement.** `TRADOVATE_LISTENER_ENABLE_LIVE=false` must remain unchanged.
+3. **Do not add flatten, cancel, or order actions** in Phase 2C or any follow-on work without explicit design review.
+4. **`hasHistoricalBrokerLockOnly: true` is expected and correct** — the `GuardianIntervention` row is an immutable audit record. It does not mean there is an active Guardrail lock on the account.
+5. **Dedup key is per trading day.** The existing row (`2026-05-14`) does not block a future canary on a different day. A new canary on `2026-05-15` or later generates a distinct `listenerBrokerDedupKey` and is not gated by the historical row.

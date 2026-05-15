@@ -665,4 +665,48 @@ All require an authenticated session cookie and `x-cron-secret: $CRON_SECRET` he
 
 **Root cause of first silent failure (fixed before success):** The first canary attempt produced `brokerEnforcements.count=0` because `applyInternalLockForConnection` returned `internalLockEventId=null` for the already-STOPPED account. Fixed in commit `35a5b8a` — see design doc Section 16.
 
+---
+
+## 11. Final Status — Phase 2C Complete (2026-05-15)
+
+**The Phase 2C demo canary is complete. All services are back in safe mode. No further enforcement action is in progress.**
+
+### Safe-mode env state (confirmed post-canary)
+
+**listener-worker:**
+
+| Variable | Value |
+|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or absent |
+| `ENFORCEMENT_DRY_RUN` | `true` |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` |
+| `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` | `cmottd1z200020do1knjxq582` |
+
+**web/app (trading-coach2):**
+
+| Variable | Value |
+|---|---|
+| `BROKER_ENFORCEMENT_SIMULATION_ENABLED` | `true` |
+
+### Customer UI status
+
+The Manage Connection page for DEMO7433035 shows:
+
+```
+Broker protection status                    [No active Guardrail lock]
+Demo broker protection test completed.
+No active Guardrail lock right now.
+```
+
+No technical audit fields are shown to the customer. The dashboard shows "Allowed to trade" and "Risk state: Normal". Full audit data remains available at `/api/debug/internal-lock-events`.
+
+### Carry-forward safety rules
+
+- Do not run another canary without completing the Section 4 pre-flight from scratch.
+- Do not enable live enforcement (`TRADOVATE_LISTENER_ENABLE_LIVE=false` must remain unchanged).
+- Do not add flatten, cancel, or order actions without a separate design review.
+- The `GuardianIntervention` row (`broker_locked`, trading day 2026-05-14) is an immutable audit record — it does not represent an active lock and does not block future canaries on different trading days.
+- Full canary facts and design rationale: `docs/PHASE_2C_BROKER_ENFORCEMENT_DESIGN.md` Section 17.
+
 **Next canary:** Re-run full rehearsal (Section 3), verify today's `brokerEnforcements.count=0`, confirm fresh `activeCount>0`, human sign-off, then C-Step 4.
