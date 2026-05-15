@@ -235,21 +235,14 @@ connection even after a new OAuth grant has been issued. The dashboard's
 env-based fallback hides this at display time, but the data integrity issue
 should be resolved by updating the FK.
 
-**Use the audit endpoint to identify accounts that need reattachment:**
+Two endpoints support the reattach workflow:
 
-```
-GET /api/debug/tradovate-listener/reattach-audit
-Headers: x-cron-secret: <CRON_SECRET>    # required in production
-```
+| Endpoint | Writes? | Purpose |
+|---|---|---|
+| `GET /api/debug/tradovate-listener/reattach-audit` | Never | Read-only inventory — run first |
+| `GET /api/debug/tradovate-listener/reattach` | Only when `apply=true` | Dry-run then apply |
 
-The endpoint is **read-only** — it never writes anything. It returns:
-
-- `summary` — counts of healthy vs stale connections and accounts needing reattach
-- `recommendations` — per-account: `currentBrokerConnectionId`, `targetBrokerConnectionId`,
-  `confidence` (high/medium/low), `staleReason`, `confidenceReason`
-- `dryRunPreview` — the exact Prisma `update` calls that would fix each account
-  (strings only, never executed)
-- `connections` — all connections with health flag, accountCount, listenerStatus
+Both require `x-cron-secret` header (always, not just in production for the reattach endpoint).
 
 ### Confidence levels
 
@@ -259,15 +252,59 @@ The endpoint is **read-only** — it never writes anything. It returns:
 | `medium` | Same `userId + env` only — brokerUserId not matched on one side |
 | `low` | Same `userId + env`, multiple candidates — manual review required |
 
-### Reattach procedure (manual, after audit)
+Only `high` confidence rows are eligible by default. `medium` and `low` require
+an explicit `confidence=medium` or `confidence=low` query parameter.
 
-1. Call the audit endpoint. Review all `high` confidence recommendations.
-2. Confirm `targetAccountCount` is reasonable (the target connection may have
-   other accounts already — that is expected).
-3. Confirm `currentAccountCount` matches the number of accounts you expect to move.
-4. For each `high` confidence recommendation, copy the `dryRunPreview.prismaCall`
-   string and run it in a verified Prisma migration script or Railway console.
-5. After reattaching, re-run the audit to confirm `recommendations` is empty.
-6. Do not delete old BrokerConnection rows — leave them with `accountCount = 0`
-   for audit history. The status endpoint's `connectionGroups` will still show
-   them as stale but non-duplicate.
+### Safe reattach procedure
+
+**Step 1 — Run the audit**
+
+```
+GET /api/debug/tradovate-listener/reattach-audit
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+Review the `recommendations` array. For each `high` confidence entry confirm:
+- `staleReason` explains why the current connection is unhealthy
+- `targetBrokerConnectionId` is the live/healthy connection you expect
+- `confidenceReason` mentions the matching `brokerUserId`
+- `targetEnv` is `"demo"` (never `"live"` unless you've deliberately set `TRADOVATE_LISTENER_ENABLE_LIVE=true`)
+
+**Step 2 — Run the dry-run reattach**
+
+```
+GET /api/debug/tradovate-listener/reattach?apply=false&confidence=high
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+`apply=false` is the default — safe to call any number of times. Review:
+- `wouldApply` — the accounts that would be moved
+- `skippedByConfidence` — medium/low rows that were filtered out
+- `skippedLiveGuard` — any rows blocked because the target env is live
+- `dryRunPreview` — the exact Prisma calls that would execute
+
+**Step 3 — Apply high-confidence rows only**
+
+Only after the dry-run output matches expectations:
+
+```
+GET /api/debug/tradovate-listener/reattach?apply=true&confidence=high
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+The only mutation is `ConnectedAccount.brokerConnectionId → targetBrokerConnectionId`.
+No BrokerConnection rows are deleted or modified. No token, enforcement, or risk columns are touched.
+
+**Step 4 — Verify**
+
+Re-run the audit to confirm `accountsNeedingReattach = 0` for high-confidence rows.
+Check the dashboard shows "Live · Xs ago" for the reattached accounts.
+
+**Medium-confidence rows** require manual investigation before applying. Confirm
+the target connection is actually the correct broker account by cross-referencing
+`externalAccountId` or `brokerUserId` in the broker portal before applying
+`confidence=medium`.
+
+**Do not delete old BrokerConnection rows** — leave them with `accountCount = 0`
+for audit history. The status endpoint's `connectionGroups` will show them as
+stale/non-duplicate after all accounts have been reattached.
