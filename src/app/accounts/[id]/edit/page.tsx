@@ -528,6 +528,7 @@ export default async function EditAccountPage({
               createdAt: r.createdAt.toISOString(),
             }))}
             riskState={account.sessionState?.riskState ?? null}
+            accountType={account.accountType}
           />
         )}
 
@@ -583,20 +584,30 @@ type BrokerEnforcementRecord = {
 function BrokerEnforcementHistoryPanel({
   records,
   riskState,
+  accountType,
 }: {
   records: BrokerEnforcementRecord[];
   riskState: string | null;
+  accountType: string;
 }) {
   const noActiveLock = riskState !== "STOPPED";
+  const isDemo = accountType === "demo";
   return (
     <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-            Broker Enforcement History
-          </p>
-          <p className="mt-0.5 text-sm text-stone-500">
-            Historical audit record — Phase 2C realtime enforcement events for this account.
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Broker Enforcement History
+            </p>
+            {isDemo && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                Demo enforcement test
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-stone-500">
+            This is an audit record from a past{isDemo ? " demo" : ""} enforcement event. It does not mean the account is currently locked by Guardrail.
           </p>
         </div>
         {noActiveLock && (
@@ -612,7 +623,7 @@ function BrokerEnforcementHistoryPanel({
             className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm"
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="grid gap-1">
+              <div className="grid gap-1.5">
                 <p className="font-medium text-stone-900">
                   {BROKER_LOCK_STATUS_LABEL[r.brokerLockStatus ?? ""] ?? r.brokerLockStatus ?? "Unknown"}
                   <span className="font-normal text-stone-500">
@@ -624,15 +635,24 @@ function BrokerEnforcementHistoryPanel({
                 <p className="text-xs text-stone-400">
                   Historical audit record — Tradovate auto-clears at next session open.
                 </p>
-                <div className="mt-1 grid gap-0.5 font-mono text-[10px] text-stone-400 break-all">
-                  <span>Intervention ID …{r.id.slice(-10)}</span>
+                <dl className="mt-0.5 grid gap-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium text-stone-500">Intervention ID:</dt>
+                    <dd className="font-mono text-stone-400 break-all">…{r.id.slice(-10)}</dd>
+                  </div>
                   {r.internalLockEventId && (
-                    <span>InternalLock ID …{r.internalLockEventId.slice(-10)}</span>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 font-medium text-stone-500">Internal lock ID:</dt>
+                      <dd className="font-mono text-stone-400 break-all">…{r.internalLockEventId.slice(-10)}</dd>
+                    </div>
                   )}
                   {r.listenerBrokerDedupKey && (
-                    <span>Dedup key: {r.listenerBrokerDedupKey}</span>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 font-medium text-stone-500">Dedup key:</dt>
+                      <dd className="font-mono text-stone-400 break-all">{r.listenerBrokerDedupKey}</dd>
+                    </div>
                   )}
-                </div>
+                </dl>
               </div>
               <p className="shrink-0 text-xs text-stone-400">
                 {new Date(r.createdAt).toLocaleDateString("en-US", {

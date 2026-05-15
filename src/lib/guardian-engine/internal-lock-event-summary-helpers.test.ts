@@ -508,4 +508,36 @@ describe("source-scan: manage-connection page shows broker enforcement history",
       "edit page must show the listenerBrokerDedupKey dedup key",
     );
   });
+
+  it("shows explanation that the record does not mean account is currently locked", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("does not mean the account is currently locked by Guardrail"),
+      "edit page must explain the record is historical and not an active lock",
+    );
+  });
+
+  it("uses labeled metadata fields — Intervention ID:, Internal lock ID:, Dedup key:", () => {
+    assert.ok(ACCOUNT_EDIT_SRC.includes("Intervention ID:"), "must label intervention ID field");
+    assert.ok(ACCOUNT_EDIT_SRC.includes("Internal lock ID:"), "must label internal lock ID field");
+    assert.ok(ACCOUNT_EDIT_SRC.includes("Dedup key:"), "must label dedup key field");
+  });
+
+  it("shows 'Demo enforcement test' label for demo accounts", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Demo enforcement test"),
+      "edit page must show a demo label when accountType is demo",
+    );
+  });
+
+  it("does not use red or orange styling for the history panel when noActiveLock", () => {
+    // The panel rows must use neutral (stone) borders, not red/amber.
+    // Check the row class does not contain red- or amber- color tokens.
+    const panelStart = ACCOUNT_EDIT_SRC.indexOf("BrokerEnforcementHistoryPanel");
+    const panelEnd = ACCOUNT_EDIT_SRC.lastIndexOf("BrokerEnforcementHistoryPanel");
+    const panelSrc = ACCOUNT_EDIT_SRC.slice(panelStart, panelEnd + 100);
+    assert.ok(
+      !panelSrc.includes("border-red-") && !panelSrc.includes("border-amber-"),
+      "broker enforcement history panel rows must not use red or amber border styling",
+    );
+  });
 });
