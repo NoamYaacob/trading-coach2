@@ -111,4 +111,32 @@ describe("status: returns expected fields", () => {
     assert.ok(ROUTE_SRC.includes("TRADOVATE_LISTENER_DISABLED"));
     assert.ok(ROUTE_SRC.includes("TRADOVATE_LISTENER_CONNECTION_ID"));
   });
+
+  it("returns accountCount per connection (from _count.accounts)", () => {
+    assert.ok(
+      ROUTE_SRC.includes("_count") && ROUTE_SRC.includes("accounts"),
+      "must select account count via Prisma _count for duplicate-detection view",
+    );
+    assert.ok(ROUTE_SRC.includes("accountCount"), "must expose accountCount in response");
+  });
+
+  it("returns connectionGroups for duplicate OAuth grant detection", () => {
+    assert.ok(
+      ROUTE_SRC.includes("connectionGroups"),
+      "must return connectionGroups for env+brokerUserId grouping",
+    );
+    assert.ok(ROUTE_SRC.includes("isDuplicate"), "must flag duplicate groups");
+    assert.ok(ROUTE_SRC.includes("isActiveListener"), "must identify the active listener per group");
+    assert.ok(
+      ROUTE_SRC.includes("lastHeartbeatAgeSecs"),
+      "must include heartbeat age for quick staleness assessment",
+    );
+  });
+
+  it("summary includes duplicateGroups count", () => {
+    assert.ok(
+      ROUTE_SRC.includes("duplicateGroups"),
+      "summary must include duplicateGroups count for quick triage",
+    );
+  });
 });

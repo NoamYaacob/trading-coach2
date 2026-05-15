@@ -155,11 +155,73 @@ manager source does not log token fields ✓
 
 ## Rollout Plan
 
-1. **This PR:** all building blocks merged, worker scaffold committed.
-2. **Next PR:** wire worker, deploy to Railway as listener-worker service,
-   test with a single demo account.
-3. **After validation:** enable for all healthy connections.
-4. **Monitoring:** alert if `listenerLastHeartbeatAt` is >2 min stale for any
-   active connection (indicates worker crash or Tradovate disconnect).
+### Phase 1: Single demo connection (current)
 
-The cron sync remains active throughout as a safety net.
+Test with one known-good demo connection before enabling broadly.
+
+```
+# Railway env vars (listener-worker service only)
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+TRADOVATE_LISTENER_CONNECTION_ID=<active-demo-connection-id>
+```
+
+The `TRADOVATE_LISTENER_CONNECTION_ID` filter causes the worker to skip every
+other connection with reason `single_connection_filter`. This lets you verify
+auth, heartbeat, and reconnect behaviour in production without touching live
+accounts or other demo connections.
+
+Acceptance before advancing to Phase 2:
+- `listenerStatus = "connected"` in DB for the scoped connection
+- Dashboard shows **"Live · Xs ago"** for accounts on that connection
+- Dashboard stays Live through 1000/Bye recycle cycles (Tradovate recycles
+  demo sessions every ~30 s)
+- No `listenerErrorMessage` or `listenerStatus = "error"` for 1000/Bye closes
+- Debug endpoint (`/api/debug/tradovate-listener/status`) shows `wouldStart=1`
+
+### Phase 2: All healthy demo connections
+
+Remove the single-connection filter once Phase 1 is validated.
+
+```
+# Remove TRADOVATE_LISTENER_CONNECTION_ID entirely (or leave unset)
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+```
+
+The worker will start one listener per healthy `BrokerConnection` with
+`env=demo` and `connectionStatus IN (connected_live, connected_readonly)`.
+Live connections continue to be skipped.
+
+Acceptance before advancing to Phase 3:
+- All demo connections show "Live · Xs ago" on the dashboard
+- Debug endpoint shows `wouldStart=N` matching the count of healthy demo connections
+- No listener errors that aren't auth-related (token expiry, wrong env token)
+
+### Phase 3: Enable live (intentional opt-in only)
+
+Only after demo is stable across all connections.
+
+```
+TRADOVATE_LISTENER_ENABLE_LIVE=true
+```
+
+This is a separate opt-in step, not automatic. Live connections carry real money;
+validate demo thoroughly before proceeding.
+
+### Ongoing monitoring
+
+- Alert if `listenerLastHeartbeatAt` is >2 min stale for any connection with
+  `listenerStatus = "connected"` (indicates worker crash or Tradovate outage).
+- The cron sync remains active throughout as a safety net — if the listener is
+  down, the dashboard falls back to `lastSyncAt` within 5 min.
+- Use `/api/debug/tradovate-listener/status` → `connectionGroups` to identify
+  duplicate OAuth grants (old connections that should be cleaned up manually
+  after confirming no accounts depend on them).
+
+### Connection cleanup
+
+Old/superseded OAuth grants (same env + brokerUserId, older `createdAt`) can
+be identified via the `connectionGroups` section of the debug endpoint. Do not
+delete them automatically — verify `accountCount = 0` and no active listener
+before archiving. When accounts still point to old connections, the dashboard
+automatically uses the active connection's listener data via the env-based
+fallback in `loadCommandCenterData`.
