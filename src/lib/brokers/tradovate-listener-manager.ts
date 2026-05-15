@@ -76,6 +76,7 @@ export type ManagedListenerConfig = {
     info: {
       code: number;
       reason: string;
+      gracefulRecycle: boolean;
       stateAtClose: ListenerState;
       msSinceReady: number | null;
       lastFrameType: string | null;

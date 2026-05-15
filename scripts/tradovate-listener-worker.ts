@@ -610,19 +610,26 @@ async function reconcileListeners(): Promise<void> {
         })();
       },
       onClose: (connectionId, info) => {
-        // Persist close code/reason for the debug endpoint and alert surface.
-        // Code 1006 = abnormal closure (TCP drop without WS close frame).
+        // Persist close code/reason for the debug endpoint.
+        // gracefulRecycle=true: Tradovate 1000/Bye session recycle — normal.
+        // code 1006: abnormal TCP drop without WS close frame — investigate.
         void writeListenerClose(connectionId, info.code, info.reason);
-        console.info("[listener-worker] listener WebSocket closed", {
-          connectionId,
-          code: info.code,
-          reason: info.reason || null,
-          stateAtClose: info.stateAtClose,
-          msSinceReady: info.msSinceReady,
-          lastFrameType: info.lastFrameType,
-          lastFrameAt: info.lastFrameAt?.toISOString() ?? null,
-          phase: "ws_closed",
-        });
+        console.info(
+          info.gracefulRecycle
+            ? "[listener-worker] listener session recycled by broker (1000/Bye), reconnecting"
+            : "[listener-worker] listener WebSocket closed",
+          {
+            connectionId,
+            code: info.code,
+            reason: info.reason || null,
+            gracefulRecycle: info.gracefulRecycle,
+            stateAtClose: info.stateAtClose,
+            msSinceReady: info.msSinceReady,
+            lastFrameType: info.lastFrameType,
+            lastFrameAt: info.lastFrameAt?.toISOString() ?? null,
+            phase: "ws_closed",
+          },
+        );
       },
     });
 

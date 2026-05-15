@@ -52,6 +52,13 @@ export type FreshnessInfo = {
 
 export const STALE_THRESHOLD_MS = 5 * 60_000; // 5 min — same as cron cycle
 
+/**
+ * How long after the last heartbeat/event we still treat a reconnecting
+ * listener as "Live". Tradovate recycles sessions with 1000/Bye every ~30s
+ * and reconnects in seconds — the dashboard should stay green throughout.
+ */
+export const RECONNECT_LIVE_THRESHOLD_MS = 90_000; // 90 s
+
 export function computeListenerFreshness(data: BrokerListenerStatusData): FreshnessInfo {
   const { listenerStatus, listenerLastEventAt, listenerLastHeartbeatAt, lastSyncAt } = data;
 
@@ -69,7 +76,19 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
 
   if (listenerStatus === "connecting" || listenerStatus === "reconnecting") {
     const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
-    const suffix = lastSignal ? ` · last event ${shortAgo(lastSignal)}` : "";
+    // Keep the dashboard green while the session recycles. Tradovate sends a
+    // 1000/Bye close every ~30 s and the listener reconnects in a few seconds.
+    // As long as the last heartbeat/event is within the threshold, show Live.
+    if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
+      const agoStr = shortAgo(lastSignal);
+      return {
+        label: `Live · ${agoStr} · reconnecting`,
+        isLive: true,
+        isStale: false,
+        isReconnecting: true,
+      };
+    }
+    const suffix = lastSignal ? ` · last signal ${shortAgo(lastSignal)}` : "";
     return {
       label: `Reconnecting…${suffix}`,
       isLive: false,

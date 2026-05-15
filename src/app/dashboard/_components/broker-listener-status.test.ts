@@ -59,16 +59,77 @@ describe("computeListenerFreshness: live listener", () => {
 });
 
 describe("computeListenerFreshness: reconnecting", () => {
-  it("isReconnecting=true when listenerStatus='reconnecting'", () => {
+  it("isReconnecting=true when listenerStatus='reconnecting' and no prior heartbeat", () => {
     const result = computeListenerFreshness(makeData({ listenerStatus: "reconnecting" }));
     assert.equal(result.isReconnecting, true);
     assert.equal(result.isLive, false);
     assert.ok(result.label.includes("Reconnecting"));
   });
 
-  it("isReconnecting=true when listenerStatus='connecting'", () => {
+  it("isReconnecting=true when listenerStatus='connecting' and no prior heartbeat", () => {
     const result = computeListenerFreshness(makeData({ listenerStatus: "connecting" }));
     assert.equal(result.isReconnecting, true);
+    assert.equal(result.isLive, false);
+  });
+
+  it("isLive=true when reconnecting with recent heartbeat (≤90s) — graceful 1000/Bye recycle", () => {
+    // Tradovate recycles demo sessions every ~30s with code 1000 "Bye". The listener
+    // reconnects in seconds. Dashboard must stay green throughout.
+    const result = computeListenerFreshness(
+      makeData({
+        listenerStatus: "reconnecting",
+        listenerLastHeartbeatAt: new Date(Date.now() - 20_000), // 20s ago
+      }),
+    );
+    assert.equal(result.isLive, true, "should be Live during graceful recycle");
+    assert.equal(result.isReconnecting, true);
+    assert.equal(result.isStale, false);
+    assert.ok(result.label.includes("Live ·"), `expected "Live ·" prefix, got: "${result.label}"`);
+    assert.ok(result.label.includes("reconnecting"), result.label);
+  });
+
+  it("isLive=true when connecting with recent event (≤90s)", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        listenerStatus: "connecting",
+        listenerLastEventAt: new Date(Date.now() - 5_000),
+      }),
+    );
+    assert.equal(result.isLive, true);
+    assert.equal(result.isReconnecting, true);
+  });
+
+  it("isLive=false when reconnecting with stale heartbeat (>90s)", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        listenerStatus: "reconnecting",
+        listenerLastHeartbeatAt: new Date(Date.now() - 120_000), // 2m ago
+      }),
+    );
+    assert.equal(result.isLive, false);
+    assert.equal(result.isReconnecting, true);
+    assert.ok(result.label.includes("Reconnecting"), result.label);
+  });
+
+  it("reconnecting label includes last-signal time when signal exists but is stale", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        listenerStatus: "reconnecting",
+        listenerLastHeartbeatAt: new Date(Date.now() - 200_000), // >90s
+      }),
+    );
+    assert.ok(result.label.includes("last signal"), result.label);
+  });
+
+  it("prefers listenerLastEventAt over listenerLastHeartbeatAt for recency check", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        listenerStatus: "reconnecting",
+        listenerLastHeartbeatAt: new Date(Date.now() - 200_000), // stale
+        listenerLastEventAt: new Date(Date.now() - 10_000),      // recent
+      }),
+    );
+    assert.equal(result.isLive, true, "recent event should win over stale heartbeat");
   });
 });
 

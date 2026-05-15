@@ -548,6 +548,61 @@ describe("TradovateUserSyncListener: post-ready frame lifecycle", () => {
     listener.close();
   });
 
+  it("close 1000/Bye after ready fires onClose with gracefulRecycle=true", async () => {
+    const closedEvents: Array<{
+      code: number;
+      reason: string;
+      gracefulRecycle: boolean;
+      stateAtClose: string;
+      msSinceReady: number | null;
+      lastFrameType: string | null;
+    }> = [];
+
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+      onTerminalError: (r) => terminalReasons.push(r),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+    ws.triggerHeartbeat(); // server heartbeat before the recycle
+
+    assert.equal(listener.state, "ready");
+
+    // Tradovate normal session recycle
+    ws.triggerClose(1000, "Bye");
+
+    assert.equal(closedEvents.length, 1);
+    const ev = closedEvents[0]!;
+    assert.equal(ev.code, 1000);
+    assert.equal(ev.reason, "Bye");
+    assert.equal(ev.gracefulRecycle, true, "must be flagged as graceful recycle");
+    assert.equal(ev.stateAtClose, "ready");
+    assert.ok(ev.msSinceReady !== null && ev.msSinceReady >= 0);
+    assert.equal(ev.lastFrameType, "heartbeat", "last frame before Bye was a heartbeat");
+    assert.equal(terminalReasons.length, 0, "graceful recycle must NOT call onTerminalError");
+
+    listener.close();
+  });
+
+  it("close 1006 after ready fires onClose with gracefulRecycle=false", async () => {
+    const closedEvents: Array<{ code: number; gracefulRecycle: boolean }> = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+    ws.triggerClose(1006, "");
+
+    assert.equal(closedEvents.length, 1);
+    const ev = closedEvents[0]!;
+    assert.equal(ev.code, 1006);
+    assert.equal(ev.gracefulRecycle, false, "1006 must not be flagged as graceful");
+    listener.close();
+  });
+
   it("close after ready fires onClose with code, reason, stateAtClose, and msSinceReady", async () => {
     const closedEvents: Array<{
       code: number;

@@ -103,11 +103,16 @@ export type TradovateUserSyncListenerConfig = {
    * operators can see how long the connection lived after "ready" and what the
    * last frame was before the drop.
    *
+   * `gracefulRecycle` is true when Tradovate closed the session cleanly with
+   * code=1000, reason="Bye" while the listener was in "ready" state. This is
+   * normal SockJS session recycling, not an error.
+   *
    * Not fired on clean `close()` calls or terminal-error shutdowns.
    */
   onClose?: (info: {
     code: number;
     reason: string;
+    gracefulRecycle: boolean;
     stateAtClose: ListenerState;
     msSinceReady: number | null;
     lastFrameType: string | null;
@@ -296,11 +301,19 @@ export class TradovateUserSyncListener {
       const lastFrameType = this.#lastFrameType;
       const lastFrameAt = this.#lastFrameAt;
 
+      // Tradovate's SockJS server periodically recycles sessions with a clean
+      // 1000/Bye close. This is normal and must not be treated as an error.
+      const gracefulRecycle =
+        event.code === 1000 &&
+        event.reason === "Bye" &&
+        stateAtClose === "ready";
+
       // Notify the worker so it can persist the close code/reason to DB and
       // surface them in the debug endpoint (code 1006 = abnormal/no-close-frame).
       this.#config.onClose?.({
         code: event.code,
         reason: event.reason,
+        gracefulRecycle,
         stateAtClose,
         msSinceReady,
         lastFrameType,
@@ -332,18 +345,24 @@ export class TradovateUserSyncListener {
         }
       }
 
-      console.info("[TradovateUserSyncListener] connection closed, scheduling reconnect", {
-        connectionId: this.#config.connectionId,
-        code: event.code,
-        reason: event.reason || null,
-        stateAtClose,
-        msSinceReady,
-        lastFrameType,
-        lastFrameAt: lastFrameAt?.toISOString() ?? null,
-        reconnectAttempt: this.#reconnectAttempt,
-        consecutiveAuthFailures: this.#consecutiveAuthFailures,
-        phase: "connection_closed",
-      });
+      console.info(
+        gracefulRecycle
+          ? "[TradovateUserSyncListener] connection gracefully recycled, reconnecting"
+          : "[TradovateUserSyncListener] connection closed, scheduling reconnect",
+        {
+          connectionId: this.#config.connectionId,
+          code: event.code,
+          reason: event.reason || null,
+          gracefulRecycle,
+          stateAtClose,
+          msSinceReady,
+          lastFrameType,
+          lastFrameAt: lastFrameAt?.toISOString() ?? null,
+          reconnectAttempt: this.#reconnectAttempt,
+          consecutiveAuthFailures: this.#consecutiveAuthFailures,
+          phase: gracefulRecycle ? "graceful_reconnect" : "connection_closed",
+        },
+      );
       this.#scheduleReconnect();
     };
   }
