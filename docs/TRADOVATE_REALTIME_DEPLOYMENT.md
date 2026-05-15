@@ -220,8 +220,54 @@ validate demo thoroughly before proceeding.
 ### Connection cleanup
 
 Old/superseded OAuth grants (same env + brokerUserId, older `createdAt`) can
-be identified via the `connectionGroups` section of the debug endpoint. Do not
+be identified via the `connectionGroups` section of the status endpoint. Do not
 delete them automatically — verify `accountCount = 0` and no active listener
 before archiving. When accounts still point to old connections, the dashboard
 automatically uses the active connection's listener data via the env-based
 fallback in `loadCommandCenterData`.
+
+---
+
+## OAuth Connection Reattach Audit
+
+Accounts may still have their `brokerConnectionId` FK pointing to an old/stale
+connection even after a new OAuth grant has been issued. The dashboard's
+env-based fallback hides this at display time, but the data integrity issue
+should be resolved by updating the FK.
+
+**Use the audit endpoint to identify accounts that need reattachment:**
+
+```
+GET /api/debug/tradovate-listener/reattach-audit
+Headers: x-cron-secret: <CRON_SECRET>    # required in production
+```
+
+The endpoint is **read-only** — it never writes anything. It returns:
+
+- `summary` — counts of healthy vs stale connections and accounts needing reattach
+- `recommendations` — per-account: `currentBrokerConnectionId`, `targetBrokerConnectionId`,
+  `confidence` (high/medium/low), `staleReason`, `confidenceReason`
+- `dryRunPreview` — the exact Prisma `update` calls that would fix each account
+  (strings only, never executed)
+- `connections` — all connections with health flag, accountCount, listenerStatus
+
+### Confidence levels
+
+| Level | Meaning |
+|---|---|
+| `high` | Same `userId + env + brokerUserId` — confident the target is the same physical account |
+| `medium` | Same `userId + env` only — brokerUserId not matched on one side |
+| `low` | Same `userId + env`, multiple candidates — manual review required |
+
+### Reattach procedure (manual, after audit)
+
+1. Call the audit endpoint. Review all `high` confidence recommendations.
+2. Confirm `targetAccountCount` is reasonable (the target connection may have
+   other accounts already — that is expected).
+3. Confirm `currentAccountCount` matches the number of accounts you expect to move.
+4. For each `high` confidence recommendation, copy the `dryRunPreview.prismaCall`
+   string and run it in a verified Prisma migration script or Railway console.
+5. After reattaching, re-run the audit to confirm `recommendations` is empty.
+6. Do not delete old BrokerConnection rows — leave them with `accountCount = 0`
+   for audit history. The status endpoint's `connectionGroups` will still show
+   them as stale but non-duplicate.
