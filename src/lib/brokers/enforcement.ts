@@ -61,7 +61,7 @@
  * the exact endpoint, payload, and broker response for audit purposes.
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import { TradovateClient } from "./tradovate-client";
 import type { Prisma } from "@prisma/client";
 import {

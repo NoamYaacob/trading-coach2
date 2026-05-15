@@ -14,8 +14,8 @@
  *   - Only demo accounts, daily_loss_limit rule, full_access permission.
  */
 
-import { prisma } from "@/lib/db";
-import { triggerEnforcement } from "@/lib/brokers/enforcement";
+import { prisma } from "../db";
+import { triggerEnforcement } from "../brokers/enforcement";
 import {
   evaluateBrokerEnforcementGates,
   parseBrokerEnforcementAllowlist,

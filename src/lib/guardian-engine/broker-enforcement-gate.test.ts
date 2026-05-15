@@ -623,3 +623,35 @@ describe("listener worker source scan — Phase 2C-E wiring contract", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Source-scan: listener-worker import graph has no '@/' path aliases.
+// tsx does not resolve Next.js '@/' aliases — all files in the listener's
+// transitive import graph must use relative imports only.
+// ---------------------------------------------------------------------------
+
+describe("listener-worker import graph — no @/ path aliases", () => {
+  // These are the files newly introduced into the listener's import graph by
+  // Phase 2C-E. All must use relative imports because tsx cannot resolve '@/'.
+  const listenerGraphFiles = [
+    "src/lib/guardian-engine/broker-enforcement-service.ts",
+    "src/lib/brokers/enforcement.ts",
+    "src/lib/brokers/tradovate-client.ts",
+    "src/lib/brokers/enforcement-helpers.ts",
+    "src/lib/brokers/automated-actions-consent.ts",
+  ] as const;
+
+  for (const rel of listenerGraphFiles) {
+    it(`${rel} has no '@/' import aliases`, () => {
+      const src = readSrc(rel);
+      const aliasLines = src
+        .split("\n")
+        .filter((l) => l.includes("from \"@/") || l.includes("from '@/"));
+      assert.equal(
+        aliasLines.length,
+        0,
+        `${rel} contains '@/' alias imports that tsx cannot resolve:\n${aliasLines.join("\n")}`,
+      );
+    });
+  }
+});
