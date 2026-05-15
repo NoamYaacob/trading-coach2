@@ -532,6 +532,79 @@ Items include `interventionId`, `internalLockEventId`, `dedupKey`, `lockStatus` 
 - `BROKER_ENFORCEMENT_ENABLED` remains absent/false
 - `TRADOVATE_LISTENER_ENABLE_LIVE` remains false
 
-### Next step (Phase 2C-B, not yet authorized)
+---
 
-Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3, for demo accounts only, `daily_loss_limit` rule only, with `BROKER_ENFORCEMENT_ENABLED=true` feature flag gating the entire path. All safety invariants from Section 10 must pass a pre-ship test run before enabling.
+## 12. Phase 2C-B Implementation Status
+
+**Status: Broker enforcement simulation — complete. Broker writes still not wired.**
+
+### What was added (Phase 2C-B)
+
+| Item | File | Status |
+|------|------|--------|
+| Pure simulation helper | `src/lib/guardian-engine/broker-enforcement-simulation.ts` | ✓ Done |
+| Read-only debug endpoint | `src/app/api/debug/broker-enforcement-simulation/route.ts` | ✓ Done |
+| Tests | `src/lib/guardian-engine/broker-enforcement-simulation.test.ts` | ✓ Done |
+
+**Simulation helper gates (evaluated in order):**
+1. `env === "demo"` — live accounts always skipped
+2. `ruleType ∈ BROKER_ELIGIBLE_RULES` — only `daily_loss_limit`; `trade_limit` and `max_loss_streak` skipped with explicit reason
+3. `connectionStatus` not in `NON_LIVE_CONNECTION_STATUSES`
+4. `permissionLevel === "full_access"`
+
+**Debug endpoint (`GET /api/debug/broker-enforcement-simulation`):**
+- Auth: session + x-cron-secret
+- Feature flag: `BROKER_ENFORCEMENT_SIMULATION_ENABLED=true` (default false)
+- Reads active `InternalLockEvent` rows (clearedAt IS NULL)
+- Calls the pure simulation helper for each
+- Returns `{ simulationEnabled, brokerEnforcementEnabled: false, activeLockCount, eligibleCount, skippedCount, candidates[] }`
+- Each candidate: `{ accountId, internalLockEventId, ruleType, brokerEligible, wouldBrokerActionType, skipReason, listenerBrokerDedupKey, simulatedPayloadPreview, brokerActionTaken: false, simulationOnly: true }`
+- **No DB writes. No broker calls. No GuardianIntervention rows created.**
+
+**Sample eligible candidate response:**
+```json
+{
+  "accountId": "clxxx",
+  "internalLockEventId": "clyyy",
+  "ruleType": "daily_loss_limit",
+  "brokerEligible": true,
+  "wouldBrokerActionType": "userAccountAutoLiq/update (or /create)",
+  "skipReason": null,
+  "listenerBrokerDedupKey": "clxxx:daily_loss_limit:2026-05-15:broker_enforcement",
+  "simulatedPayloadPreview": {
+    "accountId": 123456,
+    "dailyLossAutoLiq": 250.5,
+    "changesLocked": true,
+    "_note": "Simulation preview only — no Tradovate request was sent."
+  },
+  "brokerActionTaken": false,
+  "simulationOnly": true
+}
+```
+
+**Sample skipped candidate (trade_limit):**
+```json
+{
+  "ruleType": "trade_limit",
+  "brokerEligible": false,
+  "skipReason": "Rule type 'trade_limit' has no applicable Tradovate API — internal lock only.",
+  "simulatedPayloadPreview": null,
+  "brokerActionTaken": false,
+  "simulationOnly": true
+}
+```
+
+### What is NOT done (intentional — no enforcement activation)
+
+- No GuardianIntervention rows created (simulation is read-only)
+- Listener does **not** call `triggerEnforcement()` or `applyBrokerDayLockout()`
+- `BROKER_ENFORCEMENT_ENABLED` remains absent/false
+- `TRADOVATE_LISTENER_ENABLE_LIVE` remains false
+
+### Next step (Phase 2C-C, not yet authorized)
+
+Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3, for demo accounts only, `daily_loss_limit` rule only, with `BROKER_ENFORCEMENT_ENABLED=true` feature flag gating the entire path. Creates real `GuardianIntervention` rows with `listenerBrokerDedupKey` + `internalLockEventId` fields. All safety invariants from Section 10 must pass a pre-ship test run before enabling.
+
+### Previous next step (Phase 2C-B, now done)
+~~Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3...~~
+Implemented as a simulation/audit-only layer. See above.
