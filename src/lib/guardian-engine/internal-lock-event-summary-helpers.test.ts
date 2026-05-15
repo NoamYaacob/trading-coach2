@@ -487,12 +487,27 @@ describe("source-scan: manage-connection page shows broker protection status", (
 
   it("shows friendly copy for historical broker_locked + riskState not STOPPED", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker protection was tested successfully"),
+      ACCOUNT_EDIT_SRC.includes("Broker protection was tested successfully") ||
+        ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
       "edit page must show customer-friendly success copy, not technical lock status",
     );
     assert.ok(
       ACCOUNT_EDIT_SRC.includes("No active Guardrail lock right now"),
       "edit page must reassure the user there is no active lock",
+    );
+  });
+
+  it("shows 'Demo broker protection test completed.' for demo accounts", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
+      "edit page must use demo-specific friendly copy when accountType is demo",
+    );
+  });
+
+  it("no broker enforcement history means the section is not rendered", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("brokerEnforcementHistory.length > 0"),
+      "BrokerEnforcementHistoryPanel must only render when brokerEnforcementHistory is non-empty",
     );
   });
 

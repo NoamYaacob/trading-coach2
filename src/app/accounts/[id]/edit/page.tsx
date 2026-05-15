@@ -612,7 +612,9 @@ function BrokerEnforcementHistoryPanel({
         {hasConfirmedLock && noActiveLock ? (
           <>
             <p className="text-sm text-stone-700">
-              Broker protection was tested successfully{isDemo ? " on this demo account" : ""}.
+              {isDemo
+                ? "Demo broker protection test completed."
+                : "Broker protection was tested successfully."}
             </p>
             <p className="text-sm text-stone-500">No active Guardrail lock right now.</p>
           </>
