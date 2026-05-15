@@ -178,8 +178,17 @@ export default async function SafetyConsolePage() {
   // active protected → everything else.
   accountSummaries.sort((a, b) => priorityRank(a) - priorityRank(b));
 
+  // Web/app process env. These values reflect what the WEB runtime sees —
+  // NOT the listener-worker runtime. The listener-worker is a separate Railway
+  // service with its own env configuration. We do not currently have a way to
+  // read listener-worker env from web, so listenerFlags is null. The helper
+  // will surface an info alert and the page will show "Not exposed by listener
+  // status" for every listener-worker flag.
+  const listenerFlags = null;
+
   const alerts = deriveSafetyAlerts({
-    flags,
+    webFlags: flags,
+    listenerFlags,
     activeLocks: activeLockRows.map((l) => ({
       accountId: l.accountId,
       env: l.account.brokerConnection?.env ?? null,
@@ -228,9 +237,39 @@ export default async function SafetyConsolePage() {
         <AlertsCard alerts={alerts} />
         <SectionCard
           title="Enforcement safety flags"
-          description="Current process env state across services."
+          description="Web/app env values plus listener status. Listener-worker env values are shown only when explicitly exposed."
         >
-          <FlagsGrid flags={flags} />
+          <div className="grid gap-4">
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Web/app runtime env
+                <span className="ml-2 font-normal normal-case tracking-normal text-stone-400">
+                  — read from this Next.js process. Does NOT reflect listener-worker.
+                </span>
+              </p>
+              <FlagsGrid flags={flags} source="web" />
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Listener-worker env (exposed by listener diagnostics)
+                <span className="ml-2 font-normal normal-case tracking-normal text-stone-400">
+                  — authoritative for broker write behaviour.
+                </span>
+              </p>
+              {listenerFlags === null ? (
+                <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                  Not exposed by listener status. The listener-worker is a separate Railway
+                  service; its env state is not visible to the web/app runtime. Verify
+                  <span className="mx-1 font-mono">TRADOVATE_LISTENER_ENABLE_LIVE</span>,
+                  <span className="mx-1 font-mono">BROKER_ENFORCEMENT_ENABLED</span>, and
+                  <span className="mx-1 font-mono">ENFORCEMENT_DRY_RUN</span>
+                  directly in the listener-worker service before any rollout decision.
+                </p>
+              ) : (
+                <FlagsGrid flags={listenerFlags} source="listener" />
+              )}
+            </div>
+          </div>
         </SectionCard>
         <SectionCard
           title="Listener health — rollout-relevant connections"
@@ -370,24 +409,35 @@ const SEVERITY_CLS: Record<SafetyAlertSeverity, string> = {
 
 function FlagsGrid({
   flags,
+  source,
 }: {
   flags: ReturnType<typeof readEnforcementFlagsFromEnv>;
+  /**
+   * "web" — values from the web/app process.env. Informational only; these
+   *   never imply listener-worker safety state, so dangerous values are not
+   *   styled as critical.
+   * "listener" — values explicitly exposed by listener-worker diagnostics.
+   *   Dangerous values are highlighted because they reflect what gates the
+   *   real broker writes.
+   */
+  source: "web" | "listener";
 }) {
+  const isListener = source === "listener";
   const items: Array<{ label: string; value: string; danger: boolean }> = [
     {
       label: "BROKER_ENFORCEMENT_ENABLED",
       value: String(flags.brokerEnforcementEnabled),
-      danger: flags.brokerEnforcementEnabled,
+      danger: isListener && flags.brokerEnforcementEnabled,
     },
     {
       label: "TRADOVATE_LISTENER_ENABLE_LIVE",
       value: String(flags.listenerLiveEnabled),
-      danger: flags.listenerLiveEnabled,
+      danger: isListener && flags.listenerLiveEnabled,
     },
     {
       label: "ENFORCEMENT_DRY_RUN",
       value: String(flags.dryRunEnabled),
-      danger: !flags.dryRunEnabled && flags.brokerEnforcementEnabled,
+      danger: isListener && !flags.dryRunEnabled && flags.brokerEnforcementEnabled,
     },
     {
       label: "GUARDRAIL_INTERNAL_LOCK_ENABLED",

@@ -63,8 +63,23 @@ export function isConnectionRolloutRelevant(input: {
   return false;
 }
 
+/**
+ * Inputs to deriveSafetyAlerts.
+ *
+ * IMPORTANT — runtime boundary:
+ *   `webFlags`     — env values read from the web/app's `process.env`. They
+ *                    reflect what the WEB process sees, NOT the listener-worker
+ *                    process. The web and listener-worker run as separate
+ *                    Railway services with independent env configuration.
+ *                    Do not raise listener-worker safety alerts from these.
+ *   `listenerFlags` — listener-worker env values explicitly exposed via
+ *                    listener diagnostics. Null when the listener-worker does
+ *                    not expose its env state. Only this source may raise
+ *                    listener-worker-scoped critical alerts.
+ */
 export type SafetyAlertInput = {
-  flags: EnforcementFlags;
+  webFlags: EnforcementFlags;
+  listenerFlags: EnforcementFlags | null;
   activeLocks: ActiveLockSummary[];
   historicalBrokerEnforcements: HistoricalBrokerEnforcement[];
   listeners: ListenerSnapshot[];
@@ -91,30 +106,47 @@ export function readEnforcementFlagsFromEnv(
 export function deriveSafetyAlerts(input: SafetyAlertInput): SafetyAlert[] {
   const alerts: SafetyAlert[] = [];
 
-  if (input.flags.listenerLiveEnabled) {
+  // Critical env-derived alerts use listener-worker values only. Web/app env
+  // values must never trigger a listener-worker safety warning because the
+  // two runtimes have independent env configuration. If listener-worker env
+  // is not exposed, we emit an info alert instead so the admin verifies it.
+  if (input.listenerFlags === null) {
     alerts.push({
-      severity: "critical",
-      code: "listener_live_enabled",
+      severity: "info",
+      code: "listener_flags_unexposed",
       message:
-        "TRADOVATE_LISTENER_ENABLE_LIVE=true — live broker accounts can be touched.",
+        "Listener-worker env is not exposed by listener diagnostics. Critical flag warnings cannot be raised automatically — verify TRADOVATE_LISTENER_ENABLE_LIVE, BROKER_ENFORCEMENT_ENABLED, and ENFORCEMENT_DRY_RUN directly in the listener-worker service before any rollout.",
     });
-  }
+  } else {
+    if (input.listenerFlags.listenerLiveEnabled) {
+      alerts.push({
+        severity: "critical",
+        code: "listener_live_enabled",
+        message:
+          "Listener-worker: TRADOVATE_LISTENER_ENABLE_LIVE=true — live broker accounts can be touched.",
+      });
+    }
 
-  if (input.flags.brokerEnforcementEnabled) {
-    alerts.push({
-      severity: "critical",
-      code: "broker_enforcement_enabled",
-      message: "BROKER_ENFORCEMENT_ENABLED=true — real broker writes are armed.",
-    });
-  }
+    if (input.listenerFlags.brokerEnforcementEnabled) {
+      alerts.push({
+        severity: "critical",
+        code: "broker_enforcement_enabled",
+        message:
+          "Listener-worker: BROKER_ENFORCEMENT_ENABLED=true — real broker writes are armed.",
+      });
+    }
 
-  if (input.flags.brokerEnforcementEnabled && !input.flags.dryRunEnabled) {
-    alerts.push({
-      severity: "critical",
-      code: "dry_run_disabled_with_enforcement",
-      message:
-        "ENFORCEMENT_DRY_RUN=false while BROKER_ENFORCEMENT_ENABLED=true — broker writes will execute.",
-    });
+    if (
+      input.listenerFlags.brokerEnforcementEnabled &&
+      !input.listenerFlags.dryRunEnabled
+    ) {
+      alerts.push({
+        severity: "critical",
+        code: "dry_run_disabled_with_enforcement",
+        message:
+          "Listener-worker: ENFORCEMENT_DRY_RUN=false while BROKER_ENFORCEMENT_ENABLED=true — broker writes will execute.",
+      });
+    }
   }
 
   if (input.activeLocks.some((l) => l.env === "live")) {

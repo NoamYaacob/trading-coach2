@@ -24,9 +24,11 @@ const SAFE_FLAGS: EnforcementFlags = {
   allowlist: ["cmottd1z200020do1knjxq582"],
 };
 
+/** Default: web env in safe mode, listener-worker env exposed and safe. */
 function makeInput(overrides: Partial<SafetyAlertInput> = {}): SafetyAlertInput {
   return {
-    flags: SAFE_FLAGS,
+    webFlags: SAFE_FLAGS,
+    listenerFlags: SAFE_FLAGS,
     activeLocks: [],
     historicalBrokerEnforcements: [],
     listeners: [],
@@ -84,11 +86,11 @@ describe("deriveSafetyAlerts — safe state", () => {
   });
 });
 
-describe("deriveSafetyAlerts — critical env flags", () => {
-  it("BROKER_ENFORCEMENT_ENABLED=true → critical", () => {
+describe("deriveSafetyAlerts — critical env flags (LISTENER-WORKER source only)", () => {
+  it("listener-worker BROKER_ENFORCEMENT_ENABLED=true → critical", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
-        flags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true },
+        listenerFlags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true },
       }),
     );
     const a = alerts.find((x) => x.code === "broker_enforcement_enabled");
@@ -96,10 +98,10 @@ describe("deriveSafetyAlerts — critical env flags", () => {
     assert.equal(a.severity, "critical");
   });
 
-  it("TRADOVATE_LISTENER_ENABLE_LIVE=true → critical", () => {
+  it("listener-worker TRADOVATE_LISTENER_ENABLE_LIVE=true → critical", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
-        flags: { ...SAFE_FLAGS, listenerLiveEnabled: true },
+        listenerFlags: { ...SAFE_FLAGS, listenerLiveEnabled: true },
       }),
     );
     const a = alerts.find((x) => x.code === "listener_live_enabled");
@@ -107,10 +109,10 @@ describe("deriveSafetyAlerts — critical env flags", () => {
     assert.equal(a.severity, "critical");
   });
 
-  it("ENFORCEMENT_DRY_RUN=false + BROKER_ENFORCEMENT_ENABLED=true → critical", () => {
+  it("listener-worker ENFORCEMENT_DRY_RUN=false + BROKER_ENFORCEMENT_ENABLED=true → critical", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
-        flags: {
+        listenerFlags: {
           ...SAFE_FLAGS,
           brokerEnforcementEnabled: true,
           dryRunEnabled: false,
@@ -122,10 +124,10 @@ describe("deriveSafetyAlerts — critical env flags", () => {
     assert.equal(a.severity, "critical");
   });
 
-  it("ENFORCEMENT_DRY_RUN=false alone (enforcement off) does NOT raise critical", () => {
+  it("listener-worker ENFORCEMENT_DRY_RUN=false alone (enforcement off) does NOT raise critical", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
-        flags: { ...SAFE_FLAGS, dryRunEnabled: false },
+        listenerFlags: { ...SAFE_FLAGS, dryRunEnabled: false },
       }),
     );
     assert.equal(
@@ -138,10 +140,113 @@ describe("deriveSafetyAlerts — critical env flags", () => {
   it("overall severity is critical when any critical alert is present", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
-        flags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true },
+        listenerFlags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true },
       }),
     );
     assert.equal(deriveOverallSeverity(alerts), "critical");
+  });
+});
+
+// ── Web/app env values must NOT be a source for listener-worker safety alerts ─
+
+describe("deriveSafetyAlerts — web env never triggers listener-worker critical alerts", () => {
+  it("web ENFORCEMENT_DRY_RUN=false does NOT imply listener-worker dry-run is off", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: {
+          ...SAFE_FLAGS,
+          brokerEnforcementEnabled: true,
+          dryRunEnabled: false,
+        },
+        listenerFlags: SAFE_FLAGS, // listener is actually safe
+      }),
+    );
+    const a = alerts.find((x) => x.code === "dry_run_disabled_with_enforcement");
+    assert.equal(
+      a,
+      undefined,
+      "must not raise dry_run_disabled_with_enforcement based on web env when listener says safe",
+    );
+    const enforcementAlert = alerts.find(
+      (x) => x.code === "broker_enforcement_enabled",
+    );
+    assert.equal(
+      enforcementAlert,
+      undefined,
+      "must not raise broker_enforcement_enabled based on web env when listener says safe",
+    );
+  });
+
+  it("web BROKER_ENFORCEMENT_ENABLED=true does NOT trigger critical when listener is safe", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true, dryRunEnabled: false },
+        listenerFlags: SAFE_FLAGS,
+      }),
+    );
+    assert.equal(
+      alerts.filter((x) => x.severity === "critical").length,
+      0,
+      "web env alone cannot produce listener-worker critical alerts",
+    );
+  });
+
+  it("web TRADOVATE_LISTENER_ENABLE_LIVE=true does NOT trigger listener_live_enabled when listener is safe", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: { ...SAFE_FLAGS, listenerLiveEnabled: true },
+        listenerFlags: SAFE_FLAGS,
+      }),
+    );
+    assert.equal(
+      alerts.find((x) => x.code === "listener_live_enabled"),
+      undefined,
+    );
+  });
+});
+
+// ── When listener-worker env is not exposed at all ────────────────────────────
+
+describe("deriveSafetyAlerts — listener-worker flags unexposed (listenerFlags === null)", () => {
+  it("emits an info alert telling the admin to verify listener-worker env", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: SAFE_FLAGS,
+        listenerFlags: null,
+      }),
+    );
+    const a = alerts.find((x) => x.code === "listener_flags_unexposed");
+    assert.ok(a, "must surface listener_flags_unexposed when listener env is null");
+    assert.equal(a.severity, "info");
+  });
+
+  it("does NOT raise listener-worker critical alerts from web env when listener flags are null", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: {
+          ...SAFE_FLAGS,
+          brokerEnforcementEnabled: true,
+          listenerLiveEnabled: true,
+          dryRunEnabled: false,
+        },
+        listenerFlags: null,
+      }),
+    );
+    assert.equal(
+      alerts.filter((x) => x.severity === "critical").length,
+      0,
+      "no critical env alerts when listener-worker env is not exposed",
+    );
+  });
+
+  it("overall severity is 'info' (not critical) when only the unexposed-info alert fires", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        webFlags: SAFE_FLAGS,
+        listenerFlags: null,
+      }),
+    );
+    assert.equal(deriveOverallSeverity(alerts), "info");
   });
 });
 
@@ -474,6 +579,46 @@ describe("source-scan: safety console page is admin-gated and read-only", () => 
     assert.ok(
       PAGE_SRC.includes("deriveSafetyAlerts"),
       "safety console page must compute alerts via deriveSafetyAlerts",
+    );
+  });
+
+  it("labels env source: 'Web/app runtime env' and 'Listener-worker env'", () => {
+    assert.ok(
+      PAGE_SRC.includes("Web/app runtime env"),
+      "env section must clearly label the web/app source",
+    );
+    assert.ok(
+      PAGE_SRC.includes("Listener-worker env"),
+      "env section must clearly label the listener-worker source",
+    );
+  });
+
+  it("section description does not claim env values cover all services", () => {
+    assert.ok(
+      !PAGE_SRC.includes("Current process env state across services"),
+      "old misleading description must be removed",
+    );
+    assert.ok(
+      PAGE_SRC.includes("Listener-worker env values are shown only when explicitly exposed"),
+      "section description must disclose that listener-worker env is shown only when exposed",
+    );
+  });
+
+  it("shows 'Not exposed by listener status' when listener-worker env is unavailable", () => {
+    assert.ok(
+      PAGE_SRC.includes("Not exposed by listener status"),
+      "page must show 'Not exposed by listener status' for listener-worker env when not available",
+    );
+  });
+
+  it("passes both webFlags and listenerFlags to deriveSafetyAlerts", () => {
+    assert.ok(
+      PAGE_SRC.includes("webFlags:"),
+      "page must pass webFlags to deriveSafetyAlerts",
+    );
+    assert.ok(
+      PAGE_SRC.includes("listenerFlags"),
+      "page must pass listenerFlags to deriveSafetyAlerts",
     );
   });
 });
