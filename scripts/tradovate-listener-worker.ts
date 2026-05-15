@@ -47,6 +47,7 @@ import {
   type BrokerConnectionRow,
 } from "../src/lib/brokers/tradovate-listener-worker-logic.ts";
 import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
+import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry-run-rule-evaluator-db.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -573,10 +574,16 @@ async function reconcileListeners(): Promise<void> {
       permissionLevel: plan.permissionLevel,
       getAccessToken: (opts) =>
         getAccessTokenForConnection(plan.connectionId, plan.userId, opts ?? {}),
-      // Phase 1: observe-only. Do NOT run enforcement, do NOT flatten,
-      // do NOT lock the account. We only record that an event arrived.
+      // Phase 2A: dry-run rule evaluation when ENFORCEMENT_DRY_RUN=true.
+      // No enforcement, no flatten, no lock. We record that an event arrived
+      // and evaluate which rules WOULD have fired (dry_run=true rows only).
       onPropsEvent: (connectionId) => {
         void writeListenerEventTimestamp(connectionId);
+        if (process.env.ENFORCEMENT_DRY_RUN === "true") {
+          void evaluateDryRunRulesForConnection(connectionId).catch((err) => {
+            console.warn("[listener-worker] dry-run evaluation error", { connectionId, err });
+          });
+        }
       },
       onHeartbeat: (connectionId, at) => {
         void writeListenerHeartbeat(connectionId, at);

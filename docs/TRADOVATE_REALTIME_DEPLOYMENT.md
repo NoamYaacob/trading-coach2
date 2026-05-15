@@ -27,12 +27,102 @@ TRADOVATE_LISTENER_ENABLE_LIVE=false
 # TRADOVATE_LISTENER_DISABLED — unset
 ```
 
-### Advance to Phase 2 only when
+### Advance to Phase 2B (live enforcement) only when
 
 - [ ] All demo connections show Live on the dashboard (currently 1/1)
 - [ ] No `listenerErrorMessage` or `listenerStatus=error` for >24h
-- [ ] Enforcement design reviewed and approved
-- [ ] Phase 2 implementation explicitly authorized
+- [ ] Phase 2A dry-run violations reviewed and confirmed accurate
+- [ ] Enforcement design reviewed and approved for live mode
+- [ ] Phase 2B implementation explicitly authorized
+
+---
+
+## Phase 2A — Dry-Run Rule Evaluation (observe-only)
+
+### What Phase 2A does
+
+When `ENFORCEMENT_DRY_RUN=true`, every WebSocket props event causes the worker to evaluate which rules **would** have fired for each protected demo account. The result is written to `DryRunViolation` rows — an audit table with no side-effects.
+
+**Phase 2A never:**
+- Locks an account (`riskState=STOPPED`)
+- Creates `GuardianIntervention` records
+- Flattens positions or cancels orders
+- Calls any broker write endpoint
+- Changes any enforcement state
+
+### Rules evaluated
+
+| Rule | Evaluated | Notes |
+|---|---|---|
+| `daily_loss_limit` | ✓ | Breach when `dailyPnl ≤ -maxDailyLoss` |
+| `trade_limit` | ✓ | Only when `tradeCountSource=verified` |
+| `max_loss_streak` | ✓ | Breach when `consecutiveLosses ≥ stopAfterLosses` |
+| `session_hours` | — | Skipped — timezone complexity, insufficient data |
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/guardian-engine/dry-run-rule-evaluator.ts` | Pure evaluation function (no DB, testable) |
+| `src/lib/guardian-engine/dry-run-rule-evaluator-db.ts` | DB persistence + connection-level entry point |
+| `src/lib/guardian-engine/dry-run-rule-evaluator.test.ts` | 38 unit tests |
+| `prisma/schema.prisma` → `DryRunViolation` | Audit table with dedup key |
+| `src/app/api/debug/tradovate-listener/dry-run-violations/route.ts` | Inspect recent violations |
+
+### Dedup key
+
+Format: `<accountId>:<ruleType>:<tradingDay>:dry_run`
+
+Ensures at most one row per account per rule per trading day. Subsequent events update `observedAmount`/`observedCount` if the breach worsens, but do not create duplicate rows.
+
+### How to enable
+
+Set in the listener-worker Railway service:
+
+```
+ENFORCEMENT_DRY_RUN=true
+```
+
+This gate exists in the worker's `onPropsEvent`:
+
+```typescript
+if (process.env.ENFORCEMENT_DRY_RUN === "true") {
+  void evaluateDryRunRulesForConnection(connectionId);
+}
+```
+
+### How to inspect violations
+
+```bash
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/tradovate-listener/dry-run-violations?days=1"
+```
+
+Response includes:
+```json
+{
+  "note": "Dry run only — no enforcement action was taken. These records are observe-only.",
+  "dryRunEnabled": true,
+  "count": 1,
+  "violations": [...]
+}
+```
+
+### Safety gates in force during Phase 2A
+
+| Gate | Value |
+|---|---|
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` (live accounts skipped) |
+| `ENFORCEMENT_DRY_RUN` | `true` (no enforcement actions) |
+| `dryRun` field on DryRunViolation | always `true` |
+| Live account guard in evaluator-db.ts | `env === "live"` skipped when `ENABLE_LIVE=false` |
+
+### Validation with DEMO7433035
+
+1. Confirm DEMO7433035 has `AccountRiskRules` configured (maxDailyLoss, maxTradesPerDay, or stopAfterLosses)
+2. Enable `ENFORCEMENT_DRY_RUN=true` on the listener-worker service
+3. After some trading activity, check `/api/debug/tradovate-listener/dry-run-violations`
+4. Verify: only `dryRun=true` rows, no `GuardianIntervention` rows, no `riskState` changes
 
 ---
 

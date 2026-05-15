@@ -80,6 +80,7 @@ model User {
   manualTradeEntries ManualTradeEntry[]
   alertPreferences   AlertPreferences?
   passwordResetTokens PasswordResetToken[]
+  dryRunViolations   DryRunViolation[]
 }
 
 model Session {
@@ -510,6 +511,7 @@ model ConnectedAccount {
   interventions     GuardianIntervention[]
   dailyProtections  DailyAccountProtection[]
   orderActionLogs   BrokerOrderActionLog[]
+  dryRunViolations  DryRunViolation[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -734,6 +736,37 @@ model ManualTradeEntry {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, tradedAt])
+}
+
+// Dry-run shadow violations written by the realtime listener worker when
+// ENFORCEMENT_DRY_RUN=true. Records what action WOULD have been taken without
+// actually taking it. Safe to inspect at any time — no enforcement side-effects.
+model DryRunViolation {
+  id                  String   @id @default(cuid())
+  userId              String
+  accountId           String
+  externalAccountId   String?
+  env                 String   // "demo" | "live"
+  ruleType            String   // "daily_loss_limit" | "trade_limit" | "max_loss_streak"
+  thresholdAmount     Decimal? @db.Decimal(10, 2)
+  thresholdCount      Int?
+  observedAmount      Decimal? @db.Decimal(10, 2)
+  observedCount       Int?
+  sourceEventId       String?
+  dryRun              Boolean  @default(true)
+  actionWouldHaveTaken String  @default("internal_lock")
+  tradingDay          String   // YYYY-MM-DD
+  // Prevents duplicate rows for the same account+rule per trading day.
+  // Format: "<accountId>:<ruleType>:<tradingDay>:dry_run"
+  dedupKey            String   @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tradingDay])
+  @@index([accountId, ruleType, tradingDay])
 }
 
 model AlertPreferences {
