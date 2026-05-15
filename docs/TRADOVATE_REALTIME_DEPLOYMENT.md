@@ -1,5 +1,41 @@
 # Tradovate Real-Time Listener — Railway Deployment Plan
 
+## Phase 1.5 — Verified Checklist (2026-05-15)
+
+All items below were manually verified in production. Phase 1.5 is complete.
+
+| # | Check | Status |
+|---|---|---|
+| 1 | Demo listener live | ✓ `cmp56a3kv00020dmedmm5flr1` connected, recent heartbeat |
+| 2 | Dashboard shows Live | ✓ DEMO7433035 shows "Live · Xs ago" via direct FK |
+| 3 | 1000/Bye recycles handled | ✓ Dashboard stays green through ~30s Tradovate session recycles |
+| 4 | Expired accounts isolated | ✓ Expired connections show "Expired — re-authorize" (amber), never borrow Live state |
+| 5 | High-confidence reattach done | ✓ DEMO7433035 moved to active connection; old connection `accountCount=0` |
+| 6 | Medium-confidence MFFU not applied | ✓ Three MyFundedFutures accounts left as-is (accounts no longer active in Tradovate) |
+| 7 | Live listener disabled | ✓ `TRADOVATE_LISTENER_ENABLE_LIVE=false` |
+| 8 | Single-connection filter removed | ✓ `TRADOVATE_LISTENER_CONNECTION_ID` unset; all-demo unscoped mode |
+| 9 | Worker plan healthy | ✓ `wouldStart=1`, `wouldSkip=3`, `duplicateGroups=1` |
+| 10 | Enforcement not started | ✓ No `riskState` writes, no `RuleViolation` rows, no flatten, no Phase 2 |
+| 11 | Debug endpoints operational | ✓ `/status`, `/reattach-audit`, `/reattach` all return correct data |
+| 12 | All tests pass | ✓ 3838 unit tests, 0 failures |
+
+### Phase 1.5 env-var state (production listener-worker service)
+
+```
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+# TRADOVATE_LISTENER_CONNECTION_ID — unset (all-demo mode)
+# TRADOVATE_LISTENER_DISABLED — unset
+```
+
+### Advance to Phase 2 only when
+
+- [ ] All demo connections show Live on the dashboard (currently 1/1)
+- [ ] No `listenerErrorMessage` or `listenerStatus=error` for >24h
+- [ ] Enforcement design reviewed and approved
+- [ ] Phase 2 implementation explicitly authorized
+
+---
+
 This document describes how to deploy the Tradovate user/syncrequest WebSocket
 listener as a long-running Railway worker service.
 
