@@ -52,6 +52,8 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
     propFirmLimited: false,
     setupNeededReason: null,
     breachReason: null,
+    internalLockActive: false,
+    lastInternalLockAt: null,
     brokerConnectionId: null,
     brokerEnv: null,
     brokerLockStatus: null,

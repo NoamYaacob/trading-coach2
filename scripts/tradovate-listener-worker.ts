@@ -48,6 +48,7 @@ import {
 } from "../src/lib/brokers/tradovate-listener-worker-logic.ts";
 import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
 import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry-run-rule-evaluator-db.ts";
+import { applyInternalLockForConnection } from "../src/lib/guardian-engine/internal-lock-evaluator-db.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -577,11 +578,20 @@ async function reconcileListeners(): Promise<void> {
       // Phase 2A: dry-run rule evaluation when ENFORCEMENT_DRY_RUN=true.
       // No enforcement, no flatten, no lock. We record that an event arrived
       // and evaluate which rules WOULD have fired (dry_run=true rows only).
+      //
+      // Phase 2B: internal app lock when GUARDRAIL_INTERNAL_LOCK_ENABLED=true.
+      // Demo accounts only. Sets riskState=STOPPED + writes InternalLockEvent.
+      // No broker writes, no flatten, no cancel, no Tradovate API calls.
       onPropsEvent: (connectionId) => {
         void writeListenerEventTimestamp(connectionId);
         if (process.env.ENFORCEMENT_DRY_RUN === "true") {
           void evaluateDryRunRulesForConnection(connectionId).catch((err) => {
             console.warn("[listener-worker] dry-run evaluation error", { connectionId, err });
+          });
+        }
+        if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
+          void applyInternalLockForConnection(connectionId).catch((err) => {
+            console.warn("[listener-worker] internal lock error", { connectionId, err });
           });
         }
       },

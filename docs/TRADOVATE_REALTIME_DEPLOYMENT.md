@@ -126,6 +126,89 @@ Response includes:
 
 ---
 
+## Phase 2B — Internal App Lock (demo accounts only)
+
+### What Phase 2B does
+
+When `GUARDRAIL_INTERNAL_LOCK_ENABLED=true`, every WebSocket props event that triggers a rule violation causes the worker to set `LiveSessionState.riskState = "STOPPED"` on the breaching **demo** account and write an `InternalLockEvent` audit row.
+
+**Phase 2B never:**
+- Calls any Tradovate write API
+- Sends `userAccountAutoLiq/update` or `order/liquidatepositions`
+- Flattens positions or cancels orders
+- Creates `GuardianIntervention` records
+- Touches live accounts (`TRADOVATE_LISTENER_ENABLE_LIVE=false` gate remains)
+
+### Gates (all must pass)
+
+| Gate | Condition |
+|---|---|
+| Feature flag | `GUARDRAIL_INTERNAL_LOCK_ENABLED=true` |
+| Demo-only | `env === "demo"` |
+| Idempotent | `riskState !== "STOPPED"` (re-locks skipped) |
+| Live gate | Live accounts skipped while `TRADOVATE_LISTENER_ENABLE_LIVE=false` |
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/guardian-engine/internal-lock-evaluator.ts` | Pure gate logic (no DB, testable) |
+| `src/lib/guardian-engine/internal-lock-evaluator-db.ts` | DB writes: riskState + InternalLockEvent |
+| `src/lib/guardian-engine/internal-lock-evaluator.test.ts` | 11 unit tests |
+| `prisma/schema.prisma` → `InternalLockEvent` | Audit table (internalOnly=true, brokerActionTaken=false always) |
+
+### How to enable
+
+Set in the listener-worker Railway service:
+
+```
+GUARDRAIL_INTERNAL_LOCK_ENABLED=true
+```
+
+This gate exists in the worker's `onPropsEvent`:
+
+```typescript
+if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
+  void applyInternalLockForConnection(connectionId);
+}
+```
+
+### How to unlock / reset
+
+Use the existing reset endpoint (requires x-cron-secret):
+
+```bash
+curl -X POST -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/accounts/{accountId}/reset-session-state"
+```
+
+This sets `riskState = "NORMAL"` and stamps `clearedAt` on all active `InternalLockEvent` rows for the account. The dashboard banner disappears immediately on next load.
+
+### Dashboard display
+
+When `internalLockActive=true`, the account row shows:
+
+> "Guardrail internal lock active · Broker enforcement is not active · No Tradovate action was sent."
+
+This copy deliberately differs from broker-enforcement messages (which say "Broker-side lock active" or "Tradovate risk settings applied") so operators always know whether a Tradovate API call was made.
+
+### Rollback
+
+Set `GUARDRAIL_INTERNAL_LOCK_ENABLED=false` (or unset it) on the listener-worker service. In-flight locks already applied are not reversed automatically — use the reset endpoint per account.
+
+### Safety gates in force during Phase 2B
+
+| Gate | Value |
+|---|---|
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` (live accounts never touched) |
+| `InternalLockEvent.internalOnly` | always `true` |
+| `InternalLockEvent.brokerActionTaken` | always `false` |
+| Broker writes | zero — no Tradovate API calls made |
+| `GuardianIntervention` rows | zero — not created by Phase 2B |
+| Phase 2C broker enforcement | NOT implemented — broker writes require explicit Phase 2C authorization |
+
+---
+
 This document describes how to deploy the Tradovate user/syncrequest WebSocket
 listener as a long-running Railway worker service.
 

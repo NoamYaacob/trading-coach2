@@ -87,6 +87,11 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        internalLockEvents: {
+          where: { clearedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
         brokerConnection: {
           select: {
             createdAt: true,
@@ -191,6 +196,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     const accountRules = account.riskRules;
     const sessionState = account.sessionState;
     const lastIntervention = account.interventions[0] ?? null;
+    const lastInternalLockEvent = account.internalLockEvents[0] ?? null;
 
     const hasAccountRules = Boolean(
       accountRules &&
@@ -463,6 +469,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       propFirmLimited,
       setupNeededReason,
       breachReason,
+      internalLockActive: lastInternalLockEvent != null,
+      lastInternalLockAt: lastInternalLockEvent?.createdAt ?? null,
       brokerLockStatus: (lastIntervention?.brokerLockStatus ?? null) as
         | "not_requested"
         | "unavailable_read_only"

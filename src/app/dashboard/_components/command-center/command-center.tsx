@@ -830,6 +830,13 @@ const BROKER_NOTE_COLOR: Record<string, string> = {
 
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
+  if (account.internalLockActive) {
+    return (
+      <p className={`mt-0.5 text-[10px] ${BROKER_NOTE_COLOR.internal_only}`}>
+        Guardrail internal lock active · Broker enforcement is not active · No Tradovate action was sent.
+      </p>
+    );
+  }
   const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus, {
     permissionLevel: account.permissionLevel,
   });

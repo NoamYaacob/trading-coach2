@@ -99,6 +99,10 @@ export type CommandCenterAccount = {
   setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
   /** Explanation of the current breach, when status is warning or locked */
   breachReason: { headline: string; detail?: string } | null;
+  /** True when a Phase 2B internal lock is active (riskState=STOPPED via InternalLockEvent, no broker action). */
+  internalLockActive: boolean;
+  /** Timestamp of the most recent active InternalLockEvent, or null. */
+  lastInternalLockAt: Date | null;
   /** Broker enforcement outcome from the most recent GuardianIntervention */
   brokerLockStatus:
     | "not_requested"

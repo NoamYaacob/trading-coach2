@@ -91,15 +91,24 @@ export async function POST(request: NextRequest, ctx: Ctx) {
 
   const previousRiskState = existing.riskState;
 
-  await prisma.liveSessionState.update({
-    where: { accountId },
-    data: {
-      riskState: "NORMAL",
-      pendingSessionEndLock: false,
-      cooldownActive: false,
-      cooldownUntil: null,
-    },
-  });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.liveSessionState.update({
+      where: { accountId },
+      data: {
+        riskState: "NORMAL",
+        pendingSessionEndLock: false,
+        cooldownActive: false,
+        cooldownUntil: null,
+      },
+    }),
+    // Stamp clearedAt on any active Phase 2B internal lock so the dashboard
+    // no longer shows the "Guardrail internal lock active" banner.
+    prisma.internalLockEvent.updateMany({
+      where: { accountId, clearedAt: null },
+      data: { clearedAt: now, clearedBy: "manual_reset", updatedAt: now },
+    }),
+  ]);
 
   console.info("[debug/reset-session-state] reset applied", {
     accountId,

@@ -512,6 +512,7 @@ model ConnectedAccount {
   dailyProtections  DailyAccountProtection[]
   orderActionLogs   BrokerOrderActionLog[]
   dryRunViolations  DryRunViolation[]
+  internalLockEvents InternalLockEvent[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -669,6 +670,37 @@ model GuardianIntervention {
 
   @@index([accountId, createdAt])
   @@index([userId, createdAt])
+}
+
+// Phase 2B: internal app lock audit trail. Written when the realtime listener
+// sets riskState=STOPPED for a demo account. No broker action is ever taken.
+model InternalLockEvent {
+  id                String    @id @default(cuid())
+  accountId         String
+  userId            String
+  /// "daily_loss_limit" | "trade_limit" | "max_loss_streak"
+  ruleType          String
+  tradingDay        String
+  thresholdAmount   Decimal?  @db.Decimal(10, 2)
+  thresholdCount    Int?
+  observedAmount    Decimal?  @db.Decimal(10, 2)
+  observedCount     Int?
+  /// Always true — this record type never involves broker API calls.
+  internalOnly      Boolean   @default(true)
+  /// Always false — no broker order, no flatten, no cancel was sent.
+  brokerActionTaken Boolean   @default(false)
+  /// Set when riskState is reset back to NORMAL (manual reset or session end).
+  clearedAt         DateTime?
+  /// "manual_reset" | "session_end"
+  clearedBy         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  account           ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+  @@index([accountId, tradingDay])
 }
 
 model BrokerOrderActionLog {
