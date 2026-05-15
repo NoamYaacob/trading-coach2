@@ -7,6 +7,22 @@
  *   - DB persistence and state mutation live in internal-lock-evaluator-db.ts
  */
 
+/**
+ * Build the unique dedup key for an active internal lock row.
+ *
+ * One key per account per rule per trading day — the DB unique constraint on
+ * InternalLockEvent.activeDedupKey enforces at-most-one active lock even under
+ * concurrent props events. The key is set to null on clear so the slot can be
+ * reused after a manual reset within the same trading day.
+ */
+export function buildInternalLockDedupKey(
+  accountId: string,
+  ruleType: string,
+  tradingDay: string,
+): string {
+  return `${accountId}:${ruleType}:${tradingDay}:internal_lock`;
+}
+
 export type InternalLockGateInput = {
   /** BrokerConnection env — only "demo" is eligible. */
   env: string;

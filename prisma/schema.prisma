@@ -712,6 +712,13 @@ model InternalLockEvent {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  /// Idempotency key preventing duplicate active locks per account/rule/day.
+  /// Format: "${accountId}:${ruleType}:${tradingDay}:internal_lock"
+  /// Non-null while active (clearedAt IS NULL) — DB unique constraint enforces
+  /// at-most-one active lock per account/rule/day even under concurrent props events.
+  /// Set to null on clear so the same slot can be re-used after a manual reset.
+  activeDedupKey    String?   @unique
+
   account               ConnectedAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   guardianInterventions GuardianIntervention[]
 

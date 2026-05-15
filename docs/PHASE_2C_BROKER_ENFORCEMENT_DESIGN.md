@@ -608,3 +608,43 @@ Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3, for
 ### Previous next step (Phase 2C-B, now done)
 ~~Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3...~~
 Implemented as a simulation/audit-only layer. See above.
+
+---
+
+## 13. Phase 2B Critical Bug Fix — InternalLockEvent Duplicate Rows
+
+**Status: Fixed. Deployed. No broker enforcement involved.**
+
+### Bug description
+
+During Phase 2C-B `daily_loss_limit` simulation validation, the internal lock endpoint showed:
+- `activeCount: 11` — 11 duplicate active `InternalLockEvent` rows for the same account/rule/day
+- All rows: same `accountId`, same `ruleType: "daily_loss_limit"`, same `tradingDay: 2026-05-14`, same `thresholdAmount: 100`
+- `brokerActionTaken: false` on all rows — no broker action was taken
+
+### Root cause
+
+`applyInternalLockForConnection` used `internalLockEvent.create()` — a plain INSERT with no dedup. The only idempotency guard was `canApplyInternalLock(riskState !== "STOPPED")`. Under rapid concurrent props events, multiple async calls read `riskState = NORMAL` before the first transaction committed, passed the gate, and each independently created a new row.
+
+`InternalLockEvent` had `@@index([accountId, tradingDay])` — not a `@@unique` constraint — so multiple rows with the same values were silently allowed.
+
+### Fix
+
+| Component | Change |
+|---|---|
+| Schema | Added `activeDedupKey String? @unique` to `InternalLockEvent` |
+| Migration | `20260522000000_add_internal_lock_event_dedup_key` |
+| Pure helper | `buildInternalLockDedupKey(accountId, ruleType, tradingDay)` → `"${accountId}:${ruleType}:${tradingDay}:internal_lock"` |
+| `applyInternalLockForConnection` | Switched `create` → `upsert({ where: { activeDedupKey } })` |
+| Reset endpoint | Added `activeDedupKey: null` to `updateMany` so the slot can be reused after reset |
+| Tests | 18 new tests across 4 suites |
+
+**How the fix works:**
+- Active lock: `activeDedupKey = "${accountId}:${ruleType}:${tradingDay}:internal_lock"` — DB unique constraint allows only one row with this value
+- Concurrent upsert race: second concurrent transaction hits the unique conflict and updates `observedAmount/updatedAt` on the existing row instead of creating a duplicate
+- Cleared lock: `activeDedupKey = null` — multiple NULLs are allowed by both PostgreSQL and SQLite, so cleared history rows coexist safely
+- After manual reset: `activeDedupKey` is set to `null`, allowing re-lock for the same trading day if the violation persists
+
+### Idempotency guarantee (after fix)
+
+> **At most one active `InternalLockEvent` row exists per `(accountId, ruleType, tradingDay)` at any time.** This is enforced at the DB level by the unique constraint on `activeDedupKey`, not only at the application level.

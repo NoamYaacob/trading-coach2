@@ -13,7 +13,7 @@
 
 import { prisma } from "../db";
 import { evaluateDryRunRules, type DryRunRuleInput } from "./dry-run-rule-evaluator";
-import { canApplyInternalLock } from "./internal-lock-evaluator";
+import { canApplyInternalLock, buildInternalLockDedupKey } from "./internal-lock-evaluator";
 
 /**
  * Evaluate rules and apply an internal app lock to any demo account in breach.
@@ -108,10 +108,22 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
     // Primary violation: first by evaluation order (daily_loss_limit > trade_limit > max_loss_streak).
     const primary = violations[0];
 
+    // One active lock per account + rule + day. The activeDedupKey unique
+    // constraint is the DB-level race guard: concurrent props events that
+    // race past the riskState check produce a single row — the second
+    // upsert updates observedAmount/updatedAt on the first row instead of
+    // inserting a duplicate.
+    const activeDedupKey = buildInternalLockDedupKey(
+      account.id,
+      primary.ruleType,
+      tradingDay,
+    );
+
     console.info("[guardian] applying internal lock — demo only, no broker action", {
       accountId: account.id,
       ruleType: primary.ruleType,
       tradingDay,
+      activeDedupKey,
     });
 
     await prisma.$transaction([
@@ -119,8 +131,9 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
         where: { accountId: account.id },
         data: { riskState: "STOPPED" },
       }),
-      prisma.internalLockEvent.create({
-        data: {
+      prisma.internalLockEvent.upsert({
+        where: { activeDedupKey },
+        create: {
           accountId: account.id,
           userId: account.userId,
           ruleType: primary.ruleType,
@@ -131,6 +144,13 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
           observedCount: primary.observedCount,
           internalOnly: true,
           brokerActionTaken: false,
+          activeDedupKey,
+          updatedAt: new Date(),
+        },
+        update: {
+          // Refresh observed values on re-trigger (threshold and rule identity are stable).
+          observedAmount: primary.observedAmount,
+          observedCount: primary.observedCount,
           updatedAt: new Date(),
         },
       }),
