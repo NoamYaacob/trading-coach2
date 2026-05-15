@@ -190,6 +190,14 @@ export type EnforcementContext = {
    * this result instead of from applyBrokerDayLockout's internal flatten step.
    */
   preFlattened?: BrokerFlattenResult;
+
+  // ── Phase 2C-C listener-path audit fields (optional, cron path leaves null) ──
+  /** FK to the InternalLockEvent that preceded this broker enforcement. */
+  internalLockEventId?: string | null;
+  /** Dedup key for at-most-once broker enforcement from the realtime listener. */
+  listenerBrokerDedupKey?: string | null;
+  /** Trading day (YYYY-MM-DD) the violation occurred on. */
+  tradingDay?: string | null;
 };
 
 /**
@@ -662,6 +670,10 @@ export async function triggerEnforcement(ctx: EnforcementContext): Promise<void>
       flattenMessage: flatten.flattenMessage,
       ...(flatten.flattenPayload != null && { flattenPayloadJson: flatten.flattenPayload as Prisma.InputJsonValue }),
       ...(flatten.flattenResponse != null && { flattenResponseJson: flatten.flattenResponse as Prisma.InputJsonValue }),
+      // Phase 2C-C listener-path audit fields (null for cron-path interventions)
+      ...(ctx.internalLockEventId != null && { internalLockEventId: ctx.internalLockEventId }),
+      ...(ctx.listenerBrokerDedupKey != null && { listenerBrokerDedupKey: ctx.listenerBrokerDedupKey }),
+      ...(ctx.tradingDay != null && { tradingDay: ctx.tradingDay }),
     },
   });
 }

@@ -648,3 +648,75 @@ During Phase 2C-B `daily_loss_limit` simulation validation, the internal lock en
 ### Idempotency guarantee (after fix)
 
 > **At most one active `InternalLockEvent` row exists per `(accountId, ruleType, tradingDay)` at any time.** This is enforced at the DB level by the unique constraint on `activeDedupKey`, not only at the application level.
+
+---
+
+## 14. Phase 2C-C Foundation — Broker Write Path Implemented, Disabled by Default
+
+**Status: Foundation implemented. Broker writes remain disabled. `BROKER_ENFORCEMENT_ENABLED` is absent/false.**
+
+### What was implemented
+
+All infrastructure for listener-path broker enforcement is in place. Nothing is wired into the listener worker yet.
+
+| Component | File | Purpose |
+|---|---|---|
+| Pure gate helper | `src/lib/guardian-engine/broker-enforcement-gate.ts` | 10 ordered gates, pure computation, no I/O |
+| Gate tests | `src/lib/guardian-engine/broker-enforcement-gate.test.ts` | All gates, happy path, source-scans |
+| Service layer | `src/lib/guardian-engine/broker-enforcement-service.ts` | Fetches DB state, calls gate helper, calls triggerEnforcement |
+| EnforcementContext extension | `src/lib/brokers/enforcement.ts` | Added `internalLockEventId?`, `listenerBrokerDedupKey?`, `tradingDay?` |
+| triggerEnforcement update | `src/lib/brokers/enforcement.ts` | Persists optional listener-path fields in GuardianIntervention |
+| Debug endpoint | `src/app/api/debug/broker-enforcement-gates/route.ts` | Read-only gate evaluation for all active locks |
+
+### 10 gates (evaluated in order — first failure short-circuits)
+
+1. `BROKER_ENFORCEMENT_ENABLED === "true"` — master feature flag, **must remain false/absent**
+2. `TRADOVATE_LISTENER_ENABLE_LIVE !== "true"` — live listener not supported in Phase 2C
+3. `env === "demo"` — demo-only enforcement
+4. `accountId` in `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` — explicit per-account opt-in
+5. `ruleType === "daily_loss_limit"` — only rule with a proven Tradovate API endpoint
+6. `isActive === true && missingFromBrokerSince == null` — account must be available
+7. `connectionStatus` not in `{expired, connection_error, not_connected, pending_webhook, oauth_pending_storage}` — live connection required
+8. `permissionLevel === "full_access"` — Account Risk Settings write requires it
+9. Active `InternalLockEvent` exists for this account/rule/day — Phase 2B precondition
+10. No existing `GuardianIntervention` with this `listenerBrokerDedupKey` — at-most-once enforcement
+
+### What remains disabled
+
+- `BROKER_ENFORCEMENT_ENABLED` is absent from all `.env` files — gate 1 fails for every call
+- The service function `maybeAttemptBrokerDailyLossLockoutForInternalLock` is not called from the listener worker
+- No real broker write has been made in Phase 2C-C
+
+### Env vars required before any broker enforcement can run
+
+```
+BROKER_ENFORCEMENT_ENABLED=true                              # Currently absent/false — DO NOT SET until canary validated
+BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST=<account-id>      # Comma-separated demo account IDs
+TRADOVATE_LISTENER_ENABLE_LIVE=false                         # Already false — must remain false
+```
+
+### Rollout checklist (before setting BROKER_ENFORCEMENT_ENABLED=true)
+
+1. Confirm all Phase 2B locks are creating correctly (check `/api/debug/internal-lock-diagnostic`)
+2. Confirm simulation endpoint shows `brokerEligible: true` for target account (`/api/debug/broker-enforcement-simulation`)
+3. Confirm gate debug endpoint shows `eligibleCount > 0` for target account (`/api/debug/broker-enforcement-gates`)
+4. Add target demo account ID to `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST`
+5. Deploy with `BROKER_ENFORCEMENT_ENABLED=true` to a single demo environment
+6. Verify one `GuardianIntervention` row is created with `brokerLockStatus = "broker_locked"` and `listenerBrokerDedupKey` set
+7. Verify no duplicate `GuardianIntervention` rows (unique constraint on `listenerBrokerDedupKey`)
+8. Verify Tradovate demo account is in liquidation-only mode
+
+### Rollback procedure
+
+1. Set `BROKER_ENFORCEMENT_ENABLED=false` (or remove it) — gate 1 fails immediately, no further broker writes
+2. Restart listener worker
+3. No DB writes to undo — `GuardianIntervention` rows are audit-only, not operational state
+4. To re-enable: repeat rollout checklist
+
+### Safety invariants maintained
+
+- `TRADOVATE_LISTENER_ENABLE_LIVE=false` — unchanged, live enforcement not implemented
+- `ENFORCEMENT_DRY_RUN=true` — unchanged at the cron/sync path level
+- No flatten, no order cancellation, no order placement
+- Listener worker not modified — service not wired in
+- All existing tests continue to pass
