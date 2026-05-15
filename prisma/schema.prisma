@@ -666,10 +666,26 @@ model GuardianIntervention {
   /// Raw JSON response from order/liquidatepositions (null when no write was made)
   flattenResponseJson Json?
 
-  account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // ── Phase 2C audit / idempotency fields ──────────────────────────────────
+  // Written when the realtime listener triggers enforcement. Null for
+  // interventions created by the cron sync path.
+  /// FK to the InternalLockEvent that preceded this broker enforcement attempt.
+  /// Null when Phase 2B was not active or enforcement came from the cron path.
+  internalLockEventId     String?
+  /// Dedup key preventing duplicate broker writes from the realtime listener.
+  /// Format: "${accountId}:${triggerType}:${tradingDay}:broker_enforcement"
+  /// Unique constraint is the DB-level race-condition guard.
+  listenerBrokerDedupKey  String?   @unique
+  /// Trading day (YYYY-MM-DD) the violation occurred on — needed for per-day
+  /// dedup without parsing timestamps. Null for cron-path interventions.
+  tradingDay              String?
+
+  account           ConnectedAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  internalLockEvent InternalLockEvent? @relation(fields: [internalLockEventId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
   @@index([userId, createdAt])
+  @@index([internalLockEventId])
 }
 
 // Phase 2B: internal app lock audit trail. Written when the realtime listener
@@ -696,7 +712,8 @@ model InternalLockEvent {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  account           ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account               ConnectedAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  guardianInterventions GuardianIntervention[]
 
   @@index([accountId, createdAt])
   @@index([userId, createdAt])

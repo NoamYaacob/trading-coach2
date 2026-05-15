@@ -491,3 +491,47 @@ any single feature flag:
 7. **`changesLocked: true`, not `doNotUnlock: true`** — sessions auto-unlock
    at next Tradovate session open. `doNotUnlock=true` would permanently trap
    the account and must never be sent.
+
+---
+
+## 11. Phase 2C-A Implementation Status
+
+**Status: Audit/idempotency foundation — complete. Broker writes still not wired.**
+
+### What was added (Phase 2C-A)
+
+| Item | File | Status |
+|------|------|--------|
+| Schema fields | `prisma/schema.prisma` | ✓ Done |
+| Migration | `prisma/migrations/20260521000000_add_guardian_intervention_dedup_fields/` | ✓ Done |
+| Dedup key helper | `src/lib/guardian-engine/broker-enforcement-dedup.ts` | ✓ Done |
+| Debug route update | `src/app/api/debug/internal-lock-events/route.ts` | ✓ Done |
+| Tests | `src/lib/guardian-engine/broker-enforcement-dedup.test.ts` | ✓ Done |
+
+**Schema fields added to `GuardianIntervention`:**
+- `internalLockEventId String?` — FK to `InternalLockEvent` (SET NULL on delete)
+- `listenerBrokerDedupKey String? @unique` — prevents duplicate broker writes under concurrent props events
+- `tradingDay String?` — YYYY-MM-DD of the violation, needed for per-day dedup display
+
+**Debug route (`GET /api/debug/internal-lock-events`) now returns:**
+```json
+{
+  "brokerEnforcements": {
+    "count": 0,
+    "hasAnyBrokerLocked": false,
+    "items": []
+  }
+}
+```
+Items include `interventionId`, `internalLockEventId`, `dedupKey`, `lockStatus` per linked `GuardianIntervention` row.
+
+### What is NOT done (intentional — no enforcement activation)
+
+- Listener does **not** call `triggerEnforcement()` or `applyBrokerDayLockout()`
+- Listener does **not** call `userAccountAutoLiq/update`
+- `BROKER_ENFORCEMENT_ENABLED` remains absent/false
+- `TRADOVATE_LISTENER_ENABLE_LIVE` remains false
+
+### Next step (Phase 2C-B, not yet authorized)
+
+Wire listener → `triggerEnforcement()` behind all 11 gates from Section 3, for demo accounts only, `daily_loss_limit` rule only, with `BROKER_ENFORCEMENT_ENABLED=true` feature flag gating the entire path. All safety invariants from Section 10 must pass a pre-ship test run before enabling.

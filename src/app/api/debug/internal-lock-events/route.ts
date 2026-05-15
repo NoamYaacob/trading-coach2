@@ -5,6 +5,11 @@
  * Returns totals, active/cleared counts, and rows grouped by account and
  * rule type so operators can review lock history without trawling raw DB.
  *
+ * Also returns linked GuardianIntervention rows (Phase 2C-A foundation):
+ *   - brokerEnforcements.count       — how many GuardianInterventions link to these locks
+ *   - brokerEnforcements.hasAnyBrokerLocked — whether any broker write succeeded
+ *   - brokerEnforcements.items       — intervention id, dedupKey, lockStatus per lock event
+ *
  * Safety:
  *   - Read-only — never writes any DB row
  *   - No enforcement, no broker writes, no riskState mutations
@@ -102,6 +107,31 @@ export async function GET(request: NextRequest) {
 
   const summary = buildLockEventSummary(lockEventRows);
 
+  const lockEventIds = lockEventRows.map((r) => r.id);
+  const interventions =
+    lockEventIds.length > 0
+      ? await prisma.guardianIntervention.findMany({
+          where: { internalLockEventId: { in: lockEventIds } },
+          select: {
+            id: true,
+            internalLockEventId: true,
+            listenerBrokerDedupKey: true,
+            brokerLockStatus: true,
+          },
+        })
+      : [];
+
+  const brokerEnforcements = {
+    count: interventions.length,
+    hasAnyBrokerLocked: interventions.some((i) => i.brokerLockStatus === "broker_locked"),
+    items: interventions.map((i) => ({
+      interventionId: i.id,
+      internalLockEventId: i.internalLockEventId,
+      dedupKey: i.listenerBrokerDedupKey,
+      brokerLockStatus: i.brokerLockStatus,
+    })),
+  };
+
   return NextResponse.json({
     note: "Internal app lock only — no broker action was sent.",
     internalLockEnabled: process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true",
@@ -110,5 +140,6 @@ export async function GET(request: NextRequest) {
       ? { warning: "Result capped at 200 rows — consider narrowing the days or accountId filter." }
       : {}),
     ...summary,
+    brokerEnforcements,
   });
 }
