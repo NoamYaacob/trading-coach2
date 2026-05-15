@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   deriveOverallSeverity,
   deriveSafetyAlerts,
+  isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
   type EnforcementFlags,
   type SafetyAlertInput,
@@ -216,8 +217,8 @@ describe("deriveSafetyAlerts — historical broker enforcement is not active dan
   });
 });
 
-describe("deriveSafetyAlerts — listener health", () => {
-  it("listener status=error → warning", () => {
+describe("deriveSafetyAlerts — listener health (rollout-relevant only)", () => {
+  it("rollout-relevant listener status=error → warning", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
         listeners: [
@@ -226,6 +227,7 @@ describe("deriveSafetyAlerts — listener health", () => {
             env: "demo",
             status: "error",
             lastHeartbeatAt: null,
+            isRolloutRelevant: true,
           },
         ],
       }),
@@ -233,7 +235,7 @@ describe("deriveSafetyAlerts — listener health", () => {
     assert.ok(alerts.find((x) => x.code === "listener_unhealthy"));
   });
 
-  it("listener status=closed → warning", () => {
+  it("rollout-relevant listener status=closed → warning", () => {
     const alerts = deriveSafetyAlerts(
       makeInput({
         listeners: [
@@ -242,6 +244,7 @@ describe("deriveSafetyAlerts — listener health", () => {
             env: "demo",
             status: "closed",
             lastHeartbeatAt: null,
+            isRolloutRelevant: true,
           },
         ],
       }),
@@ -249,7 +252,61 @@ describe("deriveSafetyAlerts — listener health", () => {
     assert.ok(alerts.find((x) => x.code === "listener_unhealthy"));
   });
 
-  it("listener stale heartbeat → listener_stale warning", () => {
+  it("non-rollout listener status=error does NOT produce a warning", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        listeners: [
+          {
+            connectionId: "old-expired",
+            env: "demo",
+            status: "error",
+            lastHeartbeatAt: null,
+            isRolloutRelevant: false,
+          },
+        ],
+      }),
+    );
+    assert.equal(
+      alerts.length,
+      0,
+      "old non-rollout listener errors must not generate alerts",
+    );
+  });
+
+  it("mix: only rollout-relevant listener error counts; old errors are ignored", () => {
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        listeners: [
+          {
+            connectionId: "old-1",
+            env: "demo",
+            status: "error",
+            lastHeartbeatAt: null,
+            isRolloutRelevant: false,
+          },
+          {
+            connectionId: "old-2",
+            env: "demo",
+            status: "error",
+            lastHeartbeatAt: null,
+            isRolloutRelevant: false,
+          },
+          {
+            connectionId: "rollout-target",
+            env: "demo",
+            status: "error",
+            lastHeartbeatAt: null,
+            isRolloutRelevant: true,
+          },
+        ],
+      }),
+    );
+    const unhealthy = alerts.filter((x) => x.code === "listener_unhealthy");
+    assert.equal(unhealthy.length, 1, "only the rollout-target listener alert should fire");
+    assert.ok(unhealthy[0].message.includes("rollout-target".slice(-10)));
+  });
+
+  it("rollout-relevant stale heartbeat → listener_stale warning", () => {
     const now = new Date("2026-05-15T12:00:00Z");
     const oldHb = new Date(now.getTime() - 120_000).toISOString();
     const alerts = deriveSafetyAlerts(
@@ -260,6 +317,7 @@ describe("deriveSafetyAlerts — listener health", () => {
             env: "demo",
             status: "open",
             lastHeartbeatAt: oldHb,
+            isRolloutRelevant: true,
           },
         ],
         listenerStaleThresholdMs: 60_000,
@@ -267,6 +325,27 @@ describe("deriveSafetyAlerts — listener health", () => {
       }),
     );
     assert.ok(alerts.find((x) => x.code === "listener_stale"));
+  });
+
+  it("non-rollout stale heartbeat does NOT produce a warning", () => {
+    const now = new Date("2026-05-15T12:00:00Z");
+    const oldHb = new Date(now.getTime() - 120_000).toISOString();
+    const alerts = deriveSafetyAlerts(
+      makeInput({
+        listeners: [
+          {
+            connectionId: "conn-abcdefghij",
+            env: "demo",
+            status: "open",
+            lastHeartbeatAt: oldHb,
+            isRolloutRelevant: false,
+          },
+        ],
+        listenerStaleThresholdMs: 60_000,
+        now,
+      }),
+    );
+    assert.equal(alerts.length, 0);
   });
 
   it("listener with fresh heartbeat produces no warning", () => {
@@ -280,6 +359,7 @@ describe("deriveSafetyAlerts — listener health", () => {
             env: "demo",
             status: "open",
             lastHeartbeatAt: freshHb,
+            isRolloutRelevant: true,
           },
         ],
         listenerStaleThresholdMs: 60_000,
@@ -287,6 +367,55 @@ describe("deriveSafetyAlerts — listener health", () => {
       }),
     );
     assert.equal(alerts.length, 0);
+  });
+});
+
+// ── isConnectionRolloutRelevant ──────────────────────────────────────────────
+
+describe("isConnectionRolloutRelevant", () => {
+  it("expired connection → false even when allowlisted", () => {
+    const r = isConnectionRolloutRelevant({
+      connectionStatus: "expired",
+      activeProtectedAccountCount: 1,
+      hasAllowlistedAccount: true,
+    });
+    assert.equal(r, false);
+  });
+
+  it("active protected account → true", () => {
+    const r = isConnectionRolloutRelevant({
+      connectionStatus: "connected_live",
+      activeProtectedAccountCount: 1,
+      hasAllowlistedAccount: false,
+    });
+    assert.equal(r, true);
+  });
+
+  it("no active accounts but allowlisted → true", () => {
+    const r = isConnectionRolloutRelevant({
+      connectionStatus: "connected_readonly",
+      activeProtectedAccountCount: 0,
+      hasAllowlistedAccount: true,
+    });
+    assert.equal(r, true);
+  });
+
+  it("no active accounts and not allowlisted → false", () => {
+    const r = isConnectionRolloutRelevant({
+      connectionStatus: "connection_error",
+      activeProtectedAccountCount: 0,
+      hasAllowlistedAccount: false,
+    });
+    assert.equal(r, false);
+  });
+
+  it("not_connected with no active accounts → false", () => {
+    const r = isConnectionRolloutRelevant({
+      connectionStatus: "not_connected",
+      activeProtectedAccountCount: 0,
+      hasAllowlistedAccount: false,
+    });
+    assert.equal(r, false);
   });
 });
 

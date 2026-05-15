@@ -36,7 +36,32 @@ export type ListenerSnapshot = {
   env: string | null;
   status: string | null;
   lastHeartbeatAt: string | null;
+  /**
+   * True when this connection is part of the active rollout scope:
+   *   - not expired
+   *   - has at least one active protected account, OR
+   *   - has at least one account in the BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST
+   *
+   * Non-rollout connections (old, expired, archived, unused) still appear in the
+   * console for visibility but do not contribute to overall severity.
+   */
+  isRolloutRelevant: boolean;
 };
+
+/**
+ * Determine whether a broker connection is in scope for the current rollout.
+ * Used to suppress noise from old/expired/unused connections in the console.
+ */
+export function isConnectionRolloutRelevant(input: {
+  connectionStatus: string;
+  activeProtectedAccountCount: number;
+  hasAllowlistedAccount: boolean;
+}): boolean {
+  if (input.connectionStatus === "expired") return false;
+  if (input.hasAllowlistedAccount) return true;
+  if (input.activeProtectedAccountCount > 0) return true;
+  return false;
+}
 
 export type SafetyAlertInput = {
   flags: EnforcementFlags;
@@ -143,11 +168,14 @@ export function deriveSafetyAlerts(input: SafetyAlertInput): SafetyAlert[] {
   }
 
   for (const listener of input.listeners) {
+    // Only rollout-relevant connections affect overall severity. Old/expired/unused
+    // connections still appear in the console but their listener state is ignored.
+    if (!listener.isRolloutRelevant) continue;
     if (listener.status === "error" || listener.status === "closed") {
       alerts.push({
         severity: "warning",
         code: "listener_unhealthy",
-        message: `Listener …${listener.connectionId.slice(-10)} status=${listener.status}`,
+        message: `Rollout listener …${listener.connectionId.slice(-10)} status=${listener.status}`,
       });
       continue;
     }
@@ -160,7 +188,7 @@ export function deriveSafetyAlerts(input: SafetyAlertInput): SafetyAlert[] {
         alerts.push({
           severity: "warning",
           code: "listener_stale",
-          message: `Listener …${listener.connectionId.slice(-10)} heartbeat is stale.`,
+          message: `Rollout listener …${listener.connectionId.slice(-10)} heartbeat is stale.`,
         });
       }
     }

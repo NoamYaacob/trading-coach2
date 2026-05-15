@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import {
   deriveOverallSeverity,
   deriveSafetyAlerts,
+  isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
   type SafetyAlert,
   type SafetyAlertSeverity,
@@ -59,6 +60,7 @@ export default async function SafetyConsolePage() {
           label: true,
           accountType: true,
           isActive: true,
+          brokerConnectionId: true,
           sessionState: { select: { riskState: true } },
           brokerConnection: { select: { env: true } },
         },
@@ -120,16 +122,46 @@ export default async function SafetyConsolePage() {
     }
   }
 
+  const allowlistSet = new Set(flags.allowlist);
+
+  // Map BrokerConnection.id → list of its protected accounts (for rollout-relevance).
+  const accountsByConnection = new Map<string, typeof accounts>();
+  for (const a of accounts) {
+    if (!a.brokerConnectionId) continue;
+    const list = accountsByConnection.get(a.brokerConnectionId) ?? [];
+    list.push(a);
+    accountsByConnection.set(a.brokerConnectionId, list);
+  }
+
+  // Per-connection rollout relevance.
+  const rolloutRelevantByConnection = new Map<string, boolean>();
+  for (const c of brokerConnections) {
+    const conAccounts = accountsByConnection.get(c.id) ?? [];
+    const relevant = isConnectionRolloutRelevant({
+      connectionStatus: c.connectionStatus,
+      activeProtectedAccountCount: conAccounts.filter((a) => a.isActive).length,
+      hasAllowlistedAccount: conAccounts.some((a) => allowlistSet.has(a.id)),
+    });
+    rolloutRelevantByConnection.set(c.id, relevant);
+  }
+
   const accountSummaries = accounts.map((a) => {
     const latestHist = latestHistoricalByAccount.get(a.id);
     const histCount = historicalCountByAccount.get(a.id) ?? 0;
     const activeCount = activeLockCountByAccount.get(a.id) ?? 0;
     const hasActiveInternalLock = activeCount > 0;
+    const isInAllowlist = allowlistSet.has(a.id);
+    const connectionRolloutRelevant = a.brokerConnectionId
+      ? (rolloutRelevantByConnection.get(a.brokerConnectionId) ?? false)
+      : false;
     return {
       accountId: a.id,
       label: a.label,
       env: a.brokerConnection?.env ?? null,
       accountType: a.accountType,
+      isActive: a.isActive,
+      isInAllowlist,
+      isRolloutScoped: isInAllowlist || (a.isActive && connectionRolloutRelevant),
       riskState: a.sessionState?.riskState ?? null,
       hasActiveInternalLock,
       activeLockCount: activeCount,
@@ -141,6 +173,10 @@ export default async function SafetyConsolePage() {
         latestHist?.brokerLockStatus === "broker_locked",
     };
   });
+
+  // Sort: active locks → broker_lock_failed → broker history (any) → allowlisted →
+  // active protected → everything else.
+  accountSummaries.sort((a, b) => priorityRank(a) - priorityRank(b));
 
   const alerts = deriveSafetyAlerts({
     flags,
@@ -156,12 +192,29 @@ export default async function SafetyConsolePage() {
       env: c.env,
       status: c.listenerStatus,
       lastHeartbeatAt: c.listenerLastHeartbeatAt?.toISOString() ?? null,
+      isRolloutRelevant: rolloutRelevantByConnection.get(c.id) ?? false,
     })),
     listenerStaleThresholdMs: LISTENER_STALE_THRESHOLD_MS,
     now,
   });
 
   const overallSeverity = deriveOverallSeverity(alerts);
+
+  const listenerRows = brokerConnections.map((c) => ({
+    connectionId: c.id,
+    env: c.env,
+    connectionStatus: c.connectionStatus,
+    listenerStatus: c.listenerStatus,
+    lastEventAt: c.listenerLastEventAt?.toISOString() ?? null,
+    lastHeartbeatAt: c.listenerLastHeartbeatAt?.toISOString() ?? null,
+    lastCloseCode: c.listenerLastCloseCode,
+    lastCloseReason: c.listenerLastCloseReason,
+    tokenExpired: c.tokenExpiresAt !== null && c.tokenExpiresAt.getTime() < now.getTime(),
+    lastRenewError: c.lastRenewError,
+    isRolloutRelevant: rolloutRelevantByConnection.get(c.id) ?? false,
+  }));
+  const rolloutListeners = listenerRows.filter((r) => r.isRolloutRelevant);
+  const otherListeners = listenerRows.filter((r) => !r.isRolloutRelevant);
 
   return (
     <AppShell
@@ -180,25 +233,24 @@ export default async function SafetyConsolePage() {
           <FlagsGrid flags={flags} />
         </SectionCard>
         <SectionCard
-          title="Listener health"
-          description="Per-broker-connection listener status and recent activity."
+          title="Listener health — rollout-relevant connections"
+          description="Connections with active protected accounts or in the rollout allowlist. Only these affect overall severity."
         >
-          <ListenerTable
-            rows={brokerConnections.map((c) => ({
-              connectionId: c.id,
-              env: c.env,
-              connectionStatus: c.connectionStatus,
-              listenerStatus: c.listenerStatus,
-              lastEventAt: c.listenerLastEventAt?.toISOString() ?? null,
-              lastHeartbeatAt: c.listenerLastHeartbeatAt?.toISOString() ?? null,
-              lastCloseCode: c.listenerLastCloseCode,
-              lastCloseReason: c.listenerLastCloseReason,
-              tokenExpired:
-                c.tokenExpiresAt !== null && c.tokenExpiresAt.getTime() < now.getTime(),
-              lastRenewError: c.lastRenewError,
-            }))}
-            enableLive={flags.listenerLiveEnabled}
-          />
+          {rolloutListeners.length === 0 ? (
+            <p className="text-sm text-stone-500">No rollout-relevant connections.</p>
+          ) : (
+            <ListenerTable rows={rolloutListeners} enableLive={flags.listenerLiveEnabled} />
+          )}
+        </SectionCard>
+        <SectionCard
+          title="Other connections (ignored for severity)"
+          description="Expired, archived, or unused broker connections. Shown for reference only; status changes here do not affect overall safety."
+        >
+          {otherListeners.length === 0 ? (
+            <p className="text-sm text-stone-500">No other connections.</p>
+          ) : (
+            <ListenerTable rows={otherListeners} enableLive={flags.listenerLiveEnabled} />
+          )}
         </SectionCard>
         <SectionCard
           title="Account safety summary"
@@ -209,6 +261,25 @@ export default async function SafetyConsolePage() {
       </div>
     </AppShell>
   );
+}
+
+// ── Sort priority for account summary ─────────────────────────────────────────
+
+type AccountSummary = {
+  hasActiveInternalLock: boolean;
+  latestBrokerLockStatus: string | null;
+  historicalBrokerEnforcementCount: number;
+  isInAllowlist: boolean;
+  isActive: boolean;
+};
+
+function priorityRank(a: AccountSummary): number {
+  if (a.hasActiveInternalLock) return 0;
+  if (a.latestBrokerLockStatus === "broker_lock_failed") return 1;
+  if (a.historicalBrokerEnforcementCount > 0) return 2;
+  if (a.isInAllowlist) return 3;
+  if (a.isActive) return 4;
+  return 5;
 }
 
 // ── Components ────────────────────────────────────────────────────────────────
@@ -372,6 +443,7 @@ function ListenerTable({
     lastCloseReason: string | null;
     tokenExpired: boolean;
     lastRenewError: string | null;
+    isRolloutRelevant: boolean;
   }>;
   enableLive: boolean;
 }) {
@@ -382,24 +454,35 @@ function ListenerTable({
     <div className="grid gap-2 text-xs">
       {rows.map((r) => {
         const isLiveDanger = r.env === "live" && enableLive;
+        const isUnhealthy =
+          r.listenerStatus === "error" || r.listenerStatus === "closed";
+        const cls = !r.isRolloutRelevant
+          ? "border-stone-100 bg-stone-50 opacity-70"
+          : isLiveDanger
+            ? "border-red-200 bg-red-50"
+            : isUnhealthy
+              ? "border-amber-200 bg-amber-50"
+              : "border-stone-100 bg-stone-50";
         return (
-          <div
-            key={r.connectionId}
-            className={`rounded-lg border px-3 py-2 ${
-              isLiveDanger
-                ? "border-red-200 bg-red-50"
-                : r.listenerStatus === "error" || r.listenerStatus === "closed"
-                  ? "border-amber-200 bg-amber-50"
-                  : "border-stone-100 bg-stone-50"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
+          <div key={r.connectionId} className={`rounded-lg border px-3 py-2 ${cls}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono text-stone-700">
                 …{r.connectionId.slice(-10)} · {r.env}
               </span>
-              <span className="font-semibold">
-                listener.status = {r.listenerStatus ?? "(null)"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {r.isRolloutRelevant ? (
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                    Rollout target
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold text-stone-600">
+                    Ignored inactive connection
+                  </span>
+                )}
+                <span className="font-semibold">
+                  listener.status = {r.listenerStatus ?? "(null)"}
+                </span>
+              </div>
             </div>
             <dl className="mt-1 grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-2">
               <Row label="connection" value={r.connectionStatus} />
@@ -432,6 +515,9 @@ function AccountTable({
     label: string;
     env: string | null;
     accountType: string;
+    isActive: boolean;
+    isInAllowlist: boolean;
+    isRolloutScoped: boolean;
     riskState: string | null;
     hasActiveInternalLock: boolean;
     activeLockCount: number;
@@ -443,26 +529,61 @@ function AccountTable({
   if (rows.length === 0) {
     return <p className="text-sm text-stone-500">No protected accounts.</p>;
   }
+  const visibleRows = rows.filter(
+    (r) =>
+      r.hasActiveInternalLock ||
+      r.historicalBrokerEnforcementCount > 0 ||
+      r.isInAllowlist ||
+      r.isActive,
+  );
+  const inactiveCount = rows.length - visibleRows.length;
   return (
     <div className="grid gap-2 text-xs">
-      {rows.map((r) => {
+      {visibleRows.map((r) => {
         const cls = r.hasActiveInternalLock
           ? "border-amber-200 bg-amber-50"
-          : r.hasHistoricalBrokerLockOnly
-            ? "border-emerald-100 bg-emerald-50"
-            : "border-stone-100 bg-stone-50";
+          : r.latestBrokerLockStatus === "broker_lock_failed"
+            ? "border-red-200 bg-red-50"
+            : r.hasHistoricalBrokerLockOnly
+              ? "border-emerald-100 bg-emerald-50"
+              : !r.isActive
+                ? "border-stone-100 bg-stone-50 opacity-70"
+                : "border-stone-100 bg-stone-50";
+        const labels: string[] = [];
+        if (r.isInAllowlist) labels.push("Rollout target");
+        if (r.hasActiveInternalLock) labels.push("Active lock");
+        else if (r.hasHistoricalBrokerLockOnly)
+          labels.push("Historical broker audit only");
+        if (!r.isActive) labels.push("Ignored inactive connection");
+        if (
+          !r.hasActiveInternalLock &&
+          r.historicalBrokerEnforcementCount === 0 &&
+          r.isActive
+        ) {
+          labels.push("No active lock");
+        }
         return (
           <div key={r.accountId} className={`rounded-lg border px-3 py-2 ${cls}`}>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium text-stone-900">
                 {r.label}{" "}
                 <span className="font-mono text-[10px] text-stone-500">
                   …{r.accountId.slice(-10)}
                 </span>
               </span>
-              <span className="text-stone-700">
-                env={r.env ?? "—"} · risk={r.riskState ?? "—"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {labels.map((label) => (
+                  <span
+                    key={label}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${LABEL_CLS[label] ?? "bg-stone-200 text-stone-700"}`}
+                  >
+                    {label}
+                  </span>
+                ))}
+                <span className="text-stone-700">
+                  env={r.env ?? "—"} · risk={r.riskState ?? "—"}
+                </span>
+              </div>
             </div>
             <dl className="mt-1 grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-2">
               <Row label="accountType" value={r.accountType} />
@@ -488,9 +609,23 @@ function AccountTable({
           </div>
         );
       })}
+      {inactiveCount > 0 && (
+        <p className="text-[11px] italic text-stone-400">
+          + {inactiveCount} inactive account(s) hidden (no rollout relevance, no
+          history).
+        </p>
+      )}
     </div>
   );
 }
+
+const LABEL_CLS: Record<string, string> = {
+  "Rollout target": "bg-sky-100 text-sky-700",
+  "Active lock": "bg-amber-200 text-amber-900",
+  "Historical broker audit only": "bg-emerald-100 text-emerald-700",
+  "Ignored inactive connection": "bg-stone-200 text-stone-600",
+  "No active lock": "bg-emerald-100 text-emerald-700",
+};
 
 function Row({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
