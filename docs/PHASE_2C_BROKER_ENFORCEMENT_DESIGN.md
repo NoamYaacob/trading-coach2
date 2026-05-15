@@ -766,3 +766,73 @@ No call to `maybeAttemptBrokerDailyLossLockoutForInternalLock` is ever made. Beh
 - 8 new source-scan tests on `internal-lock-evaluator-db.ts` — verify `InternalLockResult[]` return type, structured fields, lock event ID capture from upsert
 - 5 new source-scan tests on `tradovate-listener-worker.ts` — verify import present, `BROKER_ENFORCEMENT_ENABLED` guard, `internalLockEventId` null-check, no direct `triggerEnforcement` import, guard precedes call site
 - Total: 4219 tests pass (13 new)
+
+## 16. Phase 2C-F: First Demo Canary — Completed 2026-05-15
+
+**Status: COMPLETED. One real broker write confirmed. Rollback clean. No further canary without fresh review.**
+
+### Canary result
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-05-15 (first successful props-event cycle after C-Step 4 restart) |
+| Account | `cmottd1z200020do1knjxq582` (label: DEMO7433035) |
+| Rule type | `daily_loss_limit` |
+| Trading day | `2026-05-14` |
+| InternalLockEvent id | `cmp79yy0e00010onn9wl1sthv` |
+| GuardianIntervention id | `cmp7a2hlw00000on41irjkb1c` |
+| `listenerBrokerDedupKey` | `cmottd1z200020do1knjxq582:daily_loss_limit:2026-05-14:broker_enforcement` |
+| `brokerLockStatus` | `broker_locked` |
+| `brokerEnforcements.count` | 1 |
+| `hasAnyBrokerLocked` | `true` |
+
+### Rollback result
+
+| Field | Value |
+|---|---|
+| `reset-session-state` | succeeded |
+| `previousRiskState` | `STOPPED` |
+| `newRiskState` | `NORMAL` |
+| `activeCount` after reset | 0 |
+| `brokerEnforcements.count` after reset | 1 (historical, not cleared — see below) |
+| Live accounts touched | none |
+| Flatten / cancel / orders | none |
+
+### What "historical broker_locked" means
+
+After the internal reset (`reset-session-state`):
+- `InternalLockEvent.activeDedupKey` is set to `null` — the internal lock slot is free.
+- `InternalLockEvent.clearedAt` is set — the row is marked cleared.
+- `GuardianIntervention` row is **not deleted** — it is an immutable audit record.
+- `brokerEnforcements.count` remains 1 — this is expected and correct.
+- The `hasHistoricalBrokerLockOnly` flag in the `/api/debug/internal-lock-events` response will be `true`: a broker write occurred for a lock that no longer has an active internal counterpart.
+
+The Tradovate-side `changesLocked: true` setting for trading day 2026-05-14 auto-clears at the next Tradovate session open (~5:00 PM CT) because `doNotUnlock` was omitted from the payload. Since the canary trading day was 2026-05-14 and today is 2026-05-15, the broker-side lock has already auto-cleared.
+
+### Root cause fixed before canary succeeded (Phase 2C-E fix, same session)
+
+The first canary attempt failed silently because `applyInternalLockForConnection` returned `internalLockEventId=null` for accounts with `riskState=STOPPED` (idempotent skip) — even when an active `InternalLockEvent` existed from before `BROKER_ENFORCEMENT_ENABLED` was flipped on. The listener's null guard then skipped `maybeAttemptBrokerDailyLossLockoutForInternalLock` entirely.
+
+Fix applied: the STOPPED-branch now queries for an existing active `InternalLockEvent` (`clearedAt=null`, `activeDedupKey IS NOT NULL`) and returns its id. See commit `35a5b8a`.
+
+### Post-canary safety state
+
+| Variable | Value after rollback |
+|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or absent |
+| `ENFORCEMENT_DRY_RUN` | `true` |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` |
+
+### Dedup behaviour for future canaries
+
+The existing `GuardianIntervention` row has `listenerBrokerDedupKey = "...2026-05-14:broker_enforcement"`. A future canary on trading day `2026-05-15` (or any other day) uses a different dedup key and is **not** blocked by this historical row. The `@unique` constraint only prevents a second write for the same `(account, rule, day)` triple — not across days.
+
+### Next canary prerequisites
+
+Before running another real broker canary:
+1. Re-run the full rehearsal (Section 3 of the runbook).
+2. Confirm `gateResult.skipReason` references only `BROKER_ENFORCEMENT_ENABLED`.
+3. Confirm `brokerEnforcements.count` is 0 for today's trading day (not yesterday's historical row).
+4. Confirm `activeCount > 0` — a fresh internal lock must exist for today.
+5. Human sign-off on the checkpoint in Section 4.

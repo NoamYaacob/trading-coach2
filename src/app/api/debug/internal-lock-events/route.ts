@@ -121,9 +121,15 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
+  const hasAnyBrokerLocked = interventions.some((i) => i.brokerLockStatus === "broker_locked");
+
   const brokerEnforcements = {
     count: interventions.length,
-    hasAnyBrokerLocked: interventions.some((i) => i.brokerLockStatus === "broker_locked"),
+    hasAnyBrokerLocked,
+    // True when a broker_locked GuardianIntervention exists for a lock that has
+    // since been reset (activeCount=0). The broker-side changesLocked may still
+    // be in effect on Tradovate until the next session open — see runbook R5.
+    hasHistoricalBrokerLockOnly: hasAnyBrokerLocked && summary.activeCount === 0,
     items: interventions.map((i) => ({
       interventionId: i.id,
       internalLockEventId: i.internalLockEventId,
@@ -133,7 +139,7 @@ export async function GET(request: NextRequest) {
   };
 
   return NextResponse.json({
-    note: "Internal app lock only — no broker action was sent.",
+    note: "Internal lock event history. Broker write results (if any) are in brokerEnforcements. A broker_locked row is a historical audit record — it does not reflect whether the Tradovate risk setting is still active.",
     internalLockEnabled: process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true",
     queryDays: daysParam,
     ...(cappedAt200

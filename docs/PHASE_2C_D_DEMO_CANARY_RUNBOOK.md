@@ -1,8 +1,8 @@
 # Phase 2C-D: Demo Canary Runbook — First Real Broker Write
 
-**Status: READY FOR RE-CANARY. Phase 2C-E fix applied (see Section 9, invariant #8). First real canary attempt completed without a broker write — root cause identified and fixed. No broker write has been confirmed. Do not execute the real canary until the full rehearsal (Section 3) passes and a human confirms the checkpoint in Section 4.**
+**Status: FIRST CANARY COMPLETE (2026-05-15). `brokerLockStatus=broker_locked` confirmed. Rollback clean. See Section 10 for full result. Re-canary on a new trading day requires fresh rehearsal (Section 3) and human sign-off (Section 4).**
 
-**Phase 2C-E fix (2026-05-15):** `applyInternalLockForConnection` now returns the existing active InternalLockEvent ID when `riskState` is already `STOPPED`. Previously, a pre-existing lock (created before `BROKER_ENFORCEMENT_ENABLED` was enabled) caused `internalLockEventId=null` in the result, silently bypassing `maybeAttemptBrokerDailyLossLockoutForInternalLock`. The broker enforcement service's own dedup gate (`listenerBrokerDedupKey @unique`) prevents duplicate `GuardianIntervention` rows from being written across repeated props events.
+**Phase 2C-E fix (2026-05-15):** `applyInternalLockForConnection` now returns the existing active InternalLockEvent ID when `riskState` is already `STOPPED`. Previously, a pre-existing lock (created before `BROKER_ENFORCEMENT_ENABLED` was enabled) caused `internalLockEventId=null` in the result, silently bypassing `maybeAttemptBrokerDailyLossLockoutForInternalLock`. Fixed in commit `35a5b8a`; the broker enforcement service's `listenerBrokerDedupKey @unique` dedup gate prevents duplicate writes.
 
 **Safety boundaries in effect:**
 - `BROKER_ENFORCEMENT_ENABLED` must remain absent/false until the checkpoint in Section 4
@@ -102,7 +102,7 @@ Expected:
 
 `listenerStatus` may also be `"reconnecting"` if a heartbeat was received recently (within the last 30 seconds) — check freshness. Abort if `connectionStatus` is in `{expired, connection_error, not_connected, pending_webhook, oauth_pending_storage}` or if `listenerStatus` is `"error"` or `"disconnected"`.
 
-### 2B. Account is clean — no active locks, no existing broker enforcements
+### 2B. Account is clean — no active locks, no broker enforcement for today's trading day
 
 ```bash
 curl -s -H "x-cron-secret: $CRON_SECRET" \
@@ -118,7 +118,11 @@ Expected:
 }
 ```
 
-Abort if `activeCount > 0` or `brokerEnforcements.count > 0`.
+**After the 2026-05-15 canary:** `brokerEnforcements.count` may be `1` (historical row for 2026-05-14). This is expected and does not block a new canary.
+
+Abort if:
+- `activeCount > 0` — an active internal lock exists
+- Any `brokerEnforcements.items` entry has a `dedupKey` matching **today's** trading day (`<YYYY-MM-DD>`) — that would mean enforcement already ran today and cannot be repeated via the dedup gate
 
 ### 2C. Gate baseline — allowlist, env, permissionLevel confirmed clean
 
@@ -610,3 +614,55 @@ All require an authenticated session cookie and `x-cron-secret: $CRON_SECRET` he
 6. **`TRADOVATE_LISTENER_ENABLE_LIVE=false` is never changed** — live account enforcement is not implemented.
 7. **`ENFORCEMENT_DRY_RUN=true` at rest** — broker writes are simulated until the real canary checkpoint. A `"dry_run"` `GuardianIntervention` row is not a canary success.
 8. **Pre-existing active locks are surfaced on every props event** — when `riskState` is already `STOPPED`, `applyInternalLockForConnection` queries for the existing active `InternalLockEvent` (`clearedAt=null`, `activeDedupKey IS NOT NULL`, newest first) and returns its ID. This ensures `BROKER_ENFORCEMENT_ENABLED` can be flipped on at any time and the broker enforcement service will be called on the next props event, even if the internal lock predates the flag change. Dedup is handled by the `GuardianIntervention.listenerBrokerDedupKey @unique` constraint inside the service — not by the caller.
+
+---
+
+## 10. First Demo Canary Result — 2026-05-15
+
+**Status: COMPLETED. Rollback clean. No further canary without fresh review.**
+
+### Outcome
+
+| Field | Value |
+|---|---|
+| Account | `cmottd1z200020do1knjxq582` (DEMO7433035) |
+| Rule type | `daily_loss_limit` |
+| Trading day | `2026-05-14` |
+| InternalLockEvent id | `cmp79yy0e00010onn9wl1sthv` |
+| GuardianIntervention id | `cmp7a2hlw00000on41irjkb1c` |
+| `listenerBrokerDedupKey` | `cmottd1z200020do1knjxq582:daily_loss_limit:2026-05-14:broker_enforcement` |
+| `brokerLockStatus` | `broker_locked` |
+| `brokerEnforcements.count` | 1 |
+| `hasAnyBrokerLocked` | `true` |
+
+### Rollback
+
+| Step | Result |
+|---|---|
+| `reset-session-state` | succeeded |
+| `previousRiskState` | `STOPPED` |
+| `newRiskState` | `NORMAL` |
+| `activeCount` after reset | 0 |
+| `brokerEnforcements.count` after reset | 1 (historical — GuardianIntervention is immutable) |
+| `hasHistoricalBrokerLockOnly` | `true` (expected — audit row remains, no active internal lock) |
+| Live accounts | none touched |
+| Flatten / cancel / orders | none |
+
+### Post-canary env state (all services)
+
+| Var | Value |
+|---|---|
+| `BROKER_ENFORCEMENT_ENABLED` | `false` or absent |
+| `ENFORCEMENT_DRY_RUN` | `true` |
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` |
+
+### Notes
+
+**Broker-side lock auto-clears:** The canary write set `changesLocked: true` on trading day 2026-05-14. Because `doNotUnlock` was omitted, Tradovate auto-clears `changesLocked` at the next session open (~5:00 PM CT). Since the canary was on 2026-05-14, the broker-side lock has auto-cleared by 2026-05-15.
+
+**Historical row is not an active lock:** After `reset-session-state`, `activeCount=0` but `brokerEnforcements.count=1`. The debug endpoint now includes `hasHistoricalBrokerLockOnly: true` to make this distinction explicit. A future canary on a new trading day uses a different dedup key and is not blocked by this historical row.
+
+**Root cause of first silent failure (fixed before success):** The first canary attempt produced `brokerEnforcements.count=0` because `applyInternalLockForConnection` returned `internalLockEventId=null` for the already-STOPPED account. Fixed in commit `35a5b8a` — see design doc Section 16.
+
+**Next canary:** Re-run full rehearsal (Section 3), verify today's `brokerEnforcements.count=0`, confirm fresh `activeCount>0`, human sign-off, then C-Step 4.
