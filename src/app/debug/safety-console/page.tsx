@@ -12,6 +12,7 @@ import {
   isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
+  resolveListenerFlags,
   type SafetyAlert,
   type SafetyAlertSeverity,
 } from "@/lib/safety-console-helpers";
@@ -22,6 +23,11 @@ export const metadata: Metadata = {
 };
 
 const LISTENER_STALE_THRESHOLD_MS = 60_000;
+
+// The listener-worker writes ListenerWorkerStatus once per reconcile loop
+// (~every 60s). Allow a few missed cycles before treating the row as stale —
+// a stale row is treated as "not exposed" so old flag values are never trusted.
+const LISTENER_FLAGS_STALE_THRESHOLD_MS = 5 * 60_000;
 
 export default async function SafetyConsolePage() {
   const currentUser = await getCurrentUser();
@@ -35,8 +41,13 @@ export default async function SafetyConsolePage() {
   const flags = readEnforcementFlagsFromEnv(process.env);
   const now = new Date();
 
-  const [brokerConnections, accounts, activeLockRows, historicalEnforcements] =
-    await Promise.all([
+  const [
+    brokerConnections,
+    accounts,
+    activeLockRows,
+    historicalEnforcements,
+    listenerWorkerStatus,
+  ] = await Promise.all([
       prisma.brokerConnection.findMany({
         select: {
           id: true,
@@ -94,6 +105,7 @@ export default async function SafetyConsolePage() {
         },
         orderBy: { createdAt: "desc" },
       }),
+      prisma.listenerWorkerStatus.findUnique({ where: { id: "singleton" } }),
     ]);
 
   const activeLockCountByAccount = new Map<string, number>();
@@ -187,13 +199,28 @@ export default async function SafetyConsolePage() {
   // active protected → everything else.
   accountSummaries.sort((a, b) => priorityRank(a) - priorityRank(b));
 
-  // Web/app process env. These values reflect what the WEB runtime sees —
-  // NOT the listener-worker runtime. The listener-worker is a separate Railway
-  // service with its own env configuration. We do not currently have a way to
-  // read listener-worker env from web, so listenerFlags is null. The helper
-  // will surface an info alert and the page will show "Not exposed by listener
-  // status" for every listener-worker flag.
-  const listenerFlags = null;
+  // Listener-worker env flags. The listener-worker runs as a separate Railway
+  // service and mirrors its own enforcement env into the ListenerWorkerStatus
+  // singleton row on every reconcile loop. resolveListenerFlags returns null
+  // (→ "not exposed") when the row is missing or stale, so we never present a
+  // stopped worker's old flag values as authoritative. These values — not the
+  // web/app process.env — gate the critical broker-write safety alerts.
+  const listenerFlags = resolveListenerFlags({
+    record: listenerWorkerStatus
+      ? {
+          brokerEnforcementEnabled: listenerWorkerStatus.brokerEnforcementEnabled,
+          listenerLiveEnabled: listenerWorkerStatus.listenerLiveEnabled,
+          internalLockEnabled: listenerWorkerStatus.internalLockEnabled,
+          dryRunEnabled: listenerWorkerStatus.dryRunEnabled,
+          simulationEnabled: listenerWorkerStatus.simulationEnabled,
+          allowlist: listenerWorkerStatus.demoAccountAllowlist,
+          reportedAt: listenerWorkerStatus.reportedAt.toISOString(),
+        }
+      : null,
+    now,
+    staleThresholdMs: LISTENER_FLAGS_STALE_THRESHOLD_MS,
+  });
+  const listenerFlagsReportedAt = listenerWorkerStatus?.reportedAt ?? null;
 
   const alerts = deriveSafetyAlerts({
     webFlags: flags,
@@ -275,7 +302,18 @@ export default async function SafetyConsolePage() {
                   directly in the listener-worker service before any rollout decision.
                 </p>
               ) : (
-                <FlagsGrid flags={listenerFlags} source="listener" />
+                <div className="grid gap-2">
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    <span className="font-semibold">Listener-worker env verified.</span>{" "}
+                    Flags below were reported by the listener-worker itself
+                    {listenerFlagsReportedAt
+                      ? ` at ${listenerFlagsReportedAt.toISOString()}`
+                      : ""}
+                    . These values — not the web/app env above — gate broker-write
+                    safety alerts.
+                  </p>
+                  <FlagsGrid flags={listenerFlags} source="listener" />
+                </div>
               )}
             </div>
           </div>

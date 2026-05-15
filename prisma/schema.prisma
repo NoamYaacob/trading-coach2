@@ -840,3 +840,24 @@ model AlertPreferences {
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// Singleton row written by the Tradovate listener-worker on every reconcile
+// loop. The web/app and listener-worker run as separate Railway services with
+// independent env configuration, so the web Safety Console cannot read the
+// listener-worker's process.env directly. This row mirrors the listener-worker's
+// enforcement env flags so the console can verify broker-write safety.
+//
+// Diagnostics only — nothing in the broker enforcement path reads this row.
+// `reportedAt` lets readers detect a stale/stopped worker and fall back to
+// "not exposed" instead of trusting old flag values.
+model ListenerWorkerStatus {
+  id                       String   @id
+  brokerEnforcementEnabled Boolean
+  listenerLiveEnabled      Boolean
+  internalLockEnabled      Boolean
+  dryRunEnabled            Boolean
+  simulationEnabled        Boolean
+  demoAccountAllowlist     String[]
+  reportedAt               DateTime
+  updatedAt                DateTime @updatedAt
+}

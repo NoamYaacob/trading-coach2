@@ -104,6 +104,52 @@ export type SafetyAlertInput = {
   now: Date;
 };
 
+/**
+ * A persisted snapshot of the listener-worker's enforcement env flags,
+ * written by the listener-worker into the ListenerWorkerStatus singleton row.
+ * `reportedAt` is an ISO timestamp of when the worker last wrote the row.
+ */
+export type ListenerWorkerStatusRecord = {
+  brokerEnforcementEnabled: boolean;
+  listenerLiveEnabled: boolean;
+  internalLockEnabled: boolean;
+  dryRunEnabled: boolean;
+  simulationEnabled: boolean;
+  allowlist: string[];
+  reportedAt: string;
+};
+
+/**
+ * Convert a persisted listener-worker status row into EnforcementFlags.
+ *
+ * Returns null — meaning "listener-worker env is not exposed" — when:
+ *   - no row exists (worker has never reported), or
+ *   - `reportedAt` is unparseable, or
+ *   - the row is stale (worker stopped reporting).
+ *
+ * A stale row must NOT be trusted: the worker may have crashed or been
+ * reconfigured since it last wrote, so old flag values could be wrong.
+ * Callers that get null fall back to the `listener_flags_unexposed` info alert.
+ */
+export function resolveListenerFlags(input: {
+  record: ListenerWorkerStatusRecord | null;
+  now: Date;
+  staleThresholdMs: number;
+}): EnforcementFlags | null {
+  if (!input.record) return null;
+  const reportedAt = Date.parse(input.record.reportedAt);
+  if (!Number.isFinite(reportedAt)) return null;
+  if (input.now.getTime() - reportedAt > input.staleThresholdMs) return null;
+  return {
+    brokerEnforcementEnabled: input.record.brokerEnforcementEnabled,
+    listenerLiveEnabled: input.record.listenerLiveEnabled,
+    internalLockEnabled: input.record.internalLockEnabled,
+    dryRunEnabled: input.record.dryRunEnabled,
+    simulationEnabled: input.record.simulationEnabled,
+    allowlist: input.record.allowlist,
+  };
+}
+
 export function readEnforcementFlagsFromEnv(
   env: Record<string, string | undefined>,
 ): EnforcementFlags {

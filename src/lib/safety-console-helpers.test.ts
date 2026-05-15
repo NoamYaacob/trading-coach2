@@ -10,7 +10,9 @@ import {
   isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
+  resolveListenerFlags,
   type EnforcementFlags,
+  type ListenerWorkerStatusRecord,
   type SafetyAlertInput,
 } from "./safety-console-helpers.ts";
 
@@ -71,6 +73,112 @@ describe("readEnforcementFlagsFromEnv", () => {
     assert.equal(flags.listenerLiveEnabled, false);
     assert.equal(flags.dryRunEnabled, false);
     assert.deepEqual(flags.allowlist, []);
+  });
+});
+
+// ── resolveListenerFlags ──────────────────────────────────────────────────────
+
+describe("resolveListenerFlags", () => {
+  const NOW = new Date("2026-05-15T12:00:00Z");
+  const STALE_MS = 5 * 60_000;
+
+  function record(
+    overrides: Partial<ListenerWorkerStatusRecord> = {},
+  ): ListenerWorkerStatusRecord {
+    return {
+      brokerEnforcementEnabled: false,
+      listenerLiveEnabled: false,
+      internalLockEnabled: false,
+      dryRunEnabled: true,
+      simulationEnabled: true,
+      allowlist: ["cmottd1z200020do1knjxq582"],
+      reportedAt: new Date(NOW.getTime() - 30_000).toISOString(),
+      ...overrides,
+    };
+  }
+
+  it("null record → null (listener-worker has never reported)", () => {
+    assert.equal(
+      resolveListenerFlags({ record: null, now: NOW, staleThresholdMs: STALE_MS }),
+      null,
+    );
+  });
+
+  it("fresh record → EnforcementFlags mirroring the listener-worker", () => {
+    const flags = resolveListenerFlags({
+      record: record(),
+      now: NOW,
+      staleThresholdMs: STALE_MS,
+    });
+    assert.ok(flags, "fresh record must resolve to flags");
+    assert.equal(flags.brokerEnforcementEnabled, false);
+    assert.equal(flags.listenerLiveEnabled, false);
+    assert.equal(flags.dryRunEnabled, true);
+    assert.deepEqual(flags.allowlist, ["cmottd1z200020do1knjxq582"]);
+  });
+
+  it("stale record → null (worker stopped; old flags must not be trusted)", () => {
+    const stale = record({
+      reportedAt: new Date(NOW.getTime() - STALE_MS - 1_000).toISOString(),
+    });
+    assert.equal(
+      resolveListenerFlags({ record: stale, now: NOW, staleThresholdMs: STALE_MS }),
+      null,
+    );
+  });
+
+  it("unparseable reportedAt → null", () => {
+    const bad = record({ reportedAt: "not-a-date" });
+    assert.equal(
+      resolveListenerFlags({ record: bad, now: NOW, staleThresholdMs: STALE_MS }),
+      null,
+    );
+  });
+
+  it("dangerous fresh record resolves to flags that drive critical alerts", () => {
+    const flags = resolveListenerFlags({
+      record: record({ brokerEnforcementEnabled: true, dryRunEnabled: false }),
+      now: NOW,
+      staleThresholdMs: STALE_MS,
+    });
+    assert.ok(flags);
+    const alerts = deriveSafetyAlerts(makeInput({ listenerFlags: flags }));
+    assert.ok(
+      alerts.find((a) => a.code === "broker_enforcement_enabled"),
+      "resolved dangerous flags must drive a critical alert",
+    );
+    assert.equal(deriveOverallSeverity(alerts), "critical");
+  });
+
+  it("fresh SAFE record → no listener_flags_unexposed alert, overall safe", () => {
+    const flags = resolveListenerFlags({
+      record: record(),
+      now: NOW,
+      staleThresholdMs: STALE_MS,
+    });
+    const alerts = deriveSafetyAlerts(makeInput({ listenerFlags: flags }));
+    assert.equal(
+      alerts.find((a) => a.code === "listener_flags_unexposed"),
+      undefined,
+      "verified safe listener flags must suppress the unexposed info alert",
+    );
+    assert.equal(deriveOverallSeverity(alerts), "safe");
+  });
+
+  it("stale record falls back to listener_flags_unexposed info alert", () => {
+    const stale = record({
+      reportedAt: new Date(NOW.getTime() - STALE_MS - 1_000).toISOString(),
+    });
+    const flags = resolveListenerFlags({
+      record: stale,
+      now: NOW,
+      staleThresholdMs: STALE_MS,
+    });
+    const alerts = deriveSafetyAlerts(makeInput({ listenerFlags: flags }));
+    assert.ok(
+      alerts.find((a) => a.code === "listener_flags_unexposed"),
+      "a stale row must behave like 'not exposed'",
+    );
   });
 });
 
@@ -680,5 +788,118 @@ describe("source-scan: normal customer dashboard does not expose technical audit
       !DASHBOARD_SRC.includes("listenerBrokerDedupKey"),
       "customer dashboard must not surface the raw listenerBrokerDedupKey field",
     );
+  });
+});
+
+// ── Source-scan: Safety Console reads listener-worker flags from the DB ───────
+
+describe("source-scan: safety console reads persisted listener-worker flags", () => {
+  const PAGE_SRC = readFileSync(
+    resolve(__dirname, "../app/debug/safety-console/page.tsx"),
+    "utf8",
+  );
+
+  it("reads the ListenerWorkerStatus singleton row", () => {
+    assert.ok(
+      PAGE_SRC.includes("listenerWorkerStatus.findUnique"),
+      "page must read the persisted listener-worker status row",
+    );
+  });
+
+  it("resolves listener flags via resolveListenerFlags (with staleness)", () => {
+    assert.ok(
+      PAGE_SRC.includes("resolveListenerFlags"),
+      "page must resolve listener flags through resolveListenerFlags",
+    );
+  });
+
+  it("no longer hardcodes listenerFlags = null", () => {
+    assert.ok(
+      !/const listenerFlags = null/.test(PAGE_SRC),
+      "page must compute listenerFlags, not hardcode null",
+    );
+  });
+
+  it("shows 'Listener-worker env verified' when flags are exposed", () => {
+    assert.ok(
+      PAGE_SRC.includes("Listener-worker env verified"),
+      "page must show a verified state for exposed listener-worker flags",
+    );
+  });
+
+  it("keeps 'Not exposed by listener status' as the fallback", () => {
+    assert.ok(
+      PAGE_SRC.includes("Not exposed by listener status"),
+      "page must keep the not-exposed fallback copy",
+    );
+  });
+
+  it("is still read-only — no prisma writes", () => {
+    assert.ok(!/prisma\.[a-zA-Z]+\.create\(/.test(PAGE_SRC));
+    assert.ok(!/prisma\.[a-zA-Z]+\.update\(/.test(PAGE_SRC));
+    assert.ok(!/prisma\.[a-zA-Z]+\.upsert\(/.test(PAGE_SRC));
+    assert.ok(!/prisma\.[a-zA-Z]+\.delete/.test(PAGE_SRC));
+  });
+});
+
+// ── Source-scan: listener-worker status write is diagnostics-only ────────────
+
+describe("source-scan: listener-worker persists its flags without broker writes", () => {
+  const WORKER_SRC = readFileSync(
+    resolve(__dirname, "../../scripts/tradovate-listener-worker.ts"),
+    "utf8",
+  );
+
+  it("defines writeListenerWorkerStatus", () => {
+    assert.ok(
+      WORKER_SRC.includes("async function writeListenerWorkerStatus"),
+      "listener-worker must define writeListenerWorkerStatus",
+    );
+  });
+
+  it("writeListenerWorkerStatus upserts the ListenerWorkerStatus singleton", () => {
+    assert.ok(
+      WORKER_SRC.includes('listenerWorkerStatus.upsert'),
+      "worker must upsert the listenerWorkerStatus row",
+    );
+    assert.ok(
+      WORKER_SRC.includes('where: { id: "singleton" }'),
+      "worker must target the singleton row",
+    );
+  });
+
+  it("calls writeListenerWorkerStatus from the reconcile loop", () => {
+    const reconcileIdx = WORKER_SRC.indexOf(
+      "async function reconcileListeners",
+    );
+    assert.ok(reconcileIdx >= 0, "reconcileListeners must exist");
+    const reconcileBody = WORKER_SRC.slice(reconcileIdx, reconcileIdx + 600);
+    assert.ok(
+      reconcileBody.includes("writeListenerWorkerStatus()"),
+      "reconcile loop must refresh the worker status row",
+    );
+  });
+
+  it("writeListenerWorkerStatus performs no broker / Tradovate writes", () => {
+    const fnIdx = WORKER_SRC.indexOf(
+      "async function writeListenerWorkerStatus",
+    );
+    const fnEnd = WORKER_SRC.indexOf("\nfunction errMessage", fnIdx);
+    assert.ok(fnIdx >= 0 && fnEnd > fnIdx, "must locate the function body");
+    const body = WORKER_SRC.slice(fnIdx, fnEnd);
+    for (const forbidden of [
+      "liquidatepositions",
+      "cancelorder",
+      "placeorder",
+      "flatten",
+      "tradovate.com",
+      "maybeAttemptBroker",
+      "fetch(",
+    ]) {
+      assert.ok(
+        !body.includes(forbidden),
+        `worker status write must not contain '${forbidden}'`,
+      );
+    }
   });
 });

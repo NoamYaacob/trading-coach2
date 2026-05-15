@@ -50,6 +50,7 @@ import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protoco
 import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry-run-rule-evaluator-db.ts";
 import { applyInternalLockForConnection } from "../src/lib/guardian-engine/internal-lock-evaluator-db.ts";
 import { maybeAttemptBrokerDailyLossLockoutForInternalLock } from "../src/lib/guardian-engine/broker-enforcement-service.ts";
+import { readEnforcementFlagsFromEnv } from "../src/lib/safety-console-helpers.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -373,6 +374,39 @@ async function writeListenerAuthStatus(
   }
 }
 
+/**
+ * Persist this worker's enforcement env flags into the ListenerWorkerStatus
+ * singleton row so the web Safety Console can verify broker-write safety.
+ *
+ * Diagnostics only: this is a single read of process.env plus one DB upsert.
+ * It performs no broker calls, no Tradovate API calls, and changes no
+ * enforcement behaviour. Called once per reconcile loop so `reportedAt` stays
+ * fresh; the console treats a stale row as "not exposed".
+ */
+async function writeListenerWorkerStatus(): Promise<void> {
+  const flags = readEnforcementFlagsFromEnv(process.env);
+  const data = {
+    brokerEnforcementEnabled: flags.brokerEnforcementEnabled,
+    listenerLiveEnabled: flags.listenerLiveEnabled,
+    internalLockEnabled: flags.internalLockEnabled,
+    dryRunEnabled: flags.dryRunEnabled,
+    simulationEnabled: flags.simulationEnabled,
+    demoAccountAllowlist: flags.allowlist,
+    reportedAt: new Date(),
+  };
+  try {
+    await prisma.listenerWorkerStatus.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", ...data },
+      update: data,
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist worker status", {
+      error: errMessage(err),
+    });
+  }
+}
+
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "unknown";
@@ -474,6 +508,10 @@ function sleep(ms: number): Promise<void> {
 const manager = new TradovateListenerManager(makeWsFactory());
 
 async function reconcileListeners(): Promise<void> {
+  // Mirror this worker's enforcement env flags into ListenerWorkerStatus so the
+  // web Safety Console can verify broker-write safety. Diagnostics only.
+  await writeListenerWorkerStatus();
+
   const rows = await loadHealthyConnectionRows();
   const { start: plans, skipped } = planListenerStartups(rows, {
     enableLive: ENABLE_LIVE,
