@@ -33,6 +33,10 @@ const DASHBOARD_SRC = readFileSync(
   resolve(__dirname, "../../app/dashboard/_components/command-center/command-center.tsx"),
   "utf8",
 );
+const DATA_HELPERS_SRC = readFileSync(
+  resolve(__dirname, "../../app/dashboard/_components/command-center/data-helpers.ts"),
+  "utf8",
+);
 const DATA_SRC = readFileSync(
   resolve(__dirname, "../../app/dashboard/_components/command-center/data.ts"),
   "utf8",
@@ -109,35 +113,42 @@ describe("source-scan: route auth and ownership", () => {
 describe("source-scan: dashboard shows internal-only copy", () => {
   it("contains 'Guardrail internal lock active'", () => {
     assert.ok(
-      DASHBOARD_SRC.includes("Guardrail internal lock active"),
-      "dashboard must say Guardrail internal lock active",
+      DATA_HELPERS_SRC.includes("Guardrail internal lock active"),
+      "data-helpers must say Guardrail internal lock active (copy lives in deriveBrokerEnforcementNoteCopy)",
     );
   });
 
   it("contains 'Broker enforcement is not active'", () => {
     assert.ok(
-      DASHBOARD_SRC.includes("Broker enforcement is not active"),
-      "dashboard must say broker enforcement is not active",
+      DATA_HELPERS_SRC.includes("Broker enforcement is not active"),
+      "data-helpers must say broker enforcement is not active",
     );
   });
 
   it("contains 'No Tradovate action was sent'", () => {
     assert.ok(
-      DASHBOARD_SRC.includes("No Tradovate action was sent"),
-      "dashboard must explicitly state no Tradovate action was sent",
+      DATA_HELPERS_SRC.includes("No Tradovate action was sent"),
+      "data-helpers must explicitly state no Tradovate action was sent",
     );
   });
 
   it("checks internalLockActive before rendering broker copy", () => {
-    // Find the BrokerEnforcementNote function body — look for the call site
-    // (with open paren), not the import declaration.
-    const internalIdx = DASHBOARD_SRC.indexOf("internalLockActive");
-    const brokerCallIdx = DASHBOARD_SRC.indexOf("deriveBrokerEnforcementCopy(");
-    assert.ok(internalIdx !== -1, "must check internalLockActive");
-    assert.ok(brokerCallIdx !== -1, "must call deriveBrokerEnforcementCopy(");
+    // dashboard delegates to deriveBrokerEnforcementNoteCopy in data-helpers.ts;
+    // verify the wrapper is called from command-center and the internalLockActive
+    // guard lives inside data-helpers.
+    assert.ok(
+      DASHBOARD_SRC.includes("deriveBrokerEnforcementNoteCopy("),
+      "command-center must call deriveBrokerEnforcementNoteCopy()",
+    );
+    // Use the call site ("return deriveBrokerEnforcementCopy(") not the definition
+    // so the index comparison is meaningful.
+    const internalIdx = DATA_HELPERS_SRC.indexOf("if (input.internalLockActive)");
+    const brokerCallIdx = DATA_HELPERS_SRC.indexOf("return deriveBrokerEnforcementCopy(");
+    assert.ok(internalIdx !== -1, "data-helpers must check internalLockActive");
+    assert.ok(brokerCallIdx !== -1, "data-helpers must call deriveBrokerEnforcementCopy(");
     assert.ok(
       internalIdx < brokerCallIdx,
-      "internalLockActive check must appear before deriveBrokerEnforcementCopy call site",
+      "internalLockActive guard must appear before deriveBrokerEnforcementCopy call site in data-helpers",
     );
   });
 

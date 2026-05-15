@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/pill-classes";
 import {
   getTradeCountDisplay,
-  deriveBrokerEnforcementCopy,
+  deriveBrokerEnforcementNoteCopy,
   deriveStaleSyncWarning,
   formatFreshnessLabel,
   deriveFooterCopy,
@@ -822,6 +822,7 @@ function FirmStatusInline({
 
 const BROKER_NOTE_COLOR: Record<string, string> = {
   broker_active: "text-emerald-700",
+  dry_run: "text-blue-600",
   unavailable_permission: "text-amber-700",
   failed: "text-amber-700",
   unavailable_readonly: "text-stone-400",
@@ -830,14 +831,9 @@ const BROKER_NOTE_COLOR: Record<string, string> = {
 
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
-  if (account.internalLockActive) {
-    return (
-      <p className={`mt-0.5 text-[10px] ${BROKER_NOTE_COLOR.internal_only}`}>
-        Guardrail internal lock active · Broker enforcement is not active · No Tradovate action was sent.
-      </p>
-    );
-  }
-  const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus, {
+  const { text, kind } = deriveBrokerEnforcementNoteCopy({
+    internalLockActive: account.internalLockActive,
+    brokerLockStatus: account.brokerLockStatus,
     permissionLevel: account.permissionLevel,
   });
   return (

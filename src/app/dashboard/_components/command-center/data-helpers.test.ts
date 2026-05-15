@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel } from "./data-helpers.ts";
+import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel, deriveBrokerEnforcementNoteCopy } from "./data-helpers.ts";
 import type { AccountStatus, EnforcementMode } from "./types.ts";
 
 function makeAccount(
@@ -524,5 +524,101 @@ describe("deriveTradingPermissionStatus — weekend close", () => {
       isWeekendClose: false,
     });
     assert.equal(result?.headline, "Allowed to trade");
+  });
+});
+
+// ── deriveBrokerEnforcementNoteCopy ──────────────────────────────────────────
+//
+// Verifies copy and visual kind for the combined internalLockActive + brokerLockStatus
+// cases introduced by the Phase 2C-F canary (post-canary dashboard hardening).
+
+describe("deriveBrokerEnforcementNoteCopy — internalLockActive=true", () => {
+  it("internal lock + broker_locked → confirmed text, broker_active kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      result.text.includes("Broker enforcement confirmed"),
+      `expected confirmed text, got: ${result.text}`,
+    );
+    assert.equal(result.kind, "broker_active");
+  });
+
+  it("internal lock + broker_locked → does NOT say 'No Tradovate action was sent'", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      !result.text.includes("No Tradovate action was sent"),
+      `must not claim no action was sent when broker_locked: ${result.text}`,
+    );
+  });
+
+  it("internal lock + dry_run → test mode text, dry_run kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "dry_run",
+    });
+    assert.ok(
+      result.text.includes("Protection test mode"),
+      `expected test mode text, got: ${result.text}`,
+    );
+    assert.equal(result.kind, "dry_run");
+    assert.ok(
+      !result.text.includes("No Tradovate action was sent"),
+      `dry_run message should not say 'No Tradovate action was sent'`,
+    );
+  });
+
+  it("internal lock + null → internal_only kind, no action text", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: null,
+    });
+    assert.equal(result.kind, "internal_only");
+    assert.ok(
+      result.text.includes("No Tradovate action was sent"),
+      `expected no-action text for null status, got: ${result.text}`,
+    );
+  });
+
+  it("internal lock + broker_lock_failed → internal_only kind (not broker_active)", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_lock_failed",
+    });
+    assert.equal(result.kind, "internal_only");
+  });
+});
+
+describe("deriveBrokerEnforcementNoteCopy — internalLockActive=false", () => {
+  it("no internal lock + broker_locked → delegates to deriveBrokerEnforcementCopy, broker_active kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.equal(result.kind, "broker_active");
+    assert.ok(
+      result.text.includes("Broker-side lock active"),
+      `expected broker-side lock text, got: ${result.text}`,
+    );
+  });
+
+  it("no internal lock + null → internal_only kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: null,
+    });
+    assert.equal(result.kind, "internal_only");
+  });
+
+  it("no internal lock + dry_run → dry_run kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "dry_run",
+    });
+    assert.equal(result.kind, "dry_run");
   });
 });

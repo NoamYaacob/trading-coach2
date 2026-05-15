@@ -96,6 +96,19 @@ const TIER_LABEL: Record<string, string> = {
   lockdown:     "Lockdown",
 };
 
+// Phase 2C listener-path broker enforcement interventions store the
+// BrokerLockStatus value directly in outcome (not the "action:tier" format).
+const BROKER_OUTCOME_LABEL: Record<string, string> = {
+  broker_locked:           "Broker enforcement confirmed",
+  dry_run:                 "Protection test mode — write simulated",
+  broker_lock_failed:      "Broker enforcement failed",
+  monitoring_only:         "Internal lock only — no broker action",
+  unavailable_read_only:   "Broker lock unavailable — read-only connection",
+  unavailable_permission:  "Broker lock unavailable — permission missing",
+  pending:                 "Broker enforcement pending",
+  not_requested:           "Broker enforcement not requested",
+};
+
 const TRIGGER_LABEL: Record<string, string> = {
   daily_loss_limit:           "Daily loss limit",
   consecutive_losses:         "Consecutive losses",
@@ -617,18 +630,34 @@ export function AccountCard({
                 const { tier } = parseOutcome(item.outcome);
                 const isHardStop = tier === "lockdown" || tier === "cooldown";
                 const isWarn = tier === "hard_warning" || tier === "soft_warning";
-                const borderBg = isHardStop
-                  ? "border-red-200 bg-red-50"
-                  : isWarn
-                    ? "border-amber-200 bg-amber-50"
-                    : "border-stone-200 bg-stone-50";
+                // Phase 2C listener-path broker enforcement rows are identified
+                // by listenerBrokerDedupKey and store BrokerLockStatus in outcome.
+                const isBrokerEnforcement = item.listenerBrokerDedupKey != null;
+                const isBrokerConfirmed = item.brokerLockStatus === "broker_locked";
+                const borderBg = isBrokerConfirmed
+                  ? "border-emerald-200 bg-emerald-50"
+                  : isHardStop
+                    ? "border-red-200 bg-red-50"
+                    : isWarn
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-stone-200 bg-stone-50";
+                // Human-readable label: tier format for Phase 2A/B, broker map for Phase 2C.
+                const outcomeLabel = tier
+                  ? (TIER_LABEL[tier] ?? tier)
+                  : (BROKER_OUTCOME_LABEL[item.outcome] ?? item.outcome);
+                // When the intervention is a historical broker enforcement but the
+                // account is no longer locked (riskState != STOPPED), note it.
+                const isHistoricalBrokerLock =
+                  isBrokerEnforcement &&
+                  isBrokerConfirmed &&
+                  sessionState?.riskState !== "STOPPED";
 
                 return (
                   <div key={item.id} className={`rounded-xl border px-4 py-3 text-sm ${borderBg}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="grid gap-0.5">
                         <p className="font-medium text-stone-950">
-                          {tier ? (TIER_LABEL[tier] ?? tier) : item.outcome}
+                          {outcomeLabel}
                           <span className="font-normal text-stone-500">
                             {" · "}
                             {TRIGGER_LABEL[item.triggerType] ??
@@ -638,13 +667,22 @@ export function AccountCard({
                         {item.message ? (
                           <p className="text-stone-600">{item.message}</p>
                         ) : null}
-                        {item.sentAt ? (
+                        {isHistoricalBrokerLock ? (
+                          <p className="text-xs text-stone-400">
+                            Audit record — Guardrail lock has since been reset. Tradovate auto-clears at next session open.
+                          </p>
+                        ) : item.sentAt ? (
                           <p className="text-xs text-stone-400">
                             Telegram sent {shortDate(item.sentAt)}
                           </p>
                         ) : (
                           <p className="text-xs text-stone-400">Telegram not sent</p>
                         )}
+                        {isBrokerEnforcement ? (
+                          <p className="mt-0.5 font-mono text-[10px] text-stone-400 break-all">
+                            ID …{item.id.slice(-10)} · {item.listenerBrokerDedupKey}
+                          </p>
+                        ) : null}
                       </div>
                       <p className="shrink-0 text-xs text-stone-400">
                         {shortDate(item.createdAt)}

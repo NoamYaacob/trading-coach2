@@ -344,6 +344,48 @@ export function deriveBrokerEnforcementCopy(
   }
 }
 
+/**
+ * Derive the enforcement note for a locked account row, handling the combined
+ * case where both an internal app lock and a broker enforcement record exist.
+ *
+ * When `internalLockActive=true`, the internal lock is the primary state.
+ * If a broker write was also confirmed (`broker_locked`), or simulated
+ * (`dry_run`), that fact is surfaced in the note so operators don't conclude
+ * "no Tradovate action was sent" based on internal_only styling alone.
+ *
+ * Only called when `account.status === "locked"`. Historical broker_locked
+ * records on non-locked accounts are shown in the account card intervention
+ * log, not in the dashboard row note.
+ */
+export function deriveBrokerEnforcementNoteCopy(input: {
+  internalLockActive: boolean;
+  brokerLockStatus: BrokerLockStatus | null;
+  permissionLevel?: string | null;
+}): BrokerEnforcementCopy {
+  if (input.internalLockActive) {
+    switch (input.brokerLockStatus) {
+      case "broker_locked":
+        return {
+          text: "Guardrail internal lock active · Broker enforcement confirmed · Tradovate risk settings applied.",
+          kind: "broker_active",
+        };
+      case "dry_run":
+        return {
+          text: "Guardrail internal lock active · Protection test mode · No Tradovate write was sent.",
+          kind: "dry_run",
+        };
+      default:
+        return {
+          text: "Guardrail internal lock active · Broker enforcement is not active · No Tradovate action was sent.",
+          kind: "internal_only",
+        };
+    }
+  }
+  return deriveBrokerEnforcementCopy(input.brokerLockStatus, {
+    permissionLevel: input.permissionLevel,
+  });
+}
+
 // ── Flatten enforcement note ──────────────────────────────────────────────────
 
 export type FlattenCopy = {
