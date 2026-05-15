@@ -8,7 +8,7 @@
  *   - No flatten, cancel orders, or broker write calls
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import {
   evaluateDryRunRules,
   type DryRunRuleInput,
