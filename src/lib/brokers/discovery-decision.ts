@@ -23,7 +23,16 @@ export type LocalAccountForReconciliation = {
 
 export type ReconcileDecision = {
   /** Existing rows whose broker presence was confirmed; clear missing if set. */
-  matched: { id: string; clearMissing: boolean }[];
+  matched: {
+    id: string;
+    clearMissing: boolean;
+    /**
+     * The brokerConnectionId the account currently holds in the DB.
+     * Used by the persistence layer to decide whether to overwrite the FK:
+     * only overwrite when null or already pointing at the same connection.
+     */
+    currentBrokerConnectionId: string | null;
+  }[];
   /** Broker entries with no matching local row — must be created as pending. */
   newAccounts: DiscoveredAccount[];
   /** Local rows tied to this connection that the broker no longer returns. */
@@ -76,12 +85,12 @@ export function decideReconciliation(input: {
   for (const d of discovered) {
     const existing = localByExternalId.get(norm(d.externalAccountId));
     if (existing) {
-      // Always tie the row to the current connection (so future syncs reconcile
-      // it correctly), but only clear missingFromBrokerSince when the broker
-      // has the account ACTIVE again.
+      // Carry through the current FK so the persistence layer can decide
+      // whether to overwrite it (only safe when null or same connection).
       matched.push({
         id: existing.id,
         clearMissing: d.active && existing.missingFromBrokerSince != null,
+        currentBrokerConnectionId: existing.brokerConnectionId,
       });
     } else if (d.active) {
       // Don't auto-create pending_decision rows for inactive accounts — they're
