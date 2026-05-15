@@ -466,7 +466,7 @@ describe("source-scan: protection-locked banner does not imply trading is locked
   });
 });
 
-describe("source-scan: manage-connection page shows broker enforcement history", () => {
+describe("source-scan: manage-connection page shows broker protection status", () => {
   it("queries GuardianIntervention with listenerBrokerDedupKey filter", () => {
     assert.ok(
       ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
@@ -474,70 +474,108 @@ describe("source-scan: manage-connection page shows broker enforcement history",
     );
   });
 
-  it("renders a Broker Enforcement History section", () => {
+  it("renders a 'Broker protection status' section (customer-friendly title)", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker Enforcement History"),
-      "edit page must show a 'Broker Enforcement History' section",
+      ACCOUNT_EDIT_SRC.includes("Broker protection status"),
+      "edit page must show 'Broker protection status' — the customer-friendly section title",
+    );
+    assert.ok(
+      !ACCOUNT_EDIT_SRC.includes("Broker Enforcement History"),
+      "edit page must not show the technical 'Broker Enforcement History' title to normal users",
     );
   });
 
-  it("shows 'Historical audit record' label on each enforcement row", () => {
+  it("shows friendly copy for historical broker_locked + riskState not STOPPED", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Historical audit record"),
-      "edit page must label broker enforcement rows as historical audit records",
+      ACCOUNT_EDIT_SRC.includes("Broker protection was tested successfully"),
+      "edit page must show customer-friendly success copy, not technical lock status",
+    );
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("No active Guardrail lock right now"),
+      "edit page must reassure the user there is no active lock",
     );
   });
 
   it("shows 'No active Guardrail lock' badge when riskState is not STOPPED", () => {
     assert.ok(
       ACCOUNT_EDIT_SRC.includes("No active Guardrail lock"),
-      "edit page must show 'No active Guardrail lock' when riskState is not STOPPED",
+      "edit page must show 'No active Guardrail lock' badge when applicable",
     );
   });
 
-  it("shows internalLockEventId in the audit record", () => {
+  it("does not show interventionId/internalLockEventId/dedupKey in the top-level customer view", () => {
+    // Technical IDs must be inside <details> (collapsed), not in the customer-visible header.
+    const detailsStart = ACCOUNT_EDIT_SRC.indexOf("<details");
+    assert.ok(detailsStart !== -1, "technical fields must be inside a <details> element");
+    // The customer-facing section (before <details>) must not contain these raw IDs.
+    const customerSrc = ACCOUNT_EDIT_SRC.slice(0, detailsStart);
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("internalLockEventId"),
-      "edit page must surface internalLockEventId in the broker enforcement history",
+      !customerSrc.includes("Intervention ID:"),
+      "Intervention ID must not appear outside <details>",
     );
-  });
-
-  it("surfaces dedup key for each enforcement row", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
-      "edit page must show the listenerBrokerDedupKey dedup key",
+      !customerSrc.includes("Internal lock ID:"),
+      "Internal lock ID must not appear outside <details>",
     );
-  });
-
-  it("shows explanation that the record does not mean account is currently locked", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("does not mean the account is currently locked by Guardrail"),
-      "edit page must explain the record is historical and not an active lock",
+      !customerSrc.includes("Dedup key:"),
+      "Dedup key must not appear outside <details>",
     );
   });
 
-  it("uses labeled metadata fields — Intervention ID:, Internal lock ID:, Dedup key:", () => {
+  it("technical audit details are inside a collapsed <details> element", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Technical audit details"),
+      "technical fields must be labelled 'Technical audit details' inside <details>",
+    );
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("<details"),
+      "technical fields must be wrapped in a <details> element so they are collapsed by default",
+    );
+  });
+
+  it("technical details include Intervention ID:, Internal lock ID:, Dedup key: inside <details>", () => {
     assert.ok(ACCOUNT_EDIT_SRC.includes("Intervention ID:"), "must label intervention ID field");
     assert.ok(ACCOUNT_EDIT_SRC.includes("Internal lock ID:"), "must label internal lock ID field");
     assert.ok(ACCOUNT_EDIT_SRC.includes("Dedup key:"), "must label dedup key field");
   });
 
-  it("shows 'Demo enforcement test' label for demo accounts", () => {
+  it("internalLockEventId and listenerBrokerDedupKey are surfaced inside technical details", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Demo enforcement test"),
-      "edit page must show a demo label when accountType is demo",
+      ACCOUNT_EDIT_SRC.includes("internalLockEventId"),
+      "edit page must surface internalLockEventId in technical audit details",
+    );
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("listenerBrokerDedupKey"),
+      "edit page must surface listenerBrokerDedupKey in technical audit details",
     );
   });
 
-  it("does not use red or orange styling for the history panel when noActiveLock", () => {
-    // The panel rows must use neutral (stone) borders, not red/amber.
-    // Check the row class does not contain red- or amber- color tokens.
+  it("does not show 'broker locked' in customer-facing copy when lock is historical", () => {
+    // Scan the JSX region between the two comment markers that bracket the customer copy
+    // and the technical <details> block. "Broker lock confirmed" is allowed in the lookup
+    // map (a module-level constant) and inside <details>, but NOT in the rendered
+    // customer-friendly paragraph section.
+    const customerStart = ACCOUNT_EDIT_SRC.indexOf("Customer-friendly copy");
+    const customerEnd = ACCOUNT_EDIT_SRC.indexOf("Technical audit details");
+    assert.ok(
+      customerStart !== -1 && customerEnd !== -1 && customerStart < customerEnd,
+      "file must have Customer-friendly copy and Technical audit details comment markers",
+    );
+    const customerSection = ACCOUNT_EDIT_SRC.slice(customerStart, customerEnd);
+    assert.ok(
+      !customerSection.includes("Broker lock confirmed"),
+      "customer-visible copy must not say 'Broker lock confirmed' — use friendly copy instead",
+    );
+  });
+
+  it("panel uses only neutral styling (no red or amber borders on rows)", () => {
     const panelStart = ACCOUNT_EDIT_SRC.indexOf("BrokerEnforcementHistoryPanel");
     const panelEnd = ACCOUNT_EDIT_SRC.lastIndexOf("BrokerEnforcementHistoryPanel");
     const panelSrc = ACCOUNT_EDIT_SRC.slice(panelStart, panelEnd + 100);
     assert.ok(
       !panelSrc.includes("border-red-") && !panelSrc.includes("border-amber-"),
-      "broker enforcement history panel rows must not use red or amber border styling",
+      "broker protection status panel must not use red or amber border styling",
     );
   });
 });

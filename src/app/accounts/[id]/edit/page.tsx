@@ -560,7 +560,7 @@ export default async function EditAccountPage({
   );
 }
 
-// ── Broker Enforcement History panel ─────────────────────────────────────────
+// ── Broker protection status panel ───────────────────────────────────────────
 
 const BROKER_LOCK_STATUS_LABEL: Record<string, string> = {
   broker_locked: "Broker lock confirmed",
@@ -591,51 +591,70 @@ function BrokerEnforcementHistoryPanel({
   accountType: string;
 }) {
   const noActiveLock = riskState !== "STOPPED";
+  const hasConfirmedLock = records.some((r) => r.brokerLockStatus === "broker_locked");
   const isDemo = accountType === "demo";
+
   return (
     <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-              Broker Enforcement History
-            </p>
-            {isDemo && (
-              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                Demo enforcement test
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-stone-500">
-            This is an audit record from a past{isDemo ? " demo" : ""} enforcement event. It does not mean the account is currently locked by Guardrail.
-          </p>
-        </div>
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+          Broker protection status
+        </p>
         {noActiveLock && (
           <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
             No active Guardrail lock
           </span>
         )}
       </div>
-      <div className="grid gap-3">
-        {records.map((r) => (
-          <div
-            key={r.id}
-            className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid gap-1.5">
-                <p className="font-medium text-stone-900">
-                  {BROKER_LOCK_STATUS_LABEL[r.brokerLockStatus ?? ""] ?? r.brokerLockStatus ?? "Unknown"}
-                  <span className="font-normal text-stone-500">
-                    {" · "}
-                    {r.triggerType.replace(/_/g, " ")}
-                    {r.tradingDay ? ` · ${r.tradingDay}` : ""}
-                  </span>
-                </p>
-                <p className="text-xs text-stone-400">
-                  Historical audit record — Tradovate auto-clears at next session open.
-                </p>
-                <dl className="mt-0.5 grid gap-1 text-xs">
+
+      {/* Customer-friendly copy */}
+      <div className="grid gap-1">
+        {hasConfirmedLock && noActiveLock ? (
+          <>
+            <p className="text-sm text-stone-700">
+              Broker protection was tested successfully{isDemo ? " on this demo account" : ""}.
+            </p>
+            <p className="text-sm text-stone-500">No active Guardrail lock right now.</p>
+          </>
+        ) : hasConfirmedLock ? (
+          <p className="text-sm font-medium text-stone-900">
+            An active broker lock is in effect on this account.
+          </p>
+        ) : (
+          <p className="text-sm text-stone-500">
+            Broker protection has been active on this account.
+          </p>
+        )}
+      </div>
+
+      {/* Technical audit details — collapsed by default */}
+      <details className="mt-4">
+        <summary className="cursor-pointer select-none text-xs font-medium text-stone-400 hover:text-stone-600">
+          Technical audit details
+        </summary>
+        <div className="mt-3 grid gap-3">
+          {records.map((r) => (
+            <div
+              key={r.id}
+              className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <dl className="grid gap-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium text-stone-500">Status:</dt>
+                    <dd className="text-stone-400">
+                      {BROKER_LOCK_STATUS_LABEL[r.brokerLockStatus ?? ""] ??
+                        r.brokerLockStatus ??
+                        "Unknown"}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium text-stone-500">Rule:</dt>
+                    <dd className="text-stone-400">
+                      {r.triggerType.replace(/_/g, " ")}
+                      {r.tradingDay ? ` · ${r.tradingDay}` : ""}
+                    </dd>
+                  </div>
                   <div className="flex gap-2">
                     <dt className="shrink-0 font-medium text-stone-500">Intervention ID:</dt>
                     <dd className="font-mono text-stone-400 break-all">…{r.id.slice(-10)}</dd>
@@ -643,28 +662,32 @@ function BrokerEnforcementHistoryPanel({
                   {r.internalLockEventId && (
                     <div className="flex gap-2">
                       <dt className="shrink-0 font-medium text-stone-500">Internal lock ID:</dt>
-                      <dd className="font-mono text-stone-400 break-all">…{r.internalLockEventId.slice(-10)}</dd>
+                      <dd className="font-mono text-stone-400 break-all">
+                        …{r.internalLockEventId.slice(-10)}
+                      </dd>
                     </div>
                   )}
                   {r.listenerBrokerDedupKey && (
                     <div className="flex gap-2">
                       <dt className="shrink-0 font-medium text-stone-500">Dedup key:</dt>
-                      <dd className="font-mono text-stone-400 break-all">{r.listenerBrokerDedupKey}</dd>
+                      <dd className="font-mono text-stone-400 break-all">
+                        {r.listenerBrokerDedupKey}
+                      </dd>
                     </div>
                   )}
                 </dl>
+                <p className="shrink-0 text-xs text-stone-400">
+                  {new Date(r.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </p>
               </div>
-              <p className="shrink-0 text-xs text-stone-400">
-                {new Date(r.createdAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }
