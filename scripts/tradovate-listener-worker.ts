@@ -591,7 +591,16 @@ async function reconcileListeners(): Promise<void> {
         }
         if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
           void applyInternalLockForConnection(connectionId).catch((err) => {
-            console.warn("[listener-worker] internal lock error", { connectionId, err });
+            // Surface the full error so migration/schema failures are visible in logs.
+            // A PrismaClientKnownRequestError here most likely means the
+            // activeDedupKey column does not exist — migration not deployed.
+            console.error("[listener-worker] internal lock error — check if migration 20260522000000 is deployed", {
+              connectionId,
+              errorName: err instanceof Error ? err.name : typeof err,
+              errorMessage: err instanceof Error ? err.message : String(err),
+              // Prisma error code if present (e.g. P2022 = unknown column)
+              errorCode: (err as { code?: string }).code ?? null,
+            });
           });
         }
       },
