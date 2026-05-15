@@ -22,6 +22,13 @@ export type BrokerListenerStatusData = {
   listenerLastCloseCode: number | null;
   /** WebSocket close reason from the most recent close (BrokerConnection.listenerLastCloseReason). */
   listenerLastCloseReason: string | null;
+  /**
+   * OAuth / connection health status (BrokerConnection.connectionStatus).
+   * "expired" and "connection_error" short-circuit to a re-authorize label —
+   * these states mean the OAuth grant is dead, not just that the listener is
+   * temporarily offline.
+   */
+  connectionStatus: string | null;
   /** Whether the account has max position size configured. */
   hasMaxPositionSize: boolean;
   /** Whether raw broker hard limit mode is enabled for this account. */
@@ -71,7 +78,19 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
     lastSyncAt,
     listenerLastCloseCode,
     listenerLastCloseReason,
+    connectionStatus,
   } = data;
+
+  // ── Dead OAuth grant — short-circuit before any listener checks ───────────
+  // "expired" and "connection_error" mean the OAuth grant is dead and must be
+  // re-authorized. These accounts must never borrow a Live label from another
+  // connection — they need the user to act, not to look healthy.
+  if (connectionStatus === "expired") {
+    return { label: "Expired — re-authorize", isLive: false, isStale: true, isReconnecting: false };
+  }
+  if (connectionStatus === "connection_error") {
+    return { label: "Connection error — re-authorize", isLive: false, isStale: true, isReconnecting: false };
+  }
 
   // ── Live listener ──────────────────────────────────────────────────────────
   if (listenerStatus === "connected") {

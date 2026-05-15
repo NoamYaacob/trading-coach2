@@ -428,15 +428,23 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       // point to an older OAuth grant whose listener is closed, while a newer
       // connection for the same env has the active listener. Prefer the active
       // connection's listener fields so the dashboard shows Live when applicable.
+      //
+      // Exception: expired / connection_error connections have a dead OAuth grant.
+      // They must never borrow a Live heartbeat from another connection — they need
+      // re-authorization, and borrowing would mask that need entirely.
       ...(() => {
         const direct = account.brokerConnection;
         const directStatus = direct?.listenerStatus ?? null;
+        const directOAuthDead =
+          direct?.connectionStatus === "expired" ||
+          direct?.connectionStatus === "connection_error";
         const isDirectActive =
-          directStatus === "connected" ||
-          directStatus === "connecting" ||
-          directStatus === "reconnecting";
+          !directOAuthDead &&
+          (directStatus === "connected" ||
+            directStatus === "connecting" ||
+            directStatus === "reconnecting");
         const effective =
-          isDirectActive || !direct?.env
+          isDirectActive || !direct?.env || directOAuthDead
             ? direct
             : (activeListenerByEnv.get(direct.env) ?? direct);
         return {

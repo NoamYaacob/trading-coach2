@@ -21,6 +21,7 @@ function makeData(overrides: Partial<BrokerListenerStatusData> = {}): BrokerList
     lastSyncAt: null,
     listenerLastCloseCode: null,
     listenerLastCloseReason: null,
+    connectionStatus: null,
     hasMaxPositionSize: false,
     rawBrokerHardLimitEnabled: false,
     ...overrides,
@@ -332,6 +333,21 @@ describe("data.ts: active listener fallback for stale brokerConnectionId", () =>
       "must short-circuit fallback when direct connection is already active",
     );
   });
+
+  it("never borrows env fallback for expired or connection_error direct connections", () => {
+    assert.ok(
+      DATA_SRC.includes("directOAuthDead"),
+      "must guard env fallback with a dead-OAuth check",
+    );
+    assert.ok(
+      DATA_SRC.includes('"expired"') && DATA_SRC.includes('"connection_error"'),
+      "must check for both expired and connection_error connectionStatus values",
+    );
+    // The guard must appear before the effective assignment
+    const guardIdx = DATA_SRC.indexOf("directOAuthDead");
+    const effectiveIdx = DATA_SRC.indexOf("activeListenerByEnv.get");
+    assert.ok(guardIdx < effectiveIdx, "OAuth-dead guard must precede the env fallback lookup");
+  });
 });
 
 const COMPONENT_SRC = readFileSync(
@@ -365,6 +381,163 @@ describe("BrokerListenerStatus component copy: enforcement framing", () => {
     assert.ok(
       COMPONENT_SRC.includes("counts all contracts equally"),
       "raw mode must warn about equal counting",
+    );
+  });
+});
+
+// ── Expired / connection_error OAuth guard ────────────────────────────────────
+
+describe("computeListenerFreshness: expired connection", () => {
+  it("connectionStatus=expired → label is 'Expired — re-authorize'", () => {
+    const result = computeListenerFreshness(
+      makeData({ connectionStatus: "expired" }),
+    );
+    assert.equal(result.label, "Expired — re-authorize");
+    assert.equal(result.isLive, false);
+    assert.equal(result.isStale, true);
+    assert.equal(result.isReconnecting, false);
+  });
+
+  it("expired + borrowed listenerStatus=connected → still shows Expired, not Live", () => {
+    // Regression guard: even if the env fallback was accidentally applied, an
+    // expired connectionStatus must win and prevent a Live label.
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: "expired",
+        listenerStatus: "connected",
+        listenerLastHeartbeatAt: new Date(Date.now() - 5_000),
+      }),
+    );
+    assert.equal(result.label, "Expired — re-authorize", "must not show Live for expired connection");
+    assert.equal(result.isLive, false);
+  });
+
+  it("expired + recent heartbeat → still shows Expired, not Live", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: "expired",
+        listenerLastHeartbeatAt: new Date(Date.now() - 3_000),
+        lastSyncAt: new Date(Date.now() - 3_000),
+      }),
+    );
+    assert.equal(result.isLive, false);
+    assert.ok(result.label.includes("Expired"), `expected Expired label, got: "${result.label}"`);
+  });
+
+  it("expired + 1000/Bye close → still shows Expired, not Live · reconnecting", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: "expired",
+        listenerStatus: "closed",
+        listenerLastCloseCode: 1000,
+        listenerLastCloseReason: "Bye",
+        listenerLastHeartbeatAt: new Date(Date.now() - 10_000),
+      }),
+    );
+    assert.equal(result.isLive, false);
+    assert.ok(!result.label.includes("Live"), `must not show Live, got: "${result.label}"`);
+  });
+});
+
+describe("computeListenerFreshness: connection_error", () => {
+  it("connectionStatus=connection_error → label is 'Connection error — re-authorize'", () => {
+    const result = computeListenerFreshness(
+      makeData({ connectionStatus: "connection_error" }),
+    );
+    assert.equal(result.label, "Connection error — re-authorize");
+    assert.equal(result.isLive, false);
+    assert.equal(result.isStale, true);
+    assert.equal(result.isReconnecting, false);
+  });
+
+  it("connection_error + listenerStatus=connected → still shows error label, not Live", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: "connection_error",
+        listenerStatus: "connected",
+        listenerLastHeartbeatAt: new Date(Date.now() - 5_000),
+      }),
+    );
+    assert.equal(result.isLive, false);
+    assert.ok(result.label.includes("Connection error"), result.label);
+  });
+});
+
+describe("computeListenerFreshness: healthy connection not affected", () => {
+  it("null connectionStatus + connected listener → Live (existing behaviour unchanged)", () => {
+    // DEMO7433035 has a healthy direct FK — connectionStatus=null here means
+    // we pass null and the existing live-listener path runs normally.
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: null,
+        listenerStatus: "connected",
+        listenerLastHeartbeatAt: new Date(Date.now() - 5_000),
+      }),
+    );
+    assert.equal(result.isLive, true);
+    assert.ok(result.label.startsWith("Live ·"), result.label);
+  });
+
+  it("connected_readonly connectionStatus + connected listener → Live", () => {
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: "connected_readonly",
+        listenerStatus: "connected",
+        listenerLastHeartbeatAt: new Date(Date.now() - 5_000),
+      }),
+    );
+    assert.equal(result.isLive, true);
+  });
+
+  it("stale FK (null listenerStatus, non-expired) → env fallback path is not blocked", () => {
+    // Accounts with a stale FK but a healthy connectionStatus on the direct
+    // connection should still reach the env-fallback path in data.ts.
+    // This test covers the logic-gate in computeListenerFreshness (the function
+    // itself receives the effective data; it does not re-run the fallback).
+    // A null connectionStatus with a connected effective listener → Live.
+    const result = computeListenerFreshness(
+      makeData({
+        connectionStatus: null,
+        listenerStatus: "connected",
+        listenerLastHeartbeatAt: new Date(Date.now() - 8_000),
+      }),
+    );
+    assert.equal(result.isLive, true, "stale-FK fallback path must still produce Live");
+  });
+});
+
+// ── Source-scan: logic-layer expired guard ────────────────────────────────────
+
+const LOGIC_SRC = readFileSync(
+  resolve(import.meta.dirname, "./broker-listener-status-logic.ts"),
+  "utf8",
+);
+
+describe("broker-listener-status-logic.ts: expired/connection_error guard", () => {
+  it("checks connectionStatus before any listenerStatus branch", () => {
+    const connIdx = LOGIC_SRC.indexOf('connectionStatus === "expired"');
+    const liveIdx = LOGIC_SRC.indexOf('listenerStatus === "connected"');
+    assert.ok(connIdx !== -1 && liveIdx !== -1);
+    assert.ok(connIdx < liveIdx, "expired guard must appear before live-listener branch");
+  });
+
+  it("returns isLive=false for expired", () => {
+    assert.ok(
+      LOGIC_SRC.includes("isLive: false") && LOGIC_SRC.includes('"Expired — re-authorize"'),
+      "expired path must return isLive=false with re-authorize label",
+    );
+  });
+
+  it("returns isStale=true for expired (amber colour, no green dot)", () => {
+    const expiredIdx = LOGIC_SRC.indexOf('"Expired — re-authorize"');
+    const staleSegment = LOGIC_SRC.slice(expiredIdx, expiredIdx + 100);
+    assert.ok(staleSegment.includes("isStale: true"), "expired must set isStale=true for amber colour");
+  });
+
+  it("returns isLive=false for connection_error", () => {
+    assert.ok(
+      LOGIC_SRC.includes('"Connection error — re-authorize"'),
+      "connection_error path must return re-authorize label",
     );
   });
 });

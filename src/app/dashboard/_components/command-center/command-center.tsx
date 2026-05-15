@@ -927,7 +927,9 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
               </p>
             )}
             {!account.breachReason && !account.setupNeededReason && (
-              account.listenerStatus != null ? (
+              (account.listenerStatus != null ||
+                account.connectionStatus === "expired" ||
+                account.connectionStatus === "connection_error") ? (
                 <div className="mt-0.5">
                   <BrokerListenerStatus
                     data={{
@@ -937,6 +939,7 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
                       lastSyncAt: account.lastSyncAt,
                       listenerLastCloseCode: account.listenerLastCloseCode,
                       listenerLastCloseReason: account.listenerLastCloseReason,
+                      connectionStatus: account.connectionStatus,
                       hasMaxPositionSize: account.hasMaxPositionSize,
                       rawBrokerHardLimitEnabled: account.rawBrokerHardLimitEnabled,
                     }}
