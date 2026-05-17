@@ -91,7 +91,7 @@ const SETUP_NEEDED_REASON_TEXT: Record<
   string
 > = {
   no_rules: "No trading plan assigned",
-  pending_connection: "Awaiting first broker event",
+  pending_connection: "Waiting for first account sync",
   prop_firm_rules_missing: "Enter prop firm limits",
 };
 

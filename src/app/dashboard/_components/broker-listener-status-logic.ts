@@ -97,7 +97,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
     const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
     const agoStr = shortAgo(lastSignal);
     return {
-      label: agoStr ? `Live monitoring · ${agoStr}` : "Live monitoring · waiting for first event",
+      label: agoStr ? `Live monitoring · ${agoStr}` : "Live monitoring · waiting for first activity",
       isLive: true,
       isStale: false,
       isReconnecting: false,
@@ -160,7 +160,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
   }
 
   return {
-    label: isStale ? `Stale · ${agoStr}` : `Fallback sync · ${agoStr}`,
+    label: isStale ? `Stale · ${agoStr}` : `Synced · ${agoStr}`,
     isLive: false,
     isStale,
     isReconnecting: false,

@@ -144,7 +144,7 @@ describe("computeListenerFreshness: fallback (no listener)", () => {
     );
     assert.equal(result.isLive, false);
     assert.equal(result.isReconnecting, false);
-    assert.ok(result.label.includes("Fallback sync"), result.label);
+    assert.ok(result.label.includes("Synced"), result.label);
   });
 
   it("falls back to lastSyncAt when listenerStatus is 'closed'", () => {
@@ -153,7 +153,7 @@ describe("computeListenerFreshness: fallback (no listener)", () => {
     );
     assert.equal(result.isLive, false);
     assert.equal(result.isReconnecting, false);
-    assert.ok(result.label.includes("Fallback sync"), result.label);
+    assert.ok(result.label.includes("Synced"), result.label);
   });
 
   it("isStale=false when lastSyncAt is recent", () => {
@@ -161,7 +161,7 @@ describe("computeListenerFreshness: fallback (no listener)", () => {
       makeData({ lastSyncAt: new Date(Date.now() - 2 * 60_000) }), // 2m ago
     );
     assert.equal(result.isStale, false);
-    assert.ok(result.label.includes("Fallback sync"), result.label);
+    assert.ok(result.label.includes("Synced"), result.label);
   });
 
   it("isStale=true when lastSyncAt is overdue (>5 min)", () => {
@@ -182,8 +182,8 @@ describe("computeListenerFreshness: fallback (no listener)", () => {
 // ── Core regression: connected + recent heartbeat ────────────────────────────────
 
 describe("computeListenerFreshness: connected + recent heartbeat/event", () => {
-  it("listenerStatus='connected' + recent heartbeat → Live monitoring · Xs ago (not Fallback sync)", () => {
-    // Regression: DEMO7433035 showed "Fallback sync · 13s ago" even with an active
+  it("listenerStatus='connected' + recent heartbeat → Live monitoring · Xs ago (not Synced)", () => {
+    // Regression: DEMO7433035 showed "Synced · 13s ago" even with an active
     // listener. Ensure "connected" + recent heartbeat always returns isLive=true.
     const result = computeListenerFreshness(
       makeData({
@@ -194,10 +194,10 @@ describe("computeListenerFreshness: connected + recent heartbeat/event", () => {
         lastSyncAt: new Date(Date.now() - 13_000),
       }),
     );
-    assert.equal(result.isLive, true, "must be Live, not Fallback sync");
+    assert.equal(result.isLive, true, "must be Live, not Synced");
     assert.equal(result.isStale, false);
     assert.ok(result.label.startsWith("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
-    assert.ok(!result.label.includes("Fallback"), `must not say Fallback, got: "${result.label}"`);
+    assert.ok(!result.label.includes("Synced"), `must not say Synced, got: "${result.label}"`);
   });
 
   it("listenerStatus='connected' + recent event → Live monitoring · Xs ago", () => {
@@ -231,10 +231,10 @@ describe("computeListenerFreshness: closed after graceful 1000/Bye with recent h
     assert.equal(result.isReconnecting, true);
     assert.equal(result.isStale, false);
     assert.ok(result.label.startsWith("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
-    assert.ok(!result.label.includes("Fallback"), `must not say Fallback, got: "${result.label}"`);
+    assert.ok(!result.label.includes("Synced"), `must not say Synced, got: "${result.label}"`);
   });
 
-  it("closed + code=1000 + reason='Bye' + stale heartbeat (>90s) → Fallback sync", () => {
+  it("closed + code=1000 + reason='Bye' + stale heartbeat (>90s) → Synced or Stale", () => {
     const result = computeListenerFreshness(
       makeData({
         listenerStatus: "closed",
@@ -262,7 +262,7 @@ describe("computeListenerFreshness: closed after graceful 1000/Bye with recent h
     assert.equal(result.isLive, false);
   });
 
-  it("closed + no close code + recent heartbeat → falls to Fallback sync, not Live", () => {
+  it("closed + no close code + recent heartbeat → falls to Synced, not Live", () => {
     const result = computeListenerFreshness(
       makeData({
         listenerStatus: "closed",
