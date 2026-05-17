@@ -285,7 +285,14 @@ export function AccountRulesForm({
       rulesLock?: { applied: boolean; message?: string; effectiveDate?: string };
       error?: string;
     };
-    if (!res.ok) throw new Error(data.error ?? "Failed to save.");
+    if (!res.ok) {
+      if (res.status === 423) {
+        throw new Error(
+          "Rules are locked — protection is active on this account. Changes are blocked until the lock clears.",
+        );
+      }
+      throw new Error(data.error ?? "Failed to save.");
+    }
     return data;
   }
 

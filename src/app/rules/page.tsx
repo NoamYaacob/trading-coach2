@@ -428,8 +428,12 @@ export default async function RulesPage({
                       selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
                   })}
                   initial={accountInitial}
-                  isLocked={!ruleEditEligibility.canEditNow}
-                  lockMessage={accountRuleLockMessage}
+                  isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending}
+                  lockMessage={
+                    accountIsLockedForPending
+                      ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
+                      : accountRuleLockMessage
+                  }
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
                   canApplyPendingNow={accountCanApplyPendingNow}
