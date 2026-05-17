@@ -119,6 +119,11 @@ export type TradovateUserSyncListenerConfig = {
     lastFrameAt: Date | null;
   }) => void;
   /**
+   * Fires on both the initial connect and every subsequent reconnect.
+   * `isReconnect` is true when this is not the first connect since `.start()`.
+   */
+  onReady?: (info: { isReconnect: boolean }) => void;
+  /**
    * Called whenever any props event arrives (for broad subscription). */
   onPropsEvent?: (props: TradovatePropsEventData) => void;
   /** Called when the listener transitions to a new state. */
@@ -445,9 +450,11 @@ export class TradovateUserSyncListener {
             connectionId: this.#config.connectionId,
             phase: "ready",
           });
+          const isReconnect = this.#reconnectAttempt > 0;
           this.#setState("ready");
           this.#pendingSyncId = null;
           this.#reconnectAttempt = 0; // successful connection — reset backoff
+          this.#config.onReady?.({ isReconnect });
         } else {
           console.warn("[TradovateUserSyncListener] user/syncrequest failed", {
             connectionId: this.#config.connectionId,

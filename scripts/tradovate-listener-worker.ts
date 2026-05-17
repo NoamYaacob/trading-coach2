@@ -51,6 +51,10 @@ import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry
 import { applyInternalLockForConnection } from "../src/lib/guardian-engine/internal-lock-evaluator-db.ts";
 import { maybeAttemptBrokerDailyLossLockoutForInternalLock } from "../src/lib/guardian-engine/broker-enforcement-service.ts";
 import { readEnforcementFlagsFromEnv } from "../src/lib/safety-console-helpers.ts";
+import {
+  reconcileConnectionAccounts,
+  writeReconciliationResult,
+} from "../src/lib/brokers/tradovate-listener-reconciliation.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -412,6 +416,30 @@ function errMessage(err: unknown): string {
   return "unknown";
 }
 
+async function reconcileAndPersist(
+  connectionId: string,
+  userId: string,
+  isReconnect: boolean,
+): Promise<void> {
+  const trigger = isReconnect ? "reconnect" : "initial_connect";
+  try {
+    const result = await reconcileConnectionAccounts(connectionId, userId);
+    await writeReconciliationResult(connectionId, trigger, result);
+    console.info("[listener-worker] reconciliation complete", {
+      connectionId,
+      trigger,
+      status: result.status,
+      accountCount: result.accountCount,
+    });
+  } catch (err) {
+    console.error("[listener-worker] reconciliation error", {
+      connectionId,
+      trigger,
+      error: errMessage(err),
+    });
+  }
+}
+
 function safeUrlHost(url: string): string {
   try { return new URL(url).host; } catch { return url; }
 }
@@ -717,6 +745,9 @@ async function reconcileListeners(): Promise<void> {
             phase: "ws_closed",
           },
         );
+      },
+      onReady: (connectionId, info) => {
+        void reconcileAndPersist(connectionId, plan.userId, info.isReconnect);
       },
     });
 

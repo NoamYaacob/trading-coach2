@@ -83,6 +83,8 @@ export type ManagedListenerConfig = {
       lastFrameAt: Date | null;
     },
   ) => void;
+  /** Called when the listener reaches "ready" state (initial connect or reconnect). */
+  onReady?: (connectionId: string, info: { isReconnect: boolean }) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -148,6 +150,9 @@ export class TradovateListenerManager {
         : undefined,
       onClose: config.onClose
         ? (info) => config.onClose!(config.connectionId, info)
+        : undefined,
+      onReady: config.onReady
+        ? (info) => config.onReady!(config.connectionId, info)
         : undefined,
     });
 

@@ -492,6 +492,65 @@ describe("TradovateUserSyncListener: reconnect", () => {
   });
 });
 
+// ── onReady callback ─────────────────────────────────────────────────────────
+
+describe("TradovateUserSyncListener: onReady", () => {
+  it("fires with isReconnect=false on initial connect", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+    });
+
+    await listener.start();
+    completeConnect(getWs()!);
+
+    assert.equal(readyCalls.length, 1);
+    assert.equal(readyCalls[0]!.isReconnect, false);
+    listener.close();
+  });
+
+  it("fires with isReconnect=true after a reconnect", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+      baseReconnectDelayMs: 5,
+      maxReconnectDelayMs: 10,
+    });
+
+    await listener.start();
+    completeConnect(getWs()!);
+    assert.equal(readyCalls[0]!.isReconnect, false);
+
+    // Trigger an abnormal close to initiate reconnect
+    getWs()!.triggerClose(1006, "abnormal");
+    // Wait for reconnect timer to fire and new WS to be created
+    await new Promise((r) => setTimeout(r, 50));
+    // requestIdCounter persists across reconnects: initial connect used IDs 1+2, reconnect uses 3+4
+    completeConnect(getWs()!, 3, 4);
+
+    assert.equal(readyCalls.length, 2);
+    assert.equal(readyCalls[1]!.isReconnect, true);
+    listener.close();
+  });
+
+  it("does not fire when listener is closed before reaching ready", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+    });
+
+    await listener.start();
+    const ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    // auth response not sent — never reaches ready
+    listener.close();
+
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(readyCalls.length, 0);
+  });
+});
+
 // ── Post-ready frame lifecycle ───────────────────────────────────────────────
 
 describe("TradovateUserSyncListener: post-ready frame lifecycle", () => {

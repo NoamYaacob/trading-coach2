@@ -62,6 +62,11 @@ export default async function SafetyConsolePage() {
           listenerErrorMessage: true,
           tokenExpiresAt: true,
           lastRenewError: true,
+          lastReconciliationAt: true,
+          lastReconciliationTrigger: true,
+          lastReconciliationStatus: true,
+          lastReconciliationError: true,
+          lastReconciledAccountCount: true,
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -257,6 +262,15 @@ export default async function SafetyConsolePage() {
     tokenExpired: c.tokenExpiresAt !== null && c.tokenExpiresAt.getTime() < now.getTime(),
     lastRenewError: c.lastRenewError,
     isRolloutRelevant: rolloutRelevantByConnection.get(c.id) ?? false,
+    lastReconciliationAt: c.lastReconciliationAt?.toISOString() ?? null,
+    lastReconciliationTrigger: c.lastReconciliationTrigger,
+    lastReconciliationStatus: c.lastReconciliationStatus,
+    lastReconciliationError: c.lastReconciliationError,
+    lastReconciledAccountCount: c.lastReconciledAccountCount,
+    reconciliationStale:
+      c.listenerStatus === "connected" &&
+      c.lastReconciliationAt !== null &&
+      now.getTime() - c.lastReconciliationAt.getTime() > 10 * 60_000,
   }));
   const rolloutListeners = listenerRows.filter((r) => r.isRolloutRelevant);
   const otherListeners = listenerRows.filter((r) => !r.isRolloutRelevant);
@@ -541,6 +555,12 @@ function ListenerTable({
     tokenExpired: boolean;
     lastRenewError: string | null;
     isRolloutRelevant: boolean;
+    lastReconciliationAt: string | null;
+    lastReconciliationTrigger: string | null;
+    lastReconciliationStatus: string | null;
+    lastReconciliationError: string | null;
+    lastReconciledAccountCount: number | null;
+    reconciliationStale: boolean;
   }>;
   enableLive: boolean;
 }) {
@@ -596,6 +616,35 @@ function ListenerTable({
               />
               <Row label="lastRenewError" value={r.lastRenewError ?? "—"} />
               <Row label="enableLive" value={String(enableLive)} danger={enableLive} />
+              <Row
+                label="reconciledAt"
+                value={r.lastReconciliationAt ?? "—"}
+                danger={r.reconciliationStale}
+              />
+              <Row
+                label="reconcileTrigger"
+                value={r.lastReconciliationTrigger ?? "—"}
+              />
+              <Row
+                label="reconcileStatus"
+                value={r.lastReconciliationStatus ?? "—"}
+                danger={r.lastReconciliationStatus === "failed"}
+              />
+              <Row
+                label="reconcileAccounts"
+                value={
+                  r.lastReconciledAccountCount !== null
+                    ? String(r.lastReconciledAccountCount)
+                    : "—"
+                }
+              />
+              {r.lastReconciliationError && (
+                <Row
+                  label="reconcileError"
+                  value={r.lastReconciliationError}
+                  danger
+                />
+              )}
             </dl>
           </div>
         );

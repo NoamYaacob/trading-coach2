@@ -416,6 +416,15 @@ model BrokerConnection {
   // Last authorize-response status observed on this connection (200 = ok,
   // 401 = rejected). Diagnostic only — never written for non-authorize frames.
   listenerLastAuthStatus  Int?
+  // Reconnect reconciliation — written by the listener-worker after each
+  // listener-ready event (initial connect and reconnects). Shows whether
+  // fill/trade state was successfully recovered after a WebSocket gap.
+  // Diagnostics only: nothing in the enforcement path reads these fields.
+  lastReconciliationAt          DateTime?
+  lastReconciliationTrigger     String?   // "initial_connect" | "reconnect"
+  lastReconciliationStatus      String?   // "success" | "skipped" | "failed"
+  lastReconciliationError       String?
+  lastReconciledAccountCount    Int?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 

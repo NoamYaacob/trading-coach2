@@ -327,4 +327,15 @@ describe("TradovateListenerManager source: log safety", () => {
   it("manager has closeAll for clean shutdown", () => {
     assert.ok(MANAGER_SRC.includes("closeAll"), "manager must have closeAll for process exit");
   });
+
+  it("manager passes onReady through to the underlying listener", () => {
+    assert.ok(
+      MANAGER_SRC.includes("onReady"),
+      "ManagedListenerConfig must declare onReady",
+    );
+    assert.ok(
+      MANAGER_SRC.includes("config.onReady"),
+      "startListener must forward config.onReady to listener",
+    );
+  });
 });
