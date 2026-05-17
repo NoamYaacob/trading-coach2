@@ -298,3 +298,155 @@ export function deriveOverallSeverity(alerts: SafetyAlert[]): SafetyAlertSeverit
   if (alerts.length > 0) return "info";
   return "safe";
 }
+
+// ── Rollout readiness ─────────────────────────────────────────────────────────
+
+/**
+ * Per-account data needed to evaluate rollout readiness.
+ * Supplied by the page from DB query results + listener state.
+ */
+export type RolloutAccountInput = {
+  accountId: string;
+  label: string;
+  connectionEnv: string | null;
+  isInAllowlist: boolean;
+  activeLockCount: number;
+  /** Count of GuardianIntervention rows with brokerLockStatus="broker_lock_failed". */
+  brokerLockFailedCount: number;
+  /** BrokerConnection.listenerStatus for this account's connection. */
+  listenerStatus: string | null;
+  /** BrokerConnection.lastReconciliationStatus. */
+  lastReconciliationStatus: string | null;
+};
+
+export type RolloutCheckItem = {
+  label: string;
+  pass: boolean;
+  /**
+   * When true, a failing check produces "blocked" rather than "needs_review".
+   * A check with pass=true never contributes to the status regardless of this field.
+   */
+  blocking: boolean;
+};
+
+export type RolloutReadinessStatus = "ready" | "needs_review" | "blocked";
+
+export type RolloutReadiness = {
+  accountId: string;
+  accountLabel: string;
+  status: RolloutReadinessStatus;
+  checks: RolloutCheckItem[];
+};
+
+/**
+ * Derive rollout readiness for a single account.
+ *
+ * Status rules (evaluated in order):
+ *   blocked      — any check where blocking=true fails
+ *   needs_review — any check where blocking=false fails (and not blocked)
+ *   ready        — all checks pass
+ *
+ * Advisory only — does not enable enforcement or trigger broker actions.
+ */
+export function deriveRolloutReadiness(input: {
+  account: RolloutAccountInput;
+  listenerFlags: EnforcementFlags | null;
+}): RolloutReadiness {
+  const { account, listenerFlags } = input;
+  const flagsKnown = listenerFlags !== null;
+
+  // listener.status blocking tier: "closed" or "error" → blocked; anything
+  // other than "connected" (including null / "reconnecting") → needs_review.
+  const listenerConnected = account.listenerStatus === "connected";
+  const listenerHardFail =
+    account.listenerStatus === "closed" || account.listenerStatus === "error";
+
+  // reconciliation tier: "failed" → blocked; null/"skipped" → needs_review.
+  const reconOk = account.lastReconciliationStatus === "success";
+  const reconFailed = account.lastReconciliationStatus === "failed";
+
+  const checks: RolloutCheckItem[] = [
+    {
+      label: "Account in demo allowlist",
+      pass: account.isInAllowlist,
+      blocking: false,
+    },
+    {
+      label: "Connection env is demo (not live)",
+      pass: account.connectionEnv === "demo",
+      blocking: true,
+    },
+    {
+      label: "Listener-worker env verified",
+      pass: flagsKnown,
+      blocking: false,
+    },
+    {
+      label: "BROKER_ENFORCEMENT_ENABLED=false",
+      // When flags unknown: cannot verify — mark not-passing so needs_review
+      // surfaces from the "env verified" check above.
+      pass: flagsKnown ? !listenerFlags!.brokerEnforcementEnabled : false,
+      blocking: flagsKnown && listenerFlags!.brokerEnforcementEnabled,
+    },
+    {
+      label: "ENFORCEMENT_DRY_RUN=true",
+      pass: flagsKnown ? listenerFlags!.dryRunEnabled : false,
+      blocking: false,
+    },
+    {
+      label: "TRADOVATE_LISTENER_ENABLE_LIVE=false",
+      pass: flagsKnown ? !listenerFlags!.listenerLiveEnabled : false,
+      blocking: flagsKnown && listenerFlags!.listenerLiveEnabled,
+    },
+    {
+      label: "GUARDRAIL_INTERNAL_LOCK_ENABLED=false",
+      pass: flagsKnown ? !listenerFlags!.internalLockEnabled : false,
+      blocking: false,
+    },
+    {
+      label: "listener.status=connected",
+      pass: listenerConnected,
+      blocking: listenerHardFail,
+    },
+    {
+      label: "Reconciliation status=success",
+      pass: reconOk,
+      blocking: reconFailed,
+    },
+    {
+      label: "No active internal lock",
+      pass: account.activeLockCount === 0,
+      blocking: account.activeLockCount > 0,
+    },
+    {
+      label: "No broker_lock_failed history",
+      pass: account.brokerLockFailedCount === 0,
+      blocking: account.brokerLockFailedCount > 0,
+    },
+  ];
+
+  const isBlocked = checks.some((c) => !c.pass && c.blocking);
+  if (isBlocked) {
+    return {
+      accountId: account.accountId,
+      accountLabel: account.label,
+      status: "blocked",
+      checks,
+    };
+  }
+  const needsReview = checks.some((c) => !c.pass && !c.blocking);
+  if (needsReview) {
+    return {
+      accountId: account.accountId,
+      accountLabel: account.label,
+      status: "needs_review",
+      checks,
+    };
+  }
+  return {
+    accountId: account.accountId,
+    accountLabel: account.label,
+    status: "ready",
+    checks,
+  };
+}

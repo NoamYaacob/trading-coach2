@@ -8,11 +8,13 @@ import { isAdminEmail } from "@/lib/subscription";
 import { prisma } from "@/lib/db";
 import {
   deriveOverallSeverity,
+  deriveRolloutReadiness,
   deriveSafetyAlerts,
   isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
   readEnforcementFlagsFromEnv,
   resolveListenerFlags,
+  type RolloutReadiness,
   type SafetyAlert,
   type SafetyAlertSeverity,
 } from "@/lib/safety-console-helpers";
@@ -250,6 +252,54 @@ export default async function SafetyConsolePage() {
 
   const overallSeverity = deriveOverallSeverity(alerts);
 
+  // ── Rollout readiness ────────────────────────────────────────────────────────
+  // Index broker connection listener/reconciliation state by accountId so we
+  // can look up each account's connection status in O(1).
+  const connectionByAccountId = new Map<
+    string,
+    { listenerStatus: string | null; lastReconciliationStatus: string | null }
+  >();
+  for (const a of accounts) {
+    if (!a.brokerConnectionId) continue;
+    const conn = brokerConnections.find((c) => c.id === a.brokerConnectionId);
+    if (conn) {
+      connectionByAccountId.set(a.id, {
+        listenerStatus: conn.listenerStatus,
+        lastReconciliationStatus: conn.lastReconciliationStatus,
+      });
+    }
+  }
+
+  // Count broker_lock_failed events per account.
+  const brokerLockFailedCountByAccount = new Map<string, number>();
+  for (const h of historicalEnforcements) {
+    if (h.brokerLockStatus === "broker_lock_failed") {
+      brokerLockFailedCountByAccount.set(
+        h.accountId,
+        (brokerLockFailedCountByAccount.get(h.accountId) ?? 0) + 1,
+      );
+    }
+  }
+
+  const rolloutReadiness: RolloutReadiness[] = accountSummaries
+    .filter((a) => a.isRolloutRelevant)
+    .map((a) => {
+      const connData = connectionByAccountId.get(a.accountId);
+      return deriveRolloutReadiness({
+        account: {
+          accountId: a.accountId,
+          label: a.label,
+          connectionEnv: a.env,
+          isInAllowlist: a.isInAllowlist,
+          activeLockCount: a.activeLockCount,
+          brokerLockFailedCount: brokerLockFailedCountByAccount.get(a.accountId) ?? 0,
+          listenerStatus: connData?.listenerStatus ?? null,
+          lastReconciliationStatus: connData?.lastReconciliationStatus ?? null,
+        },
+        listenerFlags,
+      });
+    });
+
   const listenerRows = brokerConnections.map((c) => ({
     connectionId: c.id,
     env: c.env,
@@ -285,6 +335,7 @@ export default async function SafetyConsolePage() {
       <div className="grid gap-6">
         <OverallStatusBanner severity={overallSeverity} alertCount={alerts.length} />
         <AlertsCard alerts={alerts} />
+        <RolloutReadinessSection items={rolloutReadiness} />
         <SectionCard
           title="Enforcement safety flags"
           description="Web/app env values plus listener status. Listener-worker env values are shown only when explicitly exposed."
@@ -770,5 +821,77 @@ function Row({ label, value, danger }: { label: string; value: string; danger?: 
         {value}
       </dd>
     </div>
+  );
+}
+
+// ── Rollout readiness section ─────────────────────────────────────────────────
+
+const READINESS_BADGE: Record<
+  RolloutReadiness["status"],
+  { cls: string; label: string }
+> = {
+  ready: { cls: "bg-emerald-100 text-emerald-800", label: "Ready" },
+  needs_review: { cls: "bg-amber-100 text-amber-900", label: "Needs review" },
+  blocked: { cls: "bg-red-100 text-red-900", label: "Blocked" },
+};
+
+function RolloutReadinessSection({ items }: { items: RolloutReadiness[] }) {
+  return (
+    <SectionCard
+      title="Rollout readiness"
+      description="Per-account pre-flight checklist for future demo rollouts. Advisory only — does not enable enforcement or send broker actions."
+    >
+      <p className="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+        <span className="font-semibold">Advisory only.</span> Readiness is a read-only
+        pre-flight view. It does not enable enforcement, change any env flag, or send
+        any broker action.
+      </p>
+      {items.length === 0 ? (
+        <p className="text-sm text-stone-500">No rollout-relevant accounts.</p>
+      ) : (
+        <div className="grid gap-3">
+          {items.map((item) => {
+            const badge = READINESS_BADGE[item.status];
+            return (
+              <div
+                key={item.accountId}
+                className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-xs font-semibold text-stone-800">
+                    {item.accountLabel}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+                <ul className="mt-2 grid gap-0.5 text-[11px] sm:grid-cols-2">
+                  {item.checks.map((c) => (
+                    <li key={c.label} className="flex items-start gap-1.5">
+                      <span
+                        className={
+                          c.pass
+                            ? "text-emerald-600"
+                            : c.blocking
+                              ? "font-bold text-red-700"
+                              : "text-amber-700"
+                        }
+                      >
+                        {c.pass ? "✓" : "✗"}
+                      </span>
+                      <span className={c.pass ? "text-stone-600" : c.blocking ? "font-semibold text-red-800" : "text-amber-900"}>
+                        {c.label}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
   );
 }

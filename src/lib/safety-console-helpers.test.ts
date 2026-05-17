@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   deriveOverallSeverity,
+  deriveRolloutReadiness,
   deriveSafetyAlerts,
   isAccountRolloutRelevant,
   isConnectionRolloutRelevant,
@@ -13,6 +14,7 @@ import {
   resolveListenerFlags,
   type EnforcementFlags,
   type ListenerWorkerStatusRecord,
+  type RolloutAccountInput,
   type SafetyAlertInput,
 } from "./safety-console-helpers.ts";
 
@@ -912,5 +914,238 @@ describe("source-scan: listener-worker persists its flags without broker writes"
         `worker status write must not contain '${forbidden}'`,
       );
     }
+  });
+});
+
+// ── deriveRolloutReadiness ────────────────────────────────────────────────────
+
+/** Safe DEMO account used as the baseline for rollout readiness tests. */
+const DEMO_ACCOUNT: RolloutAccountInput = {
+  accountId: "cmottd1z200020do1knjxq582",
+  label: "DEMO7433035",
+  connectionEnv: "demo",
+  isInAllowlist: true,
+  activeLockCount: 0,
+  brokerLockFailedCount: 0,
+  listenerStatus: "connected",
+  lastReconciliationStatus: "success",
+};
+
+describe("deriveRolloutReadiness — ready state", () => {
+  it("DEMO safe state with historical broker_locked only → ready", () => {
+    // brokerLockFailedCount=0 (only broker_locked history, not broker_lock_failed)
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, brokerLockFailedCount: 0 },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "ready");
+    assert.equal(result.accountId, DEMO_ACCOUNT.accountId);
+    assert.equal(result.accountLabel, "DEMO7433035");
+  });
+
+  it("historical broker_locked only does NOT block (brokerLockFailedCount stays 0)", () => {
+    // The historical broker_locked status does not increment brokerLockFailedCount —
+    // only broker_lock_failed events do. Verify ready state holds.
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, brokerLockFailedCount: 0 },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "ready");
+    const lockFailCheck = result.checks.find((c) => c.label === "No broker_lock_failed history");
+    assert.ok(lockFailCheck, "check must exist");
+    assert.equal(lockFailCheck.pass, true);
+  });
+
+  it("all checks pass → every check has pass=true", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "ready");
+    const failing = result.checks.filter((c) => !c.pass);
+    assert.equal(failing.length, 0, `unexpected failing checks: ${failing.map((c) => c.label).join(", ")}`);
+  });
+});
+
+describe("deriveRolloutReadiness — blocked states", () => {
+  it("active internal lock → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, activeLockCount: 1 },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const lockCheck = result.checks.find((c) => c.label === "No active internal lock");
+    assert.ok(lockCheck && !lockCheck.pass && lockCheck.blocking);
+  });
+
+  it("live connectionEnv → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, connectionEnv: "live" },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const envCheck = result.checks.find((c) => c.label === "Connection env is demo (not live)");
+    assert.ok(envCheck && !envCheck.pass && envCheck.blocking);
+  });
+
+  it("listener status=closed → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, listenerStatus: "closed" },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const listenerCheck = result.checks.find((c) => c.label === "listener.status=connected");
+    assert.ok(listenerCheck && !listenerCheck.pass && listenerCheck.blocking);
+  });
+
+  it("listener status=error → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, listenerStatus: "error" },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const listenerCheck = result.checks.find((c) => c.label === "listener.status=connected");
+    assert.ok(listenerCheck && !listenerCheck.pass && listenerCheck.blocking);
+  });
+
+  it("reconciliation failed → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, lastReconciliationStatus: "failed" },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const reconCheck = result.checks.find((c) => c.label === "Reconciliation status=success");
+    assert.ok(reconCheck && !reconCheck.pass && reconCheck.blocking);
+  });
+
+  it("broker_lock_failed history → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, brokerLockFailedCount: 2 },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "blocked");
+    const check = result.checks.find((c) => c.label === "No broker_lock_failed history");
+    assert.ok(check && !check.pass && check.blocking);
+  });
+
+  it("BROKER_ENFORCEMENT_ENABLED=true in listener flags → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: { ...SAFE_FLAGS, brokerEnforcementEnabled: true },
+    });
+    assert.equal(result.status, "blocked");
+    const check = result.checks.find((c) => c.label === "BROKER_ENFORCEMENT_ENABLED=false");
+    assert.ok(check && !check.pass && check.blocking);
+  });
+
+  it("TRADOVATE_LISTENER_ENABLE_LIVE=true in listener flags → blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: { ...SAFE_FLAGS, listenerLiveEnabled: true },
+    });
+    assert.equal(result.status, "blocked");
+    const check = result.checks.find((c) => c.label === "TRADOVATE_LISTENER_ENABLE_LIVE=false");
+    assert.ok(check && !check.pass && check.blocking);
+  });
+});
+
+describe("deriveRolloutReadiness — needs_review states", () => {
+  it("missing listener flags (null) → needs_review (env not verified)", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: null,
+    });
+    assert.equal(result.status, "needs_review");
+    const envCheck = result.checks.find((c) => c.label === "Listener-worker env verified");
+    assert.ok(envCheck && !envCheck.pass && !envCheck.blocking);
+  });
+
+  it("missing listener flags: flag-dependent checks also fail but are not blocking", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: null,
+    });
+    assert.equal(result.status, "needs_review");
+    // Flag-dependent checks fail when flags unknown but are non-blocking
+    const dryRunCheck = result.checks.find((c) => c.label === "ENFORCEMENT_DRY_RUN=true");
+    assert.ok(dryRunCheck && !dryRunCheck.pass && !dryRunCheck.blocking);
+  });
+
+  it("not in allowlist → needs_review (non-blocking)", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, isInAllowlist: false },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "needs_review");
+    const allowlistCheck = result.checks.find((c) => c.label === "Account in demo allowlist");
+    assert.ok(allowlistCheck && !allowlistCheck.pass && !allowlistCheck.blocking);
+  });
+
+  it("reconciliation skipped (null status) → needs_review", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, lastReconciliationStatus: null },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "needs_review");
+    const reconCheck = result.checks.find((c) => c.label === "Reconciliation status=success");
+    assert.ok(reconCheck && !reconCheck.pass && !reconCheck.blocking);
+  });
+
+  it("listener status=reconnecting → needs_review (not blocked)", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, listenerStatus: "reconnecting" },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "needs_review");
+    const listenerCheck = result.checks.find((c) => c.label === "listener.status=connected");
+    assert.ok(listenerCheck && !listenerCheck.pass && !listenerCheck.blocking);
+  });
+
+  it("listener status=null → needs_review (not blocked)", () => {
+    const result = deriveRolloutReadiness({
+      account: { ...DEMO_ACCOUNT, listenerStatus: null },
+      listenerFlags: SAFE_FLAGS,
+    });
+    assert.equal(result.status, "needs_review");
+  });
+
+  it("ENFORCEMENT_DRY_RUN=false alone (enforcement off) → needs_review, not blocked", () => {
+    const result = deriveRolloutReadiness({
+      account: DEMO_ACCOUNT,
+      listenerFlags: { ...SAFE_FLAGS, dryRunEnabled: false },
+    });
+    assert.equal(result.status, "needs_review");
+    const dryRunCheck = result.checks.find((c) => c.label === "ENFORCEMENT_DRY_RUN=true");
+    assert.ok(dryRunCheck && !dryRunCheck.pass && !dryRunCheck.blocking);
+  });
+});
+
+// ── Source-scan: rollout readiness is admin-only ──────────────────────────────
+
+describe("source-scan: normal customer UI does not expose rollout readiness checklist", () => {
+  const DASHBOARD_SRC = readFileSync(
+    resolve(__dirname, "../app/dashboard/_components/command-center/command-center.tsx"),
+    "utf8",
+  );
+
+  it("customer command-center does not render 'Rollout readiness' label", () => {
+    assert.ok(
+      !DASHBOARD_SRC.includes("Rollout readiness"),
+      "customer dashboard must not expose the admin rollout readiness section",
+    );
+  });
+
+  it("customer command-center does not render rollout checklist statuses", () => {
+    assert.ok(
+      !DASHBOARD_SRC.includes("needs_review") && !DASHBOARD_SRC.includes("Needs review"),
+      "customer dashboard must not surface needs_review rollout status",
+    );
+  });
+
+  it("customer command-center does not import deriveRolloutReadiness", () => {
+    assert.ok(
+      !DASHBOARD_SRC.includes("deriveRolloutReadiness"),
+      "customer dashboard must not import or call the rollout readiness helper",
+    );
   });
 });
