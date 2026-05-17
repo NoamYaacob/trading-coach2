@@ -128,8 +128,9 @@ export function DiagnosticsPanel({
                       x-tradovate-secret: [your-webhook-secret]
                     </code>
                     <span className="text-xs text-stone-500">
-                      Use the webhook secret configured on this server. Ask your administrator for
-                      the correct value.
+                      Use the webhook secret provided by Guardrail during setup. If you
+                      don&apos;t have it, contact support — for this beta we&apos;ll confirm it
+                      before your first monitored session.
                     </span>
                   </span>
                 </li>

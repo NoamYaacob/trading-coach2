@@ -488,12 +488,17 @@ export function ConnectTradovateClient() {
             </div>
             {!isReconnectMode && (
               <p className="text-xs text-stone-400">
-                After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
+                Next, you&rsquo;ll be redirected to Tradovate to authorize Guardrail. After
+                authorization, you&rsquo;ll return here to choose which accounts to monitor.
               </p>
             )}
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
               <p className="font-semibold text-stone-700">Choose the access level</p>
               <p className="mt-1 leading-5">
+                Guardrail starts in monitoring mode. Advanced broker-side protections — like
+                supported risk settings — are only used when you explicitly turn them on.
+              </p>
+              <p className="mt-2 leading-5">
                 During Tradovate authorization, you&apos;ll select an access level for Guardrail:
               </p>
               <div className="mt-2 grid gap-1.5">

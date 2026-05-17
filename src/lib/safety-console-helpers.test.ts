@@ -1885,3 +1885,128 @@ describe("source-scan: rules forms can show 'No changes to save.'", () => {
     );
   });
 });
+
+// ── Source-scan: Phase 2G beta readiness copy ─────────────────────────────────
+
+import { resolve as resolve4 } from "node:path";
+
+describe("source-scan: Tradovate connect page — OAuth redirect warning", () => {
+  const CONNECT_CLIENT_SRC = readFileSync(
+    resolve4(
+      __dirname,
+      "../app/accounts/connect/tradovate/_components/connect-tradovate-client.tsx",
+    ),
+    "utf8",
+  );
+
+  it("includes explicit redirect-to-Tradovate warning near the submit button", () => {
+    assert.ok(
+      CONNECT_CLIENT_SRC.includes("redirected to Tradovate"),
+      "connect page must warn the user they will be redirected to Tradovate before they click",
+    );
+  });
+
+  it("includes return-to-Guardrail copy after authorization", () => {
+    assert.ok(
+      CONNECT_CLIENT_SRC.includes("return here to choose which accounts"),
+      "connect page must explain the user returns to Guardrail after authorization",
+    );
+  });
+});
+
+describe("source-scan: Tradovate connect page — monitoring-first disclosure", () => {
+  const CONNECT_CLIENT_SRC = readFileSync(
+    resolve4(
+      __dirname,
+      "../app/accounts/connect/tradovate/_components/connect-tradovate-client.tsx",
+    ),
+    "utf8",
+  );
+
+  it("says Guardrail starts in monitoring mode", () => {
+    assert.ok(
+      CONNECT_CLIENT_SRC.includes("starts in monitoring mode"),
+      "connect page must say Guardrail starts in monitoring mode before showing access level options",
+    );
+  });
+
+  it("says advanced protections are only used when explicitly turned on", () => {
+    assert.ok(
+      CONNECT_CLIENT_SRC.includes("only used when you explicitly turn them on"),
+      "connect page must state broker-side protections are opt-in, not on by default",
+    );
+  });
+
+  it("does not use the word 'flatten'", () => {
+    assert.ok(
+      !CONNECT_CLIENT_SRC.includes("flatten"),
+      "connect page must not use internal 'flatten' term in customer copy",
+    );
+  });
+});
+
+describe("source-scan: Tradovate rules assignment page — simplified broker disclosure", () => {
+  const RULES_ASSIGN_SRC = readFileSync(
+    resolve4(__dirname, "../app/accounts/connect/tradovate/rules/page.tsx"),
+    "utf8",
+  );
+
+  it("says broker actions are never on by default", () => {
+    assert.ok(
+      RULES_ASSIGN_SRC.includes("never on by default"),
+      "rules assignment footer must say broker actions are not on by default",
+    );
+  });
+
+  it("does not say 'close open positions'", () => {
+    assert.ok(
+      !RULES_ASSIGN_SRC.includes("close open positions"),
+      "rules assignment footer must not use scary position-closing language",
+    );
+  });
+
+  it("does not say 'daily lockout'", () => {
+    assert.ok(
+      !RULES_ASSIGN_SRC.includes("daily lockout"),
+      "rules assignment footer must not use internal 'daily lockout' jargon",
+    );
+  });
+
+  it("does not use the word 'flatten'", () => {
+    assert.ok(
+      !RULES_ASSIGN_SRC.includes("flatten"),
+      "rules assignment page must not expose 'flatten' to customers",
+    );
+  });
+});
+
+describe("source-scan: webhook setup — beta-friendly secret copy", () => {
+  const DIAGNOSTICS_SRC = readFileSync(
+    resolve4(
+      __dirname,
+      "../app/accounts/[id]/edit/_components/diagnostics-panel.tsx",
+    ),
+    "utf8",
+  );
+
+  it("does not say 'Ask your administrator'", () => {
+    assert.ok(
+      !DIAGNOSTICS_SRC.includes("Ask your administrator"),
+      "webhook setup must not tell solo beta users to ask an administrator",
+    );
+  });
+
+  it("references 'contact support' for webhook secret help", () => {
+    assert.ok(
+      DIAGNOSTICS_SRC.includes("contact support"),
+      "webhook setup must point users to support if they don't have the secret",
+    );
+  });
+
+  it("includes beta-friendly guidance about confirming the secret", () => {
+    assert.ok(
+      DIAGNOSTICS_SRC.includes("beta"),
+      "webhook setup must include beta-specific guidance about the secret",
+    );
+  });
+});
