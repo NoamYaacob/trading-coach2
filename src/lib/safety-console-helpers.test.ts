@@ -1394,4 +1394,181 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
       "dashboard data-helpers must not mention rollout readiness",
     );
   });
+
+  it("weekend-close badge uses 'Session closed', not plain 'Closed'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("Session closed"),
+      "weekend-close row status must say 'Session closed', not plain 'CLOSED'",
+    );
+    assert.ok(
+      !DATA_HELPERS_SRC.includes('"Closed"'),
+      "plain 'Closed' enum value must no longer appear — replaced by 'Session closed'",
+    );
+  });
+});
+
+// ── Source-scan: enforcement-mode copy is customer-safe ───────────────────────
+
+describe("source-scan: enforcement-mode copy does not expose internal terms", () => {
+  const ENFORCEMENT_MODE_SRC = readFileSync(
+    resolve(__dirname, "../app/rules/_components/enforcement-mode.ts"),
+    "utf8",
+  );
+
+  it("does not say 'Order actions are not enabled yet'", () => {
+    assert.ok(
+      !ENFORCEMENT_MODE_SRC.includes("Order actions are not enabled yet"),
+      "enforcement-mode must not say 'Order actions are not enabled yet'",
+    );
+  });
+
+  it("uses 'Supported money limits can use broker risk settings' instead", () => {
+    assert.ok(
+      ENFORCEMENT_MODE_SRC.includes("Supported money limits can use broker risk settings"),
+      "enforcement-mode must use the customer-safe 'Supported money limits' copy",
+    );
+  });
+
+  it("does not expose 'Safety Console'", () => {
+    assert.ok(
+      !ENFORCEMENT_MODE_SRC.includes("Safety Console"),
+      "enforcement-mode must not mention Safety Console",
+    );
+  });
+});
+
+// ── Source-scan: broker-listener-status does not expose jargon ────────────────
+
+describe("source-scan: broker-listener-status component uses customer-safe copy", () => {
+  const LISTENER_STATUS_SRC = readFileSync(
+    resolve(__dirname, "../app/dashboard/_components/broker-listener-status.tsx"),
+    "utf8",
+  );
+
+  it("does not expose 'detection-response' jargon to customers", () => {
+    assert.ok(
+      !LISTENER_STATUS_SRC.includes("detection-response"),
+      "broker-listener-status must not expose 'detection-response' to customers",
+    );
+  });
+
+  it("does not expose 'GUARDRAIL DETECTION-RESPONSE' or similar", () => {
+    assert.ok(
+      !LISTENER_STATUS_SRC.toUpperCase().includes("GUARDRAIL DETECTION"),
+      "broker-listener-status must not expose Guardrail detection jargon",
+    );
+  });
+
+  it("uses 'Guardrail monitors position size after sync' for standard mode", () => {
+    assert.ok(
+      LISTENER_STATUS_SRC.includes("Guardrail monitors position size after sync"),
+      "standard-equiv mode must use customer-safe monitoring copy",
+    );
+  });
+
+  it("uses 'Broker cap active' for raw broker mode", () => {
+    assert.ok(
+      LISTENER_STATUS_SRC.includes("Broker cap active"),
+      "raw broker mode must use 'Broker cap active' label",
+    );
+  });
+});
+
+// ── Source-scan: max-position-size-conversion-table hides jargon ─────────────
+
+describe("source-scan: position-size conversion table does not expose internal jargon", () => {
+  const TABLE_SRC = readFileSync(
+    resolve(__dirname, "../app/rules/_components/max-position-size-conversion-table.tsx"),
+    "utf8",
+  );
+
+  it("does not expose 'Guardrail detection-response' as a header", () => {
+    assert.ok(
+      !TABLE_SRC.includes("Guardrail detection-response"),
+      "conversion table must not use 'Guardrail detection-response' as a visible label",
+    );
+  });
+
+  it("uses 'Contract limits per product' header", () => {
+    assert.ok(
+      TABLE_SRC.includes("Contract limits per product"),
+      "conversion table must use the customer-friendly 'Contract limits per product' header",
+    );
+  });
+});
+
+// ── Source-scan: account-rules-form uses customer-safe advanced section ───────
+
+describe("source-scan: account-rules-form uses customer-safe copy for advanced section", () => {
+  const FORM_SRC = readFileSync(
+    resolve(__dirname, "../app/rules/_components/account-rules-form.tsx"),
+    "utf8",
+  );
+
+  it("does not expose 'detection-response mode' as customer copy", () => {
+    assert.ok(
+      !FORM_SRC.includes("detection-response mode"),
+      "account-rules-form must not say 'detection-response mode' to customers",
+    );
+  });
+
+  it("does not expose 'raw global contract cap' to customers", () => {
+    assert.ok(
+      !FORM_SRC.includes("raw global contract cap"),
+      "account-rules-form must not say 'raw global contract cap' to customers",
+    );
+  });
+
+  it("uses 'Advanced broker-side contract cap' as the section header", () => {
+    assert.ok(
+      FORM_SRC.includes("Advanced broker-side contract cap"),
+      "form must use 'Advanced broker-side contract cap' header, not 'Broker raw hard limit'",
+    );
+  });
+
+  it("does not expose 'Advanced: Broker raw hard limit' to customers", () => {
+    assert.ok(
+      !FORM_SRC.includes("Advanced: Broker raw hard limit"),
+      "form must not expose 'Advanced: Broker raw hard limit' — replaced by cleaner copy",
+    );
+  });
+});
+
+// ── Source-scan: account detail page no longer shows testing language ─────────
+
+describe("source-scan: account detail page does not show testing/audit language to customers", () => {
+  const ACCOUNT_EDIT_SRC = readFileSync(
+    resolve(__dirname, "../app/accounts/[id]/edit/page.tsx"),
+    "utf8",
+  );
+
+  it("does not show 'Demo broker protection test completed'", () => {
+    assert.ok(
+      !ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
+      "account page must not show testing language 'Demo broker protection test completed'",
+    );
+  });
+
+  it("shows 'Broker risk settings are available for this account' instead", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("Broker risk settings are available for this account"),
+      "account page must show 'Broker risk settings are available for this account'",
+    );
+  });
+
+  it("shows 'No active Guardrail lock right now' as customer-safe status", () => {
+    assert.ok(
+      ACCOUNT_EDIT_SRC.includes("No active Guardrail lock right now"),
+      "account page must confirm no active lock with customer-safe copy",
+    );
+  });
+
+  it("does not expose 'broker_locked' as a visible label to customers", () => {
+    // Code comparisons like `=== "broker_locked"` are fine; JSX text rendering is not.
+    const renderedAsLabel = />\s*broker_locked\s*</.test(ACCOUNT_EDIT_SRC);
+    assert.ok(
+      !renderedAsLabel,
+      "account page must not render raw 'broker_locked' enum value as visible JSX text",
+    );
+  });
 });

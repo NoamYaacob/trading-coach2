@@ -487,8 +487,7 @@ describe("source-scan: manage-connection page shows broker protection status", (
 
   it("shows friendly copy for historical broker_locked + riskState not STOPPED", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker protection was tested successfully") ||
-        ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
+      ACCOUNT_EDIT_SRC.includes("Broker risk settings are available for this account"),
       "edit page must show customer-friendly success copy, not technical lock status",
     );
     assert.ok(
@@ -497,10 +496,10 @@ describe("source-scan: manage-connection page shows broker protection status", (
     );
   });
 
-  it("shows 'Demo broker protection test completed.' for demo accounts", () => {
+  it("shows 'Broker risk settings are available for this account.' for demo accounts", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Demo broker protection test completed"),
-      "edit page must use demo-specific friendly copy for demo broker env",
+      ACCOUNT_EDIT_SRC.includes("Broker risk settings are available for this account"),
+      "edit page must use customer-friendly copy for demo broker env",
     );
   });
 

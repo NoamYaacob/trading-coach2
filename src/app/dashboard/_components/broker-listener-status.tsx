@@ -11,7 +11,7 @@
  *
  * Enforcement framing (shown below the freshness label when relevant):
  *   If the account has max_position_size configured:
- *   - Standard-equivalent mode: explains detection-response model
+ *   - Standard-equivalent mode: explains post-sync position monitoring
  *   - Raw broker mode: warns that this is a raw contract count
  *
  * This component is display-only. It receives pre-computed data from the
@@ -55,8 +55,8 @@ export function BrokerListenerStatus({ data }: { data: BrokerListenerStatusData 
       {data.hasMaxPositionSize && (
         <span className="text-[10px] text-stone-400">
           {data.rawBrokerHardLimitEnabled
-            ? "Raw broker reject · counts all contracts equally"
-            : "Standard-equiv detection-response · not pre-trade"}
+            ? "Broker cap active · applies to all contracts"
+            : "Guardrail monitors position size after sync"}
         </span>
       )}
     </div>

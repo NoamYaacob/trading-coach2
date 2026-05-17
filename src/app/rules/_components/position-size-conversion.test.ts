@@ -127,7 +127,7 @@ describe("buildConversionRows: row shape", () => {
   });
 });
 
-// ── Source-scan: conversion table component honors detection-response framing ──
+// ── Source-scan: conversion table component uses customer-safe framing ──────────
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -138,10 +138,10 @@ describe("max-position-size-conversion-table component: detection-response frami
     "utf8",
   );
 
-  it("label mentions detection-response (not pre-trade reject)", () => {
+  it("label uses customer-safe header (Contract limits per product)", () => {
     assert.ok(
-      COMPONENT_SRC.includes("detection-response"),
-      "table heading must say detection-response to set correct expectations",
+      COMPONENT_SRC.includes("Contract limits per product"),
+      "table heading must use customer-safe 'Contract limits per product' copy",
     );
   });
 
