@@ -554,8 +554,8 @@ describe("UI copy — MAX_POSITION_SIZE_COPY", () => {
     assert.ok(MAX_POSITION_SIZE_COPY.label.includes("standard-equivalent"));
   });
 
-  it("hint explains the Apex 10-micro = 1-standard rule", () => {
-    assert.match(MAX_POSITION_SIZE_COPY.hint, /10 micro/i);
+  it("hint explains the Apex 1 NQ = 10 MNQ rule", () => {
+    assert.match(MAX_POSITION_SIZE_COPY.hint, /1 NQ equal 10 MNQ/i);
     assert.match(MAX_POSITION_SIZE_COPY.hint, /standard/i);
   });
 

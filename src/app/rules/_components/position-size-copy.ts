@@ -12,7 +12,7 @@
  *   computes standard-equivalent exposure, and locks/flattens if the limit is exceeded.
  *   Orders placed before detection will fill first.
  *
- * Why no broker-side hard limit:
+ * Why no broker-side hard limit (intentionally not set):
  *   Tradovate's position limit API only supports totalBy="Overall" (global raw contract
  *   count). PerContract and PerProduct were probed against the live Tradovate API and
  *   returned HTTP 400 "illegal enum value" — product-specific broker limits are not
@@ -22,11 +22,6 @@
 export const MAX_POSITION_SIZE_COPY = {
   label: "Max standard-equivalent contracts",
   hint:
-    "1 standard-equivalent allows up to 10 micro contracts on supported pairs " +
-    "(1 NQ-equivalent = 10 MNQ, 1 ES-equivalent = 10 MES, etc.). " +
-    "Enforced by Guardrail after detection — not a broker-level pre-trade block. " +
-    "When a breach is detected during sync, Guardrail locks the account and flattens open " +
-    "positions if order actions are enabled. " +
-    "Tradovate's position limit API only supports raw global contract counts; " +
-    "a global cap is intentionally not set because it cannot express standard-equivalent weighting.",
+    "Guardrail uses this limit to monitor position size. " +
+    "Standard-equivalent sizing lets 1 NQ equal 10 MNQ.",
 } as const;

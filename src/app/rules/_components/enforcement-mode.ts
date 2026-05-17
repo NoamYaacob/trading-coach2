@@ -160,8 +160,8 @@ export function computeEnforcementMode(
         mode: "broker_enforcement_pending",
         label: "Broker risk settings enabled",
         detail:
-          "Daily loss and profit target can trigger Tradovate risk settings on breach. " +
-          "Other rules are enforced by Guardrail. Supported money limits can use broker risk settings.",
+          "Daily loss and profit target can be enforced through Tradovate. " +
+          "Other rules are monitored and enforced by Guardrail.",
         cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
       };
     }

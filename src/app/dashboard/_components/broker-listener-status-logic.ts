@@ -97,7 +97,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
     const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
     const agoStr = shortAgo(lastSignal);
     return {
-      label: agoStr ? `Live · ${agoStr}` : "Live · waiting for first event",
+      label: agoStr ? `Live monitoring · ${agoStr}` : "Live monitoring · waiting for first event",
       isLive: true,
       isStale: false,
       isReconnecting: false,
@@ -112,7 +112,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
     if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
       const agoStr = shortAgo(lastSignal);
       return {
-        label: `Live · ${agoStr} · reconnecting`,
+        label: `Live monitoring · ${agoStr} · reconnecting`,
         isLive: true,
         isStale: false,
         isReconnecting: true,
@@ -137,7 +137,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
     if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
       const agoStr = shortAgo(lastSignal);
       return {
-        label: `Live · ${agoStr} · reconnecting`,
+        label: `Live monitoring · ${agoStr} · reconnecting`,
         isLive: true,
         isStale: false,
         isReconnecting: true,

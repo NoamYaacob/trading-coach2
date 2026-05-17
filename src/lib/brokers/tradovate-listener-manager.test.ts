@@ -223,14 +223,14 @@ describe("listenerFreshnessLabel", () => {
     assert.equal(listenerFreshnessLabel(null), "No listener");
   });
 
-  it("returns 'Live · Xs ago' when ready and recent event", () => {
+  it("returns 'Live monitoring · Xs ago' when ready and recent event", () => {
     const status: ListenerStatus = {
       connectionId: "x",
       state: "ready",
       lastHeartbeatAt: null,
       lastEventAt: new Date(Date.now() - 5_000),
     };
-    assert.ok(listenerFreshnessLabel(status).startsWith("Live ·"), listenerFreshnessLabel(status));
+    assert.ok(listenerFreshnessLabel(status).startsWith("Live monitoring ·"), listenerFreshnessLabel(status));
     assert.ok(listenerFreshnessLabel(status).includes("5s") || listenerFreshnessLabel(status).includes("s ago"));
   });
 

@@ -1422,10 +1422,10 @@ describe("source-scan: enforcement-mode copy does not expose internal terms", ()
     );
   });
 
-  it("uses 'Supported money limits can use broker risk settings' instead", () => {
+  it("uses simplified Tradovate enforcement copy instead", () => {
     assert.ok(
-      ENFORCEMENT_MODE_SRC.includes("Supported money limits can use broker risk settings"),
-      "enforcement-mode must use the customer-safe 'Supported money limits' copy",
+      ENFORCEMENT_MODE_SRC.includes("Daily loss and profit target can be enforced through Tradovate"),
+      "enforcement-mode must use the simplified Tradovate enforcement copy",
     );
   });
 
@@ -1569,6 +1569,165 @@ describe("source-scan: account detail page does not show testing/audit language 
     assert.ok(
       !renderedAsLabel,
       "account page must not render raw 'broker_locked' enum value as visible JSX text",
+    );
+  });
+});
+
+// ── Source-scan: Phase 2F-2 — customer copy final cleanup ────────────────────
+
+import { resolve as resolve2 } from "node:path";
+
+describe("source-scan: dashboard uses 'Live monitoring' label", () => {
+  const LOGIC_SRC = readFileSync(
+    resolve2(__dirname, "../app/dashboard/_components/broker-listener-status-logic.ts"),
+    "utf8",
+  );
+
+  it("freshness label says 'Live monitoring ·' (not bare 'Live ·')", () => {
+    assert.ok(
+      LOGIC_SRC.includes("Live monitoring ·"),
+      "broker-listener-status-logic must use 'Live monitoring ·' prefix",
+    );
+    assert.ok(
+      !LOGIC_SRC.includes("`Live · "),
+      "broker-listener-status-logic must not use bare 'Live · ' prefix",
+    );
+  });
+});
+
+describe("source-scan: position-size copy does not expose internal terms", () => {
+  const POS_SIZE_SRC = readFileSync(
+    resolve2(__dirname, "../app/rules/_components/position-size-copy.ts"),
+    "utf8",
+  );
+  // Scope checks to the exported constant value only (after the JSDoc comment).
+  const exportStart = POS_SIZE_SRC.indexOf("export const MAX_POSITION_SIZE_COPY");
+  const EXPORTED_VALUES = POS_SIZE_SRC.slice(exportStart);
+
+  it("hint does not mention 'order actions'", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("order actions"),
+      "position-size hint must not mention 'order actions'",
+    );
+  });
+
+  it("hint does not mention 'detection' jargon", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("detection"),
+      "position-size hint must not mention 'detection'",
+    );
+  });
+
+  it("hint does not mention 'sync' as a visible explanation", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("during sync"),
+      "position-size hint must not expose 'during sync' as customer copy",
+    );
+  });
+
+  it("hint does not mention 'flatten'", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("flatten"),
+      "position-size hint must not mention 'flatten'",
+    );
+  });
+
+  it("hint does not mention 'broker-level pre-trade block'", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("broker-level pre-trade block"),
+      "position-size hint must not expose 'broker-level pre-trade block'",
+    );
+  });
+
+  it("hint does not mention \"Tradovate's position limit API\"", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("Tradovate's position limit API"),
+      "position-size hint must not expose 'Tradovate\\'s position limit API'",
+    );
+  });
+
+  it("hint does not mention 'raw global contract counts'", () => {
+    assert.ok(
+      !EXPORTED_VALUES.includes("raw global contract counts"),
+      "position-size hint must not expose 'raw global contract counts'",
+    );
+  });
+
+  it("hint contains the simplified standard-equivalent explanation", () => {
+    assert.ok(
+      EXPORTED_VALUES.includes("Guardrail uses this limit to monitor position size"),
+      "position-size hint must contain the simplified explanation",
+    );
+    assert.ok(
+      EXPORTED_VALUES.includes("Standard-equivalent sizing lets 1 NQ equal 10 MNQ"),
+      "position-size hint must explain the 1 NQ = 10 MNQ sizing",
+    );
+  });
+});
+
+describe("source-scan: rules forms do not expose 'Flatten' or 'order actions' as labels", () => {
+  const ACCOUNT_FORM_SRC = readFileSync(
+    resolve2(__dirname, "../app/rules/_components/account-rules-form.tsx"),
+    "utf8",
+  );
+  const DEFAULT_FORM_SRC = readFileSync(
+    resolve2(__dirname, "../app/rules/_components/rules-form.tsx"),
+    "utf8",
+  );
+
+  for (const [name, src] of [["account form", ACCOUNT_FORM_SRC], ["default form", DEFAULT_FORM_SRC]] as const) {
+    it(`${name}: cutoff label says 'Close open positions at cutoff, then lock' (not 'Flatten')`, () => {
+      assert.ok(
+        src.includes("Close open positions at cutoff, then lock"),
+        `${name} must use 'Close open positions at cutoff, then lock'`,
+      );
+      assert.ok(
+        !src.includes("Flatten at cutoff, then lock"),
+        `${name} must not use 'Flatten at cutoff, then lock' as a visible label`,
+      );
+    });
+
+    it(`${name}: cutoff hint does not say 'order actions'`, () => {
+      assert.ok(
+        !src.includes("order actions"),
+        `${name} must not expose 'order actions' in customer copy`,
+      );
+    });
+
+    it(`${name}: cutoff hint uses 'This action is not active yet'`, () => {
+      assert.ok(
+        src.includes("This action is not active yet"),
+        `${name} must say 'This action is not active yet'`,
+      );
+    });
+  }
+});
+
+describe("source-scan: enforcement-mode contains simplified broker risk settings copy", () => {
+  const EM_SRC = readFileSync(
+    resolve2(__dirname, "../app/rules/_components/enforcement-mode.ts"),
+    "utf8",
+  );
+
+  it("full_access detail contains simplified Tradovate enforcement copy", () => {
+    assert.ok(
+      EM_SRC.includes("Daily loss and profit target can be enforced through Tradovate"),
+      "enforcement-mode must contain the simplified Tradovate copy",
+    );
+    assert.ok(
+      EM_SRC.includes("Other rules are monitored and enforced by Guardrail"),
+      "enforcement-mode must contain the simplified Guardrail copy",
+    );
+  });
+
+  it("full_access detail does not contain old verbose copy", () => {
+    assert.ok(
+      !EM_SRC.includes("can trigger Tradovate risk settings on breach"),
+      "enforcement-mode must not contain old verbose trigger copy",
+    );
+    assert.ok(
+      !EM_SRC.includes("Supported money limits can use broker risk settings"),
+      "enforcement-mode must not contain repetitive 'Supported money limits' copy",
     );
   });
 });

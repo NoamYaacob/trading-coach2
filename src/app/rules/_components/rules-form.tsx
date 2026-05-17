@@ -75,8 +75,8 @@ const SESSION_END_BEHAVIOR_OPTIONS = [
   },
   {
     value: "flatten_at_session_end",
-    label: "Flatten at cutoff, then lock",
-    hint: "Saved for future cutoff automation. Not active until cutoff scheduling and live order actions are enabled.",
+    label: "Close open positions at cutoff, then lock",
+    hint: "Saved for future cutoff automation. This action is not active yet.",
   },
 ] as const;
 

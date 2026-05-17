@@ -35,7 +35,7 @@ describe("computeListenerFreshness: live listener", () => {
     );
     assert.equal(result.isLive, true);
     assert.equal(result.isStale, false);
-    assert.ok(result.label.startsWith("Live ·"), `expected "Live ·" prefix, got: "${result.label}"`);
+    assert.ok(result.label.startsWith("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
   });
 
   it("label includes seconds-ago when recent event", () => {
@@ -56,7 +56,7 @@ describe("computeListenerFreshness: live listener", () => {
     const result = computeListenerFreshness(
       makeData({ listenerStatus: "connected", listenerLastHeartbeatAt: new Date(Date.now() - 3_000) }),
     );
-    assert.ok(result.label.startsWith("Live ·"));
+    assert.ok(result.label.startsWith("Live monitoring ·"));
     assert.ok(result.label.includes("ago"), result.label);
   });
 });
@@ -87,7 +87,7 @@ describe("computeListenerFreshness: reconnecting", () => {
     assert.equal(result.isLive, true, "should be Live during graceful recycle");
     assert.equal(result.isReconnecting, true);
     assert.equal(result.isStale, false);
-    assert.ok(result.label.includes("Live ·"), `expected "Live ·" prefix, got: "${result.label}"`);
+    assert.ok(result.label.includes("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
     assert.ok(result.label.includes("reconnecting"), result.label);
   });
 
@@ -182,7 +182,7 @@ describe("computeListenerFreshness: fallback (no listener)", () => {
 // ── Core regression: connected + recent heartbeat ────────────────────────────────
 
 describe("computeListenerFreshness: connected + recent heartbeat/event", () => {
-  it("listenerStatus='connected' + recent heartbeat → Live · Xs ago (not Fallback sync)", () => {
+  it("listenerStatus='connected' + recent heartbeat → Live monitoring · Xs ago (not Fallback sync)", () => {
     // Regression: DEMO7433035 showed "Fallback sync · 13s ago" even with an active
     // listener. Ensure "connected" + recent heartbeat always returns isLive=true.
     const result = computeListenerFreshness(
@@ -196,11 +196,11 @@ describe("computeListenerFreshness: connected + recent heartbeat/event", () => {
     );
     assert.equal(result.isLive, true, "must be Live, not Fallback sync");
     assert.equal(result.isStale, false);
-    assert.ok(result.label.startsWith("Live ·"), `expected "Live ·" prefix, got: "${result.label}"`);
+    assert.ok(result.label.startsWith("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
     assert.ok(!result.label.includes("Fallback"), `must not say Fallback, got: "${result.label}"`);
   });
 
-  it("listenerStatus='connected' + recent event → Live · Xs ago", () => {
+  it("listenerStatus='connected' + recent event → Live monitoring · Xs ago", () => {
     const result = computeListenerFreshness(
       makeData({
         listenerStatus: "connected",
@@ -208,7 +208,7 @@ describe("computeListenerFreshness: connected + recent heartbeat/event", () => {
       }),
     );
     assert.equal(result.isLive, true);
-    assert.ok(result.label.includes("Live ·"), result.label);
+    assert.ok(result.label.includes("Live monitoring ·"), result.label);
   });
 });
 
@@ -230,7 +230,7 @@ describe("computeListenerFreshness: closed after graceful 1000/Bye with recent h
     assert.equal(result.isLive, true, "should stay Live for graceful close with fresh heartbeat");
     assert.equal(result.isReconnecting, true);
     assert.equal(result.isStale, false);
-    assert.ok(result.label.startsWith("Live ·"), `expected "Live ·" prefix, got: "${result.label}"`);
+    assert.ok(result.label.startsWith("Live monitoring ·"), `expected "Live monitoring ·" prefix, got: "${result.label}"`);
     assert.ok(!result.label.includes("Fallback"), `must not say Fallback, got: "${result.label}"`);
   });
 
@@ -479,7 +479,7 @@ describe("computeListenerFreshness: healthy connection not affected", () => {
       }),
     );
     assert.equal(result.isLive, true);
-    assert.ok(result.label.startsWith("Live ·"), result.label);
+    assert.ok(result.label.startsWith("Live monitoring ·"), result.label);
   });
 
   it("connected_readonly connectionStatus + connected listener → Live", () => {

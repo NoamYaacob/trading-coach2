@@ -14,57 +14,37 @@ describe("MAX_POSITION_SIZE_COPY — label", () => {
 });
 
 describe("MAX_POSITION_SIZE_COPY — hint copy", () => {
-  it("hint explains 1 standard-equivalent allows 10 micro contracts", () => {
-    assert.match(
-      MAX_POSITION_SIZE_COPY.hint,
-      /1 standard-equivalent allows up to 10 micro/i,
-      "hint must explain the Apex '10 micro = 1 standard' rule",
-    );
-  });
-
-  it("hint names at least one supported micro contract", () => {
-    assert.match(
-      MAX_POSITION_SIZE_COPY.hint,
-      /MNQ|MES|MYM|M2K/,
-      "hint must name at least one supported micro contract",
-    );
-  });
-
-  it("hint warns that broker-side enforcement uses raw contract counts (cannot express standard-equivalent)", () => {
-    // Tradovate's position limit API only supports totalBy=Overall (global raw count).
-    // PerContract/PerProduct were confirmed invalid by API probe. The hint must convey
-    // that the global cap is intentionally not set because it can't express standard-equivalent weighting.
+  it("hint uses the simplified position monitoring explanation", () => {
     assert.ok(
-      MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("raw") &&
-        MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("standard-equivalent"),
-      "hint must warn that the broker uses raw counts which cannot express standard-equivalent weighting",
-    );
-    assert.ok(
-      MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("intentionally not set") ||
-        MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("not set"),
-      "hint must explain why the global raw cap is intentionally not applied",
+      MAX_POSITION_SIZE_COPY.hint.includes("Guardrail uses this limit to monitor position size"),
+      "hint must use the simplified position monitoring explanation",
     );
   });
 
-  it("hint does NOT claim live broker-reject behavior is verified (pending demo)", () => {
-    const FORBIDDEN = ["verified live", "guaranteed", "always blocks"];
+  it("hint explains standard-equivalent sizing with 1 NQ = 10 MNQ example", () => {
+    assert.ok(
+      MAX_POSITION_SIZE_COPY.hint.includes("Standard-equivalent sizing lets 1 NQ equal 10 MNQ"),
+      "hint must explain the 1 NQ = 10 MNQ sizing rule",
+    );
+  });
+
+  it("hint does not contain internal API reasoning", () => {
+    const FORBIDDEN = [
+      "order actions",
+      "detection",
+      "during sync",
+      "flatten",
+      "broker-level pre-trade block",
+      "Tradovate's position limit API",
+      "raw global contract",
+      "global cap",
+    ];
     for (const f of FORBIDDEN) {
       assert.ok(
         !MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes(f.toLowerCase()),
-        `hint must not claim "${f}" until demo verification is complete`,
+        `hint must not contain internal term "${f}"`,
       );
     }
-  });
-
-  it("hint does NOT contain the stale 'not active yet' wording", () => {
-    assert.ok(
-      !MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("not active"),
-      "stale 'not active yet' wording must be removed",
-    );
-  });
-
-  it("hint does not imply fractional tradable contracts (no 'fractional' word)", () => {
-    assert.ok(!MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes("fractional"));
   });
 
   it("hint does not contain internal enum strings or removed dry-run wording", () => {

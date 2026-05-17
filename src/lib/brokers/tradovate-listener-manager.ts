@@ -232,11 +232,11 @@ export function listenerFreshnessLabel(status: ListenerStatus | null): string {
     const lastEvent = status.lastEventAt ?? status.lastHeartbeatAt;
     if (lastEvent) {
       const agoMs = Date.now() - lastEvent.getTime();
-      if (agoMs < 60_000) return `Live · ${Math.round(agoMs / 1000)}s ago`;
+      if (agoMs < 60_000) return `Live monitoring · ${Math.round(agoMs / 1000)}s ago`;
       const agoMin = Math.round(agoMs / 60_000);
-      return `Live · ${agoMin}m ago`;
+      return `Live monitoring · ${agoMin}m ago`;
     }
-    return "Live · waiting for first event";
+    return "Live monitoring · waiting for first event";
   }
 
   if (status.state === "reconnecting" || status.state === "connecting") {

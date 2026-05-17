@@ -3,8 +3,8 @@
  * for a connected Tradovate broker account.
  *
  * Replaces generic "Last sync Xm ago" with a listener-aware label:
- *   "Live · 5s ago"              — listener connected, recent event
- *   "Live · waiting…"            — listener connected, no events yet
+ *   "Live monitoring · 5s ago"   — listener connected, recent event
+ *   "Live monitoring · waiting…" — listener connected, no events yet
  *   "Reconnecting…"              — listener is recovering after a disconnect
  *   "Fallback sync · 3m ago"     — no listener, showing last cron sync
  *   "Stale · 13m ago"            — no listener, cron sync overdue
