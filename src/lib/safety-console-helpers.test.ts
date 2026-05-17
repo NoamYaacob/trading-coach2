@@ -1442,6 +1442,62 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
       "plain 'Closed' enum value must no longer appear",
     );
   });
+
+  it("dry-run broker-enforcement copy does not say 'broker-side lockout'", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("broker-side lockout"),
+      "data-helpers must not use scary 'broker-side lockout' in customer copy",
+    );
+  });
+
+  it("dry-run broker-enforcement copy says 'broker-side risk limits'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("broker-side risk limits were simulated"),
+      "dry-run enforcement copy must use 'broker-side risk limits were simulated'",
+    );
+  });
+
+  it("footer copy says 'Supported money limits can be protected through Tradovate'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("Supported money limits can be protected through Tradovate"),
+      "footer copy must use approved phrasing for broker-active mode",
+    );
+  });
+
+  it("footer copy does not say 'can be broker-enforced'", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("can be broker-enforced"),
+      "footer copy must not use 'can be broker-enforced' — use approved phrasing instead",
+    );
+  });
+
+  it("estimated-trade-count short copy does not say 'lockout'", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("Not used for lockout"),
+      "ESTIMATED_TRADE_COUNT_SHORT must not mention 'lockout'",
+    );
+  });
+
+  it("estimated-trade-count short copy says 'Not counted for account lock'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("Not counted for account lock"),
+      "ESTIMATED_TRADE_COUNT_SHORT must say 'Not counted for account lock'",
+    );
+  });
+
+  it("subline copy does not say 'cancel/flatten'", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("cancel/flatten"),
+      "data-helpers subline must not expose 'cancel/flatten' to customers",
+    );
+  });
+
+  it("subline copy says 'position exit not active yet'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("position exit not active yet"),
+      "data-helpers subline must say 'position exit not active yet'",
+    );
+  });
 });
 
 // ── Source-scan: enforcement-mode copy is customer-safe ───────────────────────
@@ -2007,6 +2063,30 @@ describe("source-scan: webhook setup — beta-friendly secret copy", () => {
     assert.ok(
       DIAGNOSTICS_SRC.includes("beta"),
       "webhook setup must include beta-specific guidance about the secret",
+    );
+  });
+});
+
+// ── Source-scan: guardian-toggle defines 'Guardian' for new users ─────────────
+
+describe("source-scan: guardian-toggle defines the Guardian term inline", () => {
+  const GUARDIAN_TOGGLE_SRC = readFileSync(
+    resolve(__dirname, "../app/rules/_components/guardian-toggle.tsx"),
+    "utf8",
+  );
+
+  it("defines Guardian as the rule engine in the off-state card", () => {
+    assert.ok(
+      GUARDIAN_TOGGLE_SRC.includes("Guardian is the rule engine that watches your account"),
+      "guardian-toggle off-state must define what Guardian is before users first see the term",
+    );
+  });
+
+  it("does not leave 'Guardian' undefined with only 'Guardian is off' copy", () => {
+    // The card must explain what Guardian IS, not just say it's off.
+    assert.ok(
+      GUARDIAN_TOGGLE_SRC.includes("rule engine"),
+      "guardian-toggle must use 'rule engine' definition so the term is not opaque",
     );
   });
 });

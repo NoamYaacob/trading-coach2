@@ -773,15 +773,15 @@ describe("deriveBrokerEnforcementCopy", () => {
     );
   });
 
-  it("dry_run text mentions both 'Position exit' and 'broker-side lockout' (combined simulation)", () => {
+  it("dry_run text mentions 'Position exit' and 'broker-side risk limits' (combined simulation)", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
     assert.ok(
       text.includes("Position exit") || text.includes("position exit"),
       `expected 'Position exit' in dry_run text, got: ${text}`,
     );
     assert.ok(
-      text.toLowerCase().includes("lockout"),
-      `expected 'lockout' in dry_run text, got: ${text}`,
+      text.includes("broker-side risk limits"),
+      `expected 'broker-side risk limits' in dry_run text, got: ${text}`,
     );
   });
 
@@ -1244,7 +1244,7 @@ describe("deriveFooterCopy", () => {
     });
     assert.equal(
       copy,
-      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
+      "Broker risk settings enabled · Supported money limits can be protected through Tradovate.",
     );
   });
 
@@ -1274,7 +1274,7 @@ describe("deriveFooterCopy", () => {
     });
     assert.equal(
       copy,
-      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
+      "Broker risk settings enabled · Supported money limits can be protected through Tradovate.",
     );
   });
 
@@ -1353,8 +1353,8 @@ describe("shouldShowEnforcementChip", () => {
 // ── Estimated short copy ──────────────────────────────────────────────────────
 
 describe("ESTIMATED_TRADE_COUNT_SHORT (visible row copy)", () => {
-  it("is the literal 'Not used for lockout'", () => {
-    assert.equal(ESTIMATED_TRADE_COUNT_SHORT, "Not used for lockout");
+  it("is the literal 'Not counted for account lock'", () => {
+    assert.equal(ESTIMATED_TRADE_COUNT_SHORT, "Not counted for account lock");
   });
 
   it("is short — under 30 characters (must not bloat the table cell)", () => {

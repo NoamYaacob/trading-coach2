@@ -222,13 +222,13 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.equal(result.level, "test_mode");
   });
 
-  it("full_access subline mentions cancel/flatten not active yet", () => {
+  it("full_access subline mentions position exit not active yet", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run", "full_access")],
     });
     assert.ok(result !== null);
     assert.ok(
-      result.subline.toLowerCase().includes("cancel/flatten not active yet"),
+      result.subline.toLowerCase().includes("position exit not active yet"),
       `got: ${result.subline}`,
     );
   });

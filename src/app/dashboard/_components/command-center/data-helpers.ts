@@ -298,7 +298,7 @@ export function deriveBrokerEnforcementCopy(
   switch (brokerLockStatus) {
     case "dry_run":
       return {
-        text: "Protection test mode · Position exit and broker-side lockout were simulated. No Tradovate write was sent.",
+        text: "Protection test mode · Position exit and broker-side risk limits were simulated. No Tradovate write was sent.",
         kind: "dry_run",
       };
     case "broker_locked":
@@ -632,7 +632,7 @@ export function deriveFooterCopy(input: {
     return "Protection test mode · No broker actions are sent.";
   }
   if (modes.includes("broker_active")) {
-    return "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.";
+    return "Broker risk settings enabled · Supported money limits can be protected through Tradovate.";
   }
   if (modes.includes("broker_readonly") || modes.includes("permission_unverified")) {
     return "Some accounts have limited permissions and require reconnect for broker-side actions.";
@@ -651,7 +651,7 @@ export const ESTIMATED_TRADE_COUNT_HINT =
 
 /** Short-form copy displayed inline in the table cell. Pairs with
  *  ESTIMATED_TRADE_COUNT_HINT (full text in the tooltip). */
-export const ESTIMATED_TRADE_COUNT_SHORT = "Not used for lockout";
+export const ESTIMATED_TRADE_COUNT_SHORT = "Not counted for account lock";
 
 // ── deriveAccountKind ──────────────────────────────────────────────────────────
 
@@ -825,14 +825,14 @@ export function deriveTradingPermissionStatus(input: {
           level: "allowed",
           headline: `Broker risk settings enabled · ${n} account${n > 1 ? "s" : ""} locked`,
           subline:
-            "Order permissions available · cancel/flatten not active yet.",
+            "Order permissions available · position exit not active yet.",
         };
       }
       return {
         level: "allowed",
         headline: "Broker risk settings enabled",
         subline:
-          "Order permissions available · cancel/flatten not active yet.",
+          "Order permissions available · position exit not active yet.",
       };
     }
     if (lockedCount > 0) {
