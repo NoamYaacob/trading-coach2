@@ -23,6 +23,7 @@ import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actio
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 import { validateRiskRulesBody } from "./risk-rules-validate";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -168,6 +169,32 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const hasProtectionLockToday =
       isAccountStopped || guardianStatus?.currentLockoutActive === true;
 
+    // ── Hard reject: riskState=STOPPED blocks rule changes (not first-time setup) ──
+    const ip =
+      req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
+    const userAgent = req.headers.get("user-agent") ?? null;
+    if (liveState?.riskState === "STOPPED" && !isFirstTimeSetup) {
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: false,
+        reason: "account_stopped",
+        blockReason: "account_stopped",
+        sessionRiskState: "STOPPED",
+        ip,
+        userAgent,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Rules are locked for this account right now because protection is active. You can edit them after the lock clears.",
+        },
+        { status: 423 },
+      );
+    }
+
     const userRulesPresetsJson = userRules?.sessionPresetsJson ?? null;
     const eligibility = deriveRuleEditEligibility({
       selectedSessionPresets: userRulesPresetsJson ? JSON.parse(userRulesPresetsJson) : null,
@@ -219,6 +246,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         effectiveDate: nextDayKey,
         message: buildRuleEditLockMessage(eligibility, lockMsgTz),
       };
+      // Audit: saved as pending
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: true,
+        reason: "saved_as_pending",
+        blockReason: eligibility.reason ?? null,
+        sessionRiskState: hasProtectionLockToday ? "LOCKED" : null,
+        ip,
+        userAgent,
+      });
     } else if (body.riskRules === null) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });
     } else {
@@ -238,6 +278,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           pendingPayloadJson: Prisma.JsonNull,
           pendingEffectiveDate: null,
         },
+      });
+
+      // Audit: successful save of account-specific rules
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: body.riskRules as Record<string, unknown>,
+        allowed: true,
+        reason: "allowed",
+        ip,
+        userAgent,
       });
 
       // Sync broker-side Max Position Size when maxContracts is present in the

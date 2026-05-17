@@ -1,4 +1,17 @@
-import type { StatusBreakdown } from "./types";
+import type { StatusBreakdown, CommandCenterAccount } from "./types";
+import { buildRuleSummaryChips } from "../../../../lib/rules/rule-summary-chips.ts";
+
+export { buildRuleSummaryChips };
+
+/**
+ * Formats the rule summary chips for an account as a single line of text.
+ * Chips are joined with " · " (middle dot separator used throughout the dashboard).
+ * Returns an empty string when there are no chips.
+ */
+export function formatRuleSummaryLine(account: CommandCenterAccount): string {
+  const chips = buildRuleSummaryChips(account);
+  return chips.map((c) => c.text).join(" · ");
+}
 
 /** Title of the summary tile that shows the "allowed" account count.
  *  Renamed from "Allowed" — the count alone (e.g. "Allowed 2") could imply

@@ -81,6 +81,7 @@ model User {
   alertPreferences   AlertPreferences?
   passwordResetTokens PasswordResetToken[]
   dryRunViolations   DryRunViolation[]
+  ruleChangeAudits   RuleChangeAudit[]
 }
 
 model Session {
@@ -522,6 +523,7 @@ model ConnectedAccount {
   orderActionLogs   BrokerOrderActionLog[]
   dryRunViolations  DryRunViolation[]
   internalLockEvents InternalLockEvent[]
+  ruleChangeAudits  RuleChangeAudit[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -883,4 +885,34 @@ model ListenerWorkerStatus {
   demoAccountAllowlist     String[]
   reportedAt               DateTime
   updatedAt                DateTime @updatedAt
+}
+
+model RuleChangeAudit {
+  id                String   @id @default(cuid())
+  userId            String
+  /// null for default template edits
+  accountId         String?
+  /// "default" | "account"
+  scope             String
+  /// JSON snapshot of old rule values
+  oldValuesJson     Json?
+  /// JSON snapshot of new rule values
+  newValuesJson     Json
+  allowed           Boolean
+  reason            String
+  /// "account_stopped" | "active_session_lock" | "protection_locked" | "open_position" | "allowed" | "server_error"
+  blockReason       String?
+  sessionRiskState  String?
+  listenerFreshAt   DateTime?
+  hasOpenPosition   Boolean?
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime @default(now())
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([allowed, createdAt])
 }
