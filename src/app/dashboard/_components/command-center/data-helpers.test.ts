@@ -440,10 +440,10 @@ describe("deriveRowStatusLabel — weekend close", () => {
     requiresAutomatedActionsConsent: false,
   };
 
-  it("returns 'Session closed' for allowed account during weekend close", () => {
+  it("returns 'Market closed' for allowed account during weekend close", () => {
     assert.equal(
       deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true }),
-      "Session closed",
+      "Market closed",
     );
   });
 
@@ -483,7 +483,7 @@ describe("deriveRowStatusLabel — weekend close", () => {
   it("weekend close takes priority over maintenance when both are true", () => {
     assert.equal(
       deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true, isMaintenanceWindow: true }),
-      "Session closed",
+      "Market closed",
     );
   });
 });

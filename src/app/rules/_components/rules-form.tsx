@@ -411,6 +411,9 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
           {isDirty && !saving && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
           )}
+          {!hasSomethingToSave && !saving && !savedAt && !error && (
+            <span className="text-xs text-stone-400">No changes to save.</span>
+          )}
           {savedAt && !pendingMessage && !isDirty && (
             <span className="text-xs text-emerald-700">Saved in Guardrail.</span>
           )}

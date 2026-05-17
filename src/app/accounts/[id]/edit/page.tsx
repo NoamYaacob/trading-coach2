@@ -579,7 +579,7 @@ function BrokerEnforcementHistoryPanel({
         {hasConfirmedLock && noActiveLock ? (
           <>
             <p className="text-sm text-stone-700">
-              Broker risk settings are available for this account.
+              Broker-side protection is available for supported rules.
             </p>
             <p className="text-sm text-stone-500">No active Guardrail lock right now.</p>
           </>

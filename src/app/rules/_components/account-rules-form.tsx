@@ -247,6 +247,8 @@ export function AccountRulesForm({
   const [removing, setRemoving] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Advanced broker-side contract cap is hidden by default; expand if already enabled.
+  const [showAdvancedBrokerCap, setShowAdvancedBrokerCap] = useState(initial.rawBrokerHardLimitEnabled);
   const [showForm, setShowForm] = useState(hasExistingRules);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
@@ -566,7 +568,16 @@ export function AccountRulesForm({
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
-            {values.maxContracts.trim() !== "" && (
+            {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
+              <button
+                type="button"
+                className="mt-1 text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
+                onClick={() => setShowAdvancedBrokerCap(true)}
+              >
+                Advanced options
+              </button>
+            )}
+            {values.maxContracts.trim() !== "" && showAdvancedBrokerCap && (
               <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
                 <p className="font-semibold text-amber-900">Advanced broker-side contract cap</p>
                 <p className="mt-1 text-amber-800">
@@ -821,6 +832,9 @@ export function AccountRulesForm({
           })()}
           {isDirty && !saving && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
+          )}
+          {!isDirty && !saving && hasExistingRules && !savedAt && !error && (
+            <span className="text-xs text-stone-400">No changes to save.</span>
           )}
           {savedAt && !pendingMessage && !isDirty && (
             <span className="text-xs text-emerald-700">

@@ -1366,10 +1366,10 @@ function StatusBadge({
     isWeekendClose,
   });
   // "Action required" is a refinement of "allowed" status — paint it amber.
-  // "Maintenance" and "Session closed" are temporary non-tradable states — paint them stone.
+  // "Maintenance" and "Market closed" are temporary non-tradable states — paint them stone.
   const isActionRequired = label === "Action required";
   const isMaintenance = label === "Maintenance";
-  const isClosed = label === "Session closed";
+  const isClosed = label === "Market closed";
   const badgeClass = isActionRequired
     ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
     : isMaintenance || isClosed

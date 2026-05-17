@@ -1395,14 +1395,18 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
     );
   });
 
-  it("weekend-close badge uses 'Session closed', not plain 'Closed'", () => {
+  it("weekend-close badge uses 'Market closed', not 'Session closed' or plain 'Closed'", () => {
     assert.ok(
-      DATA_HELPERS_SRC.includes("Session closed"),
-      "weekend-close row status must say 'Session closed', not plain 'CLOSED'",
+      DATA_HELPERS_SRC.includes("Market closed"),
+      "weekend-close row status must say 'Market closed'",
+    );
+    assert.ok(
+      !DATA_HELPERS_SRC.includes('"Session closed"'),
+      "'Session closed' enum value must no longer appear — replaced by 'Market closed'",
     );
     assert.ok(
       !DATA_HELPERS_SRC.includes('"Closed"'),
-      "plain 'Closed' enum value must no longer appear — replaced by 'Session closed'",
+      "plain 'Closed' enum value must no longer appear",
     );
   });
 });
@@ -1549,10 +1553,10 @@ describe("source-scan: account detail page does not show testing/audit language 
     );
   });
 
-  it("shows 'Broker risk settings are available for this account' instead", () => {
+  it("shows 'Broker-side protection is available for supported rules' instead", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker risk settings are available for this account"),
-      "account page must show 'Broker risk settings are available for this account'",
+      ACCOUNT_EDIT_SRC.includes("Broker-side protection is available for supported rules"),
+      "account page must show 'Broker-side protection is available for supported rules'",
     );
   });
 
@@ -1728,6 +1732,119 @@ describe("source-scan: enforcement-mode contains simplified broker risk settings
     assert.ok(
       !EM_SRC.includes("Supported money limits can use broker risk settings"),
       "enforcement-mode must not contain repetitive 'Supported money limits' copy",
+    );
+  });
+});
+
+// ── Source-scan: Polish pass — account detail, dashboard, Trading Plan ─────────
+
+import { resolve as resolve3 } from "node:path";
+
+describe("source-scan: account detail page — final polish", () => {
+  const EDIT_SRC = readFileSync(
+    resolve3(__dirname, "../app/accounts/[id]/edit/page.tsx"),
+    "utf8",
+  );
+
+  it("shows 'Broker-side protection is available for supported rules.'", () => {
+    assert.ok(
+      EDIT_SRC.includes("Broker-side protection is available for supported rules"),
+      "account detail must say 'Broker-side protection is available for supported rules'",
+    );
+  });
+
+  it("does not show old 'Broker risk settings are available for this account'", () => {
+    assert.ok(
+      !EDIT_SRC.includes("Broker risk settings are available for this account"),
+      "old copy must be replaced",
+    );
+  });
+
+  const ACCOUNT_INTERNAL_TERMS = [
+    "Safety Console",
+    "reconciliation",
+    "InternalLockEvent",
+    "listenerBrokerDedupKey",
+    "rollout readiness",
+  ];
+
+  for (const term of ACCOUNT_INTERNAL_TERMS) {
+    it(`does not expose '${term}' as visible copy`, () => {
+      // Code-level identifiers (e.g. in a query variable name) are allowed;
+      // check that it's not in a JSX text rendering position.
+      const renderedAsText = new RegExp(`>\\s*${term}\\s*<`).test(EDIT_SRC);
+      assert.ok(
+        !renderedAsText,
+        `account detail must not render '${term}' as visible JSX text`,
+      );
+    });
+  }
+});
+
+describe("source-scan: dashboard uses 'Market closed' for weekend-close pill", () => {
+  const CC_SRC = readFileSync(
+    resolve3(__dirname, "../app/dashboard/_components/command-center/command-center.tsx"),
+    "utf8",
+  );
+
+  it("isClosed checks for 'Market closed' label", () => {
+    assert.ok(
+      CC_SRC.includes('label === "Market closed"'),
+      "command-center must compare to 'Market closed', not 'Session closed'",
+    );
+    assert.ok(
+      !CC_SRC.includes('label === "Session closed"'),
+      "command-center must not compare to old 'Session closed' label",
+    );
+  });
+});
+
+describe("source-scan: account rules form hides advanced block by default", () => {
+  const ACCOUNT_FORM_SRC = readFileSync(
+    resolve3(__dirname, "../app/rules/_components/account-rules-form.tsx"),
+    "utf8",
+  );
+
+  it("Advanced broker-side contract cap block is still present in source", () => {
+    assert.ok(
+      ACCOUNT_FORM_SRC.includes("Advanced broker-side contract cap"),
+      "advanced block must still exist in source (just collapsed by default)",
+    );
+  });
+
+  it("advanced block is guarded by showAdvancedBrokerCap state (not shown by default)", () => {
+    assert.ok(
+      ACCOUNT_FORM_SRC.includes("showAdvancedBrokerCap"),
+      "advanced block must be gated by showAdvancedBrokerCap state",
+    );
+    assert.ok(
+      ACCOUNT_FORM_SRC.includes("Advanced options"),
+      "a collapsed 'Advanced options' expand trigger must exist",
+    );
+  });
+});
+
+describe("source-scan: rules forms can show 'No changes to save.'", () => {
+  const ACCOUNT_FORM_SRC = readFileSync(
+    resolve3(__dirname, "../app/rules/_components/account-rules-form.tsx"),
+    "utf8",
+  );
+  const DEFAULT_FORM_SRC = readFileSync(
+    resolve3(__dirname, "../app/rules/_components/rules-form.tsx"),
+    "utf8",
+  );
+
+  it("account form includes 'No changes to save.' helper text", () => {
+    assert.ok(
+      ACCOUNT_FORM_SRC.includes("No changes to save."),
+      "account form must include 'No changes to save.' helper text",
+    );
+  });
+
+  it("default form includes 'No changes to save.' helper text", () => {
+    assert.ok(
+      DEFAULT_FORM_SRC.includes("No changes to save."),
+      "default form must include 'No changes to save.' helper text",
     );
   });
 });
