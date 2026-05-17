@@ -487,7 +487,7 @@ describe("source-scan: manage-connection page shows broker protection status", (
 
   it("shows friendly copy for historical broker_locked + riskState not STOPPED", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker-side protection is available for supported rules"),
+      ACCOUNT_EDIT_SRC.includes("Supported rules can be protected through broker risk settings"),
       "edit page must show customer-friendly success copy, not technical lock status",
     );
     assert.ok(
@@ -496,9 +496,9 @@ describe("source-scan: manage-connection page shows broker protection status", (
     );
   });
 
-  it("shows 'Broker-side protection is available for supported rules.' for accounts with confirmed lock", () => {
+  it("shows 'Supported rules can be protected through broker risk settings.' for accounts with confirmed lock", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker-side protection is available for supported rules"),
+      ACCOUNT_EDIT_SRC.includes("Supported rules can be protected through broker risk settings"),
       "edit page must use customer-friendly copy",
     );
   });

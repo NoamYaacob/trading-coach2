@@ -1193,6 +1193,39 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
     );
   });
 
+  it("does not expose 'listener-worker' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("listener-worker"),
+      "Trading Plan page must not reference the internal listener-worker term",
+    );
+  });
+
+  it("does not expose 'broker_locked' as visible text to customers", () => {
+    const renderedAsLabel = />\s*broker_locked\s*</.test(RULES_PAGE_SRC);
+    assert.ok(!renderedAsLabel, "Trading Plan page must not render raw 'broker_locked' enum value");
+  });
+
+  it("does not expose 'Intervention ID' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("Intervention ID"),
+      "Trading Plan page must not show internal Intervention IDs",
+    );
+  });
+
+  it("does not expose 'Internal lock ID' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("Internal lock ID"),
+      "Trading Plan page must not show internal lock IDs",
+    );
+  });
+
+  it("does not expose 'dedup key' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("dedup key"),
+      "Trading Plan page must not reference internal dedup keys",
+    );
+  });
+
   it("shows 'How enforcement works' user education section", () => {
     assert.ok(
       RULES_PAGE_SRC.includes("How enforcement works"),
@@ -1553,10 +1586,10 @@ describe("source-scan: account detail page does not show testing/audit language 
     );
   });
 
-  it("shows 'Broker-side protection is available for supported rules' instead", () => {
+  it("shows 'Supported rules can be protected through broker risk settings' instead", () => {
     assert.ok(
-      ACCOUNT_EDIT_SRC.includes("Broker-side protection is available for supported rules"),
-      "account page must show 'Broker-side protection is available for supported rules'",
+      ACCOUNT_EDIT_SRC.includes("Supported rules can be protected through broker risk settings"),
+      "account page must show 'Supported rules can be protected through broker risk settings'",
     );
   });
 
@@ -1746,10 +1779,10 @@ describe("source-scan: account detail page — final polish", () => {
     "utf8",
   );
 
-  it("shows 'Broker-side protection is available for supported rules.'", () => {
+  it("shows 'Supported rules can be protected through broker risk settings.'", () => {
     assert.ok(
-      EDIT_SRC.includes("Broker-side protection is available for supported rules"),
-      "account detail must say 'Broker-side protection is available for supported rules'",
+      EDIT_SRC.includes("Supported rules can be protected through broker risk settings"),
+      "account detail must say 'Supported rules can be protected through broker risk settings'",
     );
   });
 
@@ -1766,6 +1799,10 @@ describe("source-scan: account detail page — final polish", () => {
     "InternalLockEvent",
     "listenerBrokerDedupKey",
     "rollout readiness",
+    "listener-worker",
+    "dedup key",
+    "Intervention ID",
+    "Internal lock ID",
   ];
 
   for (const term of ACCOUNT_INTERNAL_TERMS) {
