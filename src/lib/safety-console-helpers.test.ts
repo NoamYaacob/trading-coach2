@@ -752,6 +752,17 @@ describe("source-scan: safety console page is admin-gated and read-only", () => 
       "page must pass listenerFlags to deriveSafetyAlerts",
     );
   });
+
+  it("labels last-close field as 'lastCloseCode/Reason' (historical, not current state)", () => {
+    assert.ok(
+      PAGE_SRC.includes("lastCloseCode/Reason"),
+      "listener row must use 'lastCloseCode/Reason' label to clarify the value is historical",
+    );
+    assert.ok(
+      !PAGE_SRC.includes('"closeCode/Reason"'),
+      "ambiguous 'closeCode/Reason' label must not appear — use 'lastCloseCode/Reason'",
+    );
+  });
 });
 
 // ── Source-scan: normal customer dashboard hides audit details ───────────────

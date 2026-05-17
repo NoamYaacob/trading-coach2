@@ -334,7 +334,7 @@ export default async function SafetyConsolePage() {
         </SectionCard>
         <SectionCard
           title="Listener health — rollout-relevant connections"
-          description="Connections with at least one allowlisted, locked, or broker-enforced account. Only these affect overall severity."
+          description="Connections with at least one allowlisted, locked, or broker-enforced account. Only these affect overall severity. lastCloseCode/Reason is historical — current status is shown in the row header."
         >
           {rolloutListeners.length === 0 ? (
             <p className="text-sm text-stone-500">No rollout-relevant connections.</p>
@@ -606,7 +606,7 @@ function ListenerTable({
               <Row label="lastEventAt" value={r.lastEventAt ?? "—"} />
               <Row label="lastHeartbeatAt" value={r.lastHeartbeatAt ?? "—"} />
               <Row
-                label="closeCode/Reason"
+                label="lastCloseCode/Reason"
                 value={`${r.lastCloseCode ?? "—"} / ${r.lastCloseReason ?? "—"}`}
               />
               <Row
