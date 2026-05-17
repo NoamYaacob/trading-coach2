@@ -168,8 +168,17 @@ Do not proceed if any check shows `blocked`. Investigate any `needs_review` befo
 | `src/app/debug/safety-console/page.tsx` | Added `connectionByAccountId` and `brokerLockFailedCountByAccount` map computations; added `rolloutReadiness` derivation; added `RolloutReadinessSection` component; added `READINESS_BADGE` constant |
 | `src/lib/safety-console-helpers.test.ts` | 20 new tests: all three readiness states, source-scan guard confirming rollout checklist is not exposed in customer `command-center.tsx` |
 
+## Next step — first external beta
+
+When the Safety Console shows `safe` and rollout readiness shows `ready` for the target demo account, the next step is a guided first session with an external beta user.
+
+See `docs/FIRST_EXTERNAL_BETA_RUNBOOK.md` for the full pre-session checklist, customer setup flow, live monitoring checklist, and go/pause criteria.
+
+---
+
 ## Related documents
 
 - `docs/PHASE_2C_BROKER_ENFORCEMENT_DESIGN.md` — full canary design and rationale
 - `docs/PHASE_2C_D_DEMO_CANARY_RUNBOOK.md` — canary execution log and post-canary safe-mode state
 - `docs/PHASE_2D_LISTENER_RELIABILITY.md` — reconnect reconciliation added in Phase 2D
+- `docs/FIRST_EXTERNAL_BETA_RUNBOOK.md` — guided first external beta session runbook
