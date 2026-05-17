@@ -641,6 +641,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     reclassifiableAccounts,
     protectionLock: {
       isLocked: protectionLock.isLocked,
+      lockReason: protectionLock.lockReason,
       cutoffTime: protectionLock.cutoffTime ? protectionLock.cutoffTime.toISOString() : null,
       tradingDayKey: protectionLock.tradingDayKey,
       nextTradingDayKey: protectionLock.nextTradingDayKey,

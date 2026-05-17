@@ -271,3 +271,51 @@ test("account-specific protection changes obey the same CME lock semantics", () 
   const increase = canChangeProtection("monitor_only", "protected", lock);
   assert.equal(increase.allowed, true);
 });
+
+// ─── lockReason ───────────────────────────────────────────────────────────────
+
+test("lockReason=active_session when now is after session start", () => {
+  // Session 9-16 CME CDT. Now = 10:00 CME = 15:00 UTC → session is running.
+  const lock = getProtectionLockState({
+    sessionStartHour: 9,
+    sessionEndHour: 16,
+    cutoffMinutes: 5,
+    now: new Date("2026-05-04T15:00:00Z"),
+  });
+  assert.equal(lock.isLocked, true);
+  assert.equal(lock.lockReason, "active_session");
+});
+
+test("lockReason=pre_session when now is in the pre-session buffer (before session start)", () => {
+  // Cutoff = 08:55 CME CDT = 13:55 UTC. Session start = 09:00 CME = 14:00 UTC.
+  // Now = 08:57 CME = 13:57 UTC → past cutoff, session not yet started.
+  const lock = getProtectionLockState({
+    sessionStartHour: 9,
+    sessionEndHour: 16,
+    cutoffMinutes: 5,
+    now: new Date("2026-05-04T13:57:00Z"),
+  });
+  assert.equal(lock.isLocked, true);
+  assert.equal(lock.lockReason, "pre_session");
+});
+
+test("lockReason=null when not locked", () => {
+  // Before cutoff — unlocked.
+  const lock = getProtectionLockState({
+    sessionStartHour: 9,
+    sessionEndHour: 16,
+    cutoffMinutes: 5,
+    now: new Date("2026-05-04T08:00:00Z"),
+  });
+  assert.equal(lock.isLocked, false);
+  assert.equal(lock.lockReason, null);
+});
+
+test("lockReason=null when no session hours configured", () => {
+  const lock = getProtectionLockState({
+    sessionStartHour: null,
+    sessionEndHour: null,
+  });
+  assert.equal(lock.isLocked, false);
+  assert.equal(lock.lockReason, null);
+});

@@ -741,25 +741,55 @@ export type ProtectionStatusPanelData = {
   kind: "dry_run" | "consent_required" | "protection_locked";
   /** Whether to show the "Review Trading Plan" CTA (consent action is pending). */
   showConsentCta: boolean;
+  /** Only present when kind === "protection_locked". Drives body copy. */
+  lockReason?: "active_session" | "pre_session";
 };
 
 /**
  * Derives the single compact "Protection status" panel for the command center.
  * Replaces three separate banners (dry-run / consent-required / protection-locked)
  * with one panel; priority is most-actionable first: test mode → consent → locked.
+ *
+ * Suppresses the protection_locked banner during market close (weekend or
+ * maintenance) unless the session is actively trading — prevents showing
+ * "locked during live trading" when the market is closed.
  */
 export function deriveProtectionStatusPanel(input: {
   isDryRunActive: boolean;
   requiresConsentCount: number;
   isProtectionLocked: boolean;
+  lockReason?: "active_session" | "pre_session" | null;
+  isWeekendClose?: boolean;
+  isMaintenanceWindow?: boolean;
 }): ProtectionStatusPanelData | null {
-  const { isDryRunActive, requiresConsentCount, isProtectionLocked } = input;
+  const {
+    isDryRunActive,
+    requiresConsentCount,
+    isProtectionLocked,
+    lockReason = null,
+    isWeekendClose = false,
+    isMaintenanceWindow = false,
+  } = input;
   // Suppress dry_run — TradingPermissionBlock above the card already covers it.
   if (isDryRunActive) return null;
   if (requiresConsentCount === 0 && !isProtectionLocked) return null;
+
+  if (isProtectionLocked && requiresConsentCount === 0) {
+    // Case 3: market is closed and this is not an active trading session →
+    // the "protection locked" message would be misleading ("during live trading"
+    // when there is none). Suppress the banner entirely.
+    if ((isWeekendClose || isMaintenanceWindow) && lockReason !== "active_session") {
+      return null;
+    }
+  }
+
   const kind: ProtectionStatusPanelData["kind"] =
     requiresConsentCount > 0 ? "consent_required" : "protection_locked";
-  return { kind, showConsentCta: requiresConsentCount > 0 };
+  const panel: ProtectionStatusPanelData = { kind, showConsentCta: requiresConsentCount > 0 };
+  if (kind === "protection_locked" && lockReason != null) {
+    panel.lockReason = lockReason;
+  }
+  return panel;
 }
 
 // ── deriveEnforcementMode ──────────────────────────────────────────────────────

@@ -1786,6 +1786,87 @@ describe("deriveProtectionStatusPanel", () => {
     assert.equal(panel!.kind, "consent_required");
     assert.equal(panel!.showConsentCta, true);
   });
+
+  it("protection_locked with active_session sets lockReason='active_session' and correct copy applies", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "active_session",
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "active_session");
+  });
+
+  it("protection_locked with pre_session sets lockReason='pre_session'", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "pre_session");
+  });
+
+  it("Case 3: weekend close + pre_session lock → null (no misleading 'during live trading' banner)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+      isWeekendClose: true,
+    });
+    assert.equal(panel, null, "should suppress banner when market is closed and no active session");
+  });
+
+  it("Case 3: maintenance window + pre_session lock → null", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+      isMaintenanceWindow: true,
+    });
+    assert.equal(panel, null);
+  });
+
+  it("Case 3: weekend close + active_session lock → still shows panel (session is running)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "active_session",
+      isWeekendClose: true,
+    });
+    assert.ok(panel !== null, "active session during weekend edge should still show panel");
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "active_session");
+  });
+
+  it("Case 3: market closed + isLocked=false → null (no banner)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: false,
+      lockReason: null,
+      isWeekendClose: true,
+    });
+    assert.equal(panel, null);
+  });
+
+  it("consent_required is not suppressed during weekend close", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 2,
+      isProtectionLocked: false,
+      isWeekendClose: true,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "consent_required");
+  });
 });
 
 // ── resolveEffectiveConnectionStatus ─────────────────────────────────────────

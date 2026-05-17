@@ -738,6 +738,7 @@ export const DEMO_COMMAND_CENTER_DATA: CommandCenterData = {
   reclassifiableAccounts: [],
   protectionLock: {
     isLocked: false,
+    lockReason: null,
     cutoffTime: null,
     tradingDayKey: "2026-05-04",
     nextTradingDayKey: "2026-05-05",

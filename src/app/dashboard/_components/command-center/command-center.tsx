@@ -250,6 +250,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     isDryRunActive,
     requiresConsentCount: requiresConsentAccountsCount,
     isProtectionLocked: data.protectionLock.isLocked,
+    lockReason: data.protectionLock.lockReason,
+    isWeekendClose: data.isWeekendClose,
+    isMaintenanceWindow: data.isMaintenanceWindow,
   });
   const footerCopy = deriveFooterCopy({
     modes: data.accounts.map((a) => a.enforcementMode),
@@ -414,14 +417,26 @@ function TradingPermissionBlock({ status }: { status: TradingPermissionStatus })
 
 // ─── Protection status panel (replaces dry-run / consent / lock banners) ──────
 
-const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
+const PANEL_BODY_STATIC: Partial<Record<ProtectionStatusPanelData["kind"], string>> = {
   dry_run:
     "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.",
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
-  protection_locked:
-    "Rule changes queued for next session · Protection settings are locked during live trading.",
 };
+
+const PANEL_BODY_LOCK_REASON: Record<"active_session" | "pre_session", string> = {
+  active_session:
+    "Rule changes queued for next session · Protection settings are locked during the active trading session.",
+  pre_session:
+    "Rule changes queued for next session · Protection settings are locked before the next session starts.",
+};
+
+function protectionLockedBody(panel: ProtectionStatusPanelData): string {
+  if (panel.kind === "protection_locked") {
+    return PANEL_BODY_LOCK_REASON[panel.lockReason ?? "active_session"];
+  }
+  return PANEL_BODY_STATIC[panel.kind] ?? "";
+}
 
 function ProtectionStatusPanel({
   panel,
@@ -436,6 +451,9 @@ function ProtectionStatusPanel({
       ? "border-sky-200/70 bg-sky-50/70 text-sky-800"
       : "border-amber-200/70 bg-amber-50/70 text-amber-900";
   const dotClass = panel.kind === "dry_run" ? "bg-sky-400" : "bg-amber-500";
+  const bodyText = panel.kind === "protection_locked"
+    ? protectionLockedBody(panel)
+    : (PANEL_BODY_STATIC[panel.kind] ?? "");
   return (
     <div
       role={isAlert ? "alert" : "status"}
@@ -443,7 +461,7 @@ function ProtectionStatusPanel({
       className={`mb-3 flex flex-wrap items-start gap-2 rounded-lg border px-3 py-1.5 text-[11px] ${colorClass}`}
     >
       <span className={`mt-px h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
-      <span className="flex-1">{PANEL_BODY[panel.kind]}</span>
+      <span className="flex-1">{bodyText}</span>
       {panel.showConsentCta && (
         <Link
           href="/rules"

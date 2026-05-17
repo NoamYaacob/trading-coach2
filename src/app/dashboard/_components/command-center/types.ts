@@ -256,6 +256,7 @@ export type CommandCenterData = {
   reclassifiableAccounts: ReclassifiableAccount[];
   protectionLock: {
     isLocked: boolean;
+    lockReason: "active_session" | "pre_session" | null;
     cutoffTime: string | null;
     tradingDayKey: string;
     nextTradingDayKey: string;
