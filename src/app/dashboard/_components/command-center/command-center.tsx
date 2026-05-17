@@ -42,6 +42,7 @@ import {
   type ProtectionStatusPanelData,
   type TradingPermissionStatus,
 } from "./data-helpers";
+import { buildRuleSummaryChips } from "./summary-strip-helpers";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
@@ -892,9 +893,17 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
   );
 }
 
+function chipSeverityClass(severity: string): string {
+  if (severity === "locked") return "text-red-600";
+  if (severity === "warning") return "text-amber-600";
+  if (severity === "inactive") return "italic text-stone-400";
+  return "text-stone-400";
+}
+
 function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  const ruleSummaryChips = buildRuleSummaryChips(account);
   return (
     <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
       {/* Account — status badge + name + platform + sync time */}
@@ -1014,6 +1023,15 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
             {account.stopAfterLosses != null ? ` / ${account.stopAfterLosses}` : ""}
           </p>
         )}
+        {ruleSummaryChips.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+            {ruleSummaryChips.map((chip) => (
+              <span key={chip.key} className={`text-[10px] ${chipSeverityClass(chip.severity)}`}>
+                {chip.text}
+              </span>
+            ))}
+          </div>
+        )}
       </td>
 
       {/* Actions */}
@@ -1028,6 +1046,7 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
 
 function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  const ruleSummaryChips = buildRuleSummaryChips(account);
   const stateLabel = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
     requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
@@ -1183,6 +1202,11 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
               </span>
             </>
           )}
+          {ruleSummaryChips.map((chip) => (
+            <span key={chip.key} className={chipSeverityClass(chip.severity)}>
+              {chip.text}
+            </span>
+          ))}
         </div>
 
         {/* Action buttons row: Open, Rules, and optionally Reconnect */}

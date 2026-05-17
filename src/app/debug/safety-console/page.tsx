@@ -49,6 +49,7 @@ export default async function SafetyConsolePage() {
     activeLockRows,
     historicalEnforcements,
     listenerWorkerStatus,
+    ruleChangeAuditRows,
   ] = await Promise.all([
       prisma.brokerConnection.findMany({
         select: {
@@ -113,6 +114,22 @@ export default async function SafetyConsolePage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.listenerWorkerStatus.findUnique({ where: { id: "singleton" } }),
+      prisma.ruleChangeAudit.findMany({
+        orderBy: [{ allowed: "asc" }, { createdAt: "desc" }],
+        take: 20,
+        select: {
+          id: true,
+          scope: true,
+          allowed: true,
+          reason: true,
+          blockReason: true,
+          sessionRiskState: true,
+          hasOpenPosition: true,
+          createdAt: true,
+          user: { select: { email: true } },
+          account: { select: { label: true } },
+        },
+      }).catch(() => [] as never[]),
     ]);
 
   const activeLockCountByAccount = new Map<string, number>();
@@ -409,6 +426,7 @@ export default async function SafetyConsolePage() {
         >
           <AccountTable rows={accountSummaries} />
         </SectionCard>
+        <RuleChangeAuditSection rows={ruleChangeAuditRows} />
       </div>
     </AppShell>
   );
@@ -890,6 +908,77 @@ function RolloutReadinessSection({ items }: { items: RolloutReadiness[] }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Rule edit audit ────────────────────────────────────────────────────────────
+
+type RuleAuditRow = {
+  id: string;
+  scope: string;
+  allowed: boolean;
+  reason: string;
+  blockReason: string | null;
+  sessionRiskState: string | null;
+  hasOpenPosition: boolean | null;
+  createdAt: Date;
+  user: { email: string } | null;
+  account: { label: string } | null;
+};
+
+function RuleChangeAuditSection({ rows }: { rows: RuleAuditRow[] }) {
+  const blocked = rows.filter((r) => !r.allowed);
+  const allowed = rows.filter((r) => r.allowed);
+  const orderedRows = [...blocked, ...allowed];
+
+  return (
+    <SectionCard
+      title="Rule edit audit"
+      description="Recent rule-change attempts — blocked first. Read-only."
+    >
+      {orderedRows.length === 0 ? (
+        <p className="text-sm text-stone-500">No blocked rule-edit attempts.</p>
+      ) : (
+        <div className="grid gap-2">
+          {orderedRows.map((row) => (
+            <div
+              key={row.id}
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                row.allowed
+                  ? "border-stone-200 bg-stone-50"
+                  : "border-red-200 bg-red-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-stone-700">
+                  {row.user?.email ?? row.id}
+                  {row.account ? ` · ${row.account.label}` : ""}
+                  {` · ${row.scope}`}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    row.allowed
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-red-100 text-red-800"
+                  }`}
+                >
+                  {row.allowed ? "allowed" : "blocked"}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
+                <span>{row.createdAt.toISOString()}</span>
+                <span>reason: {row.reason}</span>
+                {row.blockReason && <span>block: {row.blockReason}</span>}
+                {row.sessionRiskState && <span>riskState: {row.sessionRiskState}</span>}
+                {row.hasOpenPosition != null && (
+                  <span>openPos: {row.hasOpenPosition ? "yes" : "no"}</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </SectionCard>
