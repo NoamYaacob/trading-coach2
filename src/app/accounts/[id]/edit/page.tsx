@@ -589,7 +589,7 @@ function BrokerEnforcementHistoryPanel({
           </p>
         ) : (
           <p className="text-sm text-stone-500">
-            Guardrail has applied risk controls to this account. No active Guardrail lock is in effect.
+            Guardrail is monitoring this account for rule breaches. No active broker lock is in effect.
           </p>
         )}
       </div>
