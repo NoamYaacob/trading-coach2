@@ -1376,6 +1376,20 @@ describe("source-scan: onboarding page does not expose internal terms to custome
       "connect step must describe real-time monitoring",
     );
   });
+
+  it("Guardian step defines what Guardian is (rule engine)", () => {
+    assert.ok(
+      ONBOARDING_SRC.includes("rule engine"),
+      "onboarding Guardian step must define Guardian as 'the rule engine' — not just say 'Turn on Guardian'",
+    );
+  });
+
+  it("Guardian step does not say 'enforces your rules automatically' (too vague about enforcement scope)", () => {
+    assert.ok(
+      !ONBOARDING_SRC.includes("enforces your rules automatically"),
+      "onboarding must not use 'enforces your rules automatically' — ambiguous about broker vs app enforcement",
+    );
+  });
 });
 
 // ── Source-scan: dashboard data-helpers uses customer-safe protection copy ────

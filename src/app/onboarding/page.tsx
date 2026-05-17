@@ -53,7 +53,7 @@ export default async function OnboardingPage() {
     },
     {
       title: "Turn on Guardian",
-      description: "Activate protection so Guardrail monitors each session and enforces your rules automatically.",
+      description: "Guardian is the rule engine that watches your account during each session. Your rules are saved but inactive until Guardian is on.",
       cta: "Turn on Guardian",
       href: "/rules#guardian-toggle",
       done: isProtectionActive,
