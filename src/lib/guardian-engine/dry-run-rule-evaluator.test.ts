@@ -102,6 +102,7 @@ function makeInput(overrides: Partial<DryRunRuleInput> = {}): DryRunRuleInput {
     maxDailyLoss: null,
     maxTradesPerDay: null,
     stopAfterLosses: null,
+    dailyProfitTarget: null,
     ...overrides,
   };
 }
@@ -242,6 +243,73 @@ describe("max_loss_streak rule", () => {
       makeInput({ stopAfterLosses: 3, consecutiveLosses: 3 }),
     );
     assert.equal(violations[0].dedupKey, "acct_test:max_loss_streak:2026-05-19:dry_run");
+  });
+});
+
+// ── daily_profit_target ───────────────────────────────────────────────────────
+
+describe("daily_profit_target rule", () => {
+  it("fires would_fire violation when dailyPnl reaches the target exactly", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: 800 }),
+    );
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].ruleType, "daily_profit_target");
+    assert.equal(violations[0].thresholdAmount, 800);
+    assert.equal(violations[0].observedAmount, 800);
+  });
+
+  it("fires when dailyPnl exceeds the target", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: 1200 }),
+    );
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].ruleType, "daily_profit_target");
+  });
+
+  it("does not fire when dailyPnl is below the target", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: 799 }),
+    );
+    assert.equal(violations.length, 0);
+  });
+
+  it("does not fire when dailyPnl is negative (in a loss)", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: -500 }),
+    );
+    assert.equal(violations.length, 0);
+  });
+
+  it("skips evaluation when dailyProfitTarget is null (not configured)", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: null, dailyPnl: 99999 }),
+    );
+    assert.equal(violations.length, 0);
+  });
+
+  it("embeds dry_run in dedup key", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: 800 }),
+    );
+    assert.equal(violations[0].dedupKey, "acct_test:daily_profit_target:2026-05-19:dry_run");
+  });
+
+  it("thresholdCount and observedCount are null (amount-based rule)", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ dailyProfitTarget: 800, dailyPnl: 800 }),
+    );
+    assert.equal(violations[0].thresholdCount, null);
+    assert.equal(violations[0].observedCount, null);
+  });
+
+  it("fires alongside daily_loss_limit configuration without interfering", () => {
+    // Loss limit not breached, profit target breached — only profit target fires.
+    const { violations } = evaluateDryRunRules(
+      makeInput({ maxDailyLoss: 500, dailyProfitTarget: 800, dailyPnl: 900 }),
+    );
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].ruleType, "daily_profit_target");
   });
 });
 

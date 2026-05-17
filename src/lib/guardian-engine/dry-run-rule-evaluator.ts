@@ -34,12 +34,22 @@ export type DryRunRuleInput = {
   maxDailyLoss: number | null;
   maxTradesPerDay: number | null;
   stopAfterLosses: number | null;
+  /**
+   * Daily profit target (positive amount). Dry-run audit only — a profit-target
+   * breach never creates an internal lock or any broker action. The internal
+   * lock path passes null here so it is excluded from enforcement entirely.
+   */
+  dailyProfitTarget: number | null;
 
   /** Optional source event identifier for traceability */
   sourceEventId?: string | null;
 };
 
-export type DryRunRuleResultType = "daily_loss_limit" | "trade_limit" | "max_loss_streak";
+export type DryRunRuleResultType =
+  | "daily_loss_limit"
+  | "trade_limit"
+  | "max_loss_streak"
+  | "daily_profit_target";
 
 export type DryRunRuleResult = {
   ruleType: DryRunRuleResultType;
@@ -108,6 +118,26 @@ export function evaluateDryRunRules(input: DryRunRuleInput): DryRunEvaluationRes
         observedAmount: null,
         observedCount: input.consecutiveLosses,
         dedupKey: `${input.accountId}:max_loss_streak:${input.tradingDay}:dry_run`,
+        actionWouldHaveTaken: "internal_lock",
+      });
+    }
+  }
+
+  // daily_profit_target — dry-run audit only.
+  // Mirrors Guardian's sign/threshold logic (guardian.ts evaluateGuardianRules):
+  // dailyPnl is positive when in profit; the target is reached when pnl >= target.
+  // A profit-target breach is NEVER passed to the internal lock or broker path —
+  // the internal lock evaluator supplies dailyProfitTarget=null so this branch
+  // is skipped there entirely.
+  if (input.dailyProfitTarget != null) {
+    if (input.dailyPnl >= input.dailyProfitTarget) {
+      violations.push({
+        ruleType: "daily_profit_target",
+        thresholdAmount: input.dailyProfitTarget,
+        thresholdCount: null,
+        observedAmount: input.dailyPnl,
+        observedCount: null,
+        dedupKey: `${input.accountId}:daily_profit_target:${input.tradingDay}:dry_run`,
         actionWouldHaveTaken: "internal_lock",
       });
     }

@@ -644,6 +644,20 @@ model NormalizedTradeEvent {
 
   account         ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  // Natural dedup key. Both ingestion paths (Tradovate webhook + cron sync)
+  // already dedup by (accountId, externalTradeId) before inserting, but the
+  // check-then-create pattern races under concurrent reconciliation. This
+  // constraint makes duplicate inserts impossible at the DB level.
+  //
+  // eventType is part of the key because externalTradeId is drawn from two
+  // separate Tradovate ID namespaces: order IDs (trade_opened) and fill IDs
+  // (fill / trade_closed*). Two genuinely distinct events can share a numeric
+  // ID across namespaces — including eventType keeps them distinct while still
+  // collapsing same-type duplicates.
+  //
+  // Rows with a null externalTradeId (e.g. daily_pnl_updated) are exempt:
+  // PostgreSQL treats NULLs as distinct in a unique index.
+  @@unique([accountId, eventType, externalTradeId])
   @@index([accountId, occurredAt])
   @@index([accountId, eventType, occurredAt])
   @@index([accountId, contractId, occurredAt])

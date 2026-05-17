@@ -168,6 +168,10 @@ export function deriveAccountEvaluation(input: AccountEvalInput): AccountEvalRes
     maxDailyLoss: riskRules.maxDailyLoss,
     maxTradesPerDay: riskRules.maxTradesPerDay,
     stopAfterLosses: riskRules.stopAfterLosses,
+    // This diagnostic reads account-level rules only; the profit target lives
+    // on GuardianProfile. Profit-target dry-run auditing is handled by
+    // dry-run-rule-evaluator-db.ts, not this helper.
+    dailyProfitTarget: null,
   };
 
   const { violations, skipped } = evaluateDryRunRules(evalInput);

@@ -14,6 +14,7 @@ import {
   type DryRunRuleInput,
   type DryRunRuleResult,
 } from "./dry-run-rule-evaluator";
+import { isGuardianRuleEvaluationActive } from "./guardian-master-switch";
 
 /**
  * Upsert DryRunViolation rows for an account.
@@ -58,8 +59,14 @@ export async function persistDryRunViolations(
  * Load account state, evaluate dry-run rules, and persist violations.
  * Called from the worker's onPropsEvent callback when ENFORCEMENT_DRY_RUN=true.
  *
- * Safety: reads ConnectedAccount + LiveSessionState + AccountRiskRules only.
- * Never reads or writes riskState, GuardianIntervention, or broker endpoints.
+ * Guardian master switch: accounts whose owner has Guardian off
+ * (GuardianProfile.guardianEnabled !== true, or no profile) are skipped — no
+ * DryRunViolation rows are written for them. Connection/account data sync is
+ * unaffected; only rule evaluation is gated.
+ *
+ * Safety: reads ConnectedAccount + LiveSessionState + AccountRiskRules +
+ * GuardianProfile only. Never reads or writes riskState, GuardianIntervention,
+ * or broker endpoints.
  */
 export async function evaluateDryRunRulesForConnection(connectionId: string): Promise<void> {
   const accounts = await prisma.connectedAccount.findMany({
@@ -73,6 +80,13 @@ export async function evaluateDryRunRulesForConnection(connectionId: string): Pr
       userId: true,
       externalAccountId: true,
       brokerConnection: { select: { env: true } },
+      user: {
+        select: {
+          guardianProfile: {
+            select: { guardianEnabled: true, dailyProfitTarget: true },
+          },
+        },
+      },
       sessionState: {
         select: {
           dailyPnl: true,
@@ -97,6 +111,17 @@ export async function evaluateDryRunRulesForConnection(connectionId: string): Pr
   const today = new Date().toISOString().slice(0, 10);
 
   for (const account of accounts) {
+    const guardianProfile = account.user?.guardianProfile ?? null;
+
+    // Guardian master switch — skip rule evaluation entirely when Guardian is off.
+    if (!isGuardianRuleEvaluationActive(guardianProfile)) {
+      console.info("[guardian] dry-run skipped — Guardian disabled for user", {
+        accountId: account.id,
+        userId: account.userId,
+      });
+      continue;
+    }
+
     const session = account.sessionState;
     if (!session) continue;
 
@@ -123,6 +148,10 @@ export async function evaluateDryRunRulesForConnection(connectionId: string): Pr
       maxDailyLoss: rules.maxDailyLoss != null ? Number(rules.maxDailyLoss) : null,
       maxTradesPerDay: rules.maxTradesPerDay ?? null,
       stopAfterLosses: rules.stopAfterLosses ?? null,
+      dailyProfitTarget:
+        guardianProfile?.dailyProfitTarget != null
+          ? Number(guardianProfile.dailyProfitTarget)
+          : null,
     };
 
     const { violations } = evaluateDryRunRules(input);

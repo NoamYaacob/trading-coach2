@@ -152,21 +152,33 @@ export async function POST(request: Request) {
     }
   }
 
-  // Persist the normalized event.
-  await prisma.normalizedTradeEvent.create({
-    data: {
-      accountId: account.id,
-      eventType: normalizedEvent.eventType,
-      externalTradeId: normalizedEvent.externalTradeId ?? null,
-      contractId: normalizedEvent.contractId ?? null,
-      side: normalizedEvent.side ?? null,
-      quantity: normalizedEvent.quantity != null ? String(normalizedEvent.quantity) : null,
-      price: normalizedEvent.price != null ? String(normalizedEvent.price) : null,
-      pnl: normalizedEvent.pnl != null ? String(normalizedEvent.pnl) : null,
-      rawPayload: normalizedEvent.rawPayload as object ?? undefined,
-      occurredAt: normalizedEvent.occurredAt,
-    },
-  });
+  // Persist the normalized event. The findFirst check above is best-effort;
+  // the (accountId, eventType, externalTradeId) unique index is the real race
+  // guard. A concurrent request (sync racing the webhook, or a webhook retry)
+  // that inserts the same event first triggers P2002 — treat it as a duplicate
+  // and stop here, exactly as the findFirst branch does, so session-state
+  // mutations below are not applied twice.
+  try {
+    await prisma.normalizedTradeEvent.create({
+      data: {
+        accountId: account.id,
+        eventType: normalizedEvent.eventType,
+        externalTradeId: normalizedEvent.externalTradeId ?? null,
+        contractId: normalizedEvent.contractId ?? null,
+        side: normalizedEvent.side ?? null,
+        quantity: normalizedEvent.quantity != null ? String(normalizedEvent.quantity) : null,
+        price: normalizedEvent.price != null ? String(normalizedEvent.price) : null,
+        pnl: normalizedEvent.pnl != null ? String(normalizedEvent.pnl) : null,
+        rawPayload: normalizedEvent.rawPayload as object ?? undefined,
+        occurredAt: normalizedEvent.occurredAt,
+      },
+    });
+  } catch (err) {
+    if ((err as { code?: unknown }).code === "P2002") {
+      return NextResponse.json({ ok: true, skipped: "duplicate_event" });
+    }
+    throw err;
+  }
 
   // Transition connection status to live on first successful event (idempotent).
   if (account.connectionStatus !== "connected_live") {

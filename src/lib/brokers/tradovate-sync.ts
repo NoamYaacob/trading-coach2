@@ -274,27 +274,27 @@ export async function syncTradovateAccount(
           reason: row.reason,
         });
       }
-      for (const ex of executions) {
-        const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
-          where: { accountId, externalTradeId: ex.executionId },
-          select: { id: true },
+      if (executions.length > 0) {
+        // createMany with skipDuplicates relies on the
+        // (accountId, eventType, externalTradeId) unique index to drop any
+        // fill already stored by a prior sync run. This is race-safe, unlike
+        // the previous findFirst-then-create pattern, which could double-store
+        // a fill when two reconciliations ran concurrently.
+        await prisma.normalizedTradeEvent.createMany({
+          data: executions.map((ex) => ({
+            accountId,
+            eventType: "fill",
+            externalTradeId: ex.executionId,
+            contractId: ex.contractId ?? null,
+            side: ex.side,
+            quantity: ex.quantity,
+            price: ex.price,
+            pnl: ex.pnl,
+            occurredAt: ex.occurredAt,
+            rawPayload: { symbol: ex.symbol, orderId: ex.orderId },
+          })),
+          skipDuplicates: true,
         });
-        if (!alreadyStored) {
-          await prisma.normalizedTradeEvent.create({
-            data: {
-              accountId,
-              eventType: "fill",
-              externalTradeId: ex.executionId,
-              contractId: ex.contractId ?? null,
-              side: ex.side,
-              quantity: ex.quantity,
-              price: ex.price,
-              pnl: ex.pnl,
-              occurredAt: ex.occurredAt,
-              rawPayload: { symbol: ex.symbol, orderId: ex.orderId },
-            },
-          });
-        }
       }
     } catch {
       // Fill storage is best-effort. If Phase A also failed, fillsSyncedAt

@@ -21,6 +21,7 @@ import {
   parseBrokerEnforcementAllowlist,
 } from "./broker-enforcement-gate";
 import { buildListenerBrokerDedupKey } from "./broker-enforcement-dedup";
+import { isGuardianRuleEvaluationActive } from "./guardian-master-switch";
 
 export type BrokerEnforcementServiceResult = {
   attempted: boolean;
@@ -68,6 +69,9 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
               permissionLevel: true,
             },
           },
+          user: {
+            select: { guardianProfile: { select: { guardianEnabled: true } } },
+          },
         },
       },
     },
@@ -100,6 +104,20 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
     lockEvent.ruleType,
     lockEvent.tradingDay,
   );
+
+  // ── Guardian master switch — defense in depth ───────────────────────────────
+  // The internal lock evaluator already skips guardian-off accounts (so this
+  // function is normally never reached for them), but Guardian could be turned
+  // off after a lock was created. No broker enforcement may be attempted while
+  // Guardian is off for the account owner.
+  if (!isGuardianRuleEvaluationActive(account.user?.guardianProfile ?? null)) {
+    return {
+      attempted: false,
+      allowed: false,
+      skipReason: "Guardian disabled for the account owner (master switch off)",
+      dedupKey,
+    };
+  }
 
   // ── Dedup check — has a GuardianIntervention with this key already been written? ──
   const existingIntervention = await prisma.guardianIntervention.findUnique({

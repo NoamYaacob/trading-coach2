@@ -16,6 +16,10 @@
 import { prisma } from "../db";
 import { evaluateDryRunRules, type DryRunRuleInput } from "./dry-run-rule-evaluator";
 import { canApplyInternalLock, buildInternalLockDedupKey } from "./internal-lock-evaluator";
+import {
+  isGuardianRuleEvaluationActive,
+  GUARDIAN_DISABLED_SKIP_REASON,
+} from "./guardian-master-switch";
 
 /** Per-account outcome from a single applyInternalLockForConnection call. */
 export type InternalLockResult = {
@@ -65,6 +69,9 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
       userId: true,
       externalAccountId: true,
       brokerConnection: { select: { env: true } },
+      user: {
+        select: { guardianProfile: { select: { guardianEnabled: true } } },
+      },
       sessionState: {
         select: {
           riskState: true,
@@ -91,6 +98,25 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
   const results: InternalLockResult[] = [];
 
   for (const account of accounts) {
+    // Guardian master switch — skip enforcement entirely when Guardian is off.
+    // Placed before the canApplyInternalLock / already-STOPPED branch so a
+    // guardian-off account never returns an internalLockEventId, which means
+    // the broker enforcement step is never reached for it either.
+    if (!isGuardianRuleEvaluationActive(account.user?.guardianProfile ?? null)) {
+      console.info("[guardian] internal lock skipped — Guardian disabled for user", {
+        accountId: account.id,
+        userId: account.userId,
+      });
+      results.push({
+        accountId: account.id,
+        createdOrUpdated: false,
+        internalLockEventId: null,
+        ruleType: null,
+        skipReason: GUARDIAN_DISABLED_SKIP_REASON,
+      });
+      continue;
+    }
+
     const session = account.sessionState;
     if (!session) {
       results.push({ accountId: account.id, createdOrUpdated: false, internalLockEventId: null, ruleType: null, skipReason: "no LiveSessionState row" });
@@ -160,6 +186,9 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
       maxDailyLoss: rules.maxDailyLoss != null ? Number(rules.maxDailyLoss) : null,
       maxTradesPerDay: rules.maxTradesPerDay ?? null,
       stopAfterLosses: rules.stopAfterLosses ?? null,
+      // Profit target is dry-run audit only — never creates an internal lock or
+      // any broker action. Passing null excludes it from this enforcement path.
+      dailyProfitTarget: null,
     };
 
     const { violations } = evaluateDryRunRules(input);

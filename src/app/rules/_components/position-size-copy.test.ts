@@ -56,4 +56,16 @@ describe("MAX_POSITION_SIZE_COPY — hint copy", () => {
       );
     }
   });
+
+  it("does not imply real-time or pre-trade breach detection", () => {
+    // Guardrail does not intercept orders before they execute against this
+    // limit — the copy must not promise real-time / pre-trade enforcement.
+    const FORBIDDEN = ["real-time", "real time", "instant", "pre-trade", "blocks every order"];
+    for (const f of FORBIDDEN) {
+      assert.ok(
+        !MAX_POSITION_SIZE_COPY.hint.toLowerCase().includes(f.toLowerCase()),
+        `hint must not imply "${f}" enforcement`,
+      );
+    }
+  });
 });

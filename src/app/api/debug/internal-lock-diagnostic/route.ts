@@ -173,6 +173,9 @@ export async function GET(request: NextRequest) {
       maxDailyLoss: rules.maxDailyLoss != null ? Number(rules.maxDailyLoss) : null,
       maxTradesPerDay: rules.maxTradesPerDay ?? null,
       stopAfterLosses: rules.stopAfterLosses ?? null,
+      // Mirrors applyInternalLockForConnection, which excludes the profit
+      // target from the internal lock path entirely.
+      dailyProfitTarget: null,
     });
     violations = evalResult.violations;
     if (violations.length === 0) {
