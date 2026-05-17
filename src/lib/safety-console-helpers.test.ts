@@ -767,6 +767,52 @@ describe("source-scan: safety console page is admin-gated and read-only", () => 
   });
 });
 
+// ── Source-scan: /debug/coach page is admin-gated ────────────────────────────
+
+describe("source-scan: /debug/coach page is admin-gated (not publicly accessible)", () => {
+  const COACH_PAGE_SRC = readFileSync(
+    resolve(__dirname, "../app/debug/coach/page.tsx"),
+    "utf8",
+  );
+
+  it("calls getCurrentUser() before rendering", () => {
+    assert.ok(
+      COACH_PAGE_SRC.includes("getCurrentUser()"),
+      "/debug/coach page must call getCurrentUser() — it was previously missing an auth check",
+    );
+  });
+
+  it("gates access with isAdminEmail", () => {
+    assert.ok(
+      COACH_PAGE_SRC.includes("isAdminEmail"),
+      "/debug/coach page must gate non-admin users with isAdminEmail",
+    );
+  });
+
+  it("returns notFound() for non-admins (hides route existence)", () => {
+    assert.ok(
+      COACH_PAGE_SRC.includes("notFound()"),
+      "/debug/coach page must call notFound() so the route is invisible to non-admin users",
+    );
+  });
+
+  it("is an async function (required for server-side auth check)", () => {
+    assert.ok(
+      COACH_PAGE_SRC.includes("async function"),
+      "/debug/coach page must be an async server component to call getCurrentUser()",
+    );
+  });
+
+  it("'Pick a user by email' copy only rendered after auth gate", () => {
+    const gateIndex = COACH_PAGE_SRC.indexOf("notFound()");
+    const formIndex = COACH_PAGE_SRC.indexOf("Pick a user by email");
+    assert.ok(
+      gateIndex !== -1 && formIndex !== -1 && gateIndex < formIndex,
+      "notFound() gate must appear in source before 'Pick a user by email' debug copy",
+    );
+  });
+});
+
 // ── Source-scan: normal customer dashboard hides audit details ───────────────
 
 describe("source-scan: normal customer dashboard does not expose technical audit details", () => {
