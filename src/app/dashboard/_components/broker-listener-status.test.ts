@@ -356,31 +356,35 @@ const COMPONENT_SRC = readFileSync(
 );
 
 describe("BrokerListenerStatus component copy: enforcement framing", () => {
-  it("does not promise pre-trade reject for standard-equivalent mode", () => {
-    const standardEquivIdx = COMPONENT_SRC.indexOf("Standard-equiv");
-    assert.ok(standardEquivIdx !== -1, "must have standard-equivalent enforcement mode label");
-    const label = COMPONENT_SRC.slice(standardEquivIdx, standardEquivIdx + 100);
+  it("standard-equivalent mode says Guardrail monitors after sync (not pre-trade)", () => {
     assert.ok(
-      !label.includes("pre-trade reject"),
+      COMPONENT_SRC.includes("Guardrail monitors position size after sync"),
+      "standard-equiv label must describe post-sync monitoring",
+    );
+    assert.ok(
+      !COMPONENT_SRC.includes("pre-trade reject"),
       "standard-equiv label must NOT say 'pre-trade reject'",
     );
+  });
+
+  it("raw broker mode label says 'Broker cap active'", () => {
     assert.ok(
-      label.includes("not pre-trade") || label.includes("detection-response"),
-      "must clarify it is NOT a pre-trade reject",
+      COMPONENT_SRC.includes("Broker cap active"),
+      "raw mode label must say 'Broker cap active'",
     );
   });
 
-  it("raw broker mode label says 'Raw broker reject' to be accurate", () => {
+  it("raw broker mode notes it applies to all contracts equally", () => {
     assert.ok(
-      COMPONENT_SRC.includes("Raw broker reject"),
-      "raw mode label must accurately say 'Raw broker reject'",
+      COMPONENT_SRC.includes("applies to all contracts"),
+      "raw mode must note it applies to all contracts equally",
     );
   });
 
-  it("raw broker mode warns about counting all contracts equally", () => {
+  it("does not expose 'detection-response' jargon to customers", () => {
     assert.ok(
-      COMPONENT_SRC.includes("counts all contracts equally"),
-      "raw mode must warn about equal counting",
+      !COMPONENT_SRC.includes("detection-response"),
+      "component must not expose 'detection-response' jargon to customers",
     );
   });
 });

@@ -568,13 +568,12 @@ export function AccountRulesForm({
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
             {values.maxContracts.trim() !== "" && (
               <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
-                <p className="font-semibold text-amber-900">Advanced: Broker raw hard limit</p>
+                <p className="font-semibold text-amber-900">Advanced broker-side contract cap</p>
                 <p className="mt-1 text-amber-800">
-                  When enabled, Guardrail writes a global raw contract cap to Tradovate (immediate broker
-                  reject before execution). However, Tradovate counts all contracts equally — with
-                  max&nbsp;=&nbsp;1, even 2&nbsp;MNQ (0.2 NQ-equivalent, within your standard-equivalent
-                  limit) will be rejected. The default detection-response mode allows NQ&nbsp;1 or
-                  MNQ&nbsp;10 for the same limit.
+                  Enables a broker-side contract cap on your Tradovate account (immediate reject before
+                  execution). Tradovate counts all contracts equally — 2&nbsp;MNQ counts as 2 contracts,
+                  even though it is well within a 1-standard-equivalent limit. Use only if you want
+                  Tradovate to enforce a raw contract count.
                 </p>
                 <label className="mt-2 flex cursor-pointer items-center gap-2">
                   <input
@@ -584,7 +583,7 @@ export function AccountRulesForm({
                     onChange={(e) => update("rawBrokerHardLimitEnabled", e.target.checked)}
                   />
                   <span className="text-amber-900">
-                    Enable raw hard limit at broker (counts all contracts equally)
+                    Enable broker-side contract cap (applies to all contracts equally)
                   </span>
                 </label>
               </div>

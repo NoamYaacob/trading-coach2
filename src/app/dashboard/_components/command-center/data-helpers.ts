@@ -505,7 +505,7 @@ export function shouldShowEnforcementChip(mode: EnforcementMode): boolean {
 export type RowStatusLabel =
   | "Tradable"
   | "Maintenance"
-  | "Closed"
+  | "Session closed"
   | "Action required"
   | "Warning"
   | "Locked"
@@ -535,7 +535,7 @@ export function deriveRowStatusLabel(input: {
     return "Needs rules";
   }
   // status === "allowed" — reflect market availability on the badge.
-  if (input.isWeekendClose) return "Closed";
+  if (input.isWeekendClose) return "Session closed";
   if (input.isMaintenanceWindow) return "Maintenance";
   // Refine based on consent + permission gaps.
   if (input.requiresAutomatedActionsConsent) return "Action required";

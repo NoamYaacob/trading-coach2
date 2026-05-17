@@ -161,7 +161,7 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
     assert.equal(
       result.detail,
       "Daily loss and profit target can trigger Tradovate risk settings on breach. " +
-        "Other rules are enforced by Guardrail. Order actions are not enabled yet.",
+        "Other rules are enforced by Guardrail. Supported money limits can use broker risk settings.",
     );
   });
 });

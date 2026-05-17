@@ -189,7 +189,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
   // Drives "Maintenance" badge and "CME break" banner.
   const isMaintenanceWindow = isCmeMaintenanceWindow();
   // True during the weekend close (Fri 4:00 PM CT → Sun 5:00 PM CT).
-  // Drives "Closed" badge and "Market closed" banner.
+  // Drives "Session closed" badge and "Market closed" banner.
   const isWeekendClose = isCmeWeekendClose();
 
   const computed: CommandCenterAccount[] = accounts.map((account) => {
