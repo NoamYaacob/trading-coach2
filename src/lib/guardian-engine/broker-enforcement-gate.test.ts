@@ -653,6 +653,11 @@ describe("listener-worker import graph — no @/ path aliases", () => {
     "src/lib/brokers/tradovate-ensure-token.ts",
     "src/lib/brokers/tradovate-listener-manager.ts",
     "src/lib/brokers/tradovate-websocket-protocol.ts",
+    "src/lib/brokers/tradovate-listener-reconciliation.ts",
+    "src/lib/brokers/tradovate-sync.ts",
+    "src/lib/brokers/tradovate-discovery.ts",
+    "src/lib/brokers/tradovate/load-live-positions.ts",
+    "src/lib/guardian-engine/session-state.ts",
     "src/lib/security/token-crypto.ts",
     "src/lib/db.ts",
   ] as const;

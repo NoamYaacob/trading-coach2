@@ -12,8 +12,8 @@
  * accounts are kept for history with a missing-from-broker marker.
  */
 
-import { prisma } from "@/lib/db";
-import { parseAndDecrypt } from "@/lib/security/token-crypto";
+import { prisma } from "../db";
+import { parseAndDecrypt } from "../security/token-crypto";
 
 import {
   decideReconciliation,

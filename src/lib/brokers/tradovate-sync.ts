@@ -13,15 +13,15 @@
  *  - Token values never leave the server or appear in returned objects.
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import { TradovateClient, TradovateClientError } from "./tradovate-client";
 import { ensureTradovateAccessToken } from "./tradovate-ensure-token";
 import { runDiscoveryForConnection } from "./tradovate-discovery";
-import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
+import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "../trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, selectPhaseCTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser";
-import { countCanonicalEntries } from "@/lib/guardian-engine/session-state";
+import { countCanonicalEntries } from "../guardian-engine/session-state";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 import {
   computeEffectiveDailyPnl,

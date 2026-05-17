@@ -10,7 +10,7 @@
  * Never compare the Guardrail DB account.id (a CUID string) to accountId.
  */
 
-import type { TradovateClient, TvPosition } from "@/lib/brokers/tradovate-client";
+import type { TradovateClient, TvPosition } from "../tradovate-client";
 
 export type PositionLoadDiagnostics = {
   /** Numeric Tradovate account ID derived from externalAccountId for position filtering. */
