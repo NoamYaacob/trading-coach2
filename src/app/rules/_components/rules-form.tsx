@@ -372,7 +372,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       {/* ── Submit ──────────────────────────────────────────────────────── */}
       <div className="grid gap-2 border-t border-stone-100 pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss and profit target limits can also trigger broker risk settings on breach.
+          Rules are saved in Guardrail. Daily loss can trigger broker risk settings on breach. Profit targets are monitored in Guardrail.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire

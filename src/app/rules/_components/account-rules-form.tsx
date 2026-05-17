@@ -778,7 +778,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss, and the inherited profit target when configured, can trigger broker risk settings on breach.
+          Rules are saved in Guardrail. Daily loss can trigger broker risk settings on breach. Profit targets are monitored in Guardrail.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.

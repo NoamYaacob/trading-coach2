@@ -1575,10 +1575,10 @@ describe("source-scan: enforcement-mode copy does not expose internal terms", ()
     );
   });
 
-  it("uses simplified Tradovate enforcement copy instead", () => {
+  it("uses honest broker enforcement copy that scopes broker protection to daily loss only", () => {
     assert.ok(
-      ENFORCEMENT_MODE_SRC.includes("Daily loss and profit target can be enforced through Tradovate"),
-      "enforcement-mode must use the simplified Tradovate enforcement copy",
+      ENFORCEMENT_MODE_SRC.includes("Daily loss can be protected through Tradovate broker risk settings"),
+      "enforcement-mode must scope broker protection to daily loss, not profit target",
     );
   });
 
@@ -1862,14 +1862,14 @@ describe("source-scan: enforcement-mode contains simplified broker risk settings
     "utf8",
   );
 
-  it("full_access detail contains simplified Tradovate enforcement copy", () => {
+  it("full_access detail scopes broker protection to daily loss only, not profit target", () => {
     assert.ok(
-      EM_SRC.includes("Daily loss and profit target can be enforced through Tradovate"),
-      "enforcement-mode must contain the simplified Tradovate copy",
+      EM_SRC.includes("Daily loss can be protected through Tradovate broker risk settings"),
+      "enforcement-mode must scope broker protection to daily loss only",
     );
     assert.ok(
-      EM_SRC.includes("Other rules are monitored and enforced by Guardrail"),
-      "enforcement-mode must contain the simplified Guardrail copy",
+      EM_SRC.includes("Profit targets are monitored in Guardrail"),
+      "enforcement-mode must clarify that profit targets are Guardrail-monitored only",
     );
   });
 

@@ -1,7 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { computeEnforcementMode } from "./enforcement-mode.ts";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 const tradovateAccount = (
   connStatus: string,
@@ -160,8 +165,8 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
     );
     assert.equal(
       result.detail,
-      "Daily loss and profit target can be enforced through Tradovate. " +
-        "Other rules are monitored and enforced by Guardrail.",
+      "Daily loss can be protected through Tradovate broker risk settings. " +
+        "Profit targets are monitored in Guardrail.",
     );
   });
 });
@@ -299,4 +304,40 @@ describe("computeEnforcementMode — non-Tradovate platform", () => {
     );
     assert.ok(result.detail.includes("Broker-side blocking is not active for this platform"));
   });
+});
+
+// ── Source-scan: no customer-facing copy claims profit target → broker enforcement ──
+
+describe("profit-target broker-enforcement honesty guard", () => {
+  const RULES_COMPONENTS_DIR = __dirname;
+  const REPO_ROOT = join(__dirname, "../../../..");
+
+  const SCAN_FILES = [
+    join(RULES_COMPONENTS_DIR, "enforcement-mode.ts"),
+    join(RULES_COMPONENTS_DIR, "rules-form.tsx"),
+    join(RULES_COMPONENTS_DIR, "account-rules-form.tsx"),
+    join(REPO_ROOT, "src/app/terms/page.tsx"),
+  ];
+
+  const FORBIDDEN_PHRASES = [
+    "profit target can be enforced through Tradovate",
+    "profit target.*trigger broker",
+    "profit target.*broker risk settings on breach",
+    "profit target.*can trigger",
+    "daily profit target.*can be enforced",
+  ];
+
+  for (const filePath of SCAN_FILES) {
+    const shortName = filePath.slice(REPO_ROOT.length + 1);
+    it(`${shortName} contains no false claim that profit target triggers broker enforcement`, () => {
+      const src = readFileSync(filePath, "utf8").toLowerCase();
+      for (const phrase of FORBIDDEN_PHRASES) {
+        const re = new RegExp(phrase, "i");
+        assert.ok(
+          !re.test(src),
+          `${shortName} must not claim profit target triggers broker enforcement (matched: "${phrase}")`,
+        );
+      }
+    });
+  }
 });
