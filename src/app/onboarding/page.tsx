@@ -53,14 +53,14 @@ export default async function OnboardingPage() {
     },
     {
       title: "Turn on Guardian",
-      description: "Activate monitoring so Guardrail checks each session against your saved rules.",
+      description: "Activate protection so Guardrail monitors each session and enforces your rules automatically.",
       cta: "Turn on Guardian",
       href: "/rules#guardian-toggle",
       done: isProtectionActive,
     },
     {
       title: "Connect Tradovate",
-      description: "Enable live account monitoring. Broker enforcement is available only when the account, connection type, and permissions support it.",
+      description: "Enable real-time monitoring of your Tradovate account. Guardrail checks every fill against your rules the moment it happens.",
       cta: "Connect Tradovate",
       href: "/accounts/connect/tradovate",
       done: hasBroker,

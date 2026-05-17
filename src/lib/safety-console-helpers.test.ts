@@ -1149,3 +1149,249 @@ describe("source-scan: normal customer UI does not expose rollout readiness chec
     );
   });
 });
+
+// ── Source-scan: Trading Plan page does not expose internal terms ─────────────
+
+describe("source-scan: Trading Plan page does not expose internal terms", () => {
+  const RULES_PAGE_SRC = readFileSync(
+    resolve(__dirname, "../app/rules/page.tsx"),
+    "utf8",
+  );
+
+  it("does not expose 'InternalLockEvent' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("InternalLockEvent"),
+      "Trading Plan page must not reference InternalLockEvent",
+    );
+  });
+
+  it("does not expose 'Safety Console' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("Safety Console"),
+      "Trading Plan page must not mention Safety Console",
+    );
+  });
+
+  it("does not expose 'rollout readiness' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("rollout readiness"),
+      "Trading Plan page must not mention rollout readiness",
+    );
+  });
+
+  it("does not expose 'listenerBrokerDedupKey' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("listenerBrokerDedupKey"),
+      "Trading Plan page must not reference the internal listenerBrokerDedupKey field",
+    );
+  });
+
+  it("does not expose 'reconciliation' to customers", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("reconciliation"),
+      "Trading Plan page must not mention the internal reconciliation process",
+    );
+  });
+
+  it("shows 'How enforcement works' user education section", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("How enforcement works"),
+      "Trading Plan page must include the 'How enforcement works' education section",
+    );
+  });
+
+  it("shows 'These are the rules Guardrail watches' copy", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("These are the rules Guardrail watches"),
+      "Trading Plan page must include the rule-session context copy",
+    );
+  });
+
+  it("uses 'Monitoring:' label in enforcement explanation", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Monitoring:"),
+      "enforcement section must use the 'Monitoring:' label",
+    );
+  });
+
+  it("uses 'App lock:' label in enforcement explanation", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("App lock:"),
+      "enforcement section must use the 'App lock:' label",
+    );
+  });
+
+  it("uses 'Broker risk settings:' label in enforcement explanation", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Broker risk settings:"),
+      "enforcement section must use the 'Broker risk settings:' label",
+    );
+  });
+});
+
+// ── Source-scan: account detail page does not expose internal terms ────────────
+
+describe("source-scan: account detail page does not expose internal terms to customers", () => {
+  const ACCOUNT_PAGE_SRC = readFileSync(
+    resolve(__dirname, "../app/accounts/[id]/edit/page.tsx"),
+    "utf8",
+  );
+
+  it("does not show 'Safety Console' to customers", () => {
+    assert.ok(
+      !ACCOUNT_PAGE_SRC.includes("Safety Console"),
+      "account detail page must not mention Safety Console",
+    );
+  });
+
+  it("does not show 'rollout readiness' to customers", () => {
+    assert.ok(
+      !ACCOUNT_PAGE_SRC.includes("rollout readiness"),
+      "account detail page must not expose rollout readiness",
+    );
+  });
+
+  it("does not show 'listener-worker' to customers", () => {
+    assert.ok(
+      !ACCOUNT_PAGE_SRC.includes("listener-worker"),
+      "account detail page must not expose the listener-worker internal term",
+    );
+  });
+
+  it("does not show 'reconciliation' to customers", () => {
+    assert.ok(
+      !ACCOUNT_PAGE_SRC.includes("reconciliation"),
+      "account detail page must not expose the internal reconciliation process",
+    );
+  });
+
+  it("shows customer-safe 'No active Guardrail lock' copy", () => {
+    assert.ok(
+      ACCOUNT_PAGE_SRC.includes("No active Guardrail lock"),
+      "account detail page must show 'No active Guardrail lock' for customer-safe lock status",
+    );
+  });
+
+  it("shows 'Broker protection status' section header", () => {
+    assert.ok(
+      ACCOUNT_PAGE_SRC.includes("Broker protection status"),
+      "account detail page must show the 'Broker protection status' section",
+    );
+  });
+
+  it("shows 'Guardrail checks every fill' session monitoring copy", () => {
+    assert.ok(
+      ACCOUNT_PAGE_SRC.includes("Guardrail checks every fill"),
+      "account detail page must explain that Guardrail monitors every fill",
+    );
+  });
+});
+
+// ── Source-scan: onboarding page does not expose internal terms ───────────────
+
+describe("source-scan: onboarding page does not expose internal terms to customers", () => {
+  const ONBOARDING_SRC = readFileSync(
+    resolve(__dirname, "../app/onboarding/page.tsx"),
+    "utf8",
+  );
+
+  it("does not expose 'InternalLockEvent'", () => {
+    assert.ok(
+      !ONBOARDING_SRC.includes("InternalLockEvent"),
+      "onboarding must not reference InternalLockEvent",
+    );
+  });
+
+  it("does not expose 'Safety Console'", () => {
+    assert.ok(
+      !ONBOARDING_SRC.includes("Safety Console"),
+      "onboarding must not mention Safety Console",
+    );
+  });
+
+  it("does not expose 'rollout readiness'", () => {
+    assert.ok(
+      !ONBOARDING_SRC.includes("rollout readiness"),
+      "onboarding must not mention rollout readiness",
+    );
+  });
+
+  it("does not expose 'reconciliation'", () => {
+    assert.ok(
+      !ONBOARDING_SRC.includes("reconciliation"),
+      "onboarding must not mention the internal reconciliation process",
+    );
+  });
+
+  it("uses customer-friendly monitoring copy", () => {
+    assert.ok(
+      ONBOARDING_SRC.includes("monitoring"),
+      "onboarding must explain monitoring to the customer",
+    );
+  });
+
+  it("links to Connect Tradovate flow", () => {
+    assert.ok(
+      ONBOARDING_SRC.includes("Connect Tradovate"),
+      "onboarding must have the Connect Tradovate step",
+    );
+  });
+
+  it("uses 'real-time monitoring' in the connect step", () => {
+    assert.ok(
+      ONBOARDING_SRC.includes("real-time monitoring"),
+      "connect step must describe real-time monitoring",
+    );
+  });
+});
+
+// ── Source-scan: dashboard data-helpers uses customer-safe protection copy ────
+
+describe("source-scan: dashboard data-helpers uses customer-safe protection copy", () => {
+  const DATA_HELPERS_SRC = readFileSync(
+    resolve(__dirname, "../app/dashboard/_components/command-center/data-helpers.ts"),
+    "utf8",
+  );
+
+  it("dry-run banner copy says 'Protection test mode'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("Protection test mode"),
+      "dry-run copy must use 'Protection test mode' not raw 'dry_run'",
+    );
+  });
+
+  it("dry-run banner copy does not say 'until live enforcement is enabled'", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("until live enforcement is enabled"),
+      "dry-run copy must not forward-reference 'live enforcement is enabled'",
+    );
+  });
+
+  it("dry-run banner copy says 'No broker actions are sent'", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("No broker actions are sent"),
+      "dry-run banner must confirm no broker actions are sent",
+    );
+  });
+
+  it("maps enforcement state to 'Broker risk settings enabled' — not raw enum", () => {
+    assert.ok(
+      DATA_HELPERS_SRC.includes("Broker risk settings enabled"),
+      "data-helpers must use 'Broker risk settings enabled' label, not raw enum values",
+    );
+  });
+
+  it("does not expose 'Safety Console' in customer copy", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("Safety Console"),
+      "dashboard data-helpers must not mention Safety Console",
+    );
+  });
+
+  it("does not expose 'rollout readiness' in customer copy", () => {
+    assert.ok(
+      !DATA_HELPERS_SRC.includes("rollout readiness"),
+      "dashboard data-helpers must not mention rollout readiness",
+    );
+  });
+});

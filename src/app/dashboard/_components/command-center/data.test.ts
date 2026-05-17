@@ -1311,17 +1311,17 @@ describe("DRY_RUN_BANNER_COPY (user-facing 'Protection test mode' banner)", () =
     );
   });
 
-  it("explicitly states it 'will not block or close trades' (the user-facing safety promise)", () => {
+  it("states 'No broker actions are sent' (the user-facing safety promise)", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.includes("will not block or close trades"),
-      `expected 'will not block or close trades' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.includes("No broker actions are sent"),
+      `expected 'No broker actions are sent' in copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("references the live-enforcement toggle so the user knows what changes when it's flipped", () => {
+  it("does not forward-reference 'live enforcement is enabled' (avoids confusing non-technical users)", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("live enforcement"),
-      `expected 'live enforcement' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      !DRY_RUN_BANNER_COPY.includes("until live enforcement is enabled"),
+      `'until live enforcement is enabled' must not appear in user-facing banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 });

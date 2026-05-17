@@ -474,7 +474,7 @@ export function deriveConnectionStatusLabel(rawStatus: string): string {
  *  remains "dry_run" and the env var remains ENFORCEMENT_DRY_RUN — the rename
  *  only applies to copy that the user reads. */
 export const DRY_RUN_BANNER_COPY =
-  "Protection test mode: Guardrail is watching your accounts, but it will not block or close trades until live enforcement is enabled.";
+  "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.";
 
 // ── shouldShowEnforcementChip ─────────────────────────────────────────────────
 

@@ -368,10 +368,10 @@ export default async function RulesPage({
               <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
             </summary>
             <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
-              <li>• Guardrail sends warnings when rules are crossed.</li>
-              <li>• In app-level monitoring, Guardrail marks the account locked inside the app only.</li>
-              <li>• Broker-side cancel, flatten, and blocking require write permissions and enabled order actions.</li>
-              <li>• Read-only connections support monitoring and alerts only.</li>
+              <li>• <span className="font-medium text-stone-700">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
+              <li>• <span className="font-medium text-stone-700">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
+              <li>• <span className="font-medium text-stone-700">Broker risk settings:</span> when enabled, Guardrail can apply broker-side order blocking for daily loss and position limits.</li>
+              <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
             </ul>
           </details>
 
@@ -535,6 +535,9 @@ function ScopeContextHeader({
         <p className="mt-0.5 text-sm text-stone-500">
           Applies to all accounts that don't have their own override. Select an account in the sidebar to configure it individually.
         </p>
+        <p className="mt-1 text-xs text-stone-400">
+          These are the rules Guardrail watches during your trading session.
+        </p>
       </div>
     );
   }
@@ -570,6 +573,9 @@ function ScopeContextHeader({
         )}
       </div>
       {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
+      <p className="mt-1 text-xs text-stone-400">
+        These are the rules Guardrail watches for this account during your trading session.
+      </p>
     </div>
   );
 }

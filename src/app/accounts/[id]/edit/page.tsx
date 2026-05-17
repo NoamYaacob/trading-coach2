@@ -421,7 +421,7 @@ export default async function EditAccountPage({
           </p>
           <p className="mt-1 text-sm text-stone-700">{ruleSourceLabel}</p>
           <p className="mt-0.5 text-xs text-stone-500">
-            Protection limits, session hours, and enforcement settings are managed in Trading Plan.
+            Guardrail checks every fill against these rules during your session.
           </p>
           <div className="mt-3">
             <Link
@@ -591,7 +591,7 @@ function BrokerEnforcementHistoryPanel({
           </p>
         ) : (
           <p className="text-sm text-stone-500">
-            Broker protection has been active on this account.
+            Guardrail has applied risk controls to this account. No active Guardrail lock is in effect.
           </p>
         )}
       </div>
