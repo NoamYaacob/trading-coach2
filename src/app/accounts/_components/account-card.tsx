@@ -678,11 +678,6 @@ export function AccountCard({
                         ) : (
                           <p className="text-xs text-stone-400">Telegram not sent</p>
                         )}
-                        {isBrokerEnforcement ? (
-                          <p className="mt-0.5 font-mono text-[10px] text-stone-400 break-all">
-                            ID …{item.id.slice(-10)} · {item.listenerBrokerDedupKey}
-                          </p>
-                        ) : null}
                       </div>
                       <p className="shrink-0 text-xs text-stone-400">
                         {shortDate(item.createdAt)}

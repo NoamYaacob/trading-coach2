@@ -198,9 +198,10 @@ export default async function RulesAssignmentPage({
         </div>
 
         <p className="text-xs leading-5 text-stone-500">
-          When a rule is breached, Guardrail marks the account as locked inside the app. For
-          Tradovate accounts with full API access, Guardrail can also apply broker-side risk
-          settings — but only when you explicitly enable them. Broker actions are never on by default.
+          When a rule is breached, Guardrail marks the account as locked inside the app and sends
+          alerts. For Tradovate accounts with full access, Guardrail can also apply a broker-side
+          Daily Loss risk setting — the only broker-backed rule today — but only when you explicitly
+          enable it. Other rules stay app-monitored, and broker actions are never on by default.
         </p>
       </main>
     </div>
