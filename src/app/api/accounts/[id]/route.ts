@@ -26,6 +26,7 @@ import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 import { executeDailyLossSync } from "./daily-loss-sync";
+import { writeBrokerRiskSettingsSyncAudit } from "@/lib/brokers/broker-risk-settings-sync-audit-writer";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -376,6 +377,21 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         existing.platform === "tradovate"
       ) {
         void (async () => {
+          // brokerEnv is declared outside the try so the catch block can include it
+          // in the audit row even if the execution path failed after the DB queries.
+          let brokerEnv: string | null = null;
+          const maxDailyLoss = body.riskRules!.maxDailyLoss as number;
+          const baseAudit = {
+            userId: currentUser.id,
+            accountId: id,
+            externalAccountId: existing.externalAccountId ?? null,
+            brokerConnectionId: existing.brokerConnectionId ?? null,
+            broker: "tradovate" as const,
+            ruleType: "daily_loss_limit" as const,
+            amount: maxDailyLoss,
+            dryRun: process.env.ENFORCEMENT_DRY_RUN === "true",
+            brokerEnforcementEnabled: process.env.BROKER_ENFORCEMENT_ENABLED === "true",
+          };
           try {
             const [brokerConnection, guardianProfile] = await Promise.all([
               existing.brokerConnectionId
@@ -389,15 +405,16 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
                 select: { guardianEnabled: true },
               }),
             ]);
+            brokerEnv = brokerConnection?.env ?? null;
 
             const outcome = await executeDailyLossSync(
               {
                 accountId: id,
                 userId: currentUser.id,
-                maxDailyLoss: body.riskRules!.maxDailyLoss as number,
+                maxDailyLoss,
                 isActive: account.isActive,
                 missingFromBroker: existing.missingFromBrokerSince != null,
-                brokerConnectionEnv: brokerConnection?.env ?? null,
+                brokerConnectionEnv: brokerEnv,
                 brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
                 permissionLevel: brokerConnection?.permissionLevel ?? null,
                 guardianEnabled: guardianProfile?.guardianEnabled ?? false,
@@ -415,10 +432,44 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
               ...("gateFailureReason" in outcome && { gateFailureReason: outcome.gateFailureReason }),
               ...("payloadPreview" in outcome && { payloadPreview: outcome.payloadPreview }),
             });
+
+            await writeBrokerRiskSettingsSyncAudit({
+              ...baseAudit,
+              environment: brokerEnv,
+              outcome:
+                outcome.status === "synced"
+                  ? "success"
+                  : outcome.status === "error"
+                    ? "failed"
+                    : outcome.status,
+              gateFailureReason:
+                "gateFailureReason" in outcome ? outcome.gateFailureReason : null,
+              skipReason:
+                "skipReason" in outcome
+                  ? outcome.skipReason
+                  : outcome.status === "skipped"
+                    ? (outcome as { status: "skipped"; reason: string }).reason
+                    : null,
+              payloadPreviewJson:
+                "payloadPreview" in outcome &&
+                outcome.payloadPreview != null
+                  ? (outcome.payloadPreview as Record<string, unknown>)
+                  : null,
+              brokerResponseJson:
+                "brokerResponse" in outcome
+                  ? outcome.brokerResponse
+                  : null,
+            });
           } catch (err) {
             console.warn("[accounts/patch] daily loss sync failed (non-fatal)", {
               accountId: id,
               error: err instanceof Error ? err.message : String(err),
+            });
+            await writeBrokerRiskSettingsSyncAudit({
+              ...baseAudit,
+              environment: brokerEnv,
+              outcome: "failed",
+              errorMessage: err instanceof Error ? err.message : String(err),
             });
           }
         })();

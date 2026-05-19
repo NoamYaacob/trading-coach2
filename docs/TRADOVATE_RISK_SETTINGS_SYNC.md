@@ -111,7 +111,21 @@ The service is called from `PATCH /api/accounts/[id]` via `src/app/api/accounts/
 4. If `ENFORCEMENT_DRY_RUN=true` → calls `simulateTradovateRiskSettingsSync` (no client, no network)
 5. Otherwise → calls `clientFactory()` and `syncDailyLossRiskSettingToTradovate`
 
-**All sync outcomes are logged as `[accounts/patch] daily loss sync outcome`.** Broker sync failure is non-fatal — DB save is never rolled back.
+**All sync outcomes are logged as `[accounts/patch] daily loss sync outcome` AND persisted to `BrokerRiskSettingsSyncAudit` via `writeBrokerRiskSettingsSyncAudit`.** Broker sync failure is non-fatal — DB save is never rolled back. Audit write failure is also non-fatal (wrapped in its own try/catch).
+
+---
+
+## DB audit trail
+
+Every sync attempt (including gate-blocked and dry-run) is written to `BrokerRiskSettingsSyncAudit`. The row captures:
+- `outcome` — `gate_blocked` | `dry_run` | `success` | `failed` | `skipped`
+- `gateFailureReason` — machine-readable gate code when blocked (e.g. `broker_enforcement_disabled`, `account_not_allowlisted`)
+- `dryRun` / `brokerEnforcementEnabled` — env flag snapshot at call time
+- `payloadPreviewJson` — what would be / was sent to Tradovate
+- `brokerResponseJson` — raw Tradovate response when a live write was made
+- `errorMessage` — exception message when outcome=failed
+
+Audit rows are visible in the Safety Console under **"Broker risk settings sync"** (admin-only). **Activation is blocked until at least one `gate_blocked` row appears in this section**, confirming the wire-up is live and the gates are functioning correctly.
 
 ---
 

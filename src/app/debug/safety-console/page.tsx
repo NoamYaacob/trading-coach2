@@ -50,6 +50,7 @@ export default async function SafetyConsolePage() {
     historicalEnforcements,
     listenerWorkerStatus,
     ruleChangeAuditRows,
+    brokerSyncAuditRows,
   ] = await Promise.all([
       prisma.brokerConnection.findMany({
         select: {
@@ -128,6 +129,27 @@ export default async function SafetyConsolePage() {
           createdAt: true,
           user: { select: { email: true } },
           account: { select: { label: true } },
+        },
+      }).catch(() => [] as never[]),
+      prisma.brokerRiskSettingsSyncAudit.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          broker: true,
+          ruleType: true,
+          amount: true,
+          environment: true,
+          dryRun: true,
+          brokerEnforcementEnabled: true,
+          outcome: true,
+          gateFailureReason: true,
+          skipReason: true,
+          payloadPreviewJson: true,
+          brokerResponseJson: true,
+          errorMessage: true,
+          createdAt: true,
+          account: { select: { label: true, externalAccountId: true } },
         },
       }).catch(() => [] as never[]),
     ]);
@@ -427,6 +449,7 @@ export default async function SafetyConsolePage() {
           <AccountTable rows={accountSummaries} />
         </SectionCard>
         <RuleChangeAuditSection rows={ruleChangeAuditRows} />
+        <BrokerSyncAuditSection rows={brokerSyncAuditRows} />
       </div>
     </AppShell>
   );
@@ -979,6 +1002,121 @@ function RuleChangeAuditSection({ rows }: { rows: RuleAuditRow[] }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Broker risk settings sync audit ───────────────────────────────────────────
+
+type BrokerSyncAuditRow = {
+  id: string;
+  broker: string;
+  ruleType: string;
+  amount: number | null;
+  environment: string | null;
+  dryRun: boolean;
+  brokerEnforcementEnabled: boolean;
+  outcome: string;
+  gateFailureReason: string | null;
+  skipReason: string | null;
+  payloadPreviewJson: unknown;
+  brokerResponseJson: unknown;
+  errorMessage: string | null;
+  createdAt: Date;
+  account: { label: string; externalAccountId: string | null } | null;
+};
+
+const OUTCOME_CLS: Record<string, string> = {
+  success: "bg-emerald-100 text-emerald-800",
+  dry_run: "bg-sky-100 text-sky-800",
+  gate_blocked: "bg-amber-100 text-amber-900",
+  skipped: "bg-stone-200 text-stone-700",
+  failed: "bg-red-100 text-red-900",
+};
+
+function BrokerSyncAuditSection({ rows }: { rows: BrokerSyncAuditRow[] }) {
+  return (
+    <SectionCard
+      title="Broker risk settings sync"
+      description="Recent daily-loss rule-save sync attempts — newest first. Admin only. Shows gate outcomes, dry-run previews, and broker responses."
+    >
+      {rows.length === 0 ? (
+        <p className="text-sm text-stone-500">No broker risk-settings sync attempts yet.</p>
+      ) : (
+        <div className="grid gap-2">
+          {rows.map((row) => {
+            const outcomeCls = OUTCOME_CLS[row.outcome] ?? "bg-stone-200 text-stone-700";
+            const accountLabel = row.account?.label ?? null;
+            const externalId = row.account?.externalAccountId ?? null;
+            return (
+              <div
+                key={row.id}
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  row.outcome === "success"
+                    ? "border-emerald-200 bg-emerald-50"
+                    : row.outcome === "failed"
+                      ? "border-red-200 bg-red-50"
+                      : row.outcome === "gate_blocked"
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-stone-100 bg-stone-50"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-stone-700">
+                    {accountLabel ?? "—"}
+                    {externalId ? ` · ${externalId}` : ""}
+                    {` · ${row.ruleType}`}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${outcomeCls}`}
+                    >
+                      {row.outcome}
+                    </span>
+                    {row.dryRun && (
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                        dry-run
+                      </span>
+                    )}
+                    {!row.brokerEnforcementEnabled && (
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500">
+                        enforcement off
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
+                  <span>{row.createdAt.toISOString()}</span>
+                  <span>broker: {row.broker}</span>
+                  {row.environment && <span>env: {row.environment}</span>}
+                  {row.amount != null && <span>amount: ${row.amount}</span>}
+                  {row.gateFailureReason && (
+                    <span className="font-semibold text-amber-700">
+                      gate: {row.gateFailureReason}
+                    </span>
+                  )}
+                  {row.skipReason && <span>skip: {row.skipReason.slice(0, 80)}</span>}
+                  {row.errorMessage && (
+                    <span className="font-semibold text-red-700">
+                      error: {row.errorMessage.slice(0, 120)}
+                    </span>
+                  )}
+                  {row.payloadPreviewJson != null && (
+                    <span>
+                      payload: {JSON.stringify(row.payloadPreviewJson).slice(0, 80)}
+                    </span>
+                  )}
+                  {row.brokerResponseJson != null && (
+                    <span>
+                      response: {JSON.stringify(row.brokerResponseJson).slice(0, 80)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </SectionCard>

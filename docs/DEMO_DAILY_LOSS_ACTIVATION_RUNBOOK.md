@@ -3,22 +3,29 @@
 **Account in scope:** DEMO7433035 (demo env only)  
 **Rule in scope:** Daily Loss (`maxDailyLoss`) — the only broker-eligible rule  
 **Path:** Rule-Save Sync (`tradovate-risk-settings-service.ts`) — distinct from breach-time listener enforcement  
-**Status at time of writing:** Service built, 8 gates implemented, **not yet wired to rules handler** (see §0)
+**Status at time of writing:** Service wired (commit `c51dc81`), DB audit trail deployed (see §0). Env remains safe — no broker writes active.
 
 ---
 
-## §0 — Hard prerequisite: wire the service
+## §0 — Pre-activation prerequisites (both must be verified before §1)
 
-`syncDailyLossRiskSettingToTradovate` currently has **zero callers** in production code.  
-The rules PATCH handler (`src/app/api/rules/route.ts`) does not call it.
+### §0.1 — Wire-up ✅ COMPLETE
 
-**This runbook cannot be executed until a separate code PR:**
-1. Imports `syncDailyLossRiskSettingToTradovate` and resolves `accountAllowlisted` / `guardianEnabled` from env / DB in the rules PATCH handler.
-2. Calls the service after a successful rule save for `maxDailyLoss` when `scope=account`.
-3. Writes the sync result to an audit trail (e.g., a `DailyLossSyncAudit` row or structured log).
-4. The PR passes all tests and is deployed before proceeding to §1.
+`syncDailyLossRiskSettingToTradovate` is now called from `PATCH /api/accounts/[id]` via  
+`src/app/api/accounts/[id]/daily-loss-sync.ts` (`executeDailyLossSync`).  
+Call site: successful account-specific rules save when `maxDailyLoss > 0` and `platform=tradovate`.  
+All 8 gates are evaluated before any broker client is created.  
+Current production env (`BROKER_ENFORCEMENT_ENABLED=false`) means every attempt is `gate_blocked` — **no broker writes**.
 
-> DO NOT change Railway env vars until §0 is complete and deployed.
+### §0.2 — DB audit visibility ✅ COMPLETE
+
+Every sync attempt is written to `BrokerRiskSettingsSyncAudit` via  
+`src/lib/brokers/broker-risk-settings-sync-audit-writer.ts`.  
+The Safety Console (`/debug/safety-console`) shows the last 20 rows under **"Broker risk settings sync"**.
+
+**Activation gate: at least one `outcome=gate_blocked, gateFailureReason=broker_enforcement_disabled` row must be visible in the Safety Console before any env change is made.** This confirms the wire-up is live, the audit table exists, and gates are working correctly in production.
+
+> DO NOT change Railway env vars until both §0.1 and §0.2 are verified in production.
 
 ---
 

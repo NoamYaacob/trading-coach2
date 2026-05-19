@@ -82,6 +82,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   dryRunViolations   DryRunViolation[]
   ruleChangeAudits   RuleChangeAudit[]
+  brokerRiskSettingsSyncAudits BrokerRiskSettingsSyncAudit[]
 }
 
 model Session {
@@ -524,6 +525,7 @@ model ConnectedAccount {
   dryRunViolations  DryRunViolation[]
   internalLockEvents InternalLockEvent[]
   ruleChangeAudits  RuleChangeAudit[]
+  brokerRiskSettingsSyncAudits BrokerRiskSettingsSyncAudit[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -915,4 +917,47 @@ model RuleChangeAudit {
   @@index([userId, createdAt])
   @@index([accountId, createdAt])
   @@index([allowed, createdAt])
+}
+
+model BrokerRiskSettingsSyncAudit {
+  id                       String   @id @default(cuid())
+  userId                   String
+  /// null when accountId was deleted
+  accountId                String?
+  /// Snapshot of the Tradovate externalAccountId at write time
+  externalAccountId        String?
+  /// BrokerConnection.id — nullable (account may have no connection yet)
+  brokerConnectionId       String?
+  /// "tradovate"
+  broker                   String
+  /// "daily_loss_limit"
+  ruleType                 String
+  /// The dollar amount written (positive)
+  amount                   Float?
+  /// "demo" | "live" — from BrokerConnection.env
+  environment              String?
+  /// true when ENFORCEMENT_DRY_RUN=true at call time
+  dryRun                   Boolean
+  /// true when BROKER_ENFORCEMENT_ENABLED=true at call time
+  brokerEnforcementEnabled Boolean
+  /// "gate_blocked" | "dry_run" | "success" | "failed" | "skipped"
+  outcome                  String
+  /// Machine-readable gate failure code; null when outcome != gate_blocked
+  gateFailureReason        String?
+  /// Human-readable reason the sync was skipped or blocked
+  skipReason               String?
+  /// Payload that would be / was sent to Tradovate
+  payloadPreviewJson       Json?
+  /// Raw Tradovate API response; null when no broker call was made
+  brokerResponseJson       Json?
+  /// Error message when outcome=failed
+  errorMessage             String?
+  createdAt                DateTime @default(now())
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([outcome, createdAt])
 }
