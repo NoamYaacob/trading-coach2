@@ -24,10 +24,10 @@ export function MaxPositionSizeConversionTable({
 
   return (
     <div
-      className="mt-1 grid gap-0.5 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5 text-xs text-stone-600"
+      className="mt-1 grid gap-0.5 rounded-md border border-[#30363d] bg-[#1c2128] px-2 py-1.5 text-xs text-[#8b949e]"
       data-testid="max-position-size-conversion-table"
     >
-      <span className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-[#6e7781]">
         Contract limits per product
       </span>
       {rows.map((row) => (
