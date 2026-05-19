@@ -161,7 +161,7 @@ function RuleEngineMockup() {
         ))}
       </div>
       <p className="mt-3 border-t border-stone-100 pt-2.5 text-[10px] text-stone-400">
-        5 active · 3 partial · 6 coming soon · evaluated in real time
+        4 active · 3 partial · 7 coming soon · evaluated in real time
       </p>
     </div>
   );
