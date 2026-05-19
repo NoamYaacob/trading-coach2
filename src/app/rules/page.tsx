@@ -433,11 +433,12 @@ export default async function RulesPage({
                   })}
                   initial={accountInitial}
                   isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending || hasAlreadyTradedToday}
+                  isHardLocked={hasAlreadyTradedToday}
                   lockMessage={
-                    accountIsLockedForPending
+                    hasAlreadyTradedToday
+                      ? "Rules are locked for this session — this account has already traded. Changes can be made after the session resets."
+                      : accountIsLockedForPending
                       ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
-                      : hasAlreadyTradedToday
-                      ? "Rules are locked for this session — this account has already traded today. Changes will apply at the start of the next trading session."
                       : accountRuleLockMessage
                   }
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}

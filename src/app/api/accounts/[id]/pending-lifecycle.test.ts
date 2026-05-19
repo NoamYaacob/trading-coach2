@@ -313,6 +313,17 @@ test("rules route uses deriveCmeTradingDayKey to anchor the session day check", 
   );
 });
 
+test("account route 423 message for session_already_traded references the session", () => {
+  assert.ok(
+    /already traded/.test(accountRouteSrc),
+    "account route 423 message must say 'already traded'",
+  );
+  assert.ok(
+    /session resets/.test(accountRouteSrc),
+    "account route 423 message must say 'session resets'",
+  );
+});
+
 test("rules page selects tradesCount and sessionDate from LiveSessionState", () => {
   const pagesSrc = readFileSync(join(REPO_ROOT, "src/app/rules/page.tsx"), "utf8");
   assert.ok(

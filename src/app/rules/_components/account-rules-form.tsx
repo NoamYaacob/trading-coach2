@@ -66,6 +66,12 @@ type Props = {
   isLocked: boolean;
   /** Human-readable message explaining the current lock reason (session-aware). */
   lockMessage?: string | null;
+  /**
+   * True when the account has already traded this session. Proactively disables
+   * the Save button so the user doesn't need to attempt a save to see the 423.
+   * First-time setup accounts are exempted (no existing rules to protect).
+   */
+  isHardLocked?: boolean;
   hasDefaultRules: boolean;
   timezone?: string | null;
   defaultValues?: DefaultRuleValues;
@@ -231,6 +237,7 @@ export function AccountRulesForm({
   initial,
   isLocked,
   lockMessage,
+  isHardLocked,
   hasDefaultRules,
   timezone,
   defaultValues,
@@ -284,11 +291,14 @@ export function AccountRulesForm({
     const data = (await res.json()) as {
       rulesLock?: { applied: boolean; message?: string; effectiveDate?: string };
       error?: string;
+      message?: string;
     };
     if (!res.ok) {
       if (res.status === 423) {
         throw new Error(
-          "Rules are locked — protection is active on this account. Changes are blocked until the lock clears.",
+          data.message ??
+            data.error ??
+            "Rules are locked — protection is active on this account. Changes are blocked until the lock clears.",
         );
       }
       throw new Error(data.error ?? "Failed to save.");
@@ -826,6 +836,7 @@ export function AccountRulesForm({
               savedAt,
               pendingMessage,
               hasValidationErrors: validationErrors.length > 0,
+              isHardLocked,
             });
             return (
               <button
