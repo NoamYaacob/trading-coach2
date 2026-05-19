@@ -92,6 +92,29 @@ This allows full end-to-end testing of the rule-save code path without any actua
 
 ---
 
+## Call site (wired in Phase 2C)
+
+The service is called from `PATCH /api/accounts/[id]` via `src/app/api/accounts/[id]/daily-loss-sync.ts`.
+
+**Entry point:** `executeDailyLossSync(ctx, clientFactory)` in `daily-loss-sync.ts`
+
+**Trigger conditions (all must be true before sync fires):**
+- `"maxDailyLoss" in body.riskRules` — key is present in the save payload
+- `body.riskRules.maxDailyLoss > 0` — positive value
+- `existing.platform === "tradovate"` — Tradovate account only
+- Route is in the immediate-save branch (not the pending-rules branch)
+
+**Inside `executeDailyLossSync`:**
+1. Returns `skipped` if `maxDailyLoss ≤ 0`
+2. Builds `SyncInput` from context + `process.env`
+3. Calls `canSyncTradovateRiskSettings(input)` — if any gate fails, returns `gate_blocked` without creating `TradovateClient`
+4. If `ENFORCEMENT_DRY_RUN=true` → calls `simulateTradovateRiskSettingsSync` (no client, no network)
+5. Otherwise → calls `clientFactory()` and `syncDailyLossRiskSettingToTradovate`
+
+**All sync outcomes are logged as `[accounts/patch] daily loss sync outcome`.** Broker sync failure is non-fatal — DB save is never rolled back.
+
+---
+
 ## How to validate without broker writes
 
 1. **Simulate only (safest)** — call `simulateTradovateRiskSettingsSync` in your test or diagnostic code. This function has a hard guarantee in its implementation: it never references `TradovateClient` directly. The test suite verifies this with a source-level scan.
@@ -107,7 +130,7 @@ This allows full end-to-end testing of the rule-save code path without any actua
 | Aspect | Rule-Save Sync (this service) | Listener-Path Enforcement |
 |--------|------------------------------|--------------------------|
 | **When it fires** | When a user saves their daily loss rule | When the Guardian listener detects a breach |
-| **Source files** | `tradovate-risk-settings-service.ts` | `broker-enforcement-gate.ts`, `broker-enforcement-service.ts` |
+| **Source files** | `tradovate-risk-settings-service.ts`, `daily-loss-sync.ts` (route wire-up) | `broker-enforcement-gate.ts`, `broker-enforcement-service.ts` |
 | **InternalLockEvent required?** | No | Yes (gate 9) |
 | **Account allowlist required?** | Yes (gate 7, `accountAllowlisted`) | Yes (gate 4, `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST`) |
 | **Guardian active required?** | Yes (gate 8, `guardianEnabled`) | Yes (implied by listener active) |
@@ -115,7 +138,7 @@ This allows full end-to-end testing of the rule-save code path without any actua
 | **Trigger** | User action | Automated breach detection |
 | **Purpose** | Keep Tradovate in sync with the user's saved rule | Enforce the breach at the exchange level |
 
-These two paths are intentionally kept independent. `tradovate-risk-settings-service.ts` must not import from `broker-enforcement-gate.ts` or `broker-enforcement-service.ts`.
+These two paths are intentionally kept independent. `tradovate-risk-settings-service.ts` and `daily-loss-sync.ts` must not import from `broker-enforcement-service.ts` (only `parseBrokerEnforcementAllowlist` from `broker-enforcement-gate.ts` is permitted in `daily-loss-sync.ts` as an allowlist utility).
 
 ---
 

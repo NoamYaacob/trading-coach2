@@ -25,6 +25,7 @@ import { validateRiskRulesBody } from "./risk-rules-validate";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { executeDailyLossSync } from "./daily-loss-sync";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -357,6 +358,66 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
             console.warn("[accounts/patch] broker max position size sync failed (non-fatal)", {
               accountId: id,
               externalAccountId: existing.externalAccountId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+      }
+
+      // Sync Daily Loss risk setting to Tradovate when maxDailyLoss is saved.
+      // Fire-and-forget (void) — broker sync failure must NOT roll back the DB save.
+      // Gates (BROKER_ENFORCEMENT_ENABLED, env=demo, allowlist, guardian, etc.) are
+      // evaluated inside executeDailyLossSync before any broker call is made.
+      if (
+        body.riskRules !== null &&
+        "maxDailyLoss" in body.riskRules &&
+        typeof body.riskRules.maxDailyLoss === "number" &&
+        body.riskRules.maxDailyLoss > 0 &&
+        existing.platform === "tradovate"
+      ) {
+        void (async () => {
+          try {
+            const [brokerConnection, guardianProfile] = await Promise.all([
+              existing.brokerConnectionId
+                ? prisma.brokerConnection.findUnique({
+                    where: { id: existing.brokerConnectionId },
+                    select: { env: true, connectionStatus: true, permissionLevel: true },
+                  })
+                : null,
+              prisma.guardianProfile.findUnique({
+                where: { userId: currentUser.id },
+                select: { guardianEnabled: true },
+              }),
+            ]);
+
+            const outcome = await executeDailyLossSync(
+              {
+                accountId: id,
+                userId: currentUser.id,
+                maxDailyLoss: body.riskRules!.maxDailyLoss as number,
+                isActive: account.isActive,
+                missingFromBroker: existing.missingFromBrokerSince != null,
+                brokerConnectionEnv: brokerConnection?.env ?? null,
+                brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
+                permissionLevel: brokerConnection?.permissionLevel ?? null,
+                guardianEnabled: guardianProfile?.guardianEnabled ?? false,
+              },
+              async () => {
+                const client = new TradovateClient(existing.id, currentUser.id);
+                await client.initialize();
+                return client;
+              },
+            );
+
+            console.info("[accounts/patch] daily loss sync outcome", {
+              accountId: id,
+              status: outcome.status,
+              ...("gateFailureReason" in outcome && { gateFailureReason: outcome.gateFailureReason }),
+              ...("payloadPreview" in outcome && { payloadPreview: outcome.payloadPreview }),
+            });
+          } catch (err) {
+            console.warn("[accounts/patch] daily loss sync failed (non-fatal)", {
+              accountId: id,
               error: err instanceof Error ? err.message : String(err),
             });
           }
