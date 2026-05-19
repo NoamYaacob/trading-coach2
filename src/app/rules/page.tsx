@@ -430,7 +430,7 @@ export default async function RulesPage({
               <ul className="mt-3 grid gap-1.5 text-pretty text-[#8b949e]">
                 <li>• <span className="font-medium text-[#adbac7]">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
                 <li>• <span className="font-medium text-[#adbac7]">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
-                <li>• <span className="font-medium text-[#adbac7]">Broker risk settings:</span> when enabled, Guardrail can apply broker-side order blocking for daily loss and position limits.</li>
+                <li>• <span className="font-medium text-[#adbac7]">Broker risk settings:</span> when enabled, Guardrail writes your daily loss limit directly to Tradovate — the exchange enforces it independently of the app.</li>
                 <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
               </ul>
             </details>
