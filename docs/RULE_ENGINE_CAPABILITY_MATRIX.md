@@ -136,3 +136,40 @@ Notification preferences (Telegram, in-app) control how Guardrail alerts you whe
 3. Check `brokerLockStatus` in the Safety Console — `broker_locked` means the Tradovate limit is active.
 
 If you see "Broker-backed: Profit target" anywhere in the Guardrail UI, that is a bug — file an issue immediately.
+
+---
+
+## Rule-Save Sync
+
+*Added in Phase 2C — see `docs/TRADOVATE_RISK_SETTINGS_SYNC.md` for full details.*
+
+Rule-Save Sync is a proactive path that writes a user's saved daily loss rule to Tradovate's `userAccountAutoLiq` risk settings when the rule is saved. It is distinct from breach-time enforcement (the listener path).
+
+### What gets synced vs. what stays Guardrail-only
+
+| Rule | Synced to Tradovate? | Notes |
+|------|---------------------|-------|
+| `maxDailyLoss` | **YES** | Written to `userAccountAutoLiq.dailyLossAutoLiq` when gates pass |
+| All other rules | **NO** | Enforced app-side only; no Tradovate API field exists |
+
+### Gates for rule-save sync (in order)
+
+1. `BROKER_ENFORCEMENT_ENABLED=true` must be set
+2. Account `env` must be `"demo"` (live sync not yet implemented)
+3. `isActive` must be true
+4. `missingFromBroker` must be false
+5. `connectionStatus` must not be `expired`, `connection_error`, `not_connected`, `pending_webhook`, or `oauth_pending_storage`
+6. `permissionLevel` must be `"full_access"`
+
+### Differences from the listener (breach-time) path
+
+- Does NOT require an active `InternalLockEvent` (listener path gate 9)
+- Does NOT require an account allowlist (listener path gate 4)
+- Does NOT perform a dedup check (listener path gate 10)
+- Fires on user save action, not on automated breach detection
+- Implementation: `src/lib/brokers/tradovate-risk-settings-service.ts`
+
+### Dry-run and simulation
+
+- `simulateTradovateRiskSettingsSync(input)` — evaluates all gates and returns a payload preview without ever calling TradovateClient
+- `ENFORCEMENT_DRY_RUN=true` — skips the live broker call in `syncDailyLossRiskSettingToTradovate` and returns `auditNote: "dry_run"`
