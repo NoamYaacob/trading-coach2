@@ -298,7 +298,7 @@ export function deriveBrokerEnforcementCopy(
   switch (brokerLockStatus) {
     case "dry_run":
       return {
-        text: "Protection test mode · Position exit and broker-side risk limits were simulated. No Tradovate write was sent.",
+        text: "Monitoring only · No Tradovate write was sent. Broker-side enforcement is not active.",
         kind: "dry_run",
       };
     case "broker_locked":
@@ -371,7 +371,7 @@ export function deriveBrokerEnforcementNoteCopy(input: {
         };
       case "dry_run":
         return {
-          text: "Guardrail internal lock active · Protection test mode · No Tradovate write was sent.",
+          text: "Guardrail internal lock active · Monitoring only · No Tradovate write was sent.",
           kind: "dry_run",
         };
       default:
@@ -421,7 +421,7 @@ export function deriveFlattenCopy(flattenStatus: FlattenStatus | null): FlattenC
       return { text: "Position exit failed.", kind: "failed" };
     case "dry_run":
       return {
-        text: "Protection test mode · Position exit simulated.",
+        text: "Monitoring only · Position exit simulated. No Tradovate write was sent.",
         kind: "dry_run",
       };
     default:
@@ -470,11 +470,11 @@ export function deriveConnectionStatusLabel(rawStatus: string): string {
 
 // ── Dry-run banner copy ───────────────────────────────────────────────────────
 
-/** User-facing primary phrase: "Protection test mode". The internal enum value
- *  remains "dry_run" and the env var remains ENFORCEMENT_DRY_RUN — the rename
- *  only applies to copy that the user reads. */
+/** User-facing primary phrase for dry-run state. Broker writes are not active
+ *  but monitoring is live. The internal enum value remains "dry_run" and the
+ *  env var remains ENFORCEMENT_DRY_RUN — this copy is the only user-visible text. */
 export const DRY_RUN_BANNER_COPY =
-  "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.";
+  "Guardrail is monitoring your accounts. Broker-side enforcement is not active.";
 
 // ── shouldShowEnforcementChip ─────────────────────────────────────────────────
 
@@ -549,7 +549,6 @@ export function deriveRowStatusLabel(input: {
  *  Priority is most-actionable first so the user sees the thing that needs
  *  attention before the positive/neutral states. */
 export type PerAccountStateLabel =
-  | "Protection test mode"
   | "Consent required"
   | "Broker risk settings enabled"
   | "Read-only monitoring"
@@ -578,7 +577,7 @@ export function derivePerAccountStateLabel(input: {
  *  Returns null when there's no useful state to highlight — the platform line
  *  then shows just "Connected · Synced 2m ago". */
 export type GroupStateSuffix =
-  | "Protection test mode"
+  | "Monitoring only"
   | "Consent required"
   | "Read-only monitoring"
   | "Broker risk settings enabled"
@@ -595,7 +594,7 @@ export function deriveGroupStateSuffix(input: {
   const dryRunAccounts = input.accounts.filter((a) => a.enforcementMode === "dry_run");
   if (dryRunAccounts.length > 0) {
     const allFullAccess = dryRunAccounts.every((a) => a.permissionLevel === "full_access");
-    return allFullAccess ? "Broker risk settings enabled" : "Protection test mode";
+    return allFullAccess ? "Broker risk settings enabled" : "Monitoring only";
   }
   if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
     return "Consent required";
@@ -629,7 +628,7 @@ export function deriveFooterCopy(input: {
     return null;
   }
   if (anyDryRun) {
-    return "Protection test mode · No broker actions are sent.";
+    return "Monitoring active · Broker-side enforcement is not active.";
   }
   if (modes.includes("broker_active")) {
     return "Broker risk settings enabled · Supported money limits can be protected through Tradovate.";
@@ -869,16 +868,16 @@ export function deriveTradingPermissionStatus(input: {
       const n = lockedCount;
       return {
         level: "test_mode",
-        headline: `Protection test mode · ${n} account${n > 1 ? "s" : ""} locked`,
+        headline: `Monitoring active · ${n} account${n > 1 ? "s" : ""} locked`,
         subline:
-          "Guardrail is monitoring only. It will not block, cancel, or close trades.",
+          "Guardrail is watching your accounts. Broker-side enforcement is not active.",
       };
     }
     return {
       level: "test_mode",
-      headline: "Protection test mode",
+      headline: "Monitoring active",
       subline:
-        "Guardrail is monitoring only. It will not block, cancel, or close trades.",
+        "Guardrail is watching your accounts. Broker-side enforcement is not active.",
     };
   }
 

@@ -127,8 +127,8 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     });
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
-    assert.equal(result.headline, "Protection test mode");
-    assert.ok(result.subline.includes("will not block"));
+    assert.equal(result.headline, "Monitoring active");
+    assert.ok(result.subline.includes("Broker-side enforcement is not active"));
   });
 
   it("test_mode takes precedence over locked", () => {
@@ -146,7 +146,7 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
-    assert.ok(result.headline.includes("Protection test mode"), `got: ${result.headline}`);
+    assert.ok(result.headline.includes("Monitoring active"), `got: ${result.headline}`);
   });
 
   it("test_mode with single locked account uses singular", () => {
@@ -158,13 +158,24 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result.headline.includes("1 account"), `got: ${result.headline}`);
   });
 
-  it("subline always mentions monitoring and no blocking", () => {
+  it("subline always mentions monitoring and not active enforcement", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run")],
     });
     assert.ok(result !== null);
-    assert.ok(result.subline.includes("monitoring"), `got: ${result.subline}`);
-    assert.ok(result.subline.includes("will not block"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("watching"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("not active"), `got: ${result.subline}`);
+  });
+
+  it("headline never contains the phrase 'test mode'", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      !result.headline.toLowerCase().includes("test mode"),
+      `headline must not say 'test mode': ${result.headline}`,
+    );
   });
 });
 
@@ -556,19 +567,19 @@ describe("deriveBrokerEnforcementNoteCopy — internalLockActive=true", () => {
     );
   });
 
-  it("internal lock + dry_run → test mode text, dry_run kind", () => {
+  it("internal lock + dry_run → monitoring-only text, dry_run kind", () => {
     const result = deriveBrokerEnforcementNoteCopy({
       internalLockActive: true,
       brokerLockStatus: "dry_run",
     });
     assert.ok(
-      result.text.includes("Protection test mode"),
-      `expected test mode text, got: ${result.text}`,
+      result.text.includes("Monitoring only"),
+      `expected monitoring-only text, got: ${result.text}`,
     );
     assert.equal(result.kind, "dry_run");
     assert.ok(
-      !result.text.includes("No Tradovate action was sent"),
-      `dry_run message should not say 'No Tradovate action was sent'`,
+      !result.text.includes("test mode"),
+      `dry_run message must not say 'test mode': ${result.text}`,
     );
   });
 

@@ -254,6 +254,73 @@ describe("buildRuleSummaryChips — broker-backed chip SAFETY constraints", () =
   });
 });
 
+describe("buildRuleSummaryChips — position size (max contracts) chip", () => {
+  it("shows 'Position size limit' chip when hasMaxPositionSize=true", () => {
+    const chips = buildRuleSummaryChips(makeAccount({ hasMaxPositionSize: true }));
+    const chip = chips.find((c) => c.key === "max_contracts");
+    assert.ok(chip, "expected max_contracts chip");
+    assert.equal(chip.text, "Position size limit");
+  });
+
+  it("SAFETY: position size chip never claims broker enforcement", () => {
+    const chips = buildRuleSummaryChips(
+      makeAccount({ hasMaxPositionSize: true, enforcementMode: "broker_active", brokerLockStatus: "broker_locked" }),
+    );
+    for (const chip of chips) {
+      if (chip.key === "max_contracts") {
+        assert.ok(
+          !chip.text.toLowerCase().includes("broker"),
+          `position size chip must not claim broker enforcement: "${chip.text}"`,
+        );
+      }
+    }
+  });
+});
+
+describe("buildRuleSummaryChips — no broker claim for non-daily-loss rules", () => {
+  it("SAFETY: max trades chip never claims broker enforcement", () => {
+    const chips = buildRuleSummaryChips(
+      makeAccount({ maxTradesPerDay: 5, enforcementMode: "broker_active" }),
+    );
+    const chip = chips.find((c) => c.key === "max_trades");
+    assert.ok(chip, "expected max_trades chip");
+    assert.ok(
+      !chip.text.toLowerCase().includes("broker"),
+      `max_trades chip must not claim broker enforcement: "${chip.text}"`,
+    );
+  });
+
+  it("SAFETY: consecutive losses chip never claims broker enforcement", () => {
+    const chips = buildRuleSummaryChips(
+      makeAccount({ stopAfterLosses: 3, enforcementMode: "broker_active" }),
+    );
+    const chip = chips.find((c) => c.key === "consec_losses");
+    assert.ok(chip, "expected consec_losses chip");
+    assert.ok(
+      !chip.text.toLowerCase().includes("broker"),
+      `consec_losses chip must not claim broker enforcement: "${chip.text}"`,
+    );
+  });
+
+  it("SAFETY: no chip text mentions 'session cutoff' with broker enforcement", () => {
+    const chips = buildRuleSummaryChips(
+      makeAccount({
+        maxDailyLoss: 500,
+        enforcementMode: "broker_active",
+        brokerLockStatus: "broker_locked",
+      }),
+    );
+    for (const chip of chips) {
+      const t = chip.text.toLowerCase();
+      const hasSession = t.includes("session") || t.includes("cutoff") || t.includes("hours");
+      assert.ok(
+        !hasSession,
+        `no chip should mention session/cutoff/hours rules: "${chip.text}"`,
+      );
+    }
+  });
+});
+
 describe("buildRuleSummaryChips — edge cases", () => {
   it("returns empty array gracefully when protectionStatus is 'protected' and no rules set", () => {
     const chips = buildRuleSummaryChips(makeAccount());

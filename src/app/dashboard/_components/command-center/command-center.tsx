@@ -419,7 +419,7 @@ function TradingPermissionBlock({ status }: { status: TradingPermissionStatus })
 
 const PANEL_BODY_STATIC: Partial<Record<ProtectionStatusPanelData["kind"], string>> = {
   dry_run:
-    "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.",
+    "Guardrail is monitoring your accounts. Broker-side enforcement is not active.",
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
 };

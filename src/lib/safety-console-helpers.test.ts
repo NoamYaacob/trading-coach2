@@ -1446,10 +1446,10 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
     "utf8",
   );
 
-  it("dry-run banner copy says 'Protection test mode'", () => {
+  it("dry-run banner copy does not say 'test mode' — avoids confusing user-facing language", () => {
     assert.ok(
-      DATA_HELPERS_SRC.includes("Protection test mode"),
-      "dry-run copy must use 'Protection test mode' not raw 'dry_run'",
+      !DATA_HELPERS_SRC.includes("Protection test mode"),
+      "dry-run copy must not use 'Protection test mode' — use clear monitoring language instead",
     );
   });
 
@@ -1460,10 +1460,10 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
     );
   });
 
-  it("dry-run banner copy says 'No broker actions are sent'", () => {
+  it("dry-run banner copy says 'not active' or 'enforcement' to communicate the limitation", () => {
     assert.ok(
-      DATA_HELPERS_SRC.includes("No broker actions are sent"),
-      "dry-run banner must confirm no broker actions are sent",
+      DATA_HELPERS_SRC.includes("not active") || DATA_HELPERS_SRC.includes("enforcement is not"),
+      "dry-run banner must communicate that broker-side enforcement is not active",
     );
   });
 
@@ -1510,10 +1510,10 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
     );
   });
 
-  it("dry-run broker-enforcement copy says 'broker-side risk limits'", () => {
+  it("dry-run broker-enforcement copy says 'No Tradovate write was sent'", () => {
     assert.ok(
-      DATA_HELPERS_SRC.includes("broker-side risk limits were simulated"),
-      "dry-run enforcement copy must use 'broker-side risk limits were simulated'",
+      DATA_HELPERS_SRC.includes("No Tradovate write was sent"),
+      "dry-run enforcement copy must confirm no broker write was sent",
     );
   });
 

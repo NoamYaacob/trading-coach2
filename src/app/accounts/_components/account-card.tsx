@@ -100,7 +100,7 @@ const TIER_LABEL: Record<string, string> = {
 // BrokerLockStatus value directly in outcome (not the "action:tier" format).
 const BROKER_OUTCOME_LABEL: Record<string, string> = {
   broker_locked:           "Broker enforcement confirmed",
-  dry_run:                 "Protection test mode — write simulated",
+  dry_run:                 "Monitoring only — no Tradovate write sent",
   broker_lock_failed:      "Broker enforcement failed",
   monitoring_only:         "Internal lock only — no broker action",
   unavailable_read_only:   "Broker lock unavailable — read-only connection",
