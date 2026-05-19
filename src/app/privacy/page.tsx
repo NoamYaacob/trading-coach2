@@ -33,6 +33,9 @@ export default function PrivacyPage() {
             <strong>Telegram identifiers:</strong> if you opt in, we store your Telegram chat id so the bot can send you alerts.
           </li>
           <li>
+            <strong>Audit records:</strong> a history of rule and account-protection changes, enforcement attempts, and related account events, kept so your account history stays accurate.
+          </li>
+          <li>
             <strong>Operational logs:</strong> standard server logs for debugging and abuse prevention. Logs never include token values or full credit-card numbers.
           </li>
         </ul>
@@ -72,7 +75,7 @@ export default function PrivacyPage() {
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Your rights</h2>
         <p className="mt-3">
-          You can export your data, delete your account, and revoke broker connections at any time from the Settings page. Account deletion removes your stored profile, trade event data, and connection records.
+          You can export your data, delete your account, and revoke broker connections at any time from the Settings page. Account deletion removes your stored profile, trade event data, connection records, and audit records.
         </p>
 
         <h2 className="mt-8 text-lg font-semibold tracking-[-0.02em] text-stone-950">Contact</h2>
