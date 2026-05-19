@@ -170,6 +170,9 @@ export async function resolveTradeCount(
           ok: false,
           httpStatus: report.status,
           responseShape: describeContentType(report.contentType),
+          notes: report.status === 400
+            ? `broker_report_unavailable — HTTP 400: ${report.body.slice(0, 120)}`
+            : undefined,
         });
       }
     } else {

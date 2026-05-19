@@ -341,6 +341,19 @@ export async function syncTradovateAccount(
               bodyLength: report.body.length,
             });
           }
+        } else if (report && report.status === 400) {
+          // 400 is a stable broker-side rejection (e.g. account not yet eligible for
+          // the Performance Report, or the reporting service is temporarily unavailable
+          // for this account type). It is NOT a transient network error and should NOT
+          // be classified as listener_error or affect dashboard freshness.
+          // Fall through to canonical DB count — sync proceeds normally.
+          console.info("[tradovate/trades] broker_report_unavailable", {
+            accountId,
+            httpStatus: 400,
+            bodySnippet: report.body.slice(0, 200),
+            fallback: "canonical_db",
+            note: "sync proceeds normally — not a listener_error",
+          });
         }
       }
     } catch {
