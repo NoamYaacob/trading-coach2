@@ -82,9 +82,47 @@ describe("/alerts page trigger honesty", () => {
   });
 
   it("exposes no internal implementation terms to users", () => {
+    for (const term of ["dry_run", "DryRunViolation", "GuardianIntervention", "InternalLockEvent"]) {
+      assert.ok(
+        !ALERTS_PAGE_SRC.includes(term),
+        `internal term "${term}" must not appear in user-facing copy`,
+      );
+    }
+  });
+});
+
+// ── Roadmap visibility: planned features stay visible but not "Active" ────────
+
+describe("/alerts page roadmap", () => {
+  const PLANNED_FEATURES = [
+    "Daily profit target",
+    "Approaching loss limit (80%)",
+    "Pre-news window",
+    "News lockout",
+    "Session start & end reminders",
+    "In-app notification center",
+  ];
+
+  it("keeps every planned alert feature visible on the page", () => {
+    for (const feature of PLANNED_FEATURES) {
+      assert.ok(
+        ALERTS_PAGE_SRC.includes(feature),
+        `planned feature "${feature}" must stay visible so the team can track it`,
+      );
+    }
+  });
+
+  it("marks planned features with a Planned badge, not Active", () => {
     assert.ok(
-      !ALERTS_PAGE_SRC.includes("dry_run") && !ALERTS_PAGE_SRC.includes("GuardianIntervention"),
-      "internal implementation terms must not appear in user-facing copy",
+      ALERTS_PAGE_SRC.includes("Planned"),
+      "planned features must carry a Planned badge",
+    );
+  });
+
+  it("shows an alert-preferences roadmap card, not functional toggles", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("Alert preferences are planned"),
+      "alert preferences must be presented as a roadmap card until the feature is wired",
     );
   });
 });

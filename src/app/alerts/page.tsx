@@ -38,21 +38,21 @@ export default async function AlertsPage() {
     {
       label: "In-app",
       status: "Available",
-      statusCls: "text-emerald-700",
       badgeCls: "bg-emerald-100 text-emerald-800",
       detail: "Alert banners on the Dashboard and Guardian pages. Always active — no configuration needed.",
+      future: null as string | null,
       enabled: true,
       accent: false,
       action: null as { href: string; label: string } | null,
     },
     {
       label: "Telegram",
-      status: telegramReady ? "Connected" : "Not set up",
-      statusCls: telegramReady ? "text-emerald-700" : "text-stone-500",
+      status: telegramReady ? "Connected" : "Not connected",
       badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500",
       detail: telegramReady
         ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Sends alerts for rule breaches (daily loss, max trades, loss streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).`
-        : "Telegram alerts are not connected yet.",
+        : "Telegram alerts are not connected yet. Once connected, Guardrail sends rule-breach and behavioral alerts straight to your chat.",
+      future: "Planned: per-alert preferences and a daily digest summary.",
       enabled: telegramReady,
       accent: telegramReady,
       action: telegramReady ? null : ({ href: "/settings", label: "Set up Telegram" } as { href: string; label: string }),
@@ -60,9 +60,9 @@ export default async function AlertsPage() {
     {
       label: "Email",
       status: "Coming soon",
-      statusCls: "text-stone-400",
-      badgeCls: "bg-stone-100 text-stone-500",
+      badgeCls: "bg-amber-100 text-amber-800",
       detail: "Email alerts for lockout events and daily summaries. Not yet available.",
+      future: null as string | null,
       enabled: false,
       accent: false,
       action: null as { href: string; label: string } | null,
@@ -121,6 +121,9 @@ export default async function AlertsPage() {
     { label: "Daily profit target hit", description: "Alert when session P&L reaches your profit target." },
     { label: "Approaching loss limit (80%)", description: "Early warning when P&L reaches 80% of your daily loss limit." },
     { label: "Pre-news window", description: "Alert before high-impact economic events." },
+    { label: "News lockout", description: "Warns on trades placed around scheduled news releases." },
+    { label: "Session start & end reminders", description: "Reminders when your trading session opens and closes." },
+    { label: "In-app notification center", description: "A central feed to browse and revisit past alerts." },
   ];
 
   return (
@@ -153,6 +156,9 @@ export default async function AlertsPage() {
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs text-stone-600">{ch.detail}</p>
+                {ch.future && (
+                  <p className="mt-1 text-xs italic text-stone-400">{ch.future}</p>
+                )}
                 {ch.action && (
                   <a
                     href={ch.action.href}
@@ -166,9 +172,9 @@ export default async function AlertsPage() {
           </div>
         </SectionCard>
 
-        {/* Rule-based triggers */}
+        {/* Active today — rule-based triggers */}
         <SectionCard
-          title="Rule-based triggers"
+          title="Rule-based alerts — active today"
           description="Active when the matching rule is configured."
           actions={
             <a
@@ -211,9 +217,9 @@ export default async function AlertsPage() {
           )}
         </SectionCard>
 
-        {/* Behavioral triggers */}
+        {/* Active today — behavioral triggers */}
         <SectionCard
-          title="Behavioral triggers"
+          title="Behavioral alerts — active today"
           description="Always active when Telegram is connected — no rule configuration needed."
         >
           <div className="divide-y divide-stone-100">
@@ -243,20 +249,38 @@ export default async function AlertsPage() {
           )}
         </SectionCard>
 
-        {/* Coming soon */}
-        <SectionCard title="Coming soon">
+        {/* Coming soon / Planned */}
+        <SectionCard
+          title="Coming soon / Planned"
+          description="On the roadmap — not sending alerts yet."
+        >
           <div className="divide-y divide-stone-100">
             {comingSoon.map((t) => (
               <div key={t.label} className="flex items-center justify-between gap-4 py-2.5">
                 <div>
-                  <p className="text-sm font-medium text-stone-400">{t.label}</p>
+                  <p className="text-sm font-medium text-stone-500">{t.label}</p>
                   <p className="text-xs text-stone-400">{t.description}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-stone-400">
-                  Soon
+                <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                  Planned
                 </span>
               </div>
             ))}
+          </div>
+        </SectionCard>
+
+        {/* Alert preferences — roadmap card, not functional toggles */}
+        <SectionCard title="Alert preferences">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-stone-950">Per-alert preferences</p>
+              <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                Planned
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-stone-600">
+              Alert preferences are planned. Today, Guardrail sends core safety alerts based on your active rules.
+            </p>
           </div>
         </SectionCard>
 
