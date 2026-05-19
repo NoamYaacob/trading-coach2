@@ -25,8 +25,9 @@ export default async function AlertsPage() {
         maxDailyLoss: true,
         maxTradesPerDay: true,
         stopAfterLosses: true,
-        dailyProfitTarget: true,
-        newsLockoutEnabled: true,
+        riskPerTrade: true,
+        sessionStartHour: true,
+        sessionEndHour: true,
       },
     }),
   ]);
@@ -50,11 +51,11 @@ export default async function AlertsPage() {
       statusCls: telegramReady ? "text-emerald-700" : "text-stone-500",
       badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500",
       detail: telegramReady
-        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Guardian lockout alerts and state-change notifications are active.`
+        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Sends alerts for rule breaches (daily loss, max trades, loss streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).`
         : "Telegram alerts are not connected yet.",
       enabled: telegramReady,
       accent: telegramReady,
-      action: null as { href: string; label: string } | null,
+      action: telegramReady ? null : ({ href: "/settings", label: "Set up Telegram" } as { href: string; label: string }),
     },
     {
       label: "Email",
@@ -68,43 +69,58 @@ export default async function AlertsPage() {
     },
   ];
 
-  const triggers = [
+  const ruleTriggers = [
     {
       label: "Daily loss limit reached",
-      description: "You get an alert when your daily P&L crosses the loss limit. The session is marked stopped.",
+      description: "Fires when your daily P&L crosses the configured loss limit.",
       active: riskRules?.maxDailyLoss != null,
       requires: "Daily loss limit",
     },
     {
       label: "Max trades reached",
-      description: "You get an alert when you hit your maximum trades-per-day limit.",
+      description: "Fires when you hit your maximum trades-per-day limit.",
       active: riskRules?.maxTradesPerDay != null,
       requires: "Max trades per day",
     },
     {
       label: "Consecutive losses",
-      description: "You get an alert after the configured number of back-to-back losses.",
+      description: "Fires after the configured number of back-to-back losses.",
       active: riskRules?.stopAfterLosses != null,
       requires: "Stop after losses",
     },
     {
-      label: "Daily profit target hit",
-      description: "You get an alert when your session P&L reaches the configured profit target.",
-      active: riskRules?.dailyProfitTarget != null,
-      requires: "Daily profit target",
+      label: "Outside trading hours",
+      description: "Fires when a trade is placed outside your configured session window.",
+      active: riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null,
+      requires: "Session hours",
     },
     {
-      label: "Approaching loss limit (80%)",
-      description: "You get an early warning when P&L reaches 80% of the daily loss limit.",
-      active: riskRules?.maxDailyLoss != null,
-      requires: "Daily loss limit",
+      label: "Unrealized drawdown",
+      description: "Fires when an open position's unrealized P&L exceeds your per-trade risk limit.",
+      active: riskRules?.riskPerTrade != null,
+      requires: "Risk per trade",
+    },
+  ];
+
+  const behavioralTriggers = [
+    {
+      label: "Revenge entry",
+      description: "Fires when you re-enter a position within 2 minutes of a loss.",
     },
     {
-      label: "Pre-news window",
-      description: "You get an alert before high-impact economic events based on your news policy.",
-      active: riskRules?.newsLockoutEnabled ?? false,
-      requires: "News lockout",
+      label: "Rapid trading",
+      description: "Fires when 3 or more trades are placed within a 5-minute window.",
     },
+    {
+      label: "Size increase after loss",
+      description: "Fires when a position is more than 25% larger than your previous losing trade.",
+    },
+  ];
+
+  const comingSoon = [
+    { label: "Daily profit target hit", description: "Alert when session P&L reaches your profit target." },
+    { label: "Approaching loss limit (80%)", description: "Early warning when P&L reaches 80% of your daily loss limit." },
+    { label: "Pre-news window", description: "Alert before high-impact economic events." },
   ];
 
   return (
@@ -136,6 +152,7 @@ export default async function AlertsPage() {
                     {ch.status}
                   </span>
                 </div>
+                <p className="mt-1.5 text-xs text-stone-600">{ch.detail}</p>
                 {ch.action && (
                   <a
                     href={ch.action.href}
@@ -149,9 +166,9 @@ export default async function AlertsPage() {
           </div>
         </SectionCard>
 
-        {/* Alert triggers — compact list, details collapsed */}
+        {/* Rule-based triggers */}
         <SectionCard
-          title="Triggers"
+          title="Rule-based triggers"
           description="Active when the matching rule is configured."
           actions={
             <a
@@ -163,9 +180,12 @@ export default async function AlertsPage() {
           }
         >
           <div className="divide-y divide-stone-100">
-            {triggers.map((t) => (
+            {ruleTriggers.map((t) => (
               <div key={t.label} className="flex items-center justify-between gap-4 py-2.5">
-                <p className="text-sm font-medium text-stone-950">{t.label}</p>
+                <div>
+                  <p className="text-sm font-medium text-stone-950">{t.label}</p>
+                  <p className="text-xs text-stone-500">{t.description}</p>
+                </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     t.active
@@ -178,26 +198,66 @@ export default async function AlertsPage() {
               </div>
             ))}
           </div>
-          <details className="group mt-4 border-t border-stone-100 pt-4">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
-              Details
-              <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-            </summary>
-            <div className="mt-4 grid gap-3">
-              {triggers.map((t) => (
-                <div key={t.label} className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm">
-                  <p className="font-medium text-stone-950">{t.label}</p>
-                  <p className="mt-1 text-stone-600">{t.description}</p>
-                  {!t.active && (
-                    <p className="mt-1 text-xs text-stone-500">
-                      Set <span className="font-medium">{t.requires}</span> in{" "}
-                      <a href="/rules" className="font-medium text-stone-700 underline-offset-2 hover:underline">Rules</a> to enable.
-                    </p>
-                  )}
-                </div>
+          {ruleTriggers.some((t) => !t.active) && (
+            <div className="mt-4 space-y-1 border-t border-stone-100 pt-4">
+              {ruleTriggers.filter((t) => !t.active).map((t) => (
+                <p key={t.label} className="text-xs text-stone-500">
+                  Set <span className="font-medium">{t.requires}</span> in{" "}
+                  <a href="/rules" className="font-medium text-stone-700 underline-offset-2 hover:underline">Rules</a>{" "}
+                  to enable <span className="font-medium">{t.label}</span>.
+                </p>
               ))}
             </div>
-          </details>
+          )}
+        </SectionCard>
+
+        {/* Behavioral triggers */}
+        <SectionCard
+          title="Behavioral triggers"
+          description="Always active when Telegram is connected — no rule configuration needed."
+        >
+          <div className="divide-y divide-stone-100">
+            {behavioralTriggers.map((t) => (
+              <div key={t.label} className="flex items-center justify-between gap-4 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-stone-950">{t.label}</p>
+                  <p className="text-xs text-stone-500">{t.description}</p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    telegramReady
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-stone-100 text-stone-500"
+                  }`}
+                >
+                  {telegramReady ? "Active" : "Needs Telegram"}
+                </span>
+              </div>
+            ))}
+          </div>
+          {!telegramReady && (
+            <p className="mt-4 border-t border-stone-100 pt-4 text-xs text-stone-500">
+              <a href="/settings" className="font-medium text-stone-700 underline-offset-2 hover:underline">Set up Telegram</a>{" "}
+              to receive behavioral alerts.
+            </p>
+          )}
+        </SectionCard>
+
+        {/* Coming soon */}
+        <SectionCard title="Coming soon">
+          <div className="divide-y divide-stone-100">
+            {comingSoon.map((t) => (
+              <div key={t.label} className="flex items-center justify-between gap-4 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-stone-400">{t.label}</p>
+                  <p className="text-xs text-stone-400">{t.description}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-stone-400">
+                  Soon
+                </span>
+              </div>
+            ))}
+          </div>
         </SectionCard>
 
       </div>

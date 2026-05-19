@@ -55,6 +55,40 @@ describe("/alerts page", () => {
   });
 });
 
+// ── Trigger honesty: only wired triggers are shown as active ──────────────────
+
+describe("/alerts page trigger honesty", () => {
+  it("does not query dailyProfitTarget (not a live trigger)", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("dailyProfitTarget"),
+      "dailyProfitTarget is not wired to an alert — must not be queried or claimed as active",
+    );
+  });
+
+  it("does not query newsLockoutEnabled (not a live trigger)", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("newsLockoutEnabled"),
+      "newsLockoutEnabled is not wired to an alert — must not be queried or claimed as active",
+    );
+  });
+
+  it("mentions all three behavioral triggers by name", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("Revenge entry") &&
+        ALERTS_PAGE_SRC.includes("Rapid trading") &&
+        ALERTS_PAGE_SRC.includes("Size increase after loss"),
+      "all three behavioral triggers (revenge entry, rapid trading, size increase after loss) must appear on the alerts page",
+    );
+  });
+
+  it("exposes no internal implementation terms to users", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("dry_run") && !ALERTS_PAGE_SRC.includes("GuardianIntervention"),
+      "internal implementation terms must not appear in user-facing copy",
+    );
+  });
+});
+
 // ── AlertPreferences stays orphaned ───────────────────────────────────────────
 
 function collectSourceFiles(dir: string, out: string[]): void {
