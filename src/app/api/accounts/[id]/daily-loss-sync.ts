@@ -104,9 +104,11 @@ export async function executeDailyLossSync(
   if (syncResult.auditNote === "dry_run") {
     return { status: "dry_run", payloadPreview: syncResult.payloadPreview };
   }
+  const gateFailureReason =
+    "gateFailureReason" in syncResult ? syncResult.gateFailureReason : null;
   return {
     status: "gate_blocked",
-    gateFailureReason: syncResult.gateFailureReason,
+    gateFailureReason,
     skipReason: syncResult.skipReason,
   };
 }
