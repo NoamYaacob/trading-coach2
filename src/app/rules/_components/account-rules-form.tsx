@@ -441,6 +441,7 @@ export function AccountRulesForm({
   }
 
   const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm, lockMessage);
+  const fieldsDisabled = Boolean(isHardLocked && hasExistingRules);
 
   // Cross-field validation: check the effective values (account override, falling
   // back to inherited default) so we catch invalid combos created by inheritance.
@@ -515,6 +516,15 @@ export function AccountRulesForm({
           {banner.message}
         </div>
       )}
+
+      {/* ── Editable field sections — fieldset propagates disabled to all
+          native controls (input, select, radio, checkbox) inside without
+          requiring prop changes to child components. Visual opacity dimming
+          makes the read-only state obvious to the user. ── */}
+      <fieldset
+        disabled={fieldsDisabled}
+        className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " opacity-50 cursor-not-allowed" : ""}`}
+      >
 
       {/* ── Money limits ──────────────────────────────────────────────────
           Mirrors the default-template form's "Money limits" section so the
@@ -710,6 +720,8 @@ export function AccountRulesForm({
         onChange={(key, val) => update(key as keyof AccountRulesValues, val as AccountRulesValues[keyof AccountRulesValues])}
       />
 
+      </fieldset>{/* end editable fieldset */}
+
       {/* Active vs pending guidance — sits ABOVE the pending panel so users
           read it before scanning the diff. Hidden when no pending data. */}
       {showPendingPanel && !pendingIsDelete && (
@@ -805,8 +817,9 @@ export function AccountRulesForm({
             <input
               type="checkbox"
               checked={consentChecked}
+              disabled={fieldsDisabled}
               onChange={(e) => setConsentChecked(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950 disabled:opacity-50"
             />
             <span>
               {AUTOMATED_ACTIONS_CONSENT_TEXT}
