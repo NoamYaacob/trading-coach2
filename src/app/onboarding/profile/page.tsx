@@ -59,7 +59,8 @@ export default async function TradingProfilePage({
             {editMode ? "Update your trading profile." : "Tell Guardrail how you trade."}
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-stone-500">
-            These details help Guardrail understand your market, session, and risk workflow.
+            This is personalization only — it helps tailor Guardrail&rsquo;s guidance to how you
+            trade. It does not set your trading rules or enforcement; you&rsquo;ll do that next.
           </p>
         </div>
 

@@ -60,7 +60,7 @@ export default async function OnboardingPage() {
     },
     {
       title: "Connect Tradovate",
-      description: "Enable real-time monitoring of your Tradovate account. Guardrail checks every fill against your rules the moment it happens.",
+      description: "Enable real-time monitoring of your Tradovate account. Guardrail checks every fill against your rules and sends alerts — starting in monitoring mode.",
       cta: "Connect Tradovate",
       href: "/accounts/connect/tradovate",
       done: hasBroker,
@@ -165,6 +165,19 @@ export default async function OnboardingPage() {
           })}
         </div>
 
+        <div className="mt-6 rounded-2xl border border-stone-200 bg-white px-5 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+            How Guardrail protects you
+          </p>
+          <p className="mt-1.5 text-xs leading-5 text-stone-600">
+            Guardrail starts in monitoring mode — it watches every fill and sends alerts. Daily Loss
+            is the only rule that can also be enforced through Tradovate&rsquo;s broker-side risk
+            settings, and only when you explicitly enable it later. Profit target, max trades, loss
+            streak, position size, and session cutoff stay Guardrail-monitored. No broker writes
+            happen unless you turn them on.
+          </p>
+        </div>
+
         <div className="mt-8 flex flex-col items-center gap-3">
           <Link
             href={
@@ -200,7 +213,7 @@ export default async function OnboardingPage() {
           )}
           {!hasBroker && (
             <p className="text-xs text-stone-400">
-              Broker connection is required for live account monitoring. Broker enforcement depends on account support, connection type, and permissions.
+              A broker connection is required for live account monitoring.
             </p>
           )}
         </div>
