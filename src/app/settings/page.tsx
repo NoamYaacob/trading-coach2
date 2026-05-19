@@ -36,6 +36,7 @@ import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
 import { BrokerConnectionsSection } from "./_components/broker-connections-section";
+import { TelegramConnection } from "./_components/telegram-connection";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
@@ -231,27 +232,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         >
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-500">Telegram</p>
-            {telegramConnection ? (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                <div className="text-sm">
-                  <p className="font-medium text-emerald-900">Connected</p>
-                  {telegramConnection.telegramUsername && (
-                    <p className="text-emerald-700">@{telegramConnection.telegramUsername}</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-stone-300" />
-                <div className="text-sm">
-                  <p className="font-medium text-stone-700">Not connected</p>
-                  <p className="text-stone-500">
-                    Telegram alerts are not connected yet. Setup is not available in this demo build.
-                  </p>
-                </div>
-              </div>
-            )}
+            <TelegramConnection
+              connected={Boolean(telegramConnection)}
+              username={telegramConnection?.telegramUsername ?? null}
+            />
           </div>
           <details className="group mt-4 rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
