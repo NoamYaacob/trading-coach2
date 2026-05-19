@@ -30,7 +30,7 @@ export function CmeHourSelect({
       aria-label={ariaLabel}
       value={safeValue}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] focus:border-[#f97316] focus:outline-none"
+      className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
     >
       <option value="">No cutoff (uses default / inherited)</option>
       {Array.from({ length: 24 }, (_, h) => (

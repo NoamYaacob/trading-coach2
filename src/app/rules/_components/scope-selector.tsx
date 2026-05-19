@@ -27,8 +27,10 @@ function AccountItem({
   });
   const isInactive = account.missingFromBrokerSince != null;
 
+  // "Custom" badge is conveyed by subtitle text; show badge only for critical alerts.
   const visibleBadge = badge?.label !== "Custom" ? badge : null;
 
+  // Plan-status subtitle — shown only when no alert badge is present (avoid duplicating info).
   const subtitle =
     visibleBadge == null
       ? account.hasAccountRules
@@ -43,19 +45,19 @@ function AccountItem({
         aria-current={isSelected ? "page" : undefined}
         className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
           isSelected
-            ? "border-[#f97316] bg-[#21262d] text-[#e6edf3]"
+            ? "border-stone-950 bg-stone-100 text-stone-900"
             : isInactive
-              ? "border-transparent text-[#6e7781] hover:bg-[#21262d]"
-              : "border-transparent text-[#8b949e] hover:bg-[#21262d] hover:text-[#adbac7]"
+              ? "border-transparent text-stone-400 hover:bg-stone-50"
+              : "border-transparent text-stone-700 hover:bg-stone-50"
         }`}
       >
         <div className="flex min-w-0 items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className={`truncate text-sm ${isSelected ? "font-semibold text-[#e6edf3]" : ""}`}>
+            <p className={`truncate text-sm ${isSelected ? "font-semibold" : ""}`}>
               {account.label}
             </p>
             {subtitle && (
-              <p className={`truncate text-[11px] ${isSelected ? "text-[#8b949e]" : "text-[#6e7781]"}`}>
+              <p className={`truncate text-[11px] ${isSelected ? "text-stone-500" : "text-stone-400"}`}>
                 {subtitle}
               </p>
             )}
@@ -86,8 +88,8 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             aria-current={isDefault ? "page" : undefined}
             className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
               isDefault
-                ? "border-[#f97316] bg-[#21262d] text-[#e6edf3]"
-                : "border-transparent text-[#8b949e] hover:bg-[#21262d] hover:text-[#adbac7]"
+                ? "border-stone-950 bg-stone-100 text-stone-900"
+                : "border-transparent text-stone-700 hover:bg-stone-50"
             }`}
           >
             <div className="flex min-w-0 items-start gap-2">
@@ -95,15 +97,13 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
                 <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
                   Default template
                 </p>
-                <p className={`truncate text-[11px] ${isDefault ? "text-[#8b949e]" : "text-[#6e7781]"}`}>
+                <p className={`truncate text-[11px] ${isDefault ? "text-stone-500" : "text-stone-400"}`}>
                   All accounts without an override
                 </p>
               </div>
               <span
                 className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-                  isDefault
-                    ? "bg-[#f97316] text-white"
-                    : "bg-[#21262d] text-[#6e7781]"
+                  isDefault ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
                 }`}
               >
                 Default
@@ -133,13 +133,14 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             : "";
 
           return (
-            <li key={group.groupKey} className="mt-2 min-w-0 border-t border-[#30363d] pt-2">
+            <li key={group.groupKey} className="mt-2 min-w-0 border-t border-stone-100 pt-2">
               <div className="flex min-w-0 items-start justify-between gap-1.5 px-2 pb-1">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-[#adbac7]">
+                  {/* Readable heading — not uppercase micro text */}
+                  <p className="truncate text-xs font-semibold text-stone-700">
                     {group.firmLabel}
                   </p>
-                  <p className="truncate text-[10px] text-[#6e7781]">
+                  <p className="truncate text-[10px] text-stone-400">
                     {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
                     {userId}
                   </p>
@@ -165,12 +166,9 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
 
         {groups.length === 0 && (
           <li className="min-w-0">
-            <p className="mt-3 px-3.5 text-xs text-[#6e7781]">
+            <p className="mt-3 px-3.5 text-xs text-stone-400">
               No broker accounts connected yet.{" "}
-              <Link
-                href="/accounts/connect/tradovate"
-                className="text-[#f97316] underline-offset-2 hover:underline"
-              >
+              <Link href="/accounts/connect/tradovate" className="underline-offset-2 hover:underline">
                 Connect Tradovate
               </Link>{" "}
               to configure account-specific rules.
