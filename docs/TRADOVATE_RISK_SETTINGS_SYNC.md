@@ -34,19 +34,22 @@ The goal is to keep Tradovate's built-in risk engine in sync with the user's Gua
 
 Gates are evaluated in order. The first gate that fails returns `{ allowed: false, skipReason }` immediately. All gates must pass for a broker write to be attempted.
 
-| # | Gate | Condition that blocks |
-|---|------|-----------------------|
-| 1 | `BROKER_ENFORCEMENT_ENABLED` flag | Not `true` in env |
-| 2 | Environment | Account `env` is not `"demo"` (live not yet supported) |
-| 3 | Account active | `isActive` is `false` |
-| 4 | Account present in broker | `missingFromBroker` is `true` |
-| 5 | Connection liveness | `connectionStatus` is one of `expired`, `connection_error`, `not_connected`, `pending_webhook`, `oauth_pending_storage` |
-| 6 | Permission level | `permissionLevel` is not `"full_access"` |
+| # | Gate | Field | `gateFailureReason` when blocked |
+|---|------|-------|----------------------------------|
+| 1 | `BROKER_ENFORCEMENT_ENABLED` flag | `brokerEnforcementEnabled` | `broker_enforcement_disabled` |
+| 2 | Environment | `env` | `env_not_demo` |
+| 3 | Account active | `isActive` | `account_inactive` |
+| 4 | Account present in broker | `missingFromBroker` | `account_missing_from_broker` |
+| 5 | Connection liveness | `connectionStatus` | `connection_not_live` |
+| 6 | Permission level | `permissionLevel` | `insufficient_permissions` |
+| 7 | Account allowlist | `accountAllowlisted` | `account_not_allowlisted` |
+| 8 | Guardian active | `guardianEnabled` | `guardian_inactive` |
+
+Each failure returns `{ allowed: false, skipReason: string, gateFailureReason: string }`. Callers should record `gateFailureReason` in their audit log.
 
 ### What is NOT required here (unlike the listener path)
 
 - **InternalLockEvent** — the listener path (breach enforcement) requires an active lock event as a precondition. Rule-save sync does not, because it fires at save time, not breach time.
-- **Account allowlist** — the listener path requires accounts to be in `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST` as an extra rollout gate. Rule-save sync is a per-user voluntary action and does not need an allowlist.
 - **Dedup key** — the listener path uses a `GuardianIntervention` dedup key to prevent duplicate broker writes for the same breach event. Rule-save sync callers handle idempotency at the DB layer.
 
 ---
@@ -71,6 +74,8 @@ const result = await simulateTradovateRiskSettingsSync({
   missingFromBroker: false,
   connectionStatus: "connected",
   permissionLevel: "full_access",
+  accountAllowlisted: true,
+  guardianEnabled: true,
   maxDailyLoss: 500,
 });
 // result.attempted === true
@@ -93,7 +98,7 @@ This allows full end-to-end testing of the rule-save code path without any actua
 
 2. **Dry-run mode** — set `ENFORCEMENT_DRY_RUN=true` in the environment, then call `syncDailyLossRiskSettingToTradovate`. The function will evaluate all gates, build the payload preview, but skip the actual `client.applyDailyLossLock` call.
 
-3. **Gate check only** — call `canSyncTradovateRiskSettings(input)` directly. Returns `{ allowed, skipReason }` with zero side effects.
+3. **Gate check only** — call `canSyncTradovateRiskSettings(input)` directly. Returns `{ allowed, skipReason, gateFailureReason }` with zero side effects.
 
 ---
 
@@ -104,7 +109,8 @@ This allows full end-to-end testing of the rule-save code path without any actua
 | **When it fires** | When a user saves their daily loss rule | When the Guardian listener detects a breach |
 | **Source files** | `tradovate-risk-settings-service.ts` | `broker-enforcement-gate.ts`, `broker-enforcement-service.ts` |
 | **InternalLockEvent required?** | No | Yes (gate 9) |
-| **Account allowlist required?** | No | Yes (gate 4, `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST`) |
+| **Account allowlist required?** | Yes (gate 7, `accountAllowlisted`) | Yes (gate 4, `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST`) |
+| **Guardian active required?** | Yes (gate 8, `guardianEnabled`) | Yes (implied by listener active) |
 | **Dedup check?** | No (caller handles idempotency) | Yes (gate 10, `GuardianIntervention` dedup key) |
 | **Trigger** | User action | Automated breach detection |
 | **Purpose** | Keep Tradovate in sync with the user's saved rule | Enforce the breach at the exchange level |
@@ -120,3 +126,5 @@ These two paths are intentionally kept independent. `tradovate-risk-settings-ser
 3. `simulateTradovateRiskSettingsSync` contains no reference to `TradovateClient` in its implementation. The test suite verifies this with a source scan.
 4. All live broker writes require `BROKER_ENFORCEMENT_ENABLED=true` AND `env="demo"` — both must be true simultaneously.
 5. `ENFORCEMENT_DRY_RUN=true` overrides the live write at the function level, independent of all other flags.
+6. `accountAllowlisted=true` is required — accounts not in the explicit allowlist are blocked at gate 7 and never reach the broker call.
+7. `guardianEnabled=true` is required — if Guardian is inactive, gate 8 blocks the write. This prevents broker-side changes when Guardrail's own monitoring is not running.

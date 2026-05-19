@@ -9,7 +9,7 @@
  * Key differences from the listener path:
  *   - Triggered on rule-save, not on breach detection
  *   - Does NOT require an active InternalLockEvent
- *   - Does NOT require an account allowlist (rule-save is per-user action)
+ *   - DOES require account allowlist + Guardian active (gates 7–8)
  *   - DOES require all other connection and permission gates
  *
  * Safety contracts:
@@ -98,11 +98,17 @@ export type CanSyncInput = {
   connectionStatus: string | null;
   /** BrokerConnection.permissionLevel */
   permissionLevel: string | null;
+  /** Whether this account is in the explicit broker-enforcement allowlist */
+  accountAllowlisted: boolean;
+  /** Whether Guardian is currently active for this user/account */
+  guardianEnabled: boolean;
 };
 
 export type CanSyncResult = {
   allowed: boolean;
   skipReason: string | null;
+  /** Machine-readable reason code for audit logging; null when allowed=true */
+  gateFailureReason: string | null;
 };
 
 /**
@@ -116,10 +122,11 @@ export type CanSyncResult = {
  *   4. missingFromBroker must be false
  *   5. connectionStatus must NOT be in expired/error/not_connected/pending set
  *   6. permissionLevel must be "full_access"
+ *   7. accountAllowlisted must be true
+ *   8. guardianEnabled must be true
  *
  * Not required here (unlike the listener path):
  *   - InternalLockEvent (listener-path only — breach-time enforcement)
- *   - Account allowlist (rule-save sync is a per-user voluntary action)
  *   - Dedup key check (callers handle idempotency at the DB layer)
  */
 export function canSyncTradovateRiskSettings(
@@ -132,6 +139,7 @@ export function canSyncTradovateRiskSettings(
       skipReason:
         "BROKER_ENFORCEMENT_ENABLED is not true — broker writes are disabled. " +
         "Set BROKER_ENFORCEMENT_ENABLED=true to enable rule-save sync.",
+      gateFailureReason: "broker_enforcement_disabled",
     };
   }
 
@@ -142,6 +150,7 @@ export function canSyncTradovateRiskSettings(
       skipReason:
         `Account env is '${input.env}' — only demo accounts are eligible for rule-save sync. ` +
         "live enforcement is not yet implemented.",
+      gateFailureReason: "env_not_demo",
     };
   }
 
@@ -151,6 +160,7 @@ export function canSyncTradovateRiskSettings(
       allowed: false,
       skipReason:
         "Account is inactive (archived or disabled) — rule-save sync skipped.",
+      gateFailureReason: "account_inactive",
     };
   }
 
@@ -160,6 +170,7 @@ export function canSyncTradovateRiskSettings(
       allowed: false,
       skipReason:
         "Account is no longer returned by Tradovate (missingFromBrokerSince is set) — rule-save sync skipped.",
+      gateFailureReason: "account_missing_from_broker",
     };
   }
 
@@ -171,6 +182,7 @@ export function canSyncTradovateRiskSettings(
       skipReason:
         `Connection status '${connStatus}' is not live — broker write would fail. ` +
         "Reconnect the Tradovate broker connection before syncing risk settings.",
+      gateFailureReason: "connection_not_live",
     };
   }
 
@@ -181,10 +193,33 @@ export function canSyncTradovateRiskSettings(
       skipReason:
         `Permission level '${input.permissionLevel ?? "unknown"}' is insufficient. ` +
         "Account Risk Settings: Full Access is required to write userAccountAutoLiq.",
+      gateFailureReason: "insufficient_permissions",
     };
   }
 
-  return { allowed: true, skipReason: null };
+  // Gate 7: Account must be in the explicit allowlist
+  if (!input.accountAllowlisted) {
+    return {
+      allowed: false,
+      skipReason:
+        "Account is not in the broker-enforcement allowlist — rule-save sync blocked. " +
+        "Add the account to the allowlist before enabling broker writes.",
+      gateFailureReason: "account_not_allowlisted",
+    };
+  }
+
+  // Gate 8: Guardian must be active
+  if (!input.guardianEnabled) {
+    return {
+      allowed: false,
+      skipReason:
+        "Guardian is not active for this account — rule-save sync blocked. " +
+        "Guardian must be active before broker risk-settings writes are permitted.",
+      gateFailureReason: "guardian_inactive",
+    };
+  }
+
+  return { allowed: true, skipReason: null, gateFailureReason: null };
 }
 
 // ── Input / result types ──────────────────────────────────────────────────────
@@ -214,6 +249,8 @@ export type SyncResult =
       synced: false;
       skipReason: string;
       auditNote: string;
+      /** Machine-readable reason code when a canSync gate blocked the write */
+      gateFailureReason: string | null;
       payloadPreview: null;
       brokerResponse: null;
     }
@@ -292,6 +329,7 @@ export async function syncDailyLossRiskSettingToTradovate(
       synced: false,
       skipReason: gateResult.skipReason!,
       auditNote: "gate_blocked",
+      gateFailureReason: gateResult.gateFailureReason,
       payloadPreview: null,
       brokerResponse: null,
     };

@@ -154,17 +154,22 @@ Rule-Save Sync is a proactive path that writes a user's saved daily loss rule to
 
 ### Gates for rule-save sync (in order)
 
-1. `BROKER_ENFORCEMENT_ENABLED=true` must be set
-2. Account `env` must be `"demo"` (live sync not yet implemented)
-3. `isActive` must be true
-4. `missingFromBroker` must be false
-5. `connectionStatus` must not be `expired`, `connection_error`, `not_connected`, `pending_webhook`, or `oauth_pending_storage`
-6. `permissionLevel` must be `"full_access"`
+1. `BROKER_ENFORCEMENT_ENABLED=true` must be set → `gateFailureReason: broker_enforcement_disabled`
+2. Account `env` must be `"demo"` → `gateFailureReason: env_not_demo`
+3. `isActive` must be true → `gateFailureReason: account_inactive`
+4. `missingFromBroker` must be false → `gateFailureReason: account_missing_from_broker`
+5. `connectionStatus` must not be `expired`, `connection_error`, `not_connected`, `pending_webhook`, or `oauth_pending_storage` → `gateFailureReason: connection_not_live`
+6. `permissionLevel` must be `"full_access"` → `gateFailureReason: insufficient_permissions`
+7. `accountAllowlisted` must be true → `gateFailureReason: account_not_allowlisted`
+8. `guardianEnabled` must be true → `gateFailureReason: guardian_inactive`
+
+Each gate failure returns `{ allowed: false, skipReason, gateFailureReason }` for structured audit logging.
 
 ### Differences from the listener (breach-time) path
 
 - Does NOT require an active `InternalLockEvent` (listener path gate 9)
-- Does NOT require an account allowlist (listener path gate 4)
+- DOES require an account allowlist (gate 7) — accounts must be explicitly allowlisted before broker writes proceed
+- DOES require Guardian active (gate 8) — broker writes are blocked if Guardrail monitoring is not running
 - Does NOT perform a dedup check (listener path gate 10)
 - Fires on user save action, not on automated breach detection
 - Implementation: `src/lib/brokers/tradovate-risk-settings-service.ts`

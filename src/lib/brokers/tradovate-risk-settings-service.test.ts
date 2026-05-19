@@ -34,6 +34,8 @@ const allPassDemoInput: CanSyncInput = {
   missingFromBroker: false,
   connectionStatus: "connected",
   permissionLevel: "full_access",
+  accountAllowlisted: true,
+  guardianEnabled: true,
 };
 
 const allPassSyncInput: SyncInput = {
@@ -275,6 +277,74 @@ describe("canSyncTradovateRiskSettings", () => {
     // The all-pass input has no InternalLockEvent field — it must still pass
     const result = canSyncTradovateRiskSettings(allPassDemoInput);
     assert.equal(result.allowed, true);
+  });
+
+  it("gate 7: blocks when accountAllowlisted=false", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      accountAllowlisted: false,
+    });
+    assert.equal(result.allowed, false);
+    assert.ok(result.skipReason?.includes("allowlist"), result.skipReason ?? "");
+  });
+
+  it("gate 7: gateFailureReason='account_not_allowlisted' when not allowlisted", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      accountAllowlisted: false,
+    });
+    assert.equal(result.gateFailureReason, "account_not_allowlisted");
+  });
+
+  it("gate 7: accountAllowlisted=true passes (all other gates pass)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      accountAllowlisted: true,
+    });
+    assert.equal(result.allowed, true);
+    assert.equal(result.gateFailureReason, null);
+  });
+
+  it("gate 8: blocks when guardianEnabled=false", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      guardianEnabled: false,
+    });
+    assert.equal(result.allowed, false);
+    assert.ok(result.skipReason?.includes("Guardian"), result.skipReason ?? "");
+  });
+
+  it("gate 8: gateFailureReason='guardian_inactive' when guardian off", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      guardianEnabled: false,
+    });
+    assert.equal(result.gateFailureReason, "guardian_inactive");
+  });
+
+  it("gate 8: guardianEnabled=true passes (all other gates pass)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      guardianEnabled: true,
+    });
+    assert.equal(result.allowed, true);
+    assert.equal(result.gateFailureReason, null);
+  });
+
+  it("gate ordering: gate 7 checked before gate 8", () => {
+    // Both fail — must report gate 7 reason (allowlist)
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      accountAllowlisted: false,
+      guardianEnabled: false,
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "account_not_allowlisted");
+  });
+
+  it("allowed result: gateFailureReason=null when all gates pass", () => {
+    const result = canSyncTradovateRiskSettings(allPassDemoInput);
+    assert.equal(result.gateFailureReason, null);
   });
 });
 
@@ -562,5 +632,122 @@ describe("syncDailyLossRiskSettingToTradovate", () => {
 
     assert.equal(result.synced, false);
     assert.equal(clientCalled, false, "broker client must not be called for live env");
+  });
+
+  it("accountAllowlisted=false: synced=false, no client call", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    let clientCalled = false;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        clientCalled = true;
+        return { endpoint: "", payload: {}, response: null, confirmed: false, readbackValue: null };
+      },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, accountAllowlisted: false },
+      mockClient as never,
+    );
+
+    assert.equal(result.synced, false);
+    assert.equal(clientCalled, false, "broker client must not be called when account not allowlisted");
+  });
+
+  it("accountAllowlisted=false: gateFailureReason='account_not_allowlisted'", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    const mockClient = {
+      applyDailyLossLock: async () => { throw new Error("should not be called"); },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, accountAllowlisted: false },
+      mockClient as never,
+    );
+
+    assert.equal(result.synced, false);
+    assert.equal(result.auditNote, "gate_blocked");
+    assert.equal(result.gateFailureReason, "account_not_allowlisted");
+  });
+
+  it("accountAllowlisted=true: passes gate 7 when all other gates pass", async () => {
+    process.env.ENFORCEMENT_DRY_RUN = "true";
+    const mockClient = {
+      applyDailyLossLock: async () => { throw new Error("should not be called"); },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, accountAllowlisted: true },
+      mockClient as never,
+    );
+
+    // With dry-run on, should reach dry_run (not gate_blocked)
+    assert.equal(result.synced, false);
+    assert.equal(result.auditNote, "dry_run");
+  });
+
+  it("guardianEnabled=false: synced=false, no client call", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    let clientCalled = false;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        clientCalled = true;
+        return { endpoint: "", payload: {}, response: null, confirmed: false, readbackValue: null };
+      },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, guardianEnabled: false },
+      mockClient as never,
+    );
+
+    assert.equal(result.synced, false);
+    assert.equal(clientCalled, false, "broker client must not be called when guardian inactive");
+  });
+
+  it("guardianEnabled=false: gateFailureReason='guardian_inactive'", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    const mockClient = {
+      applyDailyLossLock: async () => { throw new Error("should not be called"); },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, guardianEnabled: false },
+      mockClient as never,
+    );
+
+    assert.equal(result.synced, false);
+    assert.equal(result.auditNote, "gate_blocked");
+    assert.equal(result.gateFailureReason, "guardian_inactive");
+  });
+
+  it("guardianEnabled=true: passes gate 8 when all other gates pass", async () => {
+    process.env.ENFORCEMENT_DRY_RUN = "true";
+    const mockClient = {
+      applyDailyLossLock: async () => { throw new Error("should not be called"); },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, guardianEnabled: true },
+      mockClient as never,
+    );
+
+    // With dry-run on, should reach dry_run (not gate_blocked)
+    assert.equal(result.synced, false);
+    assert.equal(result.auditNote, "dry_run");
+  });
+
+  it("both accountAllowlisted=false and guardianEnabled=false: gate 7 blocks first", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    const mockClient = {
+      applyDailyLossLock: async () => { throw new Error("should not be called"); },
+    };
+
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, accountAllowlisted: false, guardianEnabled: false },
+      mockClient as never,
+    );
+
+    assert.equal(result.synced, false);
+    assert.equal(result.gateFailureReason, "account_not_allowlisted");
   });
 });
