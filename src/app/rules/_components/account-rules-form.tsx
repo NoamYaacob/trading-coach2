@@ -184,6 +184,17 @@ function Field({ label, hint, pendingNote, children }: { label: string; hint?: s
   );
 }
 
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#f97316] font-mono whitespace-nowrap">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-[#21262d]" />
+    </div>
+  );
+}
+
 function Input({
   value,
   onChange,
@@ -203,7 +214,7 @@ function Input({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm text-[#e6edf3] placeholder:text-[#6e7781] focus:border-[#f97316] focus:outline-none"
+      className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] placeholder:text-[#484f58] focus:border-[#f97316] focus:outline-none"
     />
   );
 }
@@ -512,38 +523,38 @@ export function AccountRulesForm({
       >
 
       {/* ── Money limits ────────────────────────────────────────────── */}
-      <div role="group" aria-label="Money limits" className="grid gap-3 rounded-2xl border border-[#30363d] bg-[#161b22] p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-[#e6edf3]">Money limits</p>
+      <div role="group" aria-label="Money limits" className="space-y-3 pb-6 border-b border-[#21262d]">
+        <SectionHeader label="Money Limits" />
         {!hasExistingRules && (
-          <p className="-mt-1 text-xs text-[#6e7781]">{REVIEW_INHERITED_HINT}</p>
+          <p className="text-xs text-[#6e7781]">{REVIEW_INHERITED_HINT}</p>
         )}
         {/* Inherited-only fields surfaced so the account form mirrors the
             default template's section structure even though account size and
             daily profit target are configured on the default template only. */}
         {(defaultValues?.maxDailyLoss !== undefined ||
           (defaultValues as { dailyProfitTarget?: string } | undefined)?.dailyProfitTarget !== undefined) && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-[#30363d] bg-[#1c2128] px-3 py-2 text-[11px] text-[#8b949e]">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-[#21262d] px-3 py-2 text-[11px] text-[#8b949e]">
             <div>
-              <dt className="text-[10px] uppercase tracking-[0.1em] text-[#6e7781]">Account size</dt>
-              <dd className="text-[#adbac7]">
+              <dt className="text-[10px] uppercase tracking-[0.1em] text-[#484f58]">Account size</dt>
+              <dd className="text-[#8b949e]">
                 <span className="rounded-full border border-sky-700 bg-sky-900/30 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-400">
                   Inherited
                 </span>{" "}
-                <span className="text-[#8b949e]">configured on default template</span>
+                <span className="text-[#6e7781]">configured on default template</span>
               </dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-[0.1em] text-[#6e7781]">Daily profit target</dt>
-              <dd className="text-[#adbac7]">
+              <dt className="text-[10px] uppercase tracking-[0.1em] text-[#484f58]">Daily profit target</dt>
+              <dd className="text-[#8b949e]">
                 <span className="rounded-full border border-sky-700 bg-sky-900/30 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-400">
                   Inherited
                 </span>{" "}
-                <span className="text-[#8b949e]">configured on default template</span>
+                <span className="text-[#6e7781]">configured on default template</span>
               </dd>
             </div>
           </dl>
         )}
-        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
+        <div className="grid items-start gap-3 grid-cols-[minmax(0,200px)_minmax(0,200px)]">
           <Field label="Daily loss limit ($)">
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
@@ -554,21 +565,23 @@ export function AccountRulesForm({
       </div>
 
       {/* ── Trading limits ────────────────────────────────────────── */}
-      <div role="group" aria-label="Trading limits" className="grid gap-3 rounded-2xl border border-[#30363d] bg-[#161b22] p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-[#e6edf3]">Trading limits</p>
-        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
+      <div role="group" aria-label="Trading limits" className="space-y-3 pb-6 border-b border-[#21262d]">
+        <SectionHeader label="Trading Limits" />
+        <div className="grid items-start gap-3 grid-cols-[minmax(0,200px)_minmax(0,200px)]">
           <Field
-            label="Max trades per day"
+            label="Max trades / day"
             pendingNote={defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
           >
             <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
           <Field
-            label="Stop after consecutive losses"
+            label="Stop after losses"
             pendingNote={defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
           >
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
+        </div>
+        <div className="max-w-[200px]">
           <Field
             label={MAX_POSITION_SIZE_COPY.label}
             hint={MAX_POSITION_SIZE_COPY.hint}
@@ -612,20 +625,20 @@ export function AccountRulesForm({
       </div>
 
       {/* ── Daily cutoff (CME) ─────────────────────────────────────── */}
-      <div role="group" aria-label="Daily cutoff" className="grid gap-3 rounded-2xl border border-[#30363d] bg-[#161b22] p-3 sm:gap-4 sm:p-5">
-        <div>
-          <p className="text-sm font-semibold text-[#e6edf3]">{SESSION_WINDOW_COPY.legend}</p>
-          <p className="mt-1 text-xs text-[#8b949e]">
-            Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
-          </p>
+      <div role="group" aria-label="Daily cutoff" className="space-y-3 pb-6 border-b border-[#21262d]">
+        <SectionHeader label={`${SESSION_WINDOW_COPY.legend} · CME Time`} />
+        <p className="text-xs text-[#6e7781]">
+          Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
+        </p>
+        <div className="max-w-[200px]">
+          <Field label="Cutoff hour" hint={SESSION_WINDOW_COPY.endHint}>
+            <CmeHourSelect
+              value={values.allowedEndHour}
+              onChange={(v) => update("allowedEndHour", v)}
+              ariaLabel={SESSION_WINDOW_COPY.endLabel}
+            />
+          </Field>
         </div>
-        <Field label={SESSION_WINDOW_COPY.endLabel} hint={SESSION_WINDOW_COPY.endHint}>
-          <CmeHourSelect
-            value={values.allowedEndHour}
-            onChange={(v) => update("allowedEndHour", v)}
-            ariaLabel={SESSION_WINDOW_COPY.endLabel}
-          />
-        </Field>
         {(() => {
           const e = int(values.allowedEndHour);
           if (e === null) return null;
@@ -652,7 +665,7 @@ export function AccountRulesForm({
             {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
               <label
                 key={value}
-                className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#30363d] bg-[#1c2128] px-4 py-2.5 text-sm"
+                className="flex cursor-pointer items-start gap-3 rounded border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm"
               >
                 <input
                   type="radio"
@@ -673,14 +686,14 @@ export function AccountRulesForm({
       </div>
 
       {/* ── Notifications (inherited) ─────────────────────────────── */}
-      <div role="group" aria-label="Notifications" className="grid gap-3 rounded-2xl border border-[#30363d] bg-[#161b22] p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-[#e6edf3]">Notifications</p>
-        <div className="rounded-xl border border-[#30363d] bg-[#1c2128] px-4 py-2.5 text-xs text-[#8b949e]">
+      <div role="group" aria-label="Notifications" className="space-y-3 pb-6 border-b border-[#21262d]">
+        <SectionHeader label="Notifications" />
+        <p className="text-xs text-[#6e7781]">
           <span className="rounded-full border border-sky-700 bg-sky-900/30 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-400">
             Inherited
           </span>{" "}
           Breach alerts are configured on the default template and apply to every account.
-        </div>
+        </p>
       </div>
 
       <TradingSessionSelector

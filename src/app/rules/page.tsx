@@ -126,7 +126,7 @@ export default async function RulesPage({
     scope === "account" && id
       ? prisma.liveSessionState.findUnique({
           where: { accountId: id },
-          select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
+          select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true, dailyPnl: true, consecutiveLosses: true },
         })
       : Promise.resolve(null),
   ]);
@@ -365,13 +365,13 @@ export default async function RulesPage({
 
         {/* Mobile: collapsible */}
         <details className="border-b border-[#21262d] xl:hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 bg-[#161b22]">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 bg-[#0d1117]">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f97316]">
               Rule Target
             </span>
             <span className="text-[#6e7781] select-none text-xs">▾</span>
           </summary>
-          <div className="border-t border-[#21262d] bg-[#161b22] px-3 pb-3 pt-2">
+          <div className="border-t border-[#21262d] bg-[#0d1117] px-3 pb-3 pt-2">
             <ScopeSelector
               groups={groups}
               currentScope={scope}
@@ -381,7 +381,7 @@ export default async function RulesPage({
         </details>
 
         {/* Desktop: sticky sidebar */}
-        <aside className="hidden border-r border-[#21262d] bg-[#161b22] xl:block xl:overflow-y-auto">
+        <aside className="hidden border-r border-[#21262d] bg-[#0d1117] xl:block xl:overflow-y-auto">
           <div className="p-3">
             <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f97316]">
               Rule Target
@@ -568,7 +568,7 @@ export default async function RulesPage({
         </main>
 
         {/* ── RIGHT PANEL — Account status ─────────────────────────────────── */}
-        <aside className="border-t border-[#21262d] bg-[#161b22] xl:border-l xl:border-t-0 xl:overflow-y-auto">
+        <aside className="border-t border-[#21262d] bg-[#0d1117] xl:border-l xl:border-t-0 xl:overflow-y-auto">
           <div className="p-4">
             <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f97316]">
               Account Status

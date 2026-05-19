@@ -19,12 +19,23 @@ type Props = {
   onChange: (key: keyof TradingSessionValues, val: TradingSessionValues[keyof TradingSessionValues]) => void;
 };
 
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#f97316] font-mono whitespace-nowrap">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-[#21262d]" />
+    </div>
+  );
+}
+
 export function TradingSessionSelector({ values, onChange }: Props) {
   return (
-    <div role="group" aria-label="Trading session" className="grid gap-4 rounded-2xl border border-[#30363d] bg-[#161b22] p-5">
+    <div role="group" aria-label="Trading session" className="space-y-3 pb-6 border-b border-[#21262d]">
+      <SectionHeader label="Trading Session" />
       <div>
-        <p className="text-sm font-semibold text-[#e6edf3]">Trading session</p>
-        <p className="mt-1 text-xs text-[#8b949e]">
+        <p className="text-xs text-[#8b949e]">
           Select the sessions you normally trade. Guardrail uses these to warn about off-session trades and prevent rule changes during active sessions.
         </p>
         <p className="mt-1 text-xs text-[#6e7781]">
@@ -75,7 +86,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
 
       {/* Show selected preset times */}
       {values.sessionPresets.length > 0 && (
-        <div className="rounded-xl border border-[#30363d] bg-[#1c2128] px-4 py-3 text-xs text-[#8b949e] space-y-1">
+        <div className="rounded border border-[#30363d] bg-[#161b22] px-3 py-2.5 text-xs text-[#8b949e] space-y-1">
           {SESSION_PRESETS.filter((p) => values.sessionPresets.includes(p.id)).map((preset) => (
             <p key={preset.id}>
               <span className="font-medium text-[#adbac7]">{preset.label}</span>{" – "}
@@ -95,7 +106,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
               value={values.sessionTimezone}
               onChange={(e) => onChange("sessionTimezone", e.target.value)}
               placeholder="America/New_York"
-              className="w-full rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm text-[#e6edf3] placeholder:text-[#6e7781] focus:border-[#f97316] focus:outline-none"
+              className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] placeholder:text-[#484f58] focus:border-[#f97316] focus:outline-none"
             />
           </SessionField>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -106,7 +117,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
                 onChange={(e) => onChange("sessionStartTime", e.target.value)}
                 placeholder="09:30"
                 pattern="\d{1,2}:\d{2}"
-                className="w-full rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm text-[#e6edf3] placeholder:text-[#6e7781] focus:border-[#f97316] focus:outline-none"
+                className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] placeholder:text-[#484f58] focus:border-[#f97316] focus:outline-none"
               />
             </SessionField>
             <SessionField label="Session end (HH:mm)">
@@ -116,7 +127,7 @@ export function TradingSessionSelector({ values, onChange }: Props) {
                 onChange={(e) => onChange("sessionEndTime", e.target.value)}
                 placeholder="16:00"
                 pattern="\d{1,2}:\d{2}"
-                className="w-full rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm text-[#e6edf3] placeholder:text-[#6e7781] focus:border-[#f97316] focus:outline-none"
+                className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] placeholder:text-[#484f58] focus:border-[#f97316] focus:outline-none"
               />
             </SessionField>
           </div>
@@ -124,20 +135,22 @@ export function TradingSessionSelector({ values, onChange }: Props) {
       )}
 
       {/* Rule edit lock buffer — always shown */}
-      <SessionField
-        label="Rule edit lock buffer (minutes)"
-        hint="Minutes before the session starts that rule editing locks. Default: 60."
-      >
-        <input
-          type="number"
-          inputMode="numeric"
-          step={1}
-          value={values.ruleEditLockBufferMinutes}
-          onChange={(e) => onChange("ruleEditLockBufferMinutes", e.target.value)}
-          placeholder="60"
-          className="w-full rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-sm text-[#e6edf3] placeholder:text-[#6e7781] focus:border-[#f97316] focus:outline-none"
-        />
-      </SessionField>
+      <div className="max-w-[200px]">
+        <SessionField
+          label="Rule edit lock buffer (minutes)"
+          hint="Minutes before the session starts that rule editing locks. Default: 60."
+        >
+          <input
+            type="number"
+            inputMode="numeric"
+            step={1}
+            value={values.ruleEditLockBufferMinutes}
+            onChange={(e) => onChange("ruleEditLockBufferMinutes", e.target.value)}
+            placeholder="60"
+            className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#f0f6fc] placeholder:text-[#484f58] focus:border-[#f97316] focus:outline-none"
+          />
+        </SessionField>
+      </div>
     </div>
   );
 }

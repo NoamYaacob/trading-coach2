@@ -24,7 +24,7 @@ export function MaxPositionSizeConversionTable({
 
   return (
     <div
-      className="mt-1 grid gap-0.5 rounded-md border border-[#30363d] bg-[#1c2128] px-2 py-1.5 text-xs text-[#8b949e]"
+      className="mt-1 grid gap-0.5 rounded border border-[#21262d] bg-[#161b22] px-2 py-1.5 text-xs text-[#8b949e]"
       data-testid="max-position-size-conversion-table"
     >
       <span className="text-[11px] font-medium uppercase tracking-wide text-[#6e7781]">
