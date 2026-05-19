@@ -13,6 +13,7 @@ import {
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
 import { isCmeMaintenanceWindow, isCmeWeekendClose } from "@/lib/time/cme-session";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 import { canActivateRulesNow, activationReasonMessage } from "@/lib/rule-activation-window";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
@@ -115,7 +116,7 @@ export default async function RulesPage({
     scope === "account" && id
       ? prisma.liveSessionState.findUnique({
           where: { accountId: id },
-          select: { riskState: true, cooldownActive: true },
+          select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
         })
       : Promise.resolve(null),
   ]);
@@ -194,6 +195,9 @@ export default async function RulesPage({
   const accountIsLockedForPending =
     selectedAccountLiveState?.riskState === "STOPPED" ||
     selectedAccountLiveState?.cooldownActive === true;
+  const hasAlreadyTradedToday =
+    selectedAccountLiveState?.sessionDate === deriveCmeTradingDayKey(new Date()) &&
+    (selectedAccountLiveState?.tradesCount ?? 0) > 0;
   const accountPendingDecision =
     selectedAccount?.riskRules?.pendingPayloadJson
       ? canActivateRulesNow({
@@ -428,10 +432,12 @@ export default async function RulesPage({
                       selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
                   })}
                   initial={accountInitial}
-                  isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending}
+                  isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending || hasAlreadyTradedToday}
                   lockMessage={
                     accountIsLockedForPending
                       ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
+                      : hasAlreadyTradedToday
+                      ? "Rules are locked for this session — this account has already traded today. Changes will apply at the start of the next trading session."
                       : accountRuleLockMessage
                   }
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}

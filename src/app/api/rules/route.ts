@@ -11,6 +11,7 @@ import {
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { isValidTimeZone } from "@/lib/timezone";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
 const VALID_SESSION_PRESETS = ["asia", "london", "ny_am", "ny_pm", "custom"] as const;
@@ -295,7 +296,7 @@ export async function POST(request: Request) {
     }),
     prisma.liveSessionState.findMany({
       where: { account: { userId: user.id } },
-      select: { riskState: true, cooldownActive: true },
+      select: { accountId: true, riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
     }),
   ]);
   const hasProtectionLockToday =
@@ -326,6 +327,33 @@ export async function POST(request: Request) {
       {
         error:
           "Rules are locked for this account right now because protection is active. You can edit them after the lock clears.",
+      },
+      { status: 423 },
+    );
+  }
+
+  // ── Hard reject: any account has already traded this session ─────────────────
+  const tradingDayKey = deriveCmeTradingDayKey(new Date());
+  const tradingAccountsToday = accountLiveStates.filter(
+    (s) => s.sessionDate === tradingDayKey && s.tradesCount > 0,
+  );
+  if (tradingAccountsToday.length > 0) {
+    await writeRuleChangeAudit({
+      userId: user.id,
+      scope: "default",
+      newValuesJson: body as Record<string, unknown>,
+      allowed: false,
+      reason: "session_already_traded",
+      blockReason: "session_already_traded",
+      sessionRiskState: null,
+      ip,
+      userAgent,
+    });
+    return NextResponse.json(
+      {
+        error: "session_already_traded",
+        message:
+          "Rules are locked for this session — one or more of your accounts has already traded today. Changes will apply at the start of the next trading session.",
       },
       { status: 423 },
     );

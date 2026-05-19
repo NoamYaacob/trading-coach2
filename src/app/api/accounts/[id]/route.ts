@@ -24,6 +24,7 @@ import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 import { validateRiskRulesBody } from "./risk-rules-validate";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -156,7 +157,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }),
       prisma.liveSessionState.findUnique({
         where: { accountId: id },
-        select: { riskState: true, cooldownActive: true },
+        select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
       }),
       prisma.guardianStatus.findUnique({
         where: { userId: currentUser.id },
@@ -190,6 +191,31 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         {
           error:
             "Rules are locked for this account right now because protection is active. You can edit them after the lock clears.",
+        },
+        { status: 423 },
+      );
+    }
+
+    // ── Hard reject: account has already traded this session ──────────────────
+    const tradingDayKey = deriveCmeTradingDayKey(new Date());
+    if (!isFirstTimeSetup && liveState?.sessionDate === tradingDayKey && (liveState?.tradesCount ?? 0) > 0) {
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: false,
+        reason: "session_already_traded",
+        blockReason: "session_already_traded",
+        sessionRiskState: liveState?.riskState ?? null,
+        ip,
+        userAgent,
+      });
+      return NextResponse.json(
+        {
+          error: "session_already_traded",
+          message:
+            "Rules are locked for this session — this account has already traded today. Changes will apply at the start of the next trading session.",
         },
         { status: 423 },
       );

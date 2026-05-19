@@ -225,3 +225,106 @@ test("pendingEffectiveDate is computed from eligibility.nextAllowedAt (CME-ancho
     );
   }
 });
+
+// ── session_already_traded enforcement ───────────────────────────────────────
+
+const accountRouteSrc = readFileSync(
+  join(REPO_ROOT, "src/app/api/accounts/[id]/route.ts"),
+  "utf8",
+);
+const rulesRouteSrc = readFileSync(
+  join(REPO_ROOT, "src/app/api/rules/route.ts"),
+  "utf8",
+);
+
+test("account route selects tradesCount and sessionDate from LiveSessionState", () => {
+  assert.ok(
+    /tradesCount:\s*true/.test(accountRouteSrc),
+    "account route must select tradesCount from liveSessionState",
+  );
+  assert.ok(
+    /sessionDate:\s*true/.test(accountRouteSrc),
+    "account route must select sessionDate from liveSessionState",
+  );
+});
+
+test("account route rejects with 423 + session_already_traded when tradesCount > 0", () => {
+  assert.ok(
+    /session_already_traded/.test(accountRouteSrc),
+    "account route must contain session_already_traded rejection",
+  );
+  assert.ok(
+    /tradesCount.*>\s*0|liveState\?\.tradesCount/.test(accountRouteSrc),
+    "account route must check tradesCount > 0",
+  );
+  assert.ok(
+    /status:\s*423/.test(accountRouteSrc),
+    "account route must return 423 for session_already_traded",
+  );
+});
+
+test("account route writes RuleChangeAudit with blockReason session_already_traded", () => {
+  assert.ok(
+    /blockReason:\s*["']session_already_traded["']/.test(accountRouteSrc),
+    "account route must write RuleChangeAudit blockReason: 'session_already_traded'",
+  );
+});
+
+test("account route uses deriveCmeTradingDayKey to anchor the session day check", () => {
+  assert.ok(
+    /deriveCmeTradingDayKey/.test(accountRouteSrc),
+    "account route must call deriveCmeTradingDayKey for CME-anchored session day",
+  );
+});
+
+test("rules route selects tradesCount and sessionDate from LiveSessionState", () => {
+  assert.ok(
+    /tradesCount:\s*true/.test(rulesRouteSrc),
+    "rules route must select tradesCount from liveSessionState",
+  );
+  assert.ok(
+    /sessionDate:\s*true/.test(rulesRouteSrc),
+    "rules route must select sessionDate from liveSessionState",
+  );
+});
+
+test("rules route rejects with 423 + session_already_traded when any account has traded", () => {
+  assert.ok(
+    /session_already_traded/.test(rulesRouteSrc),
+    "rules route must contain session_already_traded rejection",
+  );
+  assert.ok(
+    /status:\s*423/.test(rulesRouteSrc),
+    "rules route must return 423 for session_already_traded",
+  );
+});
+
+test("rules route writes RuleChangeAudit with blockReason session_already_traded", () => {
+  assert.ok(
+    /blockReason:\s*["']session_already_traded["']/.test(rulesRouteSrc),
+    "rules route must write RuleChangeAudit blockReason: 'session_already_traded'",
+  );
+});
+
+test("rules route uses deriveCmeTradingDayKey to anchor the session day check", () => {
+  assert.ok(
+    /deriveCmeTradingDayKey/.test(rulesRouteSrc),
+    "rules route must call deriveCmeTradingDayKey for CME-anchored session day",
+  );
+});
+
+test("rules page selects tradesCount and sessionDate from LiveSessionState", () => {
+  const pagesSrc = readFileSync(join(REPO_ROOT, "src/app/rules/page.tsx"), "utf8");
+  assert.ok(
+    /tradesCount:\s*true/.test(pagesSrc),
+    "rules page must select tradesCount for hasAlreadyTradedToday",
+  );
+  assert.ok(
+    /sessionDate:\s*true/.test(pagesSrc),
+    "rules page must select sessionDate for hasAlreadyTradedToday",
+  );
+  assert.ok(
+    /hasAlreadyTradedToday/.test(pagesSrc),
+    "rules page must compute hasAlreadyTradedToday",
+  );
+});
