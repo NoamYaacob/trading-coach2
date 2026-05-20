@@ -484,7 +484,7 @@ export default async function RulesPage({
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
               <p className="font-medium text-stone-950">No broker accounts connected.</p>
               <p className="mt-1">
-                Connect your broker to enable live account monitoring. The rules above apply as session defaults across connected accounts.
+                Connect your broker to configure account-specific rules and enable session monitoring. The default template above is a starting point — configure each account individually to enable enforcement.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -544,10 +544,10 @@ function ScopeContextHeader({
           </span>
         </div>
         <p className="mt-0.5 text-sm text-stone-500">
-          Applies to all accounts that don't have their own override. Select an account in the sidebar to configure it individually.
+          Use this as a starting point. To enable enforcement, configure account-specific rules for each account — the enforcement engine reads account rules, not this template directly.
         </p>
         <p className="mt-1 text-xs text-stone-400">
-          These are the rules Guardrail watches during your trading session.
+          Select an account in the sidebar to configure it individually.
         </p>
       </div>
     );
@@ -585,7 +585,9 @@ function ScopeContextHeader({
       </div>
       {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
       <p className="mt-1 text-xs text-stone-400">
-        These are the rules Guardrail watches for this account during your trading session.
+        {hasAccountRules
+          ? "Account-specific rules are active. Guardrail monitors this account during your trading session."
+          : "No account-specific rules — Guardrail is not monitoring this account. Create an override to enable enforcement."}
       </p>
     </div>
   );

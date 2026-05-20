@@ -1279,10 +1279,11 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
     );
   });
 
-  it("shows 'These are the rules Guardrail watches' copy", () => {
+  it("shows honest enforcement context copy (not 'Guardrail watches' for default template)", () => {
     assert.ok(
-      RULES_PAGE_SRC.includes("These are the rules Guardrail watches"),
-      "Trading Plan page must include the rule-session context copy",
+      RULES_PAGE_SRC.includes("enforcement engine reads account rules, not this template directly") ||
+      RULES_PAGE_SRC.includes("Guardrail monitors this account during your trading session"),
+      "Trading Plan page must include honest enforcement context copy",
     );
   });
 
