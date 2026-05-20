@@ -3,12 +3,13 @@ import type { RuleScopeGroup, RuleScopeAccount } from "./rule-scope-utils";
 import { deriveScopeGroupBadge, deriveScopeAccountBadge } from "./scope-selector-helpers";
 
 const ENV_LABEL: Record<string, string> = {
-  live: "Live account",
+  live: "Live",
   demo: "Demo / Sim",
 };
 
 type Props = {
   groups: RuleScopeGroup[];
+  /** "account" | "starter" | "default" */
   currentScope: string;
   currentAccountId: string | null;
 };
@@ -26,17 +27,9 @@ function AccountItem({
     hasAccountRules: account.hasAccountRules,
   });
   const isInactive = account.missingFromBrokerSince != null;
-
-  // "Custom" badge is conveyed by subtitle text; show badge only for critical alerts.
-  const visibleBadge = badge?.label !== "Custom" ? badge : null;
-
-  // Plan-status subtitle — shown only when no alert badge is present (avoid duplicating info).
-  const subtitle =
-    visibleBadge == null
-      ? account.hasAccountRules
-        ? "Account override"
-        : "Default rules"
-      : null;
+  const envLabel = account.brokerConnection
+    ? (ENV_LABEL[account.brokerConnection.env] ?? account.brokerConnection.env)
+    : null;
 
   return (
     <li className="min-w-0">
@@ -56,19 +49,17 @@ function AccountItem({
             <p className={`truncate text-sm ${isSelected ? "font-semibold" : ""}`}>
               {account.label}
             </p>
-            {subtitle && (
+            {envLabel && (
               <p className={`truncate text-[11px] ${isSelected ? "text-stone-500" : "text-stone-400"}`}>
-                {subtitle}
+                {envLabel}
               </p>
             )}
           </div>
-          {visibleBadge && (
-            <span
-              className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${visibleBadge.cls}`}
-            >
-              {visibleBadge.label}
-            </span>
-          )}
+          <span
+            className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}
+          >
+            {badge.label}
+          </span>
         </div>
       </Link>
     </li>
@@ -76,43 +67,13 @@ function AccountItem({
 }
 
 export function ScopeSelector({ groups, currentScope, currentAccountId }: Props) {
-  const isDefault = currentScope !== "account";
+  const isStarterSelected = currentScope === "starter" || (currentScope !== "account" && groups.length === 0);
 
   return (
     <nav aria-label="Rule scope" className="min-w-0">
       <ul className="grid grid-cols-1 gap-0.5">
-        {/* Default template */}
-        <li className="min-w-0">
-          <Link
-            href="/rules"
-            aria-current={isDefault ? "page" : undefined}
-            className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
-              isDefault
-                ? "border-stone-950 bg-stone-100 text-stone-900"
-                : "border-transparent text-stone-700 hover:bg-stone-50"
-            }`}
-          >
-            <div className="flex min-w-0 items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <p className={`truncate text-sm ${isDefault ? "font-semibold" : "font-medium"}`}>
-                  Default template
-                </p>
-                <p className={`truncate text-[11px] ${isDefault ? "text-stone-500" : "text-stone-400"}`}>
-                  All accounts without an override
-                </p>
-              </div>
-              <span
-                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-                  isDefault ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
-                }`}
-              >
-                Default
-              </span>
-            </div>
-          </Link>
-        </li>
 
-        {/* Broker connection groups */}
+        {/* Broker connection groups — shown first */}
         {groups.map((group) => {
           const requiresConsentInGroup = group.accounts.some(
             (a) => a.requiresAutomatedActionsConsent,
@@ -133,10 +94,9 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             : "";
 
           return (
-            <li key={group.groupKey} className="mt-2 min-w-0 border-t border-stone-100 pt-2">
-              <div className="flex min-w-0 items-start justify-between gap-1.5 px-2 pb-1">
+            <li key={group.groupKey} className="mt-0.5 min-w-0">
+              <div className="flex min-w-0 items-start justify-between gap-1.5 px-2 pb-1 pt-1.5">
                 <div className="min-w-0 flex-1">
-                  {/* Readable heading — not uppercase micro text */}
                   <p className="truncate text-xs font-semibold text-stone-700">
                     {group.firmLabel}
                   </p>
@@ -159,14 +119,14 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
                     isSelected={currentScope === "account" && currentAccountId === account.id}
                   />
                 ))}
-              </ul>
+            </ul>
             </li>
           );
         })}
 
         {groups.length === 0 && (
           <li className="min-w-0">
-            <p className="mt-3 px-3.5 text-xs text-stone-400">
+            <p className="px-3.5 py-2 text-xs text-stone-400">
               No broker accounts connected yet.{" "}
               <Link href="/accounts/connect/tradovate" className="underline-offset-2 hover:underline">
                 Connect Tradovate
@@ -175,6 +135,41 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             </p>
           </li>
         )}
+
+        {/* Starter settings — always at bottom */}
+        <li className={`min-w-0 ${groups.length > 0 ? "mt-2 border-t border-stone-100 pt-2" : "mt-1"}`}>
+          <p className="px-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-400">
+            Session defaults
+          </p>
+          <Link
+            href="/rules?scope=starter"
+            aria-current={isStarterSelected ? "page" : undefined}
+            className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
+              isStarterSelected
+                ? "border-stone-950 bg-stone-100 text-stone-900"
+                : "border-transparent text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-sm ${isStarterSelected ? "font-semibold" : "font-medium"}`}>
+                  Starter settings
+                </p>
+                <p className={`truncate text-[11px] ${isStarterSelected ? "text-stone-500" : "text-stone-400"}`}>
+                  Session defaults · starting point
+                </p>
+              </div>
+              <span
+                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
+                  isStarterSelected ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                Starter
+              </span>
+            </div>
+          </Link>
+        </li>
+
       </ul>
     </nav>
   );

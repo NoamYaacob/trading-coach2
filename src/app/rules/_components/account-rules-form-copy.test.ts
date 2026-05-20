@@ -471,3 +471,53 @@ test("no form claims Tradovate rejection is verified or guaranteed", () => {
     }
   }
 });
+
+// ── Phase 2: Account empty state ──────────────────────────────────────────────
+
+test("account form: empty state shows 'No Trading Plan yet' heading", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("No Trading Plan yet"),
+    "empty state must say 'No Trading Plan yet' — not 'Inherited from default template'",
+  );
+});
+
+test("account form: empty state shows 'Create rules for this account' button", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Create rules for this account"),
+    "empty state must have a 'Create rules for this account' CTA",
+  );
+});
+
+test("account form: empty state shows 'Copy from another account' placeholder (Coming soon)", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Copy from another account"),
+    "empty state must mention 'Copy from another account' as a planned feature",
+  );
+  assert.ok(
+    src.includes("Coming soon"),
+    "the copy-from-account button must be labelled 'Coming soon' while unimplemented",
+  );
+});
+
+test("account form: empty state does NOT show inherited summary table as active enforcement", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes("Default template values (not enforced without override)"),
+    "Phase 2 empty state must not show the inherited-values summary table",
+  );
+  assert.ok(
+    !src.includes("Inherited from default template"),
+    "Phase 2 empty state must not say 'Inherited from default template'",
+  );
+});
+
+test("account form: empty state copy says Guardrail cannot monitor without account rules", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Create account-specific rules before Guardrail can monitor"),
+    "empty state must explain monitoring requires account-specific rules",
+  );
+});

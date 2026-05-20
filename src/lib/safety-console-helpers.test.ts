@@ -1307,6 +1307,58 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
       "enforcement section must use the 'Broker risk settings:' label",
     );
   });
+
+  // Phase 2: accounts-first UX
+  it("sidebar renders account items before the starter settings item (accounts-first)", () => {
+    const accountsIdx = RULES_PAGE_SRC.indexOf("scope=account");
+    const starterIdx = RULES_PAGE_SRC.indexOf("scope=starter");
+    assert.ok(accountsIdx !== -1, "page must link to account scope");
+    assert.ok(starterIdx !== -1, "page must link to starter scope");
+    assert.ok(
+      accountsIdx < starterIdx,
+      "account scope links must appear before the starter settings link — accounts-first UX",
+    );
+  });
+
+  it("sidebar calls starter settings 'Starter settings' not 'Default template'", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Starter settings"),
+      "sidebar must label the starter settings item 'Starter settings'",
+    );
+    assert.ok(
+      !RULES_PAGE_SRC.includes('"Default template"'),
+      "page must not use 'Default template' as a hard-coded label string",
+    );
+  });
+
+  it("accounts overview panel shows 'Your accounts' heading", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Your accounts"),
+      "accounts overview panel must include 'Your accounts' heading",
+    );
+  });
+
+  it("accounts overview panel explains accounts need their own Trading Plan", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Each account needs its own rules") ||
+      RULES_PAGE_SRC.includes("own Trading Plan for Guardrail to monitor"),
+      "accounts overview must explain that each account needs its own rules",
+    );
+  });
+
+  it("starter settings copy says accounts still need their own Trading Plan", () => {
+    assert.ok(
+      RULES_PAGE_SRC.includes("Connected accounts still need their own Trading Plan"),
+      "starter settings must say accounts still need their own Trading Plan",
+    );
+  });
+
+  it("starter settings copy does not imply it protects connected accounts", () => {
+    assert.ok(
+      !RULES_PAGE_SRC.includes("Applies to all accounts that don't have their own override"),
+      "page must not imply starter settings applies to all accounts",
+    );
+  });
 });
 
 // ── Source-scan: account detail page does not expose internal terms ────────────

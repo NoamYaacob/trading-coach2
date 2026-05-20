@@ -406,52 +406,39 @@ export function AccountRulesForm({
     }
   }
 
-  // No existing rules: show read-only inherited summary + CTA before revealing the form
+  // No existing rules: show "No Trading Plan yet" empty state
   if (!showForm) {
-    const summaryFields: { label: string; value: string; prefix?: string }[] = [
-      { label: "Daily loss limit", value: defaultValues?.maxDailyLoss ?? "", prefix: "$" },
-      { label: "Risk per trade", value: defaultValues?.riskPerTrade ?? "", prefix: "$" },
-      { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
-      { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
-      { label: "Cutoff time (CME)", value: defaultValues?.allowedEndHour ?? "" },
-      { label: MAX_POSITION_SIZE_COPY.label, value: defaultValues?.maxContracts ?? "" },
-    ];
     return (
-      <div className="grid gap-4">
-        <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
-          <p className="font-medium text-stone-800">No account-specific rules</p>
-          <p className="mt-0.5">
+      <div className="grid gap-5">
+        <div className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-4">
+          <p className="text-base font-semibold text-stone-900">No Trading Plan yet</p>
+          <p className="mt-1.5 text-sm text-stone-600">
+            Create account-specific rules before Guardrail can monitor this account.
             {hasDefaultRules
-              ? "Guardrail's enforcement engine requires account-specific rules. Without an override, this account is not monitored. Create an override to enable session monitoring for this account."
-              : `No rules are configured. Saving here will create rules only for ${accountLabel}.`}
+              ? " Starter settings are a starting point — save rules here to enable session monitoring for this account."
+              : ""}
           </p>
         </div>
-
-        {hasDefaultRules && defaultValues && (
-          <div className="rounded-2xl border border-stone-100 bg-stone-50/50 px-4 py-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-stone-400">
-              Default template values (not enforced without override)
-            </p>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              {summaryFields.map(({ label, value, prefix }) => (
-                <div key={label}>
-                  <dt className="text-xs text-stone-400">{label}</dt>
-                  <dd className="mt-0.5 text-sm font-medium text-stone-700">
-                    {value ? `${prefix ?? ""}${value}` : <span className="text-stone-300">—</span>}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center justify-center self-start rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-        >
-          Create account-specific rules
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Create rules for this account
+          </button>
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-400"
+          >
+            Copy from another account
+            <span className="rounded-full bg-stone-100 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+              Coming soon
+            </span>
+          </button>
+        </div>
       </div>
     );
   }
