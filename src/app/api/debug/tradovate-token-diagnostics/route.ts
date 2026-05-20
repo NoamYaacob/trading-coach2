@@ -29,6 +29,9 @@ const AUTH_INVALID_MARKERS = [
   "invalid_client",
   "revoked",
   "unauthorized",
+  "re-authorize",
+  "reconnect",
+  "refresh_token grant",
 ];
 
 const SELF_HEAL_LOOKAHEAD_MS = 25 * 60 * 1000; // cron fires if token valid for 25+ min

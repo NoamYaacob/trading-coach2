@@ -184,6 +184,35 @@ describe("GET /api/debug/tradovate-token-diagnostics: case classification", () =
     assert.ok(s.includes('"revoked"'), "must check for revoked in lastRenewError");
   });
 
+  it("checks for re-authorize as an auth-invalid marker (Case C trigger)", () => {
+    const s = src();
+    assert.ok(s.includes('"re-authorize"'), "must check for re-authorize in lastRenewError");
+  });
+
+  it("checks for reconnect as an auth-invalid marker (Case C trigger)", () => {
+    const s = src();
+    assert.ok(s.includes('"reconnect"'), "must check for reconnect in lastRenewError");
+  });
+
+  it("checks for refresh_token grant as an auth-invalid marker (Case C trigger)", () => {
+    const s = src();
+    assert.ok(
+      s.includes('"refresh_token grant"'),
+      "must check for 'refresh_token grant' in lastRenewError to catch the explicit rejection message",
+    );
+  });
+
+  it("classifies 'Tradovate rejected the OAuth refresh_token grant. Re-authorize to reconnect.' as Case C", () => {
+    const s = src();
+    // Verify all substrings that appear in this real error message are covered by markers
+    const errorMsg = "Tradovate rejected the OAuth refresh_token grant. Re-authorize to reconnect.";
+    const markers = ["re-authorize", "reconnect", "refresh_token grant"];
+    for (const marker of markers) {
+      assert.ok(errorMsg.toLowerCase().includes(marker.toLowerCase()), `marker "${marker}" matches the real error message`);
+      assert.ok(s.includes(`"${marker}"`), `route must include marker "${marker}"`);
+    }
+  });
+
   it("Case C also fires when no refresh token is stored", () => {
     const s = src();
     // Must have a path where refreshTokenExists=false leads to Case C
