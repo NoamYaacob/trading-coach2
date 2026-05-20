@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel } from "./data-helpers.ts";
+import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel, deriveBrokerEnforcementNoteCopy } from "./data-helpers.ts";
 import type { AccountStatus, EnforcementMode } from "./types.ts";
 
 function makeAccount(
@@ -127,8 +127,8 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     });
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
-    assert.equal(result.headline, "Protection test mode");
-    assert.ok(result.subline.includes("will not block"));
+    assert.equal(result.headline, "Monitoring active");
+    assert.ok(result.subline.includes("Broker-side enforcement is not active"));
   });
 
   it("test_mode takes precedence over locked", () => {
@@ -146,7 +146,7 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
-    assert.ok(result.headline.includes("Protection test mode"), `got: ${result.headline}`);
+    assert.ok(result.headline.includes("Monitoring active"), `got: ${result.headline}`);
   });
 
   it("test_mode with single locked account uses singular", () => {
@@ -158,13 +158,24 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result.headline.includes("1 account"), `got: ${result.headline}`);
   });
 
-  it("subline always mentions monitoring and no blocking", () => {
+  it("subline always mentions monitoring and not active enforcement", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run")],
     });
     assert.ok(result !== null);
-    assert.ok(result.subline.includes("monitoring"), `got: ${result.subline}`);
-    assert.ok(result.subline.includes("will not block"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("watching"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("not active"), `got: ${result.subline}`);
+  });
+
+  it("headline never contains the phrase 'test mode'", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      !result.headline.toLowerCase().includes("test mode"),
+      `headline must not say 'test mode': ${result.headline}`,
+    );
   });
 });
 
@@ -222,13 +233,13 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.equal(result.level, "test_mode");
   });
 
-  it("full_access subline mentions cancel/flatten not active yet", () => {
+  it("full_access subline mentions position exit not active yet", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run", "full_access")],
     });
     assert.ok(result !== null);
     assert.ok(
-      result.subline.toLowerCase().includes("cancel/flatten not active yet"),
+      result.subline.toLowerCase().includes("position exit not active yet"),
       `got: ${result.subline}`,
     );
   });
@@ -440,10 +451,10 @@ describe("deriveRowStatusLabel — weekend close", () => {
     requiresAutomatedActionsConsent: false,
   };
 
-  it("returns 'Closed' for allowed account during weekend close", () => {
+  it("returns 'Market closed' for allowed account during weekend close", () => {
     assert.equal(
       deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true }),
-      "Closed",
+      "Market closed",
     );
   });
 
@@ -483,7 +494,7 @@ describe("deriveRowStatusLabel — weekend close", () => {
   it("weekend close takes priority over maintenance when both are true", () => {
     assert.equal(
       deriveRowStatusLabel({ ...allowedBase, isWeekendClose: true, isMaintenanceWindow: true }),
-      "Closed",
+      "Market closed",
     );
   });
 });
@@ -524,5 +535,139 @@ describe("deriveTradingPermissionStatus — weekend close", () => {
       isWeekendClose: false,
     });
     assert.equal(result?.headline, "Allowed to trade");
+  });
+});
+
+// ── deriveBrokerEnforcementNoteCopy ──────────────────────────────────────────
+//
+// Verifies copy and visual kind for the combined internalLockActive + brokerLockStatus
+// cases introduced by the Phase 2C-F canary (post-canary dashboard hardening).
+
+describe("deriveBrokerEnforcementNoteCopy — internalLockActive=true", () => {
+  it("internal lock + broker_locked → confirmed text, broker_active kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      result.text.includes("Broker enforcement confirmed"),
+      `expected confirmed text, got: ${result.text}`,
+    );
+    assert.equal(result.kind, "broker_active");
+  });
+
+  it("internal lock + broker_locked → does NOT say 'No Tradovate action was sent'", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      !result.text.includes("No Tradovate action was sent"),
+      `must not claim no action was sent when broker_locked: ${result.text}`,
+    );
+  });
+
+  it("internal lock + dry_run → monitoring-only text, dry_run kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "dry_run",
+    });
+    assert.ok(
+      result.text.includes("Monitoring only"),
+      `expected monitoring-only text, got: ${result.text}`,
+    );
+    assert.equal(result.kind, "dry_run");
+    assert.ok(
+      !result.text.includes("test mode"),
+      `dry_run message must not say 'test mode': ${result.text}`,
+    );
+  });
+
+  it("internal lock + null → internal_only kind, no action text", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: null,
+    });
+    assert.equal(result.kind, "internal_only");
+    assert.ok(
+      result.text.includes("No Tradovate action was sent"),
+      `expected no-action text for null status, got: ${result.text}`,
+    );
+  });
+
+  it("internal lock + broker_lock_failed → internal_only kind (not broker_active)", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: true,
+      brokerLockStatus: "broker_lock_failed",
+    });
+    assert.equal(result.kind, "internal_only");
+  });
+});
+
+describe("deriveBrokerEnforcementNoteCopy — internalLockActive=false", () => {
+  it("no internal lock + broker_locked → delegates to deriveBrokerEnforcementCopy, broker_active kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.equal(result.kind, "broker_active");
+    assert.ok(
+      result.text.includes("Broker-side lock active"),
+      `expected broker-side lock text, got: ${result.text}`,
+    );
+  });
+
+  it("no internal lock + null → internal_only kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: null,
+    });
+    assert.equal(result.kind, "internal_only");
+  });
+
+  it("no internal lock + dry_run → dry_run kind", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "dry_run",
+    });
+    assert.equal(result.kind, "dry_run");
+  });
+});
+
+// ── Post-canary UI scenarios ──────────────────────────────────────────────────
+//
+// Post-canary state: riskState=NORMAL, activeCount=0, historical broker_locked row.
+// The dashboard should show "Allowed to trade" with no conflicting lock copy.
+
+describe("post-canary: tradable account with historical broker_locked record", () => {
+  it("internalLockActive=false + broker_locked does NOT say 'Guardrail internal lock active'", () => {
+    const result = deriveBrokerEnforcementNoteCopy({
+      internalLockActive: false,
+      brokerLockStatus: "broker_locked",
+    });
+    assert.ok(
+      !result.text.includes("Guardrail internal lock active"),
+      `tradable account must not show 'Guardrail internal lock active': ${result.text}`,
+    );
+  });
+
+  it("'Allowed to trade' headline matches the allowed level", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [{ status: "allowed", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    assert.ok(result !== null);
+    assert.equal(result.level, "allowed");
+    assert.equal(result.headline, "Allowed to trade");
+  });
+
+  it("allowed level does not require locked accounts", () => {
+    const locked = deriveTradingPermissionStatus({
+      accounts: [{ status: "locked", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    const allowed = deriveTradingPermissionStatus({
+      accounts: [{ status: "allowed", enforcementMode: "broker_active", permissionLevel: null }],
+    });
+    assert.notEqual(locked?.level, "allowed");
+    assert.equal(allowed?.level, "allowed");
   });
 });

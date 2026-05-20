@@ -66,6 +66,25 @@ export type ManagedListenerConfig = {
     connectionId: string,
     info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean },
   ) => void;
+  /**
+   * Callback when the WebSocket closes unexpectedly (not via `close()`). Used
+   * by the worker to persist `listenerLastCloseCode` / `listenerLastCloseReason`
+   * and to log post-ready frame diagnostics.
+   */
+  onClose?: (
+    connectionId: string,
+    info: {
+      code: number;
+      reason: string;
+      gracefulRecycle: boolean;
+      stateAtClose: ListenerState;
+      msSinceReady: number | null;
+      lastFrameType: string | null;
+      lastFrameAt: Date | null;
+    },
+  ) => void;
+  /** Called when the listener reaches "ready" state (initial connect or reconnect). */
+  onReady?: (connectionId: string, info: { isReconnect: boolean }) => void;
 };
 
 // ── Manager ──────────────────────────────────────────────────────────────────
@@ -128,6 +147,12 @@ export class TradovateListenerManager {
       },
       onAuthFailed: config.onAuthFailed
         ? (info) => config.onAuthFailed!(config.connectionId, info)
+        : undefined,
+      onClose: config.onClose
+        ? (info) => config.onClose!(config.connectionId, info)
+        : undefined,
+      onReady: config.onReady
+        ? (info) => config.onReady!(config.connectionId, info)
         : undefined,
     });
 
@@ -207,11 +232,11 @@ export function listenerFreshnessLabel(status: ListenerStatus | null): string {
     const lastEvent = status.lastEventAt ?? status.lastHeartbeatAt;
     if (lastEvent) {
       const agoMs = Date.now() - lastEvent.getTime();
-      if (agoMs < 60_000) return `Live · ${Math.round(agoMs / 1000)}s ago`;
+      if (agoMs < 60_000) return `Live monitoring · ${Math.round(agoMs / 1000)}s ago`;
       const agoMin = Math.round(agoMs / 60_000);
-      return `Live · ${agoMin}m ago`;
+      return `Live monitoring · ${agoMin}m ago`;
     }
-    return "Live · waiting for first event";
+    return "Live monitoring · waiting for first event";
   }
 
   if (status.state === "reconnecting" || status.state === "connecting") {

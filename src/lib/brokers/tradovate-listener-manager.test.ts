@@ -223,14 +223,14 @@ describe("listenerFreshnessLabel", () => {
     assert.equal(listenerFreshnessLabel(null), "No listener");
   });
 
-  it("returns 'Live · Xs ago' when ready and recent event", () => {
+  it("returns 'Live monitoring · Xs ago' when ready and recent event", () => {
     const status: ListenerStatus = {
       connectionId: "x",
       state: "ready",
       lastHeartbeatAt: null,
       lastEventAt: new Date(Date.now() - 5_000),
     };
-    assert.ok(listenerFreshnessLabel(status).startsWith("Live ·"), listenerFreshnessLabel(status));
+    assert.ok(listenerFreshnessLabel(status).startsWith("Live monitoring ·"), listenerFreshnessLabel(status));
     assert.ok(listenerFreshnessLabel(status).includes("5s") || listenerFreshnessLabel(status).includes("s ago"));
   });
 
@@ -326,5 +326,16 @@ describe("TradovateListenerManager source: log safety", () => {
 
   it("manager has closeAll for clean shutdown", () => {
     assert.ok(MANAGER_SRC.includes("closeAll"), "manager must have closeAll for process exit");
+  });
+
+  it("manager passes onReady through to the underlying listener", () => {
+    assert.ok(
+      MANAGER_SRC.includes("onReady"),
+      "ManagedListenerConfig must declare onReady",
+    );
+    assert.ok(
+      MANAGER_SRC.includes("config.onReady"),
+      "startListener must forward config.onReady to listener",
+    );
   });
 });

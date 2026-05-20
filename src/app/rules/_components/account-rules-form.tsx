@@ -66,6 +66,12 @@ type Props = {
   isLocked: boolean;
   /** Human-readable message explaining the current lock reason (session-aware). */
   lockMessage?: string | null;
+  /**
+   * True when the account has already traded this session. Proactively disables
+   * the Save button so the user doesn't need to attempt a save to see the 423.
+   * First-time setup accounts are exempted (no existing rules to protect).
+   */
+  isHardLocked?: boolean;
   hasDefaultRules: boolean;
   timezone?: string | null;
   defaultValues?: DefaultRuleValues;
@@ -218,8 +224,8 @@ const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
   },
   {
     value: "flatten_at_session_end",
-    label: "Flatten at cutoff, then lock",
-    hint: "Saved for future cutoff automation. Not active until cutoff scheduling and live order actions are enabled.",
+    label: "Close open positions at cutoff, then lock",
+    hint: "Saved for future cutoff automation. This action is not active yet.",
   },
 ] as const;
 
@@ -231,6 +237,7 @@ export function AccountRulesForm({
   initial,
   isLocked,
   lockMessage,
+  isHardLocked,
   hasDefaultRules,
   timezone,
   defaultValues,
@@ -247,6 +254,8 @@ export function AccountRulesForm({
   const [removing, setRemoving] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Advanced broker-side contract cap is hidden by default; expand if already enabled.
+  const [showAdvancedBrokerCap, setShowAdvancedBrokerCap] = useState(initial.rawBrokerHardLimitEnabled);
   const [showForm, setShowForm] = useState(hasExistingRules);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
@@ -282,8 +291,18 @@ export function AccountRulesForm({
     const data = (await res.json()) as {
       rulesLock?: { applied: boolean; message?: string; effectiveDate?: string };
       error?: string;
+      message?: string;
     };
-    if (!res.ok) throw new Error(data.error ?? "Failed to save.");
+    if (!res.ok) {
+      if (res.status === 423) {
+        throw new Error(
+          data.message ??
+            data.error ??
+            "Rules are locked — protection is active on this account. Changes are blocked until the lock clears.",
+        );
+      }
+      throw new Error(data.error ?? "Failed to save.");
+    }
     return data;
   }
 
@@ -422,6 +441,7 @@ export function AccountRulesForm({
   }
 
   const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm, lockMessage);
+  const fieldsDisabled = Boolean(isHardLocked && hasExistingRules);
 
   // Cross-field validation: check the effective values (account override, falling
   // back to inherited default) so we catch invalid combos created by inheritance.
@@ -497,6 +517,15 @@ export function AccountRulesForm({
         </div>
       )}
 
+      {/* ── Editable field sections — fieldset propagates disabled to all
+          native controls (input, select, radio, checkbox) inside without
+          requiring prop changes to child components. Visual opacity dimming
+          makes the read-only state obvious to the user. ── */}
+      <fieldset
+        disabled={fieldsDisabled}
+        className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " opacity-50 cursor-not-allowed" : ""}`}
+      >
+
       {/* ── Money limits ──────────────────────────────────────────────────
           Mirrors the default-template form's "Money limits" section so the
           two pages share one mental model. Account size + Daily profit target
@@ -566,15 +595,23 @@ export function AccountRulesForm({
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
-            {values.maxContracts.trim() !== "" && (
+            {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
+              <button
+                type="button"
+                className="mt-1 text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
+                onClick={() => setShowAdvancedBrokerCap(true)}
+              >
+                Advanced options
+              </button>
+            )}
+            {values.maxContracts.trim() !== "" && showAdvancedBrokerCap && (
               <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
-                <p className="font-semibold text-amber-900">Advanced: Broker raw hard limit</p>
+                <p className="font-semibold text-amber-900">Advanced broker-side contract cap</p>
                 <p className="mt-1 text-amber-800">
-                  When enabled, Guardrail writes a global raw contract cap to Tradovate (immediate broker
-                  reject before execution). However, Tradovate counts all contracts equally — with
-                  max&nbsp;=&nbsp;1, even 2&nbsp;MNQ (0.2 NQ-equivalent, within your standard-equivalent
-                  limit) will be rejected. The default detection-response mode allows NQ&nbsp;1 or
-                  MNQ&nbsp;10 for the same limit.
+                  Enables a broker-side contract cap on your Tradovate account (immediate reject before
+                  execution). Tradovate counts all contracts equally — 2&nbsp;MNQ counts as 2 contracts,
+                  even though it is well within a 1-standard-equivalent limit. Use only if you want
+                  Tradovate to enforce a raw contract count.
                 </p>
                 <label className="mt-2 flex cursor-pointer items-center gap-2">
                   <input
@@ -584,7 +621,7 @@ export function AccountRulesForm({
                     onChange={(e) => update("rawBrokerHardLimitEnabled", e.target.checked)}
                   />
                   <span className="text-amber-900">
-                    Enable raw hard limit at broker (counts all contracts equally)
+                    Enable broker-side contract cap (applies to all contracts equally)
                   </span>
                 </label>
               </div>
@@ -683,6 +720,8 @@ export function AccountRulesForm({
         onChange={(key, val) => update(key as keyof AccountRulesValues, val as AccountRulesValues[keyof AccountRulesValues])}
       />
 
+      </fieldset>{/* end editable fieldset */}
+
       {/* Active vs pending guidance — sits ABOVE the pending panel so users
           read it before scanning the diff. Hidden when no pending data. */}
       {showPendingPanel && !pendingIsDelete && (
@@ -768,7 +807,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss, and the inherited profit target when configured, can trigger broker risk settings on breach.
+          Rules are saved in Guardrail. Daily loss can trigger broker risk settings on breach. Profit targets are monitored in Guardrail.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.
@@ -778,8 +817,9 @@ export function AccountRulesForm({
             <input
               type="checkbox"
               checked={consentChecked}
+              disabled={fieldsDisabled}
               onChange={(e) => setConsentChecked(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950 disabled:opacity-50"
             />
             <span>
               {AUTOMATED_ACTIONS_CONSENT_TEXT}
@@ -809,6 +849,7 @@ export function AccountRulesForm({
               savedAt,
               pendingMessage,
               hasValidationErrors: validationErrors.length > 0,
+              isHardLocked,
             });
             return (
               <button
@@ -822,6 +863,9 @@ export function AccountRulesForm({
           })()}
           {isDirty && !saving && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
+          )}
+          {!isDirty && !saving && hasExistingRules && !savedAt && !error && (
+            <span className="text-xs text-stone-400">No changes to save.</span>
           )}
           {savedAt && !pendingMessage && !isDirty && (
             <span className="text-xs text-emerald-700">

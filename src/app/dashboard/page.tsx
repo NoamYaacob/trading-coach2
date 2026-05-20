@@ -245,27 +245,6 @@ export default async function DashboardPage() {
         {/* Only active when there are real broker accounts (not the demo view). */}
         {hasBrokerAccount && <DashboardAutoRefresh />}
 
-        {/* ── One-shot auto-sync for accounts that were stale at page load ───── */}
-        {/* Connection-level sync runs discovery first (marks missing accounts). */}
-        {(() => {
-          const staleAccounts = commandCenter.accounts.filter(
-            (a) => a.platform === "tradovate" && needsSync(a.lastSyncAt),
-          );
-          const staleConnectionIds = [
-            ...new Set(
-              staleAccounts
-                .filter((a) => a.brokerConnectionId != null)
-                .map((a) => a.brokerConnectionId!),
-            ),
-          ];
-          const staleAccountIds = staleAccounts
-            .filter((a) => a.brokerConnectionId == null)
-            .map((a) => a.id);
-          return staleConnectionIds.length > 0 || staleAccountIds.length > 0 ? (
-            <AutoSync staleConnectionIds={staleConnectionIds} staleAccountIds={staleAccountIds} />
-          ) : null;
-        })()}
-
         {/* ── Command center — real data, or demo preview when no accounts ──── */}
         <div className="grid gap-3">
           {noAccounts ? (
@@ -284,6 +263,25 @@ export default async function DashboardPage() {
           ) : (
             <>
               <SummaryStrip summary={commandCenter.summary} />
+              {/* ── One-shot auto-sync for accounts that were stale at page load ─ */}
+              {(() => {
+                const staleAccounts = commandCenter.accounts.filter(
+                  (a) => a.platform === "tradovate" && needsSync(a.lastSyncAt),
+                );
+                const staleConnectionIds = [
+                  ...new Set(
+                    staleAccounts
+                      .filter((a) => a.brokerConnectionId != null)
+                      .map((a) => a.brokerConnectionId!),
+                  ),
+                ];
+                const staleAccountIds = staleAccounts
+                  .filter((a) => a.brokerConnectionId == null)
+                  .map((a) => a.id);
+                return staleConnectionIds.length > 0 || staleAccountIds.length > 0 ? (
+                  <AutoSync staleConnectionIds={staleConnectionIds} staleAccountIds={staleAccountIds} />
+                ) : null;
+              })()}
               <CommandCenter data={commandCenter} />
             </>
           )}

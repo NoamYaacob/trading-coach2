@@ -28,7 +28,7 @@ export function MaxPositionSizeConversionTable({
       data-testid="max-position-size-conversion-table"
     >
       <span className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
-        Enforced raw limits per product (Guardrail detection-response)
+        Contract limits per product
       </span>
       {rows.map((row) => (
         <span key={row.parentRoot} className="font-mono">

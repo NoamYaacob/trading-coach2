@@ -1,5 +1,300 @@
 # Tradovate Real-Time Listener — Railway Deployment Plan
 
+## Phase 1.5 — Verified Checklist (2026-05-15)
+
+All items below were manually verified in production. Phase 1.5 is complete.
+
+| # | Check | Status |
+|---|---|---|
+| 1 | Demo listener live | ✓ `cmp56a3kv00020dmedmm5flr1` connected, recent heartbeat |
+| 2 | Dashboard shows Live | ✓ DEMO7433035 shows "Live · Xs ago" via direct FK |
+| 3 | 1000/Bye recycles handled | ✓ Dashboard stays green through ~30s Tradovate session recycles |
+| 4 | Expired accounts isolated | ✓ Expired connections show "Expired — re-authorize" (amber), never borrow Live state |
+| 5 | High-confidence reattach done | ✓ DEMO7433035 moved to active connection; old connection `accountCount=0` |
+| 6 | Medium-confidence MFFU not applied | ✓ Three MyFundedFutures accounts left as-is (accounts no longer active in Tradovate) |
+| 7 | Live listener disabled | ✓ `TRADOVATE_LISTENER_ENABLE_LIVE=false` |
+| 8 | Single-connection filter removed | ✓ `TRADOVATE_LISTENER_CONNECTION_ID` unset; all-demo unscoped mode |
+| 9 | Worker plan healthy | ✓ `wouldStart=1`, `wouldSkip=3`, `duplicateGroups=1` |
+| 10 | Enforcement not started | ✓ No `riskState` writes, no `RuleViolation` rows, no flatten, no Phase 2 |
+| 11 | Debug endpoints operational | ✓ `/status`, `/reattach-audit`, `/reattach` all return correct data |
+| 12 | All tests pass | ✓ 3838 unit tests, 0 failures |
+
+### Phase 1.5 env-var state (production listener-worker service)
+
+```
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+# TRADOVATE_LISTENER_CONNECTION_ID — unset (all-demo mode)
+# TRADOVATE_LISTENER_DISABLED — unset
+```
+
+### Advance to Phase 2B (live enforcement) only when
+
+- [ ] All demo connections show Live on the dashboard (currently 1/1)
+- [ ] No `listenerErrorMessage` or `listenerStatus=error` for >24h
+- [ ] Phase 2A dry-run violations reviewed and confirmed accurate
+- [ ] Enforcement design reviewed and approved for live mode
+- [ ] Phase 2B implementation explicitly authorized
+
+---
+
+## Phase 2B — Verified Checklist (2026-05-15)
+
+Phase 2B internal app lock verified in production with DEMO7433035.
+
+| # | Check | Status |
+|---|---|---|
+| 1 | InternalLockEvent created | ✓ `accountId=cmottd1z200020do1knjxq582`, `ruleType=trade_limit`, `thresholdCount=1`, `observedCount=4` |
+| 2 | `internalOnly=true` | ✓ confirmed on created row |
+| 3 | `brokerActionTaken=false` | ✓ confirmed on created row |
+| 4 | No `GuardianIntervention` rows | ✓ zero broker-enforcement records created |
+| 5 | `riskState=STOPPED` set on demo account | ✓ confirmed via LiveSessionState |
+| 6 | No Tradovate API calls | ✓ no `userAccountAutoLiq/update`, no `order/liquidatepositions` |
+| 7 | Reset endpoint cleared the lock | ✓ `previousRiskState=STOPPED`, `newRiskState=NORMAL`, active InternalLockEvent count=0 |
+| 8 | Reset stamps `clearedAt` / `clearedBy` | ✓ `clearedBy=manual_reset`, history row preserved |
+| 9 | Rules restored after reset | ✓ `maxTradesPerDay=100`, `stopAfterLosses=50` |
+| 10 | `wouldFireCount=0` after reset | ✓ evaluation state confirms no pending violations |
+| 11 | `GUARDRAIL_INTERNAL_LOCK_ENABLED` set back to false | ✓ flag disabled after validation |
+| 12 | `TRADOVATE_LISTENER_ENABLE_LIVE=false` unchanged | ✓ live accounts never touched |
+| 13 | Broker enforcement still not implemented | ✓ Phase 2C not started |
+
+---
+
+## Phase 2A — Dry-Run Rule Evaluation (observe-only)
+
+### What Phase 2A does
+
+When `ENFORCEMENT_DRY_RUN=true`, every WebSocket props event causes the worker to evaluate which rules **would** have fired for each protected demo account. The result is written to `DryRunViolation` rows — an audit table with no side-effects.
+
+**Phase 2A never:**
+- Locks an account (`riskState=STOPPED`)
+- Creates `GuardianIntervention` records
+- Flattens positions or cancels orders
+- Calls any broker write endpoint
+- Changes any enforcement state
+
+### Rules evaluated
+
+| Rule | Evaluated | Notes |
+|---|---|---|
+| `daily_loss_limit` | ✓ | Breach when `dailyPnl ≤ -maxDailyLoss` |
+| `trade_limit` | ✓ | Only when `tradeCountSource=verified` |
+| `max_loss_streak` | ✓ | Breach when `consecutiveLosses ≥ stopAfterLosses` |
+| `session_hours` | — | Skipped — timezone complexity, insufficient data |
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/guardian-engine/dry-run-rule-evaluator.ts` | Pure evaluation function (no DB, testable) |
+| `src/lib/guardian-engine/dry-run-rule-evaluator-db.ts` | DB persistence + connection-level entry point |
+| `src/lib/guardian-engine/dry-run-rule-evaluator.test.ts` | 38 unit tests |
+| `prisma/schema.prisma` → `DryRunViolation` | Audit table with dedup key |
+| `src/app/api/debug/tradovate-listener/dry-run-violations/route.ts` | Inspect recent violations |
+
+### Dedup key
+
+Format: `<accountId>:<ruleType>:<tradingDay>:dry_run`
+
+Ensures at most one row per account per rule per trading day. Subsequent events update `observedAmount`/`observedCount` if the breach worsens, but do not create duplicate rows.
+
+### How to enable
+
+Set in the listener-worker Railway service:
+
+```
+ENFORCEMENT_DRY_RUN=true
+```
+
+This gate exists in the worker's `onPropsEvent`:
+
+```typescript
+if (process.env.ENFORCEMENT_DRY_RUN === "true") {
+  void evaluateDryRunRulesForConnection(connectionId);
+}
+```
+
+### How to inspect violations
+
+```bash
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/tradovate-listener/dry-run-violations?days=1"
+```
+
+Response includes:
+```json
+{
+  "note": "Dry run only — no enforcement action was taken. These records are observe-only.",
+  "dryRunEnabled": true,
+  "count": 1,
+  "violations": [...]
+}
+```
+
+### Safety gates in force during Phase 2A
+
+| Gate | Value |
+|---|---|
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` (live accounts skipped) |
+| `ENFORCEMENT_DRY_RUN` | `true` (no enforcement actions) |
+| `dryRun` field on DryRunViolation | always `true` |
+| Live account guard in evaluator-db.ts | `env === "live"` skipped when `ENABLE_LIVE=false` |
+
+### Validation with DEMO7433035
+
+1. Confirm DEMO7433035 has `AccountRiskRules` configured (maxDailyLoss, maxTradesPerDay, or stopAfterLosses)
+2. Enable `ENFORCEMENT_DRY_RUN=true` on the listener-worker service
+3. After some trading activity, check `/api/debug/tradovate-listener/dry-run-violations`
+4. Verify: only `dryRun=true` rows, no `GuardianIntervention` rows, no `riskState` changes
+
+---
+
+## Phase 2B — Internal App Lock (demo accounts only)
+
+### What Phase 2B does
+
+When `GUARDRAIL_INTERNAL_LOCK_ENABLED=true`, every WebSocket props event that triggers a rule violation causes the worker to set `LiveSessionState.riskState = "STOPPED"` on the breaching **demo** account and write an `InternalLockEvent` audit row.
+
+**Phase 2B never:**
+- Calls any Tradovate write API
+- Sends `userAccountAutoLiq/update` or `order/liquidatepositions`
+- Flattens positions or cancels orders
+- Creates `GuardianIntervention` records
+- Touches live accounts (`TRADOVATE_LISTENER_ENABLE_LIVE=false` gate remains)
+
+### Gates (all must pass)
+
+| Gate | Condition |
+|---|---|
+| Feature flag | `GUARDRAIL_INTERNAL_LOCK_ENABLED=true` |
+| Demo-only | `env === "demo"` |
+| Idempotent | `riskState !== "STOPPED"` (re-locks skipped) |
+| Live gate | Live accounts skipped while `TRADOVATE_LISTENER_ENABLE_LIVE=false` |
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/guardian-engine/internal-lock-evaluator.ts` | Pure gate logic (no DB, testable) |
+| `src/lib/guardian-engine/internal-lock-evaluator-db.ts` | DB writes: riskState + InternalLockEvent |
+| `src/lib/guardian-engine/internal-lock-evaluator.test.ts` | 11 unit tests |
+| `src/lib/guardian-engine/internal-lock-event-summary-helpers.ts` | Pure helpers for history endpoint |
+| `src/lib/guardian-engine/internal-lock-event-summary-helpers.test.ts` | 58 tests (source-scans + pure logic) |
+| `src/app/api/debug/internal-lock-events/route.ts` | Read-only lock history endpoint |
+| `prisma/schema.prisma` → `InternalLockEvent` | Audit table (internalOnly=true, brokerActionTaken=false always) |
+
+### How to enable
+
+Set in the listener-worker Railway service:
+
+```
+GUARDRAIL_INTERNAL_LOCK_ENABLED=true
+```
+
+This gate exists in the worker's `onPropsEvent`:
+
+```typescript
+if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
+  void applyInternalLockForConnection(connectionId);
+}
+```
+
+### How to view lock history
+
+```bash
+curl -H "Authorization: Bearer $SESSION_TOKEN" \
+     -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/internal-lock-events?days=7"
+```
+
+Response shape:
+```json
+{
+  "note": "Internal app lock only — no broker action was sent.",
+  "internalLockEnabled": false,
+  "queryDays": 7,
+  "total": 1,
+  "activeCount": 0,
+  "clearedCount": 1,
+  "recent": [{ "id": "...", "ruleType": "trade_limit", "brokerActionTaken": false, ... }],
+  "byAccount": [{ "accountId": "...", "active": 0, "cleared": 1, ... }],
+  "byRuleType": [{ "ruleType": "trade_limit", "total": 1, "active": 0, "cleared": 1, ... }]
+}
+```
+
+Filter by account: `?accountId={connectedAccountId}&days=30`
+
+### How to unlock / reset
+
+Use the existing reset endpoint (requires x-cron-secret):
+
+```bash
+curl -X POST \
+     -H "Authorization: Bearer $SESSION_TOKEN" \
+     -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/accounts/{accountId}/reset-session-state"
+```
+
+What the reset endpoint does and does NOT do:
+
+| Action | Done? |
+|---|---|
+| Sets `riskState = "NORMAL"` | ✓ Yes |
+| Stamps `clearedAt` on active `InternalLockEvent` rows | ✓ Yes (`clearedBy = "manual_reset"`) |
+| Preserves full lock history (no row deletion) | ✓ Yes — rows remain, only `clearedAt` is set |
+| Clears `pendingSessionEndLock`, `cooldownActive` | ✓ Yes |
+| Calls any Tradovate broker API | ✗ No — strictly DB-only |
+| Flattens positions or cancels orders | ✗ No |
+| Deletes `InternalLockEvent` rows | ✗ No — history is permanent |
+
+The dashboard banner disappears immediately on next load once `clearedAt` is stamped.
+
+### Dashboard display
+
+When `internalLockActive=true`, the account row shows:
+
+> "Guardrail internal lock active · Broker enforcement is not active · No Tradovate action was sent."
+
+This copy deliberately differs from broker-enforcement messages (which say "Broker-side lock active" or "Tradovate risk settings applied") so operators always know whether a Tradovate API call was made.
+
+### Rollback
+
+Set `GUARDRAIL_INTERNAL_LOCK_ENABLED=false` (or unset it) on the listener-worker service. No worker restart required — the flag is checked at runtime on each props event.
+
+In-flight locks already applied are not reversed automatically. Use the reset endpoint per account, or query the lock history endpoint to find all active locks:
+
+```bash
+# Find active locks to reset:
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://your-domain/api/debug/internal-lock-events?days=1" \
+  | jq '.byAccount[] | select(.active > 0) | .accountId'
+```
+
+### Broker enforcement status (Phase 2C)
+
+**Broker enforcement is NOT implemented.** Phase 2B is the internal app lock only.
+
+The following are **not active** and have never been called by Phase 2B:
+- `userAccountAutoLiq/update` (Tradovate risk settings write)
+- `order/liquidatepositions` (Tradovate position flatten)
+- Any Tradovate write API
+
+No `GuardianIntervention` rows are created by Phase 2B. The `InternalLockEvent` table is the only audit record.
+
+Phase 2C broker enforcement requires explicit authorization and a separate implementation.
+
+### Safety gates in force during Phase 2B
+
+| Gate | Value |
+|---|---|
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` (live accounts never touched) |
+| `InternalLockEvent.internalOnly` | always `true` |
+| `InternalLockEvent.brokerActionTaken` | always `false` |
+| Broker writes | zero — no Tradovate API calls made |
+| `GuardianIntervention` rows | zero — not created by Phase 2B |
+| Phase 2C broker enforcement | NOT implemented — broker writes require explicit Phase 2C authorization |
+
+---
+
 This document describes how to deploy the Tradovate user/syncrequest WebSocket
 listener as a long-running Railway worker service.
 
@@ -155,11 +450,156 @@ manager source does not log token fields ✓
 
 ## Rollout Plan
 
-1. **This PR:** all building blocks merged, worker scaffold committed.
-2. **Next PR:** wire worker, deploy to Railway as listener-worker service,
-   test with a single demo account.
-3. **After validation:** enable for all healthy connections.
-4. **Monitoring:** alert if `listenerLastHeartbeatAt` is >2 min stale for any
-   active connection (indicates worker crash or Tradovate disconnect).
+### Phase 1: Single demo connection (current)
 
-The cron sync remains active throughout as a safety net.
+Test with one known-good demo connection before enabling broadly.
+
+```
+# Railway env vars (listener-worker service only)
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+TRADOVATE_LISTENER_CONNECTION_ID=<active-demo-connection-id>
+```
+
+The `TRADOVATE_LISTENER_CONNECTION_ID` filter causes the worker to skip every
+other connection with reason `single_connection_filter`. This lets you verify
+auth, heartbeat, and reconnect behaviour in production without touching live
+accounts or other demo connections.
+
+Acceptance before advancing to Phase 2:
+- `listenerStatus = "connected"` in DB for the scoped connection
+- Dashboard shows **"Live · Xs ago"** for accounts on that connection
+- Dashboard stays Live through 1000/Bye recycle cycles (Tradovate recycles
+  demo sessions every ~30 s)
+- No `listenerErrorMessage` or `listenerStatus = "error"` for 1000/Bye closes
+- Debug endpoint (`/api/debug/tradovate-listener/status`) shows `wouldStart=1`
+
+### Phase 2: All healthy demo connections
+
+Remove the single-connection filter once Phase 1 is validated.
+
+```
+# Remove TRADOVATE_LISTENER_CONNECTION_ID entirely (or leave unset)
+TRADOVATE_LISTENER_ENABLE_LIVE=false
+```
+
+The worker will start one listener per healthy `BrokerConnection` with
+`env=demo` and `connectionStatus IN (connected_live, connected_readonly)`.
+Live connections continue to be skipped.
+
+Acceptance before advancing to Phase 3:
+- All demo connections show "Live · Xs ago" on the dashboard
+- Debug endpoint shows `wouldStart=N` matching the count of healthy demo connections
+- No listener errors that aren't auth-related (token expiry, wrong env token)
+
+### Phase 3: Enable live (intentional opt-in only)
+
+Only after demo is stable across all connections.
+
+```
+TRADOVATE_LISTENER_ENABLE_LIVE=true
+```
+
+This is a separate opt-in step, not automatic. Live connections carry real money;
+validate demo thoroughly before proceeding.
+
+### Ongoing monitoring
+
+- Alert if `listenerLastHeartbeatAt` is >2 min stale for any connection with
+  `listenerStatus = "connected"` (indicates worker crash or Tradovate outage).
+- The cron sync remains active throughout as a safety net — if the listener is
+  down, the dashboard falls back to `lastSyncAt` within 5 min.
+- Use `/api/debug/tradovate-listener/status` → `connectionGroups` to identify
+  duplicate OAuth grants (old connections that should be cleaned up manually
+  after confirming no accounts depend on them).
+
+### Connection cleanup
+
+Old/superseded OAuth grants (same env + brokerUserId, older `createdAt`) can
+be identified via the `connectionGroups` section of the status endpoint. Do not
+delete them automatically — verify `accountCount = 0` and no active listener
+before archiving. When accounts still point to old connections, the dashboard
+automatically uses the active connection's listener data via the env-based
+fallback in `loadCommandCenterData`.
+
+---
+
+## OAuth Connection Reattach Audit
+
+Accounts may still have their `brokerConnectionId` FK pointing to an old/stale
+connection even after a new OAuth grant has been issued. The dashboard's
+env-based fallback hides this at display time, but the data integrity issue
+should be resolved by updating the FK.
+
+Two endpoints support the reattach workflow:
+
+| Endpoint | Writes? | Purpose |
+|---|---|---|
+| `GET /api/debug/tradovate-listener/reattach-audit` | Never | Read-only inventory — run first |
+| `GET /api/debug/tradovate-listener/reattach` | Only when `apply=true` | Dry-run then apply |
+
+Both require `x-cron-secret` header (always, not just in production for the reattach endpoint).
+
+### Confidence levels
+
+| Level | Meaning |
+|---|---|
+| `high` | Same `userId + env + brokerUserId` — confident the target is the same physical account |
+| `medium` | Same `userId + env` only — brokerUserId not matched on one side |
+| `low` | Same `userId + env`, multiple candidates — manual review required |
+
+Only `high` confidence rows are eligible by default. `medium` and `low` require
+an explicit `confidence=medium` or `confidence=low` query parameter.
+
+### Safe reattach procedure
+
+**Step 1 — Run the audit**
+
+```
+GET /api/debug/tradovate-listener/reattach-audit
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+Review the `recommendations` array. For each `high` confidence entry confirm:
+- `staleReason` explains why the current connection is unhealthy
+- `targetBrokerConnectionId` is the live/healthy connection you expect
+- `confidenceReason` mentions the matching `brokerUserId`
+- `targetEnv` is `"demo"` (never `"live"` unless you've deliberately set `TRADOVATE_LISTENER_ENABLE_LIVE=true`)
+
+**Step 2 — Run the dry-run reattach**
+
+```
+GET /api/debug/tradovate-listener/reattach?apply=false&confidence=high
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+`apply=false` is the default — safe to call any number of times. Review:
+- `wouldApply` — the accounts that would be moved
+- `skippedByConfidence` — medium/low rows that were filtered out
+- `skippedLiveGuard` — any rows blocked because the target env is live
+- `dryRunPreview` — the exact Prisma calls that would execute
+
+**Step 3 — Apply high-confidence rows only**
+
+Only after the dry-run output matches expectations:
+
+```
+GET /api/debug/tradovate-listener/reattach?apply=true&confidence=high
+Headers: x-cron-secret: <CRON_SECRET>
+```
+
+The only mutation is `ConnectedAccount.brokerConnectionId → targetBrokerConnectionId`.
+No BrokerConnection rows are deleted or modified. No token, enforcement, or risk columns are touched.
+
+**Step 4 — Verify**
+
+Re-run the audit to confirm `accountsNeedingReattach = 0` for high-confidence rows.
+Check the dashboard shows "Live · Xs ago" for the reattached accounts.
+
+**Medium-confidence rows** require manual investigation before applying. Confirm
+the target connection is actually the correct broker account by cross-referencing
+`externalAccountId` or `brokerUserId` in the broker portal before applying
+`confidence=medium`.
+
+**Do not delete old BrokerConnection rows** — leave them with `accountCount = 0`
+for audit history. The status endpoint's `connectionGroups` will show them as
+stale/non-duplicate after all accounts have been reattached.

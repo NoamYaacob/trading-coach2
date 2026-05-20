@@ -10,6 +10,8 @@ import {
 } from "@/lib/rule-edit-eligibility";
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { isValidTimeZone } from "@/lib/timezone";
+import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
 const VALID_SESSION_PRESETS = ["asia", "london", "ny_am", "ny_pm", "custom"] as const;
@@ -294,12 +296,68 @@ export async function POST(request: Request) {
     }),
     prisma.liveSessionState.findMany({
       where: { account: { userId: user.id } },
-      select: { riskState: true, cooldownActive: true },
+      select: { accountId: true, riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
     }),
   ]);
   const hasProtectionLockToday =
     guardianStatus?.currentLockoutActive === true ||
     accountLiveStates.some((s) => s.riskState === "STOPPED" || s.cooldownActive === true);
+
+  // ── Hard reject: active internal lock (riskState=STOPPED) blocks ALL rule changes ──
+  // regardless of session window. This is not the same as hasProtectionLockToday
+  // (which is a session-window signal) — a stopped account must not allow
+  // any rule changes even outside session hours.
+  const ip =
+    request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? null;
+  const userAgent = request.headers.get("user-agent") ?? null;
+  const hardStoppedAccounts = accountLiveStates.filter((s) => s.riskState === "STOPPED");
+  if (hardStoppedAccounts.length > 0) {
+    await writeRuleChangeAudit({
+      userId: user.id,
+      scope: "default",
+      newValuesJson: body as Record<string, unknown>,
+      allowed: false,
+      reason: "account_stopped",
+      blockReason: "account_stopped",
+      sessionRiskState: "STOPPED",
+      ip,
+      userAgent,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Rules are locked for this account right now because protection is active. You can edit them after the lock clears.",
+      },
+      { status: 423 },
+    );
+  }
+
+  // ── Hard reject: any account has already traded this session ─────────────────
+  const tradingDayKey = deriveCmeTradingDayKey(new Date());
+  const tradingAccountsToday = accountLiveStates.filter(
+    (s) => s.sessionDate === tradingDayKey && s.tradesCount > 0,
+  );
+  if (tradingAccountsToday.length > 0) {
+    await writeRuleChangeAudit({
+      userId: user.id,
+      scope: "default",
+      newValuesJson: body as Record<string, unknown>,
+      allowed: false,
+      reason: "session_already_traded",
+      blockReason: "session_already_traded",
+      sessionRiskState: null,
+      ip,
+      userAgent,
+    });
+    return NextResponse.json(
+      {
+        error: "session_already_traded",
+        message:
+          "Rules are locked for this session — one or more of your accounts has already traded today. Changes will apply at the start of the next trading session.",
+      },
+      { status: 423 },
+    );
+  }
 
   const existingPresets = existing?.sessionPresetsJson
     ? (JSON.parse(existing.sessionPresetsJson) as string[])
@@ -341,6 +399,18 @@ export async function POST(request: Request) {
       console.error("[rules] save pending error:", err);
       return NextResponse.json({ error: "Failed to save rules." }, { status: 500 });
     }
+    // Audit: saved as pending (locked but not hard-stopped)
+    await writeRuleChangeAudit({
+      userId: user.id,
+      scope: "default",
+      newValuesJson: cleaned as Record<string, unknown>,
+      allowed: true,
+      reason: "saved_as_pending",
+      blockReason: eligibility.reason ?? null,
+      sessionRiskState: hasProtectionLockToday ? "LOCKED" : null,
+      ip,
+      userAgent,
+    });
     return NextResponse.json({
       ok: true,
       applied: false,
@@ -390,6 +460,17 @@ export async function POST(request: Request) {
     console.error("[rules] save error:", err);
     return NextResponse.json({ error: "Failed to save rules." }, { status: 500 });
   }
+
+  // Audit: successful save
+  await writeRuleChangeAudit({
+    userId: user.id,
+    scope: "default",
+    newValuesJson: cleaned as Record<string, unknown>,
+    allowed: true,
+    reason: "allowed",
+    ip,
+    userAgent,
+  });
 
   return NextResponse.json({ ok: true });
 }

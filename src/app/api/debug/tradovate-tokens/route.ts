@@ -56,6 +56,8 @@ export async function GET(_request: NextRequest) {
       listenerLastEventAt: true,
       listenerLastHeartbeatAt: true,
       listenerErrorMessage: true,
+      listenerNextRetryAt: true,
+      listenerDisabledAt: true,
       createdAt: true,
       accounts: {
         select: {
@@ -90,6 +92,8 @@ export async function GET(_request: NextRequest) {
     tokenExpiresAt: bc.tokenExpiresAt,
     lastRenewError: bc.lastRenewError,
     listenerStatus: bc.listenerStatus,
+    listenerNextRetryAt: bc.listenerNextRetryAt,
+    listenerDisabledAt: bc.listenerDisabledAt,
   }));
   const plan = planListenerStartups(rowsForPlan, { now, enableLive });
   const startIds = new Set(plan.start.map((p) => p.connectionId));

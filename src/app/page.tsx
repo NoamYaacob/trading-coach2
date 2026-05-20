@@ -21,7 +21,6 @@ const ACTIVE_RULE_NAMES = [
   "Daily Loss Limit",
   "Max Trades Per Day",
   "Stop After Consecutive Losses",
-  "News Blackout",
   "Session Hours",
 ];
 
@@ -152,7 +151,7 @@ export default async function Home() {
                   Rule engine
                 </p>
                 <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-                  Five active rules. Nine more on the way.
+                  Four active rules. Ten more on the way.
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-stone-600">
                   Loss limits, trade caps, session windows, and news locks — evaluated in real time
@@ -352,7 +351,7 @@ export default async function Home() {
               href="/faq"
               className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
             >
-              Read all 9 questions →
+              Read all {FAQS.length} questions →
             </Link>
           </div>
         </section>
@@ -396,6 +395,14 @@ export default async function Home() {
             </div>
           </div>
         </section>
+
+        {/* ── Risk disclaimer ──────────────────────────────────────────── */}
+        <p className="text-center text-xs leading-5 text-stone-400">
+          Guardrail is a trading-discipline and risk-control tool, not financial advice. Guardrail
+          starts in monitoring mode; broker-side enforcement applies only to Daily Loss, only on
+          supported connections, and only when you explicitly enable it. Trading futures carries a
+          substantial risk of loss.
+        </p>
 
       </div>
     </AppShell>

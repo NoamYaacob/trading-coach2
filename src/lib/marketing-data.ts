@@ -59,11 +59,6 @@ export const RULES: Array<{ name: string; description: string; badge: RuleBadge 
     badge: "active",
   },
   {
-    name: "News Blackout",
-    description: "Block or warn before major economic events — FOMC, NFP, CPI.",
-    badge: "active",
-  },
-  {
     name: "Session Hours",
     description: "Define your trading window. Rules are only evaluated during those hours.",
     badge: "active",
@@ -86,6 +81,11 @@ export const RULES: Array<{ name: string; description: string; badge: RuleBadge 
   {
     name: "Max Contracts / Order Size",
     description: "Cap the position size per entry.",
+    badge: "coming-soon",
+  },
+  {
+    name: "News Blackout",
+    description: "Block or warn before major economic events — FOMC, NFP, CPI.",
     badge: "coming-soon",
   },
   {
@@ -170,6 +170,10 @@ export const FAQS = [
     a: "Guardrail lets you define risk rules like daily loss, max trades, session hours, and loss streaks. It evaluates your session against those rules and moves the state through Allowed, Warning, or Locked depending on the mode your account supports.",
   },
   {
+    q: "What is Guardian?",
+    a: "Guardian is Guardrail's rule engine. It watches your connected account during the trading session and evaluates every trade event against the rules you set — moving the session through Allowed, Warning, or Locked.",
+  },
+  {
     q: "Is Guardrail a trading signal tool?",
     a: "No. Guardrail does not tell you what trades to take, when to enter, or what the market will do. It is a risk enforcement tool — it holds the rules you already chose before emotional pressure overrides them.",
   },
@@ -180,6 +184,10 @@ export const FAQS = [
   {
     q: "App-level lock vs. broker-side enforcement — what's the difference?",
     a: "App-level lock means the session moves to Locked inside Guardrail and you are alerted. Your broker account is unaffected — you could still place trades there manually. Broker-side enforcement means Guardrail would cancel orders or flatten positions directly at the broker level. That requires verified write-level API permissions and is planned, not live today.",
+  },
+  {
+    q: "Which rules can be enforced at the broker?",
+    a: "Daily Loss is the only rule designed to be backed by Tradovate's broker-side risk settings, and only when you explicitly enable it on a supported connection. Profit target, max trades, loss streak, position size, and session cutoff are always Guardrail-monitored — never broker-enforced. Today Guardrail runs in monitoring mode: it locks the session in the app and alerts you, and no broker writes happen by default.",
   },
   {
     q: "Does it work for prop firm evaluation and funded accounts?",
@@ -200,5 +208,9 @@ export const FAQS = [
   {
     q: "How does Telegram fit in?",
     a: "Telegram is an optional alert channel. When connected, Guardrail sends lockout and warning alerts directly to your phone. Everything works without it — Telegram is an add-on for traders who want immediate mobile alerts.",
+  },
+  {
+    q: "Is Guardrail financial advice?",
+    a: "No. Guardrail is a trading-discipline and risk-control tool — not financial, investment, or trading advice. It does not recommend trades or predict the market. You set your own rules; Guardrail helps you hold them. Trading futures carries a substantial risk of loss.",
   },
 ];

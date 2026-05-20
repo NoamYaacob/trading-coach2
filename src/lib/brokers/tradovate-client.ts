@@ -18,13 +18,13 @@
  *  - New tokens after refresh are always encrypted before DB writes.
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import {
   getTradovateTokensForAccount,
   TradovateTokenError,
 } from "./tradovate-tokens";
 import { getTradovateConfig } from "./tradovate-env";
-import { encryptAndSerialize } from "@/lib/security/token-crypto";
+import { encryptAndSerialize } from "../security/token-crypto";
 import type {
   BrokerAccountSnapshot,
   BrokerPosition,

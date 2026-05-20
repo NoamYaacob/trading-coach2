@@ -15,6 +15,9 @@ export const FIRST_TIME_SETUP_BANNER =
 export const LOCKED_BANNER =
   "You can edit anytime. Saving while this account is in active trading queues the change as pending — it activates automatically at the account's next safe window.";
 
+export const SESSION_ALREADY_TRADED_BANNER =
+  "Rules are locked for this session — this account has already traded. Changes can be made after the session resets.";
+
 export const REVIEW_INHERITED_HINT = "Review these inherited limits before saving.";
 
 /**
@@ -390,6 +393,13 @@ export function computeAccountSaveButtonState(input: {
   pendingMessage: string | null;
   /** True when cross-field validation reports any error. Disables save. */
   hasValidationErrors?: boolean;
+  /**
+   * True when the account has already traded this session (session_already_traded).
+   * The server will 423-reject any save attempt; the button is disabled proactively
+   * so the user doesn't need to attempt a save to discover the block.
+   * First-time setup (hasExistingRules=false) is exempted — same as the server check.
+   */
+  isHardLocked?: boolean;
 }): AccountSaveButtonState {
   const hasSomethingToSave =
     input.isDirty ||
@@ -399,7 +409,8 @@ export function computeAccountSaveButtonState(input: {
     input.saving ||
     input.removing ||
     !hasSomethingToSave ||
-    Boolean(input.hasValidationErrors);
+    Boolean(input.hasValidationErrors) ||
+    Boolean(input.isHardLocked && input.hasExistingRules);
   const label = input.saving
     ? "Saving…"
     : !input.isDirty && input.savedAt && input.pendingMessage

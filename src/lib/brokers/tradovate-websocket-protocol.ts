@@ -8,7 +8,7 @@
  *   REST base:       https://live.tradovateapi.com/v1
  *   WS (live):       wss://live.tradovateapi.com/v1/websocket
  *   WS (demo):       wss://demo.tradovateapi.com/v1/websocket
- *   Authorize:       authorize\n<id>\n\n<accessToken>
+ *   Authorize:       authorize\n<id>\n\n<accessToken>  (raw token, no JSON quotes)
  *   User sync:       user/syncrequest\n<id>\n\n{"users":[<userId>]}
  *   Props event:     {"e":"props","d":{"entityType":"...","entity":{...},"eventType":"..."}}
  *
@@ -98,11 +98,9 @@ function safeJsonParse(s: string): unknown {
  * - id:       monotonically increasing request ID (correlates responses)
  * - query:    URL query string (empty string for most requests)
  * - body:     any JSON-serialisable value. The helper applies JSON.stringify
- *             so callers pass raw objects / strings — exactly like the
- *             official SDK. For authorize, `body` is the token string and
- *             JSON.stringify wraps it in quotes: `"eyJ..."`. This is the
- *             format Tradovate expects; sending the raw token unquoted
- *             causes the server to close with code 1000 reason "Bye".
+ *             so callers pass raw objects (e.g. `{ users: [42] }`). NOTE:
+ *             the `authorize` request does NOT use this helper — it sends
+ *             the token raw (no JSON quoting); see `encodeAuthorizeMessage`.
  */
 export function encodeTradovateMessage(params: {
   endpoint: string;
@@ -115,9 +113,17 @@ export function encodeTradovateMessage(params: {
   return `${params.endpoint}\n${params.id}\n${query}\n${body}`;
 }
 
-/** Encode an authorization request. Called after the SockJS "o" frame. */
+/** Encode an authorization request. Called after the SockJS "o" frame.
+ *
+ * Wire format: `authorize\n<id>\n\n<accessToken>` — the token body is sent
+ * raw (no surrounding JSON quotes), confirmed by probe variant B_raw.
+ * Other formats Tradovate's demo WS rejects:
+ *   - JSON-stringified (`"<token>"`): 401
+ *   - Bearer-prefixed (`"Bearer <token>"`): 401
+ *   - SockJS array-wrapped (`["authorize\n..."]`): closes with "Bye"
+ */
 export function encodeAuthorizeMessage(id: number, accessToken: string): string {
-  return encodeTradovateMessage({ endpoint: "authorize", id, body: accessToken });
+  return `authorize\n${id}\n\n${accessToken}`;
 }
 
 /** Encode a user/syncrequest. Called after successful authorization. */

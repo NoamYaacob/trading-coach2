@@ -13,15 +13,15 @@
  *  - Token values never leave the server or appear in returned objects.
  */
 
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 import { TradovateClient, TradovateClientError } from "./tradovate-client";
 import { ensureTradovateAccessToken } from "./tradovate-ensure-token";
 import { runDiscoveryForConnection } from "./tradovate-discovery";
-import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "@/lib/trading-day";
+import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "../trading-day";
 import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, selectPhaseCTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser";
-import { countCanonicalEntries } from "@/lib/guardian-engine/session-state";
+import { countCanonicalEntries } from "../guardian-engine/session-state";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 import {
   computeEffectiveDailyPnl,
@@ -274,27 +274,27 @@ export async function syncTradovateAccount(
           reason: row.reason,
         });
       }
-      for (const ex of executions) {
-        const alreadyStored = await prisma.normalizedTradeEvent.findFirst({
-          where: { accountId, externalTradeId: ex.executionId },
-          select: { id: true },
+      if (executions.length > 0) {
+        // createMany with skipDuplicates relies on the
+        // (accountId, eventType, externalTradeId) unique index to drop any
+        // fill already stored by a prior sync run. This is race-safe, unlike
+        // the previous findFirst-then-create pattern, which could double-store
+        // a fill when two reconciliations ran concurrently.
+        await prisma.normalizedTradeEvent.createMany({
+          data: executions.map((ex) => ({
+            accountId,
+            eventType: "fill",
+            externalTradeId: ex.executionId,
+            contractId: ex.contractId ?? null,
+            side: ex.side,
+            quantity: ex.quantity,
+            price: ex.price,
+            pnl: ex.pnl,
+            occurredAt: ex.occurredAt,
+            rawPayload: { symbol: ex.symbol, orderId: ex.orderId },
+          })),
+          skipDuplicates: true,
         });
-        if (!alreadyStored) {
-          await prisma.normalizedTradeEvent.create({
-            data: {
-              accountId,
-              eventType: "fill",
-              externalTradeId: ex.executionId,
-              contractId: ex.contractId ?? null,
-              side: ex.side,
-              quantity: ex.quantity,
-              price: ex.price,
-              pnl: ex.pnl,
-              occurredAt: ex.occurredAt,
-              rawPayload: { symbol: ex.symbol, orderId: ex.orderId },
-            },
-          });
-        }
       }
     } catch {
       // Fill storage is best-effort. If Phase A also failed, fillsSyncedAt
@@ -341,6 +341,19 @@ export async function syncTradovateAccount(
               bodyLength: report.body.length,
             });
           }
+        } else if (report && report.status === 400) {
+          // 400 is a stable broker-side rejection (e.g. account not yet eligible for
+          // the Performance Report, or the reporting service is temporarily unavailable
+          // for this account type). It is NOT a transient network error and should NOT
+          // be classified as listener_error or affect dashboard freshness.
+          // Fall through to canonical DB count — sync proceeds normally.
+          console.info("[tradovate/trades] broker_report_unavailable", {
+            accountId,
+            httpStatus: 400,
+            bodySnippet: report.body.slice(0, 200),
+            fallback: "canonical_db",
+            note: "sync proceeds normally — not a listener_error",
+          });
         }
       }
     } catch {

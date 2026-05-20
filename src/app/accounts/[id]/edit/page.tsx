@@ -135,7 +135,7 @@ export default async function EditAccountPage({
           cooldownUntil: true,
         },
       },
-      brokerConnection: { select: { permissionLevel: true, connectionStatus: true } },
+      brokerConnection: { select: { permissionLevel: true, connectionStatus: true, env: true } },
     },
   });
 
@@ -165,6 +165,16 @@ export default async function EditAccountPage({
           orderBy: { createdAt: "desc" },
           take: 3,
           select: { triggerType: true, outcome: true, createdAt: true, message: true },
+        })
+      : [];
+
+  const brokerEnforcementHistory =
+    account.platform === "tradovate"
+      ? await prisma.guardianIntervention.findMany({
+          where: { accountId: account.id, listenerBrokerDedupKey: { not: null } },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: { brokerLockStatus: true },
         })
       : [];
 
@@ -411,7 +421,7 @@ export default async function EditAccountPage({
           </p>
           <p className="mt-1 text-sm text-stone-700">{ruleSourceLabel}</p>
           <p className="mt-0.5 text-xs text-stone-500">
-            Protection limits, session hours, and enforcement settings are managed in Trading Plan.
+            Guardrail checks every fill against these rules during your session.
           </p>
           <div className="mt-3">
             <Link
@@ -496,6 +506,16 @@ export default async function EditAccountPage({
           </div>
         )}
 
+        {brokerEnforcementHistory.length > 0 && (
+          <BrokerEnforcementHistoryPanel
+            records={brokerEnforcementHistory.map((r) => ({
+              brokerLockStatus: r.brokerLockStatus ?? null,
+            }))}
+            riskState={account.sessionState?.riskState ?? null}
+            brokerEnv={account.brokerConnection?.env ?? null}
+          />
+        )}
+
         {isTradovate && showDiagnostics && (
           <DiagnosticsPanel
             accountId={account.id}
@@ -521,5 +541,58 @@ export default async function EditAccountPage({
         )}
       </div>
     </AppShell>
+  );
+}
+
+// ── Broker protection status panel ───────────────────────────────────────────
+
+type BrokerEnforcementRecord = {
+  brokerLockStatus: string | null;
+};
+
+function BrokerEnforcementHistoryPanel({
+  records,
+  riskState,
+  brokerEnv,
+}: {
+  records: BrokerEnforcementRecord[];
+  riskState: string | null;
+  brokerEnv: string | null;
+}) {
+  const noActiveLock = riskState !== "STOPPED";
+  const hasConfirmedLock = records.some((r) => r.brokerLockStatus === "broker_locked");
+  const isDemo = brokerEnv === "demo";
+
+  return (
+    <div className="rounded-[1.75rem] border border-stone-200 bg-white px-6 py-5">
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+          Broker protection status
+        </p>
+        {noActiveLock && (
+          <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+            No active Guardrail lock
+          </span>
+        )}
+      </div>
+      <div className="grid gap-1">
+        {hasConfirmedLock && noActiveLock ? (
+          <>
+            <p className="text-sm text-stone-700">
+              Supported rules can be protected through broker risk settings.
+            </p>
+            <p className="text-sm text-stone-500">No active Guardrail lock right now.</p>
+          </>
+        ) : hasConfirmedLock ? (
+          <p className="text-sm font-medium text-stone-900">
+            An active broker lock is in effect on this account.
+          </p>
+        ) : (
+          <p className="text-sm text-stone-500">
+            Guardrail is monitoring this account for rule breaches. No active broker lock is in effect.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

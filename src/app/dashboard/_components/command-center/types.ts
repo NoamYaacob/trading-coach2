@@ -79,6 +79,10 @@ export type CommandCenterAccount = {
   listenerLastEventAt: Date | null;
   /** Timestamp of the last WebSocket heartbeat ("h" frame). */
   listenerLastHeartbeatAt: Date | null;
+  /** WS close code from the most recent close (1000 = normal/Bye, 1006 = abnormal). */
+  listenerLastCloseCode: number | null;
+  /** WS close reason from the most recent close ("Bye" for Tradovate recycles). */
+  listenerLastCloseReason: string | null;
   /** True when this account has a max position size rule (account or default). */
   hasMaxPositionSize: boolean;
   /** True when raw broker hard limit mode is enabled (account-level only). */
@@ -95,6 +99,10 @@ export type CommandCenterAccount = {
   setupNeededReason: "no_rules" | "pending_connection" | "prop_firm_rules_missing" | null;
   /** Explanation of the current breach, when status is warning or locked */
   breachReason: { headline: string; detail?: string } | null;
+  /** True when a Phase 2B internal lock is active (riskState=STOPPED via InternalLockEvent, no broker action). */
+  internalLockActive: boolean;
+  /** Timestamp of the most recent active InternalLockEvent, or null. */
+  lastInternalLockAt: Date | null;
   /** Broker enforcement outcome from the most recent GuardianIntervention */
   brokerLockStatus:
     | "not_requested"
@@ -248,6 +256,7 @@ export type CommandCenterData = {
   reclassifiableAccounts: ReclassifiableAccount[];
   protectionLock: {
     isLocked: boolean;
+    lockReason: "active_session" | "pre_session" | null;
     cutoffTime: string | null;
     tradingDayKey: string;
     nextTradingDayKey: string;

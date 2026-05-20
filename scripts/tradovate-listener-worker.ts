@@ -43,9 +43,18 @@ import type {
 import {
   planListenerStartups,
   listenerStateToDbStatus,
+  computeRetryDelayMs,
   type BrokerConnectionRow,
 } from "../src/lib/brokers/tradovate-listener-worker-logic.ts";
 import { TRADOVATE_WS_URL } from "../src/lib/brokers/tradovate-websocket-protocol.ts";
+import { evaluateDryRunRulesForConnection } from "../src/lib/guardian-engine/dry-run-rule-evaluator-db.ts";
+import { applyInternalLockForConnection } from "../src/lib/guardian-engine/internal-lock-evaluator-db.ts";
+import { maybeAttemptBrokerDailyLossLockoutForInternalLock } from "../src/lib/guardian-engine/broker-enforcement-service.ts";
+import { readEnforcementFlagsFromEnv } from "../src/lib/safety-console-helpers.ts";
+import {
+  reconcileConnectionAccounts,
+  writeReconciliationResult,
+} from "../src/lib/brokers/tradovate-listener-reconciliation.ts";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +67,23 @@ const SHUTDOWN_GRACE_MS = 5_000; // max time to wait for Prisma to disconnect on
  * to allow live listeners. Default false until demo handshake is verified.
  */
 const ENABLE_LIVE = process.env.TRADOVATE_LISTENER_ENABLE_LIVE === "true";
+
+/**
+ * Global kill-switch. When set to "true", the worker boots, logs that listeners
+ * are disabled, runs reconcile (which skips every row with reason
+ * "listener_globally_disabled"), and never opens a WebSocket. Use this to keep
+ * the worker process alive on Railway while pausing all real-time activity.
+ */
+const LISTENER_DISABLED = process.env.TRADOVATE_LISTENER_DISABLED === "true";
+
+/**
+ * Debug filter. When set to a BrokerConnection id, only that connection is
+ * considered by reconcile — every other row is skipped with reason
+ * "single_connection_filter". Lets us isolate one broken connection without
+ * stopping the rest.
+ */
+const SINGLE_CONNECTION_ID =
+  process.env.TRADOVATE_LISTENER_CONNECTION_ID?.trim() || null;
 
 // ── WebSocket adapter ────────────────────────────────────────────────────────
 
@@ -115,6 +141,8 @@ async function loadHealthyConnectionRows(): Promise<BrokerConnectionRow[]> {
       tokenExpiresAt: true,
       lastRenewError: true,
       listenerStatus: true,
+      listenerNextRetryAt: true,
+      listenerDisabledAt: true,
     },
   });
 }
@@ -220,9 +248,16 @@ async function writeListenerStatus(
       where: { id: connectionId },
       data: {
         listenerStatus: dbStatus,
-        // Stamp listenerConnectedAt on first transition to "connected".
+        // Stamp listenerConnectedAt on first transition to "connected" and
+        // reset the retry tracker — we made it past authorize.
         ...(dbStatus === "connected"
-          ? { listenerConnectedAt: new Date(), listenerErrorMessage: null }
+          ? {
+              listenerConnectedAt: new Date(),
+              listenerErrorMessage: null,
+              listenerNextRetryAt: null,
+              listenerRetryCount: 0,
+              listenerLastAuthFailureAt: null,
+            }
           : {}),
         ...(dbStatus === "closed"
           ? { listenerErrorMessage: null }
@@ -267,10 +302,33 @@ async function writeListenerHeartbeat(connectionId: string, at: Date): Promise<v
 }
 
 async function writeListenerTerminalError(connectionId: string, reason: string): Promise<void> {
+  // Soft-retry tracking: when the listener gives up, schedule the next retry
+  // using an exponential backoff instead of marking the connection dead.
+  // The planner skips with "listener_retry_cooldown" until nextRetryAt passes.
   try {
+    const current = await prisma.brokerConnection.findUnique({
+      where: { id: connectionId },
+      select: { listenerRetryCount: true },
+    });
+    const retryCount = current?.listenerRetryCount ?? 0;
+    const delayMs = computeRetryDelayMs(retryCount);
+    const now = new Date();
+    const nextRetryAt = new Date(now.getTime() + delayMs);
     await prisma.brokerConnection.update({
       where: { id: connectionId },
-      data: { listenerStatus: "error", listenerErrorMessage: reason },
+      data: {
+        listenerStatus: "error",
+        listenerErrorMessage: reason,
+        listenerLastAuthFailureAt: now,
+        listenerNextRetryAt: nextRetryAt,
+        listenerRetryCount: retryCount + 1,
+      },
+    });
+    console.warn("[listener-worker] terminal error — scheduled retry", {
+      connectionId,
+      retryCount: retryCount + 1,
+      nextRetryAt: nextRetryAt.toISOString(),
+      delayMs,
     });
   } catch (err) {
     console.error("[listener-worker] failed to persist terminal error", {
@@ -280,9 +338,106 @@ async function writeListenerTerminalError(connectionId: string, reason: string):
   }
 }
 
+/** Persist the close code and reason from the most recent unexpected close. */
+async function writeListenerClose(
+  connectionId: string,
+  code: number,
+  reason: string,
+): Promise<void> {
+  try {
+    await prisma.brokerConnection.update({
+      where: { id: connectionId },
+      data: {
+        listenerLastCloseCode: code,
+        listenerLastCloseReason: reason || null,
+      },
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist close info", {
+      connectionId,
+      error: errMessage(err),
+    });
+  }
+}
+
+/** Persist the most recent authorize-response status for diagnostics. */
+async function writeListenerAuthStatus(
+  connectionId: string,
+  status: number,
+): Promise<void> {
+  try {
+    await prisma.brokerConnection.update({
+      where: { id: connectionId },
+      data: { listenerLastAuthStatus: status },
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist auth status", {
+      connectionId,
+      error: errMessage(err),
+    });
+  }
+}
+
+/**
+ * Persist this worker's enforcement env flags into the ListenerWorkerStatus
+ * singleton row so the web Safety Console can verify broker-write safety.
+ *
+ * Diagnostics only: this is a single read of process.env plus one DB upsert.
+ * It performs no broker calls, no Tradovate API calls, and changes no
+ * enforcement behaviour. Called once per reconcile loop so `reportedAt` stays
+ * fresh; the console treats a stale row as "not exposed".
+ */
+async function writeListenerWorkerStatus(): Promise<void> {
+  const flags = readEnforcementFlagsFromEnv(process.env);
+  const data = {
+    brokerEnforcementEnabled: flags.brokerEnforcementEnabled,
+    listenerLiveEnabled: flags.listenerLiveEnabled,
+    internalLockEnabled: flags.internalLockEnabled,
+    dryRunEnabled: flags.dryRunEnabled,
+    simulationEnabled: flags.simulationEnabled,
+    demoAccountAllowlist: flags.allowlist,
+    reportedAt: new Date(),
+  };
+  try {
+    await prisma.listenerWorkerStatus.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", ...data },
+      update: data,
+    });
+  } catch (err) {
+    console.error("[listener-worker] failed to persist worker status", {
+      error: errMessage(err),
+    });
+  }
+}
+
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "unknown";
+}
+
+async function reconcileAndPersist(
+  connectionId: string,
+  userId: string,
+  isReconnect: boolean,
+): Promise<void> {
+  const trigger = isReconnect ? "reconnect" : "initial_connect";
+  try {
+    const result = await reconcileConnectionAccounts(connectionId, userId);
+    await writeReconciliationResult(connectionId, trigger, result);
+    console.info("[listener-worker] reconciliation complete", {
+      connectionId,
+      trigger,
+      status: result.status,
+      accountCount: result.accountCount,
+    });
+  } catch (err) {
+    console.error("[listener-worker] reconciliation error", {
+      connectionId,
+      trigger,
+      error: errMessage(err),
+    });
+  }
 }
 
 function safeUrlHost(url: string): string {
@@ -381,8 +536,44 @@ function sleep(ms: number): Promise<void> {
 const manager = new TradovateListenerManager(makeWsFactory());
 
 async function reconcileListeners(): Promise<void> {
+  // Mirror this worker's enforcement env flags into ListenerWorkerStatus so the
+  // web Safety Console can verify broker-write safety. Diagnostics only.
+  await writeListenerWorkerStatus();
+
   const rows = await loadHealthyConnectionRows();
-  const { start: plans, skipped } = planListenerStartups(rows, { enableLive: ENABLE_LIVE });
+  const { start: plans, skipped } = planListenerStartups(rows, {
+    enableLive: ENABLE_LIVE,
+    globallyDisabled: LISTENER_DISABLED,
+    singleConnectionId: SINGLE_CONNECTION_ID,
+  });
+
+  // Before starting any listener, clear `listenerStatus = "error"` for rows
+  // whose cooldown has elapsed so the next reconcile loop sees a fresh slate.
+  // (The planner already lets these rows through; this update keeps the DB
+  // status accurate for the dashboard and the /status endpoint.)
+  const now = new Date();
+  const cooldownExpired = rows.filter(
+    (r) =>
+      r.listenerStatus === "error" &&
+      r.listenerNextRetryAt !== null &&
+      r.listenerNextRetryAt <= now,
+  );
+  for (const r of cooldownExpired) {
+    try {
+      await prisma.brokerConnection.update({
+        where: { id: r.id },
+        data: { listenerStatus: null, listenerErrorMessage: null },
+      });
+      console.info("[listener-worker] retry cooldown expired — clearing error", {
+        connectionId: r.id,
+      });
+    } catch (err) {
+      console.error("[listener-worker] failed to clear expired cooldown", {
+        connectionId: r.id,
+        error: errMessage(err),
+      });
+    }
+  }
 
   for (const skip of skipped) {
     console.info("[listener-worker] skipping connection", skip);
@@ -451,10 +642,56 @@ async function reconcileListeners(): Promise<void> {
       permissionLevel: plan.permissionLevel,
       getAccessToken: (opts) =>
         getAccessTokenForConnection(plan.connectionId, plan.userId, opts ?? {}),
-      // Phase 1: observe-only. Do NOT run enforcement, do NOT flatten,
-      // do NOT lock the account. We only record that an event arrived.
+      // Phase 2A: dry-run rule evaluation when ENFORCEMENT_DRY_RUN=true.
+      // No enforcement, no flatten, no lock. We record that an event arrived
+      // and evaluate which rules WOULD have fired (dry_run=true rows only).
+      //
+      // Phase 2B: internal app lock when GUARDRAIL_INTERNAL_LOCK_ENABLED=true.
+      // Demo accounts only. Sets riskState=STOPPED + writes InternalLockEvent.
+      // No broker writes, no flatten, no cancel, no Tradovate API calls.
+      //
+      // Phase 2C-E: broker enforcement wiring — dormant while BROKER_ENFORCEMENT_ENABLED=false.
+      // When BROKER_ENFORCEMENT_ENABLED=true and the internal lock step returns a lock event
+      // id, maybeAttemptBrokerDailyLossLockoutForInternalLock re-evaluates all 10 gates and
+      // (only if all pass) writes the Tradovate risk setting via the broker enforcement service.
+      // Demo-only, daily_loss_limit only, explicit allowlist, full_access permission required.
       onPropsEvent: (connectionId) => {
         void writeListenerEventTimestamp(connectionId);
+        if (process.env.ENFORCEMENT_DRY_RUN === "true") {
+          void evaluateDryRunRulesForConnection(connectionId).catch((err) => {
+            console.warn("[listener-worker] dry-run evaluation error", { connectionId, err });
+          });
+        }
+        if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED === "true") {
+          void applyInternalLockForConnection(connectionId).then((results) => {
+            // Broker enforcement: dormant while BROKER_ENFORCEMENT_ENABLED is absent or false.
+            // All 10 gates are re-evaluated inside the service — this outer check is only an
+            // early-exit optimisation to avoid a DB fetch on every props event when disabled.
+            if (process.env.BROKER_ENFORCEMENT_ENABLED !== "true") return;
+            for (const result of results) {
+              if (result.internalLockEventId == null) continue;
+              void maybeAttemptBrokerDailyLossLockoutForInternalLock(result.internalLockEventId).catch((err) => {
+                console.error("[listener-worker] broker enforcement error", {
+                  connectionId,
+                  internalLockEventId: result.internalLockEventId,
+                  errorName: err instanceof Error ? err.name : typeof err,
+                  errorMessage: err instanceof Error ? err.message : String(err),
+                });
+              });
+            }
+          }).catch((err) => {
+            // Surface the full error so migration/schema failures are visible in logs.
+            // A PrismaClientKnownRequestError here most likely means the
+            // activeDedupKey column does not exist — migration not deployed.
+            console.error("[listener-worker] internal lock error — check if migration 20260522000000 is deployed", {
+              connectionId,
+              errorName: err instanceof Error ? err.name : typeof err,
+              errorMessage: err instanceof Error ? err.message : String(err),
+              // Prisma error code if present (e.g. P2022 = unknown column)
+              errorCode: (err as { code?: string }).code ?? null,
+            });
+          });
+        }
       },
       onHeartbeat: (connectionId, at) => {
         void writeListenerHeartbeat(connectionId, at);
@@ -471,6 +708,7 @@ async function reconcileListeners(): Promise<void> {
       },
       onAuthFailed: (connectionId, info) => {
         void (async () => {
+          await writeListenerAuthStatus(connectionId, info.status);
           const diag = await loadAuthDiagnostics(connectionId).catch(() => null);
           console.warn("[listener-worker] authorize rejected", {
             connectionId,
@@ -485,6 +723,31 @@ async function reconcileListeners(): Promise<void> {
             ...buildEndpointChainDiag(plan.env),
           });
         })();
+      },
+      onClose: (connectionId, info) => {
+        // Persist close code/reason for the debug endpoint.
+        // gracefulRecycle=true: Tradovate 1000/Bye session recycle — normal.
+        // code 1006: abnormal TCP drop without WS close frame — investigate.
+        void writeListenerClose(connectionId, info.code, info.reason);
+        console.info(
+          info.gracefulRecycle
+            ? "[listener-worker] listener session recycled by broker (1000/Bye), reconnecting"
+            : "[listener-worker] listener WebSocket closed",
+          {
+            connectionId,
+            code: info.code,
+            reason: info.reason || null,
+            gracefulRecycle: info.gracefulRecycle,
+            stateAtClose: info.stateAtClose,
+            msSinceReady: info.msSinceReady,
+            lastFrameType: info.lastFrameType,
+            lastFrameAt: info.lastFrameAt?.toISOString() ?? null,
+            phase: "ws_closed",
+          },
+        );
+      },
+      onReady: (connectionId, info) => {
+        void reconcileAndPersist(connectionId, plan.userId, info.isReconnect);
       },
     });
 
@@ -536,7 +799,20 @@ async function main(): Promise<void> {
     staggerMs: STARTUP_STAGGER_MS,
     mode: "observe-only",
     enableLive: ENABLE_LIVE,
+    listenerDisabled: LISTENER_DISABLED,
+    singleConnectionId: SINGLE_CONNECTION_ID,
   });
+  if (LISTENER_DISABLED) {
+    console.warn(
+      "[listener-worker] TRADOVATE_LISTENER_DISABLED=true — no WebSockets will be opened",
+    );
+  }
+  if (SINGLE_CONNECTION_ID) {
+    console.warn(
+      "[listener-worker] TRADOVATE_LISTENER_CONNECTION_ID is set — scoping reconcile to a single connection",
+      { connectionId: SINGLE_CONNECTION_ID },
+    );
+  }
 
   await reconcileListeners();
 

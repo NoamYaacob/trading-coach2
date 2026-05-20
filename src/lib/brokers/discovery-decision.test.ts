@@ -1,11 +1,16 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   decideReconciliation,
   type DiscoveredAccount,
   type LocalAccountForReconciliation,
 } from "./discovery-decision.ts";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 const CONN = "conn_1";
 const OTHER_CONN = "conn_2";
@@ -241,6 +246,111 @@ test("matching is case-insensitive and trims whitespace (defensive normalization
   assert.equal(d.matched.length, 1);
   assert.equal(d.matched[0]!.id, "la1");
   assert.equal(d.missing.length, 0);
+});
+
+// ─── currentBrokerConnectionId in matched rows ────────────────────────────
+// The persistence layer uses this to decide whether to overwrite the FK:
+// only overwrite when the account is unlinked (null) or already on this connection.
+
+describe("currentBrokerConnectionId in matched rows", () => {
+  test("account already on this connection: currentBrokerConnectionId matches syncing conn", () => {
+    const d = decideReconciliation({
+      brokerConnectionId: CONN,
+      discovered: [discovered("1001")],
+      localAccounts: [local("la1", "1001", { brokerConnectionId: CONN })],
+    });
+    assert.equal(d.matched.length, 1);
+    assert.equal(d.matched[0]!.currentBrokerConnectionId, CONN);
+  });
+
+  test("account on a DIFFERENT connection: currentBrokerConnectionId is OTHER_CONN", () => {
+    // This is the reattach-revert regression case. DEMO7433035 was manually
+    // moved to conn_new (healthy). Old conn_err syncs and finds 7433035 in
+    // /account/list. The decision carries currentBrokerConnectionId=conn_new
+    // so the persistence layer knows NOT to overwrite the FK.
+    const d = decideReconciliation({
+      brokerConnectionId: "conn_err",
+      discovered: [discovered("7433035")],
+      localAccounts: [local("demo_acct", "7433035", { brokerConnectionId: "conn_new" })],
+    });
+    assert.equal(d.matched.length, 1);
+    assert.equal(d.matched[0]!.currentBrokerConnectionId, "conn_new",
+      "must preserve existing FK so persistence layer can skip the overwrite");
+  });
+
+  test("unlinked account (null FK): currentBrokerConnectionId is null", () => {
+    const d = decideReconciliation({
+      brokerConnectionId: CONN,
+      discovered: [discovered("1001")],
+      localAccounts: [local("la1", "1001", { brokerConnectionId: null })],
+    });
+    assert.equal(d.matched.length, 1);
+    assert.equal(d.matched[0]!.currentBrokerConnectionId, null,
+      "null FK must be surfaced so persistence layer can link it");
+  });
+
+  test("all three FK scenarios in one call", () => {
+    const d = decideReconciliation({
+      brokerConnectionId: CONN,
+      discovered: [discovered("A"), discovered("B"), discovered("C")],
+      localAccounts: [
+        local("la_same",  "A", { brokerConnectionId: CONN }),       // same conn
+        local("la_other", "B", { brokerConnectionId: OTHER_CONN }), // different conn
+        local("la_null",  "C", { brokerConnectionId: null }),       // unlinked
+      ],
+    });
+    assert.equal(d.matched.length, 3);
+    const byId = Object.fromEntries(d.matched.map((m) => [m.id, m.currentBrokerConnectionId]));
+    assert.equal(byId["la_same"],  CONN,       "same-conn account");
+    assert.equal(byId["la_other"], OTHER_CONN, "other-conn account");
+    assert.equal(byId["la_null"],  null,       "unlinked account");
+  });
+});
+
+// ─── Source-scan: tradovate-discovery.ts must guard the FK overwrite ─────────
+// Ensures the persistence layer actually uses currentBrokerConnectionId before
+// writing brokerConnectionId — not just that the decision carries the field.
+
+describe("source-scan: tradovate-discovery.ts FK-overwrite guard", () => {
+  const DISCOVERY_SRC = readFileSync(
+    join(__dirname, "tradovate-discovery.ts"),
+    "utf8",
+  );
+
+  test("references currentBrokerConnectionId before writing brokerConnectionId", () => {
+    assert.ok(
+      DISCOVERY_SRC.includes("currentBrokerConnectionId"),
+      "must reference m.currentBrokerConnectionId in the update loop",
+    );
+  });
+
+  test("uses updateConnectionId guard pattern", () => {
+    assert.ok(
+      DISCOVERY_SRC.includes("updateConnectionId"),
+      "must have an updateConnectionId guard variable",
+    );
+  });
+
+  test("spreads updateConnectionId conditionally onto data", () => {
+    assert.ok(
+      DISCOVERY_SRC.includes("updateConnectionId ? { brokerConnectionId }"),
+      "must spread brokerConnectionId only when updateConnectionId is true",
+    );
+  });
+
+  test("checks for null FK in the guard", () => {
+    assert.ok(
+      DISCOVERY_SRC.includes("currentBrokerConnectionId == null"),
+      "guard must allow linking when FK is null",
+    );
+  });
+
+  test("checks for same-connection FK in the guard", () => {
+    assert.ok(
+      DISCOVERY_SRC.includes("currentBrokerConnectionId === brokerConnectionId"),
+      "guard must allow updating when already on the same connection",
+    );
+  });
 });
 
 // ─── Multi-connection isolation (live vs demo) ───────────────────────────

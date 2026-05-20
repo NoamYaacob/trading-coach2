@@ -96,7 +96,35 @@ export type TradovateUserSyncListenerConfig = {
   onAuthFailed?: (info: { status: number; errorText: string | null; willRetryWithForcedRefresh: boolean }) => void;
   /** Called whenever a props event arrives that triggers enforcement re-evaluation. */
   onPositionEvent?: (props: TradovatePropsEventData) => void;
-  /** Called whenever any props event arrives (for broad subscription). */
+  /**
+   * Called when the WebSocket closes unexpectedly (not via `close()`). Receives
+   * the close code/reason plus a snapshot of post-ready frame diagnostics so
+   * the worker can persist `listenerLastCloseCode`/`listenerLastCloseReason` and
+   * operators can see how long the connection lived after "ready" and what the
+   * last frame was before the drop.
+   *
+   * `gracefulRecycle` is true when Tradovate closed the session cleanly with
+   * code=1000, reason="Bye" while the listener was in "ready" state. This is
+   * normal SockJS session recycling, not an error.
+   *
+   * Not fired on clean `close()` calls or terminal-error shutdowns.
+   */
+  onClose?: (info: {
+    code: number;
+    reason: string;
+    gracefulRecycle: boolean;
+    stateAtClose: ListenerState;
+    msSinceReady: number | null;
+    lastFrameType: string | null;
+    lastFrameAt: Date | null;
+  }) => void;
+  /**
+   * Fires on both the initial connect and every subsequent reconnect.
+   * `isReconnect` is true when this is not the first connect since `.start()`.
+   */
+  onReady?: (info: { isReconnect: boolean }) => void;
+  /**
+   * Called whenever any props event arrives (for broad subscription). */
   onPropsEvent?: (props: TradovatePropsEventData) => void;
   /** Called when the listener transitions to a new state. */
   onStateChange?: (state: ListenerState) => void;
@@ -139,6 +167,12 @@ export class TradovateUserSyncListener {
   #pendingSyncId: number | null = null;
   #lastHeartbeatAt: Date | null = null;
   #lastEventAt: Date | null = null;
+  /** Stamped when the listener first enters "ready" on the current connection. */
+  #readyAt: Date | null = null;
+  /** SockJS frame type of the most recent frame on the current connection. */
+  #lastFrameType: string | null = null;
+  /** Timestamp of the most recent frame on the current connection. */
+  #lastFrameAt: Date | null = null;
   #closed = false;
   /** Held only between #connect() and the SockJS "o" frame. Cleared right
    *  after the authorize message is sent. NEVER logged. */
@@ -198,6 +232,11 @@ export class TradovateUserSyncListener {
   // ── Private: connect ───────────────────────────────────────────────────────
 
   async #connect(): Promise<void> {
+    // Reset per-connection diagnostics so the close handler always reflects
+    // the current connection, not a stale one from a previous attempt.
+    this.#readyAt = null;
+    this.#lastFrameType = null;
+    this.#lastFrameAt = null;
     this.#setState("connecting");
     const url = TRADOVATE_WS_URL[this.#config.env];
 
@@ -259,11 +298,38 @@ export class TradovateUserSyncListener {
         return;
       }
 
+      // Capture diagnostics before any state transitions.
+      const stateAtClose = this.#state;
+      const msSinceReady = this.#readyAt !== null
+        ? Date.now() - this.#readyAt.getTime()
+        : null;
+      const lastFrameType = this.#lastFrameType;
+      const lastFrameAt = this.#lastFrameAt;
+
+      // Tradovate's SockJS server periodically recycles sessions with a clean
+      // 1000/Bye close. This is normal and must not be treated as an error.
+      const gracefulRecycle =
+        event.code === 1000 &&
+        event.reason === "Bye" &&
+        stateAtClose === "ready";
+
+      // Notify the worker so it can persist the close code/reason to DB and
+      // surface them in the debug endpoint (code 1006 = abnormal/no-close-frame).
+      this.#config.onClose?.({
+        code: event.code,
+        reason: event.reason,
+        gracefulRecycle,
+        stateAtClose,
+        msSinceReady,
+        lastFrameType,
+        lastFrameAt,
+      });
+
       // Close-during-auth = either the SockJS handshake never produced "o",
       // or Tradovate rejected the authorize message. Count these so we can
       // stop a noisy retry loop on a bad/revoked token.
       const closedDuringAuth =
-        this.#state === "connecting" || this.#state === "authorizing";
+        stateAtClose === "connecting" || stateAtClose === "authorizing";
       if (closedDuringAuth) {
         this.#consecutiveAuthFailures++;
         const limit = this.#config.maxAuthFailures ?? 3;
@@ -284,14 +350,24 @@ export class TradovateUserSyncListener {
         }
       }
 
-      console.info("[TradovateUserSyncListener] connection closed, scheduling reconnect", {
-        connectionId: this.#config.connectionId,
-        code: event.code,
-        reason: event.reason,
-        reconnectAttempt: this.#reconnectAttempt,
-        consecutiveAuthFailures: this.#consecutiveAuthFailures,
-        phase: "closed",
-      });
+      console.info(
+        gracefulRecycle
+          ? "[TradovateUserSyncListener] connection gracefully recycled, reconnecting"
+          : "[TradovateUserSyncListener] connection closed, scheduling reconnect",
+        {
+          connectionId: this.#config.connectionId,
+          code: event.code,
+          reason: event.reason || null,
+          gracefulRecycle,
+          stateAtClose,
+          msSinceReady,
+          lastFrameType,
+          lastFrameAt: lastFrameAt?.toISOString() ?? null,
+          reconnectAttempt: this.#reconnectAttempt,
+          consecutiveAuthFailures: this.#consecutiveAuthFailures,
+          phase: gracefulRecycle ? "graceful_reconnect" : "connection_closed",
+        },
+      );
       this.#scheduleReconnect();
     };
   }
@@ -300,6 +376,8 @@ export class TradovateUserSyncListener {
 
   #handleRawFrame(raw: string): void {
     const frame = parseSockJSFrame(raw);
+    this.#lastFrameType = frame.type;
+    this.#lastFrameAt = new Date();
 
     switch (frame.type) {
       case "open":
@@ -312,6 +390,16 @@ export class TradovateUserSyncListener {
         break;
 
       case "close":
+        // Server-initiated SockJS session close. Log the code/reason before
+        // closing the underlying WebSocket — the subsequent ws.onclose will
+        // carry the transport-level code (often 1000) rather than this value.
+        console.info("[TradovateUserSyncListener] SockJS close frame received", {
+          connectionId: this.#config.connectionId,
+          sockjsCode: frame.code,
+          sockjsReason: frame.reason,
+          state: this.#state,
+          phase: "sockjs_close",
+        });
         this.#ws?.close();
         break;
 
@@ -362,9 +450,11 @@ export class TradovateUserSyncListener {
             connectionId: this.#config.connectionId,
             phase: "ready",
           });
+          const isReconnect = this.#reconnectAttempt > 0;
           this.#setState("ready");
           this.#pendingSyncId = null;
           this.#reconnectAttempt = 0; // successful connection — reset backoff
+          this.#config.onReady?.({ isReconnect });
         } else {
           console.warn("[TradovateUserSyncListener] user/syncrequest failed", {
             connectionId: this.#config.connectionId,
@@ -452,9 +542,9 @@ export class TradovateUserSyncListener {
       env: this.#config.env,
       command: "authorize",
       requestId: authId,
-      // Log only the frame length, never the token. A correctly formatted
-      // authorize frame is roughly: "authorize\n<id>\n\n\"<token>\"" — the
-      // surrounding JSON quotes around the token are mandatory.
+      // Log only the frame length, never the token. The on-wire format is
+      // `authorize\n<id>\n\n<token>` — the token is sent raw, NOT JSON-quoted
+      // (probe variant B_raw confirmed against demo.tradovateapi.com).
       payloadLength: frame.length,
       phase: "auth_sent",
     });
@@ -544,6 +634,7 @@ export class TradovateUserSyncListener {
   #setState(state: ListenerState): void {
     if (this.#state === state) return;
     this.#state = state;
+    if (state === "ready") this.#readyAt = new Date();
     this.#config.onStateChange?.(state);
   }
 

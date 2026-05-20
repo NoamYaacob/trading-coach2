@@ -12,6 +12,7 @@ import {
   resolvePendingActiveSource,
   FIRST_TIME_SETUP_BANNER,
   LOCKED_BANNER,
+  SESSION_ALREADY_TRADED_BANNER,
   REVIEW_INHERITED_HINT,
   type PendingDiffActiveBaseline,
   type PendingDiffBaseline,
@@ -1282,4 +1283,62 @@ test("WITH SOURCE: multiple fields differing — each row carries its own active
   const positionSize = rows.find((r) => r.label === "Max standard-equivalent contracts")!;
   assert.equal(dailyLoss.activeSource, "override");
   assert.equal(positionSize.activeSource, "inherited");
+});
+
+// ─── session_already_traded: banner copy and save-button disabled state ───────
+
+test("SESSION_ALREADY_TRADED_BANNER contains session and resets copy", () => {
+  assert.ok(
+    SESSION_ALREADY_TRADED_BANNER.includes("already traded"),
+    "banner must mention 'already traded'",
+  );
+  assert.ok(
+    SESSION_ALREADY_TRADED_BANNER.includes("session resets") ||
+      SESSION_ALREADY_TRADED_BANNER.includes("session"),
+    "banner must reference the session",
+  );
+});
+
+test("locked banner uses SESSION_ALREADY_TRADED_BANNER when passed as lockMessage", () => {
+  const banner = computeAccountRulesBanner(true, true, true, SESSION_ALREADY_TRADED_BANNER);
+  assert.equal(banner.kind, "locked");
+  assert.equal(banner.message, SESSION_ALREADY_TRADED_BANNER);
+});
+
+test("save button disabled when isHardLocked=true and existing rules (dirty form)", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    isHardLocked: true,
+  });
+  assert.equal(state.disabled, true, "hard-locked accounts must not allow saving even when dirty");
+});
+
+test("save button disabled when isHardLocked=true and existing rules (clean form)", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: false,
+    isHardLocked: true,
+  });
+  assert.equal(state.disabled, true);
+});
+
+test("save button NOT disabled by isHardLocked when no existing rules (first-time setup)", () => {
+  // First-time setup is exempt from the session_already_traded lock — same as the server check.
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    hasExistingRules: false,
+    isDirty: true,
+    isHardLocked: true,
+  });
+  assert.equal(state.disabled, false, "first-time setup must bypass the hard lock");
+});
+
+test("save button NOT disabled when isHardLocked=false (normal dirty form)", () => {
+  const state = computeAccountSaveButtonState({
+    ...baseSaveInput,
+    isDirty: true,
+    isHardLocked: false,
+  });
+  assert.equal(state.disabled, false);
 });

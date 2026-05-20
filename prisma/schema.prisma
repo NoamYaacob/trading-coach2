@@ -80,6 +80,9 @@ model User {
   manualTradeEntries ManualTradeEntry[]
   alertPreferences   AlertPreferences?
   passwordResetTokens PasswordResetToken[]
+  dryRunViolations   DryRunViolation[]
+  ruleChangeAudits   RuleChangeAudit[]
+  brokerRiskSettingsSyncAudits BrokerRiskSettingsSyncAudit[]
 }
 
 model Session {
@@ -389,12 +392,41 @@ model BrokerConnection {
   // Set by the TradovateListenerManager worker when a user/syncrequest
   // WebSocket is active for this connection. Used by the dashboard to show
   // listener freshness ("Live · 5s ago") instead of generic stale warning.
-  // Status values: "connected" | "connecting" | "reconnecting" | "closed" | null
+  // Status values: "connected" | "connecting" | "reconnecting" | "closed" | "error" | null
   listenerStatus        String?
   listenerConnectedAt   DateTime?
   listenerLastEventAt   DateTime?
   listenerLastHeartbeatAt DateTime?
   listenerErrorMessage  String?
+  // Soft-retry tracking: when the listener gives up on a connection (e.g. 401
+  // after forced refresh), the worker schedules a cooldown instead of marking
+  // the connection permanently dead. The worker plan skips reconnection until
+  // listenerNextRetryAt has passed, then resets and retries.
+  listenerLastAuthFailureAt DateTime?
+  listenerNextRetryAt   DateTime?
+  listenerRetryCount    Int              @default(0)
+  // Operator-set switch — when non-null, the worker skips this connection
+  // entirely (e.g. set by /api/debug/tradovate-listener/repair with action
+  // "disable_connection_listener"). Clears the cooldown loop while we
+  // investigate the underlying cause.
+  listenerDisabledAt    DateTime?
+  // Last WebSocket close code + reason observed on this connection — written
+  // by the listener worker when the socket transitions to "closed" so the
+  // status endpoint can surface "why did it disconnect" without log diving.
+  listenerLastCloseCode   Int?
+  listenerLastCloseReason String?
+  // Last authorize-response status observed on this connection (200 = ok,
+  // 401 = rejected). Diagnostic only — never written for non-authorize frames.
+  listenerLastAuthStatus  Int?
+  // Reconnect reconciliation — written by the listener-worker after each
+  // listener-ready event (initial connect and reconnects). Shows whether
+  // fill/trade state was successfully recovered after a WebSocket gap.
+  // Diagnostics only: nothing in the enforcement path reads these fields.
+  lastReconciliationAt          DateTime?
+  lastReconciliationTrigger     String?   // "initial_connect" | "reconnect"
+  lastReconciliationStatus      String?   // "success" | "skipped" | "failed"
+  lastReconciliationError       String?
+  lastReconciledAccountCount    Int?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
@@ -490,6 +522,10 @@ model ConnectedAccount {
   interventions     GuardianIntervention[]
   dailyProtections  DailyAccountProtection[]
   orderActionLogs   BrokerOrderActionLog[]
+  dryRunViolations  DryRunViolation[]
+  internalLockEvents InternalLockEvent[]
+  ruleChangeAudits  RuleChangeAudit[]
+  brokerRiskSettingsSyncAudits BrokerRiskSettingsSyncAudit[]
 
   @@unique([userId, externalAccountId, platform])
   @@index([userId, isActive])
@@ -612,6 +648,20 @@ model NormalizedTradeEvent {
 
   account         ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  // Natural dedup key. Both ingestion paths (Tradovate webhook + cron sync)
+  // already dedup by (accountId, externalTradeId) before inserting, but the
+  // check-then-create pattern races under concurrent reconciliation. This
+  // constraint makes duplicate inserts impossible at the DB level.
+  //
+  // eventType is part of the key because externalTradeId is drawn from two
+  // separate Tradovate ID namespaces: order IDs (trade_opened) and fill IDs
+  // (fill / trade_closed*). Two genuinely distinct events can share a numeric
+  // ID across namespaces — including eventType keeps them distinct while still
+  // collapsing same-type duplicates.
+  //
+  // Rows with a null externalTradeId (e.g. daily_pnl_updated) are exempt:
+  // PostgreSQL treats NULLs as distinct in a unique index.
+  @@unique([accountId, eventType, externalTradeId])
   @@index([accountId, occurredAt])
   @@index([accountId, eventType, occurredAt])
   @@index([accountId, contractId, occurredAt])
@@ -643,10 +693,65 @@ model GuardianIntervention {
   /// Raw JSON response from order/liquidatepositions (null when no write was made)
   flattenResponseJson Json?
 
-  account     ConnectedAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // ── Phase 2C audit / idempotency fields ──────────────────────────────────
+  // Written when the realtime listener triggers enforcement. Null for
+  // interventions created by the cron sync path.
+  /// FK to the InternalLockEvent that preceded this broker enforcement attempt.
+  /// Null when Phase 2B was not active or enforcement came from the cron path.
+  internalLockEventId     String?
+  /// Dedup key preventing duplicate broker writes from the realtime listener.
+  /// Format: "${accountId}:${triggerType}:${tradingDay}:broker_enforcement"
+  /// Unique constraint is the DB-level race-condition guard.
+  listenerBrokerDedupKey  String?   @unique
+  /// Trading day (YYYY-MM-DD) the violation occurred on — needed for per-day
+  /// dedup without parsing timestamps. Null for cron-path interventions.
+  tradingDay              String?
+
+  account           ConnectedAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  internalLockEvent InternalLockEvent? @relation(fields: [internalLockEventId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
   @@index([userId, createdAt])
+  @@index([internalLockEventId])
+}
+
+// Phase 2B: internal app lock audit trail. Written when the realtime listener
+// sets riskState=STOPPED for a demo account. No broker action is ever taken.
+model InternalLockEvent {
+  id                String    @id @default(cuid())
+  accountId         String
+  userId            String
+  /// "daily_loss_limit" | "trade_limit" | "max_loss_streak"
+  ruleType          String
+  tradingDay        String
+  thresholdAmount   Decimal?  @db.Decimal(10, 2)
+  thresholdCount    Int?
+  observedAmount    Decimal?  @db.Decimal(10, 2)
+  observedCount     Int?
+  /// Always true — this record type never involves broker API calls.
+  internalOnly      Boolean   @default(true)
+  /// Always false — no broker order, no flatten, no cancel was sent.
+  brokerActionTaken Boolean   @default(false)
+  /// Set when riskState is reset back to NORMAL (manual reset or session end).
+  clearedAt         DateTime?
+  /// "manual_reset" | "session_end"
+  clearedBy         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  /// Idempotency key preventing duplicate active locks per account/rule/day.
+  /// Format: "${accountId}:${ruleType}:${tradingDay}:internal_lock"
+  /// Non-null while active (clearedAt IS NULL) — DB unique constraint enforces
+  /// at-most-one active lock per account/rule/day even under concurrent props events.
+  /// Set to null on clear so the same slot can be re-used after a manual reset.
+  activeDedupKey    String?   @unique
+
+  account               ConnectedAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  guardianInterventions GuardianIntervention[]
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+  @@index([accountId, tradingDay])
 }
 
 model BrokerOrderActionLog {
@@ -716,6 +821,37 @@ model ManualTradeEntry {
   @@index([userId, tradedAt])
 }
 
+// Dry-run shadow violations written by the realtime listener worker when
+// ENFORCEMENT_DRY_RUN=true. Records what action WOULD have been taken without
+// actually taking it. Safe to inspect at any time — no enforcement side-effects.
+model DryRunViolation {
+  id                  String   @id @default(cuid())
+  userId              String
+  accountId           String
+  externalAccountId   String?
+  env                 String   // "demo" | "live"
+  ruleType            String   // "daily_loss_limit" | "trade_limit" | "max_loss_streak"
+  thresholdAmount     Decimal? @db.Decimal(10, 2)
+  thresholdCount      Int?
+  observedAmount      Decimal? @db.Decimal(10, 2)
+  observedCount       Int?
+  sourceEventId       String?
+  dryRun              Boolean  @default(true)
+  actionWouldHaveTaken String  @default("internal_lock")
+  tradingDay          String   // YYYY-MM-DD
+  // Prevents duplicate rows for the same account+rule per trading day.
+  // Format: "<accountId>:<ruleType>:<tradingDay>:dry_run"
+  dedupKey            String   @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tradingDay])
+  @@index([accountId, ruleType, tradingDay])
+}
+
 model AlertPreferences {
   id              String   @id @default(cuid())
   userId          String   @unique
@@ -730,4 +866,98 @@ model AlertPreferences {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Singleton row written by the Tradovate listener-worker on every reconcile
+// loop. The web/app and listener-worker run as separate Railway services with
+// independent env configuration, so the web Safety Console cannot read the
+// listener-worker's process.env directly. This row mirrors the listener-worker's
+// enforcement env flags so the console can verify broker-write safety.
+//
+// Diagnostics only — nothing in the broker enforcement path reads this row.
+// `reportedAt` lets readers detect a stale/stopped worker and fall back to
+// "not exposed" instead of trusting old flag values.
+model ListenerWorkerStatus {
+  id                       String   @id
+  brokerEnforcementEnabled Boolean
+  listenerLiveEnabled      Boolean
+  internalLockEnabled      Boolean
+  dryRunEnabled            Boolean
+  simulationEnabled        Boolean
+  demoAccountAllowlist     String[]
+  reportedAt               DateTime
+  updatedAt                DateTime @updatedAt
+}
+
+model RuleChangeAudit {
+  id                String   @id @default(cuid())
+  userId            String
+  /// null for default template edits
+  accountId         String?
+  /// "default" | "account"
+  scope             String
+  /// JSON snapshot of old rule values
+  oldValuesJson     Json?
+  /// JSON snapshot of new rule values
+  newValuesJson     Json
+  allowed           Boolean
+  reason            String
+  /// "account_stopped" | "active_session_lock" | "protection_locked" | "open_position" | "allowed" | "server_error"
+  blockReason       String?
+  sessionRiskState  String?
+  listenerFreshAt   DateTime?
+  hasOpenPosition   Boolean?
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime @default(now())
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([allowed, createdAt])
+}
+
+model BrokerRiskSettingsSyncAudit {
+  id                       String   @id @default(cuid())
+  userId                   String
+  /// null when accountId was deleted
+  accountId                String?
+  /// Snapshot of the Tradovate externalAccountId at write time
+  externalAccountId        String?
+  /// BrokerConnection.id — nullable (account may have no connection yet)
+  brokerConnectionId       String?
+  /// "tradovate"
+  broker                   String
+  /// "daily_loss_limit"
+  ruleType                 String
+  /// The dollar amount written (positive)
+  amount                   Float?
+  /// "demo" | "live" — from BrokerConnection.env
+  environment              String?
+  /// true when ENFORCEMENT_DRY_RUN=true at call time
+  dryRun                   Boolean
+  /// true when BROKER_ENFORCEMENT_ENABLED=true at call time
+  brokerEnforcementEnabled Boolean
+  /// "gate_blocked" | "dry_run" | "success" | "failed" | "skipped"
+  outcome                  String
+  /// Machine-readable gate failure code; null when outcome != gate_blocked
+  gateFailureReason        String?
+  /// Human-readable reason the sync was skipped or blocked
+  skipReason               String?
+  /// Payload that would be / was sent to Tradovate
+  payloadPreviewJson       Json?
+  /// Raw Tradovate API response; null when no broker call was made
+  brokerResponseJson       Json?
+  /// Error message when outcome=failed
+  errorMessage             String?
+  createdAt                DateTime @default(now())
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([outcome, createdAt])
 }

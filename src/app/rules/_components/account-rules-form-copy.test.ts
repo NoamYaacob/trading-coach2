@@ -144,7 +144,7 @@ test("account form: flatten-at-cutoff hint uses the saved-for-future-automation 
     "flatten-at-cutoff hint must say 'Saved for future cutoff automation'",
   );
   assert.ok(
-    src.includes("Not active until cutoff scheduling and live order actions are enabled"),
+    src.includes("This action is not active yet"),
     "flatten-at-cutoff hint must clearly state it is not active yet",
   );
 });
@@ -320,17 +320,19 @@ test("pending save status copy uses 'Saved as pending — these rules will activ
 });
 
 test("Max position size copy uses standard-equivalent model (Apex prop-firm framing)", () => {
-  // The hint was updated to reflect the Apex '10 micro = 1 standard' model and
-  // to warn that broker hard limits may be raw-contract based. Both forms read
-  // MAX_POSITION_SIZE_COPY from position-size-copy.ts so checking the source
-  // file is enough to catch regressions.
+  // The hint uses the simplified customer-facing explanation of the standard-equivalent
+  // model. Internal API reasoning (raw contract counts, broker cap logic) is not
+  // exposed in the customer hint.
   const copySrc = readFileSync(
     resolve(import.meta.dirname, "position-size-copy.ts"),
     "utf8",
   );
   assert.match(copySrc, /standard-equivalent/i, "copy must use standard-equivalent framing");
-  assert.match(copySrc, /10 micro/i, "hint must explain the Apex 10-micro = 1-standard rule");
-  assert.match(copySrc, /raw.{0,20}contract/i, "hint must warn that broker-side limits use raw contract counts, not standard-equivalent weighting");
+  assert.match(copySrc, /1 NQ equal 10 MNQ/i, "hint must explain the Apex 1 NQ = 10 MNQ sizing");
+  assert.ok(
+    copySrc.includes("Guardrail uses this limit to monitor position size"),
+    "hint must use the simplified monitoring explanation",
+  );
   assert.ok(
     !copySrc.includes("Broker-side blocking is not active yet"),
     "stale 'not active yet' wording must be removed from MAX_POSITION_SIZE_COPY",

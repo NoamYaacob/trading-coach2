@@ -756,12 +756,16 @@ describe("deriveBrokerEnforcementCopy", () => {
     assert.equal(kind, "dry_run");
   });
 
-  it("dry_run text uses user-facing 'Protection test mode' prefix (not the technical 'Dry run')", () => {
+  it("dry_run text uses 'Monitoring only' prefix (not 'Protection test mode' or 'Dry run')", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
-    assert.ok(text.includes("Protection test mode"), `expected 'Protection test mode' prefix, got: ${text}`);
+    assert.ok(text.includes("Monitoring only"), `expected 'Monitoring only' prefix, got: ${text}`);
     assert.ok(
       !text.includes("Dry run"),
       `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
+    );
+    assert.ok(
+      !text.toLowerCase().includes("test mode"),
+      `'test mode' must not appear in user-facing copy: ${text}`,
     );
   });
 
@@ -773,15 +777,11 @@ describe("deriveBrokerEnforcementCopy", () => {
     );
   });
 
-  it("dry_run text mentions both 'Position exit' and 'broker-side lockout' (combined simulation)", () => {
+  it("dry_run text mentions broker-side enforcement is not active", () => {
     const { text } = deriveBrokerEnforcementCopy("dry_run");
     assert.ok(
-      text.includes("Position exit") || text.includes("position exit"),
-      `expected 'Position exit' in dry_run text, got: ${text}`,
-    );
-    assert.ok(
-      text.toLowerCase().includes("lockout"),
-      `expected 'lockout' in dry_run text, got: ${text}`,
+      text.toLowerCase().includes("not active") || text.toLowerCase().includes("monitoring only"),
+      `expected enforcement-inactive indication in dry_run text, got: ${text}`,
     );
   });
 
@@ -876,14 +876,18 @@ describe("deriveFlattenCopy", () => {
     assert.equal(deriveFlattenCopy("dry_run").kind, "dry_run");
   });
 
-  it("dry_run text uses user-facing 'Protection test mode' prefix and mentions 'simulated'", () => {
+  it("dry_run text uses 'Monitoring only' prefix and mentions 'simulated'", () => {
     const { text } = deriveFlattenCopy("dry_run");
-    assert.ok(text.includes("Protection test mode"), `expected 'Protection test mode' prefix, got: ${text}`);
+    assert.ok(text.includes("Monitoring only"), `expected 'Monitoring only' prefix, got: ${text}`);
     assert.ok(
       !text.includes("Dry run"),
       `'Dry run' is internal-only and must not leak to user-facing copy: ${text}`,
     );
     assert.ok(text.toLowerCase().includes("simulated"), `expected 'simulated', got: ${text}`);
+    assert.ok(
+      !text.toLowerCase().includes("test mode"),
+      `'test mode' must not appear in user-facing copy: ${text}`,
+    );
   });
 
   it("null → safe fallback with kind=internal_only", () => {
@@ -1220,21 +1224,28 @@ describe("deriveFooterCopy", () => {
     assert.equal(copy, null);
   });
 
-  it("dry_run without banner → 'Protection test mode' footer text (user-facing phrase, not 'Dry run')", () => {
+  it("dry_run without banner → 'Monitoring active' footer text (user-facing phrase, not 'Dry run')", () => {
     const copy = deriveFooterCopy({
       modes: ["dry_run"],
       hasDryRunBanner: false,
     });
     assert.ok(copy != null);
     assert.ok(
-      copy!.includes("Protection test mode"),
-      `expected 'Protection test mode' in footer copy, got: ${copy}`,
+      copy!.includes("Monitoring active"),
+      `expected 'Monitoring active' in footer copy, got: ${copy}`,
     );
     assert.ok(
       !copy!.toLowerCase().includes("dry run"),
       `'Dry run' must not leak into user-facing footer, got: ${copy}`,
     );
-    assert.ok(copy!.toLowerCase().includes("broker actions"));
+    assert.ok(
+      !copy!.toLowerCase().includes("test mode"),
+      `'test mode' must not appear in user-facing footer, got: ${copy}`,
+    );
+    assert.ok(
+      copy!.toLowerCase().includes("not active") || copy!.toLowerCase().includes("enforcement"),
+      `footer must confirm no enforcement, got: ${copy}`,
+    );
   });
 
   it("broker_active → footer confirms broker risk settings enabled", () => {
@@ -1244,7 +1255,7 @@ describe("deriveFooterCopy", () => {
     });
     assert.equal(
       copy,
-      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
+      "Broker risk settings enabled · Supported money limits can be protected through Tradovate.",
     );
   });
 
@@ -1274,7 +1285,7 @@ describe("deriveFooterCopy", () => {
     });
     assert.equal(
       copy,
-      "Broker risk settings enabled · Daily loss and profit target can be broker-enforced.",
+      "Broker risk settings enabled · Supported money limits can be protected through Tradovate.",
     );
   });
 
@@ -1289,11 +1300,11 @@ describe("deriveFooterCopy", () => {
 
 // ── DRY_RUN_BANNER_COPY ───────────────────────────────────────────────────────
 
-describe("DRY_RUN_BANNER_COPY (user-facing 'Protection test mode' banner)", () => {
-  it("uses 'Protection test mode' as the title phrase", () => {
+describe("DRY_RUN_BANNER_COPY (monitoring-active banner)", () => {
+  it("does NOT use 'Protection test mode' — avoids confusing 'test mode' language", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.includes("Protection test mode"),
-      `expected 'Protection test mode' in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
+      !DRY_RUN_BANNER_COPY.toLowerCase().includes("test mode"),
+      `'test mode' must not appear in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
@@ -1304,24 +1315,24 @@ describe("DRY_RUN_BANNER_COPY (user-facing 'Protection test mode' banner)", () =
     );
   });
 
-  it("uses plain language: 'watching' the accounts (instead of 'monitoring' / 'simulating')", () => {
+  it("explains broker-side enforcement is not active", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("watching your accounts"),
-      `expected 'watching your accounts' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("not active") || DRY_RUN_BANNER_COPY.toLowerCase().includes("enforcement"),
+      `expected enforcement-inactive indication in banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("explicitly states it 'will not block or close trades' (the user-facing safety promise)", () => {
+  it("states that Guardrail is monitoring the accounts", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.includes("will not block or close trades"),
-      `expected 'will not block or close trades' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("monitoring") || DRY_RUN_BANNER_COPY.toLowerCase().includes("watching"),
+      `expected monitoring/watching in copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
-  it("references the live-enforcement toggle so the user knows what changes when it's flipped", () => {
+  it("does not forward-reference 'live enforcement is enabled' (avoids confusing non-technical users)", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("live enforcement"),
-      `expected 'live enforcement' in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      !DRY_RUN_BANNER_COPY.includes("until live enforcement is enabled"),
+      `'until live enforcement is enabled' must not appear in user-facing banner copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 });
@@ -1353,8 +1364,8 @@ describe("shouldShowEnforcementChip", () => {
 // ── Estimated short copy ──────────────────────────────────────────────────────
 
 describe("ESTIMATED_TRADE_COUNT_SHORT (visible row copy)", () => {
-  it("is the literal 'Not used for lockout'", () => {
-    assert.equal(ESTIMATED_TRADE_COUNT_SHORT, "Not used for lockout");
+  it("is the literal 'Not counted for account lock'", () => {
+    assert.equal(ESTIMATED_TRADE_COUNT_SHORT, "Not counted for account lock");
   });
 
   it("is short — under 30 characters (must not bloat the table cell)", () => {
@@ -1553,14 +1564,14 @@ describe("deriveGroupStateSuffix", () => {
     assert.equal(deriveGroupStateSuffix({ accounts: [] }), null);
   });
 
-  it("any account in dry_run → 'Protection test mode' (the dominant indicator)", () => {
+  it("any account in dry_run without full_access → 'Monitoring only'", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
       ],
     });
-    assert.equal(suffix, "Protection test mode");
+    assert.equal(suffix, "Monitoring only");
   });
 
   it("any account requires consent → 'Consent required'", () => {
@@ -1785,6 +1796,87 @@ describe("deriveProtectionStatusPanel", () => {
     assert.ok(panel !== null);
     assert.equal(panel!.kind, "consent_required");
     assert.equal(panel!.showConsentCta, true);
+  });
+
+  it("protection_locked with active_session sets lockReason='active_session' and correct copy applies", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "active_session",
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "active_session");
+  });
+
+  it("protection_locked with pre_session sets lockReason='pre_session'", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "pre_session");
+  });
+
+  it("Case 3: weekend close + pre_session lock → null (no misleading 'during live trading' banner)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+      isWeekendClose: true,
+    });
+    assert.equal(panel, null, "should suppress banner when market is closed and no active session");
+  });
+
+  it("Case 3: maintenance window + pre_session lock → null", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "pre_session",
+      isMaintenanceWindow: true,
+    });
+    assert.equal(panel, null);
+  });
+
+  it("Case 3: weekend close + active_session lock → still shows panel (session is running)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: true,
+      lockReason: "active_session",
+      isWeekendClose: true,
+    });
+    assert.ok(panel !== null, "active session during weekend edge should still show panel");
+    assert.equal(panel!.kind, "protection_locked");
+    assert.equal(panel!.lockReason, "active_session");
+  });
+
+  it("Case 3: market closed + isLocked=false → null (no banner)", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 0,
+      isProtectionLocked: false,
+      lockReason: null,
+      isWeekendClose: true,
+    });
+    assert.equal(panel, null);
+  });
+
+  it("consent_required is not suppressed during weekend close", () => {
+    const panel = deriveProtectionStatusPanel({
+      isDryRunActive: false,
+      requiresConsentCount: 2,
+      isProtectionLocked: false,
+      isWeekendClose: true,
+    });
+    assert.ok(panel !== null);
+    assert.equal(panel!.kind, "consent_required");
   });
 });
 

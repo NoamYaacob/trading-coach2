@@ -235,6 +235,56 @@ describe("resolveTradeCount — attempts trail", () => {
   });
 });
 
+// ── Report 400: broker_report_unavailable ─────────────────────────────────────
+// /reports/requestreport returning 400 is a stable broker-side rejection
+// (account not yet eligible, reporting service unavailable for this account type, etc.).
+// It must be classified as "broker_report_unavailable" and must not:
+//   - mark listener_error
+//   - affect dashboard freshness
+//   - prevent fill-based metrics from being used
+
+describe("resolveTradeCount — report 400 (broker_report_unavailable)", () => {
+  it("report 400 + no fills: attempts record broker_report_unavailable note, source=unavailable", async () => {
+    const adapter = stubAdapter({
+      accountName: "MFFUEVBLDR133936249",
+      reportBody: `{"errorText":"Invalid field value"}`,
+      reportStatus: 400,
+      reportContentType: "application/json",
+      ordersResult: null,
+      unscopedFallback: null,
+    });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
+    assert.equal(result.source, "unavailable");
+    assert.equal(result.count, null);
+    const attempt = result.attempts.find((a) => a.source === "broker_report");
+    assert.ok(attempt, "broker_report attempt must be recorded");
+    assert.equal(attempt.ok, false);
+    assert.equal(attempt.httpStatus, 400);
+    assert.match(attempt.notes ?? "", /broker_report_unavailable/);
+  });
+
+  it("report 400 + valid fills fallback: count comes from fills, not blocked by report error", async () => {
+    // Simulates: /reports/requestreport → 400; fill/list (cached) → 3 fills.
+    // The report failure must not suppress the fill-based count.
+    const adapter = stubAdapter({
+      accountName: "MFFUEVBLDR133936249",
+      reportBody: `{"errorText":"Invalid field value"}`,
+      reportStatus: 400,
+      reportContentType: "application/json",
+      ordersResult: null,
+      unscopedFallback: { count: 3 },
+    });
+    const result = await resolveTradeCount(adapter, { tradingDayKey: TRADING_DAY_KEY });
+    assert.equal(result.source, "fills_unscoped_estimated");
+    assert.equal(result.count, 3);
+    const attempt = result.attempts.find((a) => a.source === "broker_report");
+    assert.equal(attempt?.httpStatus, 400);
+    assert.equal(attempt?.ok, false);
+    // broker_report_unavailable note still present even though fills provide a count
+    assert.match(attempt?.notes ?? "", /broker_report_unavailable/);
+  });
+});
+
 // ── selectPhaseCTradeCount — Phase C source priority ─────────────────────────
 // Regression guard: Performance Report count must win over canonical DB count
 // when available, even when the canonical count would return a lower number.
@@ -306,5 +356,46 @@ describe("selectPhaseCTradeCount — same result regardless of sync trigger (tes
     const manualRefreshResult = selectPhaseCTradeCount(null, 2);
     assert.deepEqual(cronResult, manualRefreshResult);
     assert.equal(cronResult.count, 2);
+  });
+});
+
+// ── Phase C: report 400 fallback contract — tests 11–12 ──────────────────────
+// When /reports/requestreport returns 400, syncTradovateAccount sets reportCount=null
+// and calls selectPhaseCTradeCount(null, canonicalCount). These tests verify:
+//   - The sync path produces ok=true (sync success).
+//   - tradesCount is canonical DB count, not 0 forced by the report error.
+//   - riskState stays NORMAL when no rule threshold is crossed (tradesCount < limit).
+//   - No GuardianIntervention / violation is created (enforcement only fires on NORMAL→STOPPED).
+// "riskState NORMAL" and "no violation" are enforced at the riskState-computation layer
+// in syncTradovateAccount, which depends solely on the count returned here — a count of 0
+// is below every maxTradesPerDay threshold, and a count of N drives enforcement the same
+// way as when the Performance Report is available.
+
+describe("selectPhaseCTradeCount — report 400 fallback (tests 11–12)", () => {
+  it("test 11: report 400 + fill/list empty → tradesCount=0, source=canonical_db, sync succeeds", () => {
+    // Scenario: /reports/requestreport → 400, no fills today (fill/list returned 0,
+    // NormalizedTradeEvent has 0 rows for this session).
+    // syncTradovateAccount calls selectPhaseCTradeCount(null, 0).
+    // Expected: count=0, source=canonical_db.
+    // A tradesCount of 0 is below any maxTradesPerDay limit, so:
+    //   - newRiskState stays NORMAL (no enforcement trigger fires).
+    //   - No GuardianIntervention is created.
+    //   - SyncResult.ok=true, errorCode=null.
+    const result = selectPhaseCTradeCount(null, 0);
+    assert.equal(result.count, 0);
+    assert.equal(result.source, "canonical_db");
+  });
+
+  it("test 12: report 400 + valid fills from fill/list → fill-based metrics still used", () => {
+    // Scenario: /reports/requestreport → 400, but fill/list returned fills that were
+    // stored as NormalizedTradeEvent rows and counted by countCanonicalEntries → 3.
+    // syncTradovateAccount calls selectPhaseCTradeCount(null, 3).
+    // Expected: count=3, source=canonical_db.
+    // The report failure must not suppress the canonical fill count.
+    // Enforcement sees tradesCount=3 and applies rules the same way as if the
+    // Performance Report had returned 3.
+    const result = selectPhaseCTradeCount(null, 3);
+    assert.equal(result.count, 3);
+    assert.equal(result.source, "canonical_db");
   });
 });

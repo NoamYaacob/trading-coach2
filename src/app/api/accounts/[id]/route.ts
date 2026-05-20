@@ -23,6 +23,10 @@ import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actio
 import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 import { validateRiskRulesBody } from "./risk-rules-validate";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { executeDailyLossSync } from "./daily-loss-sync";
+import { writeBrokerRiskSettingsSyncAudit } from "@/lib/brokers/broker-risk-settings-sync-audit-writer";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -155,7 +159,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }),
       prisma.liveSessionState.findUnique({
         where: { accountId: id },
-        select: { riskState: true, cooldownActive: true },
+        select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
       }),
       prisma.guardianStatus.findUnique({
         where: { userId: currentUser.id },
@@ -167,6 +171,57 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       liveState?.riskState === "STOPPED" || liveState?.cooldownActive === true;
     const hasProtectionLockToday =
       isAccountStopped || guardianStatus?.currentLockoutActive === true;
+
+    // ── Hard reject: riskState=STOPPED blocks rule changes (not first-time setup) ──
+    const ip =
+      req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
+    const userAgent = req.headers.get("user-agent") ?? null;
+    if (liveState?.riskState === "STOPPED" && !isFirstTimeSetup) {
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: false,
+        reason: "account_stopped",
+        blockReason: "account_stopped",
+        sessionRiskState: "STOPPED",
+        ip,
+        userAgent,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Rules are locked for this account right now because protection is active. You can edit them after the lock clears.",
+        },
+        { status: 423 },
+      );
+    }
+
+    // ── Hard reject: account has already traded this session ──────────────────
+    const tradingDayKey = deriveCmeTradingDayKey(new Date());
+    if (!isFirstTimeSetup && liveState?.sessionDate === tradingDayKey && (liveState?.tradesCount ?? 0) > 0) {
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: false,
+        reason: "session_already_traded",
+        blockReason: "session_already_traded",
+        sessionRiskState: liveState?.riskState ?? null,
+        ip,
+        userAgent,
+      });
+      return NextResponse.json(
+        {
+          error: "session_already_traded",
+          message:
+            "Rules are locked for this session — this account has already traded. Changes can be made after the session resets.",
+        },
+        { status: 423 },
+      );
+    }
 
     const userRulesPresetsJson = userRules?.sessionPresetsJson ?? null;
     const eligibility = deriveRuleEditEligibility({
@@ -219,6 +274,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         effectiveDate: nextDayKey,
         message: buildRuleEditLockMessage(eligibility, lockMsgTz),
       };
+      // Audit: saved as pending
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: (body.riskRules ?? {}) as Record<string, unknown>,
+        allowed: true,
+        reason: "saved_as_pending",
+        blockReason: eligibility.reason ?? null,
+        sessionRiskState: hasProtectionLockToday ? "LOCKED" : null,
+        ip,
+        userAgent,
+      });
     } else if (body.riskRules === null) {
       await prisma.accountRiskRules.deleteMany({ where: { accountId: id } });
     } else {
@@ -238,6 +306,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           pendingPayloadJson: Prisma.JsonNull,
           pendingEffectiveDate: null,
         },
+      });
+
+      // Audit: successful save of account-specific rules
+      await writeRuleChangeAudit({
+        userId: currentUser.id,
+        accountId: id,
+        scope: "account",
+        newValuesJson: body.riskRules as Record<string, unknown>,
+        allowed: true,
+        reason: "allowed",
+        ip,
+        userAgent,
       });
 
       // Sync broker-side Max Position Size when maxContracts is present in the
@@ -280,6 +360,116 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
               accountId: id,
               externalAccountId: existing.externalAccountId,
               error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+      }
+
+      // Sync Daily Loss risk setting to Tradovate when maxDailyLoss is saved.
+      // Fire-and-forget (void) — broker sync failure must NOT roll back the DB save.
+      // Gates (BROKER_ENFORCEMENT_ENABLED, env=demo, allowlist, guardian, etc.) are
+      // evaluated inside executeDailyLossSync before any broker call is made.
+      if (
+        body.riskRules !== null &&
+        "maxDailyLoss" in body.riskRules &&
+        typeof body.riskRules.maxDailyLoss === "number" &&
+        body.riskRules.maxDailyLoss > 0 &&
+        existing.platform === "tradovate"
+      ) {
+        void (async () => {
+          // brokerEnv is declared outside the try so the catch block can include it
+          // in the audit row even if the execution path failed after the DB queries.
+          let brokerEnv: string | null = null;
+          const maxDailyLoss = body.riskRules!.maxDailyLoss as number;
+          const baseAudit = {
+            userId: currentUser.id,
+            accountId: id,
+            externalAccountId: existing.externalAccountId ?? null,
+            brokerConnectionId: existing.brokerConnectionId ?? null,
+            broker: "tradovate" as const,
+            ruleType: "daily_loss_limit" as const,
+            amount: maxDailyLoss,
+            dryRun: process.env.ENFORCEMENT_DRY_RUN === "true",
+            brokerEnforcementEnabled: process.env.BROKER_ENFORCEMENT_ENABLED === "true",
+          };
+          try {
+            const [brokerConnection, guardianProfile] = await Promise.all([
+              existing.brokerConnectionId
+                ? prisma.brokerConnection.findUnique({
+                    where: { id: existing.brokerConnectionId },
+                    select: { env: true, connectionStatus: true, permissionLevel: true },
+                  })
+                : null,
+              prisma.guardianProfile.findUnique({
+                where: { userId: currentUser.id },
+                select: { guardianEnabled: true },
+              }),
+            ]);
+            brokerEnv = brokerConnection?.env ?? null;
+
+            const outcome = await executeDailyLossSync(
+              {
+                accountId: id,
+                userId: currentUser.id,
+                maxDailyLoss,
+                isActive: account.isActive,
+                missingFromBroker: existing.missingFromBrokerSince != null,
+                brokerConnectionEnv: brokerEnv,
+                brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
+                permissionLevel: brokerConnection?.permissionLevel ?? null,
+                guardianEnabled: guardianProfile?.guardianEnabled ?? false,
+              },
+              async () => {
+                const client = new TradovateClient(existing.id, currentUser.id);
+                await client.initialize();
+                return client;
+              },
+            );
+
+            console.info("[accounts/patch] daily loss sync outcome", {
+              accountId: id,
+              status: outcome.status,
+              ...("gateFailureReason" in outcome && { gateFailureReason: outcome.gateFailureReason }),
+              ...("payloadPreview" in outcome && { payloadPreview: outcome.payloadPreview }),
+            });
+
+            await writeBrokerRiskSettingsSyncAudit({
+              ...baseAudit,
+              environment: brokerEnv,
+              outcome:
+                outcome.status === "synced"
+                  ? "success"
+                  : outcome.status === "error"
+                    ? "failed"
+                    : outcome.status,
+              gateFailureReason:
+                "gateFailureReason" in outcome ? outcome.gateFailureReason : null,
+              skipReason:
+                "skipReason" in outcome
+                  ? outcome.skipReason
+                  : outcome.status === "skipped"
+                    ? (outcome as { status: "skipped"; reason: string }).reason
+                    : null,
+              payloadPreviewJson:
+                "payloadPreview" in outcome &&
+                outcome.payloadPreview != null
+                  ? (outcome.payloadPreview as Record<string, unknown>)
+                  : null,
+              brokerResponseJson:
+                "brokerResponse" in outcome
+                  ? outcome.brokerResponse
+                  : null,
+            });
+          } catch (err) {
+            console.warn("[accounts/patch] daily loss sync failed (non-fatal)", {
+              accountId: id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            await writeBrokerRiskSettingsSyncAudit({
+              ...baseAudit,
+              environment: brokerEnv,
+              outcome: "failed",
+              errorMessage: err instanceof Error ? err.message : String(err),
             });
           }
         })();

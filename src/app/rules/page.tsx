@@ -13,6 +13,7 @@ import {
   buildRuleEditLockMessage,
 } from "@/lib/rule-edit-eligibility";
 import { isCmeMaintenanceWindow, isCmeWeekendClose } from "@/lib/time/cme-session";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
 import { canActivateRulesNow, activationReasonMessage } from "@/lib/rule-activation-window";
 import { hasValidConsent, decideConsentGate } from "@/lib/brokers/automated-actions-consent";
 import { formatPendingRuleActivation } from "@/lib/pending-rule-activation";
@@ -115,7 +116,7 @@ export default async function RulesPage({
     scope === "account" && id
       ? prisma.liveSessionState.findUnique({
           where: { accountId: id },
-          select: { riskState: true, cooldownActive: true },
+          select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
         })
       : Promise.resolve(null),
   ]);
@@ -194,6 +195,9 @@ export default async function RulesPage({
   const accountIsLockedForPending =
     selectedAccountLiveState?.riskState === "STOPPED" ||
     selectedAccountLiveState?.cooldownActive === true;
+  const hasAlreadyTradedToday =
+    selectedAccountLiveState?.sessionDate === deriveCmeTradingDayKey(new Date()) &&
+    (selectedAccountLiveState?.tradesCount ?? 0) > 0;
   const accountPendingDecision =
     selectedAccount?.riskRules?.pendingPayloadJson
       ? canActivateRulesNow({
@@ -368,10 +372,10 @@ export default async function RulesPage({
               <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
             </summary>
             <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
-              <li>• Guardrail sends warnings when rules are crossed.</li>
-              <li>• In app-level monitoring, Guardrail marks the account locked inside the app only.</li>
-              <li>• Broker-side cancel, flatten, and blocking require write permissions and enabled order actions.</li>
-              <li>• Read-only connections support monitoring and alerts only.</li>
+              <li>• <span className="font-medium text-stone-700">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
+              <li>• <span className="font-medium text-stone-700">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
+              <li>• <span className="font-medium text-stone-700">Broker risk settings:</span> when enabled, Guardrail writes your daily loss limit directly to Tradovate — the exchange enforces it independently of the app.</li>
+              <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
             </ul>
           </details>
 
@@ -428,8 +432,15 @@ export default async function RulesPage({
                       selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
                   })}
                   initial={accountInitial}
-                  isLocked={!ruleEditEligibility.canEditNow}
-                  lockMessage={accountRuleLockMessage}
+                  isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending || hasAlreadyTradedToday}
+                  isHardLocked={hasAlreadyTradedToday}
+                  lockMessage={
+                    hasAlreadyTradedToday
+                      ? "Rules are locked for this session — this account has already traded. Changes can be made after the session resets."
+                      : accountIsLockedForPending
+                      ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
+                      : accountRuleLockMessage
+                  }
                   pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
                   canApplyPendingNow={accountCanApplyPendingNow}
@@ -535,6 +546,9 @@ function ScopeContextHeader({
         <p className="mt-0.5 text-sm text-stone-500">
           Applies to all accounts that don't have their own override. Select an account in the sidebar to configure it individually.
         </p>
+        <p className="mt-1 text-xs text-stone-400">
+          These are the rules Guardrail watches during your trading session.
+        </p>
       </div>
     );
   }
@@ -570,6 +584,9 @@ function ScopeContextHeader({
         )}
       </div>
       {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
+      <p className="mt-1 text-xs text-stone-400">
+        These are the rules Guardrail watches for this account during your trading session.
+      </p>
     </div>
   );
 }

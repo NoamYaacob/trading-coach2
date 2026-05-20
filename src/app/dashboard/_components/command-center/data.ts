@@ -87,6 +87,11 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        internalLockEvents: {
+          where: { clearedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
         brokerConnection: {
           select: {
             createdAt: true,
@@ -96,6 +101,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
             listenerStatus: true,
             listenerLastEventAt: true,
             listenerLastHeartbeatAt: true,
+            listenerLastCloseCode: true,
+            listenerLastCloseReason: true,
           },
         },
       },
@@ -123,6 +130,41 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     orderBy: { lastSeenInBrokerAt: "desc" },
   });
 
+  // Find all BrokerConnections for this user that currently have an active
+  // listener. Used below to fill in listener freshness when an account's direct
+  // brokerConnectionId points to an older connection (common after an OAuth
+  // reconnect creates a new BrokerConnection while existing ConnectedAccount rows
+  // still reference the previous one).
+  const activeListenerConnections = await prisma.brokerConnection.findMany({
+    where: {
+      userId,
+      platform: "tradovate",
+      connectionStatus: { in: ["connected_live", "connected_readonly"] },
+      listenerStatus: { in: ["connected", "connecting", "reconnecting"] },
+    },
+    select: {
+      id: true,
+      env: true,
+      listenerStatus: true,
+      listenerLastEventAt: true,
+      listenerLastHeartbeatAt: true,
+      listenerLastCloseCode: true,
+      listenerLastCloseReason: true,
+    },
+    orderBy: { listenerConnectedAt: "desc" },
+  });
+
+  // env → most-recently-connected active listener (first row wins after desc sort)
+  const activeListenerByEnv = new Map<
+    string,
+    (typeof activeListenerConnections)[number]
+  >();
+  for (const conn of activeListenerConnections) {
+    if (!activeListenerByEnv.has(conn.env)) {
+      activeListenerByEnv.set(conn.env, conn);
+    }
+  }
+
   const isDryRun = process.env.ENFORCEMENT_DRY_RUN === "true";
 
   const protectionLock = getProtectionLockState({
@@ -147,13 +189,14 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
   // Drives "Maintenance" badge and "CME break" banner.
   const isMaintenanceWindow = isCmeMaintenanceWindow();
   // True during the weekend close (Fri 4:00 PM CT → Sun 5:00 PM CT).
-  // Drives "Closed" badge and "Market closed" banner.
+  // Drives "Market closed" badge and banner.
   const isWeekendClose = isCmeWeekendClose();
 
   const computed: CommandCenterAccount[] = accounts.map((account) => {
     const accountRules = account.riskRules;
     const sessionState = account.sessionState;
     const lastIntervention = account.interventions[0] ?? null;
+    const lastInternalLockEvent = account.internalLockEvents[0] ?? null;
 
     const hasAccountRules = Boolean(
       accountRules &&
@@ -387,9 +430,37 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       stopAfterLosses,
       lastSyncAt: account.lastSyncAt,
       fillsSyncedAt: account.fillsSyncedAt,
-      listenerStatus: account.brokerConnection?.listenerStatus ?? null,
-      listenerLastEventAt: account.brokerConnection?.listenerLastEventAt ?? null,
-      listenerLastHeartbeatAt: account.brokerConnection?.listenerLastHeartbeatAt ?? null,
+      // Resolve effective listener data: the account's direct brokerConnection may
+      // point to an older OAuth grant whose listener is closed, while a newer
+      // connection for the same env has the active listener. Prefer the active
+      // connection's listener fields so the dashboard shows Live when applicable.
+      //
+      // Exception: expired / connection_error connections have a dead OAuth grant.
+      // They must never borrow a Live heartbeat from another connection — they need
+      // re-authorization, and borrowing would mask that need entirely.
+      ...(() => {
+        const direct = account.brokerConnection;
+        const directStatus = direct?.listenerStatus ?? null;
+        const directOAuthDead =
+          direct?.connectionStatus === "expired" ||
+          direct?.connectionStatus === "connection_error";
+        const isDirectActive =
+          !directOAuthDead &&
+          (directStatus === "connected" ||
+            directStatus === "connecting" ||
+            directStatus === "reconnecting");
+        const effective =
+          isDirectActive || !direct?.env || directOAuthDead
+            ? direct
+            : (activeListenerByEnv.get(direct.env) ?? direct);
+        return {
+          listenerStatus: effective?.listenerStatus ?? null,
+          listenerLastEventAt: effective?.listenerLastEventAt ?? null,
+          listenerLastHeartbeatAt: effective?.listenerLastHeartbeatAt ?? null,
+          listenerLastCloseCode: effective?.listenerLastCloseCode ?? null,
+          listenerLastCloseReason: effective?.listenerLastCloseReason ?? null,
+        };
+      })(),
       hasMaxPositionSize: (accountRules?.maxContracts ?? defaultRules?.maxContracts) != null,
       rawBrokerHardLimitEnabled: accountRules?.rawBrokerHardLimitEnabled ?? false,
       balanceLimitedWarning,
@@ -398,6 +469,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       propFirmLimited,
       setupNeededReason,
       breachReason,
+      internalLockActive: lastInternalLockEvent != null,
+      lastInternalLockAt: lastInternalLockEvent?.createdAt ?? null,
       brokerLockStatus: (lastIntervention?.brokerLockStatus ?? null) as
         | "not_requested"
         | "unavailable_read_only"
@@ -568,6 +641,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     reclassifiableAccounts,
     protectionLock: {
       isLocked: protectionLock.isLocked,
+      lockReason: protectionLock.lockReason,
       cutoffTime: protectionLock.cutoffTime ? protectionLock.cutoffTime.toISOString() : null,
       tradingDayKey: protectionLock.tradingDayKey,
       nextTradingDayKey: protectionLock.nextTradingDayKey,

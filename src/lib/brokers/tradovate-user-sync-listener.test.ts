@@ -492,6 +492,256 @@ describe("TradovateUserSyncListener: reconnect", () => {
   });
 });
 
+// ── onReady callback ─────────────────────────────────────────────────────────
+
+describe("TradovateUserSyncListener: onReady", () => {
+  it("fires with isReconnect=false on initial connect", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+    });
+
+    await listener.start();
+    completeConnect(getWs()!);
+
+    assert.equal(readyCalls.length, 1);
+    assert.equal(readyCalls[0]!.isReconnect, false);
+    listener.close();
+  });
+
+  it("fires with isReconnect=true after a reconnect", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+      baseReconnectDelayMs: 5,
+      maxReconnectDelayMs: 10,
+    });
+
+    await listener.start();
+    completeConnect(getWs()!);
+    assert.equal(readyCalls[0]!.isReconnect, false);
+
+    // Trigger an abnormal close to initiate reconnect
+    getWs()!.triggerClose(1006, "abnormal");
+    // Wait for reconnect timer to fire and new WS to be created
+    await new Promise((r) => setTimeout(r, 50));
+    // requestIdCounter persists across reconnects: initial connect used IDs 1+2, reconnect uses 3+4
+    completeConnect(getWs()!, 3, 4);
+
+    assert.equal(readyCalls.length, 2);
+    assert.equal(readyCalls[1]!.isReconnect, true);
+    listener.close();
+  });
+
+  it("does not fire when listener is closed before reaching ready", async () => {
+    const readyCalls: { isReconnect: boolean }[] = [];
+    const { listener, getWs } = makeListener({
+      onReady: (info) => readyCalls.push(info),
+    });
+
+    await listener.start();
+    const ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o");
+    // auth response not sent — never reaches ready
+    listener.close();
+
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(readyCalls.length, 0);
+  });
+});
+
+// ── Post-ready frame lifecycle ───────────────────────────────────────────────
+
+describe("TradovateUserSyncListener: post-ready frame lifecycle", () => {
+  it("heartbeat after ready keeps listener alive and updates lastHeartbeatAt", async () => {
+    const heartbeats: Date[] = [];
+    const { listener, getWs } = makeListener({
+      onHeartbeat: (at) => heartbeats.push(at),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+
+    assert.equal(listener.state, "ready");
+
+    ws.triggerHeartbeat();
+
+    assert.equal(heartbeats.length, 1, "onHeartbeat must fire after ready");
+    assert.ok(heartbeats[0] instanceof Date);
+    assert.ok(listener.lastHeartbeatAt instanceof Date);
+    assert.equal(listener.state, "ready", "heartbeat must not change state away from ready");
+    listener.close();
+  });
+
+  it("user data event after ready updates lastEventAt", async () => {
+    const { listener, propsEvents, getWs } = makeListener();
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+
+    assert.equal(listener.state, "ready");
+    assert.equal(listener.lastEventAt, null, "no event yet");
+
+    ws.triggerMessage(makePropsFrame("Position"));
+
+    assert.ok(listener.lastEventAt instanceof Date, "lastEventAt must be stamped on data event");
+    assert.equal(propsEvents.length, 1);
+    assert.equal(listener.state, "ready", "data event must not change state");
+    listener.close();
+  });
+
+  it("unknown/garbage frame after ready is handled without crash", async () => {
+    const { listener, getWs } = makeListener();
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+
+    assert.equal(listener.state, "ready");
+
+    // Garbage frame — parseSockJSFrame returns { type: "data", messages: [] }
+    // which is silently skipped. Must not throw.
+    assert.doesNotThrow(() => ws.triggerMessage("garbage!!!"));
+    assert.doesNotThrow(() => ws.triggerMessage(""));
+    assert.equal(listener.state, "ready", "garbage frames must leave state as ready");
+    listener.close();
+  });
+
+  it("close 1000/Bye after ready fires onClose with gracefulRecycle=true", async () => {
+    const closedEvents: Array<{
+      code: number;
+      reason: string;
+      gracefulRecycle: boolean;
+      stateAtClose: string;
+      msSinceReady: number | null;
+      lastFrameType: string | null;
+    }> = [];
+
+    const terminalReasons: string[] = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+      onTerminalError: (r) => terminalReasons.push(r),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+    ws.triggerHeartbeat(); // server heartbeat before the recycle
+
+    assert.equal(listener.state, "ready");
+
+    // Tradovate normal session recycle
+    ws.triggerClose(1000, "Bye");
+
+    assert.equal(closedEvents.length, 1);
+    const ev = closedEvents[0]!;
+    assert.equal(ev.code, 1000);
+    assert.equal(ev.reason, "Bye");
+    assert.equal(ev.gracefulRecycle, true, "must be flagged as graceful recycle");
+    assert.equal(ev.stateAtClose, "ready");
+    assert.ok(ev.msSinceReady !== null && ev.msSinceReady >= 0);
+    assert.equal(ev.lastFrameType, "heartbeat", "last frame before Bye was a heartbeat");
+    assert.equal(terminalReasons.length, 0, "graceful recycle must NOT call onTerminalError");
+
+    listener.close();
+  });
+
+  it("close 1006 after ready fires onClose with gracefulRecycle=false", async () => {
+    const closedEvents: Array<{ code: number; gracefulRecycle: boolean }> = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+    ws.triggerClose(1006, "");
+
+    assert.equal(closedEvents.length, 1);
+    const ev = closedEvents[0]!;
+    assert.equal(ev.code, 1006);
+    assert.equal(ev.gracefulRecycle, false, "1006 must not be flagged as graceful");
+    listener.close();
+  });
+
+  it("close after ready fires onClose with code, reason, stateAtClose, and msSinceReady", async () => {
+    const closedEvents: Array<{
+      code: number;
+      reason: string;
+      stateAtClose: string;
+      msSinceReady: number | null;
+      lastFrameType: string | null;
+    }> = [];
+
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+
+    assert.equal(listener.state, "ready");
+
+    // Simulate the 1006 abnormal-close that follows user/syncrequest on Tradovate demo
+    ws.triggerClose(1006, "");
+
+    assert.equal(closedEvents.length, 1, "onClose must fire once on unexpected close");
+    const ev = closedEvents[0]!;
+    assert.equal(ev.code, 1006);
+    assert.equal(ev.stateAtClose, "ready");
+    assert.ok(ev.msSinceReady !== null, "msSinceReady must be set when closed from ready");
+    assert.ok(ev.msSinceReady! >= 0, "msSinceReady must be non-negative");
+    // Last frame was the user/syncrequest response (a data frame)
+    assert.equal(ev.lastFrameType, "data", "last frame before 1006 close should be the sync response");
+
+    listener.close();
+  });
+
+  it("onClose is NOT fired when listener is explicitly closed via close()", async () => {
+    const closedEvents: unknown[] = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+
+    listener.close(); // explicit clean shutdown
+
+    assert.equal(closedEvents.length, 0, "onClose must not fire on explicit listener.close()");
+  });
+
+  it("close during auth fires onClose with stateAtClose=authorizing and msSinceReady=null", async () => {
+    const closedEvents: Array<{ stateAtClose: string; msSinceReady: number | null }> = [];
+    const { listener, getWs } = makeListener({
+      onClose: (info) => closedEvents.push(info),
+    });
+    await listener.start();
+    const ws = getWs()!;
+    ws.triggerOpen();
+    ws.triggerMessage("o"); // sends authorize
+    ws.triggerClose(1000, "Bye"); // closes before auth response
+
+    assert.equal(closedEvents.length, 1);
+    assert.equal(closedEvents[0]!.stateAtClose, "authorizing");
+    assert.equal(closedEvents[0]!.msSinceReady, null, "must be null when never reached ready");
+    listener.close();
+  });
+
+  it("SockJS heartbeat frames after ready do not change state or error", async () => {
+    const { listener, states, getWs } = makeListener();
+    await listener.start();
+    const ws = getWs()!;
+    completeConnect(ws);
+    const statesBeforeHeartbeat = [...states];
+
+    ws.triggerHeartbeat();
+    ws.triggerHeartbeat();
+
+    // No new state transitions — heartbeat is silent
+    assert.deepEqual(states, statesBeforeHeartbeat, "heartbeat must not cause a state transition");
+    listener.close();
+  });
+});
+
 // ── Source-scan: no token logging ────────────────────────────────────────────
 
 import { readFileSync } from "node:fs";
@@ -574,11 +824,14 @@ describe("TradovateUserSyncListener source: no token logging", () => {
     );
   });
 
-  it("source logs safe phase markers for the handshake", () => {
-    for (const phase of ["socket_open", "auth_sent", "auth_ok", "auth_failed", "user_sync_sent"]) {
+  it("source logs safe phase markers for the handshake and close", () => {
+    for (const phase of [
+      "socket_open", "auth_sent", "auth_ok", "auth_failed", "user_sync_sent",
+      "connection_closed", "sockjs_close",
+    ]) {
       assert.ok(
         LISTENER_SRC.includes(phase),
-        `expected handshake phase log marker: ${phase}`,
+        `expected phase log marker: ${phase}`,
       );
     }
   });

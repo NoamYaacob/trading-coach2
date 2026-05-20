@@ -12,8 +12,8 @@
  * accounts are kept for history with a missing-from-broker marker.
  */
 
-import { prisma } from "@/lib/db";
-import { parseAndDecrypt } from "@/lib/security/token-crypto";
+import { prisma } from "../db";
+import { parseAndDecrypt } from "../security/token-crypto";
 
 import {
   decideReconciliation,
@@ -198,13 +198,20 @@ export async function reconcileDiscoveredAccounts(input: {
 
   // Apply matched rows.
   for (const m of decision.matched) {
+    // Only overwrite brokerConnectionId when the account is unlinked (null) or
+    // already on this connection. An account pointing at a DIFFERENT connection
+    // must not be reclaimed by this sync — that would silently undo a manual
+    // reattach or a newer OAuth grant that already moved the account forward.
+    const updateConnectionId =
+      m.currentBrokerConnectionId == null ||
+      m.currentBrokerConnectionId === brokerConnectionId;
+
     await prisma.connectedAccount.update({
       where: { id: m.id },
       data: {
         lastSeenInBrokerAt: now,
         ...(m.clearMissing ? { missingFromBrokerSince: null } : {}),
-        // Keep brokerConnectionId pointing at the most recent live connection.
-        brokerConnectionId,
+        ...(updateConnectionId ? { brokerConnectionId } : {}),
       },
     });
   }

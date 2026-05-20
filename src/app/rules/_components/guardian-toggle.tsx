@@ -56,7 +56,8 @@ export function GuardianToggle({ initialEnabled, hasFullAccessAccount = false }:
           <div>
             <p className="text-sm font-semibold text-amber-900">Guardian is off</p>
             <p className="mt-0.5 text-xs text-stone-600">
-              Your rules are saved but not monitoring the session.
+              Guardian is the rule engine that watches your account during the session. Your rules
+              are saved but not currently active.
             </p>
           </div>
         </div>

@@ -22,6 +22,7 @@ import { resolve } from "node:path";
 
 import {
   HEALTHY_CONNECTION_STATUSES,
+  computeRetryDelayMs,
   isReadyDbStatus,
   listenerStateToDbStatus,
   planListenerStartups,
@@ -42,6 +43,8 @@ function makeRow(overrides: Partial<BrokerConnectionRow> = {}): BrokerConnection
     tokenExpiresAt: null,
     lastRenewError: null,
     listenerStatus: null,
+    listenerNextRetryAt: null,
+    listenerDisabledAt: null,
     ...overrides,
   };
 }
@@ -254,6 +257,135 @@ describe("planListenerStartups: mixed batch", () => {
     const skippedIds = skipped.map((s) => s.connectionId).sort();
     assert.deepEqual(startIds, ["no-user", "ok-1", "ok-2"]);
     assert.deepEqual(skippedIds, ["expired-1"]);
+  });
+});
+
+// ── Retry cooldown / soft listener_error ─────────────────────────────────────
+
+describe("planListenerStartups: retry cooldown", () => {
+  it("skips with listener_retry_cooldown when listenerStatus=error and nextRetryAt is in the future", () => {
+    const now = new Date("2026-05-14T12:00:00Z");
+    const future = new Date(now.getTime() + 5 * 60_000);
+    const { start, skipped } = planListenerStartups(
+      [makeRow({ listenerStatus: "error", listenerNextRetryAt: future })],
+      { now },
+    );
+    assert.equal(start.length, 0);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]!.reason, "listener_retry_cooldown");
+  });
+
+  it("retries when listenerStatus=error and nextRetryAt has passed", () => {
+    const now = new Date("2026-05-14T12:00:00Z");
+    const past = new Date(now.getTime() - 60_000);
+    const { start, skipped } = planListenerStartups(
+      [makeRow({ listenerStatus: "error", listenerNextRetryAt: past })],
+      { now },
+    );
+    assert.equal(start.length, 1, "must retry after cooldown");
+    assert.equal(skipped.length, 0);
+  });
+
+  it("skips with listener_error (legacy) when nextRetryAt is null", () => {
+    const { start, skipped } = planListenerStartups([
+      makeRow({ listenerStatus: "error", listenerNextRetryAt: null }),
+    ]);
+    assert.equal(start.length, 0);
+    assert.equal(skipped[0]!.reason, "listener_error");
+  });
+});
+
+// ── Operator disable (per-connection) ────────────────────────────────────────
+
+describe("planListenerStartups: listenerDisabledAt", () => {
+  it("skips with listener_disabled when listenerDisabledAt is set", () => {
+    const { start, skipped } = planListenerStartups([
+      makeRow({ listenerDisabledAt: new Date() }),
+    ]);
+    assert.equal(start.length, 0);
+    assert.equal(skipped[0]!.reason, "listener_disabled");
+  });
+
+  it("disabled wins over connectionStatus=expired so the disable acts as a clean stop", () => {
+    const { skipped } = planListenerStartups([
+      makeRow({
+        listenerDisabledAt: new Date(),
+        connectionStatus: "expired",
+      }),
+    ]);
+    assert.equal(skipped[0]!.reason, "listener_disabled");
+  });
+});
+
+// ── Global kill-switch + single-connection debug filter ──────────────────────
+
+describe("planListenerStartups: globallyDisabled option", () => {
+  it("skips every row with reason listener_globally_disabled", () => {
+    const { start, skipped } = planListenerStartups(
+      [makeRow({ id: "a" }), makeRow({ id: "b" })],
+      { globallyDisabled: true },
+    );
+    assert.equal(start.length, 0);
+    assert.equal(skipped.length, 2);
+    for (const s of skipped) assert.equal(s.reason, "listener_globally_disabled");
+  });
+
+  it("globallyDisabled wins over per-row eligibility", () => {
+    const { skipped } = planListenerStartups(
+      [makeRow({ listenerStatus: "error", listenerNextRetryAt: null })],
+      { globallyDisabled: true },
+    );
+    assert.equal(skipped[0]!.reason, "listener_globally_disabled");
+  });
+});
+
+describe("planListenerStartups: singleConnectionId filter", () => {
+  it("only the named connection is considered; others are skipped", () => {
+    const { start, skipped } = planListenerStartups(
+      [
+        makeRow({ id: "keep" }),
+        makeRow({ id: "drop-a" }),
+        makeRow({ id: "drop-b" }),
+      ],
+      { singleConnectionId: "keep" },
+    );
+    assert.equal(start.length, 1);
+    assert.equal(start[0]!.connectionId, "keep");
+    assert.equal(skipped.length, 2);
+    for (const s of skipped) assert.equal(s.reason, "single_connection_filter");
+  });
+
+  it("when singleConnectionId is null, all eligible rows are kept", () => {
+    const { start } = planListenerStartups(
+      [makeRow({ id: "a" }), makeRow({ id: "b" })],
+      { singleConnectionId: undefined },
+    );
+    assert.equal(start.length, 2);
+  });
+});
+
+// ── computeRetryDelayMs backoff schedule ─────────────────────────────────────
+
+describe("computeRetryDelayMs", () => {
+  it("starts at 5 minutes for the first failure (retryCount=0)", () => {
+    assert.equal(computeRetryDelayMs(0), 5 * 60_000);
+  });
+
+  it("escalates 5m → 15m → 1h → 6h → 24h", () => {
+    assert.equal(computeRetryDelayMs(0), 5 * 60_000);
+    assert.equal(computeRetryDelayMs(1), 15 * 60_000);
+    assert.equal(computeRetryDelayMs(2), 60 * 60_000);
+    assert.equal(computeRetryDelayMs(3), 6 * 60 * 60_000);
+    assert.equal(computeRetryDelayMs(4), 24 * 60 * 60_000);
+  });
+
+  it("caps at 24h once retryCount exceeds the schedule", () => {
+    assert.equal(computeRetryDelayMs(5), 24 * 60 * 60_000);
+    assert.equal(computeRetryDelayMs(50), 24 * 60 * 60_000);
+  });
+
+  it("treats negative retry counts as the first failure", () => {
+    assert.equal(computeRetryDelayMs(-1), 5 * 60_000);
   });
 });
 

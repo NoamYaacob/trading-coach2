@@ -70,6 +70,7 @@ describe("pending_decision visibility in broker connections page", () => {
 describe("pending_decision → * transitions", () => {
   const unlockedState = {
     isLocked: false,
+    lockReason: null as null,
     timezone: "America/New_York",
     tradingDayKey: "2024-07-15",
     nextTradingDayKey: "2024-07-16",
@@ -81,6 +82,7 @@ describe("pending_decision → * transitions", () => {
   };
   const lockedState = {
     isLocked: true,
+    lockReason: "active_session" as const,
     timezone: "America/New_York",
     tradingDayKey: "2024-07-15",
     nextTradingDayKey: "2024-07-16",
@@ -390,6 +392,7 @@ describe("dashboard CTA contract — Add to Guardrail / Ignore for now", () => {
 
   const lockedState = {
     isLocked: true,
+    lockReason: "active_session" as const,
     timezone: "America/New_York",
     tradingDayKey: "2024-07-15",
     nextTradingDayKey: "2024-07-16",

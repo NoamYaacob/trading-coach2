@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/pill-classes";
 import {
   getTradeCountDisplay,
-  deriveBrokerEnforcementCopy,
+  deriveBrokerEnforcementNoteCopy,
   deriveStaleSyncWarning,
   formatFreshnessLabel,
   deriveFooterCopy,
@@ -42,6 +42,7 @@ import {
   type ProtectionStatusPanelData,
   type TradingPermissionStatus,
 } from "./data-helpers";
+import { buildRuleSummaryChips } from "./summary-strip-helpers";
 import { CRON_SYNC_FRESHNESS_MS } from "@/lib/sync-freshness";
 import { PERSONAL_BROKER_FIRM_KEY } from "./types";
 import type {
@@ -91,7 +92,7 @@ const SETUP_NEEDED_REASON_TEXT: Record<
   string
 > = {
   no_rules: "No trading plan assigned",
-  pending_connection: "Awaiting first broker event",
+  pending_connection: "Waiting for first account sync",
   prop_firm_rules_missing: "Enter prop firm limits",
 };
 
@@ -249,6 +250,9 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
     isDryRunActive,
     requiresConsentCount: requiresConsentAccountsCount,
     isProtectionLocked: data.protectionLock.isLocked,
+    lockReason: data.protectionLock.lockReason,
+    isWeekendClose: data.isWeekendClose,
+    isMaintenanceWindow: data.isMaintenanceWindow,
   });
   const footerCopy = deriveFooterCopy({
     modes: data.accounts.map((a) => a.enforcementMode),
@@ -413,14 +417,26 @@ function TradingPermissionBlock({ status }: { status: TradingPermissionStatus })
 
 // ─── Protection status panel (replaces dry-run / consent / lock banners) ──────
 
-const PANEL_BODY: Record<ProtectionStatusPanelData["kind"], string> = {
+const PANEL_BODY_STATIC: Partial<Record<ProtectionStatusPanelData["kind"], string>> = {
   dry_run:
-    "Protection test mode: Guardrail is watching your accounts. No broker actions are sent.",
+    "Guardrail is monitoring your accounts. Broker-side enforcement is not active.",
   consent_required:
     "Action required · Confirm that Guardrail may lock this account or close positions when rules are breached.",
-  protection_locked:
-    "Protection locked for today · Rule changes apply at the next session.",
 };
+
+const PANEL_BODY_LOCK_REASON: Record<"active_session" | "pre_session", string> = {
+  active_session:
+    "Rule changes queued for next session · Protection settings are locked during the active trading session.",
+  pre_session:
+    "Rule changes queued for next session · Protection settings are locked before the next session starts.",
+};
+
+function protectionLockedBody(panel: ProtectionStatusPanelData): string {
+  if (panel.kind === "protection_locked") {
+    return PANEL_BODY_LOCK_REASON[panel.lockReason ?? "active_session"];
+  }
+  return PANEL_BODY_STATIC[panel.kind] ?? "";
+}
 
 function ProtectionStatusPanel({
   panel,
@@ -435,6 +451,9 @@ function ProtectionStatusPanel({
       ? "border-sky-200/70 bg-sky-50/70 text-sky-800"
       : "border-amber-200/70 bg-amber-50/70 text-amber-900";
   const dotClass = panel.kind === "dry_run" ? "bg-sky-400" : "bg-amber-500";
+  const bodyText = panel.kind === "protection_locked"
+    ? protectionLockedBody(panel)
+    : (PANEL_BODY_STATIC[panel.kind] ?? "");
   return (
     <div
       role={isAlert ? "alert" : "status"}
@@ -442,7 +461,7 @@ function ProtectionStatusPanel({
       className={`mb-3 flex flex-wrap items-start gap-2 rounded-lg border px-3 py-1.5 text-[11px] ${colorClass}`}
     >
       <span className={`mt-px h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
-      <span className="flex-1">{PANEL_BODY[panel.kind]}</span>
+      <span className="flex-1">{bodyText}</span>
       {panel.showConsentCta && (
         <Link
           href="/rules"
@@ -822,6 +841,7 @@ function FirmStatusInline({
 
 const BROKER_NOTE_COLOR: Record<string, string> = {
   broker_active: "text-emerald-700",
+  dry_run: "text-blue-600",
   unavailable_permission: "text-amber-700",
   failed: "text-amber-700",
   unavailable_readonly: "text-stone-400",
@@ -830,7 +850,9 @@ const BROKER_NOTE_COLOR: Record<string, string> = {
 
 function BrokerEnforcementNote({ account }: { account: CommandCenterAccount }) {
   if (account.status !== "locked") return null;
-  const { text, kind } = deriveBrokerEnforcementCopy(account.brokerLockStatus, {
+  const { text, kind } = deriveBrokerEnforcementNoteCopy({
+    internalLockActive: account.internalLockActive,
+    brokerLockStatus: account.brokerLockStatus,
     permissionLevel: account.permissionLevel,
   });
   return (
@@ -889,9 +911,17 @@ function UnavailableRow({ account }: { account: CommandCenterAccount }) {
   );
 }
 
+function chipSeverityClass(severity: string): string {
+  if (severity === "locked") return "text-red-600";
+  if (severity === "warning") return "text-amber-600";
+  if (severity === "inactive") return "italic text-stone-400";
+  return "text-stone-400";
+}
+
 function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  const ruleSummaryChips = buildRuleSummaryChips(account);
   return (
     <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
       {/* Account — status badge + name + platform + sync time */}
@@ -927,7 +957,9 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
               </p>
             )}
             {!account.breachReason && !account.setupNeededReason && (
-              account.listenerStatus != null ? (
+              (account.listenerStatus != null ||
+                account.connectionStatus === "expired" ||
+                account.connectionStatus === "connection_error") ? (
                 <div className="mt-0.5">
                   <BrokerListenerStatus
                     data={{
@@ -935,6 +967,9 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
                       listenerLastEventAt: account.listenerLastEventAt,
                       listenerLastHeartbeatAt: account.listenerLastHeartbeatAt,
                       lastSyncAt: account.lastSyncAt,
+                      listenerLastCloseCode: account.listenerLastCloseCode,
+                      listenerLastCloseReason: account.listenerLastCloseReason,
+                      connectionStatus: account.connectionStatus,
                       hasMaxPositionSize: account.hasMaxPositionSize,
                       rawBrokerHardLimitEnabled: account.rawBrokerHardLimitEnabled,
                     }}
@@ -1006,6 +1041,15 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
             {account.stopAfterLosses != null ? ` / ${account.stopAfterLosses}` : ""}
           </p>
         )}
+        {ruleSummaryChips.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+            {ruleSummaryChips.map((chip) => (
+              <span key={chip.key} className={`text-[10px] ${chipSeverityClass(chip.severity)}`}>
+                {chip.text}
+              </span>
+            ))}
+          </div>
+        )}
       </td>
 
       {/* Actions */}
@@ -1020,6 +1064,7 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
 
 function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  const ruleSummaryChips = buildRuleSummaryChips(account);
   const stateLabel = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
     requiresAutomatedActionsConsent: account.requiresAutomatedActionsConsent,
@@ -1175,6 +1220,11 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
               </span>
             </>
           )}
+          {ruleSummaryChips.map((chip) => (
+            <span key={chip.key} className={chipSeverityClass(chip.severity)}>
+              {chip.text}
+            </span>
+          ))}
         </div>
 
         {/* Action buttons row: Open, Rules, and optionally Reconnect */}
@@ -1358,10 +1408,10 @@ function StatusBadge({
     isWeekendClose,
   });
   // "Action required" is a refinement of "allowed" status — paint it amber.
-  // "Maintenance" and "Closed" are temporary non-tradable states — paint them stone.
+  // "Maintenance" and "Market closed" are temporary non-tradable states — paint them stone.
   const isActionRequired = label === "Action required";
   const isMaintenance = label === "Maintenance";
-  const isClosed = label === "Closed";
+  const isClosed = label === "Market closed";
   const badgeClass = isActionRequired
     ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
     : isMaintenance || isClosed

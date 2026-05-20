@@ -18,6 +18,17 @@ export type BrokerListenerStatusData = {
   listenerLastHeartbeatAt: Date | null;
   /** Timestamp of the last cron sync (ConnectedAccount.lastSyncAt). */
   lastSyncAt: Date | null;
+  /** WebSocket close code from the most recent close (BrokerConnection.listenerLastCloseCode). */
+  listenerLastCloseCode: number | null;
+  /** WebSocket close reason from the most recent close (BrokerConnection.listenerLastCloseReason). */
+  listenerLastCloseReason: string | null;
+  /**
+   * OAuth / connection health status (BrokerConnection.connectionStatus).
+   * "expired" and "connection_error" short-circuit to a re-authorize label —
+   * these states mean the OAuth grant is dead, not just that the listener is
+   * temporarily offline.
+   */
+  connectionStatus: string | null;
   /** Whether the account has max position size configured. */
   hasMaxPositionSize: boolean;
   /** Whether raw broker hard limit mode is enabled for this account. */
@@ -52,15 +63,41 @@ export type FreshnessInfo = {
 
 export const STALE_THRESHOLD_MS = 5 * 60_000; // 5 min — same as cron cycle
 
+/**
+ * How long after the last heartbeat/event we still treat a reconnecting
+ * listener as "Live". Tradovate recycles sessions with 1000/Bye every ~30s
+ * and reconnects in seconds — the dashboard should stay green throughout.
+ */
+export const RECONNECT_LIVE_THRESHOLD_MS = 90_000; // 90 s
+
 export function computeListenerFreshness(data: BrokerListenerStatusData): FreshnessInfo {
-  const { listenerStatus, listenerLastEventAt, listenerLastHeartbeatAt, lastSyncAt } = data;
+  const {
+    listenerStatus,
+    listenerLastEventAt,
+    listenerLastHeartbeatAt,
+    lastSyncAt,
+    listenerLastCloseCode,
+    listenerLastCloseReason,
+    connectionStatus,
+  } = data;
+
+  // ── Dead OAuth grant — short-circuit before any listener checks ───────────
+  // "expired" and "connection_error" mean the OAuth grant is dead and must be
+  // re-authorized. These accounts must never borrow a Live label from another
+  // connection — they need the user to act, not to look healthy.
+  if (connectionStatus === "expired") {
+    return { label: "Expired — re-authorize", isLive: false, isStale: true, isReconnecting: false };
+  }
+  if (connectionStatus === "connection_error") {
+    return { label: "Connection error — re-authorize", isLive: false, isStale: true, isReconnecting: false };
+  }
 
   // ── Live listener ──────────────────────────────────────────────────────────
   if (listenerStatus === "connected") {
     const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
     const agoStr = shortAgo(lastSignal);
     return {
-      label: agoStr ? `Live · ${agoStr}` : "Live · waiting for first event",
+      label: agoStr ? `Live monitoring · ${agoStr}` : "Live monitoring · waiting for first activity",
       isLive: true,
       isStale: false,
       isReconnecting: false,
@@ -69,13 +106,43 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
 
   if (listenerStatus === "connecting" || listenerStatus === "reconnecting") {
     const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
-    const suffix = lastSignal ? ` · last event ${shortAgo(lastSignal)}` : "";
+    // Keep the dashboard green while the session recycles. Tradovate sends a
+    // 1000/Bye close every ~30 s and the listener reconnects in a few seconds.
+    // As long as the last heartbeat/event is within the threshold, show Live.
+    if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
+      const agoStr = shortAgo(lastSignal);
+      return {
+        label: `Live monitoring · ${agoStr} · reconnecting`,
+        isLive: true,
+        isStale: false,
+        isReconnecting: true,
+      };
+    }
+    const suffix = lastSignal ? ` · last signal ${shortAgo(lastSignal)}` : "";
     return {
       label: `Reconnecting…${suffix}`,
       isLive: false,
       isStale: false,
       isReconnecting: true,
     };
+  }
+
+  // ── Closed after graceful 1000/Bye recycle ────────────────────────────────
+  // The worker writes "closed" on SIGTERM/process restart. If the last close was
+  // a normal Tradovate session recycle (code=1000, reason="Bye") and the heartbeat
+  // is still fresh, keep the dashboard green rather than flashing "Fallback sync"
+  // during the brief restart window.
+  if (listenerStatus === "closed" && listenerLastCloseCode === 1000 && listenerLastCloseReason === "Bye") {
+    const lastSignal = listenerLastEventAt ?? listenerLastHeartbeatAt;
+    if (lastSignal && msAgo(lastSignal) <= RECONNECT_LIVE_THRESHOLD_MS) {
+      const agoStr = shortAgo(lastSignal);
+      return {
+        label: `Live monitoring · ${agoStr} · reconnecting`,
+        isLive: true,
+        isStale: false,
+        isReconnecting: true,
+      };
+    }
   }
 
   // ── Fallback: cron sync ────────────────────────────────────────────────────
@@ -93,7 +160,7 @@ export function computeListenerFreshness(data: BrokerListenerStatusData): Freshn
   }
 
   return {
-    label: isStale ? `Stale · ${agoStr}` : `Fallback sync · ${agoStr}`,
+    label: isStale ? `Stale · ${agoStr}` : `Synced · ${agoStr}`,
     isLive: false,
     isStale,
     isReconnecting: false,

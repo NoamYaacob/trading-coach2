@@ -3,15 +3,15 @@
  * for a connected Tradovate broker account.
  *
  * Replaces generic "Last sync Xm ago" with a listener-aware label:
- *   "Live · 5s ago"              — listener connected, recent event
- *   "Live · waiting…"            — listener connected, no events yet
+ *   "Live monitoring · 5s ago"   — listener connected, recent event
+ *   "Live monitoring · waiting…" — listener connected, no events yet
  *   "Reconnecting…"              — listener is recovering after a disconnect
  *   "Fallback sync · 3m ago"     — no listener, showing last cron sync
  *   "Stale · 13m ago"            — no listener, cron sync overdue
  *
  * Enforcement framing (shown below the freshness label when relevant):
  *   If the account has max_position_size configured:
- *   - Standard-equivalent mode: explains detection-response model
+ *   - Standard-equivalent mode: explains post-sync position monitoring
  *   - Raw broker mode: warns that this is a raw contract count
  *
  * This component is display-only. It receives pre-computed data from the
@@ -55,8 +55,8 @@ export function BrokerListenerStatus({ data }: { data: BrokerListenerStatusData 
       {data.hasMaxPositionSize && (
         <span className="text-[10px] text-stone-400">
           {data.rawBrokerHardLimitEnabled
-            ? "Raw broker reject · counts all contracts equally"
-            : "Standard-equiv detection-response · not pre-trade"}
+            ? "Broker cap active · applies to all contracts"
+            : "Guardrail monitors position size after sync"}
         </span>
       )}
     </div>

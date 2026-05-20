@@ -11,10 +11,10 @@
  *                               No broker connection exists, so no broker-side action.
  *
  *   broker_enforcement_pending – Full-access Tradovate connection is verified.
- *                               Daily loss and profit target breaches apply a Tradovate
- *                               risk setting (userAccountAutoLiq) that places the account
- *                               in liquidation-only mode. Trade count and consecutive-loss
- *                               limits use app-level locking only — no matching broker field.
+ *                               Daily loss breaches apply a Tradovate risk setting
+ *                               (userAccountAutoLiq) that places the account in
+ *                               liquidation-only mode. Profit targets, trade count, and
+ *                               consecutive-loss limits use app-level locking only.
  *
  *   broker_enforced_active    – Broker enforcement was applied and confirmed at least once
  *                               for this account (GuardianIntervention.brokerLockStatus
@@ -160,8 +160,8 @@ export function computeEnforcementMode(
         mode: "broker_enforcement_pending",
         label: "Broker risk settings enabled",
         detail:
-          "Daily loss and profit target can trigger Tradovate risk settings on breach. " +
-          "Other rules are enforced by Guardrail. Order actions are not enabled yet.",
+          "Daily loss can be protected through Tradovate broker risk settings. " +
+          "Profit targets are monitored in Guardrail.",
         cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
       };
     }

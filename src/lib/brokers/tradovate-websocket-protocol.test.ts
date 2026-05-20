@@ -125,27 +125,33 @@ describe("encodeTradovateMessage", () => {
 });
 
 describe("encodeAuthorizeMessage", () => {
-  it("wraps the access token in JSON quotes (matches official SDK)", () => {
-    // Reference: tradovate/example-api-js TradovateSocket.send does
-    //   `${url}\n${id}\n\n${JSON.stringify(body)}` with body = token.
-    // For a string body that produces `"<token>"` — the quotes are required.
+  it("sends the access token raw — no surrounding JSON quotes", () => {
+    // Probe variant B_raw confirmed: Tradovate demo WS expects the token
+    // body unquoted. JSON-stringified ("<token>") yields HTTP 401.
     const msg = encodeAuthorizeMessage(1, "my_access_token");
     const parts = msg.split("\n");
     assert.equal(parts[0], "authorize");
     assert.equal(parts[1], "1");
-    assert.equal(parts[3], '"my_access_token"');
+    assert.equal(parts[2], "");
+    assert.equal(parts[3], "my_access_token");
   });
 
-  it("matches the exact bytes the official SDK would produce", () => {
+  it("matches the exact byte sequence authorize\\n<id>\\n\\n<token>", () => {
     const token = "eyJhbGciOiJIUzI1NiJ9.payload.sig";
     const ours = encodeAuthorizeMessage(0, token);
-    const official = `authorize\n0\n\n${JSON.stringify(token)}`;
-    assert.equal(ours, official);
+    assert.equal(ours, `authorize\n0\n\n${token}`);
   });
 
-  it("does not include 'Bearer' prefix (token is sent raw inside JSON quotes)", () => {
+  it("does not include a 'Bearer' prefix", () => {
+    // Probe variant C_bearer ("Bearer <token>") yielded HTTP 401.
     const msg = encodeAuthorizeMessage(1, "secret_token");
     assert.ok(!msg.includes("Bearer"), "token must not be wrapped as Bearer header");
+  });
+
+  it("does not JSON-quote the token", () => {
+    // Probe variant A_json_stringified ('"<token>"') yielded HTTP 401.
+    const msg = encodeAuthorizeMessage(1, "secret_token");
+    assert.ok(!msg.includes('"secret_token"'), "token must not be JSON-quoted");
   });
 });
 

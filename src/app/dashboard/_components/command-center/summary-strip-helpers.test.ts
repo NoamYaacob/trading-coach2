@@ -1,10 +1,22 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 import {
   formatBreakdownHint,
   TRADABLE_ACCOUNTS_TILE_LABEL,
+  buildRuleSummaryChips,
+  formatRuleSummaryLine,
 } from "./summary-strip-helpers.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const helperSource = readFileSync(
+  join(__dirname, "summary-strip-helpers.ts"),
+  "utf-8",
+);
 
 describe("TRADABLE_ACCOUNTS_TILE_LABEL", () => {
   it("is the literal 'Tradable accounts' (not 'Allowed')", () => {
@@ -63,5 +75,42 @@ describe("formatBreakdownHint — Allowed/Warning/Locked breakdown shown to user
     assert.ok(hint?.includes("1 live"), `expected '1 live' in hint, got: ${hint}`);
     assert.ok(hint?.includes("1 practice"), `expected '1 practice' in hint, got: ${hint}`);
     assert.ok(!hint?.includes("2 live"), `must not show '2 live', got: ${hint}`);
+  });
+});
+
+describe("summary-strip-helpers — buildRuleSummaryChips re-export", () => {
+  it("buildRuleSummaryChips is exported from summary-strip-helpers", () => {
+    assert.equal(typeof buildRuleSummaryChips, "function", "buildRuleSummaryChips must be a function export");
+  });
+
+  it("formatRuleSummaryLine is exported from summary-strip-helpers", () => {
+    assert.equal(typeof formatRuleSummaryLine, "function", "formatRuleSummaryLine must be a function export");
+  });
+
+  it("source re-exports buildRuleSummaryChips", () => {
+    assert.ok(
+      helperSource.includes("buildRuleSummaryChips"),
+      "summary-strip-helpers.ts must export/re-export buildRuleSummaryChips",
+    );
+  });
+});
+
+describe("summary-strip-helpers — SAFETY: no broker+profit-target combination in chip text", () => {
+  it("source file does not hardcode 'Broker-backed: Profit target' text", () => {
+    const combined = helperSource.toLowerCase();
+    const profitIdx = combined.indexOf("profit");
+    const targetIdx = combined.indexOf("target");
+    if (profitIdx !== -1 && targetIdx !== -1) {
+      // Check that 'broker' does not appear within 30 chars of 'profit target'
+      const window = combined.slice(
+        Math.max(0, Math.min(profitIdx, targetIdx) - 10),
+        Math.max(profitIdx, targetIdx) + 30,
+      );
+      assert.ok(
+        !window.includes("broker"),
+        `summary-strip-helpers must not combine 'broker' with 'profit target': found near offset ${profitIdx}`,
+      );
+    }
+    // If profit/target not found at all, invariant is trivially satisfied
   });
 });

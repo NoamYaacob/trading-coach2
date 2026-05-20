@@ -488,26 +488,40 @@ export function ConnectTradovateClient() {
             </div>
             {!isReconnectMode && (
               <p className="text-xs text-stone-400">
-                After authorization, you&rsquo;ll choose which Tradovate accounts to import into Guardrail.
+                Next, you&rsquo;ll be redirected to Tradovate to authorize Guardrail. After
+                authorization, you&rsquo;ll return here to choose which accounts to monitor.
               </p>
             )}
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
               <p className="font-semibold text-stone-700">Choose the access level</p>
               <p className="mt-1 leading-5">
+                Guardrail starts in monitoring mode — it watches your account and sends alerts.
+                Broker-side protections are only used when you explicitly turn them on; no broker
+                writes happen otherwise.
+              </p>
+              <p className="mt-2 leading-5">
                 During Tradovate authorization, you&apos;ll select an access level for Guardrail:
               </p>
               <div className="mt-2 grid gap-1.5">
                 <div>
                   <span className="font-medium text-stone-700">Monitoring only</span>
                   {" — "}
-                  read balances, positions, and P&amp;L. Cannot place trades or change broker-side risk limits.
+                  Guardrail reads balances, positions, fills, and P&amp;L to evaluate your rules and
+                  send alerts. It cannot place orders or change broker-side risk limits.
                 </div>
                 <div>
                   <span className="font-medium text-stone-700">Risk settings enabled</span>
                   {" — "}
-                  adds broker-side drawdown and max-loss enforcement. Requires full-access scope at Tradovate authorization.
+                  adds broker-side enforcement for your Daily Loss limit on Tradovate. Full access
+                  is requested so Guardrail can read account activity, monitor fills, and apply the
+                  Daily Loss risk setting.
                 </div>
               </div>
+              <p className="mt-2 leading-5">
+                Daily Loss is the only rule backed by Tradovate risk settings today. Profit target,
+                max trades, position size, and session cutoff are monitored by Guardrail and sent as
+                alerts — they are not broker-enforced.
+              </p>
             </div>
           </div>
         </form>
