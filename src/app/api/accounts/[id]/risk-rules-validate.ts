@@ -7,6 +7,8 @@
  * bypassed the cutoff dropdown.
  */
 
+import { validateSymbolLimits } from "../../../../lib/futures/symbol-limits.ts";
+
 export type RiskRulesValidationError = { field: string; message: string };
 
 const HOUR_FIELDS = ["allowedStartHour", "allowedEndHour"] as const;
@@ -32,6 +34,20 @@ export function validateRiskRulesBody(
     if (v == null) continue;
     if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
       return { field: key, message: `${key} must be a non-negative integer.` };
+    }
+  }
+
+  const symbolLimits = o.maxContractsBySymbolJson;
+  if (symbolLimits != null) {
+    if (typeof symbolLimits !== "string") {
+      return {
+        field: "maxContractsBySymbolJson",
+        message: "maxContractsBySymbolJson must be a JSON string.",
+      };
+    }
+    const err = validateSymbolLimits(symbolLimits);
+    if (err) {
+      return { field: "maxContractsBySymbolJson", message: err.message };
     }
   }
 

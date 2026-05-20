@@ -361,6 +361,7 @@ describe("copy endpoint: COPY_FIELDS includes all core rule fields", () => {
     "sessionPresetsJson",
     "ruleEditLockBufferMinutes",
     "maxContracts",
+    "maxContractsBySymbolJson",
     "rawBrokerHardLimitEnabled",
     "propFirmAccountSize",
     "propFirmPhase",
@@ -397,5 +398,32 @@ describe("copy endpoint: response shape", () => {
 
   it("returns targetAccountId in success response", () => {
     assert.ok(src().includes("targetAccountId:"), "success response must include targetAccountId");
+  });
+});
+
+// ── Phase 4: symbol-specific max contracts passthrough ───────────────────────
+
+describe("copy endpoint: maxContractsBySymbolJson passthrough", () => {
+  it("COPY_FIELDS includes maxContractsBySymbolJson", () => {
+    const s = src();
+    const fieldsBlock = s.slice(s.indexOf("COPY_FIELDS"), s.indexOf("] as const"));
+    assert.ok(
+      fieldsBlock.includes('"maxContractsBySymbolJson"'),
+      "COPY_FIELDS must include maxContractsBySymbolJson so symbol limits are copied",
+    );
+  });
+
+  it("extractCopyData copies maxContractsBySymbolJson from the source", () => {
+    assert.ok(
+      src().includes("maxContractsBySymbolJson: sourceRules.maxContractsBySymbolJson"),
+      "extractCopyData must copy maxContractsBySymbolJson from the source rules",
+    );
+  });
+
+  it("does not import broker clients or trigger broker sync for symbol limits", () => {
+    const s = src();
+    for (const forbidden of ["TradovateClient", "applyMaxPositionSize", "executeDailyLossSync"]) {
+      assert.ok(!s.includes(forbidden), `copy endpoint must not reference "${forbidden}"`);
+    }
   });
 });

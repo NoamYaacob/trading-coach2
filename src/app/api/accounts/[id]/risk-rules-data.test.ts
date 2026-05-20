@@ -158,3 +158,18 @@ describe("riskRulesData — enforcement truth", () => {
     assert.equal(result.allowedEndHour, 14);
   });
 });
+
+describe("riskRulesData — maxContractsBySymbolJson (Phase 4)", () => {
+  it("passes through a symbol-limits JSON string", () => {
+    const json = '[{"symbol":"NQ","maxContracts":2}]';
+    assert.equal(riskRulesData({ maxContractsBySymbolJson: json }).maxContractsBySymbolJson, json);
+  });
+
+  it("maps an absent field to null", () => {
+    assert.equal(riskRulesData({ maxContracts: 3 }).maxContractsBySymbolJson, null);
+  });
+
+  it("maps an explicit null to null", () => {
+    assert.equal(riskRulesData({ maxContractsBySymbolJson: null }).maxContractsBySymbolJson, null);
+  });
+});
