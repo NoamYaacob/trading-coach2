@@ -78,6 +78,9 @@ test("only the promoter library and the two PATCH routes touch pending+active ru
     "src/app/api/accounts/[id]/route.ts",
     "src/app/api/rules/route.ts",
     "src/lib/pending-rule-promoter.ts",
+    // Copy endpoint clears pendingPayloadJson (sets to JsonNull) when copying
+    // rules so the target starts clean with no inherited pending changes.
+    "src/app/api/accounts/[id]/rules/copy/route.ts",
   ]);
   const suspicious = SOURCE_FILES.filter((f) => {
     const src = readFileSync(f, "utf8");

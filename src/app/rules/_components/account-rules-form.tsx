@@ -24,6 +24,7 @@ import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 import { CmeHourSelect } from "./cme-hour-select";
 import { cmeHourBoundaryNote } from "./cme-hour-parsing";
 import { ApplyPendingButton } from "./apply-pending-button";
+import { CopyRulesModal, type CopySourceAccount } from "./copy-rules-modal";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -96,6 +97,9 @@ type Props = {
    *  note below the pending diff so the user understands why the button is
    *  absent. Null when the reason is unknown or canApplyPendingNow is true. */
   pendingBlockReason?: string | null;
+  /** Other accounts owned by this user that have a Trading Plan.
+   *  When non-empty, the "Copy from another account" button is enabled. */
+  copySourceAccounts?: CopySourceAccount[];
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -262,6 +266,7 @@ export function AccountRulesForm({
   defaultPendingPayload,
   canApplyPendingNow,
   pendingBlockReason,
+  copySourceAccounts,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -273,6 +278,7 @@ export function AccountRulesForm({
   // Advanced broker-side contract cap is hidden by default; expand if already enabled.
   const [showAdvancedBrokerCap, setShowAdvancedBrokerCap] = useState(initial.rawBrokerHardLimitEnabled);
   const [showForm, setShowForm] = useState(hasExistingRules);
+  const [showCopyModal, setShowCopyModal] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
@@ -408,6 +414,7 @@ export function AccountRulesForm({
 
   // No existing rules: show "No Trading Plan yet" empty state
   if (!showForm) {
+    const hasCopySources = (copySourceAccounts?.length ?? 0) > 0;
     return (
       <div className="grid gap-5">
         <div className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-4">
@@ -427,18 +434,36 @@ export function AccountRulesForm({
           >
             Create rules for this account
           </button>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-400"
-          >
-            Copy from another account
-            <span className="rounded-full bg-stone-100 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-400">
-              Coming soon
-            </span>
-          </button>
+          {hasCopySources ? (
+            <button
+              type="button"
+              onClick={() => setShowCopyModal(true)}
+              className="inline-flex items-center justify-center rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-700 transition hover:border-stone-400"
+            >
+              Copy from another account
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title="No other Trading Plans to copy yet"
+              className="inline-flex cursor-not-allowed items-center rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-400"
+            >
+              Copy from another account
+            </button>
+          )}
         </div>
+        {showCopyModal && copySourceAccounts && copySourceAccounts.length > 0 && (
+          <CopyRulesModal
+            targetAccountId={accountId}
+            sourceAccounts={copySourceAccounts}
+            onClose={() => setShowCopyModal(false)}
+            onSuccess={() => {
+              setShowCopyModal(false);
+              router.refresh();
+            }}
+          />
+        )}
       </div>
     );
   }

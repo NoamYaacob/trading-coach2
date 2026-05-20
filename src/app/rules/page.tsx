@@ -192,6 +192,17 @@ export default async function RulesPage({
   const selectedAccount =
     scope === "account" && id ? accounts.find((a) => a.id === id) ?? null : null;
 
+  // Other accounts the user can copy a Trading Plan from into the selected account.
+  const copySourceAccounts = selectedAccount
+    ? accounts
+        .filter((a) => a.id !== selectedAccount.id && a.riskRules !== null)
+        .map((a) => ({
+          id: a.id,
+          label: a.label,
+          env: a.brokerConnection?.env ?? null,
+        }))
+    : [];
+
   // Determine whether pending rules can be applied immediately ("Apply pending
   // now" button). Uses canActivateRulesNow with live account/scope state.
   const accountConnectionLive = selectedAccount?.connectionStatus === "connected_live";
@@ -461,6 +472,7 @@ export default async function RulesPage({
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}
                   defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                  copySourceAccounts={copySourceAccounts}
                 />
               </SectionCard>
             ) : (

@@ -490,15 +490,19 @@ test("account form: empty state shows 'Create rules for this account' button", (
   );
 });
 
-test("account form: empty state shows 'Copy from another account' placeholder (Coming soon)", () => {
+test("account form: empty state shows 'Copy from another account' button (Phase 3 implemented)", () => {
   const src = read(FORM_FILES.account);
   assert.ok(
     src.includes("Copy from another account"),
-    "empty state must mention 'Copy from another account' as a planned feature",
+    "empty state must have 'Copy from another account' button",
   );
   assert.ok(
-    src.includes("Coming soon"),
-    "the copy-from-account button must be labelled 'Coming soon' while unimplemented",
+    !src.includes("Coming soon"),
+    "Phase 3: copy button must no longer say 'Coming soon' — it is now implemented",
+  );
+  assert.ok(
+    src.includes("setShowCopyModal") || src.includes("CopyRulesModal"),
+    "Phase 3: copy button must open CopyRulesModal",
   );
 });
 
@@ -519,5 +523,97 @@ test("account form: empty state copy says Guardrail cannot monitor without accou
   assert.ok(
     src.includes("Create account-specific rules before Guardrail can monitor"),
     "empty state must explain monitoring requires account-specific rules",
+  );
+});
+
+// ── Phase 3: Copy rules UI ────────────────────────────────────────────────────
+
+const COPY_MODAL = resolve(import.meta.dirname, "copy-rules-modal.tsx");
+
+test("copy modal: exists and is a client component", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(src.includes('"use client"'), "copy-rules-modal must be a client component");
+});
+
+test("copy modal: shows 'No other Trading Plans to copy yet' when sourceAccounts is empty", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("No other Trading Plans to copy yet"),
+    "modal must handle empty source list gracefully",
+  );
+});
+
+test("copy modal: calls POST /api/accounts/[id]/rules/copy endpoint", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("/api/accounts/") && src.includes("/rules/copy"),
+    "modal must POST to /api/accounts/[id]/rules/copy",
+  );
+  assert.ok(src.includes('method: "POST"'), "modal must use POST method");
+});
+
+test("copy modal: handles 423 lock response", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("res.status === 423") || src.includes("status === 423"),
+    "modal must handle 423 session lock response",
+  );
+  assert.ok(
+    src.includes('"locked"'),
+    "modal must enter locked state on 423",
+  );
+});
+
+test("copy modal: shows success message on copy", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("Trading Plan copied successfully"),
+    "modal must show success message after copy",
+  );
+});
+
+test("copy modal: does not use Tradovate or internal terms in user-facing copy", () => {
+  const src = read(COPY_MODAL);
+  const FORBIDDEN_IN_JSX = [
+    "AccountRiskRules",
+    "RiskRules",
+    "BROKER_ENFORCEMENT_ENABLED",
+    "TRADOVATE",
+    "enforcement engine",
+    "dry run",
+  ];
+  for (const term of FORBIDDEN_IN_JSX) {
+    assert.ok(
+      !src.includes(term),
+      `copy modal must not expose internal term "${term}" to users`,
+    );
+  }
+});
+
+test("copy modal: shows account label and env in source list", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("account.label"),
+    "modal must render account label in source list",
+  );
+  assert.ok(
+    src.includes("envLabel") || src.includes("account.env"),
+    "modal must render env label (Demo/Live) when available",
+  );
+});
+
+test("account form: copy button shows disabled state when no sources available", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("No other Trading Plans to copy yet"),
+    "form must show 'No other Trading Plans to copy yet' as disabled title when no sources",
+  );
+});
+
+test("account form: copySourceAccounts prop is declared", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("copySourceAccounts"),
+    "AccountRulesForm must accept copySourceAccounts prop",
   );
 });
