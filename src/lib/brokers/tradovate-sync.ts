@@ -39,6 +39,7 @@ import {
 } from "./position-exposure";
 import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
 import { loadLivePositions } from "./tradovate/load-live-positions";
+import { parseSymbolLimits } from "../futures/symbol-limits";
 
 /**
  * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
@@ -443,6 +444,7 @@ export async function syncTradovateAccount(
           allowedEndHour: true,
           sessionEndBehavior: true,
           maxContracts: true,
+          maxContractsBySymbolJson: true,
           automatedActionsConsentAt: true,
           automatedActionsConsentVersion: true,
         },
@@ -457,6 +459,7 @@ export async function syncTradovateAccount(
           sessionEndHour: true,
           sessionEndBehavior: true,
           maxContracts: true,
+          maxContractsBySymbolJson: true,
           automatedActionsConsentAt: true,
           automatedActionsConsentVersion: true,
         },
@@ -567,6 +570,12 @@ export async function syncTradovateAccount(
     //      affected account within seconds of a fill event being observed.
     const effectiveMaxContracts: number | null =
       accountRules?.maxContracts ?? defaultRules?.maxContracts ?? null;
+    // Symbol-specific contract limits (Phase 4C). Parsed from the same rules
+    // row already loaded above — no extra query, no broker call. When empty,
+    // deriveMaxPositionSizeBreach falls back to the global maxContracts check.
+    const effectiveMaxContractsBySymbolJson: string | null =
+      accountRules?.maxContractsBySymbolJson ?? defaultRules?.maxContractsBySymbolJson ?? null;
+    const effectiveSymbolLimits = parseSymbolLimits(effectiveMaxContractsBySymbolJson);
     const exposureInputs: PositionExposureInput[] = openPositions.map((p) => ({
       symbol: p.symbol,
       netPos: p.side === "SHORT" ? -p.quantity : p.quantity,
@@ -574,6 +583,7 @@ export async function syncTradovateAccount(
     const maxPositionSizeDecision = deriveMaxPositionSizeBreach({
       positions: exposureInputs,
       maxContracts: effectiveMaxContracts,
+      symbolLimits: effectiveSymbolLimits,
     });
 
     let newRiskState: "NORMAL" | "WARNING" | "STOPPED" = "NORMAL";

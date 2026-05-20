@@ -8,6 +8,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   computeMiniEquivalentExposure,
@@ -692,5 +694,276 @@ describe("integration: helper output feeds breach helper end-to-end", () => {
   it("3 NQ vs limit=2 → breach", () => {
     const r = computeMiniEquivalentExposure([{ symbol: "NQH6", netPos: 3 }]);
     assert.equal(isMaxPositionSizeBreached(r.totalMiniEquivalent, 2), true);
+  });
+});
+
+// ── Phase 4C: per-symbol max contracts ───────────────────────────────────────
+
+describe("deriveMaxPositionSizeBreach — legacy aggregate behavior preserved", () => {
+  it("symbolLimits null → aggregate check unchanged (1 NQ + 11 MNQ vs global 2 → breach)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "NQH6", netPos: 1 },
+        { symbol: "MNQH6", netPos: 11 },
+      ],
+      maxContracts: 2,
+      symbolLimits: null,
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+  });
+
+  it("symbolLimits omitted → aggregate check unchanged", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 3 }],
+      maxContracts: 2,
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("symbolLimits empty [] → aggregate check unchanged (breach)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "NQH6", netPos: 1 },
+        { symbol: "MNQH6", netPos: 11 },
+      ],
+      maxContracts: 2,
+      symbolLimits: [],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("symbolLimits empty [] within global limit → no breach (aggregate)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 2 }],
+      maxContracts: 2,
+      symbolLimits: [],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("symbolLimits empty [] with global maxContracts null → no rule, no trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 50 }],
+      maxContracts: null,
+      symbolLimits: [],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — symbol-specific limit wins over global", () => {
+  it("NQ-specific limit 1: 1 NQ → within limit", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 1 }],
+      maxContracts: 10,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("NQ-specific limit 1: 2 NQ → breach (symbol limit wins over generous global 10)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 2 }],
+      maxContracts: 10,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+  });
+
+  it("MNQ-specific limit 10 still applies when global fallback is large", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 11 }],
+      maxContracts: 100,
+      symbolLimits: [{ symbol: "MNQ", maxContracts: 10 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — MNQ raw limit uses existing equivalent conversion", () => {
+  it("MNQ-specific limit 10: 10 MNQ → within limit (10 MNQ = 1 NQ-equivalent)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 10 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MNQ", maxContracts: 10 }],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("MNQ-specific limit 10: 11 MNQ → breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MNQH6", netPos: 11 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MNQ", maxContracts: 10 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("MES-specific limit 10: 10 MES within, 11 MES breach", () => {
+    const ok = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MESH6", netPos: 10 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MES", maxContracts: 10 }],
+    });
+    assert.equal(ok.shouldTrigger, false);
+    const bad = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MESH6", netPos: 11 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MES", maxContracts: 10 }],
+    });
+    assert.equal(bad.shouldTrigger, true);
+  });
+
+  it("MCL-specific limit 10: 11 MCL → breach", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "MCLM6", netPos: 11 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MCL", maxContracts: 10 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("QM-specific limit 2: 2 QM within, 3 QM breach", () => {
+    const ok = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "QMM6", netPos: 2 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "QM", maxContracts: 2 }],
+    });
+    assert.equal(ok.shouldTrigger, false);
+    const bad = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "QMM6", netPos: 3 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "QM", maxContracts: 2 }],
+    });
+    assert.equal(bad.shouldTrigger, true);
+  });
+
+  it("same-root contracts across expiries aggregate against the symbol limit", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "MNQH6", netPos: 6 },
+        { symbol: "MNQM6", netPos: 6 }, // 12 MNQ total > 10 limit
+      ],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "MNQ", maxContracts: 10 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — global fallback for symbols without a specific limit", () => {
+  it("ES has no specific limit → uses global fallback (6 ES vs global 2 → breach)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "ESH6", netPos: 6 }],
+      maxContracts: 2,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+  });
+
+  it("ES has no specific limit → uses global fallback (2 ES vs global 2 → within)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "ESH6", netPos: 2 }],
+      maxContracts: 2,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("symbol without a specific limit and no global fallback → no rule, no trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "ESH6", netPos: 50 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, false);
+  });
+
+  it("breaches if any single root exceeds its resolved limit (MNQ via global fallback)", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [
+        { symbol: "NQH6", netPos: 1 }, // NQ-specific limit 1 — OK
+        { symbol: "MNQH6", netPos: 25 }, // no MNQ limit → global 2 → 2.5 std-equiv → breach
+      ],
+      maxContracts: 2,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "exposure");
+  });
+});
+
+describe("deriveMaxPositionSizeBreach — unsupported / unknown symbols", () => {
+  it("registry-unsupported symbol with per-symbol limits configured → unsupported trigger", () => {
+    const d = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "ZZZZ", netPos: 1 }],
+      maxContracts: 2,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(d.shouldTrigger, true);
+    assert.equal(d.reasonKind, "unsupported");
+  });
+
+  it("account isolation: account B's symbol limits do not affect account A's evaluation", () => {
+    // Account A: NQ limit 5. Account B: NQ limit 1. Each evaluated with its own
+    // limits — the same 3 NQ position passes for A and breaches for B.
+    const accountA = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 3 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 5 }],
+    });
+    const accountB = deriveMaxPositionSizeBreach({
+      positions: [{ symbol: "NQH6", netPos: 3 }],
+      maxContracts: null,
+      symbolLimits: [{ symbol: "NQ", maxContracts: 1 }],
+    });
+    assert.equal(accountA.shouldTrigger, false);
+    assert.equal(accountB.shouldTrigger, true);
+  });
+});
+
+// ── Phase 4C: safety source-scans ────────────────────────────────────────────
+
+describe("Phase 4C — evaluator path introduces no broker writes", () => {
+  const evaluator = readFileSync(resolve(import.meta.dirname, "./position-exposure.ts"), "utf8");
+  const sync = readFileSync(resolve(import.meta.dirname, "./tradovate-sync.ts"), "utf8");
+
+  it("position-exposure.ts imports no broker client and makes no broker calls", () => {
+    for (const forbidden of [
+      "TradovateClient",
+      "applyMaxPositionSize",
+      "executeDailyLossSync",
+      "writeBrokerRiskSettingsSyncAudit",
+      "BrokerRiskSettingsSyncAudit",
+    ]) {
+      assert.ok(!evaluator.includes(forbidden), `position-exposure.ts must not reference "${forbidden}"`);
+    }
+  });
+
+  it("tradovate-sync.ts wires symbolLimits into deriveMaxPositionSizeBreach", () => {
+    assert.ok(
+      sync.includes("symbolLimits: effectiveSymbolLimits"),
+      "tradovate-sync must pass parsed symbol limits to the breach evaluator",
+    );
+    assert.ok(
+      sync.includes("parseSymbolLimits(effectiveMaxContractsBySymbolJson)"),
+      "tradovate-sync must parse maxContractsBySymbolJson with the Phase A helper",
+    );
+  });
+
+  it("maxContractsBySymbolJson is never passed to a broker call", () => {
+    // It must only feed parseSymbolLimits — never applyMaxPositionSize or any
+    // Tradovate write path.
+    assert.ok(
+      !sync.includes("applyMaxPositionSize(") ||
+        !/applyMaxPositionSize\([^)]*maxContractsBySymbol/.test(sync),
+      "maxContractsBySymbolJson must not be forwarded to applyMaxPositionSize",
+    );
+    assert.ok(
+      !/maxContractsBySymbol[^\n]*Tradovate/i.test(sync),
+      "maxContractsBySymbolJson must not be sent to Tradovate",
+    );
   });
 });
