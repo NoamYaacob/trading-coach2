@@ -13,6 +13,8 @@
     "cron:sync": "node scripts/cron-tradovate-sync.mjs",
     "cron:promote": "node scripts/cron-promote-pending-rules.mjs",
     "cron:renew-tokens": "node scripts/cron-renew-tradovate-tokens.mjs",
+    "diagnose:broker-tokens": "tsx scripts/diagnose-broker-tokens.ts",
+    "heal:broker-tokens": "tsx scripts/heal-broker-tokens.ts",
     "start:listener": "tsx scripts/tradovate-listener-worker.ts",
     "lint": "eslint",
     "test:unit": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
