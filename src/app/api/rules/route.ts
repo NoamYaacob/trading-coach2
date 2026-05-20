@@ -11,7 +11,9 @@ import {
 import { AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
 import { isValidTimeZone } from "@/lib/timezone";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { getAccountIdsWithTradeToday } from "@/lib/rules/session-trade-guard";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { getCmeSessionStartForKey } from "@/lib/time/cme-session";
 
 const VALID_SESSION_END_BEHAVIORS = ["flatten_at_session_end", "wait_for_exit_then_lock"] as const;
 const VALID_SESSION_PRESETS = ["asia", "london", "ny_am", "ny_pm", "custom"] as const;
@@ -296,7 +298,7 @@ export async function POST(request: Request) {
     }),
     prisma.liveSessionState.findMany({
       where: { account: { userId: user.id } },
-      select: { accountId: true, riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
+      select: { accountId: true, riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true, lastTradeAt: true },
     }),
   ]);
   const hasProtectionLockToday =
@@ -333,11 +335,29 @@ export async function POST(request: Request) {
   }
 
   // ── Hard reject: any account has already traded this session ─────────────────
+  // Multiple signals are checked to close the first-fill race window.
   const tradingDayKey = deriveCmeTradingDayKey(new Date());
-  const tradingAccountsToday = accountLiveStates.filter(
-    (s) => s.sessionDate === tradingDayKey && s.tradesCount > 0,
+  const sessionStart = getCmeSessionStartForKey(tradingDayKey);
+
+  // Signal 1 & 2: LiveSessionState (may lag on first fill of the session)
+  const liveStateTradedIds = new Set(
+    accountLiveStates
+      .filter(
+        (s) =>
+          (s.sessionDate === tradingDayKey && s.tradesCount > 0) ||
+          (s.lastTradeAt != null &&
+            deriveCmeTradingDayKey(s.lastTradeAt) === tradingDayKey),
+      )
+      .map((s) => s.accountId),
   );
-  if (tradingAccountsToday.length > 0) {
+
+  // Signal 3: NormalizedTradeEvent — written immediately on first fill,
+  // before tradesCount/sessionDate are updated by the sync cron.
+  const allAccountIds = accountLiveStates.map((s) => s.accountId);
+  const tradeEventIds = await getAccountIdsWithTradeToday(allAccountIds, sessionStart);
+
+  const hasAnyAccountTradedToday = liveStateTradedIds.size > 0 || tradeEventIds.size > 0;
+  if (hasAnyAccountTradedToday) {
     await writeRuleChangeAudit({
       userId: user.id,
       scope: "default",
