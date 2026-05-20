@@ -8,9 +8,10 @@ const PRIMARY_BTN =
 type TelegramConnectionProps = {
   connected: boolean;
   username: string | null;
+  botConfigured?: boolean;
 };
 
-export function TelegramConnection({ connected, username }: TelegramConnectionProps) {
+export function TelegramConnection({ connected, username, botConfigured = true }: TelegramConnectionProps) {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,30 @@ export function TelegramConnection({ connected, username }: TelegramConnectionPr
     } finally {
       setIsCreatingLink(false);
     }
+  }
+
+  if (!botConfigured) {
+    return (
+      <div className="grid gap-3">
+        <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-stone-300" />
+          <div className="text-sm">
+            <p className="font-medium text-stone-700">Coming soon</p>
+            <p className="text-stone-500">Telegram setup requires the bot to be configured. This will be available soon.</p>
+          </div>
+        </div>
+        <p className="text-xs leading-5 text-stone-600">
+          Once available, Telegram will send alerts for rule breaches (daily loss, max trades, loss
+          streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).
+        </p>
+        <p className="text-xs leading-5 text-stone-400">
+          Planned: per-alert preferences and a daily digest summary.
+        </p>
+        <a href="/alerts" className="text-xs font-medium text-stone-700 underline-offset-2 hover:underline">
+          See all alerts →
+        </a>
+      </div>
+    );
   }
 
   if (connected) {

@@ -57,7 +57,7 @@ export default async function RulesAssignmentPage({
         >
           Guardrail
         </Link>
-        <Link href="/accounts" className="text-sm text-stone-600 transition hover:text-stone-950">
+        <Link href="/dashboard" className="text-sm text-stone-600 transition hover:text-stone-950">
           Skip for now
         </Link>
       </header>
@@ -128,7 +128,7 @@ export default async function RulesAssignmentPage({
             <div className="mt-4 flex flex-wrap gap-2">
               {hasDefaultRules ? (
                 <Link
-                  href="/accounts"
+                  href="/dashboard"
                   className="inline-flex items-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
                 >
                   Use default plan →
@@ -187,7 +187,7 @@ export default async function RulesAssignmentPage({
             </p>
             <div className="mt-4">
               <Link
-                href="/accounts"
+                href="/dashboard"
                 className="inline-flex items-center rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950"
               >
                 Continue without rules

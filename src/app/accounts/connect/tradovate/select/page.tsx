@@ -104,8 +104,8 @@ export default async function SelectAccountsPage({
         >
           Guardrail
         </Link>
-        <Link href="/accounts" className="text-sm text-stone-600 transition hover:text-stone-950">
-          Back to accounts
+        <Link href="/dashboard" className="text-sm text-stone-600 transition hover:text-stone-950">
+          Back to dashboard
         </Link>
       </header>
 

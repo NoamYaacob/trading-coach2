@@ -125,7 +125,7 @@ export function SelectAccountsForm({
         return;
       }
 
-      router.push(data.redirectTo ?? "/accounts");
+      router.push(data.redirectTo ?? "/dashboard");
     } catch {
       setError("Network error. Please try again.");
       setSubmitting(false);
@@ -185,10 +185,10 @@ export function SelectAccountsForm({
             {retrying ? "Syncing…" : "Retry account sync"}
           </button>
           <Link
-            href="/accounts"
+            href="/dashboard"
             className="inline-flex items-center justify-center rounded-full border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-950"
           >
-            Back to accounts
+            Back to dashboard
           </Link>
         </div>
       </div>
@@ -308,7 +308,7 @@ export function SelectAccountsForm({
             : `Add ${selectedCount} account${selectedCount === 1 ? "" : "s"}`}
         </button>
         <Link
-          href="/accounts"
+          href="/dashboard"
           className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
         >
           Cancel

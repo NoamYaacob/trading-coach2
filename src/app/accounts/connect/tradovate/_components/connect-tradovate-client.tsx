@@ -219,8 +219,8 @@ export function ConnectTradovateClient() {
         >
           Guardrail
         </Link>
-        <Link href={isReconnectMode ? "/settings" : "/accounts"} className="text-sm text-stone-600 transition hover:text-stone-950">
-          {isReconnectMode ? "Back to Settings" : "Back to accounts"}
+        <Link href={isReconnectMode ? "/settings" : "/dashboard"} className="text-sm text-stone-600 transition hover:text-stone-950">
+          {isReconnectMode ? "Back to Settings" : "Back to dashboard"}
         </Link>
       </header>
 
@@ -480,7 +480,7 @@ export function ConnectTradovateClient() {
                 {submitting ? "Redirecting…" : "Continue to Tradovate authorization →"}
               </button>
               <Link
-                href={isReconnectMode ? "/settings" : "/accounts"}
+                href={isReconnectMode ? "/settings" : "/dashboard"}
                 className="inline-flex items-center justify-center rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition hover:border-stone-950"
               >
                 Cancel

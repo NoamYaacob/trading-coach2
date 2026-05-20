@@ -7,7 +7,9 @@
  *      connect button actually triggers the link-token flow.
  *   3. States Telegram behavior honestly (what it sends today, what is
  *      planned) and never falsely claims setup is unavailable.
- *   4. Keeps destructive (danger zone) copy explicit and gated behind a
+ *   4. When the Telegram bot is not configured, renders a friendly
+ *      "coming soon" state rather than a runtime error.
+ *   5. Keeps destructive (danger zone) copy explicit and gated behind a
  *      typed confirmation.
  *
  * Source-scan approach mirrors alerts-page-honesty.test.ts.
@@ -109,6 +111,43 @@ describe("Settings page — Telegram copy", () => {
     assert.ok(
       TELEGRAM_SRC.includes("Planned:"),
       "unbuilt Telegram features must be marked Planned, not implied as live",
+    );
+  });
+});
+
+// ── Telegram bot-not-configured state is friendly ─────────────────────────────
+
+describe("Settings page — Telegram bot-not-configured state", () => {
+  it("accepts a botConfigured prop so the server can signal bot availability", () => {
+    assert.ok(
+      TELEGRAM_SRC.includes("botConfigured"),
+      "TelegramConnection must accept a botConfigured prop",
+    );
+  });
+
+  it("renders a friendly coming-soon state when bot is not configured, not a runtime error", () => {
+    assert.ok(
+      TELEGRAM_SRC.includes("Coming soon") &&
+        TELEGRAM_SRC.includes("bot to be configured"),
+      "the bot-not-configured state must say 'Coming soon' and explain the bot needs to be configured",
+    );
+  });
+
+  it("the bot-not-configured state does not show the connect button or trigger the API", () => {
+    // When botConfigured=false the component returns early before the connect button.
+    // The guard is the botConfigured branch that precedes the connected/not-connected branches.
+    const botBranchIdx = TELEGRAM_SRC.indexOf("!botConfigured");
+    const connectBtnIdx = TELEGRAM_SRC.indexOf("Connect Telegram");
+    assert.ok(
+      botBranchIdx > -1 && botBranchIdx < connectBtnIdx,
+      "the !botConfigured branch must appear before the Connect Telegram button",
+    );
+  });
+
+  it("the settings page passes botConfigured derived from TELEGRAM_BOT_USERNAME env var", () => {
+    assert.ok(
+      PAGE_SRC.includes("botConfigured") && PAGE_SRC.includes("TELEGRAM_BOT_USERNAME"),
+      "the settings page must pass botConfigured based on the TELEGRAM_BOT_USERNAME env var",
     );
   });
 });

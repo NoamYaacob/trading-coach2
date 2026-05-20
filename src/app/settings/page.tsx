@@ -235,6 +235,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <TelegramConnection
               connected={Boolean(telegramConnection)}
               username={telegramConnection?.telegramUsername ?? null}
+              botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
             />
           </div>
           <details className="group mt-4 rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3">

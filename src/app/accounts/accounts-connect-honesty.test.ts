@@ -10,6 +10,8 @@
  *   3. The connect flow warns users they will be redirected to Tradovate
  *      and makes Demo vs Live explicit.
  *   4. Expired connections expose an actionable reconnect path.
+ *   5. No connect-flow links route through /accounts (which immediately
+ *      redirects to /dashboard), causing a confusing double-redirect.
  *
  * Source-scan approach mirrors alerts-page-honesty.test.ts.
  *
@@ -32,6 +34,10 @@ const CARD_SRC = readFileSync(join(__dirname, "_components/account-card.tsx"), "
 const NEW_SRC = readFileSync(join(__dirname, "new/page.tsx"), "utf8");
 const SELECT_SRC = readFileSync(
   join(__dirname, "connect/tradovate/select/_components/select-accounts-form.tsx"),
+  "utf8",
+);
+const SELECT_PAGE_SRC = readFileSync(
+  join(__dirname, "connect/tradovate/select/page.tsx"),
   "utf8",
 );
 
@@ -149,6 +155,44 @@ describe("accounts flow — reconnect copy is actionable", () => {
       CARD_SRC.includes("expired") &&
         (CARD_SRC.includes("Re-authorize Tradovate") || CARD_SRC.includes("reconnect")),
       "expired connections must show an actionable reconnect path",
+    );
+  });
+});
+
+// ── No /accounts double-redirect in connect flow ──────────────────────────────
+
+describe("accounts flow — no /accounts double-redirect", () => {
+  it("connect-tradovate-client.tsx uses /dashboard not /accounts for non-reconnect back/cancel links", () => {
+    // The non-reconnect branch must not link through /accounts (which immediately
+    // redirects to /dashboard), causing a confusing double-redirect for users.
+    // Reconnect mode links to /settings, which is intentional.
+    assert.ok(
+      !CONNECT_SRC.includes('"/accounts"'),
+      "connect-tradovate-client.tsx must not link to /accounts; link to /dashboard directly",
+    );
+  });
+
+  it("select/page.tsx back link points to /dashboard not /accounts", () => {
+    assert.ok(
+      !SELECT_PAGE_SRC.includes('href="/accounts"'),
+      "select/page.tsx must not link to /accounts; link to /dashboard directly",
+    );
+  });
+
+  it("select-accounts-form.tsx back and cancel links point to /dashboard not /accounts", () => {
+    assert.ok(
+      !SELECT_SRC.includes('"/accounts"'),
+      "select-accounts-form.tsx must not link to /accounts; link to /dashboard directly",
+    );
+  });
+
+  it("rules/page.tsx user-facing links point to /dashboard not /accounts", () => {
+    // User-facing Link elements (skip, use default plan, continue without rules)
+    // must not route through /accounts.
+    const linkToAccounts = /href="\/accounts"/.test(RULES_SRC);
+    assert.ok(
+      !linkToAccounts,
+      "rules/page.tsx Link elements must not point to /accounts; link to /dashboard directly",
     );
   });
 });
