@@ -25,7 +25,6 @@ export default async function AlertsPage() {
         maxDailyLoss: true,
         maxTradesPerDay: true,
         stopAfterLosses: true,
-        riskPerTrade: true,
         sessionStartHour: true,
         sessionEndHour: true,
       },
@@ -50,7 +49,7 @@ export default async function AlertsPage() {
       status: telegramReady ? "Connected" : "Not connected",
       badgeCls: telegramReady ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500",
       detail: telegramReady
-        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Sends alerts for rule breaches (daily loss, max trades, loss streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).`
+        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Sends alerts for rule breaches (daily loss, loss streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).`
         : "Telegram alerts are not connected yet. Once connected, Guardrail sends rule-breach and behavioral alerts straight to your chat.",
       future: "Planned: per-alert preferences and a daily digest summary.",
       enabled: telegramReady,
@@ -72,33 +71,29 @@ export default async function AlertsPage() {
   const ruleTriggers = [
     {
       label: "Daily loss limit reached",
-      description: "Fires when your daily P&L crosses the configured loss limit.",
+      description:
+        "An in-app notice when your daily P&L hits the loss limit, plus a Telegram early warning at 80% of the limit.",
       active: riskRules?.maxDailyLoss != null,
       requires: "Daily loss limit",
     },
     {
       label: "Max trades reached",
-      description: "Fires when you hit your maximum trades-per-day limit.",
+      description: "An in-app notice when you hit your maximum trades-per-day limit.",
       active: riskRules?.maxTradesPerDay != null,
       requires: "Max trades per day",
     },
     {
       label: "Consecutive losses",
-      description: "Fires after the configured number of back-to-back losses.",
+      description:
+        "An in-app notice at your loss-streak limit, plus a Telegram warning one loss before it.",
       active: riskRules?.stopAfterLosses != null,
       requires: "Stop after losses",
     },
     {
       label: "Outside trading hours",
-      description: "Fires when a trade is placed outside your configured session window.",
+      description: "An in-app notice when the market is closed or your session window has ended.",
       active: riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null,
       requires: "Session hours",
-    },
-    {
-      label: "Unrealized drawdown",
-      description: "Fires when an open position's unrealized P&L exceeds your per-trade risk limit.",
-      active: riskRules?.riskPerTrade != null,
-      requires: "Risk per trade",
     },
   ];
 
@@ -119,7 +114,7 @@ export default async function AlertsPage() {
 
   const comingSoon = [
     { label: "Daily profit target hit", description: "Alert when session P&L reaches your profit target." },
-    { label: "Approaching loss limit (80%)", description: "Early warning when P&L reaches 80% of your daily loss limit." },
+    { label: "Unrealized drawdown", description: "Alert when an open position's unrealized loss exceeds your per-trade risk limit." },
     { label: "Pre-news window", description: "Alert before high-impact economic events." },
     { label: "News lockout", description: "Warns on trades placed around scheduled news releases." },
     { label: "Session start & end reminders", description: "Reminders when your trading session opens and closes." },

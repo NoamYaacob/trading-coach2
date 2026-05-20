@@ -351,21 +351,21 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
         </div>
       </div>
 
-      {/* ── Notifications ───────────────────────────────────────────────── */}
+      {/* ── Notifications ───────────────────────────────────────────────────
+          Read-only honest summary — there is no per-rule alert toggle today.
+          Rule-breach notices render in-app on the Dashboard; Telegram delivers
+          the two proactive warnings the engine actually sends. */}
       <div role="group" aria-label="Notifications" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Notifications</p>
-        <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm sm:py-3">
-          <input
-            type="checkbox"
-            checked={values.onBreachWarn}
-            onChange={(e) => update("onBreachWarn", e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
-          />
-          <span>
-            <span className="font-medium text-stone-950">Send alert when a rule is triggered</span>
-            <span className="mt-0.5 block text-stone-500">Alert delivery requires a connected Telegram channel. In-app alerts are planned.</span>
-          </span>
-        </label>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">
+          Rule-breach notices appear in-app on the Dashboard. Connect Telegram to also
+          receive proactive alerts — an early warning at 80% of your daily loss limit and
+          a warning as you approach your loss-streak limit.{" "}
+          <a href="/alerts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+            See all alerts
+          </a>
+          .
+        </div>
       </div>
 
       <TradingSessionSelector

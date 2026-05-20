@@ -771,17 +771,15 @@ export function AccountRulesForm({
         </div>
       </div>
 
-      {/* ── Notifications (inherited) ───────────────────────────────────────
-          Default-only field surfaced as a card so the account form mirrors
-          the default template's section list. The on-page UX is read-only:
-          breach alerts are configured on the default template. */}
+      {/* ── Notifications ───────────────────────────────────────────────────
+          Read-only honest summary. There is no per-account alert toggle —
+          rule-breach notices render in-app on the Dashboard and Telegram
+          delivers the proactive warnings the engine actually sends. */}
       <div role="group" aria-label="Notifications" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <p className="text-sm font-semibold text-stone-950">Notifications</p>
         <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs text-stone-600">
-          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
-            Inherited
-          </span>{" "}
-          Breach alert setting is inherited from the default template. Alerts require a connected Telegram channel to fire.
+          Rule-breach notices appear in-app on the Dashboard. Connect Telegram in Settings
+          to also receive proactive alerts in your chat.
         </div>
       </div>
 

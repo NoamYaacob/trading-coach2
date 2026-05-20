@@ -91,12 +91,57 @@ describe("/alerts page trigger honesty", () => {
   });
 });
 
+// ── Notification-audit honesty fixes ──────────────────────────────────────────
+
+describe("/alerts page — Telegram + trigger honesty", () => {
+  it("does not claim Telegram sends a max-trades alert", () => {
+    // The only proactive Telegram pushes are near_daily_loss_limit (80%) and
+    // consecutive_losses_warning (N-1) — no exceeded_trade_count is produced.
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("daily loss, max trades, loss streak"),
+      "the Telegram channel copy must not claim a max-trades alert is sent",
+    );
+  });
+
+  it("does not list Unrealized drawdown as an active rule trigger", () => {
+    const ruleTriggersBlock = ALERTS_PAGE_SRC.slice(
+      ALERTS_PAGE_SRC.indexOf("const ruleTriggers"),
+      ALERTS_PAGE_SRC.indexOf("const comingSoon"),
+    );
+    assert.ok(
+      !ruleTriggersBlock.includes("Unrealized drawdown"),
+      "Unrealized drawdown is not wired to any rule — must not be an active trigger",
+    );
+  });
+
+  it("does not query riskPerTrade — no unrealized-drawdown trigger is wired", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("riskPerTrade"),
+      "riskPerTrade is not wired to an alert — must not be queried or claimed as active",
+    );
+  });
+
+  it("does not list the 80% early warning as Planned — it is wired", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("Approaching loss limit (80%)"),
+      "the 80% daily-loss early warning is wired (Telegram) — it must not sit in the Planned list",
+    );
+  });
+
+  it("describes the wired 80% Telegram early warning on the active daily-loss trigger", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("early warning at 80%"),
+      "the active daily-loss trigger must describe the wired 80% Telegram warning",
+    );
+  });
+});
+
 // ── Roadmap visibility: planned features stay visible but not "Active" ────────
 
 describe("/alerts page roadmap", () => {
   const PLANNED_FEATURES = [
     "Daily profit target",
-    "Approaching loss limit (80%)",
+    "Unrealized drawdown",
     "Pre-news window",
     "News lockout",
     "Session start & end reminders",

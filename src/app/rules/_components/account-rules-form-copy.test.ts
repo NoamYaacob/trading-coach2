@@ -64,20 +64,19 @@ test("account form: above-panel guidance says fields show active rules", () => {
 });
 
 test("account form: surfaces inherited fields per-section (parity with default form structure)", () => {
-  // After the section-parity refactor, inherited default-only fields are
-  // surfaced in the section where they conceptually belong rather than in
-  // a single consolidated callout:
+  // Inherited default-only fields are surfaced in the section where they
+  // conceptually belong:
   //   - Account size + Daily profit target → inside the "Money limits" section
   //     as a small inherited mini-table.
-  //   - Breach alerts → inside the "Notifications" section as an inherited card.
-  // This mirrors the default template's section list while making it obvious
-  // that those fields are managed elsewhere.
+  //   - Notifications → a read-only honest summary. There is no real per-rule
+  //     alert toggle, so the section describes actual delivery (in-app +
+  //     Telegram), not a fictional inherited "breach alert setting".
   const src = read(FORM_FILES.account);
   assert.ok(src.includes("Account size"), "Money limits section must mention 'Account size' as inherited");
   assert.ok(src.includes("Daily profit target"), "Money limits section must mention 'Daily profit target' as inherited");
   assert.ok(
-    /Breach alerts are configured on the default template/i.test(src),
-    "Notifications section must explain that breach alerts are inherited",
+    src.includes("Rule-breach notices appear in-app on the Dashboard"),
+    "Notifications section must honestly describe in-app + Telegram delivery",
   );
 });
 
@@ -699,4 +698,43 @@ test("account form: symbol-limits section does not claim broker-backed enforceme
       `symbol-limits section must not claim "${phrase}"`,
     );
   }
+});
+
+// ── Notifications honesty (Telegram + notifications audit) ───────────────────
+
+test("default form: notifications section has no fake onBreachWarn toggle", () => {
+  const src = read(FORM_FILES.default);
+  // The onBreachWarn checkbox never gated any send path — it was a dead toggle.
+  assert.ok(
+    !src.includes("Send alert when a rule is triggered"),
+    "the default form must not show a fake 'Send alert' toggle that controls nothing",
+  );
+  assert.ok(
+    !src.includes("In-app alerts are planned"),
+    "in-app rule notices already render on the Dashboard — copy must not call them planned",
+  );
+});
+
+test("default form: notifications section honestly describes in-app + Telegram delivery", () => {
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    src.includes("Rule-breach notices appear in-app on the Dashboard"),
+    "the default form notifications section must honestly describe in-app delivery",
+  );
+  assert.ok(
+    src.includes("early warning at 80%") && src.includes("loss-streak limit"),
+    "the notifications section must describe the two proactive Telegram warnings actually sent",
+  );
+});
+
+test("account form: notifications section drops the stale inherited-setting framing", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes("Breach alert setting is inherited"),
+    "the account form must not present a fictional inherited 'breach alert setting'",
+  );
+  assert.ok(
+    !/Alerts require a connected Telegram channel to fire/.test(src),
+    "in-app notices fire without Telegram — the account form must not claim alerts need Telegram",
+  );
 });
