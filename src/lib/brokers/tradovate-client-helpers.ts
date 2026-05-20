@@ -29,16 +29,20 @@ export type TradovateClientErrorCode =
 export class TradovateClientError extends Error {
   readonly code: TradovateClientErrorCode;
   readonly statusCode: number | undefined;
+  /** Excerpt of the HTTP response body — used by classifyRenewalError for 400 disambiguation. */
+  readonly bodyExcerpt: string | undefined;
 
   constructor(
     code: TradovateClientErrorCode,
     message: string,
     statusCode?: number,
+    bodyExcerpt?: string,
   ) {
     super(message);
     this.name = "TradovateClientError";
     this.code = code;
     this.statusCode = statusCode;
+    this.bodyExcerpt = bodyExcerpt;
   }
 }
 
@@ -161,12 +165,13 @@ export function classifyRenewalError(input: RenewalErrorInput): RenewalErrorClas
     if (status === 429) return "transient";
     if (status >= 500 && status < 600) return "transient";
     if (status === 400) {
-      // 400 is ambiguous: it can be invalid_grant (auth) or bad request shape.
-      // Look at body markers to disambiguate; default to auth_invalid because
-      // the OAuth refresh_token grant returns 400 for invalid_grant.
+      // 400 is ambiguous: it can be invalid_grant (auth) or a transient bad-request.
+      // Use the response body to distinguish — callOAuthRefreshGrant reads and attaches
+      // it as bodyExcerpt. Without recognized auth markers, treat as transient to avoid
+      // false-expiring connections on server-side 400s.
       const body = (input.bodyExcerpt ?? "").toLowerCase();
       if (AUTH_INVALID_BODY_MARKERS.some((m) => body.includes(m))) return "auth_invalid";
-      return "auth_invalid";
+      return "transient";
     }
     if (status >= 200 && status < 300) {
       // OK status but classification was requested — likely a body-level error.

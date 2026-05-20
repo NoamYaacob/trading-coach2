@@ -228,6 +228,7 @@ export async function ensureTradovateAccessToken({
       code: err instanceof TradovateClientError ? err.code : undefined,
       httpStatus:
         err instanceof TradovateClientError ? (err.statusCode ?? null) : null,
+      bodyExcerpt: err instanceof TradovateClientError ? (err.bodyExcerpt ?? null) : null,
     });
 
     if (cls === "auth_invalid") {
@@ -314,10 +315,14 @@ async function callOAuthRefreshGrant(
   }
 
   if (!res.ok) {
+    // Read the body before throwing so classifyRenewalError can distinguish
+    // invalid_grant (400+body) from an unrecognized transient 400.
+    const bodyText = await res.text().catch(() => "");
     throw new TradovateClientError(
       "REFRESH_FAILED",
       `OAuth refresh grant returned HTTP ${res.status}.`,
       res.status,
+      bodyText.slice(0, 500),
     );
   }
 
@@ -357,8 +362,9 @@ async function persistRenewedTokens(
     errorMessage: null,
     lastRenewedAt: now,
     lastRenewError: null,
-    // connectionStatus is NOT changed: preserves connected_live status.
+    // connectionStatus is NOT changed for non-expired connections: preserves connected_live.
     // The permission probe is solely responsible for live ↔ readonly transitions.
+    // Expired connections are healed to connected_readonly by the updateMany below.
   };
   if (!preserveRefreshToken && tokens.refreshToken) {
     data.refreshTokenEncrypted = encryptAndSerialize(tokens.refreshToken);
@@ -368,10 +374,17 @@ async function persistRenewedTokens(
     data,
   });
 
-  // Heal linked accounts that are stuck at "expired" from a prior cascade. The
-  // BC is still connected (connectionStatus unchanged), so any account rows
-  // that were individually expired are now stale. Cascade to connected_readonly;
-  // the permission probe will upgrade to connected_live if warranted.
+  // Heal the BrokerConnection if it is stuck at "expired" — this can happen when a
+  // concurrent renewal race caused a losing call to run markExpiredWithAccounts after
+  // this successful renewal. Restore to connected_readonly; the permission probe
+  // upgrades to connected_live if warranted.
+  await prisma.brokerConnection.updateMany({
+    where: { id: brokerConnectionId, connectionStatus: "expired" },
+    data: { connectionStatus: "connected_readonly" },
+  });
+
+  // Heal linked accounts that are stuck at "expired" from a prior cascade.
+  // Cascade to connected_readonly; the permission probe will upgrade to connected_live if warranted.
   await prisma.connectedAccount.updateMany({
     where: {
       brokerConnectionId,
@@ -386,10 +399,29 @@ async function markExpiredWithAccounts(
   brokerConnectionId: string,
   reason: string,
 ): Promise<void> {
-  await prisma.brokerConnection.update({
-    where: { id: brokerConnectionId },
+  // Race guard: if the connection was renewed within the last 60 seconds, skip
+  // marking it expired. This prevents a losing concurrent refresh attempt (which
+  // used a now-rotated refresh token and got invalid_grant) from undoing the
+  // winning call's successful renewal.
+  const RACE_GRACE_MS = 60_000;
+  const recentCutoff = new Date(Date.now() - RACE_GRACE_MS);
+  const updated = await prisma.brokerConnection.updateMany({
+    where: {
+      id: brokerConnectionId,
+      OR: [
+        { lastRenewedAt: null },
+        { lastRenewedAt: { lt: recentCutoff } },
+      ],
+    },
     data: { connectionStatus: "expired", errorMessage: reason, lastRenewError: reason },
   });
+  if (updated.count === 0) {
+    console.warn(
+      "[tradovate/ensure-token] skipping markExpired — connection renewed within last 60s (concurrent race guard)",
+      { brokerConnectionId, reason },
+    );
+    return;
+  }
   await prisma.connectedAccount.updateMany({
     where: { brokerConnectionId },
     data: { connectionStatus: "expired" },

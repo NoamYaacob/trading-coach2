@@ -83,22 +83,29 @@ describe("Bug 2 fix: #storeRefreshedTokens does not reset connectionStatus", () 
     );
   });
 
-  test("connection-level renewal (ensureTradovateAccessToken) also preserves connectionStatus on BC", () => {
+  test("connection-level renewal (ensureTradovateAccessToken) preserves connected_live status on BC", () => {
     const s = src(ENSURE_FILE);
     const persistFn = s.indexOf("async function persistRenewedTokens(");
     const persistEnd = s.indexOf("\nasync function ", persistFn + 1);
     const persistBody = s.slice(persistFn, persistEnd > persistFn ? persistEnd : s.length);
-    // The BC update data must not include a hard-coded connectionStatus.
+    // The main BC update data must not hard-code connected_readonly — that would demote
+    // connected_live connections. Only a separate conditional updateMany heals expired ones.
     const dataStart = persistBody.indexOf("const data:");
     const dataEnd = persistBody.indexOf("await prisma.brokerConnection.update(", dataStart);
     const dataBlock = persistBody.slice(dataStart, dataEnd);
     assert.ok(
       !dataBlock.includes('"connected_readonly"'),
-      "brokerConnection.update data in persistRenewedTokens must not hardcode connected_readonly",
+      "main update data in persistRenewedTokens must not hardcode connected_readonly — would demote connected_live",
     );
     assert.ok(
       persistBody.includes("connectionStatus is NOT changed"),
-      "persistRenewedTokens must carry a comment explaining why BC connectionStatus is preserved",
+      "persistRenewedTokens must carry a comment explaining why BC connectionStatus is preserved for non-expired connections",
+    );
+    // A separate updateMany must heal the BC if it was stuck at expired (race recovery).
+    assert.ok(
+      persistBody.includes('connectionStatus: "expired"') &&
+        persistBody.includes('connectionStatus: "connected_readonly"'),
+      "persistRenewedTokens must have a conditional updateMany that heals expired BrokerConnections",
     );
   });
 });
@@ -708,5 +715,140 @@ describe("ensure-token: stale lastRenewError cleanup", () => {
     // Must not re-throw or propagate
     assert.ok(!cleanupBlock.includes("throw "), "cleanup must not throw");
     assert.ok(!cleanupBlock.includes("return NextResponse"), "cleanup must not short-circuit response");
+  });
+});
+
+// ── Race-condition fixes ───────────────────────────────────────────────────────
+
+const RENEW_CRON_FILE = resolve(
+  import.meta.dirname,
+  "../../app/api/cron/renew-tradovate-tokens/route.ts",
+);
+
+describe("concurrent renewal race fixes", () => {
+  test("callOAuthRefreshGrant reads response body before throwing on !res.ok", () => {
+    const s = src(ENSURE_FILE);
+    const oauthFn = s.indexOf("async function callOAuthRefreshGrant(");
+    const oauthEnd = s.indexOf("\nasync function ", oauthFn + 1);
+    const oauthBody = s.slice(oauthFn, oauthEnd > oauthFn ? oauthEnd : s.length);
+    assert.ok(
+      oauthBody.includes("res.text()"),
+      "callOAuthRefreshGrant must read the response body before throwing so classifyRenewalError has bodyExcerpt",
+    );
+    assert.ok(
+      oauthBody.includes("bodyText"),
+      "callOAuthRefreshGrant must store the body in a bodyText variable",
+    );
+    const bodyReadIdx = oauthBody.indexOf("res.text()");
+    // Find the throw that comes AFTER res.text() (the !res.ok branch), not the
+    // earlier NETWORK_ERROR throw in the fetch catch block.
+    const throwAfterBodyIdx = oauthBody.indexOf("throw new TradovateClientError", bodyReadIdx);
+    assert.ok(
+      throwAfterBodyIdx > bodyReadIdx,
+      "body must be read before the TradovateClientError is thrown",
+    );
+  });
+
+  test("OAuth grant catch block passes bodyExcerpt to classifyRenewalError", () => {
+    const s = src(ENSURE_FILE);
+    const oauthCatchIdx = s.lastIndexOf("if (cls === \"auth_invalid\")");
+    const classifyNearOAuth = s.lastIndexOf("classifyRenewalError({", oauthCatchIdx);
+    // Use a wide window (600 chars) to capture the full multi-line call object.
+    const classifyBlock = s.slice(classifyNearOAuth, classifyNearOAuth + 600);
+    assert.ok(
+      classifyBlock.includes("bodyExcerpt"),
+      "classifyRenewalError near the OAuth grant catch must receive bodyExcerpt",
+    );
+  });
+
+  test("classifyRenewalError: 400 with invalid_grant body is auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 400, bodyExcerpt: '{"error":"invalid_grant"}' }),
+      "auth_invalid",
+    );
+  });
+
+  test("classifyRenewalError: 400 with expired body is auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 400, bodyExcerpt: "token expired" }),
+      "auth_invalid",
+    );
+  });
+
+  test("classifyRenewalError: 400 without recognized auth body is transient, not auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 400, bodyExcerpt: "bad request" }),
+      "transient",
+      "an unrecognized 400 must be treated as transient to avoid false-expiring connections",
+    );
+  });
+
+  test("classifyRenewalError: 400 with empty body is transient, not auth_invalid", () => {
+    assert.equal(
+      classifyRenewalError({ httpStatus: 400 }),
+      "transient",
+      "a 400 with no body excerpt must be treated as transient, not auth_invalid",
+    );
+  });
+
+  test("markExpiredWithAccounts has a concurrent-race grace period guard", () => {
+    const s = src(ENSURE_FILE);
+    const markFn = s.indexOf("async function markExpiredWithAccounts(");
+    const markEnd = s.indexOf("\nasync function ", markFn + 1);
+    const markBody = s.slice(markFn, markEnd > markFn ? markEnd : s.length);
+    assert.ok(
+      markBody.includes("RACE_GRACE_MS"),
+      "markExpiredWithAccounts must define a RACE_GRACE_MS constant for the grace period",
+    );
+    assert.ok(
+      markBody.includes("lastRenewedAt"),
+      "markExpiredWithAccounts must check lastRenewedAt before marking expired",
+    );
+    assert.ok(
+      markBody.includes("updateMany"),
+      "markExpiredWithAccounts must use updateMany with the grace-period condition",
+    );
+    assert.ok(
+      markBody.includes("updated.count === 0"),
+      "markExpiredWithAccounts must skip the cascade when the conditional updateMany hits 0 rows",
+    );
+  });
+
+  test("persistRenewedTokens heals BrokerConnection stuck at expired", () => {
+    const s = src(ENSURE_FILE);
+    const persistFn = s.indexOf("async function persistRenewedTokens(");
+    const persistEnd = s.indexOf("\nasync function ", persistFn + 1);
+    const persistBody = s.slice(persistFn, persistEnd > persistFn ? persistEnd : s.length);
+    assert.ok(
+      persistBody.includes('connectionStatus: "expired"') &&
+        persistBody.includes('connectionStatus: "connected_readonly"'),
+      "persistRenewedTokens must have a conditional updateMany that heals expired BrokerConnections",
+    );
+    // The heal must come after the main update so lastRenewedAt is already set.
+    const mainUpdateIdx = persistBody.indexOf("await prisma.brokerConnection.update(");
+    const healUpdateIdx = persistBody.indexOf(
+      'connectionStatus: "expired"',
+      mainUpdateIdx,
+    );
+    assert.ok(
+      healUpdateIdx > mainUpdateIdx,
+      "the expired→connected_readonly heal updateMany must come after the main token update",
+    );
+  });
+
+  test("renewal cron heals false-expired connections with valid tokens and recent lastRenewedAt", () => {
+    const s = src(RENEW_CRON_FILE);
+    assert.ok(
+      s.includes("connectionStatus: \"expired\"") && s.includes("lastRenewedAt"),
+      "cron must have a heal step targeting expired connections with a recent lastRenewedAt",
+    );
+    assert.ok(
+      s.includes("HEAL_WINDOW_MS"),
+      "cron heal step must define a HEAL_WINDOW_MS window",
+    );
+    assert.ok(
+      s.includes('"connected_readonly"'),
+      "cron heal step must restore healed connections to connected_readonly",
+    );
   });
 });

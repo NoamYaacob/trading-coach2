@@ -1170,10 +1170,10 @@ describe("classifyRenewalError", () => {
     );
   });
 
-  it("HTTP 400 default → auth_invalid (most refresh-grant 400s are auth)", () => {
+  it("HTTP 400 without auth body → transient (avoids false-expiring connections on unrecognized 400s)", () => {
     assert.equal(
       classifyRenewalError({ httpStatus: 400 }),
-      "auth_invalid",
+      "transient",
     );
   });
 

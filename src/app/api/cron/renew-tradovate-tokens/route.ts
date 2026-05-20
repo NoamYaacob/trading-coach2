@@ -55,6 +55,29 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const lookaheadCutoff = new Date(now.getTime() + RENEWAL_LOOKAHEAD_MS);
 
+  // Heal expired connections whose tokens are still valid and were renewed recently.
+  // These were likely false-expired by a concurrent renewal race: a losing refresh
+  // attempt used a just-rotated refresh token and got invalid_grant, setting the
+  // connection to "expired" even though the winning call had already stored fresh
+  // tokens. Restoring to connected_readonly lets the next sync proceed without a
+  // full re-authorize.
+  const HEAL_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const healCutoff = new Date(now.getTime() - HEAL_WINDOW_MS);
+  const healed = await prisma.brokerConnection.updateMany({
+    where: {
+      platform: "tradovate",
+      connectionStatus: "expired",
+      lastRenewedAt: { gte: healCutoff },
+      tokenExpiresAt: { gt: lookaheadCutoff },
+    },
+    data: { connectionStatus: "connected_readonly", lastRenewError: null },
+  });
+  if (healed.count > 0) {
+    console.info("[cron/renew-tradovate-tokens] healed false-expired connections", {
+      healed: healed.count,
+    });
+  }
+
   // Select only connections that actually need attention:
   //   - tokenExpiresAt is null (no expiry metadata — renew defensively), OR
   //   - tokenExpiresAt is within the next 25 minutes (expiring soon or already expired).
