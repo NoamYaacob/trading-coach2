@@ -46,12 +46,48 @@ type SourceRules = Awaited<
   ReturnType<typeof prisma.accountRiskRules.findUnique>
 >;
 
-function extractCopyData(sourceRules: NonNullable<SourceRules>) {
-  const data: Record<string, unknown> = {};
-  for (const field of COPY_FIELDS) {
-    data[field] = sourceRules[field];
-  }
-  return data;
+// Scalar rule fields copied from source → target.
+// Excludes identity (id, accountId), DB-managed (createdAt, updatedAt),
+// per-account consent, and pending state.
+type CopyData = Omit<
+  Prisma.AccountRiskRulesUncheckedCreateInput,
+  | "id"
+  | "accountId"
+  | "createdAt"
+  | "updatedAt"
+  | "automatedActionsConsentAt"
+  | "automatedActionsConsentVersion"
+  | "pendingPayloadJson"
+  | "pendingEffectiveDate"
+>;
+
+function extractCopyData(sourceRules: NonNullable<SourceRules>): CopyData {
+  return {
+    maxDailyLoss: sourceRules.maxDailyLoss,
+    riskPerTrade: sourceRules.riskPerTrade,
+    maxTradesPerDay: sourceRules.maxTradesPerDay,
+    stopAfterLosses: sourceRules.stopAfterLosses,
+    allowedStartHour: sourceRules.allowedStartHour,
+    allowedEndHour: sourceRules.allowedEndHour,
+    sessionTimezone: sourceRules.sessionTimezone,
+    sessionEndBehavior: sourceRules.sessionEndBehavior,
+    sessionPreset: sourceRules.sessionPreset,
+    sessionStartTime: sourceRules.sessionStartTime,
+    sessionEndTime: sourceRules.sessionEndTime,
+    sessionPresetsJson: sourceRules.sessionPresetsJson,
+    ruleEditLockBufferMinutes: sourceRules.ruleEditLockBufferMinutes,
+    maxContracts: sourceRules.maxContracts,
+    rawBrokerHardLimitEnabled: sourceRules.rawBrokerHardLimitEnabled,
+    propFirmAccountSize: sourceRules.propFirmAccountSize,
+    propFirmPhase: sourceRules.propFirmPhase,
+    propFirmDailyLossLimit: sourceRules.propFirmDailyLossLimit,
+    propFirmMaxDrawdown: sourceRules.propFirmMaxDrawdown,
+    propFirmEODDrawdown: sourceRules.propFirmEODDrawdown,
+    propFirmTrailingDrawdown: sourceRules.propFirmTrailingDrawdown,
+    propFirmDrawdownRemaining: sourceRules.propFirmDrawdownRemaining,
+    propFirmProfitTarget: sourceRules.propFirmProfitTarget,
+    propFirmMinTradingDays: sourceRules.propFirmMinTradingDays,
+  };
 }
 
 export async function POST(req: NextRequest, ctx: Ctx) {
@@ -146,12 +182,17 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   await prisma.accountRiskRules.upsert({
     where: { accountId: id },
-    create: { accountId: id, ...(copyData as Prisma.AccountRiskRulesCreateInput) },
-    update: {
-      ...(copyData as Prisma.AccountRiskRulesUpdateInput),
+    create: {
+      accountId: id,
+      ...copyData,
       pendingPayloadJson: Prisma.JsonNull,
       pendingEffectiveDate: null,
-    },
+    } satisfies Prisma.AccountRiskRulesUncheckedCreateInput,
+    update: {
+      ...copyData,
+      pendingPayloadJson: Prisma.JsonNull,
+      pendingEffectiveDate: null,
+    } satisfies Prisma.AccountRiskRulesUncheckedUpdateInput,
   });
 
   await writeRuleChangeAudit({

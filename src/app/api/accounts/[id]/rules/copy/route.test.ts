@@ -198,8 +198,13 @@ describe("copy endpoint: upsert target only", () => {
 
   it("upsert create block uses accountId: id (target)", () => {
     const s = src();
+    // create block may be on multiple lines; check that accountId: id appears
+    // inside the upsert create block (after "create:")
+    const createIdx = s.indexOf("create:");
+    assert.ok(createIdx !== -1, "upsert must have a create block");
+    const createBlock = s.slice(createIdx, createIdx + 400);
     assert.ok(
-      s.includes("create: { accountId: id"),
+      createBlock.includes("accountId: id"),
       "upsert create block must set accountId to target id",
     );
   });
