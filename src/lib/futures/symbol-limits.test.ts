@@ -344,34 +344,34 @@ describe("resolveSymbolLimit", () => {
 // ── describeSymbolEquivalent ─────────────────────────────────────────────────
 
 describe("describeSymbolEquivalent", () => {
-  it("shows the parent-equivalent for micro equity-index symbols", () => {
-    assert.equal(describeSymbolEquivalent("MNQ", 10), "= 1 NQ-equivalent");
-    assert.equal(describeSymbolEquivalent("MES", 10), "= 1 ES-equivalent");
-    assert.equal(describeSymbolEquivalent("MYM", 10), "= 1 YM-equivalent");
-    assert.equal(describeSymbolEquivalent("M2K", 10), "= 1 RTY-equivalent");
+  it("shows the approximate parent-equivalent for micro equity-index symbols", () => {
+    assert.equal(describeSymbolEquivalent("MNQ", 10), "≈ 1 NQ-equivalent");
+    assert.equal(describeSymbolEquivalent("MES", 10), "≈ 1 ES-equivalent");
+    assert.equal(describeSymbolEquivalent("MYM", 10), "≈ 1 YM-equivalent");
+    assert.equal(describeSymbolEquivalent("M2K", 10), "≈ 1 RTY-equivalent");
   });
 
-  it("shows the parent-equivalent for micro energy symbols", () => {
-    assert.equal(describeSymbolEquivalent("MCL", 10), "= 1 CL-equivalent");
+  it("shows the approximate parent-equivalent for micro energy symbols", () => {
+    assert.equal(describeSymbolEquivalent("MCL", 10), "≈ 1 CL-equivalent");
   });
 
-  it("shows the parent-equivalent for the mini crude oil contract (ratio 0.5)", () => {
-    assert.equal(describeSymbolEquivalent("QM", 2), "= 1 CL-equivalent");
+  it("shows the approximate parent-equivalent for the mini crude oil contract (ratio 0.5)", () => {
+    assert.equal(describeSymbolEquivalent("QM", 2), "≈ 1 CL-equivalent");
   });
 
-  it("shows the parent-equivalent for a newly added FX micro", () => {
-    assert.equal(describeSymbolEquivalent("M6B", 10), "= 1 6B-equivalent");
+  it("shows the approximate parent-equivalent for a newly added FX micro", () => {
+    assert.equal(describeSymbolEquivalent("M6B", 10), "≈ 1 6B-equivalent");
   });
 
-  it("returns 'Standalone' for standard symbols (ratio 1.0) — no false micro equivalence", () => {
-    assert.equal(describeSymbolEquivalent("NQ", 5), "Standalone");
-    assert.equal(describeSymbolEquivalent("ES", 3), "Standalone");
-    assert.equal(describeSymbolEquivalent("CL", 2), "Standalone");
-    assert.equal(describeSymbolEquivalent("ZB", 4), "Standalone");
+  it("returns 'Standalone contract limit' for standard symbols (ratio 1.0)", () => {
+    assert.equal(describeSymbolEquivalent("NQ", 5), "Standalone contract limit");
+    assert.equal(describeSymbolEquivalent("ES", 3), "Standalone contract limit");
+    assert.equal(describeSymbolEquivalent("CL", 2), "Standalone contract limit");
+    assert.equal(describeSymbolEquivalent("ZB", 4), "Standalone contract limit");
   });
 
   it("formats a fractional parent-equivalent with two decimals", () => {
-    assert.equal(describeSymbolEquivalent("MNQ", 5), "= 0.50 NQ-equivalent");
+    assert.equal(describeSymbolEquivalent("MNQ", 5), "≈ 0.50 NQ-equivalent");
   });
 
   it("returns '' for an unknown symbol", () => {

@@ -208,22 +208,23 @@ export function resolveSymbolLimit(
 }
 
 /**
- * Builds the human-readable "Equivalent" cell for a symbol-limit row.
+ * Builds the secondary "equivalent" helper text for a contract-limit row.
  *
  * Standard contracts (exposureRatioToParent === 1) have no micro/parent
- * relationship — returns "Standalone". Micro/mini contracts return the
- * parent-equivalent value of the limit, e.g. "= 1 NQ-equivalent" for a limit
- * of 10 MNQ, "= 1 CL-equivalent" for 2 QM.
+ * relationship — returns "Standalone contract limit". Micro/mini contracts
+ * return the approximate parent-equivalent of the limit, e.g.
+ * "≈ 1 NQ-equivalent" for a limit of 10 MNQ, "≈ 1 CL-equivalent" for 2 QM.
  *
- * Pure — derives the ratio from registry metadata, never hardcoded. Returns ""
- * for an unknown symbol or a non-positive / non-integer maxContracts.
+ * This is a helper hint only — the primary mental model is the raw per-symbol
+ * limit. Pure: derives the ratio from registry metadata, never hardcoded.
+ * Returns "" for an unknown symbol or a non-positive / non-integer maxContracts.
  */
 export function describeSymbolEquivalent(symbol: string, maxContracts: number): string {
   if (!Number.isInteger(maxContracts) || maxContracts < 1) return "";
   const meta = getContractMetadata(symbol);
   if (!meta) return "";
-  if (meta.exposureRatioToParent === 1) return "Standalone";
+  if (meta.exposureRatioToParent === 1) return "Standalone contract limit";
   const equiv = toParentEquivalentContracts(maxContracts, symbol);
   const equivLabel = Number.isInteger(equiv) ? String(equiv) : equiv.toFixed(2);
-  return `= ${equivLabel} ${meta.parentRoot}-equivalent`;
+  return `≈ ${equivLabel} ${meta.parentRoot}-equivalent`;
 }
