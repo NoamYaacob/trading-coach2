@@ -19,6 +19,7 @@ import {
   parseSymbolLimits,
   validateSymbolLimits,
   resolveSymbolLimit,
+  describeSymbolEquivalent,
 } from "./symbol-limits.ts";
 import { getContractMetadata } from "./contracts.ts";
 
@@ -337,6 +338,60 @@ describe("resolveSymbolLimit", () => {
 
   it("returns null for an unknown broker symbol when no global fallback exists", () => {
     assert.equal(resolveSymbolLimit("XYZ", [{ symbol: "NQ", maxContracts: 2 }], null), null);
+  });
+});
+
+// ── describeSymbolEquivalent ─────────────────────────────────────────────────
+
+describe("describeSymbolEquivalent", () => {
+  it("shows the parent-equivalent for micro equity-index symbols", () => {
+    assert.equal(describeSymbolEquivalent("MNQ", 10), "= 1 NQ-equivalent");
+    assert.equal(describeSymbolEquivalent("MES", 10), "= 1 ES-equivalent");
+    assert.equal(describeSymbolEquivalent("MYM", 10), "= 1 YM-equivalent");
+    assert.equal(describeSymbolEquivalent("M2K", 10), "= 1 RTY-equivalent");
+  });
+
+  it("shows the parent-equivalent for micro energy symbols", () => {
+    assert.equal(describeSymbolEquivalent("MCL", 10), "= 1 CL-equivalent");
+  });
+
+  it("shows the parent-equivalent for the mini crude oil contract (ratio 0.5)", () => {
+    assert.equal(describeSymbolEquivalent("QM", 2), "= 1 CL-equivalent");
+  });
+
+  it("shows the parent-equivalent for a newly added FX micro", () => {
+    assert.equal(describeSymbolEquivalent("M6B", 10), "= 1 6B-equivalent");
+  });
+
+  it("returns 'Standalone' for standard symbols (ratio 1.0) — no false micro equivalence", () => {
+    assert.equal(describeSymbolEquivalent("NQ", 5), "Standalone");
+    assert.equal(describeSymbolEquivalent("ES", 3), "Standalone");
+    assert.equal(describeSymbolEquivalent("CL", 2), "Standalone");
+    assert.equal(describeSymbolEquivalent("ZB", 4), "Standalone");
+  });
+
+  it("formats a fractional parent-equivalent with two decimals", () => {
+    assert.equal(describeSymbolEquivalent("MNQ", 5), "= 0.50 NQ-equivalent");
+  });
+
+  it("returns '' for an unknown symbol", () => {
+    assert.equal(describeSymbolEquivalent("AAPL", 5), "");
+  });
+
+  it("returns '' for a non-positive or non-integer maxContracts", () => {
+    assert.equal(describeSymbolEquivalent("MNQ", 0), "");
+    assert.equal(describeSymbolEquivalent("MNQ", -3), "");
+    assert.equal(describeSymbolEquivalent("MNQ", 2.5), "");
+  });
+
+  it("derives ratios from registry metadata — no hardcoded values", () => {
+    const src = readFileSync(resolve(import.meta.dirname, "./symbol-limits.ts"), "utf8");
+    const fnStart = src.indexOf("export function describeSymbolEquivalent");
+    const fnBody = src.slice(fnStart, fnStart + 600);
+    assert.ok(
+      fnBody.includes("toParentEquivalentContracts") && fnBody.includes("getContractMetadata"),
+      "describeSymbolEquivalent must use the registry helpers, not hardcoded ratios",
+    );
   });
 });
 

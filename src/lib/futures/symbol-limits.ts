@@ -12,7 +12,11 @@
  * here — those are later phases.
  */
 
-import { normalizeSymbolRoot } from "./contracts.ts";
+import {
+  getContractMetadata,
+  normalizeSymbolRoot,
+  toParentEquivalentContracts,
+} from "./contracts.ts";
 
 export type SymbolLimit = {
   /** Canonical uppercase symbol root, e.g. "NQ", "MNQ". */
@@ -201,4 +205,25 @@ export function resolveSymbolLimit(
     if (match !== undefined) return match.maxContracts;
   }
   return globalFallback ?? null;
+}
+
+/**
+ * Builds the human-readable "Equivalent" cell for a symbol-limit row.
+ *
+ * Standard contracts (exposureRatioToParent === 1) have no micro/parent
+ * relationship — returns "Standalone". Micro/mini contracts return the
+ * parent-equivalent value of the limit, e.g. "= 1 NQ-equivalent" for a limit
+ * of 10 MNQ, "= 1 CL-equivalent" for 2 QM.
+ *
+ * Pure — derives the ratio from registry metadata, never hardcoded. Returns ""
+ * for an unknown symbol or a non-positive / non-integer maxContracts.
+ */
+export function describeSymbolEquivalent(symbol: string, maxContracts: number): string {
+  if (!Number.isInteger(maxContracts) || maxContracts < 1) return "";
+  const meta = getContractMetadata(symbol);
+  if (!meta) return "";
+  if (meta.exposureRatioToParent === 1) return "Standalone";
+  const equiv = toParentEquivalentContracts(maxContracts, symbol);
+  const equivLabel = Number.isInteger(equiv) ? String(equiv) : equiv.toFixed(2);
+  return `= ${equivLabel} ${meta.parentRoot}-equivalent`;
 }

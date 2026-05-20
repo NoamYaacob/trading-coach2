@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
-import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
+import { MAX_POSITION_SIZE_COPY, SYMBOL_LIMITS_COPY } from "./position-size-copy";
 import { MaxPositionSizeConversionTable } from "./max-position-size-conversion-table";
+import { SymbolLimitsTable, type SymbolLimitRow } from "./symbol-limits-table";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
@@ -52,6 +53,9 @@ export type AccountRulesValues = {
   /** When true, Guardrail writes a global raw contract cap to Tradovate.
    *  WARNING: counts all contracts equally (2 MNQ blocked with max=1). Default: false. */
   rawBrokerHardLimitEnabled: boolean;
+  /** Symbol-specific max-contract limits. Saved with the Trading Plan;
+   *  guardian-evaluator wiring is a later rollout. */
+  symbolLimits: SymbolLimitRow[];
   // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
 };
 
@@ -130,6 +134,22 @@ function int(v: string): number | null {
   if (!v.trim()) return null;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Serializes the symbol-limit rows into the maxContractsBySymbolJson string.
+ * Drops incomplete rows (no symbol or no maxContracts entered). Out-of-range
+ * values are passed through so the server validator returns a clear error.
+ * An empty table serializes to null (clears all per-symbol limits).
+ */
+function serializeSymbolLimits(rows: SymbolLimitRow[]): string | null {
+  const entries = rows
+    .filter((r) => r.symbol.trim() !== "" && r.maxContracts.trim() !== "")
+    .map((r) => ({
+      symbol: r.symbol.trim().toUpperCase(),
+      maxContracts: Number(r.maxContracts),
+    }));
+  return entries.length > 0 ? JSON.stringify(entries) : null;
 }
 
 /**
@@ -360,6 +380,7 @@ export function AccountRulesForm({
           ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
           maxContracts: int(values.maxContracts),
           rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
+          maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits),
         },
         // Stamp consent only on submissions where the user explicitly checked
         // the box. Re-saves of rules on already-consented accounts pass false
@@ -629,6 +650,7 @@ export function AccountRulesForm({
             pendingNote={defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+            <span className="text-xs text-stone-400">{SYMBOL_LIMITS_COPY.globalFallbackNote}</span>
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
             {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
               <button
@@ -662,6 +684,23 @@ export function AccountRulesForm({
               </div>
             )}
           </Field>
+          {/* Symbol-specific limits — saved with the Trading Plan. The guardian
+              evaluator does not read these yet; per-symbol evaluation is a
+              later rollout. Copy must not imply live or broker-side enforcement. */}
+          <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-stone-700">
+                {SYMBOL_LIMITS_COPY.heading}
+              </span>
+              <StatusBadge variant="monitor" text="Monitoring only" />
+            </div>
+            <p className="text-xs text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
+            <SymbolLimitsTable
+              value={values.symbolLimits}
+              onChange={(rows) => update("symbolLimits", rows)}
+              disabled={fieldsDisabled}
+            />
+          </div>
         </div>
       </div>
 

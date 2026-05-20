@@ -26,6 +26,7 @@ import { buildRuleScopes, buildAccountRulesUrl } from "./_components/rule-scope-
 import { ApplyPendingButton } from "./_components/apply-pending-button";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix, deriveScopeAccountBadge } from "./_components/scope-selector-helpers";
+import { parseSymbolLimits } from "@/lib/futures/symbol-limits";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
@@ -100,6 +101,7 @@ export default async function RulesPage({
             pendingPayloadJson: true,
             pendingEffectiveDate: true,
             maxContracts: true,
+            maxContractsBySymbolJson: true,
             rawBrokerHardLimitEnabled: true,
             automatedActionsConsentAt: true,
             automatedActionsConsentVersion: true,
@@ -283,6 +285,9 @@ export default async function RulesPage({
     ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
     rawBrokerHardLimitEnabled: selectedAccount?.riskRules?.rawBrokerHardLimitEnabled ?? false,
+    symbolLimits: parseSymbolLimits(selectedAccount?.riskRules?.maxContractsBySymbolJson ?? null).map(
+      (l) => ({ symbol: l.symbol, maxContracts: String(l.maxContracts) }),
+    ),
     // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   };
 

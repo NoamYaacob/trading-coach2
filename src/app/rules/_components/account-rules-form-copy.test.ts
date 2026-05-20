@@ -617,3 +617,86 @@ test("account form: copySourceAccounts prop is declared", () => {
     "AccountRulesForm must accept copySourceAccounts prop",
   );
 });
+
+// ── Phase 4B: symbol-specific max contracts table ────────────────────────────
+
+test("account form: imports and renders SymbolLimitsTable", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes('from "./symbol-limits-table"'),
+    "account form must import SymbolLimitsTable",
+  );
+  assert.ok(
+    src.includes("<SymbolLimitsTable"),
+    "account form must render the SymbolLimitsTable in the Max Contracts section",
+  );
+});
+
+test("account form: SymbolLimitsTable is disabled when the form is locked", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("<SymbolLimitsTable");
+  assert.ok(idx !== -1, "SymbolLimitsTable must be rendered");
+  const block = src.slice(idx, idx + 240);
+  assert.ok(
+    block.includes("disabled={fieldsDisabled}"),
+    "SymbolLimitsTable must receive disabled={fieldsDisabled} so a locked account is read-only",
+  );
+});
+
+test("account form: serializes symbolLimits into maxContractsBySymbolJson on submit", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits)"),
+    "submit payload must serialize symbolLimits into maxContractsBySymbolJson",
+  );
+});
+
+test("account form: an empty symbol table serializes to null", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("function serializeSymbolLimits");
+  assert.ok(idx !== -1, "serializeSymbolLimits helper must exist");
+  const fn = src.slice(idx, idx + 420);
+  assert.ok(
+    fn.includes("entries.length > 0 ? JSON.stringify(entries) : null"),
+    "serializeSymbolLimits must return null when no symbol rows are present",
+  );
+});
+
+test("account form: symbolLimits is declared on AccountRulesValues", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("symbolLimits: SymbolLimitRow[]"),
+    "AccountRulesValues must include the symbolLimits field",
+  );
+});
+
+test("account form: shows the global-fallback note on the max contracts field", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("SYMBOL_LIMITS_COPY.globalFallbackNote"),
+    "the global maxContracts field must show the fallback note",
+  );
+});
+
+test("account form: symbol-limits section is badged Monitoring only", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("SYMBOL_LIMITS_COPY.heading");
+  assert.ok(idx !== -1, "symbol-limits section heading must be rendered");
+  const block = src.slice(idx, idx + 260);
+  assert.ok(
+    block.includes('text="Monitoring only"'),
+    "symbol-limits section must carry the 'Monitoring only' badge",
+  );
+});
+
+test("account form: symbol-limits section does not claim broker-backed enforcement", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("SYMBOL_LIMITS_COPY.heading");
+  const block = src.slice(idx, idx + 400).toLowerCase();
+  for (const phrase of ["broker-backed", "broker enforced", "broker will"]) {
+    assert.ok(
+      !block.includes(phrase),
+      `symbol-limits section must not claim "${phrase}"`,
+    );
+  }
+});
