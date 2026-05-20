@@ -40,3 +40,27 @@ export async function getAccountIdsWithTradeToday(
 
   return new Set(rows.map((r) => r.accountId));
 }
+
+/**
+ * Returns the number of trade-classified NormalizedTradeEvents for one account
+ * within the current CME session (occurredAt >= sessionStart).
+ *
+ * Diagnostic counterpart to getAccountIdsWithTradeToday — identical event-type
+ * and session-window filter, but returns the raw count for a single account
+ * instead of a presence Set. `count > 0` is therefore equivalent to that
+ * account appearing in getAccountIdsWithTradeToday.
+ *
+ * Safe: read-only, no broker calls, no writes.
+ */
+export async function countTradeEventsThisSession(
+  accountId: string,
+  sessionStart: Date,
+): Promise<number> {
+  return prisma.normalizedTradeEvent.count({
+    where: {
+      accountId,
+      occurredAt: { gte: sessionStart },
+      eventType: { in: [...TRADE_EVENT_TYPES] },
+    },
+  });
+}

@@ -162,3 +162,88 @@ describe("symbol-limits-diagnostics: preset checks", () => {
     assert.ok(s.includes('"GO"') && s.includes('"NO_GO"'), "must return a GO/NO_GO verdict");
   });
 });
+
+// ── Eligibility section ───────────────────────────────────────────────────────
+
+describe("symbol-limits-diagnostics: eligibility section", () => {
+  it("computes eligibility via the pure deriveSymbolLimitsQaEligibility helper", () => {
+    const s = src();
+    assert.ok(
+      s.includes("deriveSymbolLimitsQaEligibility"),
+      "route must delegate eligibility logic to the pure helper",
+    );
+    assert.ok(
+      s.includes('from "./eligibility"'),
+      "route must import the eligibility helper",
+    );
+  });
+
+  it("includes the eligibility section in the response", () => {
+    assert.ok(/\n\s*eligibility,/.test(src()), "response must include the eligibility section");
+  });
+
+  it("reuses the shared session-trade-guard helper for signal 3", () => {
+    const s = src();
+    assert.ok(
+      s.includes("countTradeEventsThisSession"),
+      "route must reuse countTradeEventsThisSession from session-trade-guard",
+    );
+    assert.ok(
+      !s.includes("getAccountIdsWithTradeToday") || s.includes("countTradeEventsThisSession"),
+      "must not reimplement the trade-event lookup",
+    );
+  });
+
+  it("reuses the CME trading-day + session-start helpers", () => {
+    const s = src();
+    assert.ok(s.includes("deriveCmeTradingDayKey"), "must reuse deriveCmeTradingDayKey");
+    assert.ok(s.includes("getCmeSessionStartForKey"), "must reuse getCmeSessionStartForKey");
+  });
+
+  it("reads LiveSessionState read-only (findUnique, no write)", () => {
+    assert.ok(
+      src().includes("prisma.liveSessionState.findUnique"),
+      "must read LiveSessionState with findUnique",
+    );
+  });
+
+  it("verdict explains that live QA should wait when the account is not editable", () => {
+    const s = src();
+    assert.ok(
+      s.includes("Wait until the next CME session reset") &&
+        s.includes("another untraded connected demo account"),
+      "verdict must tell the caller to wait for the session reset or use another account",
+    );
+  });
+
+  it("does not bypass, reset, or mutate the session lock", () => {
+    const s = src();
+    for (const forbidden of [
+      "liveSessionState.update",
+      "liveSessionState.upsert",
+      "liveSessionState.delete",
+      "reset-session-state",
+    ]) {
+      assert.ok(!s.includes(forbidden), `endpoint must not touch the session lock (${forbidden})`);
+    }
+  });
+});
+
+// ── session-trade-guard count helper ─────────────────────────────────────────
+
+describe("countTradeEventsThisSession (session-trade-guard)", () => {
+  const GUARD = resolve(import.meta.dirname, "../../../../lib/rules/session-trade-guard.ts");
+
+  it("is a read-only count query reusing TRADE_EVENT_TYPES", () => {
+    const s = readFileSync(GUARD, "utf8");
+    assert.ok(s.includes("countTradeEventsThisSession"), "helper must exist");
+    const fnIdx = s.indexOf("export async function countTradeEventsThisSession");
+    assert.ok(fnIdx !== -1, "helper must be exported");
+    const body = s.slice(fnIdx, fnIdx + 400);
+    assert.ok(body.includes(".count("), "must use prisma .count() — read-only");
+    assert.ok(body.includes("TRADE_EVENT_TYPES"), "must reuse the shared TRADE_EVENT_TYPES filter");
+    for (const writeOp of [".create(", ".update(", ".upsert(", ".delete("]) {
+      assert.ok(!body.includes(writeOp), `count helper must not ${writeOp}`);
+    }
+  });
+});

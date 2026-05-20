@@ -28,6 +28,10 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parseSymbolLimits, resolveSymbolLimit } from "@/lib/futures/symbol-limits";
+import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { getCmeSessionStartForKey } from "@/lib/time/cme-session";
+import { countTradeEventsThisSession } from "@/lib/rules/session-trade-guard";
+import { deriveSymbolLimitsQaEligibility } from "./eligibility";
 
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -61,7 +65,7 @@ export async function GET(request: NextRequest) {
       label: true,
       externalAccountId: true,
       connectionStatus: true,
-      brokerConnection: { select: { env: true } },
+      brokerConnection: { select: { env: true, tokenExpiresAt: true } },
       riskRules: {
         select: { maxContracts: true, maxContractsBySymbolJson: true },
       },
@@ -123,6 +127,42 @@ export async function GET(request: NextRequest) {
     };
   }
 
+  // ── Eligibility — is the account ready for live Phase 4E QA? ─────────────
+  // Read-only: reuses the CME helpers and the session-trade-guard module that
+  // the real rule-edit lock uses. Never bypasses or mutates the lock.
+  const now = new Date();
+  const currentCmeTradingDayKey = deriveCmeTradingDayKey(now);
+  const sessionStart = getCmeSessionStartForKey(currentCmeTradingDayKey);
+
+  const liveState = await prisma.liveSessionState.findUnique({
+    where: { accountId: account.id },
+    select: { sessionDate: true, tradesCount: true, lastTradeAt: true },
+  });
+  const normalizedTradeEventCountThisSession = await countTradeEventsThisSession(
+    account.id,
+    sessionStart,
+  );
+
+  const tokenExpiresAt = account.brokerConnection?.tokenExpiresAt ?? null;
+  const tokenExpired =
+    tokenExpiresAt != null ? tokenExpiresAt.getTime() < now.getTime() : null;
+  const lastTradeAt = liveState?.lastTradeAt ?? null;
+  const lastTradeAtInCurrentSession =
+    lastTradeAt != null &&
+    deriveCmeTradingDayKey(lastTradeAt) === currentCmeTradingDayKey;
+
+  const eligibility = deriveSymbolLimitsQaEligibility({
+    connectionStatus: account.connectionStatus,
+    hasAccountRiskRules,
+    tokenExpired,
+    currentCmeTradingDayKey,
+    sessionDate: liveState?.sessionDate ?? null,
+    tradesCount: liveState?.tradesCount ?? 0,
+    lastTradeAtIso: lastTradeAt != null ? lastTradeAt.toISOString() : null,
+    lastTradeAtInCurrentSession,
+    normalizedTradeEventCountThisSession,
+  });
+
   // ── Evaluator preview — pure in-memory simulation of the Phase 4C resolver ─
   // resolveSymbolLimit(symbol, limits, null) isolates the symbol-specific limit;
   // a null result means the resolver would fall back to the global maxContracts.
@@ -162,10 +202,19 @@ export async function GET(request: NextRequest) {
   if (evaluatorPreview.CL.usesSpecific) {
     reasons.push("CL unexpectedly has a symbol-specific limit (should fall back to global).");
   }
+  // When the QA preset is not yet in place AND the account cannot be edited
+  // now, explain that live QA must wait — never recommend bypassing the lock.
+  if (reasons.length > 0 && !eligibility.canEditRulesNow) {
+    reasons.push(
+      "Live QA cannot be performed on this account right now — " +
+        eligibility.reasons.join(" ") +
+        " Wait until the next CME session reset, or run the QA on another untraded connected demo account.",
+    );
+  }
 
   return NextResponse.json({
     ok: true,
-    now: new Date().toISOString(),
+    now: now.toISOString(),
     note: "Read-only diagnostic — no writes, no broker calls, no sync.",
     account: {
       id: account.id,
@@ -181,6 +230,7 @@ export async function GET(request: NextRequest) {
       parsedSymbolLimits,
       expectedPresetCheck,
     },
+    eligibility,
     latestRuleChangeAudit,
     evaluatorPreview,
     safety: {
