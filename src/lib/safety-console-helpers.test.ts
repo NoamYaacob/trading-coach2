@@ -1605,10 +1605,10 @@ describe("source-scan: dashboard data-helpers uses customer-safe protection copy
     );
   });
 
-  it("subline copy says 'position exit not active yet'", () => {
+  it("subline copy says 'Broker-side enforcement is not active'", () => {
     assert.ok(
-      DATA_HELPERS_SRC.includes("position exit not active yet"),
-      "data-helpers subline must say 'position exit not active yet'",
+      DATA_HELPERS_SRC.includes("Broker-side enforcement is not active"),
+      "data-helpers subline must say 'Broker-side enforcement is not active'",
     );
   });
 });
