@@ -141,12 +141,12 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
     assert.equal(result.mode, "broker_enforcement_pending");
   });
 
-  it("label says 'Broker risk settings enabled' for probed full_access", () => {
+  it("label says 'Full access connected' for probed full_access (not 'Broker risk settings enabled' — enforcement off in beta)", () => {
     const result = computeEnforcementMode(
       tradovateAccount("connected_live", "full_access"),
       false,
     );
-    assert.equal(result.label, "Broker risk settings enabled");
+    assert.equal(result.label, "Full access connected");
   });
 
   it("upgrades label even when connection still labelled connected_readonly (probe overrides legacy status)", () => {
@@ -155,7 +155,7 @@ describe("computeEnforcementMode — Tradovate permission_level=full_access", ()
       false,
     );
     assert.equal(result.mode, "broker_enforcement_pending");
-    assert.equal(result.label, "Broker risk settings enabled");
+    assert.equal(result.label, "Full access connected");
   });
 
   it("detail uses the concise capability copy", () => {
