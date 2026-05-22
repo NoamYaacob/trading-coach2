@@ -560,9 +560,9 @@ export function derivePerAccountStateLabel(input: {
   permissionLevel?: string | null;
 }): PerAccountStateLabel | null {
   if (input.enforcementMode === "dry_run") {
-    // For full_access accounts show the capability label; the top-level banner
-    // handles test_mode messaging for accounts with unknown/limited permissions.
-    return input.permissionLevel === "full_access" ? "Broker risk settings enabled" : null;
+    // The TradingPermissionBlock banner already says "Monitoring active" for this
+    // session — no per-account label needed regardless of permission level.
+    return null;
   }
   if (input.requiresAutomatedActionsConsent) return "Consent required";
   if (input.enforcementMode === "broker_active") return "Broker risk settings enabled";
@@ -593,8 +593,7 @@ export function deriveGroupStateSuffix(input: {
   if (input.accounts.length === 0) return null;
   const dryRunAccounts = input.accounts.filter((a) => a.enforcementMode === "dry_run");
   if (dryRunAccounts.length > 0) {
-    const allFullAccess = dryRunAccounts.every((a) => a.permissionLevel === "full_access");
-    return allFullAccess ? "Broker risk settings enabled" : "Monitoring only";
+    return "Monitoring only";
   }
   if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
     return "Consent required";

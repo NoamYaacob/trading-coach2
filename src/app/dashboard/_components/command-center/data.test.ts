@@ -1555,6 +1555,17 @@ describe("derivePerAccountStateLabel", () => {
       null,
     );
   });
+
+  it("dry_run + full_access → null (monitoring-only beta; banner covers it, per-account label would be false)", () => {
+    assert.equal(
+      derivePerAccountStateLabel({
+        enforcementMode: "dry_run",
+        requiresAutomatedActionsConsent: false,
+        permissionLevel: "full_access",
+      }),
+      null,
+    );
+  });
 });
 
 // ── deriveGroupStateSuffix — extra context next to "Connected" ────────────────
@@ -1569,6 +1580,16 @@ describe("deriveGroupStateSuffix", () => {
       accounts: [
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Monitoring only");
+  });
+
+  it("all dry_run + all full_access → 'Monitoring only' (not 'Broker risk settings enabled' — enforcement off in beta)", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false, permissionLevel: "full_access" },
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false, permissionLevel: "full_access" },
       ],
     });
     assert.equal(suffix, "Monitoring only");
