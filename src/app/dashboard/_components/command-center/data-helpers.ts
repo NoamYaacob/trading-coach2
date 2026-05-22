@@ -847,21 +847,20 @@ export function deriveTradingPermissionStatus(input: {
   if (isDryRun) {
     const allActiveFullAccess = activeAccounts.every((a) => a.permissionLevel === "full_access");
     if (allActiveFullAccess) {
-      // All accounts have full broker permissions — show capability-based headline.
       if (lockedCount > 0) {
         const n = lockedCount;
         return {
           level: "allowed",
-          headline: `Broker risk settings enabled · ${n} account${n > 1 ? "s" : ""} locked`,
+          headline: `Monitoring active · ${n} account${n > 1 ? "s" : ""} locked`,
           subline:
-            "Order permissions available · position exit not active yet.",
+            "Guardrail is watching your accounts. Broker-side enforcement is not active.",
         };
       }
       return {
         level: "allowed",
-        headline: "Broker risk settings enabled",
+        headline: "Monitoring active",
         subline:
-          "Order permissions available · position exit not active yet.",
+          "Guardrail is watching your accounts. Broker-side enforcement is not active.",
       };
     }
     if (lockedCount > 0) {

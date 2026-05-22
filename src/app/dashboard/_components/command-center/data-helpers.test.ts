@@ -194,14 +194,14 @@ describe("deriveTradingPermissionStatus active count includes setup_needed", () 
 // ── Test 7: dry_run + full_access shows broker capability headline ─────────────
 
 describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
-  it("all full_access → allowed level with broker headline", () => {
+  it("all full_access → allowed level with monitoring headline", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run", "full_access")],
     });
     assert.ok(result !== null);
     assert.equal(result.level, "allowed");
     assert.ok(
-      result.headline.includes("Broker risk settings enabled"),
+      result.headline.includes("Monitoring active"),
       `got: ${result.headline}`,
     );
   });
@@ -216,7 +216,7 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "allowed");
     assert.ok(
-      result.headline.includes("Broker risk settings enabled"),
+      result.headline.includes("Monitoring active"),
       `got: ${result.headline}`,
     );
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
@@ -233,13 +233,13 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.equal(result.level, "test_mode");
   });
 
-  it("full_access subline mentions position exit not active yet", () => {
+  it("full_access subline explains broker enforcement not active", () => {
     const result = deriveTradingPermissionStatus({
       accounts: [makeAccount("allowed", "dry_run", "full_access")],
     });
     assert.ok(result !== null);
     assert.ok(
-      result.subline.toLowerCase().includes("position exit not active yet"),
+      result.subline.toLowerCase().includes("broker-side enforcement is not active"),
       `got: ${result.subline}`,
     );
   });

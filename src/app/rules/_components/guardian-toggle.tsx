@@ -34,7 +34,7 @@ export function GuardianToggle({ initialEnabled, hasFullAccessAccount = false }:
 
   if (enabled) {
     const secondary = hasFullAccessAccount
-      ? "Broker risk settings enabled · Order actions not enabled yet"
+      ? "Monitoring each session · Broker enforcement not active"
       : "Monitoring each session against your rules";
 
     return (
