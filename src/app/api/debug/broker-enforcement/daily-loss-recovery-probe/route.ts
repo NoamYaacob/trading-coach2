@@ -427,7 +427,7 @@ export async function POST(request: NextRequest) {
   // Policy: conservative — refuse to overwrite a changesLocked=true record
   // of unknown provenance. It may be a prop-firm or Tradovate-managed
   // risk setting. The caller must produce prior write evidence first.
-  if (existing.changesLocked === true) {
+  if (existing != null && existing.changesLocked === true) {
     const priorWriteRows = await prisma.brokerRiskSettingsSyncAudit.findMany({
       where: {
         accountId: account.id,
