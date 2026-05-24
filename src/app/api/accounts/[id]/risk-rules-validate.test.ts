@@ -103,3 +103,79 @@ describe("validateRiskRulesBody — first error wins (deterministic)", () => {
     assert.equal(err!.field, "allowedEndHour");
   });
 });
+
+describe("validateRiskRulesBody — maxContractsBySymbolJson (Phase 4)", () => {
+  it("accepts an absent field", () => {
+    assert.equal(validateRiskRulesBody({ maxContracts: 2 }), null);
+  });
+
+  it("accepts a null field", () => {
+    assert.equal(validateRiskRulesBody({ maxContractsBySymbolJson: null }), null);
+  });
+
+  it("accepts a valid JSON array of supported symbols", () => {
+    assert.equal(
+      validateRiskRulesBody({
+        maxContractsBySymbolJson: '[{"symbol":"NQ","maxContracts":2},{"symbol":"MNQ","maxContracts":10}]',
+      }),
+      null,
+    );
+  });
+
+  it("rejects a non-string value", () => {
+    const err = validateRiskRulesBody({ maxContractsBySymbolJson: 42 });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+    assert.match(err!.message, /JSON string/);
+  });
+
+  it("rejects malformed JSON", () => {
+    const err = validateRiskRulesBody({ maxContractsBySymbolJson: "not json" });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+  });
+
+  it("rejects a duplicate symbol", () => {
+    const err = validateRiskRulesBody({
+      maxContractsBySymbolJson: '[{"symbol":"NQ","maxContracts":2},{"symbol":"NQ","maxContracts":3}]',
+    });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+    assert.match(err!.message, /Duplicate/);
+  });
+
+  it("rejects an unsupported symbol", () => {
+    const err = validateRiskRulesBody({
+      maxContractsBySymbolJson: '[{"symbol":"AAPL","maxContracts":2}]',
+    });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+  });
+
+  it("rejects a lowercase symbol", () => {
+    const err = validateRiskRulesBody({
+      maxContractsBySymbolJson: '[{"symbol":"nq","maxContracts":2}]',
+    });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+    assert.match(err!.message, /uppercase/);
+  });
+
+  it("rejects a zero / negative / non-integer maxContracts", () => {
+    for (const bad of [0, -2, 1.5]) {
+      const err = validateRiskRulesBody({
+        maxContractsBySymbolJson: `[{"symbol":"NQ","maxContracts":${bad}}]`,
+      });
+      assert.ok(err, `maxContracts=${bad} must be rejected`);
+      assert.equal(err!.field, "maxContractsBySymbolJson");
+    }
+  });
+
+  it("rejects a maxContracts above the 1000 cap", () => {
+    const err = validateRiskRulesBody({
+      maxContractsBySymbolJson: '[{"symbol":"NQ","maxContracts":1001}]',
+    });
+    assert.ok(err);
+    assert.equal(err!.field, "maxContractsBySymbolJson");
+  });
+});

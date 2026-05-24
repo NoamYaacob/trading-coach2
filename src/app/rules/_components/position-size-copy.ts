@@ -25,3 +25,23 @@ export const MAX_POSITION_SIZE_COPY = {
     "Guardrail uses this limit to monitor position size. " +
     "Standard-equivalent sizing lets 1 NQ equal 10 MNQ.",
 } as const;
+
+/**
+ * UI copy for the per-symbol contract-limits table (Phase 4B).
+ *
+ * The mental model is a raw max-contract limit per tradable symbol — not
+ * micro/parent pairs. Copy must NOT imply broker-side enforcement.
+ */
+export const SYMBOL_LIMITS_COPY = {
+  heading: "Contract limits by symbol",
+  /** Note shown under the global maxContracts input. */
+  globalFallbackNote:
+    "Fallback limit — used only for symbols without a symbol-specific limit.",
+  description:
+    "Set a max contract limit for each symbol. " +
+    "Guardrail monitors these limits per account. Broker-side enforcement is not used for this rule.",
+  /** Heading above the list of configured limits. */
+  currentHeading: "Current contract limits",
+  /** Shown when no per-symbol limits are configured. */
+  emptyState: "No contract limits set yet.",
+} as const;

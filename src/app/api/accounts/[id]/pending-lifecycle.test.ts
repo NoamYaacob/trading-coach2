@@ -78,6 +78,9 @@ test("only the promoter library and the two PATCH routes touch pending+active ru
     "src/app/api/accounts/[id]/route.ts",
     "src/app/api/rules/route.ts",
     "src/lib/pending-rule-promoter.ts",
+    // Copy endpoint clears pendingPayloadJson (sets to JsonNull) when copying
+    // rules so the target starts clean with no inherited pending changes.
+    "src/app/api/accounts/[id]/rules/copy/route.ts",
   ]);
   const suspicious = SOURCE_FILES.filter((f) => {
     const src = readFileSync(f, "utf8");
@@ -337,5 +340,159 @@ test("rules page selects tradesCount and sessionDate from LiveSessionState", () 
   assert.ok(
     /hasAlreadyTradedToday/.test(pagesSrc),
     "rules page must compute hasAlreadyTradedToday",
+  );
+});
+
+// ── First-fill race condition fix ─────────────────────────────────────────────
+// The lock must trigger as soon as a trade event exists, not only after the
+// sync cron has incremented tradesCount. Tests below pin the multi-signal approach.
+
+const guardSrc = readFileSync(
+  join(REPO_ROOT, "src/lib/rules/session-trade-guard.ts"),
+  "utf8",
+);
+
+test("account route selects lastTradeAt from LiveSessionState", () => {
+  assert.ok(
+    /lastTradeAt:\s*true/.test(accountRouteSrc),
+    "account route must select lastTradeAt from liveSessionState to catch first-fill race",
+  );
+});
+
+test("rules route selects lastTradeAt from LiveSessionState", () => {
+  assert.ok(
+    /lastTradeAt:\s*true/.test(rulesRouteSrc),
+    "rules route must select lastTradeAt from liveSessionState to catch first-fill race",
+  );
+});
+
+test("account route blocks when lastTradeAt is today even if tradesCount is 0", () => {
+  // Route must check deriveCmeTradingDayKey(lastTradeAt) === tradingDayKey
+  // independently of tradesCount, so the lock fires before the first sync completes.
+  assert.ok(
+    /lastTradeAt/.test(accountRouteSrc),
+    "account route must check liveState.lastTradeAt as a secondary lock signal",
+  );
+  assert.ok(
+    /deriveCmeTradingDayKey\(liveState/.test(accountRouteSrc),
+    "account route must call deriveCmeTradingDayKey on liveState.lastTradeAt for CME-anchored check",
+  );
+});
+
+test("rules route blocks when any account has lastTradeAt today", () => {
+  assert.ok(
+    /lastTradeAt/.test(rulesRouteSrc),
+    "rules route must check lastTradeAt as a secondary lock signal",
+  );
+  assert.ok(
+    /deriveCmeTradingDayKey\(s\.lastTradeAt/.test(rulesRouteSrc),
+    "rules route must call deriveCmeTradingDayKey on lastTradeAt for CME-anchored check",
+  );
+});
+
+test("account route queries NormalizedTradeEvent for first-fill race protection", () => {
+  assert.ok(
+    /getAccountIdsWithTradeToday/.test(accountRouteSrc),
+    "account route must call getAccountIdsWithTradeToday to check NormalizedTradeEvent",
+  );
+  assert.ok(
+    /session-trade-guard/.test(accountRouteSrc),
+    "account route must import from session-trade-guard",
+  );
+});
+
+test("rules route queries NormalizedTradeEvent for any user account", () => {
+  assert.ok(
+    /getAccountIdsWithTradeToday/.test(rulesRouteSrc),
+    "rules route must call getAccountIdsWithTradeToday to check NormalizedTradeEvent",
+  );
+  assert.ok(
+    /session-trade-guard/.test(rulesRouteSrc),
+    "rules route must import from session-trade-guard",
+  );
+});
+
+test("account route blocks when NormalizedTradeEvent exists today even if LiveSessionState is stale", () => {
+  // hasTradeEventToday flag must be used in the 423 rejection condition
+  assert.ok(
+    /hasTradeEventToday/.test(accountRouteSrc),
+    "account route must use hasTradeEventToday in the lock condition",
+  );
+  assert.ok(
+    /liveStateHasTraded\s*\|\|\s*hasTradeEventToday|hasTradeEventToday\s*\|\|\s*liveStateHasTraded/.test(
+      accountRouteSrc,
+    ),
+    "account route must reject when either liveStateHasTraded OR hasTradeEventToday is true",
+  );
+});
+
+test("default template blocks when any account has a NormalizedTradeEvent today", () => {
+  assert.ok(
+    /tradeEventIds/.test(rulesRouteSrc),
+    "rules route must compute tradeEventIds from NormalizedTradeEvent",
+  );
+  assert.ok(
+    /liveStateTradedIds\.size\s*>\s*0\s*\|\|\s*tradeEventIds\.size\s*>\s*0|tradeEventIds\.size\s*>\s*0\s*\|\|\s*liveStateTradedIds\.size\s*>\s*0/.test(
+      rulesRouteSrc,
+    ),
+    "rules route must block when either liveStateTradedIds OR tradeEventIds is non-empty",
+  );
+});
+
+test("first-time setup exemption still bypasses session_already_traded check", () => {
+  // isFirstTimeSetup must guard the hard-reject block in the account route
+  assert.ok(
+    /!isFirstTimeSetup.*liveStateHasTraded|!isFirstTimeSetup.*hasTradeEventToday/.test(
+      accountRouteSrc,
+    ),
+    "account route must gate session_already_traded block behind !isFirstTimeSetup",
+  );
+});
+
+test("account route writes RuleChangeAudit with blockReason=session_already_traded for all paths", () => {
+  // The audit write must still be present for the broadened condition
+  const auditMatches = accountRouteSrc.match(
+    /blockReason:\s*["']session_already_traded["']/g,
+  );
+  assert.ok(
+    auditMatches != null && auditMatches.length >= 1,
+    "account route must write RuleChangeAudit blockReason: session_already_traded",
+  );
+});
+
+test("session-trade-guard makes no broker calls (no tradovate import)", () => {
+  assert.ok(
+    !guardSrc.includes("tradovate-client"),
+    "session-trade-guard must not import tradovate-client — no broker calls allowed from rule-save path",
+  );
+  assert.ok(
+    !guardSrc.includes("fetch("),
+    "session-trade-guard must not call fetch — pure DB read only",
+  );
+  assert.ok(
+    !guardSrc.includes("tradovate-ensure-token"),
+    "session-trade-guard must not import tradovate-ensure-token",
+  );
+});
+
+test("session-trade-guard queries NormalizedTradeEvent for fill/closed event types", () => {
+  assert.ok(
+    /normalizedTradeEvent/.test(guardSrc),
+    "session-trade-guard must query normalizedTradeEvent",
+  );
+  assert.ok(
+    /fill/.test(guardSrc),
+    "session-trade-guard must include 'fill' event type in query",
+  );
+  assert.ok(
+    /trade_closed/.test(guardSrc),
+    "session-trade-guard must include 'trade_closed' event type in query",
+  );
+});
+
+test("session-trade-guard uses occurredAt >= sessionStart as the time boundary", () => {
+  assert.ok(
+    /occurredAt.*gte.*sessionStart|sessionStart.*occurredAt/.test(guardSrc),
+    "session-trade-guard must filter by occurredAt >= sessionStart for CME session scoping",
   );
 });

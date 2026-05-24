@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "./session-window-copy";
-import { MAX_POSITION_SIZE_COPY } from "./position-size-copy";
+import { MAX_POSITION_SIZE_COPY, SYMBOL_LIMITS_COPY } from "./position-size-copy";
 import { MaxPositionSizeConversionTable } from "./max-position-size-conversion-table";
+import { SymbolLimitsTable, type SymbolLimitRow } from "./symbol-limits-table";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
@@ -24,6 +25,7 @@ import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 import { CmeHourSelect } from "./cme-hour-select";
 import { cmeHourBoundaryNote } from "./cme-hour-parsing";
 import { ApplyPendingButton } from "./apply-pending-button";
+import { CopyRulesModal, type CopySourceAccount } from "./copy-rules-modal";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -51,6 +53,9 @@ export type AccountRulesValues = {
   /** When true, Guardrail writes a global raw contract cap to Tradovate.
    *  WARNING: counts all contracts equally (2 MNQ blocked with max=1). Default: false. */
   rawBrokerHardLimitEnabled: boolean;
+  /** Symbol-specific max-contract limits. Saved with the Trading Plan;
+   *  guardian-evaluator wiring is a later rollout. */
+  symbolLimits: SymbolLimitRow[];
   // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
 };
 
@@ -96,6 +101,9 @@ type Props = {
    *  note below the pending diff so the user understands why the button is
    *  absent. Null when the reason is unknown or canApplyPendingNow is true. */
   pendingBlockReason?: string | null;
+  /** Other accounts owned by this user that have a Trading Plan.
+   *  When non-empty, the "Copy from another account" button is enabled. */
+  copySourceAccounts?: CopySourceAccount[];
 };
 
 const TZ_CITY: Record<string, string> = {
@@ -126,6 +134,22 @@ function int(v: string): number | null {
   if (!v.trim()) return null;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Serializes the symbol-limit rows into the maxContractsBySymbolJson string.
+ * Drops incomplete rows (no symbol or no maxContracts entered). Out-of-range
+ * values are passed through so the server validator returns a clear error.
+ * An empty table serializes to null (clears all per-symbol limits).
+ */
+function serializeSymbolLimits(rows: SymbolLimitRow[]): string | null {
+  const entries = rows
+    .filter((r) => r.symbol.trim() !== "" && r.maxContracts.trim() !== "")
+    .map((r) => ({
+      symbol: r.symbol.trim().toUpperCase(),
+      maxContracts: Number(r.maxContracts),
+    }));
+  return entries.length > 0 ? JSON.stringify(entries) : null;
 }
 
 /**
@@ -181,10 +205,26 @@ function defaultPendingNote(
   return `Default template has ${v} pending — will inherit when default activates.`;
 }
 
-function Field({ label, hint, pendingNote, children }: { label: string; hint?: string; pendingNote?: string | null; children: React.ReactNode }) {
+function StatusBadge({ variant, text }: { variant: "broker" | "monitor" | "planned"; text: string }) {
+  const cls = {
+    broker: "border-amber-200 bg-amber-50 text-amber-700",
+    monitor: "border-stone-200 bg-stone-100 text-stone-500",
+    planned: "border-sky-200 bg-sky-50 text-sky-700",
+  }[variant];
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${cls}`}>
+      {text}
+    </span>
+  );
+}
+
+function Field({ label, hint, badge, pendingNote, children }: { label: string; hint?: string; badge?: React.ReactNode; pendingNote?: string | null; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-medium text-stone-600">{label}</span>
+      <span className="flex items-center gap-1.5 text-xs font-medium text-stone-600">
+        {label}
+        {badge}
+      </span>
       {children}
       {hint && <span className="text-xs text-stone-400">{hint}</span>}
       {pendingNote && <span className="text-xs font-medium text-amber-600">{pendingNote}</span>}
@@ -246,6 +286,7 @@ export function AccountRulesForm({
   defaultPendingPayload,
   canApplyPendingNow,
   pendingBlockReason,
+  copySourceAccounts,
 }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<AccountRulesValues>(initial);
@@ -257,6 +298,7 @@ export function AccountRulesForm({
   // Advanced broker-side contract cap is hidden by default; expand if already enabled.
   const [showAdvancedBrokerCap, setShowAdvancedBrokerCap] = useState(initial.rawBrokerHardLimitEnabled);
   const [showForm, setShowForm] = useState(hasExistingRules);
+  const [showCopyModal, setShowCopyModal] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
@@ -338,6 +380,7 @@ export function AccountRulesForm({
           ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
           maxContracts: int(values.maxContracts),
           rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
+          maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits),
         },
         // Stamp consent only on submissions where the user explicitly checked
         // the box. Re-saves of rules on already-consented accounts pass false
@@ -380,7 +423,7 @@ export function AccountRulesForm({
       if (data.rulesLock?.applied === false && data.rulesLock.message) {
         setPendingMessage(data.rulesLock.message);
       } else {
-        setPendingMessage("Account-specific rules removed. This account now uses the default template.");
+        setPendingMessage("Account-specific rules removed. This account is no longer monitored by Guardrail.");
         router.refresh();
       }
     } catch (err) {
@@ -390,52 +433,58 @@ export function AccountRulesForm({
     }
   }
 
-  // No existing rules: show read-only inherited summary + CTA before revealing the form
+  // No existing rules: show "No Trading Plan yet" empty state
   if (!showForm) {
-    const summaryFields: { label: string; value: string; prefix?: string }[] = [
-      { label: "Daily loss limit", value: defaultValues?.maxDailyLoss ?? "", prefix: "$" },
-      { label: "Risk per trade", value: defaultValues?.riskPerTrade ?? "", prefix: "$" },
-      { label: "Max trades / day", value: defaultValues?.maxTradesPerDay ?? "" },
-      { label: "Stop after losses", value: defaultValues?.stopAfterLosses ?? "" },
-      { label: "Cutoff time (CME)", value: defaultValues?.allowedEndHour ?? "" },
-      { label: MAX_POSITION_SIZE_COPY.label, value: defaultValues?.maxContracts ?? "" },
-    ];
+    const hasCopySources = (copySourceAccounts?.length ?? 0) > 0;
     return (
-      <div className="grid gap-4">
-        <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
-          <p className="font-medium text-stone-800">Inherited from default template</p>
-          <p className="mt-0.5">
+      <div className="grid gap-5">
+        <div className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-4">
+          <p className="text-base font-semibold text-stone-900">No Trading Plan yet</p>
+          <p className="mt-1.5 text-sm text-stone-600">
+            Create account-specific rules before Guardrail can monitor this account.
             {hasDefaultRules
-              ? "This account currently inherits the default template. Create an account-specific override to customize rules for this account only."
-              : `No default template is set. Saving here will create rules only for ${accountLabel}.`}
+              ? " Starter settings are a starting point — save rules here to enable session monitoring for this account."
+              : ""}
           </p>
         </div>
-
-        {hasDefaultRules && defaultValues && (
-          <div className="rounded-2xl border border-stone-100 bg-stone-50/50 px-4 py-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-stone-400">
-              Inherited from default template
-            </p>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              {summaryFields.map(({ label, value, prefix }) => (
-                <div key={label}>
-                  <dt className="text-xs text-stone-400">{label}</dt>
-                  <dd className="mt-0.5 text-sm font-medium text-stone-700">
-                    {value ? `${prefix ?? ""}${value}` : <span className="text-stone-300">—</span>}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          >
+            Create rules for this account
+          </button>
+          {hasCopySources ? (
+            <button
+              type="button"
+              onClick={() => setShowCopyModal(true)}
+              className="inline-flex items-center justify-center rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-700 transition hover:border-stone-400"
+            >
+              Copy from another account
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title="No other Trading Plans to copy yet"
+              className="inline-flex cursor-not-allowed items-center rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-400"
+            >
+              Copy from another account
+            </button>
+          )}
+        </div>
+        {showCopyModal && copySourceAccounts && copySourceAccounts.length > 0 && (
+          <CopyRulesModal
+            targetAccountId={accountId}
+            sourceAccounts={copySourceAccounts}
+            onClose={() => setShowCopyModal(false)}
+            onSuccess={() => {
+              setShowCopyModal(false);
+              router.refresh();
+            }}
+          />
         )}
-
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center justify-center self-start rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
-        >
-          Create account-specific rules
-        </button>
       </div>
     );
   }
@@ -563,10 +612,14 @@ export function AccountRulesForm({
           </dl>
         )}
         <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field label="Daily loss limit ($)">
+          <Field
+            label="Daily loss limit ($)"
+            badge={<StatusBadge variant="broker" text="Broker-backed eligible" />}
+            hint="Currently monitoring only — no broker actions are sent unless enforcement is explicitly enabled."
+          >
             <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
           </Field>
-          <Field label="Risk per trade ($)" hint="Warning only — does not lock the account.">
+          <Field label="Risk per trade ($)" badge={<StatusBadge variant="monitor" text="Monitoring only" />} hint="Warning only — does not lock the account.">
             <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
           </Field>
         </div>
@@ -578,22 +631,26 @@ export function AccountRulesForm({
         <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
           <Field
             label="Max trades per day"
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             pendingNote={defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
           >
             <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
           <Field
             label="Stop after consecutive losses"
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             pendingNote={defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
           >
             <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
           <Field
             label={MAX_POSITION_SIZE_COPY.label}
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             hint={MAX_POSITION_SIZE_COPY.hint}
             pendingNote={defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
           >
             <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+            <span className="text-xs text-stone-400">{SYMBOL_LIMITS_COPY.globalFallbackNote}</span>
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
             {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
               <button
@@ -627,6 +684,23 @@ export function AccountRulesForm({
               </div>
             )}
           </Field>
+          {/* Symbol-specific limits — saved with the Trading Plan. The guardian
+              evaluator does not read these yet; per-symbol evaluation is a
+              later rollout. Copy must not imply live or broker-side enforcement. */}
+          <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-stone-700">
+                {SYMBOL_LIMITS_COPY.heading}
+              </span>
+              <StatusBadge variant="monitor" text="Monitoring only" />
+            </div>
+            <p className="text-xs text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
+            <SymbolLimitsTable
+              value={values.symbolLimits}
+              onChange={(rows) => update("symbolLimits", rows)}
+              disabled={fieldsDisabled}
+            />
+          </div>
         </div>
       </div>
 
@@ -636,7 +710,10 @@ export function AccountRulesForm({
           floating in their own card). */}
       <div role="group" aria-label="Daily cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <div>
-          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
+          <p className="flex items-center gap-2 text-sm font-semibold text-stone-950">
+            {SESSION_WINDOW_COPY.legend}
+            <StatusBadge variant="planned" text="Monitoring / Planned automation" />
+          </p>
           <p className="mt-1 text-xs text-stone-500">
             Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
           </p>
@@ -694,17 +771,15 @@ export function AccountRulesForm({
         </div>
       </div>
 
-      {/* ── Notifications (inherited) ───────────────────────────────────────
-          Default-only field surfaced as a card so the account form mirrors
-          the default template's section list. The on-page UX is read-only:
-          breach alerts are configured on the default template. */}
+      {/* ── Notifications ───────────────────────────────────────────────────
+          Read-only honest summary. There is no per-account alert toggle —
+          rule-breach notices render in-app on the Dashboard and Telegram
+          delivers the proactive warnings the engine actually sends. */}
       <div role="group" aria-label="Notifications" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
         <p className="text-sm font-semibold text-stone-950">Notifications</p>
         <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs text-stone-600">
-          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
-            Inherited
-          </span>{" "}
-          Breach alerts are configured on the default template and apply to every account.
+          Rule-breach notices appear in-app on the Dashboard. Connect Telegram in Settings
+          to also receive proactive alerts in your chat.
         </div>
       </div>
 
@@ -807,7 +882,7 @@ export function AccountRulesForm({
       {/* Submit row */}
       <div className="grid gap-3 border-t border-stone-100 pt-4 sm:pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss can trigger broker risk settings on breach. Profit targets are monitored in Guardrail.
+          Rules are saved in Guardrail and used for session monitoring. All rules currently operate in monitoring mode — no broker actions are sent unless enforcement is explicitly enabled.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire.
@@ -887,7 +962,7 @@ export function AccountRulesForm({
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
                 <p className="text-sm font-medium text-red-900">Remove account-specific rules for {accountLabel}?</p>
                 <p className="mt-1 text-xs text-red-800">
-                  This account will return to using the default template. Other accounts are not affected.
+                  This account&apos;s override will be removed. Without an account override, Guardrail does not monitor this account. Other accounts are not affected.
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button

@@ -22,10 +22,11 @@ import { GuardianToggle } from "./_components/guardian-toggle";
 import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
 import { mapDefaultRulesToAccountForm } from "./_components/account-rules-form-logic";
-import { buildRuleScopes } from "./_components/rule-scope-utils";
+import { buildRuleScopes, buildAccountRulesUrl } from "./_components/rule-scope-utils";
 import { ApplyPendingButton } from "./_components/apply-pending-button";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
-import { deriveAccountSubtitleSuffix } from "./_components/scope-selector-helpers";
+import { deriveAccountSubtitleSuffix, deriveScopeAccountBadge } from "./_components/scope-selector-helpers";
+import { parseSymbolLimits } from "@/lib/futures/symbol-limits";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
@@ -48,7 +49,10 @@ export default async function RulesPage({
 }: {
   searchParams: Promise<{ scope?: string; id?: string }>;
 }) {
-  const { scope = "default", id } = await searchParams;
+  const { scope: rawScope = "default", id } = await searchParams;
+  // "starter" is an explicit scope for the starter settings form.
+  // "default" (no param) → accounts overview when accounts exist, starter settings when no accounts.
+  const scope = rawScope === "starter" ? "starter" : rawScope === "account" ? "account" : "default";
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -97,6 +101,7 @@ export default async function RulesPage({
             pendingPayloadJson: true,
             pendingEffectiveDate: true,
             maxContracts: true,
+            maxContractsBySymbolJson: true,
             rawBrokerHardLimitEnabled: true,
             automatedActionsConsentAt: true,
             automatedActionsConsentVersion: true,
@@ -189,6 +194,17 @@ export default async function RulesPage({
   const selectedAccount =
     scope === "account" && id ? accounts.find((a) => a.id === id) ?? null : null;
 
+  // Other accounts the user can copy a Trading Plan from into the selected account.
+  const copySourceAccounts = selectedAccount
+    ? accounts
+        .filter((a) => a.id !== selectedAccount.id && a.riskRules !== null)
+        .map((a) => ({
+          id: a.id,
+          label: a.label,
+          env: a.brokerConnection?.env ?? null,
+        }))
+    : [];
+
   // Determine whether pending rules can be applied immediately ("Apply pending
   // now" button). Uses canActivateRulesNow with live account/scope state.
   const accountConnectionLive = selectedAccount?.connectionStatus === "connected_live";
@@ -269,6 +285,9 @@ export default async function RulesPage({
     ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
     rawBrokerHardLimitEnabled: selectedAccount?.riskRules?.rawBrokerHardLimitEnabled ?? false,
+    symbolLimits: parseSymbolLimits(selectedAccount?.riskRules?.maxContractsBySymbolJson ?? null).map(
+      (l) => ({ symbol: l.symbol, maxContracts: String(l.maxContracts) }),
+    ),
     // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   };
 
@@ -285,6 +304,7 @@ export default async function RulesPage({
   );
 
   // Enforcement mode for the current scope (scoped to brokerConnectionId + accountId)
+  const isNotAccountScope = scope !== "account";
   const enforcementInfo = computeEnforcementMode(
     scope === "account" && selectedAccount
       ? {
@@ -299,15 +319,20 @@ export default async function RulesPage({
             : null,
         }
       : null,
-    scope !== "account",
+    isNotAccountScope,
     { hasFullAccessAccount },
   );
+
+  // Whether to render the starter settings form (explicit /rules?scope=starter, or no accounts yet)
+  const showStarterForm = scope === "starter" || (isNotAccountScope && groups.length === 0);
+  // Whether to render the accounts overview landing (default / with accounts)
+  const showAccountsOverview = isNotAccountScope && scope !== "starter" && groups.length > 0;
 
   return (
     <AppShell
       eyebrow="Trading Plan"
       title="Set your trading plan."
-      description="Set session limits once in the default template, then override for individual accounts when needed."
+      description="Configure rules per trading account. Each account needs its own Trading Plan for Guardrail to monitor it."
       compactHero
     >
       {/* Two-column layout: selector sidebar + editor */}
@@ -359,28 +384,31 @@ export default async function RulesPage({
             hasAccountRules={selectedAccount?.riskRules !== null}
           />
 
-          {/* Enforcement mode banner */}
-          <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
-            <span className="font-semibold">{enforcementInfo.label}. </span>
-            {enforcementInfo.detail}
-          </div>
+          {/* Enforcement mode banner + How enforcement works — hidden in accounts overview (it has its own header) */}
+          {!showAccountsOverview && (
+            <>
+              <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
+                <span className="font-semibold">{enforcementInfo.label}. </span>
+                {enforcementInfo.detail}
+              </div>
 
-          {/* How enforcement works — compact collapsible */}
-          <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
-              How enforcement works
-              <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-            </summary>
-            <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
-              <li>• <span className="font-medium text-stone-700">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
-              <li>• <span className="font-medium text-stone-700">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
-              <li>• <span className="font-medium text-stone-700">Broker risk settings:</span> when enabled, Guardrail writes your daily loss limit directly to Tradovate — the exchange enforces it independently of the app.</li>
-              <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
-            </ul>
-          </details>
+              <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
+                  How enforcement works
+                  <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+                </summary>
+                <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
+                  <li>• <span className="font-medium text-stone-700">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
+                  <li>• <span className="font-medium text-stone-700">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
+                  <li>• <span className="font-medium text-stone-700">Broker risk settings:</span> when enabled, Guardrail writes your daily loss limit directly to Tradovate — the exchange enforces it independently of the app.</li>
+                  <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
+                </ul>
+              </details>
+            </>
+          )}
 
           {/* Changes pending panel — merges lock banner + pending banner into one */}
-          {scope !== "account" && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
+          {showStarterForm && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
               <div className="min-w-0 flex-1">
@@ -449,20 +477,28 @@ export default async function RulesPage({
                   timezone={traderProfile?.timezone}
                   defaultValues={accountDefaultValues}
                   defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                  copySourceAccounts={copySourceAccounts}
                 />
               </SectionCard>
             ) : (
               <SectionCard title="Account not found">
                 <p className="text-sm text-stone-600">
                   The selected account was not found.{" "}
-                  <Link href="/rules" className="font-medium underline-offset-2 hover:underline">
-                    Back to default template
+                  <Link href="/rules?scope=starter" className="font-medium underline-offset-2 hover:underline">
+                    Back to starter settings
                   </Link>
                 </p>
               </SectionCard>
             )
+          ) : showAccountsOverview ? (
+            /* Accounts-first overview — shown when accounts exist and no explicit scope */
+            <AccountsOverviewPanel
+              accounts={scopeAccounts.filter((a) => a.missingFromBrokerSince == null)}
+              guardianEnabled={guardian.profile.guardianEnabled}
+              hasFullAccessAccount={hasFullAccessAccount}
+            />
           ) : (
-            /* Default template editor */
+            /* Starter settings editor */
             <SectionCard>
               <div id="guardian-toggle" className="mb-5 scroll-mt-20">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
@@ -480,11 +516,11 @@ export default async function RulesPage({
           )}
 
           {/* No broker accounts — push toward connection */}
-          {scope !== "account" && groups.length === 0 && (
+          {showStarterForm && groups.length === 0 && (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
               <p className="font-medium text-stone-950">No broker accounts connected.</p>
               <p className="mt-1">
-                Connect your broker to enable live account monitoring. The rules above apply as session defaults across connected accounts.
+                Connect a trading account to create a Trading Plan. Starter settings above are a starting point — each account needs its own rules for Guardrail to monitor it.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -529,7 +565,7 @@ function ScopeContextHeader({
   account: SelectedAccount;
   hasAccountRules?: boolean;
 }) {
-  if (scope !== "account") {
+  if (scope === "starter") {
     return (
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
@@ -537,20 +573,24 @@ function ScopeContextHeader({
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold tracking-tight text-stone-950">
-            Default template
+            Starter settings
           </h2>
           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-            Default
+            Starter
           </span>
         </div>
         <p className="mt-0.5 text-sm text-stone-500">
-          Applies to all accounts that don't have their own override. Select an account in the sidebar to configure it individually.
+          Starter settings are a starting point for session defaults. Connected accounts still need their own Trading Plan to be monitored by Guardrail.
         </p>
         <p className="mt-1 text-xs text-stone-400">
-          These are the rules Guardrail watches during your trading session.
+          The enforcement engine reads account-specific rules, not this template directly.
         </p>
       </div>
     );
+  }
+
+  if (scope !== "account") {
+    return null;
   }
 
   if (!account) return null;
@@ -575,17 +615,124 @@ function ScopeContextHeader({
         </h2>
         {hasAccountRules ? (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
-            Account override
+            Active plan
           </span>
         ) : (
           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-            Inherited default
+            No plan yet
           </span>
         )}
       </div>
       {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
       <p className="mt-1 text-xs text-stone-400">
-        These are the rules Guardrail watches for this account during your trading session.
+        {hasAccountRules
+          ? "Account-specific rules are active. Guardrail monitors this account during your trading session."
+          : "No account-specific rules — Guardrail is not monitoring this account. Create an override to enable enforcement."}
+      </p>
+    </div>
+  );
+}
+
+// ── AccountsOverviewPanel ──────────────────────────────────────────────────────
+
+type OverviewAccount = {
+  id: string;
+  label: string;
+  hasAccountRules: boolean;
+  brokerConnection: { env: string } | null;
+};
+
+function AccountsOverviewPanel({
+  accounts,
+  guardianEnabled,
+  hasFullAccessAccount,
+}: {
+  accounts: OverviewAccount[];
+  guardianEnabled: boolean;
+  hasFullAccessAccount: boolean;
+}) {
+  const ENV_LABEL: Record<string, string> = { live: "Live", demo: "Demo / Sim" };
+
+  return (
+    <div className="grid gap-5">
+      {/* Guardian toggle — placed here so /rules#guardian-toggle anchor always works */}
+      <SectionCard>
+        <div id="guardian-toggle" className="scroll-mt-20">
+          <GuardianToggle initialEnabled={guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
+        </div>
+      </SectionCard>
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
+          Trading Plan
+        </p>
+        <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-950">
+          Your accounts
+        </h2>
+        <p className="mt-0.5 text-sm text-stone-500">
+          Select an account to configure its Trading Plan. Each account needs its own rules for Guardrail to monitor it.
+        </p>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+          <p className="font-medium text-stone-950">No broker accounts connected.</p>
+          <p className="mt-1">
+            Connect a trading account to create a Trading Plan.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/accounts/connect/tradovate"
+              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+            >
+              Connect Tradovate
+            </Link>
+            <Link
+              href="/rules?scope=starter"
+              className="inline-flex items-center justify-center rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-400"
+            >
+              View starter settings
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {accounts.map((account) => {
+            const badge = deriveScopeAccountBadge({
+              isUnavailable: false,
+              requiresAutomatedActionsConsent: false,
+              hasAccountRules: account.hasAccountRules,
+            });
+            const envLabel = account.brokerConnection
+              ? (ENV_LABEL[account.brokerConnection.env] ?? account.brokerConnection.env)
+              : null;
+            return (
+              <Link
+                key={account.id}
+                href={buildAccountRulesUrl(account.id)}
+                className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 transition hover:border-stone-300 hover:bg-stone-50"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-stone-900">{account.label}</p>
+                  {envLabel && (
+                    <p className="mt-0.5 text-xs text-stone-500">{envLabel}</p>
+                  )}
+                </div>
+                <span className={`ml-3 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-stone-400">
+        Use{" "}
+        <Link href="/rules?scope=starter" className="underline-offset-2 hover:underline">
+          Starter settings
+        </Link>{" "}
+        to configure session defaults. Connected accounts still need their own Trading Plan.
       </p>
     </div>
   );

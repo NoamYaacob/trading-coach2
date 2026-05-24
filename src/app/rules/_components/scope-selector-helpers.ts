@@ -83,15 +83,15 @@ export function deriveAccountSubtitleSuffix(
 
 /**
  * Derives the per-account badge shown inside a group's account list.
- * Returns null when the account needs no annotation.
+ * Always returns a badge — never null.
  *
- * Priority: inactive > action required > custom rules.
+ * Priority: inactive > action required > active plan > no plan yet.
  */
 export function deriveScopeAccountBadge(input: {
   isUnavailable: boolean;
   requiresAutomatedActionsConsent: boolean;
   hasAccountRules: boolean;
-}): ScopeBadge | null {
+}): ScopeBadge {
   if (input.isUnavailable) {
     return { label: "Inactive", cls: "bg-amber-100 text-amber-700" };
   }
@@ -99,7 +99,7 @@ export function deriveScopeAccountBadge(input: {
     return { label: "Action required", cls: "bg-amber-100 text-amber-800" };
   }
   if (input.hasAccountRules) {
-    return { label: "Custom", cls: "bg-amber-100 text-amber-700" };
+    return { label: "Active plan", cls: "bg-emerald-100 text-emerald-700" };
   }
-  return null;
+  return { label: "No plan yet", cls: "bg-stone-100 text-stone-500" };
 }

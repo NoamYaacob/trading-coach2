@@ -64,20 +64,19 @@ test("account form: above-panel guidance says fields show active rules", () => {
 });
 
 test("account form: surfaces inherited fields per-section (parity with default form structure)", () => {
-  // After the section-parity refactor, inherited default-only fields are
-  // surfaced in the section where they conceptually belong rather than in
-  // a single consolidated callout:
+  // Inherited default-only fields are surfaced in the section where they
+  // conceptually belong:
   //   - Account size + Daily profit target → inside the "Money limits" section
   //     as a small inherited mini-table.
-  //   - Breach alerts → inside the "Notifications" section as an inherited card.
-  // This mirrors the default template's section list while making it obvious
-  // that those fields are managed elsewhere.
+  //   - Notifications → a read-only honest summary. There is no real per-rule
+  //     alert toggle, so the section describes actual delivery (in-app +
+  //     Telegram), not a fictional inherited "breach alert setting".
   const src = read(FORM_FILES.account);
   assert.ok(src.includes("Account size"), "Money limits section must mention 'Account size' as inherited");
   assert.ok(src.includes("Daily profit target"), "Money limits section must mention 'Daily profit target' as inherited");
   assert.ok(
-    /Breach alerts are configured on the default template/i.test(src),
-    "Notifications section must explain that breach alerts are inherited",
+    src.includes("Rule-breach notices appear in-app on the Dashboard"),
+    "Notifications section must honestly describe in-app + Telegram delivery",
   );
 });
 
@@ -470,4 +469,272 @@ test("no form claims Tradovate rejection is verified or guaranteed", () => {
       );
     }
   }
+});
+
+// ── Phase 2: Account empty state ──────────────────────────────────────────────
+
+test("account form: empty state shows 'No Trading Plan yet' heading", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("No Trading Plan yet"),
+    "empty state must say 'No Trading Plan yet' — not 'Inherited from default template'",
+  );
+});
+
+test("account form: empty state shows 'Create rules for this account' button", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Create rules for this account"),
+    "empty state must have a 'Create rules for this account' CTA",
+  );
+});
+
+test("account form: empty state shows 'Copy from another account' button (Phase 3 implemented)", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Copy from another account"),
+    "empty state must have 'Copy from another account' button",
+  );
+  assert.ok(
+    !src.includes("Coming soon"),
+    "Phase 3: copy button must no longer say 'Coming soon' — it is now implemented",
+  );
+  assert.ok(
+    src.includes("setShowCopyModal") || src.includes("CopyRulesModal"),
+    "Phase 3: copy button must open CopyRulesModal",
+  );
+});
+
+test("account form: empty state does NOT show inherited summary table as active enforcement", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes("Default template values (not enforced without override)"),
+    "Phase 2 empty state must not show the inherited-values summary table",
+  );
+  assert.ok(
+    !src.includes("Inherited from default template"),
+    "Phase 2 empty state must not say 'Inherited from default template'",
+  );
+});
+
+test("account form: empty state copy says Guardrail cannot monitor without account rules", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Create account-specific rules before Guardrail can monitor"),
+    "empty state must explain monitoring requires account-specific rules",
+  );
+});
+
+// ── Phase 3: Copy rules UI ────────────────────────────────────────────────────
+
+const COPY_MODAL = resolve(import.meta.dirname, "copy-rules-modal.tsx");
+
+test("copy modal: exists and is a client component", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(src.includes('"use client"'), "copy-rules-modal must be a client component");
+});
+
+test("copy modal: shows 'No other Trading Plans to copy yet' when sourceAccounts is empty", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("No other Trading Plans to copy yet"),
+    "modal must handle empty source list gracefully",
+  );
+});
+
+test("copy modal: calls POST /api/accounts/[id]/rules/copy endpoint", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("/api/accounts/") && src.includes("/rules/copy"),
+    "modal must POST to /api/accounts/[id]/rules/copy",
+  );
+  assert.ok(src.includes('method: "POST"'), "modal must use POST method");
+});
+
+test("copy modal: handles 423 lock response", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("res.status === 423") || src.includes("status === 423"),
+    "modal must handle 423 session lock response",
+  );
+  assert.ok(
+    src.includes('"locked"'),
+    "modal must enter locked state on 423",
+  );
+});
+
+test("copy modal: shows success message on copy", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("Trading Plan copied successfully"),
+    "modal must show success message after copy",
+  );
+});
+
+test("copy modal: does not use Tradovate or internal terms in user-facing copy", () => {
+  const src = read(COPY_MODAL);
+  const FORBIDDEN_IN_JSX = [
+    "AccountRiskRules",
+    "RiskRules",
+    "BROKER_ENFORCEMENT_ENABLED",
+    "TRADOVATE",
+    "enforcement engine",
+    "dry run",
+  ];
+  for (const term of FORBIDDEN_IN_JSX) {
+    assert.ok(
+      !src.includes(term),
+      `copy modal must not expose internal term "${term}" to users`,
+    );
+  }
+});
+
+test("copy modal: shows account label and env in source list", () => {
+  const src = read(COPY_MODAL);
+  assert.ok(
+    src.includes("account.label"),
+    "modal must render account label in source list",
+  );
+  assert.ok(
+    src.includes("envLabel") || src.includes("account.env"),
+    "modal must render env label (Demo/Live) when available",
+  );
+});
+
+test("account form: copy button shows disabled state when no sources available", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("No other Trading Plans to copy yet"),
+    "form must show 'No other Trading Plans to copy yet' as disabled title when no sources",
+  );
+});
+
+test("account form: copySourceAccounts prop is declared", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("copySourceAccounts"),
+    "AccountRulesForm must accept copySourceAccounts prop",
+  );
+});
+
+// ── Phase 4B: symbol-specific max contracts table ────────────────────────────
+
+test("account form: imports and renders SymbolLimitsTable", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes('from "./symbol-limits-table"'),
+    "account form must import SymbolLimitsTable",
+  );
+  assert.ok(
+    src.includes("<SymbolLimitsTable"),
+    "account form must render the SymbolLimitsTable in the Max Contracts section",
+  );
+});
+
+test("account form: SymbolLimitsTable is disabled when the form is locked", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("<SymbolLimitsTable");
+  assert.ok(idx !== -1, "SymbolLimitsTable must be rendered");
+  const block = src.slice(idx, idx + 240);
+  assert.ok(
+    block.includes("disabled={fieldsDisabled}"),
+    "SymbolLimitsTable must receive disabled={fieldsDisabled} so a locked account is read-only",
+  );
+});
+
+test("account form: serializes symbolLimits into maxContractsBySymbolJson on submit", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits)"),
+    "submit payload must serialize symbolLimits into maxContractsBySymbolJson",
+  );
+});
+
+test("account form: an empty symbol table serializes to null", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("function serializeSymbolLimits");
+  assert.ok(idx !== -1, "serializeSymbolLimits helper must exist");
+  const fn = src.slice(idx, idx + 420);
+  assert.ok(
+    fn.includes("entries.length > 0 ? JSON.stringify(entries) : null"),
+    "serializeSymbolLimits must return null when no symbol rows are present",
+  );
+});
+
+test("account form: symbolLimits is declared on AccountRulesValues", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("symbolLimits: SymbolLimitRow[]"),
+    "AccountRulesValues must include the symbolLimits field",
+  );
+});
+
+test("account form: shows the global-fallback note on the max contracts field", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("SYMBOL_LIMITS_COPY.globalFallbackNote"),
+    "the global maxContracts field must show the fallback note",
+  );
+});
+
+test("account form: symbol-limits section is badged Monitoring only", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("SYMBOL_LIMITS_COPY.heading");
+  assert.ok(idx !== -1, "symbol-limits section heading must be rendered");
+  const block = src.slice(idx, idx + 260);
+  assert.ok(
+    block.includes('text="Monitoring only"'),
+    "symbol-limits section must carry the 'Monitoring only' badge",
+  );
+});
+
+test("account form: symbol-limits section does not claim broker-backed enforcement", () => {
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf("SYMBOL_LIMITS_COPY.heading");
+  const block = src.slice(idx, idx + 400).toLowerCase();
+  for (const phrase of ["broker-backed", "broker enforced", "broker will"]) {
+    assert.ok(
+      !block.includes(phrase),
+      `symbol-limits section must not claim "${phrase}"`,
+    );
+  }
+});
+
+// ── Notifications honesty (Telegram + notifications audit) ───────────────────
+
+test("default form: notifications section has no fake onBreachWarn toggle", () => {
+  const src = read(FORM_FILES.default);
+  // The onBreachWarn checkbox never gated any send path — it was a dead toggle.
+  assert.ok(
+    !src.includes("Send alert when a rule is triggered"),
+    "the default form must not show a fake 'Send alert' toggle that controls nothing",
+  );
+  assert.ok(
+    !src.includes("In-app alerts are planned"),
+    "in-app rule notices already render on the Dashboard — copy must not call them planned",
+  );
+});
+
+test("default form: notifications section honestly describes in-app + Telegram delivery", () => {
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    src.includes("Rule-breach notices appear in-app on the Dashboard"),
+    "the default form notifications section must honestly describe in-app delivery",
+  );
+  assert.ok(
+    src.includes("early warning at 80%") && src.includes("loss-streak limit"),
+    "the notifications section must describe the two proactive Telegram warnings actually sent",
+  );
+});
+
+test("account form: notifications section drops the stale inherited-setting framing", () => {
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes("Breach alert setting is inherited"),
+    "the account form must not present a fictional inherited 'breach alert setting'",
+  );
+  assert.ok(
+    !/Alerts require a connected Telegram channel to fire/.test(src),
+    "in-app notices fire without Telegram — the account form must not claim alerts need Telegram",
+  );
 });

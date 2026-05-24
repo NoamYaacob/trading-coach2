@@ -165,6 +165,11 @@ model RiskRules {
   maxTradesPerDay       Int?
   stopAfterLosses       Int?
   maxContracts          Int?
+  // Symbol-specific max-contract limits — JSON string array, e.g.
+  // '[{"symbol":"NQ","maxContracts":2},{"symbol":"MNQ","maxContracts":10}]'.
+  // null = no per-symbol limits; maxContracts above is the global fallback.
+  // Guardrail-monitored only — never written to the broker.
+  maxContractsBySymbolJson String?
   allowedSymbols        String?
   sessionStartHour      Int?
   sessionEndHour        Int?
@@ -549,6 +554,11 @@ model AccountRiskRules {
   sessionPresetsJson    String?
   ruleEditLockBufferMinutes Int?
   maxContracts     Int?
+  // Symbol-specific max-contract limits — JSON string array, e.g.
+  // '[{"symbol":"NQ","maxContracts":2},{"symbol":"MNQ","maxContracts":10}]'.
+  // null = no per-symbol limits; maxContracts above is the global fallback.
+  // Guardrail-monitored only — never written to the broker.
+  maxContractsBySymbolJson String?
   // Prop firm limits — only relevant for evaluation / funded accounts.
   // When set, the effective daily loss budget = min(maxDailyLoss, propFirmDailyLossLimit,
   // propFirmDrawdownRemaining). Set propFirmDrawdownRemaining to the account's current

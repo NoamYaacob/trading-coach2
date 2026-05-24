@@ -214,10 +214,18 @@ describe("POST /api/cron/renew-tradovate-tokens: error handling", () => {
       !s.includes("markExpiredWithAccounts"),
       "route must not call markExpiredWithAccounts — ensureTradovateAccessToken handles expired marking for auth_invalid failures",
     );
-    assert.ok(
-      !s.includes('connectionStatus: "expired"'),
-      "route must not write expired status — that is ensureTradovateAccessToken's responsibility",
-    );
+    // The route may read expired connections in WHERE clauses (self-heal step), but must never
+    // write connectionStatus: "expired" in a data block — that belongs to ensureTradovateAccessToken.
+    let dataIdx = 0;
+    while ((dataIdx = s.indexOf("data: {", dataIdx)) !== -1) {
+      const blockEnd = s.indexOf("}", dataIdx);
+      const block = s.slice(dataIdx, blockEnd > dataIdx ? blockEnd + 1 : dataIdx + 200);
+      assert.ok(
+        !block.includes('"expired"'),
+        `data block at offset ${dataIdx} must not write connectionStatus: "expired" — use ensureTradovateAccessToken`,
+      );
+      dataIdx += 7;
+    }
   });
 });
 

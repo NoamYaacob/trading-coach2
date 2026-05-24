@@ -12,6 +12,9 @@ export type RiskRulesBody = {
   allowedEndHour?: number | null;
   sessionEndBehavior?: string | null;
   maxContracts?: number | null;
+  // Symbol-specific max-contract limits — JSON string array, validated by
+  // validateRiskRulesBody. null clears all per-symbol limits.
+  maxContractsBySymbolJson?: string | null;
   selectedSessionPresets?: string[] | null;
   sessionPreset?: string | null;
   sessionStartTime?: string | null;
@@ -51,6 +54,7 @@ export function riskRulesData(r: RiskRulesBody) {
     sessionTimezone: r.sessionTimezone ?? null,
     ruleEditLockBufferMinutes: r.ruleEditLockBufferMinutes ?? null,
     maxContracts: r.maxContracts ?? null,
+    maxContractsBySymbolJson: r.maxContractsBySymbolJson ?? null,
     ...(r.rawBrokerHardLimitEnabled !== undefined && { rawBrokerHardLimitEnabled: r.rawBrokerHardLimitEnabled ?? false }),
     // propFirm fields: only written when explicitly present in the payload so
     // that saves from the Trading Plan (which omit them) preserve existing values.

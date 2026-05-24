@@ -225,6 +225,8 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
           </Field>
           <Field
             label="Daily loss limit ($)"
+            badge={<StatusBadge variant="broker" text="Broker-backed eligible" />}
+            hint="Currently monitoring only — no broker actions are sent unless enforcement is explicitly enabled."
             pendingNote={pendingFieldNote(pendingPayload, "maxDailyLoss", initial.maxDailyLoss)}
           >
             <NumberInput value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
@@ -236,12 +238,15 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
           </Field>
           <Field
             label="Daily profit target ($)"
+            badge={<StatusBadge variant="planned" text="Monitoring / Planned" />}
+            hint="Saved for tracking. It does not lock the account today."
             pendingNote={pendingFieldNote(pendingPayload, "dailyProfitTarget", initial.dailyProfitTarget)}
           >
             <NumberInput value={values.dailyProfitTarget} onChange={(v) => update("dailyProfitTarget", v)} placeholder="1000" />
           </Field>
           <Field
             label="Risk per trade ($)"
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             hint="Warning only — does not lock the account."
             pendingNote={pendingFieldNote(pendingPayload, "maxRiskPerTrade", initial.maxRiskPerTrade)}
           >
@@ -256,18 +261,21 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field
             label="Max trades per day"
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             pendingNote={pendingFieldNote(pendingPayload, "maxTradesPerDay", initial.maxTradesPerDay)}
           >
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
           <Field
             label="Stop after consecutive losses"
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             pendingNote={pendingFieldNote(pendingPayload, "stopAfterLosses", initial.stopAfterLosses)}
           >
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
           <Field
             label={MAX_POSITION_SIZE_COPY.label}
+            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
             hint={MAX_POSITION_SIZE_COPY.hint}
             pendingNote={pendingFieldNote(pendingPayload, "maxContracts", initial.maxContracts)}
           >
@@ -280,7 +288,10 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       {/* ── Daily cutoff ─────────────────────────────────────────────────── */}
       <div role="group" aria-label="Daily cutoff" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <div>
-          <p className="text-sm font-semibold text-stone-950">{SESSION_WINDOW_COPY.legend}</p>
+          <p className="flex items-center gap-2 text-sm font-semibold text-stone-950">
+          {SESSION_WINDOW_COPY.legend}
+          <StatusBadge variant="planned" text="Monitoring / Planned automation" />
+        </p>
           <p className="mt-1 text-xs text-stone-500">Set when Guardrail should stop trading for the day. {SESSION_WINDOW_COPY.helperText}</p>
         </div>
         <Field
@@ -340,21 +351,21 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
         </div>
       </div>
 
-      {/* ── Notifications ───────────────────────────────────────────────── */}
+      {/* ── Notifications ───────────────────────────────────────────────────
+          Read-only honest summary — there is no per-rule alert toggle today.
+          Rule-breach notices render in-app on the Dashboard; Telegram delivers
+          the two proactive warnings the engine actually sends. */}
       <div role="group" aria-label="Notifications" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
         <p className="text-sm font-semibold text-stone-950">Notifications</p>
-        <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm sm:py-3">
-          <input
-            type="checkbox"
-            checked={values.onBreachWarn}
-            onChange={(e) => update("onBreachWarn", e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 accent-stone-950"
-          />
-          <span>
-            <span className="font-medium text-stone-950">Send alert when a rule is triggered</span>
-            <span className="mt-0.5 block text-stone-500">Coming soon — Guardrail will use this when in-app and Telegram alerts are enabled.</span>
-          </span>
-        </label>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">
+          Rule-breach notices appear in-app on the Dashboard. Connect Telegram to also
+          receive proactive alerts — an early warning at 80% of your daily loss limit and
+          a warning as you approach your loss-streak limit.{" "}
+          <a href="/alerts" className="font-medium text-stone-700 underline-offset-2 hover:underline">
+            See all alerts
+          </a>
+          .
+        </div>
       </div>
 
       <TradingSessionSelector
@@ -372,7 +383,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       {/* ── Submit ──────────────────────────────────────────────────────── */}
       <div className="grid gap-2 border-t border-stone-100 pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail. Daily loss can trigger broker risk settings on breach. Profit targets are monitored in Guardrail.
+          Rules are saved in Guardrail and used for session monitoring. All rules currently operate in monitoring mode — no broker actions are sent unless enforcement is explicitly enabled.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire
@@ -444,20 +455,38 @@ function pendingFieldNote(
   return `Active now: Not set · Pending next: ${v}`;
 }
 
+function StatusBadge({ variant, text }: { variant: "broker" | "monitor" | "planned"; text: string }) {
+  const cls = {
+    broker: "border-amber-200 bg-amber-50 text-amber-700",
+    monitor: "border-stone-200 bg-stone-100 text-stone-500",
+    planned: "border-sky-200 bg-sky-50 text-sky-700",
+  }[variant];
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${cls}`}>
+      {text}
+    </span>
+  );
+}
+
 function Field({
   label,
   hint,
+  badge,
   pendingNote,
   children,
 }: {
   label: string;
   hint?: string;
+  badge?: React.ReactNode;
   pendingNote?: string | null;
   children: React.ReactNode;
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-medium text-stone-600">{label}</span>
+      <span className="flex items-center gap-1.5 text-xs font-medium text-stone-600">
+        {label}
+        {badge}
+      </span>
       {children}
       {hint && <span className="text-xs text-stone-400">{hint}</span>}
       {pendingNote && (

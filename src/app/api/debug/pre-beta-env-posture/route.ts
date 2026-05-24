@@ -1,44 +1,43 @@
 /**
  * GET /api/debug/pre-beta-env-posture
  *
- * Read-only diagnostic that reports the web/app service's runtime env posture
- * and a GO / NO_GO verdict for the guided beta. Used to confirm — before the
- * beta opens — that broker enforcement, order placement, live listeners,
- * internal locks, and billing are all off, and that the required Tradovate
- * OAuth/encryption env is present.
+ * Read-only pre-beta environment-posture diagnostic.
+ *
+ * Reports the live WEB runtime env posture against the guided monitoring-only
+ * beta posture (docs/GUIDED_BETA_RUNBOOK.md) so the pre-beta env check can be
+ * completed from a deployed environment instead of a code-only checkout.
  *
  * Safety:
- *   - Strictly read-only — no DB access, no writes, no env mutation.
- *   - No broker calls — never imports or invokes Tradovate.
- *   - Secret-bearing vars are reported presence-only; raw values are never
- *     read into the response.
- *   - Auth: authenticated session (401) + x-cron-secret matching CRON_SECRET
- *     (403) — the always-required pattern shared by the read-only debug
- *     diagnostics (broker-enforcement-gates, broker-enforcement-simulation,
- *     internal-lock-diagnostic, tradovate-listener/dry-run-summary).
+ *   - Read-only — reads process.env only; no DB, no broker calls, no writes
+ *   - NEVER exposes secret values — flags are interpreted booleans
+ *     (`process.env.X === "true"`), secrets are presence booleans only
+ *     (`Boolean(process.env.X)`)
+ *   - Auth: authenticated session + x-cron-secret header (same pattern as the
+ *     other /api/debug diagnostic endpoints)
  *
- * Response fields:
- *   note            — read-only disclaimer
- *   generatedAt     — ISO timestamp of evaluation
- *   service         — always "web"; listener-worker/cron are separate services
- *   flags           — interpreted booleans for the 7 operational flags
- *   secretsPresent  — presence-only booleans for the 9 secret-bearing vars
- *   services        — listener-worker/cron marked unknown_from_web_runtime
- *   status          — "GO" | "NO_GO"
- *   reasons         — human-readable explanation of the verdict
- *   dangerousFlags  — guarded flags found enabled
- *   missingRequiredForBeta — required Tradovate env found missing
- *   notes           — advisory observations that do not change the verdict
+ * Query params:
+ *   - telegramScopedOut=true — declare that Telegram is intentionally not part
+ *     of this beta, so incomplete Telegram env is reported as acceptable.
+ *
+ * The listener-worker and cron run as separate Railway services; their env is
+ * not visible from the web runtime and is reported as "unknown_from_web_runtime".
  */
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { derivePreBetaEnvVerdict } from "./posture";
 
-import { buildRuntimePosture } from "./posture";
+/** Interpreted boolean flag — `process.env.X === "true"`. Never the raw value. */
+function flag(name: string): boolean {
+  return process.env[name] === "true";
+}
 
-export const dynamic = "force-dynamic";
+/** Presence only — `Boolean(process.env.X)`. Never the raw value. */
+function present(name: string): boolean {
+  return Boolean(process.env[name]);
+}
 
 export async function GET(request: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -52,19 +51,51 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const posture = buildRuntimePosture(process.env);
+  const telegramScopedOut =
+    request.nextUrl.searchParams.get("telegramScopedOut") === "true";
+
+  // Interpreted booleans only — no secret value is ever read into the response.
+  const flags = {
+    brokerEnforcementEnabled: flag("BROKER_ENFORCEMENT_ENABLED"),
+    enforcementDryRun: flag("ENFORCEMENT_DRY_RUN"),
+    brokerEnforcementSimulationEnabled: flag("BROKER_ENFORCEMENT_SIMULATION_ENABLED"),
+    enableTradovateOrderActions: flag("ENABLE_TRADOVATE_ORDER_ACTIONS"),
+    tradovateListenerEnableLive: flag("TRADOVATE_LISTENER_ENABLE_LIVE"),
+    guardrailInternalLockEnabled: flag("GUARDRAIL_INTERNAL_LOCK_ENABLED"),
+    billingEnabled: flag("BILLING_ENABLED"),
+  };
+  const presence = {
+    telegramBotUsername: present("TELEGRAM_BOT_USERNAME"),
+    telegramBotToken: present("TELEGRAM_BOT_TOKEN"),
+    telegramWebhookSecret: present("TELEGRAM_WEBHOOK_SECRET"),
+    tradovateTokenEncryptionKey: present("TRADOVATE_TOKEN_ENCRYPTION_KEY"),
+    tradovateClientId: present("TRADOVATE_CLIENT_ID"),
+    tradovateClientSecret: present("TRADOVATE_CLIENT_SECRET"),
+    stripeSecretKey: present("STRIPE_SECRET_KEY"),
+    stripeWebhookSecret: present("STRIPE_WEBHOOK_SECRET"),
+    stripePriceId: present("STRIPE_PRICE_ID"),
+  };
+
+  const verdict = derivePreBetaEnvVerdict({ flags, presence, telegramScopedOut });
 
   return NextResponse.json({
-    note: "Read-only diagnostic — no DB writes, no broker calls. Reports the web/app service runtime env posture only.",
-    generatedAt: new Date().toISOString(),
-    service: posture.service,
-    flags: posture.flags,
-    secretsPresent: posture.secretsPresent,
-    services: posture.services,
-    status: posture.verdict.status,
-    reasons: posture.verdict.reasons,
-    dangerousFlags: posture.verdict.dangerousFlags,
-    missingRequiredForBeta: posture.verdict.missingRequiredForBeta,
-    notes: posture.verdict.notes,
+    ok: true,
+    now: new Date().toISOString(),
+    note:
+      "Read-only env posture — reports the WEB runtime's process.env as interpreted " +
+      "booleans / presence only. No secret values are exposed. The listener-worker and " +
+      "cron run as separate Railway services and are not visible from the web runtime.",
+    webRuntime: { flags, presence },
+    listenerWorker: "unknown_from_web_runtime",
+    cron: "unknown_from_web_runtime",
+    expectedPosture: {
+      brokerEnforcementEnabled: false,
+      enableTradovateOrderActions: false,
+      tradovateListenerEnableLive: false,
+      guardrailInternalLockEnabled: false,
+      billingEnabled: false,
+      enforcementDryRun: true,
+    },
+    verdict,
   });
 }

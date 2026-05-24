@@ -869,3 +869,112 @@ describe("Apex instruments: crypto futures (MBT, MET only — no full BTC/ETH)",
     assert.equal(getContractMetadata("ETH"), null);
   });
 });
+
+// ── Phase 4: newly added registry entries ────────────────────────────────────
+
+describe("Phase 4 registry additions — FX micros", () => {
+  const FX_MICROS: Array<[string, string]> = [
+    ["M6B", "6B"],
+    ["M6J", "6J"],
+    ["M6C", "6C"],
+    ["M6S", "6S"],
+  ];
+
+  for (const [micro, parent] of FX_MICROS) {
+    it(`${micro} is in the registry with parentRoot ${parent} and ratio 0.1`, () => {
+      const meta = getContractMetadata(micro);
+      assert.ok(meta !== null, `${micro} must be in the registry`);
+      assert.equal(meta!.symbolRoot, micro);
+      assert.equal(meta!.parentRoot, parent);
+      assert.equal(meta!.exposureRatioToParent, 0.1);
+      assert.equal(meta!.exchange, "CME");
+      assert.equal(meta!.assetClass, "fx");
+      assert.equal(meta!.sizeClass, "micro");
+      // FX micros are not part of the verified Apex equity-index 10:1 set.
+      assert.equal(meta!.supportedForMiniEquivalent, false);
+    });
+
+    it(`${micro} parent ${parent} exists in the registry`, () => {
+      assert.ok(getContractMetadata(parent) !== null, `${parent} must be in the registry`);
+    });
+  }
+
+  it("M6B converts 10 raw contracts to 1.0 6B-equivalent", () => {
+    assert.equal(toParentEquivalentContracts(10, "M6B"), 1.0);
+  });
+});
+
+describe("Phase 4 registry additions — U.S. Treasury futures", () => {
+  const TREASURIES: Array<[string, number]> = [
+    ["ZB", 1000],
+    ["UB", 1000],
+    ["ZN", 1000],
+    ["ZF", 1000],
+    ["ZT", 2000],
+  ];
+
+  for (const [root, pointValue] of TREASURIES) {
+    it(`${root} is in the registry as a standalone CBOT rates product`, () => {
+      const meta = getContractMetadata(root);
+      assert.ok(meta !== null, `${root} must be in the registry`);
+      assert.equal(meta!.symbolRoot, root);
+      assert.equal(meta!.parentRoot, root, `${root} must be self-referential (no micro pairing)`);
+      assert.equal(meta!.exposureRatioToParent, 1);
+      assert.equal(meta!.exchange, "CBOT");
+      assert.equal(meta!.assetClass, "rates");
+      assert.equal(meta!.sizeClass, "standard");
+      assert.equal(meta!.pointValueUsd, pointValue);
+      assert.equal(meta!.supportedForMiniEquivalent, false);
+    });
+  }
+});
+
+describe("Phase 4 registry additions — KC Wheat", () => {
+  it("KE is in the registry as a CBOT agriculture product", () => {
+    const meta = getContractMetadata("KE");
+    assert.ok(meta !== null, "KE must be in the registry");
+    assert.equal(meta!.symbolRoot, "KE");
+    assert.equal(meta!.parentRoot, "KE");
+    assert.equal(meta!.exposureRatioToParent, 1);
+    assert.equal(meta!.exchange, "CBOT");
+    assert.equal(meta!.assetClass, "agriculture");
+    assert.equal(meta!.sizeClass, "standard");
+  });
+});
+
+describe("Phase 4 — existing micro/mini conversions still correct", () => {
+  it("10 MNQ = 1 NQ-equivalent (unchanged)", () => {
+    assert.equal(toParentEquivalentContracts(10, "MNQ"), 1.0);
+  });
+
+  it("10 MES = 1 ES-equivalent (unchanged)", () => {
+    assert.equal(toParentEquivalentContracts(10, "MES"), 1.0);
+  });
+
+  it("10 MYM = 1 YM-equivalent (unchanged)", () => {
+    assert.equal(toParentEquivalentContracts(10, "MYM"), 1.0);
+  });
+
+  it("10 M2K = 1 RTY-equivalent (unchanged)", () => {
+    assert.equal(toParentEquivalentContracts(10, "M2K"), 1.0);
+  });
+
+  it("2 QM = 1 CL-equivalent (unchanged)", () => {
+    assert.equal(toParentEquivalentContracts(2, "QM"), 1.0);
+  });
+});
+
+describe("Phase 4 — SIL exposureRatioToParent (PENDING VERIFICATION)", () => {
+  // The registry currently records SIL exposureRatioToParent = 0.001, derived
+  // from the Apex instruments list (pointValue 5 vs SI 5000). This value is
+  // suspected to be inconsistent with the CME E-micro Silver contract spec
+  // (1,000 oz vs SI 5,000 oz → ratio 0.2). It was NOT changed in Phase A
+  // because it could not be verified. SIL is excluded from the v1 symbol
+  // picker until the ratio is confirmed. This test pins the current value so
+  // any future change is a deliberate, reviewed decision.
+  it("SIL ratio is still 0.001 — change only after CME-spec verification", () => {
+    const meta = getContractMetadata("SIL");
+    assert.ok(meta !== null);
+    assert.equal(meta!.exposureRatioToParent, 0.001);
+  });
+});

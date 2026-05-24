@@ -53,7 +53,7 @@ export function TelegramConnection({ connected, username, botConfigured = true }
           </div>
         </div>
         <p className="text-xs leading-5 text-stone-600">
-          Once available, Telegram will send alerts for rule breaches (daily loss, max trades, loss
+          Once available, Telegram will send alerts for rule breaches (daily loss, loss
           streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).
         </p>
         <p className="text-xs leading-5 text-stone-400">
@@ -77,7 +77,7 @@ export function TelegramConnection({ connected, username, botConfigured = true }
           </div>
         </div>
         <p className="text-xs leading-5 text-stone-600">
-          Telegram sends alerts for rule breaches (daily loss, max trades, loss streak) and
+          Telegram sends alerts for rule breaches (daily loss, loss streak) and
           behavioral patterns (revenge entry, rapid trading, size increase after a loss).
         </p>
         <p className="text-xs leading-5 text-stone-400">
@@ -100,7 +100,7 @@ export function TelegramConnection({ connected, username, botConfigured = true }
         </div>
       </div>
       <p className="text-xs leading-5 text-stone-600">
-        Once connected, Telegram sends alerts for rule breaches (daily loss, max trades, loss
+        Once connected, Telegram sends alerts for rule breaches (daily loss, loss
         streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).
       </p>
       <p className="text-xs leading-5 text-stone-400">

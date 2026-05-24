@@ -158,7 +158,7 @@ export function computeEnforcementMode(
     if (permissionLevel === "full_access") {
       return {
         mode: "broker_enforcement_pending",
-        label: "Broker risk settings enabled",
+        label: "Full access connected",
         detail:
           "Daily loss can be protected through Tradovate broker risk settings. " +
           "Profit targets are monitored in Guardrail.",

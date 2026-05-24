@@ -24,7 +24,9 @@ import { type RiskRulesBody, riskRulesData } from "./risk-rules-data";
 import { validateRiskRulesBody } from "./risk-rules-validate";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { writeRuleChangeAudit } from "@/lib/rules/rule-change-audit-writer";
+import { getAccountIdsWithTradeToday } from "@/lib/rules/session-trade-guard";
 import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { getCmeSessionStartForKey } from "@/lib/time/cme-session";
 import { executeDailyLossSync } from "./daily-loss-sync";
 import { writeBrokerRiskSettingsSyncAudit } from "@/lib/brokers/broker-risk-settings-sync-audit-writer";
 
@@ -159,7 +161,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }),
       prisma.liveSessionState.findUnique({
         where: { accountId: id },
-        select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true },
+        select: { riskState: true, cooldownActive: true, tradesCount: true, sessionDate: true, lastTradeAt: true },
       }),
       prisma.guardianStatus.findUnique({
         where: { userId: currentUser.id },
@@ -199,8 +201,24 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // ── Hard reject: account has already traded this session ──────────────────
+    // Multiple signals are checked to close the first-fill race window: the user
+    // may enter a trade and immediately edit rules before the next sync runs and
+    // increments tradesCount / updates sessionDate.
     const tradingDayKey = deriveCmeTradingDayKey(new Date());
-    if (!isFirstTimeSetup && liveState?.sessionDate === tradingDayKey && (liveState?.tradesCount ?? 0) > 0) {
+    const sessionStart = getCmeSessionStartForKey(tradingDayKey);
+
+    // Signal 1 & 2: LiveSessionState (may lag on first fill of the session)
+    const liveStateHasTraded =
+      (liveState?.sessionDate === tradingDayKey && (liveState?.tradesCount ?? 0) > 0) ||
+      (liveState?.lastTradeAt != null &&
+        deriveCmeTradingDayKey(liveState.lastTradeAt) === tradingDayKey);
+
+    // Signal 3: NormalizedTradeEvent — written immediately on first fill,
+    // before tradesCount/sessionDate are updated by the sync cron.
+    const accountsWithTrades = await getAccountIdsWithTradeToday([id], sessionStart);
+    const hasTradeEventToday = accountsWithTrades.has(id);
+
+    if (!isFirstTimeSetup && (liveStateHasTraded || hasTradeEventToday)) {
       await writeRuleChangeAudit({
         userId: currentUser.id,
         accountId: id,

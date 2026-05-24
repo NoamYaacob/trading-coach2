@@ -165,30 +165,30 @@ describe("deriveScopeAccountBadge", () => {
     assert.equal(badge!.label, "Action required");
   });
 
-  it("hasAccountRules only → 'Custom'", () => {
+  it("hasAccountRules only → 'Active plan'", () => {
     const badge = deriveScopeAccountBadge({
       isUnavailable: false,
       requiresAutomatedActionsConsent: false,
       hasAccountRules: true,
     });
-    assert.ok(badge !== null);
-    assert.equal(badge!.label, "Custom");
+    assert.equal(badge.label, "Active plan");
+    assert.ok(badge.cls.includes("emerald"), `expected emerald colour, got: ${badge.cls}`);
   });
 
-  it("no flags → null (no badge)", () => {
+  it("no flags → 'No plan yet' (always returns a badge)", () => {
     const badge = deriveScopeAccountBadge({
       isUnavailable: false,
       requiresAutomatedActionsConsent: false,
       hasAccountRules: false,
     });
-    assert.equal(badge, null);
+    assert.equal(badge.label, "No plan yet");
   });
 });
 
 // ── deriveScopeAccountBadge — per-account isolation ──────────────────────────
 
 describe("deriveScopeAccountBadge — per-account badge is independent", () => {
-  it("two accounts both hasAccountRules=false → both return null (no badge)", () => {
+  it("two accounts both hasAccountRules=false → both return 'No plan yet'", () => {
     const badgeA = deriveScopeAccountBadge({
       isUnavailable: false,
       requiresAutomatedActionsConsent: false,
@@ -199,11 +199,11 @@ describe("deriveScopeAccountBadge — per-account badge is independent", () => {
       requiresAutomatedActionsConsent: false,
       hasAccountRules: false,
     });
-    assert.equal(badgeA, null, "account A without override must return null");
-    assert.equal(badgeB, null, "account B without override must return null");
+    assert.equal(badgeA.label, "No plan yet", "account A without override must be 'No plan yet'");
+    assert.equal(badgeB.label, "No plan yet", "account B without override must be 'No plan yet'");
   });
 
-  it("account A hasAccountRules=true, B hasAccountRules=false → A gets Custom, B gets null", () => {
+  it("account A hasAccountRules=true, B hasAccountRules=false → A gets 'Active plan', B gets 'No plan yet'", () => {
     const badgeA = deriveScopeAccountBadge({
       isUnavailable: false,
       requiresAutomatedActionsConsent: false,
@@ -214,24 +214,22 @@ describe("deriveScopeAccountBadge — per-account badge is independent", () => {
       requiresAutomatedActionsConsent: false,
       hasAccountRules: false,
     });
-    assert.ok(badgeA !== null, "account A with override must have a badge");
-    assert.equal(badgeA!.label, "Custom");
-    assert.equal(badgeB, null, "account B without override must not inherit A's badge");
+    assert.equal(badgeA.label, "Active plan");
+    assert.equal(badgeB.label, "No plan yet", "account B must not inherit A's badge");
   });
 
-  it("creating override for A does not affect B: B stays null regardless", () => {
+  it("creating override for A changes A to 'Active plan'; B stays 'No plan yet'", () => {
     const makeA = (hasRules: boolean) =>
       deriveScopeAccountBadge({ isUnavailable: false, requiresAutomatedActionsConsent: false, hasAccountRules: hasRules });
 
     const beforeA = makeA(false);
-    assert.equal(beforeA, null);
+    assert.equal(beforeA.label, "No plan yet");
 
     const afterA = makeA(true);
-    assert.ok(afterA !== null);
-    assert.equal(afterA!.label, "Custom");
+    assert.equal(afterA.label, "Active plan");
 
     const badgeB = deriveScopeAccountBadge({ isUnavailable: false, requiresAutomatedActionsConsent: false, hasAccountRules: false });
-    assert.equal(badgeB, null, "B must still be null after A gets an override");
+    assert.equal(badgeB.label, "No plan yet", "B must still be 'No plan yet' after A gets an override");
   });
 });
 
@@ -337,5 +335,58 @@ describe("badge + subtitle suffix consistency", () => {
     assert.equal(badge.label, "Risk settings");
     assert.ok(suffix.includes("Risk settings"), "full_access suffix must mention 'Risk settings'");
     assert.ok(!suffix.includes("Limited permissions"), "full_access must not show 'Limited permissions' even when connectionStatus is connected_readonly");
+  });
+});
+
+// ── deriveScopeAccountBadge — Phase 2 plan-status badges ─────────────────────
+
+describe("deriveScopeAccountBadge — Phase 2 plan-status", () => {
+  it("hasAccountRules=true → 'Active plan' badge", () => {
+    const badge = deriveScopeAccountBadge({ hasAccountRules: true, hasDefaultRules: false });
+    assert.equal(badge.label, "Active plan");
+    assert.ok(badge.cls.includes("emerald"), `badge cls must include 'emerald': ${badge.cls}`);
+  });
+
+  it("hasAccountRules=false, hasDefaultRules=true → 'No plan yet' badge", () => {
+    const badge = deriveScopeAccountBadge({ hasAccountRules: false, hasDefaultRules: true });
+    assert.equal(badge.label, "No plan yet");
+    assert.ok(badge.cls.includes("stone"), `badge cls must include 'stone': ${badge.cls}`);
+  });
+
+  it("hasAccountRules=false, hasDefaultRules=false → 'No plan yet' badge", () => {
+    const badge = deriveScopeAccountBadge({ hasAccountRules: false, hasDefaultRules: false });
+    assert.equal(badge.label, "No plan yet");
+  });
+
+  it("always returns a ScopeBadge (never null)", () => {
+    const withRules = deriveScopeAccountBadge({ hasAccountRules: true, hasDefaultRules: true });
+    const noRules = deriveScopeAccountBadge({ hasAccountRules: false, hasDefaultRules: false });
+    assert.ok(withRules !== null && withRules !== undefined);
+    assert.ok(noRules !== null && noRules !== undefined);
+    assert.ok(typeof withRules.label === "string" && withRules.label.length > 0);
+    assert.ok(typeof noRules.label === "string" && noRules.label.length > 0);
+  });
+
+  it("'Active plan' and 'No plan yet' are the only possible labels", () => {
+    const cases = [
+      { hasAccountRules: true, hasDefaultRules: true },
+      { hasAccountRules: true, hasDefaultRules: false },
+      { hasAccountRules: false, hasDefaultRules: true },
+      { hasAccountRules: false, hasDefaultRules: false },
+    ];
+    const validLabels = new Set(["Active plan", "No plan yet"]);
+    for (const c of cases) {
+      const badge = deriveScopeAccountBadge(c);
+      assert.ok(validLabels.has(badge.label), `unexpected label '${badge.label}' for ${JSON.stringify(c)}`);
+    }
+  });
+
+  it("does not return legacy 'Custom' or null", () => {
+    const withRules = deriveScopeAccountBadge({ hasAccountRules: true, hasDefaultRules: true });
+    const noRules = deriveScopeAccountBadge({ hasAccountRules: false, hasDefaultRules: false });
+    assert.notEqual(withRules.label, "Custom");
+    assert.notEqual(withRules.label, "Default");
+    assert.notEqual((noRules as unknown), null);
+    assert.notEqual(noRules.label, "Custom");
   });
 });
