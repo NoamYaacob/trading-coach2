@@ -5,6 +5,8 @@
 **ConnectedAccount.id:** `cmottd1z200020do1knjxq582`  
 **externalAccountId:** `47669364`  
 **Date of this plan:** 2026-05-24  
+**Execution date:** 2026-05-24  
+**Status:** ✅ COMPLETED — Phase A dry-run PASS · Phase B live write PASS · Safety reset PASS  
 **Based on:** Verified readiness diagnostic, cleared AutoLiq state  
 **References:** `docs/DEMO_DAILY_LOSS_ACTIVATION_RUNBOOK.md` (original runbook),  
 `docs/qa/daily-loss-broker-activation-candidate.md` (candidate guide)
@@ -29,6 +31,85 @@
 | activationVerdict phase | `ready_for_preview_only` | ✅ |
 | Only blockers | env flags only (expected) | ✅ |
 | allowlisted | `true` (already in `BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST`) | ✅ |
+
+---
+
+## Execution Results — COMPLETED 2026-05-24
+
+### Phase A — Dry-run: PASS
+
+**Env state:** `BROKER_ENFORCEMENT_ENABLED=true`, `ENFORCEMENT_DRY_RUN=true` (web/app only). All other services and vars unchanged.
+
+| Field | Observed | Expected | Match |
+|---|---|---|---|
+| `ruleType` | `daily_loss_limit` | `daily_loss_limit` | ✅ |
+| `outcome` | `dry_run` | `dry_run` | ✅ |
+| `amount` | `40000` | `40000` | ✅ |
+| `payloadPreviewJson.dailyLossAutoLiq` | `40000` | `40000` | ✅ |
+| `payloadPreviewJson.changesLocked` | `true` | `true` | ✅ |
+| `payloadPreviewJson.doNotUnlock` | absent | absent | ✅ |
+| `brokerResponseJson` | `null` | `null` | ✅ |
+| `hasAnyBrokerWrite` | `false` | `false` | ✅ |
+
+All Guardrail gates passed. Payload was correct. No broker call was made.
+
+---
+
+### Phase B — Live write: PASS
+
+**Env state:** `BROKER_ENFORCEMENT_ENABLED=true`, `ENFORCEMENT_DRY_RUN=false` (web/app only). All other services and vars unchanged.
+
+| Field | Observed | Expected | Match |
+|---|---|---|---|
+| `ruleType` | `daily_loss_limit` | `daily_loss_limit` | ✅ |
+| `outcome` | `success` | `success` | ✅ |
+| `amount` | `40000` | `40000` | ✅ |
+| `brokerResponseJson` | present | present | ✅ |
+| `hasAnySuccess` | `true` | `true` | ✅ |
+| `hasAnyBrokerWrite` | `true` | `true` | ✅ |
+| `gateFailureReason` | `null` | `null` | ✅ |
+| `errorMessage` | `null` | `null` | ✅ |
+
+**Tradovate UI confirmed after write:**
+- Daily Loss Limit: **ON**
+- Value: **40,000**
+- Lock risk settings if trading locked: **ON**
+
+**`connected_readonly` concern resolution (see §0):** The OAuth token DID have write scopes. The `connected_readonly` connectionStatus label did not block the write on the rule-save path. Gates passed and the broker call succeeded.
+
+---
+
+### Safety reset — PASS
+
+Applied immediately after Phase B confirmation.
+
+| Service | Variable | Restored to | Confirmed |
+|---|---|---|---|
+| Web / App | `BROKER_ENFORCEMENT_ENABLED` | `false` | ✅ |
+| Web / App | `ENFORCEMENT_DRY_RUN` | `true` | ✅ |
+| Listener worker | ALL | unchanged throughout | ✅ |
+| Cron | ALL | unchanged throughout | ✅ |
+
+**Posture endpoint confirmed after reset:**
+
+| Field | Value |
+|---|---|
+| `brokerEnforcementEnabled` | `false` |
+| `enforcementDryRun` | `true` |
+| `enableTradovateOrderActions` | `false` |
+| `tradovateListenerEnableLive` | `false` |
+| `guardrailInternalLockEnabled` | `false` |
+| `verdict.status` | `GO` |
+
+**Vars confirmed unchanged throughout all phases:**
+- `GUARDRAIL_INTERNAL_LOCK_ENABLED` stayed `false`
+- `TRADOVATE_LISTENER_ENABLE_LIVE` stayed `false`
+- `ENABLE_TRADOVATE_ORDER_ACTIONS` stayed `false`
+- No listener-worker changes
+- No cron changes
+- No live accounts touched
+- No flatten / cancel / close actions
+- Daily Loss only
 
 ---
 
@@ -450,25 +531,127 @@ fetch('/api/debug/broker-enforcement/daily-loss-recovery-probe?accountId=cmottd1
 | BROKER_ENFORCEMENT_ENABLED | Not set on web service | Operator action required |
 | ENFORCEMENT_DRY_RUN | `true` (safe) | GO for dry-run |
 
-### Recommendation: **GO for Phase A (dry-run), CONDITIONAL for Phase B (live write)**
+### ✅ COMPLETED — All phases PASSED
 
-**GO:** Set `BROKER_ENFORCEMENT_ENABLED=true` on web service. Run the dry-run test (§4 Phase A). The dry-run will immediately confirm whether all gates pass and what the payload would be. This step cannot cause a broker write — it is safe to execute now.
+| Phase | Result | Evidence |
+|---|---|---|
+| Phase A dry-run | **PASS** | `outcome=dry_run`, `payloadPreviewJson.dailyLossAutoLiq=40000`, `brokerResponseJson=null` |
+| Phase B live write | **PASS** | `outcome=success`, `brokerResponseJson` present, Tradovate UI confirmed value=40000 |
+| Safety reset | **PASS** | Posture endpoint confirmed `brokerEnforcementEnabled=false`, `verdict.status=GO` |
 
-**CONDITIONAL GO for Phase B:** Proceed to Phase B (live write) only after:
-1. Phase A dry-run produces `outcome=dry_run` (not `gate_blocked`)
-2. `payloadPreviewJson.dailyLossAutoLiq=40000` and `changesLocked=true` confirmed
-3. No open positions on DEMO7433035
-4. Operator explicitly approves the live write
+**The rule-save path is fully verified end-to-end for DEMO7433035.**
 
-**NOT YET — do not do these in this session:**
-- Enable `GUARDRAIL_INTERNAL_LOCK_ENABLED` — listener-path enforcement is a separate canary
-- Enable `BROKER_ENFORCEMENT_ENABLED` on the listener-worker service
-- Add any other account to the allowlist
-- Flip `TRADOVATE_LISTENER_ENABLE_LIVE` to true
-- Set `ENABLE_TRADOVATE_ORDER_ACTIONS` to true
+See "Execution Results" section above for complete field-by-field evidence.
 
-### Single next operator action
+### Evidence required for a future rerun
 
-> **Set `BROKER_ENFORCEMENT_ENABLED=true` on the web/app Railway service only (keep all other vars unchanged), redeploy, then save the Daily Loss rule for DEMO7433035 in the Guardrail UI and confirm the audit row shows `outcome=dry_run` with `payloadPreviewJson.dailyLossAutoLiq=40000`.**
+If the rule-save path must be repeated (e.g., after manual clearing of the AutoLiq value in Tradovate), the sequence from §1–§4 applies in full. Key evidence gates before proceeding:
 
-That one action safely confirms the entire rule-save path is wired correctly end-to-end, without touching Tradovate.
+1. **Pre-run:** `ownershipAndRecovery.hasGuardrailOwnedWrite=true` AND `d1Blocked=false` (Guardrail owns the record — D1 will not block)
+2. **Phase A confirms:** `outcome=dry_run`, `payloadPreviewJson.dailyLossAutoLiq=<current maxDailyLoss>`, `changesLocked=true`
+3. **Phase B confirms:** `outcome=success`, `brokerResponseJson` non-null
+4. **Safety reset confirms:** posture endpoint `verdict.status=GO`, `brokerEnforcementEnabled=false`
+
+### What must remain disabled
+
+These were not activated in this session and must remain off until a separate canary sequence is approved:
+- `GUARDRAIL_INTERNAL_LOCK_ENABLED` — listener-path enforcement
+- `BROKER_ENFORCEMENT_ENABLED` on the listener-worker service
+- `TRADOVATE_LISTENER_ENABLE_LIVE`
+- `ENABLE_TRADOVATE_ORDER_ACTIONS`
+
+See §9 for the next recommended phase.
+
+---
+
+## §8 — Current Guardrail Ownership State (post-Phase B)
+
+After the successful Phase B write, Guardrail now owns the DEMO7433035 AutoLiq record:
+
+| Field | State |
+|---|---|
+| `changesLocked` | `true` (Tradovate confirmed) |
+| `hasGuardrailOwnedWrite` | `true` |
+| D1 guard | Satisfied — `blocked_existing_locked_autoliq` will not fire because `hasGuardrailOwnedWrite=true` |
+| `doNotUnlock` | absent — Guardrail does not prevent future manual clearing |
+| `dailyLossAutoLiq` | `40000` |
+
+**This is the ideal pre-listener state.** The listener-path enforcement, when eventually activated, will operate on a Guardrail-owned record with a known value. No D1 contention.
+
+To verify the current ownership state at any time (read-only, safe):
+
+```js
+fetch('/api/debug/daily-loss-enforcement-readiness?accountId=cmottd1z200020do1knjxq582', {
+  credentials: 'include',
+  headers: { 'x-cron-secret': '<CRON_SECRET>' }
+}).then(r => r.json()).then(d => {
+  console.log('Phase:', d.activationVerdict.phase);
+  console.log('hasGuardrailOwnedWrite:', d.ownershipAndRecovery.hasGuardrailOwnedWrite);
+  console.log('connectionStatus:', d.account.connectionStatus);
+  console.log('D1 blocked:', d.ownershipAndRecovery.d1Blocked);
+  console.log('existingAutoLiq:', d.existingAutoLiq);
+});
+```
+
+**Expected post-write values:**
+
+| Field | Expected |
+|---|---|
+| `activationVerdict.phase` | `ready_for_demo_activation` |
+| `ownershipAndRecovery.hasGuardrailOwnedWrite` | `true` |
+| `existingAutoLiq.changesLocked` | `true` |
+| `existingAutoLiq.dailyLossAutoLiq` | `40000` |
+| `ownershipAndRecovery.d1Blocked` | `false` |
+
+---
+
+## §9 — Next Recommended Phase: Listener-Path Planning Only
+
+### What this phase is NOT
+
+Do not activate the listener path without a separate approved canary plan. Specifically, do not:
+- Set `GUARDRAIL_INTERNAL_LOCK_ENABLED=true`
+- Set `BROKER_ENFORCEMENT_ENABLED=true` on the listener-worker service
+- Simulate a loss breach to trigger listener enforcement
+- Flip `TRADOVATE_LISTENER_ENABLE_LIVE`
+
+### What listener-path activation requires (planning reference)
+
+| Prerequisite | Current state | Notes |
+|---|---|---|
+| `GUARDRAIL_INTERNAL_LOCK_ENABLED` | `false` | Needs `true` on web/app only, dry-run first |
+| `InternalLockEvent` record | none | Created only when a loss breach reaches the threshold |
+| `connected_readonly` on listener path | `shouldSkipBrokerEnforcement` returns skip=true | **Must resolve before listener activation — see below** |
+| `TRADOVATE_LISTENER_ENABLE_LIVE` | `false` | Do not change |
+| Listener-worker `BROKER_ENFORCEMENT_ENABLED` | `false` | Separate decision from web service |
+| Canary runbook | `docs/PHASE_2C_D_DEMO_CANARY_RUNBOOK.md` | Read before planning |
+
+### Open question: `connected_readonly` on the listener path
+
+The rule-save path succeeded despite `connected_readonly` — write scopes were present in the OAuth token. However, the listener path calls `shouldSkipBrokerEnforcement`, which **explicitly returns skip=true for `connected_readonly`**. Listener-path enforcement will be silently skipped even with all env flags set correctly.
+
+**Resolution options (planning only — no action now):**
+1. Re-fetch the account after the write and check whether `connectionStatus` changed from `connected_readonly` to `connected`
+2. If still `connected_readonly`: investigate whether re-authenticating the Tradovate OAuth with "Account Risk Settings: Full Access" selected changes the status
+3. Consider whether `shouldSkipBrokerEnforcement` should be updated to pass `connected_readonly` when `permissionLevel=full_access` (code change — separate PR)
+4. Do not activate listener-path enforcement until this is resolved and a plan is documented
+
+### Immediate safe next step (read-only, no env changes)
+
+Run the readiness diagnostic to confirm post-write state and check whether `connectionStatus` has changed:
+
+```js
+fetch('/api/debug/daily-loss-enforcement-readiness?accountId=cmottd1z200020do1knjxq582', {
+  credentials: 'include',
+  headers: { 'x-cron-secret': '<CRON_SECRET>' }
+}).then(r => r.json()).then(d => {
+  console.log('Phase:', d.activationVerdict.phase);
+  console.log('GO/NO-GO:', d.activationVerdict.goNoGo);
+  console.log('connectionStatus:', d.account.connectionStatus);
+  console.log('hasGuardrailOwnedWrite:', d.ownershipAndRecovery.hasGuardrailOwnedWrite);
+  console.log('D1 blocked:', d.ownershipAndRecovery.d1Blocked);
+  console.log('existingAutoLiq:', d.existingAutoLiq);
+});
+```
+
+If `activationVerdict.phase` returns `ready_for_demo_activation` and `connectionStatus` is no longer `connected_readonly`, the `shouldSkipBrokerEnforcement` concern is resolved and listener-path planning can begin.
