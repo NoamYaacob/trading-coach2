@@ -21,7 +21,19 @@ export type BrokerRiskSettingsSyncAuditPayload = {
   dryRun: boolean;
   /** Whether BROKER_ENFORCEMENT_ENABLED=true at call time */
   brokerEnforcementEnabled: boolean;
-  outcome: "gate_blocked" | "dry_run" | "success" | "failed" | "skipped";
+  /**
+   * Audit outcomes:
+   *   gate_blocked — a precondition gate rejected the call
+   *   dry_run      — gates passed but ENFORCEMENT_DRY_RUN=true suppressed the write
+   *   success      — Tradovate accepted the write and read-back confirmed it
+   *   failed       — Tradovate rejected the write or threw an error
+   *   skipped      — the call was a no-op (e.g. maxDailyLoss<=0)
+   *   preview      — recovery-probe preview: GET-only/no-write inspection
+   *
+   * The DB column is a plain String; this TypeScript union limits what
+   * callers may pass and keeps audit-query consumers (Safety Console) honest.
+   */
+  outcome: "gate_blocked" | "dry_run" | "success" | "failed" | "skipped" | "preview";
   gateFailureReason?: string | null;
   skipReason?: string | null;
   payloadPreviewJson?: Record<string, unknown> | null;

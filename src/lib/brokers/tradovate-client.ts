@@ -1579,6 +1579,105 @@ export class TradovateClient {
   }
 
   /**
+   * Read the current userAccountAutoLiq record for this account, returning a
+   * narrow shape suitable for recovery-probe decisions.
+   *
+   * Returns null when no record exists for the account.
+   *
+   * No write of any kind. Same endpoint as getUserAccountAutoLiq() —
+   * GET userAccountAutoLiq/deps?masterid={tvAccountId} — but narrowed to the
+   * three fields the recovery probe cares about (id, dailyLossAutoLiq,
+   * changesLocked).
+   */
+  async readDailyLossAutoLiqRecord(): Promise<
+    { id: number; dailyLossAutoLiq: number | null; changesLocked: boolean | null } | null
+  > {
+    const records = await this.getUserAccountAutoLiq();
+    const record = records[0] ?? null;
+    if (record == null || record.id == null) return null;
+    return {
+      id: record.id,
+      dailyLossAutoLiq: record.dailyLossAutoLiq ?? null,
+      changesLocked: record.changesLocked ?? null,
+    };
+  }
+
+  /**
+   * Apply a recovery-probe write to the existing userAccountAutoLiq record.
+   *
+   * SAFETY:
+   *   - Uses userAccountAutoLiq/update ONLY. Never /create, never /delete.
+   *   - Caller supplies the exact payload (built via buildRecoveryPayload).
+   *   - The payload must include `id` (existing record id) — if absent, this
+   *     method throws rather than fall back to /create.
+   *   - doNotUnlock must NOT be in the payload (asserted here).
+   *   - Always performs a read-back GET so the caller can confirm what
+   *     Tradovate actually stored.
+   *
+   * Returns the endpoint, exact payload sent, raw response, and the read-back
+   * record — confirmation logic lives in tradovate-recovery-payload.ts.
+   */
+  async applyDailyLossRecoveryUpdate(payload: Record<string, unknown>): Promise<{
+    endpoint: string;
+    payload: Record<string, unknown>;
+    response: unknown;
+    readBack: { id: number; dailyLossAutoLiq: number | null; changesLocked: boolean | null } | null;
+  }> {
+    if (this.#tvAccountId === null) {
+      throw new TradovateClientError(
+        "NO_ACCOUNT_ID",
+        "Tradovate account ID not resolved — call initialize() and ensure externalAccountId is set.",
+      );
+    }
+    if (typeof payload.id !== "number") {
+      throw new TradovateClientError(
+        "RECOVERY_PAYLOAD_INVALID",
+        "Recovery payload must include a numeric `id` (existing record id). " +
+          "Recovery does not create new records.",
+      );
+    }
+    if ("doNotUnlock" in payload) {
+      throw new TradovateClientError(
+        "RECOVERY_PAYLOAD_INVALID",
+        "Recovery payload must NOT contain doNotUnlock — Tradovate auto-unlock at next session " +
+          "open is the fail-safe.",
+      );
+    }
+
+    const endpoint = "userAccountAutoLiq/update";
+
+    console.info("[tradovate/autoLiq/recovery] applying recovery update", {
+      accountId: this.#accountId,
+      tvAccountId: this.#tvAccountId,
+      endpoint,
+      payloadKeys: Object.keys(payload).sort(),
+    });
+
+    // skipMarkExpired=true: same rationale as applyDailyLossLock — a 403 here
+    // is a scope-level capability gap, not a global auth failure.
+    const response = await this.#request<TvUserAccountAutoLiq>(
+      endpoint,
+      "POST",
+      payload,
+      false,
+      /* skipMarkExpired */ true,
+    );
+
+    // Always read back so the caller can decide confirmation without trusting
+    // the response body's echo behavior.
+    const readBack = await this.readDailyLossAutoLiqRecord();
+
+    console.info("[tradovate/autoLiq/recovery] recovery update response + readback", {
+      accountId: this.#accountId,
+      readBackId: readBack?.id ?? null,
+      readBackDailyLossAutoLiq: readBack?.dailyLossAutoLiq ?? null,
+      readBackChangesLocked: readBack?.changesLocked ?? null,
+    });
+
+    return { endpoint, payload, response, readBack };
+  }
+
+  /**
    * Cancel a single open order by Tradovate order ID.
    *
    * POST /order/cancelorder with { orderId }

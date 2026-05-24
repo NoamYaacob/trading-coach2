@@ -1619,6 +1619,54 @@ describe("TradovateClient.initialize — masterid validation (source-scan)", () 
     );
   });
 
+  it("readDailyLossAutoLiqRecord narrows getUserAccountAutoLiq() to recovery shape (GET-only)", () => {
+    assert.ok(
+      TRADOVATE_CLIENT_SRC.includes("readDailyLossAutoLiqRecord"),
+      "client must expose readDailyLossAutoLiqRecord for the recovery probe",
+    );
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async readDailyLossAutoLiqRecord(");
+    assert.ok(idx !== -1);
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 800);
+    assert.ok(body.includes("getUserAccountAutoLiq("), "must reuse getUserAccountAutoLiq");
+    assert.ok(!body.includes('"POST"'), "readDailyLossAutoLiqRecord must be GET-only");
+  });
+
+  it("applyDailyLossRecoveryUpdate calls userAccountAutoLiq/update only (no /create, no /delete)", () => {
+    assert.ok(
+      TRADOVATE_CLIENT_SRC.includes("applyDailyLossRecoveryUpdate"),
+      "client must expose applyDailyLossRecoveryUpdate for the recovery probe",
+    );
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    assert.ok(idx !== -1);
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes('"userAccountAutoLiq/update"'));
+    assert.ok(!body.includes("userAccountAutoLiq/create"));
+    assert.ok(!body.includes("userAccountAutoLiq/delete"));
+  });
+
+  it("applyDailyLossRecoveryUpdate throws if payload lacks numeric id (no fallback to /create)", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes("RECOVERY_PAYLOAD_INVALID"));
+    assert.ok(body.includes('typeof payload.id !== "number"'));
+  });
+
+  it("applyDailyLossRecoveryUpdate refuses payloads that include doNotUnlock", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes('"doNotUnlock" in payload'));
+    assert.ok(body.includes("RECOVERY_PAYLOAD_INVALID"));
+  });
+
+  it("applyDailyLossRecoveryUpdate always performs a read-back GET after POST", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(
+      body.includes("readDailyLossAutoLiqRecord()"),
+      "recovery update must call readDailyLossAutoLiqRecord() after POST",
+    );
+  });
+
   it("masterid is always scoped to a single account (#tvAccountId resolved per-instance)", () => {
     // Account isolation guarantee: every actual code-line call to
     // userAccountAutoLiq with a masterid query parameter interpolates the
