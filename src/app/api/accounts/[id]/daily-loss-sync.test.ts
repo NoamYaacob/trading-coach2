@@ -311,3 +311,93 @@ describe("PATCH /api/accounts/[id]: only maxDailyLoss triggers daily loss sync",
     );
   });
 });
+
+// ── 4. Rule-save consent + externalAccountId wiring ──────────────────────────
+
+describe("PATCH /api/accounts/[id]: consent + externalAccountId wiring (rule-save Gate 9 + 10)", () => {
+  it("route fetches AccountRiskRules consent fields before executeDailyLossSync", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const syncIdx = s.indexOf("executeDailyLossSync(");
+    assert.ok(syncIdx !== -1);
+    const beforeSync = s.slice(0, syncIdx);
+    assert.ok(
+      beforeSync.includes("accountRiskRules.findUnique") ||
+        beforeSync.includes("accountRulesForConsent"),
+      "route must query AccountRiskRules for consent before calling executeDailyLossSync",
+    );
+    assert.ok(
+      beforeSync.includes("automatedActionsConsentAt"),
+      "route must select automatedActionsConsentAt",
+    );
+    assert.ok(
+      beforeSync.includes("automatedActionsConsentVersion"),
+      "route must select automatedActionsConsentVersion",
+    );
+  });
+
+  it("route also fetches default RiskRules consent fields (fallback)", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const syncIdx = s.indexOf("executeDailyLossSync(");
+    const beforeSync = s.slice(0, syncIdx);
+    assert.ok(
+      beforeSync.includes("riskRules.findUnique"),
+      "route must query default RiskRules as the consent fallback",
+    );
+  });
+
+  it("route passes consentAt/consentVersion into executeDailyLossSync context", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const syncStartIdx = s.indexOf("await executeDailyLossSync(");
+    assert.ok(syncStartIdx !== -1);
+    // Look at the context-object literal that follows.
+    const ctxBlock = s.slice(syncStartIdx, syncStartIdx + 2000);
+    assert.ok(
+      ctxBlock.includes("consentAt"),
+      "executeDailyLossSync call must pass consentAt",
+    );
+    assert.ok(
+      ctxBlock.includes("consentVersion"),
+      "executeDailyLossSync call must pass consentVersion",
+    );
+  });
+
+  it("route passes externalAccountId into executeDailyLossSync context", () => {
+    const s = src(ACCOUNT_ROUTE);
+    const syncStartIdx = s.indexOf("await executeDailyLossSync(");
+    assert.ok(syncStartIdx !== -1);
+    const ctxBlock = s.slice(syncStartIdx, syncStartIdx + 2000);
+    assert.ok(
+      ctxBlock.includes("externalAccountId"),
+      "executeDailyLossSync call must pass externalAccountId so Gate 10 can validate",
+    );
+  });
+
+  it("daily-loss-sync.ts context type declares consentAt/consentVersion/externalAccountId", () => {
+    const s = src(DAILY_LOSS_SYNC);
+    assert.ok(
+      s.includes("consentAt:"),
+      "DailyLossSyncContext must include consentAt",
+    );
+    assert.ok(
+      s.includes("consentVersion:"),
+      "DailyLossSyncContext must include consentVersion",
+    );
+    assert.ok(
+      s.includes("externalAccountId:"),
+      "DailyLossSyncContext must include externalAccountId",
+    );
+  });
+
+  it("daily-loss-sync.ts forwards consent + externalAccountId into SyncInput", () => {
+    const s = src(DAILY_LOSS_SYNC);
+    const inputIdx = s.indexOf("const input: SyncInput");
+    assert.ok(inputIdx !== -1, "must build a SyncInput literal");
+    const inputBlock = s.slice(inputIdx, inputIdx + 1000);
+    assert.ok(inputBlock.includes("consentAt"), "SyncInput must carry consentAt");
+    assert.ok(inputBlock.includes("consentVersion"), "SyncInput must carry consentVersion");
+    assert.ok(
+      inputBlock.includes("externalAccountId"),
+      "SyncInput must carry externalAccountId",
+    );
+  });
+});

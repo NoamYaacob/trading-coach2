@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+// Relative import (not "@/lib/db") because this writer is reachable from the
+// listener-worker import graph, and tsx does not resolve Next.js '@/' aliases.
+// See the listener-worker import graph test in broker-enforcement-gate.test.ts.
+import { prisma } from "../db";
 
 export type BrokerRiskSettingsSyncAuditPayload = {
   userId: string;

@@ -198,6 +198,25 @@ export type EnforcementContext = {
   listenerBrokerDedupKey?: string | null;
   /** Trading day (YYYY-MM-DD) the violation occurred on. */
   tradingDay?: string | null;
+
+  /**
+   * Broker write mode for the daily_loss_limit trigger.
+   *
+   *   "flatten_and_lock" (default, legacy behavior)
+   *     The historic cron-path behavior. Calls applyFlattenOpenPositions()
+   *     before applyDailyLossLock(). Used by the cron sync path and any
+   *     caller that needs the open-position-flatten safeguard.
+   *
+   *   "lock_only"
+   *     Skips the flatten step. Only the userAccountAutoLiq risk-setting
+   *     write is sent. No order/liquidatepositions call is made. Used by
+   *     the realtime listener path for first-activation demo enforcement
+   *     where the risk-setting alone is the intended action and any
+   *     position close-out is reserved for a later, separately-gated phase.
+   *
+   * Ignored for triggers other than daily_loss_limit.
+   */
+  brokerEnforcementMode?: "flatten_and_lock" | "lock_only";
 };
 
 /**
@@ -242,9 +261,13 @@ export type BrokerDayLockoutResult = {
  *     trigger cannot accidentally reach applyDailyLossLock or applyProfitTargetLock.
  */
 export async function applyBrokerDayLockout(
-  ctx: Pick<EnforcementContext, "accountId" | "userId" | "trigger" | "currentDailyLoss" | "currentDailyPnl">,
+  ctx: Pick<
+    EnforcementContext,
+    "accountId" | "userId" | "trigger" | "currentDailyLoss" | "currentDailyPnl" | "brokerEnforcementMode"
+  >,
 ): Promise<BrokerDayLockoutResult> {
   const { accountId, userId, trigger, currentDailyLoss } = ctx;
+  const brokerEnforcementMode = ctx.brokerEnforcementMode ?? "flatten_and_lock";
 
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
@@ -384,7 +407,11 @@ export async function applyBrokerDayLockout(
 
     let intendedLockoutEndpoint: string;
     let intendedLockoutPayload: Record<string, unknown>;
-    const supportsFlatten = trigger === "daily_loss_limit" || trigger === "profit_target";
+    // lock_only mode also disables the simulated flatten branch so the dry-run
+    // report mirrors what live mode would do (lock only, no flatten).
+    const supportsFlatten =
+      brokerEnforcementMode !== "lock_only" &&
+      (trigger === "daily_loss_limit" || trigger === "profit_target");
 
     if (trigger === "daily_loss_limit") {
       const lossAmountToSet = computeLossAmountToSet(currentDailyLoss);
@@ -458,15 +485,34 @@ export async function applyBrokerDayLockout(
     switch (trigger) {
       case "daily_loss_limit": {
         // Step 1: flatten open positions (fail-safe — failure does not block lockout)
+        //
+        // In "lock_only" mode (used by the realtime listener path for first
+        // activation), the flatten step is skipped entirely. The
+        // userAccountAutoLiq risk-setting write is the only broker call
+        // attempted; no order/liquidatepositions call is made. This is the
+        // explicit demo-activation contract: risk-setting lock only, no
+        // position-close action.
         let flattenResult: BrokerFlattenResult;
-        try {
-          flattenResult = await brokerClient.applyFlattenOpenPositions();
-        } catch (flattenErr) {
-          flattenResult = classifyFlattenError(flattenErr);
-          console.warn("[enforcement] position flatten failed — proceeding to day lockout", {
-            accountId,
-            flattenStatus: flattenResult.flattenStatus,
-          });
+        if (brokerEnforcementMode === "lock_only") {
+          flattenResult = {
+            flattenStatus: "not_needed",
+            flattenMessage:
+              "Position exit skipped: brokerEnforcementMode=lock_only. " +
+              "Only the daily-loss risk setting is being written; no " +
+              "position-close call is made.",
+            flattenPayload: null,
+            flattenResponse: null,
+          };
+        } else {
+          try {
+            flattenResult = await brokerClient.applyFlattenOpenPositions();
+          } catch (flattenErr) {
+            flattenResult = classifyFlattenError(flattenErr);
+            console.warn("[enforcement] position flatten failed — proceeding to day lockout", {
+              accountId,
+              flattenStatus: flattenResult.flattenStatus,
+            });
+          }
         }
 
         // Step 2: apply broker-side day lockout

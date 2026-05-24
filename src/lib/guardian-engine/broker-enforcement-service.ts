@@ -22,6 +22,7 @@ import {
 } from "./broker-enforcement-gate";
 import { buildListenerBrokerDedupKey } from "./broker-enforcement-dedup";
 import { isGuardianRuleEvaluationActive } from "./guardian-master-switch";
+import { writeBrokerRiskSettingsSyncAudit } from "../brokers/broker-risk-settings-sync-audit-writer";
 
 export type BrokerEnforcementServiceResult = {
   attempted: boolean;
@@ -62,6 +63,8 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
         select: {
           isActive: true,
           missingFromBrokerSince: true,
+          externalAccountId: true,
+          brokerConnectionId: true,
           brokerConnection: {
             select: {
               env: true,
@@ -86,12 +89,35 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
     };
   }
 
+  // Build the shared audit base. Used by every blocked-exit branch below so
+  // listener-path gate failures are persisted to BrokerRiskSettingsSyncAudit
+  // (same table the rule-save path uses — outcomes are filterable by
+  // outcome=gate_blocked and gateFailureReason).
+  const auditBase = {
+    userId: lockEvent.userId,
+    accountId: lockEvent.accountId,
+    externalAccountId: lockEvent.account.externalAccountId ?? null,
+    brokerConnectionId: lockEvent.account.brokerConnectionId ?? null,
+    broker: "tradovate" as const,
+    ruleType: "daily_loss_limit" as const,
+    environment: lockEvent.account.brokerConnection?.env ?? null,
+    dryRun: process.env.ENFORCEMENT_DRY_RUN === "true",
+    brokerEnforcementEnabled,
+  };
+
   // An already-cleared lock event is stale — do not enforce
   if (lockEvent.clearedAt != null) {
+    const skipReason = `InternalLockEvent '${internalLockEventId}' is already cleared (clearedAt is set)`;
+    await writeBrokerRiskSettingsSyncAudit({
+      ...auditBase,
+      outcome: "gate_blocked",
+      gateFailureReason: "internal_lock_event_cleared",
+      skipReason,
+    });
     return {
       attempted: false,
       allowed: false,
-      skipReason: `InternalLockEvent '${internalLockEventId}' is already cleared (clearedAt is set)`,
+      skipReason,
       dedupKey: buildListenerBrokerDedupKey(lockEvent.accountId, lockEvent.ruleType, lockEvent.tradingDay),
     };
   }
@@ -111,10 +137,17 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
   // off after a lock was created. No broker enforcement may be attempted while
   // Guardian is off for the account owner.
   if (!isGuardianRuleEvaluationActive(account.user?.guardianProfile ?? null)) {
+    const skipReason = "Guardian disabled for the account owner (master switch off)";
+    await writeBrokerRiskSettingsSyncAudit({
+      ...auditBase,
+      outcome: "gate_blocked",
+      gateFailureReason: "guardian_disabled",
+      skipReason,
+    });
     return {
       attempted: false,
       allowed: false,
-      skipReason: "Guardian disabled for the account owner (master switch off)",
+      skipReason,
       dedupKey,
     };
   }
@@ -144,6 +177,12 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
   });
 
   if (!gateResult.allowed) {
+    await writeBrokerRiskSettingsSyncAudit({
+      ...auditBase,
+      outcome: "gate_blocked",
+      gateFailureReason: gateResult.gateFailureReason,
+      skipReason: gateResult.skipReason,
+    });
     return {
       attempted: false,
       allowed: false,
@@ -167,6 +206,9 @@ export async function maybeAttemptBrokerDailyLossLockoutForInternalLock(
     internalLockEventId: lockEvent.id,
     listenerBrokerDedupKey: dedupKey,
     tradingDay: lockEvent.tradingDay,
+    // Phase 2C-C first-activation contract: risk-setting write only, no
+    // position-close action. See applyBrokerDayLockout for the mode switch.
+    brokerEnforcementMode: "lock_only",
   });
 
   return {

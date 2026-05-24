@@ -54,6 +54,7 @@ import {
 export type { TradovateClientErrorCode } from "./tradovate-client-helpers";
 import { isAutoLiqConfirmed, buildLiquidatePositionsPayload, isFlattenConfirmed } from "./enforcement-helpers";
 import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
+import { parseTradovateMasterId } from "./tradovate-master-id";
 import { formatDateMMDDYYYY, nextCalendarDay } from "./tradovate-report-date";
 import {
   findGuardrailPositionLimit,
@@ -310,8 +311,11 @@ export class TradovateClient {
 
     if (account.externalAccountId) {
       this.#externalAccountId = account.externalAccountId;
-      const parsed = parseInt(account.externalAccountId, 10);
-      if (!Number.isNaN(parsed)) this.#tvAccountId = parsed;
+      // Strict validation: any malformed externalAccountId (e.g. "abc",
+      // "123abc", "") must produce #tvAccountId=null so subsequent calls
+      // throw NO_ACCOUNT_ID rather than silently scoping a broker call to
+      // NaN/0 or a truncated integer. See tradovate-master-id.ts.
+      this.#tvAccountId = parseTradovateMasterId(account.externalAccountId);
     }
 
     let tokens;
