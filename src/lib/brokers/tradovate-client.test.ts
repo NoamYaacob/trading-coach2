@@ -1556,3 +1556,136 @@ describe("prop firm effective loss budget", () => {
     assert.equal(remainingDailyLoss, 300);
   });
 });
+
+// ── TradovateClient.initialize — strict externalAccountId validation ────────
+//
+// Source-scan tests verifying initialize() uses parseTradovateMasterId (strict
+// integer parser) instead of bare parseInt, so a malformed externalAccountId
+// cannot result in NaN/0/silent-truncation being sent as the masterid.
+
+import { readFileSync as _readFileSyncForClientSrc } from "node:fs";
+import { resolve as _resolveForClientSrc } from "node:path";
+
+const TRADOVATE_CLIENT_SRC = _readFileSyncForClientSrc(
+  _resolveForClientSrc(import.meta.dirname, "./tradovate-client.ts"),
+  "utf8",
+);
+
+describe("TradovateClient.initialize — masterid validation (source-scan)", () => {
+  it("client source imports parseTradovateMasterId", () => {
+    assert.ok(
+      TRADOVATE_CLIENT_SRC.includes("parseTradovateMasterId"),
+      "TradovateClient must import parseTradovateMasterId for strict masterid parsing",
+    );
+  });
+
+  it("initialize() resolves #tvAccountId via parseTradovateMasterId", () => {
+    const initIdx = TRADOVATE_CLIENT_SRC.indexOf("async initialize(");
+    assert.ok(initIdx !== -1);
+    const initBody = TRADOVATE_CLIENT_SRC.slice(initIdx, initIdx + 4000);
+    const tvAssignIdx = initBody.indexOf("this.#tvAccountId = parseTradovateMasterId");
+    assert.ok(
+      tvAssignIdx !== -1,
+      "initialize() must assign #tvAccountId via parseTradovateMasterId(...)",
+    );
+  });
+
+  it("getUserAccountAutoLiq throws NO_ACCOUNT_ID when #tvAccountId is null", () => {
+    const getIdx = TRADOVATE_CLIENT_SRC.indexOf("getUserAccountAutoLiq()");
+    assert.ok(getIdx !== -1);
+    const getBody = TRADOVATE_CLIENT_SRC.slice(getIdx, getIdx + 800);
+    assert.ok(
+      getBody.includes("NO_ACCOUNT_ID"),
+      "getUserAccountAutoLiq must throw NO_ACCOUNT_ID when #tvAccountId is null",
+    );
+  });
+
+  it("applyDailyLossLock throws NO_ACCOUNT_ID when #tvAccountId is null", () => {
+    const applyIdx = TRADOVATE_CLIENT_SRC.indexOf("applyDailyLossLock(");
+    // Skip past the method-call findings to find the method declaration.
+    const declIdx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossLock(");
+    assert.ok(declIdx !== -1 || applyIdx !== -1, "must reference applyDailyLossLock");
+    const body = TRADOVATE_CLIENT_SRC.slice(declIdx !== -1 ? declIdx : applyIdx, (declIdx !== -1 ? declIdx : applyIdx) + 1500);
+    assert.ok(
+      body.includes("NO_ACCOUNT_ID"),
+      "applyDailyLossLock must throw NO_ACCOUNT_ID when #tvAccountId is null",
+    );
+  });
+
+  it("no bare parseInt(externalAccountId, 10) remains in initialize()", () => {
+    assert.ok(
+      !TRADOVATE_CLIENT_SRC.includes("parseInt(account.externalAccountId"),
+      "initialize() must not use bare parseInt on externalAccountId",
+    );
+  });
+
+  it("readDailyLossAutoLiqRecord narrows getUserAccountAutoLiq() to recovery shape (GET-only)", () => {
+    assert.ok(
+      TRADOVATE_CLIENT_SRC.includes("readDailyLossAutoLiqRecord"),
+      "client must expose readDailyLossAutoLiqRecord for the recovery probe",
+    );
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async readDailyLossAutoLiqRecord(");
+    assert.ok(idx !== -1);
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 800);
+    assert.ok(body.includes("getUserAccountAutoLiq("), "must reuse getUserAccountAutoLiq");
+    assert.ok(!body.includes('"POST"'), "readDailyLossAutoLiqRecord must be GET-only");
+  });
+
+  it("applyDailyLossRecoveryUpdate calls userAccountAutoLiq/update only (no /create, no /delete)", () => {
+    assert.ok(
+      TRADOVATE_CLIENT_SRC.includes("applyDailyLossRecoveryUpdate"),
+      "client must expose applyDailyLossRecoveryUpdate for the recovery probe",
+    );
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    assert.ok(idx !== -1);
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes('"userAccountAutoLiq/update"'));
+    assert.ok(!body.includes("userAccountAutoLiq/create"));
+    assert.ok(!body.includes("userAccountAutoLiq/delete"));
+  });
+
+  it("applyDailyLossRecoveryUpdate throws if payload lacks numeric id (no fallback to /create)", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes("RECOVERY_PAYLOAD_INVALID"));
+    assert.ok(body.includes('typeof payload.id !== "number"'));
+  });
+
+  it("applyDailyLossRecoveryUpdate refuses payloads that include doNotUnlock", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(body.includes('"doNotUnlock" in payload'));
+    assert.ok(body.includes("RECOVERY_PAYLOAD_INVALID"));
+  });
+
+  it("applyDailyLossRecoveryUpdate always performs a read-back GET after POST", () => {
+    const idx = TRADOVATE_CLIENT_SRC.indexOf("async applyDailyLossRecoveryUpdate(");
+    const body = TRADOVATE_CLIENT_SRC.slice(idx, idx + 2400);
+    assert.ok(
+      body.includes("readDailyLossAutoLiqRecord()"),
+      "recovery update must call readDailyLossAutoLiqRecord() after POST",
+    );
+  });
+
+  it("masterid is always scoped to a single account (#tvAccountId resolved per-instance)", () => {
+    // Account isolation guarantee: every actual code-line call to
+    // userAccountAutoLiq with a masterid query parameter interpolates the
+    // per-instance #tvAccountId. There must be no module-level cross-account
+    // lookup or hard-coded account id in any masterid call site.
+    const codeLines = TRADOVATE_CLIENT_SRC
+      .split("\n")
+      // Drop comment lines so example signatures in JSDoc don't trigger.
+      .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//"))
+      .filter((l) => l.includes("userAccountAutoLiq") && l.includes("masterid="));
+    assert.ok(
+      codeLines.length > 0,
+      "expected at least one userAccountAutoLiq?masterid= code call",
+    );
+    for (const line of codeLines) {
+      assert.ok(
+        line.includes("${this.#tvAccountId}"),
+        `masterid= must be interpolated with this.#tvAccountId: ${line}`,
+      );
+    }
+  });
+});

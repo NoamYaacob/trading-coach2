@@ -411,7 +411,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
             brokerEnforcementEnabled: process.env.BROKER_ENFORCEMENT_ENABLED === "true",
           };
           try {
-            const [brokerConnection, guardianProfile] = await Promise.all([
+            const [brokerConnection, guardianProfile, accountRulesForConsent, defaultRulesForConsent] = await Promise.all([
               existing.brokerConnectionId
                 ? prisma.brokerConnection.findUnique({
                     where: { id: existing.brokerConnectionId },
@@ -422,8 +422,28 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
                 where: { userId: currentUser.id },
                 select: { guardianEnabled: true },
               }),
+              prisma.accountRiskRules.findUnique({
+                where: { accountId: id },
+                select: {
+                  automatedActionsConsentAt: true,
+                  automatedActionsConsentVersion: true,
+                },
+              }),
+              prisma.riskRules.findUnique({
+                where: { userId: currentUser.id },
+                select: {
+                  automatedActionsConsentAt: true,
+                  automatedActionsConsentVersion: true,
+                },
+              }),
             ]);
             brokerEnv = brokerConnection?.env ?? null;
+
+            // Resolve consent the same way decideConsentGate does: account-level
+            // record (if present) takes precedence over the user's default
+            // RiskRules. The sync gate calls hasValidConsent on the resolved
+            // pair (Gate 9 in canSyncTradovateRiskSettings).
+            const consentState = accountRulesForConsent ?? defaultRulesForConsent ?? null;
 
             const outcome = await executeDailyLossSync(
               {
@@ -436,6 +456,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
                 brokerConnectionStatus: brokerConnection?.connectionStatus ?? null,
                 permissionLevel: brokerConnection?.permissionLevel ?? null,
                 guardianEnabled: guardianProfile?.guardianEnabled ?? false,
+                consentAt: consentState?.automatedActionsConsentAt ?? null,
+                consentVersion: consentState?.automatedActionsConsentVersion ?? null,
+                externalAccountId: existing.externalAccountId ?? null,
               },
               async () => {
                 const client = new TradovateClient(existing.id, currentUser.id);

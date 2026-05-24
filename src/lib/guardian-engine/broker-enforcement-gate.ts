@@ -76,6 +76,13 @@ export type BrokerEnforcementGateInput = {
 export type BrokerEnforcementGateResult = {
   allowed: boolean;
   skipReason: string | null;
+  /**
+   * Machine-readable reason code for the gate that failed. Stable string;
+   * one value per gate. null when allowed=true. Used by audit-row writers
+   * so listener-path failures are filterable in BrokerRiskSettingsSyncAudit
+   * the same way rule-save-path failures are.
+   */
+  gateFailureReason: string | null;
   /** Idempotency key that would be written to GuardianIntervention */
   dedupKey: string;
   /** Tradovate endpoint name that would be called, or null when not allowed */
@@ -96,9 +103,10 @@ export function evaluateBrokerEnforcementGates(
     input.tradingDay,
   );
 
-  const blocked = (skipReason: string): BrokerEnforcementGateResult => ({
+  const blocked = (skipReason: string, gateFailureReason: string): BrokerEnforcementGateResult => ({
     allowed: false,
     skipReason,
+    gateFailureReason,
     dedupKey,
     brokerActionType: null,
     payloadPreview: null,
@@ -109,6 +117,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       "BROKER_ENFORCEMENT_ENABLED is not true — broker writes are disabled. " +
       "Set BROKER_ENFORCEMENT_ENABLED=true to enable (see rollout checklist in design doc).",
+      "broker_enforcement_disabled",
     );
   }
 
@@ -117,6 +126,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       "TRADOVATE_LISTENER_ENABLE_LIVE=true — live enforcement is not supported in Phase 2C. " +
       "Demo-only enforcement requires this flag to be false.",
+      "listener_live_enabled",
     );
   }
 
@@ -125,6 +135,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `Account env is '${input.env}' — only demo accounts are eligible. ` +
       "Live enforcement is not implemented in Phase 2C.",
+      "env_not_demo",
     );
   }
 
@@ -133,6 +144,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `Account '${input.accountId}' is not in BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST. ` +
       "Add the account id to the allowlist env var before enabling enforcement.",
+      "account_not_allowlisted",
     );
   }
 
@@ -141,6 +153,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `Rule type '${input.ruleType}' has no applicable Tradovate API — internal lock only. ` +
       "Only daily_loss_limit supports broker-side enforcement in Phase 2C.",
+      "rule_not_broker_eligible",
     );
   }
 
@@ -148,11 +161,13 @@ export function evaluateBrokerEnforcementGates(
   if (!input.isActive) {
     return blocked(
       "Account is inactive (archived or disabled) — broker write skipped.",
+      "account_inactive",
     );
   }
   if (input.missingFromBroker) {
     return blocked(
       "Account is no longer returned by Tradovate (missingFromBrokerSince is set) — broker write skipped.",
+      "account_missing_from_broker",
     );
   }
 
@@ -162,6 +177,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `Connection status '${connStatus}' is not live — broker write would fail. ` +
       "Reconnect the Tradovate broker connection before attempting enforcement.",
+      "connection_not_live",
     );
   }
 
@@ -170,6 +186,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `Permission level '${input.permissionLevel ?? "unknown"}' is insufficient. ` +
       "Account Risk Settings: Full Access is required to write userAccountAutoLiq.",
+      "insufficient_permissions",
     );
   }
 
@@ -178,6 +195,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       "No active InternalLockEvent found for this account/rule/day. " +
       "Broker enforcement requires a preceding internal app lock (Phase 2B precondition).",
+      "no_active_internal_lock",
     );
   }
 
@@ -186,6 +204,7 @@ export function evaluateBrokerEnforcementGates(
     return blocked(
       `A GuardianIntervention with dedup key '${dedupKey}' already exists. ` +
       "Broker enforcement is at-most-once per account/rule/day.",
+      "duplicate_intervention",
     );
   }
 
@@ -205,6 +224,7 @@ export function evaluateBrokerEnforcementGates(
   return {
     allowed: true,
     skipReason: null,
+    gateFailureReason: null,
     dedupKey,
     brokerActionType: "userAccountAutoLiq/update (or /create)",
     payloadPreview,

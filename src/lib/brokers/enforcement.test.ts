@@ -1643,3 +1643,159 @@ describe("max_position_size — no token fields in sync path (source audit)", ()
     });
   }
 });
+
+// ── Daily-loss-lock-only mode — source-scan safety contract ──────────────────
+//
+// applyBrokerDayLockout uses ctx.brokerEnforcementMode to switch between
+// "flatten_and_lock" (legacy default, cron path) and "lock_only" (listener
+// path first activation). These tests verify the structural guarantees that
+// would otherwise need a live integration test:
+//
+//   - The daily_loss_limit case gates the applyFlattenOpenPositions call
+//     behind brokerEnforcementMode === "lock_only" being false.
+//   - The dry-run branch mirrors the same gate.
+//   - The listener service explicitly passes "lock_only" to triggerEnforcement.
+//   - No order/liquidatepositions, cancelOrder, or placeOrder strings leak
+//     into the lock_only branch.
+//   - changesLocked=true is still present in every lock payload builder.
+//   - doNotUnlock is still absent from every lock payload builder.
+
+describe("brokerEnforcementMode: lock_only — source-scan guarantees", () => {
+  const enforcementSrc = readFileSync(
+    resolve(import.meta.dirname, "./enforcement.ts"),
+    "utf8",
+  );
+  const serviceSrc = readFileSync(
+    resolve(import.meta.dirname, "../guardian-engine/broker-enforcement-service.ts"),
+    "utf8",
+  );
+
+  it("EnforcementContext exposes brokerEnforcementMode field", () => {
+    assert.ok(
+      enforcementSrc.includes("brokerEnforcementMode?:"),
+      "EnforcementContext must declare optional brokerEnforcementMode",
+    );
+    assert.ok(
+      enforcementSrc.includes('"flatten_and_lock"'),
+      "lock mode type must include 'flatten_and_lock'",
+    );
+    assert.ok(
+      enforcementSrc.includes('"lock_only"'),
+      "lock mode type must include 'lock_only'",
+    );
+  });
+
+  it("default mode (undefined) resolves to flatten_and_lock", () => {
+    assert.ok(
+      enforcementSrc.includes('ctx.brokerEnforcementMode ?? "flatten_and_lock"'),
+      "applyBrokerDayLockout must default to flatten_and_lock when mode is undefined",
+    );
+  });
+
+  it("daily_loss_limit case gates applyFlattenOpenPositions on mode !== lock_only", () => {
+    // Locate the daily_loss_limit case body, then verify it gates the call.
+    const caseIdx = enforcementSrc.indexOf('case "daily_loss_limit":');
+    assert.ok(caseIdx !== -1, "must have a daily_loss_limit case");
+    const caseEnd = enforcementSrc.indexOf("case \"profit_target\":", caseIdx);
+    const caseBody = enforcementSrc.slice(caseIdx, caseEnd === -1 ? caseIdx + 4000 : caseEnd);
+
+    assert.ok(
+      caseBody.includes('brokerEnforcementMode === "lock_only"'),
+      "daily_loss_limit case must branch on brokerEnforcementMode === \"lock_only\"",
+    );
+    // The flatten call must be in the ELSE branch — verify the lock_only branch
+    // sets flattenStatus to "not_needed" and does NOT call applyFlattenOpenPositions.
+    const lockOnlyBranchIdx = caseBody.indexOf('brokerEnforcementMode === "lock_only"');
+    const elseIdx = caseBody.indexOf("else", lockOnlyBranchIdx);
+    assert.ok(elseIdx !== -1, "lock_only branch must be followed by an else (flatten) branch");
+    const lockOnlyBranch = caseBody.slice(lockOnlyBranchIdx, elseIdx);
+    assert.ok(
+      !lockOnlyBranch.includes("applyFlattenOpenPositions"),
+      "lock_only branch must not call applyFlattenOpenPositions",
+    );
+    assert.ok(
+      !lockOnlyBranch.includes("liquidatepositions"),
+      "lock_only branch must not reference liquidatepositions",
+    );
+    assert.ok(
+      lockOnlyBranch.includes('flattenStatus: "not_needed"') ||
+        lockOnlyBranch.includes("\"not_needed\""),
+      "lock_only branch must set flattenStatus to not_needed",
+    );
+  });
+
+  it("dry-run branch mirrors the same lock_only gate", () => {
+    const dryRunIdx = enforcementSrc.indexOf("if (isEnforcementDryRun())");
+    assert.ok(dryRunIdx !== -1, "must have isEnforcementDryRun() branch");
+    const dryRunBody = enforcementSrc.slice(dryRunIdx, dryRunIdx + 4000);
+    assert.ok(
+      dryRunBody.includes('brokerEnforcementMode !== "lock_only"'),
+      "dry-run branch must gate supportsFlatten on brokerEnforcementMode !== \"lock_only\"",
+    );
+  });
+
+  it("listener service passes brokerEnforcementMode: 'lock_only' to triggerEnforcement", () => {
+    const triggerIdx = serviceSrc.indexOf("triggerEnforcement({");
+    assert.ok(triggerIdx !== -1, "listener service must call triggerEnforcement");
+    const triggerCall = serviceSrc.slice(triggerIdx, triggerIdx + 1200);
+    assert.ok(
+      triggerCall.includes('brokerEnforcementMode: "lock_only"'),
+      "listener service must pass brokerEnforcementMode: 'lock_only'",
+    );
+  });
+
+  it("listener service does NOT call any order/cancel/flatten broker method", () => {
+    assert.ok(
+      !serviceSrc.includes("applyFlattenOpenPositions"),
+      "listener service must not call applyFlattenOpenPositions directly",
+    );
+    assert.ok(
+      !serviceSrc.includes("cancelOrders"),
+      "listener service must not call cancelOrders",
+    );
+    assert.ok(
+      !serviceSrc.includes("placeOrder"),
+      "listener service must not call placeOrder",
+    );
+  });
+
+  it("changesLocked: true still present in every lock payload builder", () => {
+    const lossUpdate = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 100 });
+    const lossCreate = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 100 });
+    assert.equal(lossUpdate.changesLocked, true);
+    assert.equal(lossCreate.changesLocked, true);
+  });
+
+  it("doNotUnlock still absent from every lock payload builder", () => {
+    const lossUpdate = buildAutoLiqUpdatePayload({ existingId: 1, dailyLossAutoLiq: 100 });
+    const lossCreate = buildAutoLiqCreatePayload({ tvAccountId: 1, dailyLossAutoLiq: 100 });
+    assert.ok(!("doNotUnlock" in lossUpdate), "doNotUnlock must not be in update payload");
+    assert.ok(!("doNotUnlock" in lossCreate), "doNotUnlock must not be in create payload");
+  });
+
+  it("source-scan: no new cancel/flatten/order method references introduced", () => {
+    // Belt-and-suspenders: applyBrokerDayLockout still has the existing
+    // applyFlattenOpenPositions reference for the default mode (this is
+    // intentional — the legacy cron path keeps its behavior). But there must
+    // be NO new broker write methods beyond what was already present.
+    const allowedBrokerMethods = [
+      "applyDailyLossLock",
+      "applyProfitTargetLock",
+      "applyFlattenOpenPositions",
+    ];
+    // Spot-check that no `applyCancel`, `applyKill`, `applyClose` etc. snuck in.
+    for (const forbidden of ["applyCancelOrders", "applyKillSwitch", "applyCloseAccount", "applyDisableAccount"]) {
+      assert.ok(
+        !enforcementSrc.includes(forbidden),
+        `enforcement.ts must not call ${forbidden}`,
+      );
+    }
+    // Confirm the existing allowed methods are intact so the test stays meaningful.
+    for (const allowed of allowedBrokerMethods) {
+      assert.ok(
+        enforcementSrc.includes(allowed),
+        `expected allowed broker method '${allowed}' still present`,
+      );
+    }
+  });
+});

@@ -36,6 +36,9 @@ const allPassDemoInput: CanSyncInput = {
   permissionLevel: "full_access",
   accountAllowlisted: true,
   guardianEnabled: true,
+  consentAt: new Date("2026-05-01T00:00:00Z"),
+  consentVersion: "2026-05-auto-lockout-v1",
+  externalAccountId: "6248",
 };
 
 const allPassSyncInput: SyncInput = {
@@ -749,5 +752,196 @@ describe("syncDailyLossRiskSettingToTradovate", () => {
 
     assert.equal(result.synced, false);
     assert.equal(result.gateFailureReason, "account_not_allowlisted");
+  });
+});
+
+// ── Gate 9: automated-actions consent (rule-save path) ──────────────────────
+
+describe("canSyncTradovateRiskSettings — Gate 9: automated-actions consent", () => {
+  it("blocks when consentAt is null (consent never recorded)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      consentAt: null,
+      consentVersion: null,
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "missing_automated_actions_consent");
+    assert.ok(result.skipReason?.toLowerCase().includes("consent"));
+  });
+
+  it("blocks when consentVersion is a stale value", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      consentAt: new Date("2024-01-01T00:00:00Z"),
+      consentVersion: "2024-01-old-consent",
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "missing_automated_actions_consent");
+  });
+
+  it("blocks when consentAt is set but consentVersion is null (legacy/corrupt row)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      consentAt: new Date("2026-05-15T00:00:00Z"),
+      consentVersion: null,
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "missing_automated_actions_consent");
+  });
+
+  it("allows when consent is current (consentAt set + version matches)", () => {
+    const result = canSyncTradovateRiskSettings(allPassDemoInput);
+    assert.equal(result.allowed, true);
+    assert.equal(result.gateFailureReason, null);
+  });
+
+  it("gate 9 fires AFTER guardianEnabled gate (8) — guardian-off blocks first", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      guardianEnabled: false,
+      consentAt: null,
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "guardian_inactive");
+  });
+
+  it("syncDailyLossRiskSettingToTradovate: missing consent → no client call", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    let calls = 0;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        calls += 1;
+        throw new Error("should not be called");
+      },
+    };
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, consentAt: null, consentVersion: null },
+      mockClient as never,
+    );
+    assert.equal(result.synced, false);
+    assert.equal(calls, 0, "client must not be called when consent gate blocks");
+    if (!result.synced && "gateFailureReason" in result) {
+      assert.equal(result.gateFailureReason, "missing_automated_actions_consent");
+    }
+  });
+
+  it("syncDailyLossRiskSettingToTradovate: valid consent → client IS called", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    let calls = 0;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        calls += 1;
+        return { endpoint: "userAccountAutoLiq/update", payload: {}, response: {}, confirmed: true, readbackValue: 500 };
+      },
+    };
+    const result = await syncDailyLossRiskSettingToTradovate(allPassSyncInput, mockClient as never);
+    assert.equal(result.synced, true);
+    assert.equal(calls, 1, "client must be called when all gates pass");
+  });
+
+  it("dry-run + missing consent: gate still blocks, no client call (simulate path)", async () => {
+    const result = await simulateTradovateRiskSettingsSync({
+      ...allPassSyncInput,
+      consentAt: null,
+      consentVersion: null,
+    });
+    assert.equal(result.attempted, false);
+    if (!result.attempted) {
+      assert.ok(result.skipReason.toLowerCase().includes("consent"));
+    }
+  });
+
+  it("dry-run + missing consent + executeDailyLossSync style: no client factory invoked", async () => {
+    // Verify simulate path never instantiates a client object regardless.
+    // (This is a sanity check on the same code path.)
+    process.env.ENFORCEMENT_DRY_RUN = "true";
+    let factoryCalls = 0;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        factoryCalls += 1;
+        throw new Error("should not be called");
+      },
+    };
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, consentAt: null, consentVersion: null },
+      mockClient as never,
+    );
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    assert.equal(result.synced, false);
+    assert.equal(factoryCalls, 0, "client must not be called in dry-run+missing-consent");
+  });
+});
+
+// ── Gate 10: externalAccountId validation (rule-save path) ──────────────────
+
+describe("canSyncTradovateRiskSettings — Gate 10: externalAccountId validation", () => {
+  it("blocks when externalAccountId is null", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: null,
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "invalid_external_account_id");
+  });
+
+  it("blocks when externalAccountId is empty string", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: "",
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "invalid_external_account_id");
+  });
+
+  it("blocks when externalAccountId is 'abc'", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: "abc",
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "invalid_external_account_id");
+  });
+
+  it("blocks when externalAccountId is '123abc' (no silent truncation)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: "123abc",
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "invalid_external_account_id");
+  });
+
+  it("allows when externalAccountId is a valid positive integer string", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: "6248",
+    });
+    assert.equal(result.allowed, true);
+  });
+
+  it("blocks when externalAccountId is '0' (Tradovate ids are positive)", () => {
+    const result = canSyncTradovateRiskSettings({
+      ...allPassDemoInput,
+      externalAccountId: "0",
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.gateFailureReason, "invalid_external_account_id");
+  });
+
+  it("invalid externalAccountId → no client call (sync path)", async () => {
+    delete process.env.ENFORCEMENT_DRY_RUN;
+    let calls = 0;
+    const mockClient = {
+      applyDailyLossLock: async () => {
+        calls += 1;
+        throw new Error("should not be called");
+      },
+    };
+    const result = await syncDailyLossRiskSettingToTradovate(
+      { ...allPassSyncInput, externalAccountId: "abc" },
+      mockClient as never,
+    );
+    assert.equal(result.synced, false);
+    assert.equal(calls, 0);
   });
 });

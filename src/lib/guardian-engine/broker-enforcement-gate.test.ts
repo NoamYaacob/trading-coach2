@@ -647,7 +647,9 @@ describe("listener-worker import graph — no @/ path aliases", () => {
     "src/lib/brokers/enforcement.ts",
     "src/lib/brokers/enforcement-helpers.ts",
     "src/lib/brokers/automated-actions-consent.ts",
+    "src/lib/brokers/broker-risk-settings-sync-audit-writer.ts",
     "src/lib/brokers/tradovate-client.ts",
+    "src/lib/brokers/tradovate-master-id.ts",
     "src/lib/brokers/tradovate-tokens.ts",
     "src/lib/brokers/tradovate-env.ts",
     "src/lib/brokers/tradovate-ensure-token.ts",
@@ -675,4 +677,187 @@ describe("listener-worker import graph — no @/ path aliases", () => {
       );
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// gateFailureReason — every gate exposes a stable machine-readable code
+// ---------------------------------------------------------------------------
+
+describe("evaluateBrokerEnforcementGates — gateFailureReason codes", () => {
+  it("gate 1 → broker_enforcement_disabled", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ brokerEnforcementEnabled: false }));
+    assert.equal(r.gateFailureReason, "broker_enforcement_disabled");
+  });
+
+  it("gate 2 → listener_live_enabled", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ listenerLiveEnabled: true }));
+    assert.equal(r.gateFailureReason, "listener_live_enabled");
+  });
+
+  it("gate 3 → env_not_demo", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ env: "live" }));
+    assert.equal(r.gateFailureReason, "env_not_demo");
+  });
+
+  it("gate 4 → account_not_allowlisted", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ allowlistAccountIds: [] }));
+    assert.equal(r.gateFailureReason, "account_not_allowlisted");
+  });
+
+  it("gate 5 → rule_not_broker_eligible", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ ruleType: "trade_limit" }));
+    assert.equal(r.gateFailureReason, "rule_not_broker_eligible");
+  });
+
+  it("gate 6a → account_inactive", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ isActive: false }));
+    assert.equal(r.gateFailureReason, "account_inactive");
+  });
+
+  it("gate 6b → account_missing_from_broker", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ missingFromBroker: true }));
+    assert.equal(r.gateFailureReason, "account_missing_from_broker");
+  });
+
+  it("gate 7 → connection_not_live", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ connectionStatus: "expired" }));
+    assert.equal(r.gateFailureReason, "connection_not_live");
+  });
+
+  it("gate 8 → insufficient_permissions", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ permissionLevel: "read_only" }));
+    assert.equal(r.gateFailureReason, "insufficient_permissions");
+  });
+
+  it("gate 9 → no_active_internal_lock", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ activeInternalLockEventId: null }));
+    assert.equal(r.gateFailureReason, "no_active_internal_lock");
+  });
+
+  it("gate 10 → duplicate_intervention", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput({ existingInterventionWithDedupKey: true }));
+    assert.equal(r.gateFailureReason, "duplicate_intervention");
+  });
+
+  it("allowed (all gates pass) → gateFailureReason is null", () => {
+    const r = evaluateBrokerEnforcementGates(makeInput());
+    assert.equal(r.allowed, true);
+    assert.equal(r.gateFailureReason, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Listener-path audit persistence — source-scan guarantees
+// ---------------------------------------------------------------------------
+//
+// The behavioral test (mock Prisma + assert createMock called) requires
+// rebuilding the whole DB layer. These structural tests verify the wiring
+// stays in place: every blocked-exit branch in maybeAttemptBrokerDailyLossLockoutForInternalLock
+// writes to BrokerRiskSettingsSyncAudit with outcome=gate_blocked plus a
+// stable gateFailureReason code.
+
+describe("broker-enforcement-service — listener-path gate failure persistence", () => {
+  const serviceSrc = readSrc("src/lib/guardian-engine/broker-enforcement-service.ts");
+
+  it("imports writeBrokerRiskSettingsSyncAudit", () => {
+    assert.ok(
+      serviceSrc.includes("writeBrokerRiskSettingsSyncAudit"),
+      "service must import writeBrokerRiskSettingsSyncAudit",
+    );
+  });
+
+  it("writes audit row when InternalLockEvent is already cleared", () => {
+    const clearedIdx = serviceSrc.indexOf("internal_lock_event_cleared");
+    assert.ok(clearedIdx !== -1, "must use stable code 'internal_lock_event_cleared'");
+    // Verify it is inside an audit write block, not just a comment.
+    const tail = serviceSrc.slice(0, clearedIdx);
+    const writerIdx = tail.lastIndexOf("writeBrokerRiskSettingsSyncAudit(");
+    assert.ok(
+      writerIdx !== -1 && clearedIdx - writerIdx < 500,
+      "internal_lock_event_cleared must appear within an audit-writer call",
+    );
+  });
+
+  it("writes audit row when Guardian master switch is off", () => {
+    const guardianIdx = serviceSrc.indexOf("guardian_disabled");
+    assert.ok(guardianIdx !== -1, "must use stable code 'guardian_disabled'");
+    const tail = serviceSrc.slice(0, guardianIdx);
+    const writerIdx = tail.lastIndexOf("writeBrokerRiskSettingsSyncAudit(");
+    assert.ok(
+      writerIdx !== -1 && guardianIdx - writerIdx < 500,
+      "guardian_disabled must appear within an audit-writer call",
+    );
+  });
+
+  it("writes audit row when evaluateBrokerEnforcementGates returns blocked", () => {
+    // The blocked branch must call writeBrokerRiskSettingsSyncAudit with the
+    // gate's structured gateFailureReason (rather than re-deriving it locally).
+    const gateBlockedIdx = serviceSrc.indexOf("gateResult.gateFailureReason");
+    assert.ok(
+      gateBlockedIdx !== -1,
+      "service must forward gateResult.gateFailureReason to the audit row",
+    );
+    const tail = serviceSrc.slice(0, gateBlockedIdx);
+    const writerIdx = tail.lastIndexOf("writeBrokerRiskSettingsSyncAudit(");
+    assert.ok(
+      writerIdx !== -1 && gateBlockedIdx - writerIdx < 800,
+      "gateResult.gateFailureReason must appear inside the audit-writer call",
+    );
+  });
+
+  it("audit base captures userId, accountId, externalAccountId, brokerConnectionId, env, dryRun", () => {
+    const baseIdx = serviceSrc.indexOf("const auditBase");
+    assert.ok(baseIdx !== -1, "service must declare an auditBase object");
+    const baseBlock = serviceSrc.slice(baseIdx, baseIdx + 1200);
+    for (const field of [
+      "userId",
+      "accountId",
+      "externalAccountId",
+      "brokerConnectionId",
+      "environment",
+      "dryRun",
+      "brokerEnforcementEnabled",
+      'broker: "tradovate"',
+      'ruleType: "daily_loss_limit"',
+    ]) {
+      assert.ok(
+        baseBlock.includes(field),
+        `auditBase must include '${field}'`,
+      );
+    }
+  });
+
+  it("audit dryRun flag reads from process.env.ENFORCEMENT_DRY_RUN", () => {
+    const baseIdx = serviceSrc.indexOf("const auditBase");
+    const baseBlock = serviceSrc.slice(baseIdx, baseIdx + 1200);
+    assert.ok(
+      baseBlock.includes("ENFORCEMENT_DRY_RUN"),
+      "auditBase.dryRun must be sourced from process.env.ENFORCEMENT_DRY_RUN",
+    );
+  });
+
+  it("audit outcome is 'gate_blocked' for every blocked branch", () => {
+    // Count occurrences of outcome: "gate_blocked" — must match the number of
+    // blocked branches that write audit rows (cleared, guardian, gate failure
+    // = 3 branches).
+    const occurrences = serviceSrc.split('outcome: "gate_blocked"').length - 1;
+    assert.ok(
+      occurrences >= 3,
+      `expected ≥3 gate_blocked audit writes, found ${occurrences}`,
+    );
+  });
+
+  it("listener-path gate failures use the BrokerRiskSettingsSyncAudit table (no new table required)", () => {
+    // The user spec accepts BrokerRiskSettingsSyncAudit if compatible. Verify
+    // the service writes to that table (via the existing writer) rather than
+    // adding a parallel audit-store implementation.
+    assert.ok(
+      serviceSrc.includes("writeBrokerRiskSettingsSyncAudit"),
+      "service must reuse BrokerRiskSettingsSyncAudit via the existing writer",
+    );
+    assert.ok(
+      !serviceSrc.includes("listenerGateBlockedAudit"),
+      "service must NOT introduce a parallel audit table",
+    );
+  });
 });

@@ -31,6 +31,15 @@ export type DailyLossSyncContext = {
   brokerConnectionStatus: string | null;
   permissionLevel: string | null;
   guardianEnabled: boolean;
+  /**
+   * Persisted automated-actions consent state for this account. The caller
+   * resolves AccountRiskRules (account-specific) → RiskRules (default) and
+   * passes the resolved values. Pass nulls when no consent has been recorded.
+   */
+  consentAt: Date | null;
+  consentVersion: string | null;
+  /** Raw externalAccountId from ConnectedAccount; validated by Gate 10. */
+  externalAccountId: string | null;
 };
 
 export type DailyLossSyncOutcome =
@@ -73,6 +82,9 @@ export async function executeDailyLossSync(
     permissionLevel: ctx.permissionLevel,
     accountAllowlisted: isAccountAllowlisted(ctx.accountId),
     guardianEnabled: ctx.guardianEnabled,
+    consentAt: ctx.consentAt,
+    consentVersion: ctx.consentVersion,
+    externalAccountId: ctx.externalAccountId,
     maxDailyLoss: ctx.maxDailyLoss,
   };
 

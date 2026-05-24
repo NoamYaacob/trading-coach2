@@ -21,6 +21,8 @@
  */
 
 import type { TradovateClient } from "./tradovate-client.ts";
+import { hasValidConsent } from "./automated-actions-consent.ts";
+import { parseTradovateMasterId } from "./tradovate-master-id.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -102,6 +104,19 @@ export type CanSyncInput = {
   accountAllowlisted: boolean;
   /** Whether Guardian is currently active for this user/account */
   guardianEnabled: boolean;
+  /**
+   * Persisted automated-actions consent state for the account, resolved by
+   * the caller from AccountRiskRules (preferred) falling back to the user's
+   * default RiskRules. See automated-actions-consent.ts.
+   */
+  consentAt: Date | null;
+  consentVersion: string | null;
+  /**
+   * Raw externalAccountId from ConnectedAccount. Must parse to a positive
+   * integer; any malformed value (null, "", "abc", "123abc", …) fails the
+   * gate so a broker write can never be sent against a NaN/0/truncated id.
+   */
+  externalAccountId: string | null;
 };
 
 export type CanSyncResult = {
@@ -116,14 +131,16 @@ export type CanSyncResult = {
  * attempted. Returns {allowed: false, skipReason} on the first gate that fails.
  *
  * Gates (evaluated in order — first failure returns immediately):
- *   1. BROKER_ENFORCEMENT_ENABLED must be true
- *   2. env must be "demo" (live not supported yet)
- *   3. isActive must be true
- *   4. missingFromBroker must be false
- *   5. connectionStatus must NOT be in expired/error/not_connected/pending set
- *   6. permissionLevel must be "full_access"
- *   7. accountAllowlisted must be true
- *   8. guardianEnabled must be true
+ *   1.  BROKER_ENFORCEMENT_ENABLED must be true
+ *   2.  env must be "demo" (live not supported yet)
+ *   3.  isActive must be true
+ *   4.  missingFromBroker must be false
+ *   5.  connectionStatus must NOT be in expired/error/not_connected/pending set
+ *   6.  permissionLevel must be "full_access"
+ *   7.  accountAllowlisted must be true
+ *   8.  guardianEnabled must be true
+ *   9.  automated-actions consent must be present and version-matched
+ *   10. externalAccountId must parse to a positive integer Tradovate masterid
  *
  * Not required here (unlike the listener path):
  *   - InternalLockEvent (listener-path only — breach-time enforcement)
@@ -216,6 +233,35 @@ export function canSyncTradovateRiskSettings(
         "Guardian is not active for this account — rule-save sync blocked. " +
         "Guardian must be active before broker risk-settings writes are permitted.",
       gateFailureReason: "guardian_inactive",
+    };
+  }
+
+  // Gate 9: Persisted automated-actions consent (parity with listener path).
+  // The listener path's broker write is gated by decideConsentGate inside
+  // applyBrokerDayLockout. The rule-save path historically relied on
+  // "user pressed Save" as implicit consent; that asymmetry is closed here so
+  // both paths fail-closed when the consent version on file is missing or
+  // stale (see AUTOMATED_ACTIONS_CONSENT_VERSION in automated-actions-consent).
+  if (!hasValidConsent({ consentAt: input.consentAt, consentVersion: input.consentVersion })) {
+    return {
+      allowed: false,
+      skipReason:
+        "Automated-actions consent missing or stale — rule-save sync blocked. " +
+        "User must confirm automated lockout consent on the rule record before broker writes are permitted.",
+      gateFailureReason: "missing_automated_actions_consent",
+    };
+  }
+
+  // Gate 10: externalAccountId must parse to a valid Tradovate masterid.
+  // Defense-in-depth against malformed sync rows: an invalid id would route
+  // a write to NaN/0/a truncated integer.
+  if (!parseTradovateMasterId(input.externalAccountId)) {
+    return {
+      allowed: false,
+      skipReason:
+        `externalAccountId '${input.externalAccountId ?? "null"}' is not a valid Tradovate masterid — ` +
+        "rule-save sync blocked. Expected a positive integer string.",
+      gateFailureReason: "invalid_external_account_id",
     };
   }
 

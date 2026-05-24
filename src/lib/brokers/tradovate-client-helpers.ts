@@ -24,7 +24,8 @@ export type TradovateClientErrorCode =
   | "REFRESH_STORE_FAILED"
   | "API_ERROR"
   | "NETWORK_ERROR"
-  | "PARSE_ERROR";
+  | "PARSE_ERROR"
+  | "RECOVERY_PAYLOAD_INVALID";
 
 export class TradovateClientError extends Error {
   readonly code: TradovateClientErrorCode;
