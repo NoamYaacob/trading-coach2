@@ -329,6 +329,9 @@ export async function GET(request: NextRequest) {
   // Most recent preview per account (allPreviewAudits already ordered desc)
   const latestPreviewByAccount = new Map<string, (typeof allPreviewAudits)[0]>();
   for (const row of allPreviewAudits) {
+    if (row.accountId == null) {
+      continue;
+    }
     if (!latestPreviewByAccount.has(row.accountId)) {
       latestPreviewByAccount.set(row.accountId, row);
     }
@@ -336,6 +339,9 @@ export async function GET(request: NextRequest) {
 
   const writesByAccount = new Map<string, (typeof allWriteAudits)>();
   for (const row of allWriteAudits) {
+    if (row.accountId == null) {
+      continue;
+    }
     const existing = writesByAccount.get(row.accountId) ?? [];
     existing.push(row);
     writesByAccount.set(row.accountId, existing);

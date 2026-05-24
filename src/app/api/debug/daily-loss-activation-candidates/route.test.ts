@@ -568,4 +568,21 @@ describe("daily-loss-activation-candidates: response shape", () => {
       "must use per-account write index",
     );
   });
+
+  it("skips audit rows with null accountId when building preview map", () => {
+    const s = src();
+    assert.ok(
+      s.includes("if (row.accountId == null)"),
+      "must null-guard accountId before using as Map key",
+    );
+  });
+
+  it("skips audit rows with null accountId when building write map", () => {
+    const s = codeOnly();
+    // Both the preview loop and the write loop must have the null guard
+    const firstNullGuard = s.indexOf("if (row.accountId == null)");
+    const secondNullGuard = s.indexOf("if (row.accountId == null)", firstNullGuard + 1);
+    assert.ok(firstNullGuard > -1, "first null guard must exist (preview loop)");
+    assert.ok(secondNullGuard > -1, "second null guard must exist (write loop)");
+  });
 });
