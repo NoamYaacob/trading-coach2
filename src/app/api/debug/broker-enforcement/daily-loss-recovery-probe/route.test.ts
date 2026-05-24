@@ -411,6 +411,123 @@ describe("recovery probe: payload contract delegated to buildRecoveryPayload", (
   });
 });
 
+// ── D1: pre-existing locked AutoLiq ownership guard ───────────────────────
+
+describe("recovery probe: D1 — preexisting locked AutoLiq guard", () => {
+  it("D1 gate failure reason is preexisting_locked_autoliq_not_guardrail_owned", () => {
+    const s = src();
+    assert.ok(
+      s.includes("preexisting_locked_autoliq_not_guardrail_owned"),
+      "D1 gate must use gateFailureReason preexisting_locked_autoliq_not_guardrail_owned",
+    );
+  });
+
+  it("D1 gate checks existing.changesLocked === true before querying audit table", () => {
+    const s = src();
+    assert.ok(
+      s.includes("existing.changesLocked === true"),
+      "D1 gate must check existing.changesLocked === true",
+    );
+  });
+
+  it("D1 gate queries BrokerRiskSettingsSyncAudit for prior success rows", () => {
+    const s = src();
+    assert.ok(
+      s.includes("brokerRiskSettingsSyncAudit.findMany"),
+      "D1 gate must query BrokerRiskSettingsSyncAudit for prior success",
+    );
+    assert.ok(
+      s.includes('"success"') && s.includes("outcome"),
+      "D1 query must filter by outcome=success",
+    );
+  });
+
+  it("D1 gate requires brokerResponseJson non-null as ownership evidence (real broker write, not read_only success)", () => {
+    const s = src();
+    assert.ok(
+      s.includes("brokerResponseJson != null"),
+      "D1 must check brokerResponseJson != null to distinguish real writes from read_only preview successes",
+    );
+  });
+
+  it("D1 gate includes both daily_loss_limit and daily_loss_recovery_probe ruleTypes as ownership evidence", () => {
+    // Use codeOnly() so JSDoc mentions don't confuse position search.
+    const s = codeOnly();
+    const idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    const before = s.slice(Math.max(0, idx - 800), idx);
+    assert.ok(
+      before.includes('"daily_loss_limit"') && before.includes('"daily_loss_recovery_probe"'),
+      "D1 ownership query must include both daily_loss_limit and daily_loss_recovery_probe ruleTypes",
+    );
+  });
+
+  it("D1 gate is placed AFTER apply=false preview path (previews are never blocked by D1)", () => {
+    // Use codeOnly() so JSDoc mentions don't confuse position search.
+    const s = codeOnly();
+    // apply=false exits via the preview path. D1 must come after that exit.
+    const previewIdx = s.indexOf('outcome: "preview"');
+    const d1Idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    assert.ok(previewIdx !== -1 && d1Idx !== -1);
+    assert.ok(
+      previewIdx < d1Idx,
+      "D1 gate must be after the preview exit so apply=false previews always succeed",
+    );
+  });
+
+  it("D1 gate is placed AFTER read_only apply=true path (read_only is never blocked by D1)", () => {
+    // Use codeOnly() so JSDoc mentions don't confuse position search.
+    const s = codeOnly();
+    // read_only mode exits before D1.
+    const readOnlyExitIdx = s.indexOf("Read-only");
+    const d1Idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    assert.ok(readOnlyExitIdx !== -1 && d1Idx !== -1);
+    assert.ok(
+      readOnlyExitIdx < d1Idx,
+      "D1 gate must be after the read_only apply=true exit",
+    );
+  });
+
+  it("D1 gate is placed BEFORE applyDailyLossRecoveryUpdate (blocked calls never reach the write)", () => {
+    const s = codeOnly();
+    const d1Idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    const writeIdx = s.indexOf("applyDailyLossRecoveryUpdate");
+    assert.ok(d1Idx !== -1 && writeIdx !== -1);
+    assert.ok(
+      d1Idx < writeIdx,
+      "D1 gate must appear before applyDailyLossRecoveryUpdate so blocked calls never reach the write",
+    );
+  });
+
+  it("D1 blocked path writes a gate_blocked audit row with the existing record context", () => {
+    const s = src();
+    // The blockGate helper is called with extraPayloadCtx = { existing, requested: ... }
+    // Verify the blocked call passes existing record context.
+    const d1Idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    const blockGateCallRegion = s.slice(d1Idx, d1Idx + 400);
+    assert.ok(
+      blockGateCallRegion.includes("existing"),
+      "D1 blockGate call must include existing record in the audit payload context",
+    );
+  });
+
+  it("D1 blocked path explains prop-firm / Tradovate provenance risk in skipReason", () => {
+    const s = src();
+    assert.ok(
+      s.includes("prop-firm or Tradovate-managed"),
+      "D1 skipReason must mention prop-firm and Tradovate provenance risk",
+    );
+  });
+
+  it("D1 block returns HTTP 403 (not 409 or 500)", () => {
+    // Use codeOnly() so JSDoc mentions don't confuse position search.
+    const s = codeOnly();
+    // The D1 blockGate call uses status 403.
+    const d1Idx = s.indexOf("preexisting_locked_autoliq_not_guardrail_owned");
+    const around = s.slice(Math.max(0, d1Idx - 300), d1Idx + 10);
+    assert.ok(around.includes("403"), "D1 must return HTTP 403");
+  });
+});
+
 // ── Method allowlist (route imports only what it needs) ────────────────────
 
 describe("recovery probe: import allowlist", () => {

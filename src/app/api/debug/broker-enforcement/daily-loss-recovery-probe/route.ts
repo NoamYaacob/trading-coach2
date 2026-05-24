@@ -42,6 +42,11 @@
  *   Recovery-specific
  *     R1. An existing userAccountAutoLiq record must already exist for
  *         apply=true modes other than read_only. (No /create branch.)
+ *     D1. For write modes: if existing.changesLocked === true, at least one
+ *         prior BrokerRiskSettingsSyncAudit row with outcome=success and a
+ *         non-null brokerResponseJson must exist for this account (evidence
+ *         that Guardrail previously wrote the record). Otherwise blocks with:
+ *         gateFailureReason: preexisting_locked_autoliq_not_guardrail_owned
  *
  * Every request — including pure previews — writes a row to
  * BrokerRiskSettingsSyncAudit. Outcomes:
@@ -218,13 +223,14 @@ export async function POST(request: NextRequest) {
     status: number,
     gateFailureReason: string,
     skipReason: string,
+    extraPayloadCtx?: Record<string, unknown>,
   ): Promise<NextResponse> => {
     await writeBrokerRiskSettingsSyncAudit({
       ...baseAudit,
       outcome: "gate_blocked",
       gateFailureReason,
       skipReason,
-      payloadPreviewJson: { mode, apply },
+      payloadPreviewJson: { mode, apply, ...extraPayloadCtx },
     });
     return jsonError(status, {
       error: "gate_blocked",
@@ -409,6 +415,42 @@ export async function POST(request: NextRequest) {
       "payload_build_failed",
       "Internal error: failed to build recovery payload.",
     );
+  }
+
+  // ── D1: pre-existing locked AutoLiq ownership guard ─────────────────────
+  // Block write modes when the existing record has changesLocked=true and
+  // Guardrail has no audit evidence that it previously wrote this record.
+  // Evidence: any BrokerRiskSettingsSyncAudit row with outcome=success and
+  // a non-null brokerResponseJson (confirming a real broker write, not a
+  // read_only preview success which writes no broker payload).
+  //
+  // Policy: conservative — refuse to overwrite a changesLocked=true record
+  // of unknown provenance. It may be a prop-firm or Tradovate-managed
+  // risk setting. The caller must produce prior write evidence first.
+  if (existing.changesLocked === true) {
+    const priorWriteRows = await prisma.brokerRiskSettingsSyncAudit.findMany({
+      where: {
+        accountId: account.id,
+        outcome: "success",
+        ruleType: { in: ["daily_loss_limit", "daily_loss_recovery_probe"] },
+      },
+      select: { id: true, brokerResponseJson: true },
+      take: 10,
+    });
+    const hasGuardrailOwnedWrite = priorWriteRows.some(
+      (r) => r.brokerResponseJson != null,
+    );
+    if (!hasGuardrailOwnedWrite) {
+      return blockGate(
+        403,
+        "preexisting_locked_autoliq_not_guardrail_owned",
+        "Existing userAccountAutoLiq record has changesLocked=true but Guardrail " +
+          "has no audit evidence of previously writing this record " +
+          "(no prior outcome=success rows with a broker response exist for this account). " +
+          "Refusing to modify a possible prop-firm or Tradovate-managed risk setting.",
+        { existing, requested: payloadPreview },
+      );
+    }
   }
 
   try {
