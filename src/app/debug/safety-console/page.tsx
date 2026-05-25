@@ -671,6 +671,9 @@ export default async function SafetyConsolePage() {
     totalLockCount: number;
     activeTradeLimitLock: boolean;
     activeDailyLossLock: boolean;
+    consecutiveLosses: number | null;
+    stopAfterLosses: number | null;
+    activeLossStreakLock: boolean;
   };
 
   let demo7Diagnosis: Demo7Diagnosis | null = null;
@@ -728,6 +731,9 @@ export default async function SafetyConsolePage() {
     const activeDailyLossLock7 = demo7LockEvents.some(
       (e) => e.clearedAt == null && e.ruleType === "daily_loss_limit",
     );
+    const activeLossStreakLock7 = demo7LockEvents.some(
+      (e) => e.clearedAt == null && e.ruleType === "max_loss_streak",
+    );
     demo7Diagnosis = {
       canLock: canLock7,
       skipReasons: skipReasons7,
@@ -746,6 +752,9 @@ export default async function SafetyConsolePage() {
       totalLockCount: demo7LockEvents.length,
       activeTradeLimitLock: activeTradeLimitLock7,
       activeDailyLossLock: activeDailyLossLock7,
+      consecutiveLosses: session7?.consecutiveLosses ?? null,
+      stopAfterLosses: rules7?.stopAfterLosses ?? null,
+      activeLossStreakLock: activeLossStreakLock7,
     };
   }
 
@@ -803,7 +812,7 @@ export default async function SafetyConsolePage() {
         />
         <SectionCard
           title="Enforcement safety flags"
-          description="Web/app env values (informational) and listener-worker env (authoritative). These are separate Railway services with independent env vars."
+          description="Web/app env values (informational) and listener-worker env (authoritative). Listener-worker env values are shown only when explicitly exposed via the listener status row — the web process cannot read them directly."
         >
           <div className="grid gap-4">
             <div>
@@ -956,6 +965,9 @@ type Demo7DiagnosisType = {
   totalLockCount: number;
   activeTradeLimitLock: boolean;
   activeDailyLossLock: boolean;
+  consecutiveLosses: number | null;
+  stopAfterLosses: number | null;
+  activeLossStreakLock: boolean;
 } | null;
 
 function QaTargetFocusCard({
@@ -997,6 +1009,24 @@ function QaTargetFocusCard({
       ? "bg-stone-200 text-stone-600"
       : "bg-emerald-100 text-emerald-800";
 
+  // Semantics: consecutiveLosses >= stopAfterLosses → LOCKED.
+  // "Stop after 3 losses" fires on the 3rd loss (at the limit, >= semantics).
+  const lossStreakLabel = !demo7Diagnosis
+    ? "loss_streak: UNKNOWN"
+    : demo7Diagnosis.stopAfterLosses == null
+      ? "loss_streak: not configured"
+      : demo7Diagnosis.activeLossStreakLock
+        ? "loss_streak: LOCKED"
+        : demo7Diagnosis.consecutiveLosses != null &&
+            demo7Diagnosis.consecutiveLosses >= demo7Diagnosis.stopAfterLosses
+          ? "loss_streak: WOULD LOCK"
+          : `loss_streak: ${demo7Diagnosis.consecutiveLosses ?? "—"}/${demo7Diagnosis.stopAfterLosses}`;
+  const lossStreakBadgeCls = lossStreakLabel.includes("LOCKED") || lossStreakLabel.includes("WOULD LOCK")
+    ? "bg-amber-100 text-amber-900"
+    : lossStreakLabel.includes("not configured") || lossStreakLabel.includes("UNKNOWN")
+      ? "bg-stone-200 text-stone-600"
+      : "bg-emerald-100 text-emerald-800";
+
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1025,6 +1055,7 @@ function QaTargetFocusCard({
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">rule-save: PASS</span>
             <span className={`rounded-full px-2 py-0.5 font-semibold ${c1Label.includes("PASS") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{c1Label}</span>
             <span className={`rounded-full px-2 py-0.5 font-semibold ${tradeLimitBadgeCls}`}>{tradeLimitLabel}</span>
+            <span className={`rounded-full px-2 py-0.5 font-semibold ${lossStreakBadgeCls}`}>{lossStreakLabel}</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C2: NO-GO</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C3: NO-GO</span>
           </div>
@@ -1096,6 +1127,30 @@ function QaStatusCard({
         ? "text-emerald-700"
         : "text-stone-500";
 
+  // ── max_loss_streak (stopAfterLosses) internal-lock status ────────────────
+  // Internal-only path: dry-run evaluator emits max_loss_streak when
+  // consecutiveLosses >= stopAfterLosses (at-limit semantics). "Stop after 3
+  // losses" fires on the 3rd consecutive loss. Lock is created in
+  // InternalLockEvent with ruleType=max_loss_streak; never triggers a broker
+  // write (BROKER_ELIGIBLE_RULES excludes max_loss_streak).
+  const lossStreakStatus = !demo7Diagnosis
+    ? "UNKNOWN — account not found"
+    : demo7Diagnosis.stopAfterLosses == null
+      ? "NOT CONFIGURED — stopAfterLosses is null on AccountRiskRules"
+      : demo7Diagnosis.consecutiveLosses == null
+        ? "UNKNOWN — no LiveSessionState row"
+        : demo7Diagnosis.activeLossStreakLock
+          ? `LOCKED — max_loss_streak InternalLockEvent active (consecutiveLosses=${demo7Diagnosis.consecutiveLosses}/${demo7Diagnosis.stopAfterLosses})`
+          : demo7Diagnosis.consecutiveLosses >= demo7Diagnosis.stopAfterLosses
+            ? `WOULD LOCK — consecutiveLosses=${demo7Diagnosis.consecutiveLosses} >= stopAfterLosses=${demo7Diagnosis.stopAfterLosses} but no lock row yet`
+            : `OK — ${demo7Diagnosis.consecutiveLosses}/${demo7Diagnosis.stopAfterLosses} consecutive losses`;
+
+  const lossStreakColor = lossStreakStatus.startsWith("LOCKED") || lossStreakStatus.startsWith("WOULD LOCK")
+    ? "text-amber-700"
+    : lossStreakStatus.startsWith("OK")
+      ? "text-emerald-700"
+      : "text-stone-500";
+
   return (
     <SectionCard
       title={`QA status — ${DEMO7_EXTERNAL_ID}`}
@@ -1117,6 +1172,10 @@ function QaStatusCard({
               <dd className={`font-semibold ${tradeLimitColor}`}>{tradeLimitStatus}</dd>
             </div>
             <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">max_loss_streak internal lock (stopAfterLosses):</dt>
+              <dd className={`font-semibold ${lossStreakColor}`}>{lossStreakStatus}</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
               <dt className="font-mono text-stone-500">C2 broker enforcement:</dt>
               <dd className="font-semibold text-red-700">NO-GO — do not enable</dd>
             </div>
@@ -1133,7 +1192,7 @@ function QaStatusCard({
         {demo7Diagnosis && (
           <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
             <span className="font-semibold text-stone-700">Live state: </span>
-            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · tradesCount={demo7Diagnosis.tradesCount ?? "—"}/{demo7Diagnosis.maxTradesPerDay ?? "—"} (source={demo7Diagnosis.tradeCountSource ?? "—"}) · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
+            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · tradesCount={demo7Diagnosis.tradesCount ?? "—"}/{demo7Diagnosis.maxTradesPerDay ?? "—"} (source={demo7Diagnosis.tradeCountSource ?? "—"}) · consecutiveLosses={demo7Diagnosis.consecutiveLosses ?? "—"}/{demo7Diagnosis.stopAfterLosses ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
           </div>
         )}
         {demo7Diagnosis && (
@@ -1225,6 +1284,13 @@ function InternalLockDiagnosticSection({
               label="activeTradeLimitLock"
               value={String(diagnosis.activeTradeLimitLock)}
               danger={diagnosis.activeTradeLimitLock}
+            />
+            <Row label="consecutiveLosses" value={String(diagnosis.consecutiveLosses ?? "—")} />
+            <Row label="stopAfterLosses" value={String(diagnosis.stopAfterLosses ?? "—")} />
+            <Row
+              label="activeLossStreakLock"
+              value={String(diagnosis.activeLossStreakLock)}
+              danger={diagnosis.activeLossStreakLock}
             />
             <Row label="tradingDay" value={diagnosis.tradingDay} />
             <Row label="canLock" value={String(diagnosis.canLock)} />

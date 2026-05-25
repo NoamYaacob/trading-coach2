@@ -459,3 +459,106 @@ describe("safety-console page — QaTargetFocusCard present", () => {
     );
   });
 });
+
+describe("safety-console page — max_loss_streak (stopAfterLosses) status surfaced", () => {
+  it("Demo7Diagnosis type includes consecutiveLosses and stopAfterLosses", () => {
+    assert.ok(
+      CODE.includes("consecutiveLosses: number | null"),
+      "Demo7Diagnosis must include consecutiveLosses from LiveSessionState",
+    );
+    assert.ok(
+      CODE.includes("stopAfterLosses: number | null"),
+      "Demo7Diagnosis must include stopAfterLosses from AccountRiskRules",
+    );
+  });
+
+  it("Demo7Diagnosis type includes activeLossStreakLock", () => {
+    assert.ok(
+      CODE.includes("activeLossStreakLock: boolean"),
+      "Demo7Diagnosis must include activeLossStreakLock so the operator sees whether a max_loss_streak lock is live",
+    );
+  });
+
+  it("Demo7Diagnosis derives activeLossStreakLock from lock events filtered by ruleType", () => {
+    assert.ok(
+      CODE.includes("activeLossStreakLock"),
+      "must derive activeLossStreakLock from InternalLockEvent rows",
+    );
+    assert.ok(
+      CODE.includes('ruleType === "max_loss_streak"'),
+      "must filter by ruleType === 'max_loss_streak' when deriving activeLossStreakLock",
+    );
+  });
+
+  it("QaStatusCard renders a max_loss_streak row", () => {
+    assert.ok(
+      CODE.includes("max_loss_streak internal lock"),
+      "QaStatusCard must show a 'max_loss_streak internal lock' row alongside C1/trade_limit/C2/C3",
+    );
+  });
+
+  it("QaStatusCard shows consecutiveLosses/stopAfterLosses usage in the max_loss_streak status", () => {
+    assert.ok(
+      CODE.includes("consecutiveLosses=") && CODE.includes("stopAfterLosses="),
+      "max_loss_streak status must display consecutiveLosses=N/stopAfterLosses=N",
+    );
+  });
+
+  it("QaTargetFocusCard shows loss_streak badge", () => {
+    assert.ok(
+      CODE.includes("lossStreakLabel"),
+      "QaTargetFocusCard must compute a loss_streak badge label",
+    );
+    assert.ok(
+      CODE.includes('"loss_streak: LOCKED"') || CODE.includes("loss_streak: LOCKED"),
+      "loss_streak badge must surface a LOCKED state",
+    );
+  });
+
+  it("InternalLockDiagnosticSection shows consecutiveLosses and stopAfterLosses rows", () => {
+    assert.ok(
+      CODE.includes('label="consecutiveLosses"'),
+      "diagnostic dl must include a consecutiveLosses row",
+    );
+    assert.ok(
+      CODE.includes('label="stopAfterLosses"'),
+      "diagnostic dl must include a stopAfterLosses row",
+    );
+    assert.ok(
+      CODE.includes('label="activeLossStreakLock"'),
+      "diagnostic dl must include an activeLossStreakLock row so lock state is visible",
+    );
+  });
+
+  it("documents max_loss_streak semantics: at-limit trigger (>= semantics)", () => {
+    assert.ok(
+      CODE.includes("consecutiveLosses >= stopAfterLosses") ||
+        CODE.includes("consecutiveLosses &gt;= stopAfterLosses") ||
+        CODE.includes(".consecutiveLosses >= demo7Diagnosis.stopAfterLosses"),
+      "must document the >= comparison so at-limit behavior is explicit",
+    );
+  });
+
+  it("does not call any broker write for max_loss_streak", () => {
+    const forbidden = [
+      "setRiskSetting",
+      "setAutoLiq",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "flattenPositions",
+      "applyBrokerDayLockout",
+    ];
+    for (const banned of forbidden) {
+      assert.ok(!CODE.includes(banned), `max_loss_streak panel must not reference broker write: ${banned}`);
+    }
+  });
+});
+
+describe("safety-console page — env section describes listener-worker exposure", () => {
+  it("section description discloses that listener-worker env is shown only when explicitly exposed", () => {
+    assert.ok(
+      CODE.includes("Listener-worker env values are shown only when explicitly exposed"),
+      "section description must disclose that listener-worker env is shown only when exposed via listener status",
+    );
+  });
+});
