@@ -10,6 +10,9 @@
  * Both cutoff behavior radios are stored on the rule record so user intent is
  * captured for the day the scheduler ships. Saving them today has no effect
  * on lock behavior — copy must reflect that.
+ *
+ * Long per-option hints live behind individual "Learn more" disclosures so
+ * the card stays compact at a glance.
  */
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "../session-window-copy";
@@ -51,7 +54,7 @@ export const SESSION_END_BEHAVIOR_OPTIONS = [
   {
     value: "flatten_at_session_end",
     label: "Close open positions at cutoff, then lock",
-    hint: "Saved for future cutoff automation. This action is not active yet.",
+    hint: "Saved for future cutoff automation. This action is not active yet. When enabled, Guardrail will close all open positions at the cutoff hour, then lock the account for the rest of the day.",
   },
 ] as const;
 
@@ -67,15 +70,12 @@ type Props = {
     value: SessionCutoffValues[K],
   ) => void;
   timezone?: string | null;
-  /** Customizes the helper text shown under the section title. */
-  introHint?: string;
 };
 
 export function SessionCutoffSection({
   values,
   update,
   timezone,
-  introHint,
 }: Props) {
   const hour = intOrNull(values.allowedEndHour);
   const boundary = hour !== null ? cmeHourBoundaryNote(hour) : null;
@@ -84,19 +84,15 @@ export function SessionCutoffSection({
   const localHour = hour !== null && showLocal ? cmeHourToLocalHour(hour, timezone) : null;
 
   return (
-    <SectionCard title="Session cutoff" ariaLabel="Session cutoff">
-      <div>
-        <p className="flex items-center gap-2 text-sm font-semibold text-stone-950">
-          {SESSION_WINDOW_COPY.legend}
-          <RuleStatusBadge variant="monitoring-only" />
-        </p>
-        <p className="mt-1 text-xs text-stone-500">
-          {introHint ?? `Override the default daily cutoff for this account. ${SESSION_WINDOW_COPY.helperText}`}
-        </p>
-      </div>
+    <SectionCard
+      title="Session cutoff"
+      ariaLabel="Session cutoff"
+      badge={<RuleStatusBadge variant="monitoring-only" />}
+    >
       <Field
         label={SESSION_WINDOW_COPY.endLabel}
-        hint={SESSION_WINDOW_COPY.endHint}
+        hint="Saved — cutoff scheduling is not automated yet."
+        details={SESSION_WINDOW_COPY.endHint}
       >
         <CmeHourSelect
           value={values.allowedEndHour}
@@ -115,32 +111,38 @@ export function SessionCutoffSection({
           )}
         </div>
       )}
-      <div>
+      <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <p className="text-xs font-medium text-stone-600">
             {SESSION_WINDOW_COPY.cutoffBehaviorLabel}
           </p>
           <RuleStatusBadge variant="planned-broker" />
         </div>
-        <div className="mt-2 grid gap-2">
+        <div className="grid gap-2">
           {SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
-            <label
+            <div
               key={value}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
+              className="rounded-xl border border-stone-200 bg-white px-4 py-2.5"
             >
-              <input
-                type="radio"
-                name="accountSessionEndBehavior"
-                value={value}
-                checked={values.sessionEndBehavior === value}
-                onChange={() => update("sessionEndBehavior", value)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
-              />
-              <span>
+              <label className="flex cursor-pointer items-center gap-3 text-sm">
+                <input
+                  type="radio"
+                  name="accountSessionEndBehavior"
+                  value={value}
+                  checked={values.sessionEndBehavior === value}
+                  onChange={() => update("sessionEndBehavior", value)}
+                  className="h-4 w-4 shrink-0 accent-stone-950"
+                />
                 <span className="font-medium text-stone-950">{label}</span>
-                <span className="mt-0.5 block text-stone-500">{hint}</span>
-              </span>
-            </label>
+              </label>
+              <details className="group ml-7 mt-1 text-xs text-stone-400">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-stone-600">
+                  <span className="text-[10px]">Learn more</span>
+                  <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-1 text-stone-500">{hint}</p>
+              </details>
+            </div>
           ))}
         </div>
       </div>
