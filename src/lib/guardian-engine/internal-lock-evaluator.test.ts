@@ -271,24 +271,24 @@ describe("applyInternalLockForConnection — pre-existing lock lookup when alrea
     );
   });
 
-  it("returns existing lock id as internalLockEventId with null-safe fallback", () => {
+  it("returns existing lock id as internalLockEventId when lock found (guarded by if-block)", () => {
     assert.ok(
-      dbSrc.includes("existingLock?.id ?? null"),
-      "must use existingLock?.id ?? null so no-lock case returns null internalLockEventId",
+      dbSrc.includes("internalLockEventId: existingLock.id"),
+      "must reference existingLock.id when lock is found (guarded by if(existingLock) block)",
     );
   });
 
-  it("returns existing lock ruleType with null-safe fallback", () => {
+  it("returns null internalLockEventId when no lock exists and no violation to backfill", () => {
     assert.ok(
-      dbSrc.includes("existingLock?.ruleType ?? null"),
-      "must use existingLock?.ruleType ?? null so no-lock case returns null ruleType",
+      dbSrc.includes("no active violation to backfill"),
+      "must return internalLockEventId=null when STOPPED but no existing lock and no current violation",
     );
   });
 
-  it("does not create a new InternalLockEvent in the STOPPED branch", () => {
+  it("does not use bare internalLockEvent.create in STOPPED branch (backfill uses upsert)", () => {
     assert.ok(
       !dbSrc.includes("internalLockEvent.create"),
-      "STOPPED branch must never call create — only findFirst to look up existing rows",
+      "STOPPED branch must not call bare create() — backfill uses upsert with activeDedupKey conflict target",
     );
   });
 
@@ -333,6 +333,189 @@ describe("reset-session-state — activeDedupKey cleared on reset", () => {
     assert.ok(
       resetSrc.includes("clearedAt: null"),
       "reset must filter to only active locks (clearedAt IS NULL)",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: backfill when sync-path STOPPED without InternalLockEvent (C1 gap fix)
+//
+// Root cause: syncTradovateAccount evaluates rules independently and sets
+// riskState=STOPPED without creating an InternalLockEvent. When
+// applyInternalLockForConnection later runs (on a WebSocket props event), it
+// sees STOPPED, skips rule evaluation, and previously returned
+// internalLockEventId=null — making broker enforcement unreachable.
+//
+// Fix: when the STOPPED branch finds no existing InternalLockEvent, re-evaluate
+// rules and backfill one via upsert if a breach is still active.
+// ---------------------------------------------------------------------------
+
+describe("applyInternalLockForConnection — backfill when sync-path STOPPED without InternalLockEvent", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+
+  it("re-evaluates rules in the STOPPED branch when no existing lock is found", () => {
+    assert.ok(
+      dbSrc.includes("backfillViolations"),
+      "STOPPED branch must re-evaluate rules via evaluateDryRunRules when no existing lock is found",
+    );
+  });
+
+  it("backfill uses upsert — not create — for race safety under concurrent props events", () => {
+    const dedupIdx = dbSrc.indexOf("backfillDedupKey");
+    const upsertIdx = dbSrc.indexOf("internalLockEvent.upsert", dedupIdx - 50);
+    assert.ok(
+      dedupIdx > -1 && upsertIdx > -1,
+      "backfill must use upsert with activeDedupKey conflict target — not bare create()",
+    );
+  });
+
+  it("backfill calls buildInternalLockDedupKey for the same dedup key format as the normal path", () => {
+    const matches = [...dbSrc.matchAll(/buildInternalLockDedupKey/g)];
+    assert.ok(
+      matches.length >= 2,
+      "buildInternalLockDedupKey must appear in both the normal create path and the backfill path",
+    );
+  });
+
+  it("backfill skips and returns null internalLockEventId when no violation is currently detected", () => {
+    assert.ok(
+      dbSrc.includes("no active violation to backfill"),
+      "backfill must return internalLockEventId=null when rules do not currently show a breach",
+    );
+  });
+
+  it("backfill sets createdOrUpdated=true when a lock event is backfilled", () => {
+    const backfillLogIdx = dbSrc.indexOf("backfilling InternalLockEvent");
+    const createdOrUpdatedIdx = dbSrc.indexOf("createdOrUpdated: true", backfillLogIdx);
+    assert.ok(
+      backfillLogIdx > -1 && createdOrUpdatedIdx > -1,
+      "backfill result must set createdOrUpdated=true so the listener can distinguish backfill from no-op",
+    );
+  });
+
+  it("backfill logs the sync-path-STOPPED cause for observability", () => {
+    assert.ok(
+      dbSrc.includes("sync-path STOPPED without lock event"),
+      "backfill must log the cause so Railway logs can distinguish backfill events from normal lock creation",
+    );
+  });
+
+  it("backfill does not call any broker API", () => {
+    for (const banned of ["applyBrokerDayLockout", "triggerEnforcement", "userAccountAutoLiq"]) {
+      assert.ok(!dbSrc.includes(banned), `backfill path must not call ${banned}`);
+    }
+  });
+
+  it("backfill passes dailyProfitTarget: null to exclude profit-target from enforcement path", () => {
+    const backfillIdx = dbSrc.indexOf("backfillInput");
+    const profitNullIdx = dbSrc.indexOf("dailyProfitTarget: null", backfillIdx);
+    assert.ok(
+      backfillIdx > -1 && profitNullIdx > -1,
+      "backfill input must pass dailyProfitTarget: null — profit-target never creates an InternalLockEvent",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: sync-path root cause documentation
+//
+// syncTradovateAccount has its own rule evaluator (Phase 2A). It evaluates
+// daily_loss_limit independently and calls triggerEnforcement → GuardianIntervention.
+// It does NOT create InternalLockEvents — that is the listener path's job.
+// This test documents the architectural separation so the dual-path design is
+// explicit and regressions are caught.
+// ---------------------------------------------------------------------------
+
+describe("syncTradovateAccount — own rule evaluator creates GuardianIntervention, not InternalLockEvent", () => {
+  const syncSrc = readSrc("src/lib/brokers/tradovate-sync.ts");
+
+  function codeOnlySync(): string {
+    let s = syncSrc;
+    s = s.replace(/\/\*[\s\S]*?\*\//g, "");
+    s = s.replace(/(^|[^:])\/\/.*$/gm, "$1");
+    return s;
+  }
+
+  it("sync evaluates daily_loss_limit using lossPct >= 1.0 and transitions to STOPPED", () => {
+    assert.ok(
+      syncSrc.includes("lossPct") && syncSrc.includes("lossPct >= 1.0"),
+      "sync must evaluate daily_loss_limit via lossPct and set newRiskState=STOPPED",
+    );
+    assert.ok(
+      syncSrc.includes('"STOPPED"'),
+      "sync must write riskState=STOPPED to LiveSessionState when breach is detected",
+    );
+  });
+
+  it("sync calls triggerEnforcement on the NORMAL → STOPPED transition", () => {
+    assert.ok(
+      codeOnlySync().includes("triggerEnforcement"),
+      "sync must call triggerEnforcement to create a GuardianIntervention audit record",
+    );
+    assert.ok(
+      syncSrc.includes("violationCreated"),
+      "sync must guard triggerEnforcement behind violationCreated (NORMAL → STOPPED transition only)",
+    );
+  });
+
+  it("sync does NOT create InternalLockEvent rows — listener path only", () => {
+    assert.ok(
+      !codeOnlySync().includes("internalLockEvent"),
+      "sync must not create InternalLockEvent — that is the listener path's responsibility (applyInternalLockForConnection)",
+    );
+  });
+
+  it("sync does NOT import applyInternalLockForConnection", () => {
+    assert.ok(
+      !syncSrc.includes("applyInternalLockForConnection"),
+      "sync must not import or call applyInternalLockForConnection — the listener triggers it via WebSocket props events",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: BROKER_ENFORCEMENT_ENABLED gate — enforcement stays blocked
+//
+// When BROKER_ENFORCEMENT_ENABLED=false the listener worker skips the broker
+// enforcement service even when applyInternalLockForConnection returns a valid
+// internalLockEventId. Verified by reading the listener-worker source.
+// ---------------------------------------------------------------------------
+
+describe("listener worker — BROKER_ENFORCEMENT_ENABLED gates broker writes even with a valid lock event", () => {
+  const listenerSrc = readSrc("scripts/tradovate-listener-worker.ts");
+
+  it("checks BROKER_ENFORCEMENT_ENABLED before calling maybeAttemptBrokerDailyLossLockoutForInternalLock", () => {
+    const brokerEnabledIdx = listenerSrc.indexOf('BROKER_ENFORCEMENT_ENABLED !== "true"');
+    // Use lastIndexOf to skip the import line — we want the call-site occurrence.
+    const lockoutIdx = listenerSrc.lastIndexOf("maybeAttemptBrokerDailyLossLockoutForInternalLock");
+    assert.ok(
+      brokerEnabledIdx > -1 && lockoutIdx > -1,
+      "listener must gate broker enforcement behind BROKER_ENFORCEMENT_ENABLED check",
+    );
+    assert.ok(
+      brokerEnabledIdx < lockoutIdx,
+      "BROKER_ENFORCEMENT_ENABLED check must appear before maybeAttemptBrokerDailyLossLockoutForInternalLock call-site",
+    );
+  });
+
+  it("skips broker enforcement when BROKER_ENFORCEMENT_ENABLED is false (return in the check)", () => {
+    assert.ok(
+      listenerSrc.includes('BROKER_ENFORCEMENT_ENABLED !== "true"'),
+      "early-return check for BROKER_ENFORCEMENT_ENABLED=false must be present",
+    );
+  });
+
+  it("checks GUARDRAIL_INTERNAL_LOCK_ENABLED before calling applyInternalLockForConnection", () => {
+    const internalLockFlagIdx = listenerSrc.indexOf('GUARDRAIL_INTERNAL_LOCK_ENABLED === "true"');
+    // Use lastIndexOf to skip the import line — we want the call-site occurrence.
+    const applyLockIdx = listenerSrc.lastIndexOf("applyInternalLockForConnection");
+    assert.ok(
+      internalLockFlagIdx > -1 && applyLockIdx > -1,
+      "listener must gate applyInternalLockForConnection behind GUARDRAIL_INTERNAL_LOCK_ENABLED",
+    );
+    assert.ok(
+      internalLockFlagIdx < applyLockIdx,
+      "GUARDRAIL_INTERNAL_LOCK_ENABLED check must appear before applyInternalLockForConnection call-site",
     );
   });
 });
