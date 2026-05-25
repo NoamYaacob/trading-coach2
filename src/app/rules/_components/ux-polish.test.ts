@@ -98,22 +98,26 @@ test("rule-status-badge: RuleStatusBadge accepts compact prop and uses RULE_STAT
 // ── Section files use compact badges ─────────────────────────────────────────
 
 const SECTION_FILES: Array<[string, string]> = [
-  ["money-limits-section", "sections/money-limits-section.tsx"],
-  ["trading-behavior-section", "sections/trading-behavior-section.tsx"],
-  ["position-symbol-section", "sections/position-symbol-section.tsx"],
+  // After PR #37 the form composes:
+  //   Core rules  ← absorbs Money limits, Trading behavior, Position-symbol's maxContracts
+  //   Symbol limits row (collapsed) ← absorbs the per-symbol cap table
+  //   Session cutoff row (collapsed)
+  ["core-rules-section", "sections/core-rules-section.tsx"],
+  ["symbol-limits-row", "sections/symbol-limits-row.tsx"],
   ["session-cutoff-section", "sections/session-cutoff-section.tsx"],
 ];
 
 for (const [name, rel] of SECTION_FILES) {
-  test(`${name}: uses compact prop on RuleStatusBadge`, () => {
+  test(`${name}: renders compact-label status indicators`, () => {
     const src = read(rel);
+    // Each file must either pass `compact` to RuleStatusBadge directly, or
+    // pass a status variant to a RuleRow (which forwards compact internally).
+    const usesCompactBadge =
+      src.includes("RuleStatusBadge") && src.includes("compact");
+    const usesRuleRowStatus = src.includes("RuleRow") && /\bstatus=/.test(src);
     assert.ok(
-      src.includes("RuleStatusBadge"),
-      `${name} must import and use RuleStatusBadge`,
-    );
-    assert.ok(
-      src.includes("compact"),
-      `${name} must use the compact prop on its RuleStatusBadge instances so short labels render in-form`,
+      usesCompactBadge || usesRuleRowStatus,
+      `${name} must render status via compact RuleStatusBadge or RuleRow status prop`,
     );
   });
 }
@@ -140,57 +144,53 @@ test("how-enforcement-works: still has full canonical labels (not compact)", () 
   );
 });
 
-// ── position-symbol-section: empty state hides add-form by default ───────────
+// ── symbol-limits-row: collapsed by default, empty state hides add-form ──────
 
-test("position-symbol-section: has showSymbolEditor / symbolEditorOpen state for empty-state gate", () => {
-  const src = read("sections/position-symbol-section.tsx");
+test("symbol-limits-row: has symbolEditorOpen state for empty-state gate", () => {
+  const src = read("sections/symbol-limits-row.tsx");
   assert.ok(
-    src.includes("symbolEditorOpen") || src.includes("showSymbolEditor"),
-    "section must have local state controlling when the symbol editor is visible",
+    src.includes("symbolEditorOpen"),
+    "row must have local state controlling when the symbol editor is visible",
   );
   assert.ok(
     src.includes("useState"),
-    "section must use useState to track editor visibility",
+    "row must use useState to track editor visibility",
   );
 });
 
-test("position-symbol-section: empty state shows '+ Add symbol limit' trigger", () => {
-  const src = read("sections/position-symbol-section.tsx");
+test("symbol-limits-row: empty state shows '+ Add symbol limit' trigger", () => {
+  const src = read("sections/symbol-limits-row.tsx");
   assert.ok(
     src.includes("Add symbol limit"),
     "empty state must have an 'Add symbol limit' call-to-action",
   );
 });
 
-test("position-symbol-section: SymbolLimitsTable is still present in editor branch", () => {
-  const src = read("sections/position-symbol-section.tsx");
+test("symbol-limits-row: SymbolLimitsTable is still present in editor branch", () => {
+  const src = read("sections/symbol-limits-row.tsx");
   assert.ok(
     src.includes("<SymbolLimitsTable"),
     "SymbolLimitsTable must remain in the editor branch (only hidden behind empty-state gate)",
   );
   assert.ok(
-    src.includes("disabled={symbolLimitsDisabled}"),
-    "SymbolLimitsTable must still honor disabled={symbolLimitsDisabled}",
+    src.includes("disabled={disabled}"),
+    "SymbolLimitsTable must still honor disabled={disabled}",
   );
 });
 
-test("position-symbol-section: empty state does NOT render select or limit input by default", () => {
-  const src = read("sections/position-symbol-section.tsx");
-  // The select/input lives inside SymbolLimitsTable which is conditional.
-  // The empty-state branch must not contain a standalone <select or <input.
-  // Verify the empty-state branch text (the trigger button text) is present.
+test("symbol-limits-row: empty state does NOT render select or limit input by default", () => {
+  const src = read("sections/symbol-limits-row.tsx");
   assert.ok(
-    src.includes("symbolEditorOpen || values.symbolLimits.length > 0") ||
-    src.includes("symbolEditorOpen || values.symbolLimits.length"),
+    src.includes("symbolEditorOpen || value.length > 0"),
     "showEditor gate must be: symbolEditorOpen || has existing rows",
   );
 });
 
-test("position-symbol-section: is a client component (needs useState)", () => {
-  const src = read("sections/position-symbol-section.tsx");
+test("symbol-limits-row: is a client component (needs useState)", () => {
+  const src = read("sections/symbol-limits-row.tsx");
   assert.ok(
     src.includes('"use client"'),
-    "position-symbol-section must be a client component to use useState",
+    "symbol-limits-row must be a client component to use useState",
   );
 });
 

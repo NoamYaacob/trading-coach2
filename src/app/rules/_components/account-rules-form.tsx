@@ -18,9 +18,8 @@ import { fmt12h } from "./trading-session-utils";
 import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 import { ApplyPendingButton } from "./apply-pending-button";
 import { CopyRulesModal, type CopySourceAccount } from "./copy-rules-modal";
-import { MoneyLimitsSection } from "./sections/money-limits-section";
-import { TradingBehaviorSection } from "./sections/trading-behavior-section";
-import { PositionSymbolSection } from "./sections/position-symbol-section";
+import { CoreRulesSection } from "./sections/core-rules-section";
+import { SymbolLimitsRow } from "./sections/symbol-limits-row";
 import { SessionCutoffSection } from "./sections/session-cutoff-section";
 import { NotificationsSection } from "./sections/notifications-section";
 import { AdvancedBrokerActionsSection } from "./sections/advanced-broker-actions-section";
@@ -498,23 +497,36 @@ export function AccountRulesForm({
         className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " cursor-not-allowed" : ""}`}
       >
 
-      <MoneyLimitsSection
-        values={{ maxDailyLoss: values.maxDailyLoss, riskPerTrade: values.riskPerTrade }}
+      <CoreRulesSection
+        values={{
+          maxDailyLoss: values.maxDailyLoss,
+          riskPerTrade: values.riskPerTrade,
+          maxTradesPerDay: values.maxTradesPerDay,
+          stopAfterLosses: values.stopAfterLosses,
+          maxContracts: values.maxContracts,
+          rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
+        }}
         update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
         hasExistingRules={hasExistingRules}
         showInheritedContext={
           defaultValues?.maxDailyLoss !== undefined ||
           (defaultValues as { dailyProfitTarget?: string } | undefined)?.dailyProfitTarget !== undefined
         }
-      />
-
-      <TradingBehaviorSection
-        values={{
-          maxTradesPerDay: values.maxTradesPerDay,
-          stopAfterLosses: values.stopAfterLosses,
-        }}
-        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
+        showAdvancedBrokerCap={showAdvancedBrokerCap}
+        onShowAdvancedBrokerCap={() => setShowAdvancedBrokerCap(true)}
         pendingNotes={{
+          maxDailyLoss: defaultPendingNote(
+            defaultPendingPayload,
+            "maxDailyLoss",
+            initial.maxDailyLoss,
+            defaultValues?.maxDailyLoss ?? "",
+          ),
+          riskPerTrade: defaultPendingNote(
+            defaultPendingPayload,
+            "riskPerTrade",
+            initial.riskPerTrade,
+            defaultValues?.riskPerTrade ?? "",
+          ),
           maxTradesPerDay: defaultPendingNote(
             defaultPendingPayload,
             "maxTradesPerDay",
@@ -527,20 +539,6 @@ export function AccountRulesForm({
             initial.stopAfterLosses,
             defaultValues?.stopAfterLosses ?? "",
           ),
-        }}
-      />
-
-      <PositionSymbolSection
-        values={{
-          maxContracts: values.maxContracts,
-          rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
-          symbolLimits: values.symbolLimits,
-        }}
-        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
-        showAdvancedBrokerCap={showAdvancedBrokerCap}
-        onShowAdvancedBrokerCap={() => setShowAdvancedBrokerCap(true)}
-        symbolLimitsDisabled={fieldsDisabled}
-        pendingNotes={{
           maxContracts: defaultPendingNote(
             defaultPendingPayload,
             "maxContracts",
@@ -548,6 +546,17 @@ export function AccountRulesForm({
             defaultValues?.maxContracts ?? "",
           ),
         }}
+      />
+
+      {/* Advanced rows — all collapsed by default. Each is a <details>
+          accordion so traders can scan the core rules without scrolling
+          past long sections that don't enforce today. Order: per-symbol
+          caps → session cutoff → notifications → advanced broker actions
+          → planned rules. */}
+      <SymbolLimitsRow
+        value={values.symbolLimits}
+        onChange={(rows) => update("symbolLimits", rows)}
+        disabled={fieldsDisabled}
       />
 
       <SessionCutoffSection

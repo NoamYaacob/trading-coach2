@@ -16,9 +16,12 @@ import { cmeHourBoundaryNote } from "./cme-hour-parsing.ts";
 // the account form and its section files as one logical source — any string
 // they assert may live in any of these files.
 const ACCOUNT_SECTION_FILES = [
-  resolve(import.meta.dirname, "sections/money-limits-section.tsx"),
-  resolve(import.meta.dirname, "sections/trading-behavior-section.tsx"),
-  resolve(import.meta.dirname, "sections/position-symbol-section.tsx"),
+  // Core rules absorbed money-limits + trading-behavior + position-symbol
+  // maxContracts into a single compact card.
+  resolve(import.meta.dirname, "sections/core-rules-section.tsx"),
+  // Symbol-limits row is the collapsed-by-default version of the former
+  // Position & symbol controls card.
+  resolve(import.meta.dirname, "sections/symbol-limits-row.tsx"),
   resolve(import.meta.dirname, "sections/session-cutoff-section.tsx"),
   resolve(import.meta.dirname, "sections/notifications-section.tsx"),
   resolve(import.meta.dirname, "sections/advanced-broker-actions-section.tsx"),
@@ -285,16 +288,18 @@ test("default form exposes the canonical four section cards in order", () => {
   }
 });
 
-test("account form exposes the six section cards in the recommended order", () => {
-  // The account form is composed of six section components rendered in
-  // this order. Each card declares its label either via SectionCard's
-  // ariaLabel prop (always-expanded sections) or via aria-label on a
-  // <details> wrapper (collapsed sections like Advanced broker actions).
-  // The helper accepts either syntax — both are JSX-equivalent.
+test("account form exposes Core rules first, followed by collapsed advanced rows", () => {
+  // Redesigned layout (PR #37): the five enforce-today rules live in a
+  // single Core rules card; everything else (per-symbol caps, session
+  // cutoff, notifications, advanced broker actions, planned rules) is a
+  // <details>-wrapped collapsed row underneath.
+  //
+  // Each row declares its label either via SectionCard's ariaLabel prop
+  // (Core rules card) or via aria-label on a <details> wrapper (the
+  // collapsed advanced rows). The helper accepts either syntax.
   const SECTIONS = [
-    "Money limits",
-    "Trading behavior",
-    "Position & symbol controls",
+    "Core rules",
+    "Contract limits by symbol",
     "Session cutoff",
     "Notifications",
     "Advanced broker actions",
@@ -302,7 +307,6 @@ test("account form exposes the six section cards in the recommended order", () =
   const src = read(FORM_FILES.account);
   let lastIdx = -1;
   for (const section of SECTIONS) {
-    // Match either ariaLabel="..." (SectionCard prop) or aria-label="..." (raw JSX).
     const idxA = src.indexOf(`ariaLabel="${section}"`);
     const idxB = src.indexOf(`aria-label="${section}"`);
     const candidates = [idxA, idxB].filter((i) => i !== -1);
@@ -402,34 +406,34 @@ function codeOnly(src: string): string {
     .join("\n");
 }
 
-test("account form: Max trades per week is NOT shown as a primary Trading-behavior row", () => {
-  // The placeholder moved to PlannedRulesSection (collapsed). Trading behavior
+test("account form: Max trades per week is NOT shown as a primary Core rules row", () => {
+  // The placeholder moved to PlannedRulesSection (collapsed). Core rules
   // must only contain the rules that actually enforce today (max trades/day +
-  // stop after losses) so the section stays scannable.
-  const tradingBehavior = codeOnly(
+  // stop after losses + dollar limits + max contracts) so the card stays scannable.
+  const coreRules = codeOnly(
     readFileSync(
-      resolve(import.meta.dirname, "sections/trading-behavior-section.tsx"),
+      resolve(import.meta.dirname, "sections/core-rules-section.tsx"),
       "utf8",
     ),
   );
   assert.ok(
-    !tradingBehavior.includes("Max trades per week"),
-    "Max trades per week must not appear in trading-behavior-section JSX — move it to PlannedRulesSection",
+    !coreRules.includes("Max trades per week"),
+    "Max trades per week must not appear in core-rules-section JSX — move it to PlannedRulesSection",
   );
 });
 
-test("account form: Symbol blocks is NOT shown as a primary Position-symbol row", () => {
+test("account form: Symbol blocks is NOT shown as a primary symbol-limits row", () => {
   // Same reasoning as Max trades per week: Symbol blocks is not implemented
   // and must not compete with the rules that actually enforce today.
-  const positionSymbol = codeOnly(
+  const symbolLimitsRow = codeOnly(
     readFileSync(
-      resolve(import.meta.dirname, "sections/position-symbol-section.tsx"),
+      resolve(import.meta.dirname, "sections/symbol-limits-row.tsx"),
       "utf8",
     ),
   );
   assert.ok(
-    !positionSymbol.includes("Symbol blocks"),
-    "Symbol blocks must not appear in position-symbol-section JSX — move it to PlannedRulesSection",
+    !symbolLimitsRow.includes("Symbol blocks"),
+    "Symbol blocks must not appear in symbol-limits-row JSX — move it to PlannedRulesSection",
   );
 });
 
@@ -841,22 +845,26 @@ test("account form: imports and renders SymbolLimitsTable", () => {
 });
 
 test("account form: SymbolLimitsTable is disabled when the form is locked", () => {
-  // After the section-card refactor, the chain runs:
-  //   account-rules-form.tsx → symbolLimitsDisabled={fieldsDisabled}
-  //   position-symbol-section.tsx → <SymbolLimitsTable disabled={symbolLimitsDisabled}>
+  // After the PR #37 redesign, the chain runs:
+  //   account-rules-form.tsx → <SymbolLimitsRow disabled={fieldsDisabled} />
+  //   symbol-limits-row.tsx  → <SymbolLimitsTable disabled={disabled} />
   // Both ends must be wired or a locked account becomes editable for symbol limits.
   const src = read(FORM_FILES.account);
   const idx = src.indexOf("<SymbolLimitsTable");
   assert.ok(idx !== -1, "SymbolLimitsTable must be rendered");
   const block = src.slice(idx, idx + 320);
   assert.ok(
-    block.includes("disabled={symbolLimitsDisabled}"),
-    "SymbolLimitsTable must receive disabled={symbolLimitsDisabled} so a locked account is read-only",
+    block.includes("disabled={disabled}"),
+    "SymbolLimitsTable must receive disabled={disabled} so a locked account is read-only",
   );
-  // Verify the parent form propagates fieldsDisabled into symbolLimitsDisabled.
+  // Verify the parent form propagates fieldsDisabled into the row's disabled prop.
+  const rowIdx = src.indexOf("<SymbolLimitsRow");
+  assert.ok(rowIdx !== -1, "account form must render <SymbolLimitsRow>");
+  // The JSX block ends at the self-close `/>` of the row's opening tag.
+  const rowBlock = src.slice(rowIdx, src.indexOf("/>", rowIdx) + 2);
   assert.ok(
-    src.includes("symbolLimitsDisabled={fieldsDisabled}"),
-    "account form must pass fieldsDisabled into the PositionSymbolSection's symbolLimitsDisabled prop",
+    rowBlock.includes("disabled={fieldsDisabled}"),
+    "account form must pass fieldsDisabled into the SymbolLimitsRow's disabled prop",
   );
 });
 
@@ -962,16 +970,25 @@ test("account form: notifications section drops the stale inherited-setting fram
 
 // ── Enforcement accuracy: badges and footer ──────────────────────────────────
 
-// Match either the legacy text-attribute syntax used by the default form
-// (`<StatusBadge variant="..." text="Guardrail lock" />`) or the new
-// variant-based syntax used by the account-form section components
-// (`<RuleStatusBadge variant="guardrail-lock" />`).
+// Match any of three syntaxes used across the rules forms:
+//   - Default form: <StatusBadge text="Guardrail lock" />          (legacy)
+//   - Old section card: <RuleStatusBadge variant="guardrail-lock" />
+//   - New compact row: <RuleRow status="guardrail-lock" />          (PR #37)
+// All three resolve to the same canonical badge variant.
 function hasGuardrailLockBadge(block: string): boolean {
-  return block.includes('text="Guardrail lock"') || block.includes('variant="guardrail-lock"');
+  return (
+    block.includes('text="Guardrail lock"') ||
+    block.includes('variant="guardrail-lock"') ||
+    block.includes('status="guardrail-lock"')
+  );
 }
 
 function claimsMonitoringOnly(block: string): boolean {
-  return block.includes('text="Monitoring only"') || block.includes('variant="monitoring-only"');
+  return (
+    block.includes('text="Monitoring only"') ||
+    block.includes('variant="monitoring-only"') ||
+    block.includes('status="monitoring-only"')
+  );
 }
 
 test("both forms: max trades badge says 'Guardrail lock' not 'Monitoring only'", () => {

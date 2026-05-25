@@ -29,8 +29,10 @@ const RULES_ROOT = resolve(import.meta.dirname);
 
 const FIELD_PRIMITIVES = resolve(RULES_ROOT, "sections/field-primitives.tsx");
 const STEP_VALUE_MODULE = resolve(RULES_ROOT, "sections/step-value.ts");
-const TRADING_BEHAVIOR = resolve(RULES_ROOT, "sections/trading-behavior-section.tsx");
-const POSITION_SYMBOL  = resolve(RULES_ROOT, "sections/position-symbol-section.tsx");
+// After PR #37 redesign: MoneyLimits + TradingBehavior + Position-symbol's
+// maxContracts row were absorbed into a single Core rules card.
+const CORE_RULES       = resolve(RULES_ROOT, "sections/core-rules-section.tsx");
+const SYMBOL_LIMITS_ROW = resolve(RULES_ROOT, "sections/symbol-limits-row.tsx");
 const RULES_FORM       = resolve(RULES_ROOT, "rules-form.tsx");
 
 // ── stepValue pure logic ───────────────────────────────────────────────────
@@ -81,39 +83,34 @@ test("stepValue: non-numeric string is unchanged", () => {
 
 // ── Source-scan: integer fields use NumberStepperInput ─────────────────────
 
-test("trading-behavior-section: maxTradesPerDay uses NumberStepperInput, not NumberInput", () => {
-  const src = read(TRADING_BEHAVIOR);
+test("core-rules-section: integer fields use NumberStepperInput", () => {
+  const src = read(CORE_RULES);
   assert.ok(
     src.includes("NumberStepperInput"),
-    "trading-behavior-section must import and use NumberStepperInput",
+    "core-rules-section must import and use NumberStepperInput",
   );
-  assert.ok(
-    !src.includes("NumberInput"),
-    "trading-behavior-section must NOT use plain NumberInput (integer fields moved to stepper)",
-  );
+  // The three integer fields (maxTradesPerDay, stopAfterLosses, maxContracts)
+  // each bind to a NumberStepperInput.
+  for (const field of ["maxTradesPerDay", "stopAfterLosses", "maxContracts"]) {
+    assert.ok(
+      src.includes(`value={values.${field}}`),
+      `${field} must bind to a stepper input in core-rules-section`,
+    );
+  }
 });
 
-test("trading-behavior-section: both integer fields pass value/onChange to NumberStepperInput", () => {
-  const src = read(TRADING_BEHAVIOR);
+test("core-rules-section: dollar fields (maxDailyLoss, riskPerTrade) use plain NumberInput", () => {
+  const src = read(CORE_RULES);
+  for (const field of ["maxDailyLoss", "riskPerTrade"]) {
+    assert.ok(
+      src.includes(`value={values.${field}}`),
+      `${field} must bind a value in core-rules-section`,
+    );
+  }
+  // The card must import the plain NumberInput primitive for dollar fields.
   assert.ok(
-    src.includes('value={values.maxTradesPerDay}'),
-    "maxTradesPerDay must bind value to stepper",
-  );
-  assert.ok(
-    src.includes('value={values.stopAfterLosses}'),
-    "stopAfterLosses must bind value to stepper",
-  );
-});
-
-test("position-symbol-section: maxContracts uses NumberStepperInput, not NumberInput", () => {
-  const src = read(POSITION_SYMBOL);
-  assert.ok(
-    src.includes("NumberStepperInput"),
-    "position-symbol-section must import and use NumberStepperInput",
-  );
-  assert.ok(
-    !src.includes("NumberInput"),
-    "position-symbol-section must NOT use plain NumberInput (maxContracts moved to stepper)",
+    /import\s+\{[^}]*\bNumberInput\b[^}]*\}\s+from\s+["']\.\/field-primitives["']/.test(src),
+    "core-rules-section must import NumberInput for dollar fields",
   );
 });
 
@@ -147,12 +144,25 @@ test("rules-form: dollar fields (maxDailyLoss, riskPerTrade, accountSize) still 
   );
 });
 
-test("money-limits-section: does NOT use NumberStepperInput (dollar fields only)", () => {
-  const moneyLimitsSrc = read(resolve(RULES_ROOT, "sections/money-limits-section.tsx"));
-  assert.ok(
-    !moneyLimitsSrc.includes("NumberStepperInput"),
-    "money-limits-section must NOT use stepper — maxDailyLoss and riskPerTrade are dollar amounts",
-  );
+test("core-rules-section: dollar fields rendered with NumberInput, not NumberStepperInput", () => {
+  // Audit that the dollar-field rows in the Core rules card hand their input
+  // to <NumberInput …/>, never <NumberStepperInput …/>. Steppers are for
+  // small integer counts only.
+  const src = read(CORE_RULES);
+  for (const field of ["maxDailyLoss", "riskPerTrade"]) {
+    const idx = src.indexOf(`value={values.${field}}`);
+    assert.ok(idx !== -1, `${field} binding must exist in core-rules-section`);
+    // Walk backwards a short distance to find the opening tag the value attribute belongs to.
+    const before = src.slice(Math.max(0, idx - 80), idx);
+    assert.ok(
+      /<NumberInput\b/.test(before),
+      `${field} must be rendered with <NumberInput> (dollar field, not stepper)`,
+    );
+    assert.ok(
+      !/<NumberStepperInput\b/.test(before),
+      `${field} must NOT be rendered with <NumberStepperInput> — it is a dollar amount`,
+    );
+  }
 });
 
 // ── Source-scan: NumberStepperInput component quality ──────────────────────
@@ -205,7 +215,7 @@ test("safety: field-primitives does not import or call Tradovate", () => {
 });
 
 test("safety: no broker write or order action in stepper implementation", () => {
-  for (const path of [FIELD_PRIMITIVES, TRADING_BEHAVIOR, POSITION_SYMBOL]) {
+  for (const path of [FIELD_PRIMITIVES, CORE_RULES, SYMBOL_LIMITS_ROW]) {
     const src = read(path);
     for (const banned of ["cancelOrder", "liquidate", "flattenPosition", "PDLL", "PDPT", "sendOrder"]) {
       assert.ok(
