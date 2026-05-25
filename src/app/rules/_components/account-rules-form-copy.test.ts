@@ -326,6 +326,63 @@ test("account form does NOT have a stray 'At cutoff' section card (cutoff behavi
   );
 });
 
+// ── Trading session selector removed from the account form (Phase 2 cleanup) ─
+
+test("account form does NOT render TradingSessionSelector — removed in Phase 2 cleanup", () => {
+  // The trading-session selector is not part of the core account-risk setup,
+  // is not connected to active broker enforcement, and made the page feel
+  // overloaded. It was removed from the account-specific form. The component
+  // still exists and is used by the default-template form (rules-form.tsx);
+  // this test guards against a future re-mount in the account form.
+  //
+  // `read(FORM_FILES.account)` concatenates the form + every section file —
+  // if any of them re-introduce the selector, this test fires.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    !src.includes("<TradingSessionSelector"),
+    "account form must not render <TradingSessionSelector> — it was removed during the Phase 2 cleanup",
+  );
+  assert.ok(
+    !/from\s+["']\.\/trading-session-selector["']/.test(src) &&
+      !/from\s+["']\.\.\/trading-session-selector["']/.test(src),
+    "account form (and its section files) must not import TradingSessionSelector",
+  );
+});
+
+test("default form STILL renders TradingSessionSelector — only the account form removed it", () => {
+  // Safety: the cleanup must not delete the underlying component or its
+  // usage on the default template, since that form still configures
+  // session presets for accounts that fall back to defaults.
+  const src = read(FORM_FILES.default);
+  assert.ok(
+    src.includes("<TradingSessionSelector"),
+    "default-template form must still render <TradingSessionSelector>",
+  );
+});
+
+// ── Disabled-state visual hierarchy (Phase 2 cleanup) ────────────────────────
+
+test("account form: locked fieldset does NOT use opacity-50 (text stays readable)", () => {
+  // The previous disabled state combined a heavy `opacity-50` filter with
+  // the browser's native disabled input styling, which washed out section
+  // titles, helper text, and inherited-context strips so badly that the
+  // page became hard to scan. Inputs are still natively disabled via
+  // `<fieldset disabled>` — we no longer overlay opacity on top.
+  const src = read(FORM_FILES.account);
+  // Find the editable fieldset wrapper and inspect its className expression.
+  const idx = src.indexOf("disabled={fieldsDisabled}");
+  assert.ok(idx !== -1, "fieldset must still be disabled when fieldsDisabled is true");
+  const block = src.slice(idx, idx + 400);
+  assert.ok(
+    !block.includes("opacity-50"),
+    "the locked fieldset must not apply opacity-50 — text must stay readable",
+  );
+  assert.ok(
+    block.includes("cursor-not-allowed"),
+    "the locked fieldset must still use cursor-not-allowed to signal the disabled state",
+  );
+});
+
 test("pending diff renders three columns: Rule / Active now / Pending next", () => {
   // The amber paragraph list was replaced with a compact diff table.
   // Asserting the column headers locks the new layout against future

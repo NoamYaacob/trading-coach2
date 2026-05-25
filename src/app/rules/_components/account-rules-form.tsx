@@ -14,7 +14,6 @@ import {
   type PendingFieldActiveSource,
 } from "./account-rules-form-logic";
 import { validateRules, effectiveValue } from "./rule-validation";
-import { TradingSessionSelector } from "./trading-session-selector";
 import { fmt12h } from "./trading-session-utils";
 import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
 import { ApplyPendingButton } from "./apply-pending-button";
@@ -487,9 +486,15 @@ export function AccountRulesForm({
           native controls (input, select, radio, checkbox) inside without
           requiring prop changes to child components. Visual opacity dimming
           makes the read-only state obvious to the user. ── */}
+      {/* fieldset[disabled] propagates to every native input/select/radio inside —
+          they get their browser-default disabled greying for free. We add only a
+          subtle `cursor-not-allowed` on the wrapper to signal the locked state.
+          The previous `opacity-50` washed out section titles, helper text, and
+          inherited-context strips so badly that the page became hard to scan;
+          dropping it keeps text readable while inputs still look disabled. */}
       <fieldset
         disabled={fieldsDisabled}
-        className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " opacity-50 cursor-not-allowed" : ""}`}
+        className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " cursor-not-allowed" : ""}`}
       >
 
       <MoneyLimitsSection
@@ -557,17 +562,15 @@ export function AccountRulesForm({
 
       <AdvancedBrokerActionsSection />
 
-      <TradingSessionSelector
-        values={{
-          sessionPresets: values.sessionPresets,
-          sessionIsCustom: values.sessionIsCustom,
-          sessionStartTime: values.sessionStartTime,
-          sessionEndTime: values.sessionEndTime,
-          sessionTimezone: values.sessionTimezone,
-          ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes,
-        }}
-        onChange={(key, val) => update(key as keyof AccountRulesValues, val as AccountRulesValues[keyof AccountRulesValues])}
-      />
+      {/* Trading session selector was removed from the account form for now —
+          it is not part of the core account-risk setup, is not connected to
+          active broker enforcement, and made the page feel overloaded. The
+          values (sessionPresets, sessionIsCustom, sessionStartTime, etc.)
+          are still preserved in state and submitted unchanged, so any
+          previously-saved session presets stay intact on subsequent saves.
+          The TradingSessionSelector component still exists and is used by
+          the default-template form (rules-form.tsx); it will return here as
+          a separate "Session rules" / "Schedule" page later. */}
 
       </fieldset>{/* end editable fieldset */}
 
