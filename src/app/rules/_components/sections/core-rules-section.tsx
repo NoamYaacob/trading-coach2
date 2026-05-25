@@ -181,7 +181,7 @@ export function CoreRulesSection({
           status="guardrail-lock"
           displayValue={displayCount(values.stopAfterLosses)}
           emptyText="Not set"
-          helper="Consecutive losses before lock"
+          helper="Stops trading after this many consecutive losses"
           pendingNote={pendingNotes?.stopAfterLosses ?? null}
           disabled={disabled}
         >
@@ -217,7 +217,7 @@ export function CoreRulesSection({
           status="saved-eval-soon"
           displayValue={symbolDisplay}
           emptyText="No symbol limits set"
-          helper="Configured in Symbol limits below"
+          helper="Saved — evaluation coming soon · edit in Symbol limits below"
         />
       </RuleCardGroup>
 
