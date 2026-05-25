@@ -23,6 +23,17 @@ export const RULE_STATUS_LABEL: Record<RuleStatusVariant, string> = {
   "not-active": "Not active",
 };
 
+/** Compact one-word labels for inline form badges where horizontal space
+ *  is tight. Full labels stay in HowEnforcementWorks and test surfaces. */
+export const RULE_STATUS_LABEL_COMPACT: Record<RuleStatusVariant, string> = {
+  "broker-eligible": "Broker",
+  "guardrail-lock": "Lock",
+  "monitoring-only": "Monitor",
+  "saved-eval-soon": "Saved",
+  "planned-broker": "Planned",
+  "not-active": "Not active",
+};
+
 export const RULE_STATUS_CLS: Record<RuleStatusVariant, string> = {
   "broker-eligible": "border-emerald-200 bg-emerald-50 text-emerald-700",
   "guardrail-lock": "border-red-200 bg-red-50 text-red-700",

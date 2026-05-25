@@ -78,7 +78,7 @@ export function MoneyLimitsSection({
       <div className="grid items-start gap-3 sm:grid-cols-2">
         <Field
           label="Daily loss limit ($)"
-          badge={<RuleStatusBadge variant="broker-eligible" />}
+          badge={<RuleStatusBadge variant="broker-eligible" compact />}
           hint="Locks when today's P&L crosses this loss."
           details="On supported Tradovate connections with consent and full access granted, Guardrail can also write this limit to Tradovate's own risk settings so the broker enforces it independently. Off by default — opt-in per account."
           pendingNote={pendingNotes?.maxDailyLoss ?? null}
@@ -91,7 +91,7 @@ export function MoneyLimitsSection({
         </Field>
         <Field
           label="Risk per trade ($)"
-          badge={<RuleStatusBadge variant="monitoring-only" />}
+          badge={<RuleStatusBadge variant="monitoring-only" compact />}
           hint="Warning only — does not lock the account."
           pendingNote={pendingNotes?.riskPerTrade ?? null}
         >
