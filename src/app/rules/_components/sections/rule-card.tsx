@@ -59,7 +59,13 @@ export function RuleCard({
   const canEdit = !disabled && !!children;
 
   return (
-    <div className="group relative flex flex-col rounded-2xl border border-stone-200 bg-white p-3.5 shadow-[0_1px_4px_rgba(41,37,36,0.06)]">
+    <div
+      className={`group relative flex flex-col rounded-2xl border p-3.5 transition-shadow ${
+        editing
+          ? "border-amber-300/70 bg-[#fffdf8] shadow-[0_0_0_3px_rgba(180,120,30,0.08),0_1px_4px_rgba(41,37,36,0.06)]"
+          : "border-stone-200/80 bg-white shadow-[0_1px_4px_rgba(41,37,36,0.06)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(41,37,36,0.09)]"
+      }`}
+    >
       {/* Label + badge + edit toggle */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
@@ -72,7 +78,7 @@ export function RuleCard({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-medium text-stone-400 opacity-0 transition group-hover:opacity-100 hover:border-stone-400 hover:text-stone-700"
+            className="shrink-0 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2 py-1 text-[10px] font-medium text-amber-700 opacity-0 transition group-hover:opacity-100 hover:border-amber-300 hover:bg-amber-50"
           >
             Edit
           </button>
@@ -81,7 +87,7 @@ export function RuleCard({
           <button
             type="button"
             onClick={() => setEditing(false)}
-            className="shrink-0 rounded-lg border border-stone-300 px-2 py-1 text-[10px] font-medium text-stone-600 transition hover:border-stone-500"
+            className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800 transition hover:border-amber-400"
           >
             Done
           </button>

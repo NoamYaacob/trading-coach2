@@ -48,12 +48,17 @@ function intStr(v: number | null | undefined): string {
 export default async function RulesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; id?: string }>;
+  searchParams: Promise<{ scope?: string; id?: string; rule?: string }>;
 }) {
-  const { scope: rawScope = "default", id } = await searchParams;
+  const { scope: rawScope = "default", id, rule } = await searchParams;
   // "starter" is an explicit scope for the starter settings form.
   // "default" (no param) → accounts overview when accounts exist, starter settings when no accounts.
   const scope = rawScope === "starter" ? "starter" : rawScope === "account" ? "account" : "default";
+  // Editor mode: a specific rule is selected via ?rule=<id>. In that mode the
+  // page-level account scope sidebar is hidden so the rules rail (inside the
+  // detail pane) becomes the primary left rail. Two columns total, matching
+  // the Claude Design intent. Overview mode keeps the scope sidebar visible.
+  const isRuleEditorMode = scope === "account" && typeof rule === "string" && rule.length > 0;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -336,13 +341,27 @@ export default async function RulesPage({
       description="Configure rules per trading account."
       denseHero
     >
-      {/* Two-column layout: selector sidebar + editor */}
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-6">
+      {/* Two-column layout: selector sidebar + editor.
+       *  In rule-editor mode (?rule=<id>) the page-level scope sidebar is
+       *  hidden so the rules rail inside the detail pane becomes the primary
+       *  left rail (two-column total: rail + editor). In overview mode the
+       *  scope sidebar stays visible (sticky on desktop). */}
+      <div
+        className={`grid gap-4 lg:items-start lg:gap-6 ${
+          isRuleEditorMode ? "lg:grid-cols-1" : "lg:grid-cols-[260px_1fr]"
+        }`}
+      >
 
         {/* ── Scope selector ──────────────────────────────────────────────── */}
 
+        {/* Scope sidebar — hidden in rule-editor mode so the rules rail
+         *  becomes the primary left rail (matches Claude Design's 2-column
+         *  layout). The "← All rules" affordance inside the rail handles
+         *  return-to-overview navigation. */}
+        {!isRuleEditorMode && (
+        <>
         {/* Mobile: collapsible — collapses after scope selection so editor is visible */}
-        <details className="overflow-hidden rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
+        <details className="overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 lg:hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
               Rule Target
@@ -359,10 +378,10 @@ export default async function RulesPage({
         </details>
 
         {/* Desktop: always-visible sticky sidebar */}
-        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
+        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 p-3 lg:block lg:sticky lg:top-6">
           <div className="mb-3 px-3.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-              Rule Target
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+              Trading Plan
             </p>
             <p className="mt-1 text-xs leading-snug text-stone-500">
               Choose where these rules apply.
@@ -374,6 +393,8 @@ export default async function RulesPage({
             currentAccountId={id ?? null}
           />
         </div>
+        </>
+        )}
 
         {/* ── Rule editor ─────────────────────────────────────────────────── */}
         <div className="grid min-w-0 gap-3 sm:gap-3.5">
@@ -697,7 +718,7 @@ function AccountsOverviewPanel({
               <Link
                 key={account.id}
                 href={buildAccountRulesUrl(account.id)}
-                className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 transition hover:border-stone-300 hover:bg-stone-50"
+                className="flex items-center justify-between rounded-xl border border-stone-200/80 bg-white px-4 py-3 transition hover:border-amber-200 hover:bg-amber-50/30"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-stone-900">{account.label}</p>

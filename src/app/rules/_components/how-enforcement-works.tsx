@@ -35,22 +35,22 @@ export function HowEnforcementWorks() {
             enforces it directly. Off by default; opt-in per account.
           </li>
           <li>
-            <span className="font-medium text-red-700">Guardrail lock</span> —
+            <span className="font-medium text-indigo-700">Guardrail lock</span> —
             When the rule breaches, Guardrail marks the account locked inside the app
             and records a lock event. No broker orders are cancelled, blocked, or
             flattened — the lock is app-level only.
           </li>
           <li>
-            <span className="font-medium text-stone-700">Monitoring only</span> —
+            <span className="font-medium text-amber-700">Monitoring only</span> —
             Warning or display behavior. The rule does not lock the account.
           </li>
           <li>
-            <span className="font-medium text-sky-700">Saved · Evaluation coming soon</span> —
+            <span className="font-medium text-stone-600">Saved · Evaluation coming soon</span> —
             Your value is saved with the plan, but the evaluator that uses it ships
             later. Setting it today has no effect on lock behavior yet.
           </li>
           <li>
-            <span className="font-medium text-amber-700">Planned broker action</span> —
+            <span className="font-medium text-stone-400">Planned broker action</span> —
             The integration exists but is not safely active in production. Surfaced
             for transparency; not used to lock or modify your broker account today.
           </li>
