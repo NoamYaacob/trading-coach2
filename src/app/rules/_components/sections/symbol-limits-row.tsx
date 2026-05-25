@@ -40,6 +40,7 @@ export function SymbolLimitsRow({ value, onChange, disabled }: Props) {
   // unless rows already exist (then editor is the only sensible default).
   const [symbolEditorOpen, setSymbolEditorOpen] = useState(false);
   const showSymbolEditor = symbolEditorOpen || value.length > 0;
+  const validCount = value.filter((r) => r.symbol.trim() && r.maxContracts.trim()).length;
 
   return (
     <details
@@ -50,6 +51,9 @@ export function SymbolLimitsRow({ value, onChange, disabled }: Props) {
         <span className="flex items-center gap-2">
           {SYMBOL_LIMITS_COPY.heading}
           <RuleStatusBadge variant="saved-eval-soon" compact />
+          <span className="text-xs font-normal text-stone-400">
+            {validCount > 0 ? `${validCount} set` : "None set"}
+          </span>
         </span>
         <span aria-hidden className="text-stone-400 transition-transform group-open:rotate-45">
           +

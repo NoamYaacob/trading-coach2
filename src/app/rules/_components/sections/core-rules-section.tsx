@@ -1,30 +1,33 @@
 /**
- * Core rules section card — the only always-visible rule editor on the
- * account Trading Plan page.
+ * Core rules — premium card-grid layout.
  *
- * Renders the five enforce-today rules as compact RuleRow controls:
- *   - Daily loss limit ($)           — broker-eligible (Tradovate write opt-in)
- *   - Risk per trade ($)             — monitoring only
- *   - Max trades per day             — guardrail lock (app-level)
- *   - Stop after consecutive losses  — guardrail lock (app-level)
- *   - Max standard-equivalent contracts — guardrail lock (app-level)
+ * Six rules in three paired sections:
+ *   Money limits      — Daily loss limit (Broker) · Risk per trade (Monitor)
+ *   Trading behavior  — Max trades per day (Lock) · Tilt protection (Lock)
+ *   Position & symbols — Max contracts (Lock) · Per-symbol limits (Saved)
  *
- * Everything beyond these five rules (symbol limits, session cutoff,
- * notifications, advanced broker actions, planned rules) lives in the
- * collapsed advanced area below this section.
+ * Cards are read-first: they display the current value prominently. An "Edit"
+ * affordance (visible on hover) flips the card into an inline edit mode.
+ * When `disabled` is true (session locked, already traded today) the Edit
+ * button is suppressed and the card stays in read mode — text remains fully
+ * readable (no opacity dimming).
  *
- * Help is centralised: a single "About these rules" disclosure at the
- * bottom of the card lists explanations for each rule. Per-row "?" buttons
- * were removed to reduce visual noise on the always-visible card.
+ * The "Per-symbol limits" card is display-only; editing happens via the
+ * "Contract limits by symbol" collapsed row below the card grid.
  *
- * The advanced broker-side raw contract cap toggle ALSO lives here so the
- * trader sees it in context with the rule it modifies, but it is folded
- * behind an "Advanced options" expander so it stays out of the way.
+ * Below the card grid:
+ *   - "View contract sizing" expander (conditional on maxContracts being set)
+ *   - "Advanced options" / raw broker cap toggle (conditional on maxContracts)
+ *   - "About these rules" single disclosure (replaces per-row "?" buttons)
+ *
+ * Field keys and submit payload are unchanged.
  */
+import type { SymbolLimitRow } from "../symbol-limits-table";
 import { REVIEW_INHERITED_HINT } from "../account-rules-form-logic";
 import { MAX_POSITION_SIZE_COPY } from "../position-size-copy";
 import { MaxPositionSizeConversionTable } from "../max-position-size-conversion-table";
-import { NumberInput, NumberStepperInput, RuleRow, SectionCard } from "./field-primitives";
+import { NumberInput, NumberStepperInput } from "./field-primitives";
+import { RuleCard, RuleCardGroup } from "./rule-card";
 
 export type CoreRulesValues = {
   maxDailyLoss: string;
@@ -38,6 +41,8 @@ export type CoreRulesValues = {
 type Props = {
   values: CoreRulesValues;
   update: <K extends keyof CoreRulesValues>(key: K, value: CoreRulesValues[K]) => void;
+  /** Symbol limits rows — used for read-only summary in the Per-symbol card. */
+  symbolLimits?: SymbolLimitRow[];
   /** When false (creating override), show the "review inherited values" hint. */
   hasExistingRules: boolean;
   /** Hints that the inherited mini-strip should render. */
@@ -45,6 +50,8 @@ type Props = {
   /** Advanced broker hard-limit expander state — owned by the parent form. */
   showAdvancedBrokerCap: boolean;
   onShowAdvancedBrokerCap: () => void;
+  /** When true, suppresses Edit buttons (session locked / hard-locked). */
+  disabled?: boolean;
   pendingNotes?: {
     maxDailyLoss?: string | null;
     riskPerTrade?: string | null;
@@ -54,19 +61,40 @@ type Props = {
   };
 };
 
+function displayMoney(v: string): string {
+  const n = parseFloat(v);
+  if (!v.trim() || !Number.isFinite(n)) return "";
+  return `$${n.toLocaleString("en-US")}`;
+}
+
+function displayCount(v: string): string {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+function symbolSummary(rows: SymbolLimitRow[]): string {
+  const valid = rows.filter((r) => r.symbol.trim() && r.maxContracts.trim());
+  if (valid.length === 0) return "";
+  return valid.map((r) => `${r.symbol.trim().toUpperCase()} ≤ ${r.maxContracts}`).join(" · ");
+}
+
 export function CoreRulesSection({
   values,
   update,
+  symbolLimits = [],
   hasExistingRules,
   showInheritedContext,
   showAdvancedBrokerCap,
   onShowAdvancedBrokerCap,
+  disabled = false,
   pendingNotes,
 }: Props) {
+  const symbolDisplay = symbolSummary(symbolLimits);
+
   return (
-    <SectionCard title="Core rules" ariaLabel="Core rules">
+    <div className="grid gap-4" role="group" aria-label="Core rules">
       {!hasExistingRules && (
-        <p className="-mt-1 text-xs text-stone-500">{REVIEW_INHERITED_HINT}</p>
+        <p className="-mb-1 text-xs text-stone-500">{REVIEW_INHERITED_HINT}</p>
       )}
       {showInheritedContext && (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[11px] text-stone-600">
@@ -95,74 +123,105 @@ export function CoreRulesSection({
         </dl>
       )}
 
-      <div className="grid">
-        <RuleRow
-          label="Daily loss limit ($)"
+      {/* ── Money limits ─────────────────────────────────────────────────── */}
+      <RuleCardGroup title="Money limits">
+        <RuleCard
+          label="Daily loss limit"
           status="broker-eligible"
-          inputWidth="w-28"
+          displayValue={displayMoney(values.maxDailyLoss)}
+          emptyText="Not set"
+          helper="Locks when P&L crosses this loss"
           pendingNote={pendingNotes?.maxDailyLoss ?? null}
+          disabled={disabled}
         >
           <NumberInput
             value={values.maxDailyLoss}
             onChange={(v) => update("maxDailyLoss", v)}
             placeholder="500"
           />
-        </RuleRow>
+        </RuleCard>
 
-        <RuleRow
-          label="Risk per trade ($)"
+        <RuleCard
+          label="Risk per trade"
           status="monitoring-only"
-          inputWidth="w-28"
+          displayValue={displayMoney(values.riskPerTrade)}
+          emptyText="Not set"
+          helper="Warning only — no lock"
           pendingNote={pendingNotes?.riskPerTrade ?? null}
+          disabled={disabled}
         >
           <NumberInput
             value={values.riskPerTrade}
             onChange={(v) => update("riskPerTrade", v)}
             placeholder="100"
           />
-        </RuleRow>
+        </RuleCard>
+      </RuleCardGroup>
 
-        <RuleRow
+      {/* ── Trading behavior ─────────────────────────────────────────────── */}
+      <RuleCardGroup title="Trading behavior">
+        <RuleCard
           label="Max trades per day"
           status="guardrail-lock"
+          displayValue={displayCount(values.maxTradesPerDay)}
+          emptyText="Not set"
+          helper="Locks after allowance is exceeded"
           pendingNote={pendingNotes?.maxTradesPerDay ?? null}
+          disabled={disabled}
         >
           <NumberStepperInput
             value={values.maxTradesPerDay}
             onChange={(v) => update("maxTradesPerDay", v)}
             placeholder="5"
           />
-        </RuleRow>
+        </RuleCard>
 
-        <RuleRow
-          label="Stop after consecutive losses"
+        <RuleCard
+          label="Tilt protection"
           status="guardrail-lock"
+          displayValue={displayCount(values.stopAfterLosses)}
+          emptyText="Not set"
+          helper="Consecutive losses before lock"
           pendingNote={pendingNotes?.stopAfterLosses ?? null}
+          disabled={disabled}
         >
           <NumberStepperInput
             value={values.stopAfterLosses}
             onChange={(v) => update("stopAfterLosses", v)}
             placeholder="3"
           />
-        </RuleRow>
+        </RuleCard>
+      </RuleCardGroup>
 
-        <RuleRow
-          label={MAX_POSITION_SIZE_COPY.label}
+      {/* ── Position & symbols ───────────────────────────────────────────── */}
+      <RuleCardGroup title="Position & symbols">
+        <RuleCard
+          label="Max contracts"
           status="guardrail-lock"
+          displayValue={displayCount(values.maxContracts)}
+          emptyText="Not set"
+          helper={MAX_POSITION_SIZE_COPY.hint}
           pendingNote={pendingNotes?.maxContracts ?? null}
+          disabled={disabled}
         >
           <NumberStepperInput
             value={values.maxContracts}
             onChange={(v) => update("maxContracts", v)}
             placeholder="2"
           />
-        </RuleRow>
-      </div>
+        </RuleCard>
 
-      {/* Inline link expanders — kept subtle so the row grid above stays the
-          focal point. Contract sizing only renders the trigger when there is
-          something to expand (maxContracts entered); the broker-cap opt-in
-          only appears once a value is set. */}
+        {/* Read-only — editing happens in the Symbol limits accordion below */}
+        <RuleCard
+          label="Per-symbol limits"
+          status="saved-eval-soon"
+          displayValue={symbolDisplay}
+          emptyText="No symbol limits set"
+          helper="Configured in Symbol limits below"
+        />
+      </RuleCardGroup>
+
+      {/* Contract sizing expander — only when maxContracts is set */}
       {values.maxContracts.trim() !== "" && (
         <details className="group text-xs">
           <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1 text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
@@ -175,7 +234,7 @@ export function CoreRulesSection({
         </details>
       )}
 
-      {/* Advanced broker-side raw cap — opt-in expander tucked at the bottom. */}
+      {/* Advanced broker-side raw cap — opt-in expander */}
       {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
         <button
           type="button"
@@ -186,10 +245,8 @@ export function CoreRulesSection({
         </button>
       )}
       {values.maxContracts.trim() !== "" && showAdvancedBrokerCap && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
-          <p className="font-semibold text-amber-900">
-            Advanced broker-side contract cap
-          </p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+          <p className="font-semibold text-amber-900">Advanced broker-side contract cap</p>
           <p className="mt-1 text-amber-800">
             Enables a broker-side contract cap on your Tradovate account
             (immediate reject before execution). Tradovate counts all contracts
@@ -211,9 +268,7 @@ export function CoreRulesSection({
         </div>
       )}
 
-      {/* Section-level rule explanations — replaces per-row "?" buttons so the
-          rule grid stays scannable. Collapsed by default; one click reveals
-          all five explanations together. */}
+      {/* Section-level explanations — consolidated, collapsed by default */}
       <details className="group border-t border-stone-200 pt-2 text-xs">
         <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1 text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
           <span className="text-[10px]">About these rules</span>
@@ -243,7 +298,7 @@ export function CoreRulesSection({
             </dd>
           </div>
           <div>
-            <dt className="font-medium text-stone-800">Stop after consecutive losses</dt>
+            <dt className="font-medium text-stone-800">Tilt protection (stop after consecutive losses)</dt>
             <dd className="mt-0.5">
               Same session only. A winning trade resets the streak to zero.
               Guardrail marks the account locked inside the app; no broker action.
@@ -255,6 +310,6 @@ export function CoreRulesSection({
           </div>
         </dl>
       </details>
-    </SectionCard>
+    </div>
   );
 }

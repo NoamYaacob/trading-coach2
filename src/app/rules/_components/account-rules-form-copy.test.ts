@@ -231,12 +231,14 @@ test("4PM boundary note states automatic cutoff enforcement is not active yet", 
 
 // ── Cross-form parity ────────────────────────────────────────────────────────
 
-test("both forms use identical 'Risk per trade ($)' label (no 'Max risk per trade' divergence)", () => {
+test("both forms use a 'Risk per trade' label — no 'Max risk per trade' divergence", () => {
   // Default and account forms drifted on this label: default form said
   // 'Max risk per trade' and account form said 'Risk per trade'. The DB
   // column is `maxRiskPerTrade`/`riskPerTrade` (legacy schema), but the
-  // user-visible label must be the same in both places to avoid implying
-  // a different rule semantics.
+  // user-visible label must not imply a different rule semantics.
+  // PR #39: the account form card design drops the trailing '($)' from the
+  // card label since the large value already shows '$'; the default form
+  // (field-style) still uses 'Risk per trade ($)'. Neither must say 'Max'.
   const defaultSrc = read(FORM_FILES.default);
   const accountSrc = read(FORM_FILES.account);
   assert.ok(
@@ -244,12 +246,16 @@ test("both forms use identical 'Risk per trade ($)' label (no 'Max risk per trad
     "default form must label this field 'Risk per trade ($)' — do NOT regress to 'Max risk per trade'",
   );
   assert.ok(
-    accountSrc.includes('label="Risk per trade ($)"'),
-    "account form must label this field 'Risk per trade ($)'",
+    accountSrc.includes('"Risk per trade"') || accountSrc.includes('"Risk per trade ($)"'),
+    "account form must label this field 'Risk per trade' (with or without '$' suffix)",
   );
   assert.ok(
     !defaultSrc.includes('"Max risk per trade ($)"'),
     "default form must not contain the old 'Max risk per trade ($)' label",
+  );
+  assert.ok(
+    !accountSrc.includes('"Max risk per trade'),
+    "account form must not say 'Max risk per trade' — this label implies a different rule",
   );
 });
 
@@ -1012,10 +1018,22 @@ test("both forms: max trades badge says 'Guardrail lock' not 'Monitoring only'",
 });
 
 test("both forms: stop after losses badge says 'Guardrail lock' not 'Monitoring only'", () => {
+  // PR #39: account form card relabels this rule "Tilt protection" (field key stopAfterLosses
+  // is unchanged). Default form still says "Stop after consecutive losses". Check each form
+  // by its own label convention so divergence is intentional, not accidental.
   for (const [name, path] of Object.entries(FORM_FILES)) {
     const src = read(path);
-    const idx = src.indexOf('"Stop after consecutive losses"');
-    assert.ok(idx !== -1, `${name}: label 'Stop after consecutive losses' must be present`);
+    // Account form uses "Tilt protection"; default form uses the original label.
+    const accountLabel = '"Tilt protection"';
+    const defaultLabel = '"Stop after consecutive losses"';
+    const idx =
+      src.indexOf(accountLabel) !== -1
+        ? src.indexOf(accountLabel)
+        : src.indexOf(defaultLabel);
+    assert.ok(
+      idx !== -1,
+      `${name}: stop-after-losses label must be present as 'Tilt protection' or 'Stop after consecutive losses'`,
+    );
     const fieldBlock = src.slice(idx, idx + 400);
     assert.ok(
       hasGuardrailLockBadge(fieldBlock),
@@ -1030,11 +1048,25 @@ test("both forms: stop after losses badge says 'Guardrail lock' not 'Monitoring 
 
 test("both forms: max position size badge says 'Guardrail lock' not 'Monitoring only'", () => {
   // max_position_size creates an InternalLockEvent via the sync path (demo-only).
+  // PR #39: account form card uses label="Max contracts" (spec: shorter card label);
+  // the guardrail-lock badge is on the same RuleCard. Default form still uses
+  // MAX_POSITION_SIZE_COPY.label. Check each form by its own label convention.
   for (const [name, path] of Object.entries(FORM_FILES)) {
     const src = read(path);
-    const idx = src.indexOf("MAX_POSITION_SIZE_COPY.label");
-    assert.ok(idx !== -1, `${name}: MAX_POSITION_SIZE_COPY.label reference must be present`);
-    const fieldBlock = src.slice(idx - 20, idx + 400);
+    // Account sections: look for the "Max contracts" RuleCard with status="guardrail-lock"
+    // Default form: look for MAX_POSITION_SIZE_COPY.label near a guardrail-lock badge
+    const accountCardLabel = '"Max contracts"';
+    const defaultRef = "MAX_POSITION_SIZE_COPY.label";
+    const idxAccount = src.indexOf(accountCardLabel);
+    const idxDefault = src.indexOf(defaultRef);
+    const idx = idxAccount !== -1 ? idxAccount : idxDefault;
+    assert.ok(
+      idx !== -1,
+      `${name}: max position size must appear as "Max contracts" card or MAX_POSITION_SIZE_COPY.label reference`,
+    );
+    // For the account form, the RuleCard has status="guardrail-lock" on the same tag.
+    // For the default form, the badge appears within ~400 chars of the label reference.
+    const fieldBlock = src.slice(Math.max(0, idx - 20), idx + 400);
     assert.ok(
       hasGuardrailLockBadge(fieldBlock),
       `${name}: max position size badge must say "Guardrail lock" — this rule creates an internal lock on breach`,

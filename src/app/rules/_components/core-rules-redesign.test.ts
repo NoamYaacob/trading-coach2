@@ -1,10 +1,12 @@
 /**
- * PR #37 redesign — source-scan invariants.
+ * PR #37 / PR #39 redesign — source-scan invariants.
  *
- * The account Trading Plan page now centers on a single "Core rules" card
- * with five compact RuleRow controls. Everything else collapses into a
- * <details> accordion stack underneath. This file locks the new layout so
- * future edits don't silently re-expand sections that should stay closed.
+ * PR #37: replaced flat section cards with a single Core rules card.
+ * PR #39: replaced the compact RuleRow list inside that card with a 2-column
+ *   RuleCard grid (Money limits / Trading behavior / Position & symbols).
+ *
+ * This file locks the current layout so future edits don't silently re-expand
+ * sections that should stay closed or revert the card-grid premium design.
  */
 import { test, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -17,40 +19,45 @@ function read(rel: string) {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
-// ── Core rules card contains exactly the 5 enforce-today rules ───────────────
+// ── Core rules card grid — PR #39 layout ────────────────────────────────────
 
-describe("CoreRulesSection — five compact RuleRows", () => {
+describe("CoreRulesSection — card grid (PR #39)", () => {
   const SRC = read("sections/core-rules-section.tsx");
 
-  it("renders a SectionCard with title 'Core rules'", () => {
+  it("exposes aria-label='Core rules' on the outer wrapper", () => {
+    // PR #39 removed the SectionCard wrapper but keeps the ARIA group label
+    // so section-order tests can still locate this block.
     assert.ok(
-      SRC.includes('title="Core rules"') && SRC.includes('ariaLabel="Core rules"'),
-      "core-rules-section must render <SectionCard title=\"Core rules\" ariaLabel=\"Core rules\">",
+      SRC.includes('aria-label="Core rules"'),
+      "core-rules-section must expose aria-label=\"Core rules\" on its outer div",
     );
   });
 
-  it("uses the compact RuleRow primitive, not the full Field card", () => {
-    const ruleRowCount = (SRC.match(/<RuleRow\b/g) ?? []).length;
+  it("uses RuleCard components (not the old RuleRow list)", () => {
+    assert.ok(
+      SRC.includes("RuleCard"),
+      "core-rules-section must use RuleCard (PR #39 card grid)",
+    );
+    assert.ok(
+      !SRC.includes("<RuleRow"),
+      "core-rules-section must not use the old <RuleRow> list primitive",
+    );
+  });
+
+  it("renders three RuleCardGroup sections", () => {
+    const groupCount = (SRC.match(/<RuleCardGroup\b/g) ?? []).length;
     assert.equal(
-      ruleRowCount,
-      5,
-      `core-rules-section must render exactly 5 <RuleRow> elements (found ${ruleRowCount})`,
+      groupCount,
+      3,
+      `expected exactly 3 <RuleCardGroup> elements (Money limits / Trading behavior / Position & symbols), found ${groupCount}`,
     );
   });
 
-  it("declares one row per enforce-today rule label", () => {
-    for (const label of [
-      "Daily loss limit ($)",
-      "Risk per trade ($)",
-      "Max trades per day",
-      "Stop after consecutive losses",
-      "MAX_POSITION_SIZE_COPY.label",
-    ]) {
-      assert.ok(
-        SRC.includes(label),
-        `core-rules-section must declare a RuleRow with label ${label}`,
-      );
-    }
+  it("stopAfterLosses displayed as 'Tilt protection' in card label", () => {
+    assert.ok(
+      SRC.includes("Tilt protection"),
+      "stopAfterLosses card must be labelled 'Tilt protection' — field key is unchanged",
+    );
   });
 
   it("does not include Max trades per week (placeholder lives in PlannedRulesSection)", () => {
@@ -69,13 +76,13 @@ describe("CoreRulesSection — five compact RuleRows", () => {
     }
   });
 
-  it("tags integer rules with status='guardrail-lock'", () => {
-    // Three rules create internal locks: Max trades, Stop after losses, Max contracts.
+  it("tags exactly 3 rules with status='guardrail-lock'", () => {
+    // Three rules create internal locks: Max trades, Tilt protection (stopAfterLosses), Max contracts.
     const count = (SRC.match(/status="guardrail-lock"/g) ?? []).length;
     assert.equal(
       count,
       3,
-      `expected exactly 3 guardrail-lock rows (Max trades / Stop after losses / Max contracts), found ${count}`,
+      `expected exactly 3 guardrail-lock cards (Max trades / Tilt protection / Max contracts), found ${count}`,
     );
   });
 

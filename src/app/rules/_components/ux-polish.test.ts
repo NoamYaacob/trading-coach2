@@ -98,9 +98,9 @@ test("rule-status-badge: RuleStatusBadge accepts compact prop and uses RULE_STAT
 // ── Section files use compact badges ─────────────────────────────────────────
 
 const SECTION_FILES: Array<[string, string]> = [
-  // After PR #37 the form composes:
-  //   Core rules  ← absorbs Money limits, Trading behavior, Position-symbol's maxContracts
-  //   Symbol limits row (collapsed) ← absorbs the per-symbol cap table
+  // After PR #37/#39 the form composes:
+  //   Core rules  ← card grid (Money limits / Trading behavior / Position & symbols)
+  //   Symbol limits row (collapsed) ← per-symbol cap table
   //   Session cutoff row (collapsed)
   ["core-rules-section", "sections/core-rules-section.tsx"],
   ["symbol-limits-row", "sections/symbol-limits-row.tsx"],
@@ -115,9 +115,12 @@ for (const [name, rel] of SECTION_FILES) {
     const usesCompactBadge =
       src.includes("RuleStatusBadge") && src.includes("compact");
     const usesRuleRowStatus = src.includes("RuleRow") && /\bstatus=/.test(src);
+    // PR #39: CoreRulesSection uses RuleCard which internally renders a compact
+    // RuleStatusBadge. The status prop on RuleCard is the same semantic signal.
+    const usesRuleCardStatus = src.includes("RuleCard") && /\bstatus=/.test(src);
     assert.ok(
-      usesCompactBadge || usesRuleRowStatus,
-      `${name} must render status via compact RuleStatusBadge or RuleRow status prop`,
+      usesCompactBadge || usesRuleRowStatus || usesRuleCardStatus,
+      `${name} must render status via compact RuleStatusBadge, RuleRow status prop, or RuleCard status prop`,
     );
   });
 }
