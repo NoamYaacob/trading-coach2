@@ -133,8 +133,8 @@ describe("isInternalLockEligible — helper", () => {
     assert.equal(isInternalLockEligible("dailyProfitTarget"), false);
   });
 
-  it("returns false for maxContracts", () => {
-    assert.equal(isInternalLockEligible("maxContracts"), false);
+  it("returns true for maxContracts (sync-path internal lock)", () => {
+    assert.equal(isInternalLockEligible("maxContracts"), true);
   });
 
   it("returns false for unknown key", () => {

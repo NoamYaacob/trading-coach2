@@ -554,6 +554,84 @@ describe("safety-console page — max_loss_streak (stopAfterLosses) status surfa
   });
 });
 
+describe("safety-console page — max_position_size (maxContracts) status surfaced", () => {
+  it("Demo7Diagnosis type includes maxContracts", () => {
+    assert.ok(
+      CODE.includes("maxContracts: number | null"),
+      "Demo7Diagnosis must include maxContracts so the max_position_size panel can render",
+    );
+  });
+
+  it("Demo7Diagnosis type includes activeMaxPositionSizeLock", () => {
+    assert.ok(
+      CODE.includes("activeMaxPositionSizeLock: boolean"),
+      "Demo7Diagnosis must include activeMaxPositionSizeLock so the operator sees whether a max_position_size lock is live",
+    );
+  });
+
+  it("Demo7Diagnosis derives activeMaxPositionSizeLock from lock events filtered by ruleType", () => {
+    assert.ok(
+      CODE.includes("activeMaxPositionSizeLock"),
+      "must derive activeMaxPositionSizeLock from InternalLockEvent rows",
+    );
+    assert.ok(
+      CODE.includes('ruleType === "max_position_size"'),
+      "must filter by ruleType === 'max_position_size' when deriving activeMaxPositionSizeLock",
+    );
+  });
+
+  it("Prisma riskRules select includes maxContracts", () => {
+    assert.ok(
+      CODE.includes("maxContracts: true"),
+      "Prisma select must include maxContracts so the configured cap is surfaced",
+    );
+  });
+
+  it("QaStatusCard renders a max_position_size row", () => {
+    assert.ok(
+      CODE.includes("max_position_size internal lock"),
+      "QaStatusCard must show a 'max_position_size internal lock' row alongside the other rule rows",
+    );
+  });
+
+  it("QaTargetFocusCard shows max_position_size badge", () => {
+    assert.ok(
+      CODE.includes("posSizeLabel"),
+      "QaTargetFocusCard must compute a max_position_size badge label",
+    );
+    assert.ok(
+      CODE.includes('"max_position_size: LOCKED"') || CODE.includes("max_position_size: LOCKED"),
+      "max_position_size badge must surface a LOCKED state",
+    );
+  });
+
+  it("InternalLockDiagnosticSection shows maxContracts and activeMaxPositionSizeLock rows", () => {
+    assert.ok(
+      CODE.includes('label="maxContracts"'),
+      "diagnostic dl must include a maxContracts row",
+    );
+    assert.ok(
+      CODE.includes('label="activeMaxPositionSizeLock"'),
+      "diagnostic dl must include an activeMaxPositionSizeLock row so lock state is visible",
+    );
+  });
+
+  it("does not call any broker write for max_position_size", () => {
+    const forbidden = [
+      "setRiskSetting",
+      "setAutoLiq",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "flattenPositions",
+      "applyBrokerDayLockout",
+      "applyMaxPositionSize",
+    ];
+    for (const banned of forbidden) {
+      assert.ok(!CODE.includes(banned), `max_position_size panel must not reference broker write: ${banned}`);
+    }
+  });
+});
+
 describe("safety-console page — env section describes listener-worker exposure", () => {
   it("section description discloses that listener-worker env is shown only when explicitly exposed", () => {
     assert.ok(

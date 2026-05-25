@@ -122,7 +122,7 @@ export const RULE_CAPABILITIES: readonly RuleCapability[] = [
     savedInAccountOverride: true,
     dryRunEvaluated: true,
     guardianEvaluated: true,
-    internalLockEligible: false,
+    internalLockEligible: true,
     brokerRiskSettingsEligible: false,
     orderActionEligible: false,
     editableDuringActiveSession: false,
@@ -130,9 +130,9 @@ export const RULE_CAPABILITIES: readonly RuleCapability[] = [
     visibleInDashboard: true,
     visibleInSafetyConsole: true,
     currentStatus: "partial",
-    brokerSyncTruth: "guardrail_monitored",
+    brokerSyncTruth: "guardrail_lockable",
     userFacingExplanation:
-      "Guardrail monitors position size using standard-equivalent contract counting (e.g. 10 MNQ = 1 NQ equivalent). There is no real-time pre-trade enforcement — Guardrail cannot intercept an order before it reaches the broker. When a position exceeds the limit, Guardrail flags it and can notify you, but cannot reverse the fill.",
+      "Guardrail monitors position size using standard-equivalent contract counting (e.g. 10 MNQ = 1 NQ equivalent). The number you set is the inclusive allowance — \"Max contracts = 2\" permits up to 2 standard-equivalent contracts, and your Guardrail account is locked when a 3rd is detected on the next sync. There is no real-time pre-trade enforcement — Guardrail cannot intercept an order before it reaches the broker, so a fill that breaches the cap is recorded after the fact. App-side enforcement only — no broker-side position cap is written.",
   },
   {
     ruleKey: "sessionEndHour",
