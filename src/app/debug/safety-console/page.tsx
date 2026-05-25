@@ -662,10 +662,15 @@ export default async function SafetyConsolePage() {
     riskState: string | null;
     dailyPnl: number | null;
     maxDailyLoss: number | null;
+    tradesCount: number | null;
+    tradeCountSource: string | null;
+    maxTradesPerDay: number | null;
     tradingDay: string;
     env: string;
     activeLockCount: number;
     totalLockCount: number;
+    activeTradeLimitLock: boolean;
+    activeDailyLossLock: boolean;
   };
 
   let demo7Diagnosis: Demo7Diagnosis | null = null;
@@ -717,6 +722,12 @@ export default async function SafetyConsolePage() {
       canLock7 &&
       violations7.length > 0;
     const activeLockCount7 = demo7LockEvents.filter((e) => e.clearedAt == null).length;
+    const activeTradeLimitLock7 = demo7LockEvents.some(
+      (e) => e.clearedAt == null && e.ruleType === "trade_limit",
+    );
+    const activeDailyLossLock7 = demo7LockEvents.some(
+      (e) => e.clearedAt == null && e.ruleType === "daily_loss_limit",
+    );
     demo7Diagnosis = {
       canLock: canLock7,
       skipReasons: skipReasons7,
@@ -726,10 +737,15 @@ export default async function SafetyConsolePage() {
       riskState: session7?.riskState ?? null,
       dailyPnl: session7 != null ? Number(session7.dailyPnl) : null,
       maxDailyLoss: rules7?.maxDailyLoss != null ? Number(rules7.maxDailyLoss) : null,
+      tradesCount: session7?.tradesCount ?? null,
+      tradeCountSource: session7?.tradeCountSource ?? null,
+      maxTradesPerDay: rules7?.maxTradesPerDay ?? null,
       tradingDay: tradingDay7,
       env: env7,
       activeLockCount: activeLockCount7,
       totalLockCount: demo7LockEvents.length,
+      activeTradeLimitLock: activeTradeLimitLock7,
+      activeDailyLossLock: activeDailyLossLock7,
     };
   }
 
@@ -931,10 +947,15 @@ type Demo7DiagnosisType = {
   riskState: string | null;
   dailyPnl: number | null;
   maxDailyLoss: number | null;
+  tradesCount: number | null;
+  tradeCountSource: string | null;
+  maxTradesPerDay: number | null;
   tradingDay: string;
   env: string;
   activeLockCount: number;
   totalLockCount: number;
+  activeTradeLimitLock: boolean;
+  activeDailyLossLock: boolean;
 } | null;
 
 function QaTargetFocusCard({
@@ -952,6 +973,23 @@ function QaTargetFocusCard({
       : "C1: PENDING"
     : "C1: UNKNOWN";
   const c1Color = c1Label.includes("PASS") ? "text-emerald-700" : c1Label.includes("PENDING") ? "text-amber-700" : "text-red-700";
+
+  const tradeLimitLabel = !demo7Diagnosis
+    ? "trade_limit: UNKNOWN"
+    : demo7Diagnosis.maxTradesPerDay == null
+      ? "trade_limit: not configured"
+      : demo7Diagnosis.activeTradeLimitLock
+        ? "trade_limit: LOCKED"
+        : demo7Diagnosis.tradesCount != null &&
+            demo7Diagnosis.tradeCountSource === "verified" &&
+            demo7Diagnosis.tradesCount >= demo7Diagnosis.maxTradesPerDay
+          ? "trade_limit: WOULD LOCK"
+          : `trade_limit: ${demo7Diagnosis.tradesCount ?? "—"}/${demo7Diagnosis.maxTradesPerDay}`;
+  const tradeLimitBadgeCls = tradeLimitLabel.includes("LOCKED") || tradeLimitLabel.includes("WOULD LOCK")
+    ? "bg-amber-100 text-amber-900"
+    : tradeLimitLabel.includes("not configured") || tradeLimitLabel.includes("UNKNOWN")
+      ? "bg-stone-200 text-stone-600"
+      : "bg-emerald-100 text-emerald-800";
 
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4">
@@ -980,6 +1018,7 @@ function QaTargetFocusCard({
           <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">rule-save: PASS</span>
             <span className={`rounded-full px-2 py-0.5 font-semibold ${c1Label.includes("PASS") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{c1Label}</span>
+            <span className={`rounded-full px-2 py-0.5 font-semibold ${tradeLimitBadgeCls}`}>{tradeLimitLabel}</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C2: NO-GO</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C3: NO-GO</span>
           </div>
@@ -1020,6 +1059,31 @@ function QaStatusCard({
       ? "text-amber-700"
       : "text-red-700";
 
+  // ── trade_limit (maxTradesPerDay) internal-lock status ────────────────────
+  // Internal-only path: dry-run evaluator emits trade_limit when
+  // tradesCount >= maxTradesPerDay and tradeCountSource === "verified".
+  // Lock is created in InternalLockEvent with ruleType=trade_limit; never
+  // triggers a broker write (BROKER_ELIGIBLE_RULES excludes trade_limit).
+  const tradeLimitStatus = !demo7Diagnosis
+    ? "UNKNOWN — account not found"
+    : demo7Diagnosis.maxTradesPerDay == null
+      ? "NOT CONFIGURED — maxTradesPerDay is null on AccountRiskRules"
+      : demo7Diagnosis.tradesCount == null
+        ? "UNKNOWN — no LiveSessionState row"
+        : demo7Diagnosis.tradeCountSource !== "verified"
+          ? `SUPPRESSED — tradeCountSource="${demo7Diagnosis.tradeCountSource}" (must be "verified")`
+          : demo7Diagnosis.activeTradeLimitLock
+            ? `LOCKED — trade_limit InternalLockEvent active (tradesCount=${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay})`
+            : demo7Diagnosis.tradesCount >= demo7Diagnosis.maxTradesPerDay
+              ? `WOULD LOCK — tradesCount=${demo7Diagnosis.tradesCount} >= maxTradesPerDay=${demo7Diagnosis.maxTradesPerDay} but no lock row yet`
+              : `OK — ${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay} used`;
+
+  const tradeLimitColor = tradeLimitStatus.startsWith("LOCKED") || tradeLimitStatus.startsWith("WOULD LOCK")
+    ? "text-amber-700"
+    : tradeLimitStatus.startsWith("OK")
+      ? "text-emerald-700"
+      : "text-stone-500";
+
   return (
     <SectionCard
       title={`QA status — ${DEMO7_EXTERNAL_ID}`}
@@ -1035,6 +1099,10 @@ function QaStatusCard({
             <div className="flex items-baseline gap-2">
               <dt className="font-mono text-stone-500">C1 internal lock (listener path):</dt>
               <dd className={`font-semibold ${c1StatusColor}`}>{c1Status}</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">trade_limit internal lock (maxTradesPerDay):</dt>
+              <dd className={`font-semibold ${tradeLimitColor}`}>{tradeLimitStatus}</dd>
             </div>
             <div className="flex items-baseline gap-2">
               <dt className="font-mono text-stone-500">C2 broker enforcement:</dt>
@@ -1053,7 +1121,16 @@ function QaStatusCard({
         {demo7Diagnosis && (
           <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
             <span className="font-semibold text-stone-700">Live state: </span>
-            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
+            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · tradesCount={demo7Diagnosis.tradesCount ?? "—"}/{demo7Diagnosis.maxTradesPerDay ?? "—"} (source={demo7Diagnosis.tradeCountSource ?? "—"}) · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
+          </div>
+        )}
+        {demo7Diagnosis && (
+          <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
+            <span className="font-semibold">trade_limit semantics:</span>{" "}
+            Inclusive cap — lock fires when <span className="font-mono">tradesCount &gt;= maxTradesPerDay</span>{" "}
+            and <span className="font-mono">tradeCountSource === "verified"</span>. Internal-only — never triggers
+            a Tradovate write (broker enforcement excludes trade_limit). Idempotent: re-evaluation upserts the same
+            <span className="mx-1 font-mono">activeDedupKey</span> row.
           </div>
         )}
         <div className="grid gap-1 text-[11px] text-stone-500">
@@ -1123,6 +1200,18 @@ function InternalLockDiagnosticSection({
             <Row label="riskState" value={diagnosis.riskState ?? "—"} danger={diagnosis.riskState === "STOPPED"} />
             <Row label="dailyPnl" value={String(diagnosis.dailyPnl ?? "—")} />
             <Row label="maxDailyLoss" value={String(diagnosis.maxDailyLoss ?? "—")} />
+            <Row label="tradesCount" value={String(diagnosis.tradesCount ?? "—")} />
+            <Row label="maxTradesPerDay" value={String(diagnosis.maxTradesPerDay ?? "—")} />
+            <Row
+              label="tradeCountSource"
+              value={diagnosis.tradeCountSource ?? "—"}
+              danger={diagnosis.tradeCountSource != null && diagnosis.tradeCountSource !== "verified"}
+            />
+            <Row
+              label="activeTradeLimitLock"
+              value={String(diagnosis.activeTradeLimitLock)}
+              danger={diagnosis.activeTradeLimitLock}
+            />
             <Row label="tradingDay" value={diagnosis.tradingDay} />
             <Row label="canLock" value={String(diagnosis.canLock)} />
             <Row label="activeLocks" value={String(diagnosis.activeLockCount)} danger={diagnosis.activeLockCount > 0} />

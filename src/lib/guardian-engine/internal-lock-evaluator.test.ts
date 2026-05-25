@@ -555,3 +555,224 @@ describe("InternalLockEvent schema — activeDedupKey unique constraint", () => 
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// trade_limit (maxTradesPerDay) internal-lock wiring — source scan
+//
+// Pure-evaluator semantics for trade_limit are covered in
+// dry-run-rule-evaluator.test.ts. These tests verify the DB integration
+// layer carries trade_limit through end-to-end without any broker side-effects.
+//
+// Documented semantics: maxTradesPerDay is the inclusive cap. The lock fires
+// when tradesCount >= maxTradesPerDay (the configured limit IS the trigger).
+// Suppressed unless tradeCountSource === "verified".
+// ---------------------------------------------------------------------------
+
+describe("trade_limit internal-lock wiring (DB integration source-scan)", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+  const evaluatorSrc = readSrc("src/lib/guardian-engine/dry-run-rule-evaluator.ts");
+
+  it("dry-run evaluator emits trade_limit ruleType", () => {
+    assert.ok(
+      evaluatorSrc.includes('ruleType: "trade_limit"'),
+      "evaluator must emit trade_limit violations",
+    );
+  });
+
+  it("dry-run evaluator fires trade_limit at-or-above limit (inclusive cap)", () => {
+    assert.ok(
+      evaluatorSrc.includes("input.tradesCount >= input.maxTradesPerDay"),
+      "evaluator must use >= so the configured maxTradesPerDay is the lock trigger",
+    );
+  });
+
+  it("dry-run evaluator suppresses trade_limit when tradeCountSource is not 'verified'", () => {
+    assert.ok(
+      evaluatorSrc.includes('input.tradeCountSource !== "verified"'),
+      "trade_limit must be suppressed when tradeCountSource is not 'verified'",
+    );
+  });
+
+  it("dry-run evaluator documents trade_limit semantics inline", () => {
+    assert.ok(
+      evaluatorSrc.includes("Semantics:") || evaluatorSrc.includes("inclusive cap"),
+      "evaluator must document the trade_limit semantics (inclusive cap, >=) so future readers know the intent",
+    );
+  });
+
+  it("DB layer passes maxTradesPerDay into the primary evaluator call", () => {
+    assert.ok(
+      dbSrc.includes("maxTradesPerDay: rules.maxTradesPerDay"),
+      "primary applyInternalLockForConnection path must pass maxTradesPerDay to evaluateDryRunRules",
+    );
+  });
+
+  it("DB layer passes maxTradesPerDay into the backfill evaluator call", () => {
+    // Both occurrences should reference the same source — once in the
+    // primary path and once in the backfill path.
+    const matches = [...dbSrc.matchAll(/maxTradesPerDay: rules\.maxTradesPerDay/g)];
+    assert.ok(
+      matches.length >= 2,
+      "backfill path must also pass maxTradesPerDay so STOPPED-without-lock trade_limit cases get backfilled",
+    );
+  });
+
+  it("DB layer passes tradeCountSource so evaluator can suppress when not verified", () => {
+    assert.ok(
+      dbSrc.includes("tradeCountSource: session.tradeCountSource"),
+      "DB layer must pass tradeCountSource — evaluator needs it to gate trade_limit",
+    );
+  });
+
+  it("DB layer selects maxTradesPerDay from riskRules", () => {
+    assert.ok(
+      dbSrc.includes("maxTradesPerDay: true"),
+      "Prisma select must include maxTradesPerDay so the evaluator receives the configured cap",
+    );
+  });
+
+  it("DB layer selects tradesCount and tradeCountSource from sessionState", () => {
+    assert.ok(
+      dbSrc.includes("tradesCount: true"),
+      "Prisma select must include tradesCount from LiveSessionState",
+    );
+    assert.ok(
+      dbSrc.includes("tradeCountSource: true"),
+      "Prisma select must include tradeCountSource from LiveSessionState",
+    );
+  });
+
+  it("upsert propagates the primary violation ruleType — so trade_limit lands as ruleType=trade_limit", () => {
+    assert.ok(
+      dbSrc.includes("ruleType: primary.ruleType"),
+      "upsert must write primary.ruleType so trade_limit violations create ruleType=trade_limit InternalLockEvent rows",
+    );
+  });
+
+  it("dedup key includes ruleType — trade_limit gets its own slot (one per account+rule+day)", () => {
+    // buildInternalLockDedupKey(account.id, primary.ruleType, tradingDay)
+    assert.ok(
+      dbSrc.includes("buildInternalLockDedupKey(\n        account.id,\n        primary.ruleType") ||
+        dbSrc.match(/buildInternalLockDedupKey\([^)]*primary\.ruleType[^)]*\)/),
+      "activeDedupKey must include ruleType so trade_limit doesn't collide with daily_loss_limit",
+    );
+  });
+
+  it("internalOnly=true and brokerActionTaken=false on trade_limit lock rows", () => {
+    assert.ok(
+      dbSrc.includes("internalOnly: true"),
+      "all internal lock rows must set internalOnly=true",
+    );
+    assert.ok(
+      dbSrc.includes("brokerActionTaken: false"),
+      "all internal lock rows must set brokerActionTaken=false — broker writes are a separate Phase 2C path",
+    );
+  });
+
+  it("DB layer does not call Tradovate write endpoints for trade_limit", () => {
+    const forbidden = [
+      "TradovateClient",
+      "tradovate.post",
+      "tradovatePost",
+      "setRiskSetting",
+      "setDailyLoss",
+      "setAutoLiq",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "cancelAll",
+      "flattenPositions",
+      "flattenAll",
+      "applyBrokerDayLockout",
+    ];
+    for (const banned of forbidden) {
+      assert.ok(!dbSrc.includes(banned), `internal-lock-evaluator-db must not call ${banned}`);
+    }
+  });
+
+  it("idempotency: upsert (not create) is used so repeated evaluations of the same trade_limit breach do not duplicate rows", () => {
+    assert.ok(
+      dbSrc.includes("internalLockEvent.upsert"),
+      "upsert is required for idempotency — repeated props events from the listener must not create duplicate trade_limit rows",
+    );
+    assert.ok(
+      !dbSrc.includes("internalLockEvent.create("),
+      "bare create() would allow duplicate trade_limit InternalLockEvent rows on repeated evaluation",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// trade_limit broker-eligibility: stays internal-only.
+//
+// The broker enforcement simulation layer explicitly excludes trade_limit from
+// the broker-eligible set. This is the safety guarantee that trade_limit
+// breaches never trigger a Tradovate setDailyLoss / setAutoLiq write, no
+// matter what the BROKER_ENFORCEMENT_ENABLED flag is set to.
+// ---------------------------------------------------------------------------
+
+describe("trade_limit stays internal-only (no broker eligibility)", () => {
+  const simSrc = readSrc("src/lib/guardian-engine/broker-enforcement-simulation.ts");
+
+  it("BROKER_ELIGIBLE_RULES does not include trade_limit", () => {
+    // The constant should explicitly NOT include trade_limit. Look for the
+    // exact line that defines the eligible set.
+    const match = simSrc.match(/BROKER_ELIGIBLE_RULES\s*=\s*new\s+Set\(\[([^\]]*)\]\)/);
+    assert.ok(match, "BROKER_ELIGIBLE_RULES must be defined as a Set literal");
+    const setContents = match![1];
+    assert.ok(
+      !setContents.includes("trade_limit"),
+      `BROKER_ELIGIBLE_RULES must NOT include "trade_limit" — found: ${setContents}`,
+    );
+    assert.ok(
+      setContents.includes("daily_loss_limit"),
+      "BROKER_ELIGIBLE_RULES must include daily_loss_limit (existing scope)",
+    );
+  });
+
+  it("simulation rejects non-eligible rule types (gates trade_limit)", () => {
+    assert.ok(
+      simSrc.includes("BROKER_ELIGIBLE_RULES.has(input.ruleType)"),
+      "simulation must gate on BROKER_ELIGIBLE_RULES.has(input.ruleType) so trade_limit is rejected",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reset-session-state clears trade_limit locks too.
+//
+// The reset endpoint uses updateMany filtered by accountId + clearedAt=null
+// only — no ruleType filter — so it clears ALL active locks including
+// trade_limit. This guarantees that a manual reset wipes the trade-limit
+// lock state alongside daily_loss_limit / max_loss_streak.
+// ---------------------------------------------------------------------------
+
+describe("reset-session-state clears trade_limit locks (no ruleType filter)", () => {
+  const resetSrc = readSrc(
+    "src/app/api/debug/accounts/[accountId]/reset-session-state/route.ts",
+  );
+
+  it("uses internalLockEvent.updateMany to clear all active locks", () => {
+    assert.ok(
+      resetSrc.includes("internalLockEvent.updateMany"),
+      "reset must use updateMany to clear all active locks for the account",
+    );
+  });
+
+  it("does not filter by ruleType — so trade_limit, daily_loss_limit, max_loss_streak all clear", () => {
+    // Extract the updateMany where-clause and verify it does not mention ruleType.
+    const idx = resetSrc.indexOf("internalLockEvent.updateMany");
+    assert.ok(idx > -1);
+    const slice = resetSrc.slice(idx, idx + 400);
+    assert.ok(
+      !slice.includes("ruleType"),
+      "reset updateMany must not filter by ruleType — all active rule types must clear, including trade_limit",
+    );
+  });
+
+  it("clears activeDedupKey so a trade_limit lock can re-fire same day after reset", () => {
+    assert.ok(
+      resetSrc.includes("activeDedupKey: null"),
+      "reset must null out activeDedupKey so the trade_limit slot can be reused after manual reset",
+    );
+  });
+});

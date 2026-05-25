@@ -91,7 +91,13 @@ export function evaluateDryRunRules(input: DryRunRuleInput): DryRunEvaluationRes
     }
   }
 
-  // trade_limit — only when tradeCountSource is "verified"
+  // trade_limit — only when tradeCountSource is "verified".
+  // Semantics: maxTradesPerDay is the inclusive cap. Lock fires when the trade
+  // count REACHES the cap (>=), matching daily_loss_limit's `<= -maxDailyLoss`
+  // shape: the configured limit IS the lock trigger, not "one past it". So
+  // maxTradesPerDay=5 + tradesCount=5 fires; tradesCount=4 does not.
+  // Suppressed when tradeCountSource != "verified" because broker-derived
+  // counts can include other accounts (estimated) or be missing (unavailable).
   if (input.maxTradesPerDay != null) {
     if (input.tradeCountSource !== "verified") {
       skipped.push({ ruleType: "trade_limit", reason: `tradeCountSource=${input.tradeCountSource}` });

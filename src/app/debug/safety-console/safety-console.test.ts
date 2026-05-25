@@ -313,6 +313,105 @@ describe("safety-console page — C1 vs C2/C3 distinction in checklist", () => {
   });
 });
 
+describe("safety-console page — trade_limit (maxTradesPerDay) status surfaced", () => {
+  it("Demo7Diagnosis type includes maxTradesPerDay", () => {
+    assert.ok(
+      CODE.includes("maxTradesPerDay: number | null"),
+      "Demo7Diagnosis must include maxTradesPerDay so the trade_limit panel can render",
+    );
+  });
+
+  it("Demo7Diagnosis type includes tradesCount and tradeCountSource", () => {
+    assert.ok(
+      CODE.includes("tradesCount: number | null"),
+      "Demo7Diagnosis must include tradesCount from LiveSessionState",
+    );
+    assert.ok(
+      CODE.includes("tradeCountSource: string | null"),
+      "Demo7Diagnosis must include tradeCountSource so suppression is visible",
+    );
+  });
+
+  it("Demo7Diagnosis derives activeTradeLimitLock from lock events", () => {
+    assert.ok(
+      CODE.includes("activeTradeLimitLock"),
+      "must derive activeTradeLimitLock so the operator sees whether a trade_limit InternalLockEvent is live",
+    );
+    assert.ok(
+      CODE.includes('ruleType === "trade_limit"'),
+      "must filter by ruleType === 'trade_limit' when deriving activeTradeLimitLock",
+    );
+  });
+
+  it("QaStatusCard renders a trade_limit row", () => {
+    assert.ok(
+      CODE.includes("trade_limit internal lock"),
+      "QaStatusCard must show a 'trade_limit internal lock' row alongside C1/C2/C3",
+    );
+  });
+
+  it("trade_limit row shows N/maxTradesPerDay usage", () => {
+    assert.ok(
+      CODE.includes("tradesCount=") && CODE.includes("maxTradesPerDay="),
+      "live state line must include tradesCount=N/maxTradesPerDay=N",
+    );
+  });
+
+  it("QaTargetFocusCard shows trade_limit badge", () => {
+    assert.ok(
+      CODE.includes("tradeLimitLabel"),
+      "QaTargetFocusCard must compute a trade_limit badge label",
+    );
+    assert.ok(
+      CODE.includes('"trade_limit: LOCKED"') || CODE.includes("trade_limit: LOCKED"),
+      "trade_limit badge must surface a LOCKED state",
+    );
+  });
+
+  it("InternalLockDiagnosticSection shows tradesCount and maxTradesPerDay rows", () => {
+    assert.ok(
+      CODE.includes('label="tradesCount"'),
+      "diagnostic dl must include a tradesCount row",
+    );
+    assert.ok(
+      CODE.includes('label="maxTradesPerDay"'),
+      "diagnostic dl must include a maxTradesPerDay row",
+    );
+    assert.ok(
+      CODE.includes('label="tradeCountSource"'),
+      "diagnostic dl must include a tradeCountSource row so suppression cause is visible",
+    );
+  });
+
+  it("documents trade_limit semantics: inclusive cap, verified source required", () => {
+    assert.ok(
+      CODE.includes("inclusive cap") || CODE.includes("Inclusive cap"),
+      "must document 'inclusive cap' semantics for trade_limit",
+    );
+    assert.ok(
+      CODE.includes("tradesCount &gt;= maxTradesPerDay") ||
+        CODE.includes("tradesCount >= maxTradesPerDay"),
+      "must document the >= comparison so the cap behavior is explicit",
+    );
+  });
+
+  it("does not call any broker write for trade_limit", () => {
+    // The diagnostic panel is read-only — never calls a broker endpoint, even
+    // in the trade_limit copy. Reiterates the safety contract.
+    const forbidden = [
+      "setRiskSetting",
+      "setAutoLiq",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "flattenPositions",
+      "applyBrokerDayLockout",
+    ];
+    for (const banned of forbidden) {
+      assert.ok(!CODE.includes(banned), `trade_limit panel must not reference broker write: ${banned}`);
+    }
+  });
+});
+
 describe("safety-console page — QaTargetFocusCard present", () => {
   it("renders QaTargetFocusCard component", () => {
     assert.ok(
