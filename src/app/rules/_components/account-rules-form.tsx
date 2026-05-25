@@ -3,29 +3,28 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
-import { SESSION_WINDOW_COPY } from "./session-window-copy";
-import { MAX_POSITION_SIZE_COPY, SYMBOL_LIMITS_COPY } from "./position-size-copy";
-import { MaxPositionSizeConversionTable } from "./max-position-size-conversion-table";
-import { SymbolLimitsTable, type SymbolLimitRow } from "./symbol-limits-table";
+import { type SymbolLimitRow } from "./symbol-limits-table";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
 import {
   computeAccountRulesBanner,
   computeAccountSaveButtonState,
   computePendingFieldRowsWithSource,
   computeShowPendingPanel,
-  REVIEW_INHERITED_HINT,
   type PendingDiffBaseline,
   type PendingFieldActiveSource,
 } from "./account-rules-form-logic";
 import { validateRules, effectiveValue } from "./rule-validation";
-import { TradingSessionSelector, type TradingSessionValues } from "./trading-session-selector";
+import { TradingSessionSelector } from "./trading-session-selector";
 import { fmt12h } from "./trading-session-utils";
 import { SESSION_PRESETS } from "@/lib/rule-edit-eligibility";
-import { CmeHourSelect } from "./cme-hour-select";
-import { cmeHourBoundaryNote } from "./cme-hour-parsing";
 import { ApplyPendingButton } from "./apply-pending-button";
 import { CopyRulesModal, type CopySourceAccount } from "./copy-rules-modal";
+import { MoneyLimitsSection } from "./sections/money-limits-section";
+import { TradingBehaviorSection } from "./sections/trading-behavior-section";
+import { PositionSymbolSection } from "./sections/position-symbol-section";
+import { SessionCutoffSection } from "./sections/session-cutoff-section";
+import { NotificationsSection } from "./sections/notifications-section";
+import { AdvancedBrokerActionsSection } from "./sections/advanced-broker-actions-section";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -105,24 +104,6 @@ type Props = {
    *  When non-empty, the "Copy from another account" button is enabled. */
   copySourceAccounts?: CopySourceAccount[];
 };
-
-const TZ_CITY: Record<string, string> = {
-  "Asia/Jerusalem": "Israel",
-  "America/New_York": "New York",
-  "America/Chicago": "Chicago",
-  "America/Los_Angeles": "Los Angeles",
-  "Europe/London": "London",
-  "Europe/Berlin": "Berlin",
-  "Asia/Bangkok": "Bangkok",
-  "Asia/Tokyo": "Tokyo",
-  "Australia/Sydney": "Sydney",
-};
-
-function tzLabel(tz: string | null | undefined): string | null {
-  if (!tz) return null;
-  const city = TZ_CITY[tz];
-  return city ? `${city} time` : null;
-}
 
 function num(v: string): number | null {
   if (!v.trim()) return null;
@@ -204,70 +185,6 @@ function defaultPendingNote(
   if (v == null) return null;
   return `Default template has ${v} pending — will inherit when default activates.`;
 }
-
-function StatusBadge({ variant, text }: { variant: "broker" | "monitor" | "planned"; text: string }) {
-  const cls = {
-    broker: "border-amber-200 bg-amber-50 text-amber-700",
-    monitor: "border-stone-200 bg-stone-100 text-stone-500",
-    planned: "border-sky-200 bg-sky-50 text-sky-700",
-  }[variant];
-  return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${cls}`}>
-      {text}
-    </span>
-  );
-}
-
-function Field({ label, hint, badge, pendingNote, children }: { label: string; hint?: string; badge?: React.ReactNode; pendingNote?: string | null; children: React.ReactNode }) {
-  return (
-    <label className="grid gap-1.5">
-      <span className="flex items-center gap-1.5 text-xs font-medium text-stone-600">
-        {label}
-        {badge}
-      </span>
-      {children}
-      {hint && <span className="text-xs text-stone-400">{hint}</span>}
-      {pendingNote && <span className="text-xs font-medium text-amber-600">{pendingNote}</span>}
-    </label>
-  );
-}
-
-function Input({
-  value,
-  onChange,
-  placeholder,
-  integer = false,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  integer?: boolean;
-}) {
-  return (
-    <input
-      type="number"
-      inputMode={integer ? "numeric" : "decimal"}
-      step={integer ? 1 : "any"}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
-    />
-  );
-}
-
-const ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS = [
-  {
-    value: "wait_for_exit_then_lock",
-    label: "Let open trade finish, then lock",
-    hint: "Saved in Guardrail. Automatic cutoff scheduling is not active yet. When enabled, Guardrail will wait for the open position to close, then mark the account stopped for the rest of the day.",
-  },
-  {
-    value: "flatten_at_session_end",
-    label: "Close open positions at cutoff, then lock",
-    hint: "Saved for future cutoff automation. This action is not active yet.",
-  },
-] as const;
 
 export function AccountRulesForm({
   accountId,
@@ -575,213 +492,70 @@ export function AccountRulesForm({
         className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " opacity-50 cursor-not-allowed" : ""}`}
       >
 
-      {/* ── Money limits ──────────────────────────────────────────────────
-          Mirrors the default-template form's "Money limits" section so the
-          two pages share one mental model. Account size + Daily profit target
-          live on the default template only; we surface them as a small inherited
-          context block at the top so the section doesn't feel "missing fields". */}
-      <div role="group" aria-label="Money limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-stone-950">Money limits</p>
-        {!hasExistingRules && (
-          <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
-        )}
-        {/* Inherited-only fields surfaced so the account form mirrors the
-            default template's section structure even though account size and
-            daily profit target are configured on the default template only. */}
-        {(defaultValues?.maxDailyLoss !== undefined ||
-          (defaultValues as { dailyProfitTarget?: string } | undefined)?.dailyProfitTarget !== undefined) && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-stone-100 bg-white px-3 py-2 text-[11px] text-stone-500">
-            <div>
-              <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">Account size</dt>
-              <dd className="text-stone-700">
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
-                  Inherited
-                </span>{" "}
-                <span className="text-stone-500">configured on default template</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">Daily profit target</dt>
-              <dd className="text-stone-700">
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.08em] text-sky-700">
-                  Inherited
-                </span>{" "}
-                <span className="text-stone-500">configured on default template</span>
-              </dd>
-            </div>
-          </dl>
-        )}
-        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field
-            label="Daily loss limit ($)"
-            badge={<StatusBadge variant="broker" text="Broker-backed eligible" />}
-            hint="Currently monitoring only — no broker actions are sent unless enforcement is explicitly enabled."
-          >
-            <Input value={values.maxDailyLoss} onChange={(v) => update("maxDailyLoss", v)} placeholder="500" />
-          </Field>
-          <Field label="Risk per trade ($)" badge={<StatusBadge variant="monitor" text="Monitoring only" />} hint="Warning only — does not lock the account.">
-            <Input value={values.riskPerTrade} onChange={(v) => update("riskPerTrade", v)} placeholder="100" />
-          </Field>
-        </div>
-      </div>
+      <MoneyLimitsSection
+        values={{ maxDailyLoss: values.maxDailyLoss, riskPerTrade: values.riskPerTrade }}
+        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
+        hasExistingRules={hasExistingRules}
+        showInheritedContext={
+          defaultValues?.maxDailyLoss !== undefined ||
+          (defaultValues as { dailyProfitTarget?: string } | undefined)?.dailyProfitTarget !== undefined
+        }
+      />
 
-      {/* ── Trading limits ──────────────────────────────────────────────── */}
-      <div role="group" aria-label="Trading limits" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-stone-950">Trading limits</p>
-        <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field
-            label="Max trades per day"
-            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
-            pendingNote={defaultPendingNote(defaultPendingPayload, "maxTradesPerDay", initial.maxTradesPerDay, defaultValues?.maxTradesPerDay ?? "")}
-          >
-            <Input value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
-          </Field>
-          <Field
-            label="Stop after consecutive losses"
-            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
-            pendingNote={defaultPendingNote(defaultPendingPayload, "stopAfterLosses", initial.stopAfterLosses, defaultValues?.stopAfterLosses ?? "")}
-          >
-            <Input value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
-          </Field>
-          <Field
-            label={MAX_POSITION_SIZE_COPY.label}
-            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
-            hint={MAX_POSITION_SIZE_COPY.hint}
-            pendingNote={defaultPendingNote(defaultPendingPayload, "maxContracts", initial.maxContracts, defaultValues?.maxContracts ?? "")}
-          >
-            <Input value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
-            <span className="text-xs text-stone-400">{SYMBOL_LIMITS_COPY.globalFallbackNote}</span>
-            <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
-            {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
-              <button
-                type="button"
-                className="mt-1 text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
-                onClick={() => setShowAdvancedBrokerCap(true)}
-              >
-                Advanced options
-              </button>
-            )}
-            {values.maxContracts.trim() !== "" && showAdvancedBrokerCap && (
-              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs">
-                <p className="font-semibold text-amber-900">Advanced broker-side contract cap</p>
-                <p className="mt-1 text-amber-800">
-                  Enables a broker-side contract cap on your Tradovate account (immediate reject before
-                  execution). Tradovate counts all contracts equally — 2&nbsp;MNQ counts as 2 contracts,
-                  even though it is well within a 1-standard-equivalent limit. Use only if you want
-                  Tradovate to enforce a raw contract count.
-                </p>
-                <label className="mt-2 flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
-                    checked={values.rawBrokerHardLimitEnabled}
-                    onChange={(e) => update("rawBrokerHardLimitEnabled", e.target.checked)}
-                  />
-                  <span className="text-amber-900">
-                    Enable broker-side contract cap (applies to all contracts equally)
-                  </span>
-                </label>
-              </div>
-            )}
-          </Field>
-          {/* Symbol-specific limits — saved with the Trading Plan. The guardian
-              evaluator does not read these yet; per-symbol evaluation is a
-              later rollout. Copy must not imply live or broker-side enforcement. */}
-          <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-stone-700">
-                {SYMBOL_LIMITS_COPY.heading}
-              </span>
-              <StatusBadge variant="monitor" text="Monitoring only" />
-            </div>
-            <p className="text-xs text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
-            <SymbolLimitsTable
-              value={values.symbolLimits}
-              onChange={(rows) => update("symbolLimits", rows)}
-              disabled={fieldsDisabled}
-            />
-          </div>
-        </div>
-      </div>
+      <TradingBehaviorSection
+        values={{
+          maxTradesPerDay: values.maxTradesPerDay,
+          stopAfterLosses: values.stopAfterLosses,
+        }}
+        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
+        pendingNotes={{
+          maxTradesPerDay: defaultPendingNote(
+            defaultPendingPayload,
+            "maxTradesPerDay",
+            initial.maxTradesPerDay,
+            defaultValues?.maxTradesPerDay ?? "",
+          ),
+          stopAfterLosses: defaultPendingNote(
+            defaultPendingPayload,
+            "stopAfterLosses",
+            initial.stopAfterLosses,
+            defaultValues?.stopAfterLosses ?? "",
+          ),
+        }}
+      />
 
-      {/* ── Daily cutoff (CME) ──────────────────────────────────────────────
-          Cutoff behavior radios live INSIDE this section to match the default
-          template form (where they're nested under "Daily cutoff" rather than
-          floating in their own card). */}
-      <div role="group" aria-label="Daily cutoff" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <div>
-          <p className="flex items-center gap-2 text-sm font-semibold text-stone-950">
-            {SESSION_WINDOW_COPY.legend}
-            <StatusBadge variant="planned" text="Monitoring / Planned automation" />
-          </p>
-          <p className="mt-1 text-xs text-stone-500">
-            Override the default daily cutoff for this account. {SESSION_WINDOW_COPY.helperText}
-          </p>
-        </div>
-        <Field label={SESSION_WINDOW_COPY.endLabel} hint={SESSION_WINDOW_COPY.endHint}>
-          <CmeHourSelect
-            value={values.allowedEndHour}
-            onChange={(v) => update("allowedEndHour", v)}
-            ariaLabel={SESSION_WINDOW_COPY.endLabel}
-          />
-        </Field>
-        {(() => {
-          const e = int(values.allowedEndHour);
-          if (e === null) return null;
-          const boundary = cmeHourBoundaryNote(e);
-          const label = tzLabel(timezone);
-          const showLocal = label && timezone && timezone !== SESSION_WINDOW_TIMEZONE;
-          const le = showLocal ? cmeHourToLocalHour(e, timezone) : null;
-          if (!boundary && le === null) return null;
-          return (
-            <div className="grid gap-1 text-xs text-stone-500">
-              {boundary && <p className="text-stone-600">{boundary}</p>}
-              {le !== null && (
-                <p className="text-stone-400">
-                  {SESSION_WINDOW_COPY.localPreviewPrefix}{" "}
-                  {String(le).padStart(2, "0")}:00 {label}
-                </p>
-              )}
-            </div>
-          );
-        })()}
-        <div>
-          <p className="text-xs font-medium text-stone-600">{SESSION_WINDOW_COPY.cutoffBehaviorLabel}</p>
-          <div className="mt-2 grid gap-2">
-            {ACCOUNT_SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (
-              <label
-                key={value}
-                className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
-              >
-                <input
-                  type="radio"
-                  name="accountSessionEndBehavior"
-                  value={value}
-                  checked={values.sessionEndBehavior === value}
-                  onChange={() => update("sessionEndBehavior", value)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-stone-950"
-                />
-                <span>
-                  <span className="font-medium text-stone-950">{label}</span>
-                  <span className="mt-0.5 block text-stone-500">{hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
+      <PositionSymbolSection
+        values={{
+          maxContracts: values.maxContracts,
+          rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
+          symbolLimits: values.symbolLimits,
+        }}
+        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
+        showAdvancedBrokerCap={showAdvancedBrokerCap}
+        onShowAdvancedBrokerCap={() => setShowAdvancedBrokerCap(true)}
+        symbolLimitsDisabled={fieldsDisabled}
+        pendingNotes={{
+          maxContracts: defaultPendingNote(
+            defaultPendingPayload,
+            "maxContracts",
+            initial.maxContracts,
+            defaultValues?.maxContracts ?? "",
+          ),
+        }}
+      />
 
-      {/* ── Notifications ───────────────────────────────────────────────────
-          Read-only honest summary. There is no per-account alert toggle —
-          rule-breach notices render in-app on the Dashboard and Telegram
-          delivers the proactive warnings the engine actually sends. */}
-      <div role="group" aria-label="Notifications" className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5">
-        <p className="text-sm font-semibold text-stone-950">Notifications</p>
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs text-stone-600">
-          Rule-breach notices appear in-app on the Dashboard. Connect Telegram in Settings
-          to also receive proactive alerts in your chat.
-        </div>
-      </div>
+      <SessionCutoffSection
+        values={{
+          allowedEndHour: values.allowedEndHour,
+          sessionEndBehavior: values.sessionEndBehavior,
+        }}
+        update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
+        timezone={timezone}
+      />
+
+      <NotificationsSection />
+
+      <AdvancedBrokerActionsSection />
 
       <TradingSessionSelector
         values={{

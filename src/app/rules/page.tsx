@@ -27,6 +27,7 @@ import { ApplyPendingButton } from "./_components/apply-pending-button";
 import { computeEnforcementMode } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix, deriveScopeAccountBadge } from "./_components/scope-selector-helpers";
 import { parseSymbolLimits } from "@/lib/futures/symbol-limits";
+import { HowEnforcementWorks } from "./_components/how-enforcement-works";
 
 export const metadata: Metadata = {
   title: "Trading Plan — Guardrail",
@@ -392,18 +393,7 @@ export default async function RulesPage({
                 {enforcementInfo.detail}
               </div>
 
-              <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
-                  How enforcement works
-                  <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
-                </summary>
-                <ul className="mt-3 grid gap-1.5 text-pretty text-stone-600">
-                  <li>• <span className="font-medium text-stone-700">Monitoring:</span> Guardrail watches every fill and alerts you when rules are crossed.</li>
-                  <li>• <span className="font-medium text-stone-700">App lock:</span> Guardrail marks the account locked inside the app. No broker actions are sent.</li>
-                  <li>• <span className="font-medium text-stone-700">Broker risk settings:</span> when enabled, Guardrail writes your daily loss limit directly to Tradovate — the exchange enforces it independently of the app.</li>
-                  <li>• Read-only connections support monitoring and alerts only. Full access is required for broker actions.</li>
-                </ul>
-              </details>
+              <HowEnforcementWorks />
             </>
           )}
 

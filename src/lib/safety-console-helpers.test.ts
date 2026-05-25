@@ -20,6 +20,28 @@ import {
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
+/**
+ * Concatenated source of account-rules-form.tsx and every section component it
+ * composes. Copy that used to live inline in the form was extracted to section
+ * files during the Phase 2 redesign; source-scan tests need to see them as one
+ * logical source so existing assertions keep working.
+ */
+function readAccountFormAndSections(): string {
+  const FORM = resolve(__dirname, "../app/rules/_components/account-rules-form.tsx");
+  const SECTIONS = [
+    "../app/rules/_components/sections/money-limits-section.tsx",
+    "../app/rules/_components/sections/trading-behavior-section.tsx",
+    "../app/rules/_components/sections/position-symbol-section.tsx",
+    "../app/rules/_components/sections/session-cutoff-section.tsx",
+    "../app/rules/_components/sections/notifications-section.tsx",
+    "../app/rules/_components/sections/advanced-broker-actions-section.tsx",
+    "../app/rules/_components/sections/field-primitives.tsx",
+  ];
+  return [FORM, ...SECTIONS.map((s) => resolve(__dirname, s))]
+    .map((p) => readFileSync(p, "utf8"))
+    .join("\n");
+}
+
 const SAFE_FLAGS: EnforcementFlags = {
   brokerEnforcementEnabled: false,
   listenerLiveEnabled: false,
@@ -1199,10 +1221,16 @@ describe("source-scan: normal customer UI does not expose rollout readiness chec
 // ── Source-scan: Trading Plan page does not expose internal terms ─────────────
 
 describe("source-scan: Trading Plan page does not expose internal terms", () => {
-  const RULES_PAGE_SRC = readFileSync(
-    resolve(__dirname, "../app/rules/page.tsx"),
-    "utf8",
-  );
+  // The "How enforcement works" copy was extracted from page.tsx into its own
+  // component during the Phase 2 redesign. Source-scan tests for that copy
+  // need to see both files as one logical source.
+  const RULES_PAGE_SRC =
+    readFileSync(resolve(__dirname, "../app/rules/page.tsx"), "utf8") +
+    "\n" +
+    readFileSync(
+      resolve(__dirname, "../app/rules/_components/how-enforcement-works.tsx"),
+      "utf8",
+    );
 
   it("does not expose 'InternalLockEvent' to customers", () => {
     assert.ok(
@@ -1287,24 +1315,30 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
     );
   });
 
-  it("uses 'Monitoring:' label in enforcement explanation", () => {
+  it("explains 'Monitoring only' enforcement state in the panel", () => {
+    // The legacy "Monitoring:" prefix was replaced with the canonical
+    // "Monitoring only" variant label during the Phase 2 redesign.
     assert.ok(
-      RULES_PAGE_SRC.includes("Monitoring:"),
-      "enforcement section must use the 'Monitoring:' label",
+      RULES_PAGE_SRC.includes("Monitoring only"),
+      "enforcement section must explain the 'Monitoring only' variant",
     );
   });
 
-  it("uses 'App lock:' label in enforcement explanation", () => {
+  it("explains 'Guardrail lock' enforcement state in the panel", () => {
+    // The legacy "App lock:" prefix was replaced with the canonical
+    // "Guardrail lock" variant label.
     assert.ok(
-      RULES_PAGE_SRC.includes("App lock:"),
-      "enforcement section must use the 'App lock:' label",
+      RULES_PAGE_SRC.includes("Guardrail lock"),
+      "enforcement section must explain the 'Guardrail lock' variant",
     );
   });
 
-  it("uses 'Broker risk settings:' label in enforcement explanation", () => {
+  it("explains 'Broker-backed eligible' enforcement state in the panel", () => {
+    // The legacy "Broker risk settings:" prefix was replaced with the
+    // canonical "Broker-backed eligible" variant label.
     assert.ok(
-      RULES_PAGE_SRC.includes("Broker risk settings:"),
-      "enforcement section must use the 'Broker risk settings:' label",
+      RULES_PAGE_SRC.includes("Broker-backed eligible"),
+      "enforcement section must explain the 'Broker-backed eligible' variant",
     );
   });
 
@@ -1706,10 +1740,7 @@ describe("source-scan: position-size conversion table does not expose internal j
 // ── Source-scan: account-rules-form uses customer-safe advanced section ───────
 
 describe("source-scan: account-rules-form uses customer-safe copy for advanced section", () => {
-  const FORM_SRC = readFileSync(
-    resolve(__dirname, "../app/rules/_components/account-rules-form.tsx"),
-    "utf8",
-  );
+  const FORM_SRC = readAccountFormAndSections();
 
   it("does not expose 'detection-response mode' as customer copy", () => {
     assert.ok(
@@ -1872,10 +1903,7 @@ describe("source-scan: position-size copy does not expose internal terms", () =>
 });
 
 describe("source-scan: rules forms do not expose 'Flatten' or 'order actions' as labels", () => {
-  const ACCOUNT_FORM_SRC = readFileSync(
-    resolve2(__dirname, "../app/rules/_components/account-rules-form.tsx"),
-    "utf8",
-  );
+  const ACCOUNT_FORM_SRC = readAccountFormAndSections();
   const DEFAULT_FORM_SRC = readFileSync(
     resolve2(__dirname, "../app/rules/_components/rules-form.tsx"),
     "utf8",
@@ -2006,10 +2034,7 @@ describe("source-scan: dashboard uses 'Market closed' for weekend-close pill", (
 });
 
 describe("source-scan: account rules form hides advanced block by default", () => {
-  const ACCOUNT_FORM_SRC = readFileSync(
-    resolve3(__dirname, "../app/rules/_components/account-rules-form.tsx"),
-    "utf8",
-  );
+  const ACCOUNT_FORM_SRC = readAccountFormAndSections();
 
   it("Advanced broker-side contract cap block is still present in source", () => {
     assert.ok(
@@ -2031,10 +2056,7 @@ describe("source-scan: account rules form hides advanced block by default", () =
 });
 
 describe("source-scan: rules forms can show 'No changes to save.'", () => {
-  const ACCOUNT_FORM_SRC = readFileSync(
-    resolve3(__dirname, "../app/rules/_components/account-rules-form.tsx"),
-    "utf8",
-  );
+  const ACCOUNT_FORM_SRC = readAccountFormAndSections();
   const DEFAULT_FORM_SRC = readFileSync(
     resolve3(__dirname, "../app/rules/_components/rules-form.tsx"),
     "utf8",
