@@ -1308,8 +1308,12 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
   });
 
   it("shows honest enforcement context copy (not 'Guardrail watches' for default template)", () => {
+    // Phrasing tightened in a446a9e from "account rules" → "account-specific
+    // rules" for accuracy on the starter-settings header. The honest claim is
+    // unchanged: the enforcement engine reads the per-account rule rows, not
+    // the starter template directly.
     assert.ok(
-      RULES_PAGE_SRC.includes("enforcement engine reads account rules, not this template directly") ||
+      RULES_PAGE_SRC.includes("enforcement engine reads account-specific rules, not this template directly") ||
       RULES_PAGE_SRC.includes("Guardrail monitors this account during your trading session"),
       "Trading Plan page must include honest enforcement context copy",
     );
