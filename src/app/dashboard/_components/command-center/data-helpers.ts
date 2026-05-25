@@ -114,11 +114,15 @@ export function deriveBreachReason(input: {
 
   const { tradesCount, maxTradesPerDay, consecutiveLosses, stopAfterLosses } = input;
   const tradeCountSource = input.tradeCountSource ?? "verified";
-  const tradesAtOrOverLimit =
+  // Lock fires only when the count is STRICTLY OVER the allowance — see
+  // dry-run-rule-evaluator.ts for full semantics. At the cap (tradesCount ===
+  // maxTradesPerDay) the account is still within the allowance and shows a
+  // warning, not a lock.
+  const tradesOverLimit =
     tradeCountSource === "verified" &&
     tradesCount != null &&
     maxTradesPerDay != null &&
-    tradesCount >= maxTradesPerDay;
+    tradesCount > maxTradesPerDay;
 
   // Daily loss is definitively at the limit — always takes priority over trade count.
   if (input.dailyLossUsedPct != null && input.dailyLossUsedPct >= 1) {
@@ -128,8 +132,8 @@ export function deriveBreachReason(input: {
     };
   }
 
-  // Trade count is at or over limit (only when tradeCountSource is "verified").
-  if (tradesAtOrOverLimit) {
+  // Trade count strictly over limit (only when tradeCountSource is "verified").
+  if (tradesOverLimit) {
     return {
       headline: "Trade activity may exceed limit",
       detail: "Review your Tradovate Performance Report to confirm.",
@@ -153,17 +157,22 @@ export function deriveBreachReason(input: {
     return { headline: "Approaching daily loss limit" };
   }
 
+  // Trade-limit warning band — fires at the cap (no allowance remaining; next
+  // trade will lock) and one below the cap (one allowance remaining).
+  // Locked breach is handled above by tradesOverLimit (tradesCount > cap).
   if (
     tradeCountSource === "verified" &&
     tradesCount != null &&
     maxTradesPerDay != null &&
-    maxTradesPerDay > 1 &&
-    tradesCount === maxTradesPerDay - 1
+    maxTradesPerDay >= 1 &&
+    (tradesCount === maxTradesPerDay || tradesCount === maxTradesPerDay - 1)
   ) {
-    return {
-      headline: `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`,
-      detail: "One trade left today.",
-    };
+    const headline = `Trade limit warning: ${tradesCount}/${maxTradesPerDay}`;
+    const detail =
+      tradesCount === maxTradesPerDay
+        ? "Trade limit reached — the next trade will lock the account."
+        : "One trade left today.";
+    return { headline, detail };
   }
 
   return null;
@@ -244,12 +253,18 @@ export function deriveStatus(input: {
   // Trade-count-driven status only applies when the count is verified per
   // account; otherwise we may be reading mixed multi-account fill data and
   // must not lock the account based on trades alone.
+  //
+  // Semantics (matches dry-run-rule-evaluator.ts):
+  //   tradesCount > maxTradesPerDay              → locked (allowance exceeded)
+  //   tradesCount === maxTradesPerDay            → warning (at cap; next trade locks)
+  //   tradesCount === maxTradesPerDay - 1        → warning (one trade left)
+  //   tradesCount < maxTradesPerDay - 1          → allowed
   const tradeCountSource = input.tradeCountSource ?? "verified";
   if (tradeCountSource === "verified") {
     const { tradesCount, maxTradesPerDay } = input;
     if (tradesCount != null && maxTradesPerDay != null) {
-      if (tradesCount >= maxTradesPerDay) return "locked";
-      if (maxTradesPerDay > 1 && tradesCount === maxTradesPerDay - 1) return "warning";
+      if (tradesCount > maxTradesPerDay) return "locked";
+      if (maxTradesPerDay >= 1 && (tradesCount === maxTradesPerDay || tradesCount === maxTradesPerDay - 1)) return "warning";
     }
   }
 

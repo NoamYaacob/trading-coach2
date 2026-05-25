@@ -92,16 +92,21 @@ export function evaluateDryRunRules(input: DryRunRuleInput): DryRunEvaluationRes
   }
 
   // trade_limit — only when tradeCountSource is "verified".
-  // Semantics: maxTradesPerDay is the inclusive cap. Lock fires when the trade
-  // count REACHES the cap (>=), matching daily_loss_limit's `<= -maxDailyLoss`
-  // shape: the configured limit IS the lock trigger, not "one past it". So
-  // maxTradesPerDay=5 + tradesCount=5 fires; tradesCount=4 does not.
+  // Semantics: maxTradesPerDay is the ALLOWANCE. A user setting "Max trades per
+  // day = 3" expects 3 trades to be permitted; the lock fires only after the
+  // allowance has been EXCEEDED. So with maxTradesPerDay=3:
+  //   tradesCount 0..3 → no lock (within allowance)
+  //   tradesCount 4    → lock (one past the allowance)
+  // Comparison: tradesCount > maxTradesPerDay (strict, post-trade monitoring).
+  // Note for future pre-order blocking: a pre-order gate would use >= so the
+  // 4th order is blocked BEFORE it fills. That is a separate codepath and is
+  // not implemented here.
   // Suppressed when tradeCountSource != "verified" because broker-derived
   // counts can include other accounts (estimated) or be missing (unavailable).
   if (input.maxTradesPerDay != null) {
     if (input.tradeCountSource !== "verified") {
       skipped.push({ ruleType: "trade_limit", reason: `tradeCountSource=${input.tradeCountSource}` });
-    } else if (input.tradesCount >= input.maxTradesPerDay) {
+    } else if (input.tradesCount > input.maxTradesPerDay) {
       violations.push({
         ruleType: "trade_limit",
         thresholdAmount: null,

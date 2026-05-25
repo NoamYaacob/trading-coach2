@@ -77,17 +77,35 @@ describe("deriveStatus", () => {
     assert.equal(deriveStatus({ ...base, dailyLossUsedPct: 0.85 }), "warning");
   });
 
-  it("returns 'locked' when tradesCount >= maxTradesPerDay", () => {
+  it("returns 'locked' when tradesCount > maxTradesPerDay (allowance exceeded)", () => {
+    // Semantics: maxTradesPerDay is the inclusive allowance. With cap=3, the
+    // 4th trade is the first one past the allowance and triggers the lock.
     assert.equal(
-      deriveStatus({ ...base, tradesCount: 3, maxTradesPerDay: 3 }),
+      deriveStatus({ ...base, tradesCount: 4, maxTradesPerDay: 3 }),
       "locked",
     );
   });
 
-  it("returns 'warning' when tradesCount === maxTradesPerDay - 1", () => {
+  it("returns 'warning' (NOT 'locked') when tradesCount === maxTradesPerDay (at cap)", () => {
+    // At cap means the user has used their full allowance but has not exceeded
+    // it. The next trade will lock — surface as a warning, not a lock.
+    assert.equal(
+      deriveStatus({ ...base, tradesCount: 3, maxTradesPerDay: 3 }),
+      "warning",
+    );
+  });
+
+  it("returns 'warning' when tradesCount === maxTradesPerDay - 1 (one trade left)", () => {
     assert.equal(
       deriveStatus({ ...base, tradesCount: 2, maxTradesPerDay: 3 }),
       "warning",
+    );
+  });
+
+  it("returns 'allowed' when tradesCount < maxTradesPerDay - 1 (well within allowance)", () => {
+    assert.equal(
+      deriveStatus({ ...base, tradesCount: 1, maxTradesPerDay: 3 }),
+      "allowed",
     );
   });
 
@@ -257,6 +275,26 @@ describe("deriveBreachReason", () => {
     assert.ok(result !== null);
     assert.ok(result.headline.includes("2/3"), "warning headline shows count/limit");
     assert.equal(result.detail, "One trade left today.");
+  });
+
+  it("trade warning (at the cap, allowance fully used) — shows 'next trade will lock' copy", () => {
+    // At tradesCount === maxTradesPerDay the user has consumed the full
+    // allowance but has not exceeded it. The dashboard surfaces a warning
+    // (not a lock); the next trade will trigger the internal lock.
+    const result = deriveBreachReason({
+      ...base,
+      status: "warning",
+      riskState: "WARNING",
+      dailyLossUsedPct: null,
+      tradesCount: 3,
+      maxTradesPerDay: 3,
+    });
+    assert.ok(result !== null);
+    assert.ok(result.headline.includes("3/3"), "warning headline shows count/limit");
+    assert.equal(
+      result.detail,
+      "Trade limit reached — the next trade will lock the account.",
+    );
   });
 
   it("loss streak breach — shows streak/limit ratio", () => {

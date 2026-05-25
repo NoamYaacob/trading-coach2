@@ -127,7 +127,7 @@ export function formatLiveEnforcementTierLabel(tier: LiveEnforcementTier): strin
 export function formatTriggerLabel(triggerType: string): string {
   switch (triggerType) {
     case "daily_loss_limit":           return "Daily loss limit hit";
-    case "max_trades_reached":         return "Max trades reached";
+    case "max_trades_reached":         return "Max trades exceeded";
     case "consecutive_losses":         return "Consecutive losses";
     case "rapid_trading":              return "Rapid trading detected";
     case "revenge_entry":              return "Revenge entry";

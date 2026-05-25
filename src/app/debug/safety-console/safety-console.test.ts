@@ -383,15 +383,33 @@ describe("safety-console page — trade_limit (maxTradesPerDay) status surfaced"
     );
   });
 
-  it("documents trade_limit semantics: inclusive cap, verified source required", () => {
+  it("documents trade_limit semantics: inclusive allowance, lock fires when EXCEEDED", () => {
+    // Semantics: maxTradesPerDay is the inclusive allowance. With cap=3, trades
+    // 1–3 are permitted; the lock fires on trade 4. The copy must reflect this
+    // — NOT the older "inclusive cap" / >= phrasing which implied at-cap locks.
     assert.ok(
-      CODE.includes("inclusive cap") || CODE.includes("Inclusive cap"),
-      "must document 'inclusive cap' semantics for trade_limit",
+      CODE.includes("Inclusive allowance") || CODE.includes("inclusive allowance"),
+      "must document 'inclusive allowance' semantics for trade_limit",
     );
     assert.ok(
-      CODE.includes("tradesCount &gt;= maxTradesPerDay") ||
-        CODE.includes("tradesCount >= maxTradesPerDay"),
-      "must document the >= comparison so the cap behavior is explicit",
+      CODE.includes("tradesCount &gt; maxTradesPerDay") ||
+        CODE.includes("tradesCount > maxTradesPerDay"),
+      "must document the > (strict) comparison so the allowance behavior is explicit",
+    );
+    assert.ok(
+      !CODE.includes("tradesCount &gt;= maxTradesPerDay") &&
+        !CODE.includes("tradesCount >= maxTradesPerDay"),
+      "must not document the OLD >= comparison — it locked at the cap, which the product no longer wants",
+    );
+  });
+
+  it("surfaces an AT CAP state distinct from LOCKED", () => {
+    // Under the new semantics, tradesCount === maxTradesPerDay is at the cap
+    // but still within the allowance. The console must show this as a
+    // pre-lock state (e.g. "AT CAP — next trade locks") rather than LOCKED.
+    assert.ok(
+      CODE.includes("AT CAP") || CODE.includes("next trade locks"),
+      "must surface the at-cap state with copy distinct from LOCKED",
     );
   });
 

@@ -77,8 +77,8 @@ export default async function AlertsPage() {
       requires: "Daily loss limit",
     },
     {
-      label: "Max trades reached",
-      description: "An in-app notice when you hit your maximum trades-per-day limit.",
+      label: "Max trades exceeded",
+      description: "An in-app notice when you exceed your maximum trades-per-day limit (the next trade after your allowance triggers the lock).",
       active: riskRules?.maxTradesPerDay != null,
       requires: "Max trades per day",
     },

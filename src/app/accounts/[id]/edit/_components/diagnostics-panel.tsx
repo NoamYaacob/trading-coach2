@@ -33,7 +33,7 @@ type Props = {
 const TRIGGER_LABEL: Record<string, string> = {
   daily_loss_limit: "Daily loss limit",
   consecutive_losses: "Consecutive losses",
-  max_trades_reached: "Max trades reached",
+  max_trades_reached: "Max trades exceeded",
   rapid_trading: "Rapid trading",
   revenge_entry: "Revenge entry",
   increased_size_after_loss: "Size increase after loss",
