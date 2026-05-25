@@ -285,30 +285,35 @@ test("default form exposes the canonical four section cards in order", () => {
   }
 });
 
-test("account form exposes six section cards in the recommended order", () => {
-  // The account form was redesigned into six section cards. Each card is
-  // wrapped by SectionCard which sets role="group" + aria-label internally;
-  // the section components pass these labels through, so source-scanning the
-  // concatenated section files finds them.
+test("account form exposes the six section cards in the recommended order", () => {
+  // The account form is composed of six section components rendered in
+  // this order. Each card declares its label either via SectionCard's
+  // ariaLabel prop (always-expanded sections) or via aria-label on a
+  // <details> wrapper (collapsed sections like Advanced broker actions).
+  // The helper accepts either syntax — both are JSX-equivalent.
   const SECTIONS = [
-    'ariaLabel="Money limits"',
-    'ariaLabel="Trading behavior"',
-    'ariaLabel="Position & symbol controls"',
-    'ariaLabel="Session cutoff"',
-    'ariaLabel="Notifications"',
-    'ariaLabel="Advanced broker actions"',
+    "Money limits",
+    "Trading behavior",
+    "Position & symbol controls",
+    "Session cutoff",
+    "Notifications",
+    "Advanced broker actions",
   ];
   const src = read(FORM_FILES.account);
   let lastIdx = -1;
   for (const section of SECTIONS) {
-    const idx = src.indexOf(section);
+    // Match either ariaLabel="..." (SectionCard prop) or aria-label="..." (raw JSX).
+    const idxA = src.indexOf(`ariaLabel="${section}"`);
+    const idxB = src.indexOf(`aria-label="${section}"`);
+    const candidates = [idxA, idxB].filter((i) => i !== -1);
     assert.ok(
-      idx !== -1,
-      `account form is missing section ${section} — must declare the six redesigned sections`,
+      candidates.length > 0,
+      `account form is missing section "${section}" — must declare it via ariaLabel or aria-label`,
     );
+    const idx = Math.min(...candidates);
     assert.ok(
       idx > lastIdx,
-      `account form declares ${section} before an earlier section in the canonical order`,
+      `account form declares "${section}" before an earlier section in the canonical order`,
     );
     lastIdx = idx;
   }
@@ -357,6 +362,107 @@ test("default form STILL renders TradingSessionSelector — only the account for
   assert.ok(
     src.includes("<TradingSessionSelector"),
     "default-template form must still render <TradingSessionSelector>",
+  );
+});
+
+// ── Progressive disclosure: collapsed sections and Learn more (UX cleanup) ───
+
+test("account form: Advanced broker actions is collapsed by default", () => {
+  // After the UX cleanup the section is a <details> with no `open` attribute,
+  // so the four planned actions are tucked away until the user expands them.
+  // Source-scan: confirm the section uses <details> and does NOT default to open.
+  const src = read(FORM_FILES.account);
+  const idx = src.indexOf('aria-label="Advanced broker actions"');
+  assert.ok(idx !== -1, "Advanced broker actions section must declare aria-label");
+  // Walk backwards a short distance to find the opening tag this aria-label belongs to.
+  const before = src.slice(Math.max(0, idx - 200), idx + 60);
+  assert.ok(
+    /<details\b[^>]*$/.test(before.replace(/\s+/g, " ").split("aria-label")[0] ?? "") ||
+      /<details\b/.test(before),
+    "Advanced broker actions must be wrapped in a <details> element",
+  );
+  // The tag must NOT carry the `open` attribute — collapsed by default.
+  const tagBlock = src.slice(Math.max(0, idx - 200), idx + 200);
+  assert.ok(
+    !/<details\b[^>]*\bopen\b/.test(tagBlock),
+    "Advanced broker actions <details> must not default to open",
+  );
+});
+
+/**
+ * Strip JSDoc block comments + single-line comments so source-scan assertions
+ * only see customer-visible JSX/TSX — not commentary that may legitimately
+ * mention placeholder rule names while explaining why they were moved.
+ */
+function codeOnly(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+}
+
+test("account form: Max trades per week is NOT shown as a primary Trading-behavior row", () => {
+  // The placeholder moved to PlannedRulesSection (collapsed). Trading behavior
+  // must only contain the rules that actually enforce today (max trades/day +
+  // stop after losses) so the section stays scannable.
+  const tradingBehavior = codeOnly(
+    readFileSync(
+      resolve(import.meta.dirname, "sections/trading-behavior-section.tsx"),
+      "utf8",
+    ),
+  );
+  assert.ok(
+    !tradingBehavior.includes("Max trades per week"),
+    "Max trades per week must not appear in trading-behavior-section JSX — move it to PlannedRulesSection",
+  );
+});
+
+test("account form: Symbol blocks is NOT shown as a primary Position-symbol row", () => {
+  // Same reasoning as Max trades per week: Symbol blocks is not implemented
+  // and must not compete with the rules that actually enforce today.
+  const positionSymbol = codeOnly(
+    readFileSync(
+      resolve(import.meta.dirname, "sections/position-symbol-section.tsx"),
+      "utf8",
+    ),
+  );
+  assert.ok(
+    !positionSymbol.includes("Symbol blocks"),
+    "Symbol blocks must not appear in position-symbol-section JSX — move it to PlannedRulesSection",
+  );
+});
+
+test("account form: PlannedRulesSection collapses the not-yet-active rules", () => {
+  // Both placeholder rules live in the new collapsed PlannedRulesSection.
+  // It must use <details> (collapsed by default) and must list both rule names.
+  const planned = readFileSync(
+    resolve(import.meta.dirname, "sections/planned-rules-section.tsx"),
+    "utf8",
+  );
+  assert.ok(planned.includes("<details"), "PlannedRulesSection must use <details>");
+  assert.ok(
+    !/<details\b[^>]*\bopen\b/.test(planned),
+    "PlannedRulesSection <details> must not default to open",
+  );
+  assert.ok(
+    planned.includes("Max trades per week") && planned.includes("Symbol blocks"),
+    "PlannedRulesSection must list both not-active placeholders",
+  );
+});
+
+test("account form: long helper copy is gated behind a 'Learn more' disclosure", () => {
+  // The progressive-disclosure pattern uses the Field component's `details`
+  // prop, which renders a collapsed <details><summary>Learn more</summary>...
+  // Confirm at least one Field across the section files uses details=.
+  const src = read(FORM_FILES.account);
+  assert.ok(
+    src.includes("Learn more"),
+    "section cards must surface long copy behind a 'Learn more' disclosure",
+  );
+  assert.ok(
+    src.includes("details="),
+    "at least one Field must wire its long copy through the `details` prop",
   );
 });
 

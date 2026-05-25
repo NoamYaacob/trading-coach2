@@ -75,11 +75,12 @@ export function MoneyLimitsSection({
           </div>
         </dl>
       )}
-      <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
+      <div className="grid items-start gap-3 sm:grid-cols-2">
         <Field
           label="Daily loss limit ($)"
           badge={<RuleStatusBadge variant="broker-eligible" />}
-          hint="On supported Tradovate connections with consent and full access, the limit can be written to Tradovate's own risk settings. Off by default."
+          hint="Locks when today's P&L crosses this loss."
+          details="On supported Tradovate connections with consent and full access granted, Guardrail can also write this limit to Tradovate's own risk settings so the broker enforces it independently. Off by default — opt-in per account."
           pendingNote={pendingNotes?.maxDailyLoss ?? null}
         >
           <NumberInput

@@ -1,11 +1,13 @@
 /**
  * Shared field primitives used by every Trading Plan section card.
  *
- * Field — label + optional badge + child input + optional hint/pending note.
+ * Field — label + optional badge + child input + at-most-one short hint line
+ *   + optional "Learn more" disclosure with longer explanation.
  * NumberInput — numeric input (decimal or integer) with consistent styling.
  *
- * Kept tiny and presentational. State, validation, and pending logic live in
- * the parent form so sections stay reusable.
+ * Progressive disclosure: short hint is always visible; long copy goes behind
+ * the `details` slot which renders a collapsed-by-default <details>. Keeps
+ * each row scannable while preserving full transparency for users who want it.
  */
 import type { ReactNode } from "react";
 
@@ -14,12 +16,16 @@ export function Field({
   hint,
   badge,
   pendingNote,
+  details,
   children,
 }: {
   label: string;
+  /** Short helper line shown directly under the input. Keep to ~70 chars. */
   hint?: string;
   badge?: ReactNode;
   pendingNote?: string | null;
+  /** Optional longer explanation tucked behind a collapsed "Learn more" row. */
+  details?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -30,6 +36,15 @@ export function Field({
       </span>
       {children}
       {hint && <span className="text-xs text-stone-400">{hint}</span>}
+      {details && (
+        <details className="group text-xs text-stone-400">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-stone-400 hover:text-stone-600">
+            <span className="text-[10px]">Learn more</span>
+            <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-1 text-stone-500">{details}</div>
+        </details>
+      )}
       {pendingNote && (
         <span className="text-xs font-medium text-amber-600">{pendingNote}</span>
       )}
@@ -68,19 +83,25 @@ export function NumberInput({
 export function SectionCard({
   title,
   ariaLabel,
+  badge,
   children,
 }: {
   title: string;
   ariaLabel: string;
+  /** Optional badge or chip rendered inline next to the section title. */
+  badge?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div
       role="group"
       aria-label={ariaLabel}
-      className="grid gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-4 sm:p-5"
+      className="grid gap-2.5 rounded-2xl border border-stone-100 bg-stone-50/50 p-3 sm:gap-3 sm:p-4"
     >
-      <p className="text-sm font-semibold text-stone-950">{title}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-semibold text-stone-950">{title}</p>
+        {badge}
+      </div>
       {children}
     </div>
   );
