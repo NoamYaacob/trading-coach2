@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel, deriveBrokerEnforcementNoteCopy } from "./data-helpers.ts";
+import { deriveTradingPermissionStatus, resolveSessionDisplayMetrics, deriveRowStatusLabel, deriveBrokerEnforcementNoteCopy, deriveGroupStateSuffix, DRY_RUN_BANNER_COPY } from "./data-helpers.ts";
 import type { AccountStatus, EnforcementMode } from "./types.ts";
 
 function makeAccount(
@@ -141,8 +141,8 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     });
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
-    assert.equal(result.headline, "Monitoring active");
-    assert.ok(result.subline.includes("Broker-side enforcement is not active"));
+    assert.equal(result.headline, "Guardrail protection active");
+    assert.ok(result.subline.includes("currently inactive"), `got: ${result.subline}`);
   });
 
   it("test_mode takes precedence over locked", () => {
@@ -160,7 +160,7 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "test_mode");
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
-    assert.ok(result.headline.includes("Monitoring active"), `got: ${result.headline}`);
+    assert.ok(result.headline.includes("Guardrail protection active"), `got: ${result.headline}`);
   });
 
   it("test_mode with single locked account uses singular", () => {
@@ -177,8 +177,8 @@ describe("deriveTradingPermissionStatus test_mode level", () => {
       accounts: [makeAccount("allowed", "dry_run")],
     });
     assert.ok(result !== null);
-    assert.ok(result.subline.includes("watching"), `got: ${result.subline}`);
-    assert.ok(result.subline.includes("not active"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("lock accounts"), `got: ${result.subline}`);
+    assert.ok(result.subline.includes("currently inactive"), `got: ${result.subline}`);
   });
 
   it("headline never contains the phrase 'test mode'", () => {
@@ -215,7 +215,7 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "allowed");
     assert.ok(
-      result.headline.includes("Monitoring active"),
+      result.headline.includes("Guardrail protection active"),
       `got: ${result.headline}`,
     );
   });
@@ -230,7 +230,7 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "allowed");
     assert.ok(
-      result.headline.includes("Monitoring active"),
+      result.headline.includes("Guardrail protection active"),
       `got: ${result.headline}`,
     );
     assert.ok(result.headline.includes("locked"), `got: ${result.headline}`);
@@ -253,7 +253,7 @@ describe("deriveTradingPermissionStatus — dry_run with full_access", () => {
     });
     assert.ok(result !== null);
     assert.ok(
-      result.subline.toLowerCase().includes("broker-side enforcement is not active"),
+      result.subline.toLowerCase().includes("currently inactive"),
       `got: ${result.subline}`,
     );
   });
@@ -683,5 +683,92 @@ describe("post-canary: tradable account with historical broker_locked record", (
     });
     assert.notEqual(locked?.level, "allowed");
     assert.equal(allowed?.level, "allowed");
+  });
+});
+
+// ── Overclaim guard: dry_run copy accuracy ────────────────────────────────────
+
+describe("overclaim guard: dry_run banner says 'Guardrail protection active' not 'Monitoring active'", () => {
+  it("dry_run headline says 'Guardrail protection active'", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      result.headline.includes("Guardrail protection active"),
+      `dry_run headline must say 'Guardrail protection active', got: "${result.headline}"`,
+    );
+    assert.ok(
+      !result.headline.includes("Monitoring active"),
+      `dry_run headline must NOT say 'Monitoring active', got: "${result.headline}"`,
+    );
+  });
+
+  it("dry_run subline says 'can lock accounts' not 'watching'", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      result.subline.includes("can lock accounts"),
+      `dry_run subline must acknowledge lock capability, got: "${result.subline}"`,
+    );
+    assert.ok(
+      !result.subline.includes("watching your accounts"),
+      `dry_run subline must NOT say 'watching your accounts', got: "${result.subline}"`,
+    );
+  });
+
+  it("dry_run subline says 'currently inactive' not 'is not active'", () => {
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("allowed", "dry_run")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      result.subline.includes("currently inactive"),
+      `dry_run subline must say 'currently inactive', got: "${result.subline}"`,
+    );
+  });
+
+  it("DRY_RUN_BANNER_COPY acknowledges lock capability", () => {
+    assert.ok(
+      DRY_RUN_BANNER_COPY.includes("can lock accounts"),
+      `DRY_RUN_BANNER_COPY must acknowledge lock capability: "${DRY_RUN_BANNER_COPY}"`,
+    );
+    assert.ok(
+      DRY_RUN_BANNER_COPY.includes("currently inactive"),
+      `DRY_RUN_BANNER_COPY must say 'currently inactive': "${DRY_RUN_BANNER_COPY}"`,
+    );
+    assert.ok(
+      !DRY_RUN_BANNER_COPY.includes("watching your accounts"),
+      `DRY_RUN_BANNER_COPY must NOT say 'watching your accounts': "${DRY_RUN_BANNER_COPY}"`,
+    );
+  });
+});
+
+// ── Overclaim guard: group suffix does not say 'Monitoring only' ──────────────
+
+describe("overclaim guard: deriveGroupStateSuffix does not return 'Monitoring only' for dry-run groups", () => {
+  it("dry_run accounts return 'Guardrail active' not 'Monitoring only'", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.equal(suffix, "Guardrail active");
+    assert.notEqual(suffix, "Monitoring only");
+  });
+
+  it("GroupStateSuffix value is 'Guardrail active' not 'Monitoring only'", () => {
+    const suffix = deriveGroupStateSuffix({
+      accounts: [
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
+        { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
+      ],
+    });
+    assert.ok(
+      suffix !== "Monitoring only",
+      `group suffix must NOT be 'Monitoring only' for internal-lock-capable accounts`,
+    );
   });
 });

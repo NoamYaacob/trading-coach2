@@ -12,13 +12,34 @@ import { resolve } from "node:path";
 
 import { cmeHourBoundaryNote } from "./cme-hour-parsing.ts";
 
+// Section components extracted from the account form. Source-scan tests treat
+// the account form and its section files as one logical source — any string
+// they assert may live in any of these files.
+const ACCOUNT_SECTION_FILES = [
+  resolve(import.meta.dirname, "sections/money-limits-section.tsx"),
+  resolve(import.meta.dirname, "sections/trading-behavior-section.tsx"),
+  resolve(import.meta.dirname, "sections/position-symbol-section.tsx"),
+  resolve(import.meta.dirname, "sections/session-cutoff-section.tsx"),
+  resolve(import.meta.dirname, "sections/notifications-section.tsx"),
+  resolve(import.meta.dirname, "sections/advanced-broker-actions-section.tsx"),
+  resolve(import.meta.dirname, "sections/field-primitives.tsx"),
+] as const;
+
 const FORM_FILES = {
   account: resolve(import.meta.dirname, "account-rules-form.tsx"),
   default: resolve(import.meta.dirname, "rules-form.tsx"),
 } as const;
 
 function read(path: string): string {
-  return readFileSync(path, "utf8");
+  const base = readFileSync(path, "utf8");
+  // When reading the account form, also include the source of every section
+  // component it composes. Copy that used to live inline now lives in those
+  // section files, so source-scan assertions need to see them as one source.
+  if (path === FORM_FILES.account) {
+    const sections = ACCOUNT_SECTION_FILES.map((f) => readFileSync(f, "utf8")).join("\n");
+    return `${base}\n${sections}`;
+  }
+  return base;
 }
 
 // ── Pending panel: active vs pending guidance ────────────────────────────────
@@ -237,34 +258,59 @@ test("both forms use the SAME risk-per-trade hint copy", () => {
   assert.ok(accountSrc.includes(SHARED_HINT), "account form must use shared risk-per-trade hint");
 });
 
-test("both forms expose the same five top-level sections in the same order", () => {
-  // Default template form sections: Money limits → Trading limits → Daily
-  // cutoff → Notifications → Trading Session (mounted as a separate component).
-  // The account form must mirror this section list so the two pages feel like
-  // the same form rather than two unrelated layouts. Trading Session is
-  // rendered by <TradingSessionSelector> (no role="group"), so we only
-  // assert on the four section cards that live in the form file itself.
+test("default form exposes the canonical four section cards in order", () => {
+  // Default template form sections (still inline): Money limits → Trading
+  // limits → Daily cutoff → Notifications → Trading Session (separate
+  // component). The default form keeps its existing structure for now; the
+  // section-card refactor lands on the account form first.
   const SECTIONS = [
     'aria-label="Money limits"',
     'aria-label="Trading limits"',
     'aria-label="Daily cutoff"',
     'aria-label="Notifications"',
   ];
-  for (const path of [FORM_FILES.default, FORM_FILES.account]) {
-    const src = read(path);
-    let lastIdx = -1;
-    for (const section of SECTIONS) {
-      const idx = src.indexOf(section);
-      assert.ok(
-        idx !== -1,
-        `${path} is missing section ${section} — both forms must declare the same section list`,
-      );
-      assert.ok(
-        idx > lastIdx,
-        `${path} declares ${section} before an earlier section in the canonical order`,
-      );
-      lastIdx = idx;
-    }
+  const src = read(FORM_FILES.default);
+  let lastIdx = -1;
+  for (const section of SECTIONS) {
+    const idx = src.indexOf(section);
+    assert.ok(
+      idx !== -1,
+      `default form is missing section ${section} — it must declare the canonical section list`,
+    );
+    assert.ok(
+      idx > lastIdx,
+      `default form declares ${section} before an earlier section in the canonical order`,
+    );
+    lastIdx = idx;
+  }
+});
+
+test("account form exposes six section cards in the recommended order", () => {
+  // The account form was redesigned into six section cards. Each card is
+  // wrapped by SectionCard which sets role="group" + aria-label internally;
+  // the section components pass these labels through, so source-scanning the
+  // concatenated section files finds them.
+  const SECTIONS = [
+    'ariaLabel="Money limits"',
+    'ariaLabel="Trading behavior"',
+    'ariaLabel="Position & symbol controls"',
+    'ariaLabel="Session cutoff"',
+    'ariaLabel="Notifications"',
+    'ariaLabel="Advanced broker actions"',
+  ];
+  const src = read(FORM_FILES.account);
+  let lastIdx = -1;
+  for (const section of SECTIONS) {
+    const idx = src.indexOf(section);
+    assert.ok(
+      idx !== -1,
+      `account form is missing section ${section} — must declare the six redesigned sections`,
+    );
+    assert.ok(
+      idx > lastIdx,
+      `account form declares ${section} before an earlier section in the canonical order`,
+    );
+    lastIdx = idx;
   }
 });
 
@@ -632,13 +678,22 @@ test("account form: imports and renders SymbolLimitsTable", () => {
 });
 
 test("account form: SymbolLimitsTable is disabled when the form is locked", () => {
+  // After the section-card refactor, the chain runs:
+  //   account-rules-form.tsx → symbolLimitsDisabled={fieldsDisabled}
+  //   position-symbol-section.tsx → <SymbolLimitsTable disabled={symbolLimitsDisabled}>
+  // Both ends must be wired or a locked account becomes editable for symbol limits.
   const src = read(FORM_FILES.account);
   const idx = src.indexOf("<SymbolLimitsTable");
   assert.ok(idx !== -1, "SymbolLimitsTable must be rendered");
-  const block = src.slice(idx, idx + 240);
+  const block = src.slice(idx, idx + 320);
   assert.ok(
-    block.includes("disabled={fieldsDisabled}"),
-    "SymbolLimitsTable must receive disabled={fieldsDisabled} so a locked account is read-only",
+    block.includes("disabled={symbolLimitsDisabled}"),
+    "SymbolLimitsTable must receive disabled={symbolLimitsDisabled} so a locked account is read-only",
+  );
+  // Verify the parent form propagates fieldsDisabled into symbolLimitsDisabled.
+  assert.ok(
+    src.includes("symbolLimitsDisabled={fieldsDisabled}"),
+    "account form must pass fieldsDisabled into the PositionSymbolSection's symbolLimitsDisabled prop",
   );
 });
 
@@ -677,14 +732,17 @@ test("account form: shows the global-fallback note on the max contracts field", 
   );
 });
 
-test("account form: symbol-limits section is badged Monitoring only", () => {
+test("account form: symbol-limits section is badged 'Saved · Evaluation coming soon'", () => {
+  // Symbol limits are stored on the rule record but the guardian evaluator
+  // does not read them yet, so the badge must say "Saved · Evaluation coming
+  // soon" — not "Monitoring only" (which would imply live warning evaluation).
   const src = read(FORM_FILES.account);
   const idx = src.indexOf("SYMBOL_LIMITS_COPY.heading");
   assert.ok(idx !== -1, "symbol-limits section heading must be rendered");
-  const block = src.slice(idx, idx + 260);
+  const block = src.slice(idx, idx + 320);
   assert.ok(
-    block.includes('text="Monitoring only"'),
-    "symbol-limits section must carry the 'Monitoring only' badge",
+    block.includes('variant="saved-eval-soon"'),
+    "symbol-limits section must carry the 'Saved · Evaluation coming soon' badge variant",
   );
 });
 
@@ -741,6 +799,18 @@ test("account form: notifications section drops the stale inherited-setting fram
 
 // ── Enforcement accuracy: badges and footer ──────────────────────────────────
 
+// Match either the legacy text-attribute syntax used by the default form
+// (`<StatusBadge variant="..." text="Guardrail lock" />`) or the new
+// variant-based syntax used by the account-form section components
+// (`<RuleStatusBadge variant="guardrail-lock" />`).
+function hasGuardrailLockBadge(block: string): boolean {
+  return block.includes('text="Guardrail lock"') || block.includes('variant="guardrail-lock"');
+}
+
+function claimsMonitoringOnly(block: string): boolean {
+  return block.includes('text="Monitoring only"') || block.includes('variant="monitoring-only"');
+}
+
 test("both forms: max trades badge says 'Guardrail lock' not 'Monitoring only'", () => {
   // max trades, stop after losses, and max contracts all create InternalLockEvent
   // rows on breach (app-level enforcement). Their badges must reflect enforcement,
@@ -751,11 +821,11 @@ test("both forms: max trades badge says 'Guardrail lock' not 'Monitoring only'",
     assert.ok(maxTradesIdx !== -1, `${name}: label 'Max trades per day' must be present`);
     const fieldBlock = src.slice(maxTradesIdx, maxTradesIdx + 400);
     assert.ok(
-      fieldBlock.includes('text="Guardrail lock"'),
+      hasGuardrailLockBadge(fieldBlock),
       `${name}: max trades badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
     );
     assert.ok(
-      !fieldBlock.includes('text="Monitoring only"'),
+      !claimsMonitoringOnly(fieldBlock),
       `${name}: max trades badge must NOT say "Monitoring only" — it locks the account`,
     );
   }
@@ -768,11 +838,11 @@ test("both forms: stop after losses badge says 'Guardrail lock' not 'Monitoring 
     assert.ok(idx !== -1, `${name}: label 'Stop after consecutive losses' must be present`);
     const fieldBlock = src.slice(idx, idx + 400);
     assert.ok(
-      fieldBlock.includes('text="Guardrail lock"'),
+      hasGuardrailLockBadge(fieldBlock),
       `${name}: stop-after-losses badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
     );
     assert.ok(
-      !fieldBlock.includes('text="Monitoring only"'),
+      !claimsMonitoringOnly(fieldBlock),
       `${name}: stop-after-losses badge must NOT say "Monitoring only" — it locks the account`,
     );
   }
@@ -786,11 +856,11 @@ test("both forms: max position size badge says 'Guardrail lock' not 'Monitoring 
     assert.ok(idx !== -1, `${name}: MAX_POSITION_SIZE_COPY.label reference must be present`);
     const fieldBlock = src.slice(idx - 20, idx + 400);
     assert.ok(
-      fieldBlock.includes('text="Guardrail lock"'),
+      hasGuardrailLockBadge(fieldBlock),
       `${name}: max position size badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
     );
     assert.ok(
-      !fieldBlock.includes('text="Monitoring only"'),
+      !claimsMonitoringOnly(fieldBlock),
       `${name}: max position size badge must NOT say "Monitoring only" — it locks the account`,
     );
   }

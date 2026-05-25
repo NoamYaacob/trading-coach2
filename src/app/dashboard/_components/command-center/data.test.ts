@@ -1360,10 +1360,12 @@ describe("DRY_RUN_BANNER_COPY (monitoring-active banner)", () => {
     );
   });
 
-  it("states that Guardrail is monitoring the accounts", () => {
+  it("states that Guardrail is monitoring or watching the accounts", () => {
     assert.ok(
-      DRY_RUN_BANNER_COPY.toLowerCase().includes("monitoring") || DRY_RUN_BANNER_COPY.toLowerCase().includes("watching"),
-      `expected monitoring/watching in copy, got: ${DRY_RUN_BANNER_COPY}`,
+      DRY_RUN_BANNER_COPY.toLowerCase().includes("monitoring") ||
+        DRY_RUN_BANNER_COPY.toLowerCase().includes("monitors") ||
+        DRY_RUN_BANNER_COPY.toLowerCase().includes("watching"),
+      `expected monitoring/monitors/watching in copy, got: ${DRY_RUN_BANNER_COPY}`,
     );
   });
 
@@ -1613,24 +1615,24 @@ describe("deriveGroupStateSuffix", () => {
     assert.equal(deriveGroupStateSuffix({ accounts: [] }), null);
   });
 
-  it("any account in dry_run without full_access → 'Monitoring only'", () => {
+  it("any account in dry_run without full_access → 'Guardrail active'", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "broker_active", requiresAutomatedActionsConsent: false },
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false },
       ],
     });
-    assert.equal(suffix, "Monitoring only");
+    assert.equal(suffix, "Guardrail active");
   });
 
-  it("all dry_run + all full_access → 'Monitoring only' (not 'Broker risk settings enabled' — enforcement off in beta)", () => {
+  it("all dry_run + all full_access → 'Guardrail active' (not 'Broker risk settings enabled' — enforcement off in beta)", () => {
     const suffix = deriveGroupStateSuffix({
       accounts: [
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false, permissionLevel: "full_access" },
         { enforcementMode: "dry_run", requiresAutomatedActionsConsent: false, permissionLevel: "full_access" },
       ],
     });
-    assert.equal(suffix, "Monitoring only");
+    assert.equal(suffix, "Guardrail active");
   });
 
   it("any account requires consent → 'Consent required'", () => {
