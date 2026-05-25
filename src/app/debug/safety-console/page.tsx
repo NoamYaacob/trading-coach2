@@ -18,6 +18,11 @@ import {
   type SafetyAlert,
   type SafetyAlertSeverity,
 } from "@/lib/safety-console-helpers";
+import { canApplyInternalLock, buildInternalLockDedupKey } from "@/lib/guardian-engine/internal-lock-evaluator";
+import { evaluateDryRunRules } from "@/lib/guardian-engine/dry-run-rule-evaluator";
+import { hasValidConsent, resolveConsentForAccount, AUTOMATED_ACTIONS_CONSENT_VERSION } from "@/lib/brokers/automated-actions-consent";
+import { parseTradovateMasterId } from "@/lib/brokers/tradovate-master-id";
+import { parseBrokerEnforcementAllowlist } from "@/lib/guardian-engine/broker-enforcement-gate";
 
 export const metadata: Metadata = {
   title: "Safety Console",
@@ -25,11 +30,113 @@ export const metadata: Metadata = {
 };
 
 const LISTENER_STALE_THRESHOLD_MS = 60_000;
-
-// The listener-worker writes ListenerWorkerStatus once per reconcile loop
-// (~every 60s). Allow a few missed cycles before treating the row as stale —
-// a stale row is treated as "not exposed" so old flag values are never trusted.
 const LISTENER_FLAGS_STALE_THRESHOLD_MS = 5 * 60_000;
+
+const DEMO7_ACCOUNT_ID = "cmottd1z200020do1knjxq582";
+const DEMO7_EXTERNAL_ID = "DEMO7433035";
+const EXPECTED_LISTENER_COMMIT = "dc11d46";
+
+const NON_LIVE_CONNECTION_STATUSES_SET = new Set([
+  "expired",
+  "connection_error",
+  "not_connected",
+  "pending_webhook",
+  "oauth_pending_storage",
+]);
+
+// ── Activation readiness types (mirrors daily-loss-activation-candidates route) ──
+
+type ActivationReadinessStatus = "candidate" | "preview_required" | "blocked";
+
+type ActivationReadinessPhase =
+  | "blocked_not_demo"
+  | "blocked_account_inactive"
+  | "blocked_missing_from_broker"
+  | "blocked_connection_not_live"
+  | "blocked_not_full_access"
+  | "blocked_invalid_external_account_id"
+  | "blocked_no_daily_loss_rule"
+  | "blocked_guardian_inactive"
+  | "blocked_missing_consent"
+  | "blocked_existing_locked_autoliq"
+  | "preview_required"
+  | "candidate_for_demo_activation";
+
+type AccountActivationReadiness = {
+  status: ActivationReadinessStatus;
+  phase: ActivationReadinessPhase;
+  blockers: string[];
+  nextSafeAction: string;
+};
+
+function deriveActivationReadiness(params: {
+  platform: string;
+  env: string | null;
+  isActive: boolean;
+  missingFromBrokerSince: Date | null;
+  connectionStatus: string | null;
+  permissionLevel: string | null;
+  validExternalAccountId: boolean;
+  maxDailyLoss: number | null;
+  guardianEnabled: boolean;
+  consentValid: boolean;
+  hasGuardrailOwnedWrite: boolean;
+  previewExists: boolean;
+  existingChangesLocked: boolean | null;
+}): AccountActivationReadiness {
+  if (params.platform !== "tradovate" || params.env !== "demo") {
+    return {
+      status: "blocked", phase: "blocked_not_demo",
+      blockers: [params.platform !== "tradovate" ? "platform_not_tradovate" : "env_not_demo"],
+      nextSafeAction: "Not a Tradovate demo account — not eligible for Daily Loss enforcement.",
+    };
+  }
+  if (!params.isActive) {
+    return { status: "blocked", phase: "blocked_account_inactive", blockers: ["account_inactive"], nextSafeAction: "Activate the account." };
+  }
+  if (params.missingFromBrokerSince != null) {
+    return { status: "blocked", phase: "blocked_missing_from_broker", blockers: ["account_missing_from_broker"], nextSafeAction: "Reconnect or re-provision." };
+  }
+  const connStatus = params.connectionStatus ?? "not_connected";
+  if (NON_LIVE_CONNECTION_STATUSES_SET.has(connStatus)) {
+    return { status: "blocked", phase: "blocked_connection_not_live", blockers: [`connection_status_${connStatus}`], nextSafeAction: `Reconnect the broker connection (status: ${connStatus}).` };
+  }
+  if (params.permissionLevel !== "full_access") {
+    return { status: "blocked", phase: "blocked_not_full_access", blockers: [`permission_level_${params.permissionLevel ?? "null"}`], nextSafeAction: "Re-authenticate with 'Account Risk Settings: Full Access'." };
+  }
+  if (!params.validExternalAccountId) {
+    return { status: "blocked", phase: "blocked_invalid_external_account_id", blockers: ["invalid_external_account_id"], nextSafeAction: "Re-sync the account to populate a valid Tradovate masterid." };
+  }
+  if (params.maxDailyLoss == null || params.maxDailyLoss <= 0) {
+    return { status: "blocked", phase: "blocked_no_daily_loss_rule", blockers: ["max_daily_loss_not_positive"], nextSafeAction: "Configure a positive maxDailyLoss rule." };
+  }
+  if (!params.guardianEnabled) {
+    return { status: "blocked", phase: "blocked_guardian_inactive", blockers: ["guardian_inactive"], nextSafeAction: "Enable Guardian for this user." };
+  }
+  if (!params.consentValid) {
+    return {
+      status: "blocked", phase: "blocked_missing_consent", blockers: ["missing_or_stale_automated_actions_consent"],
+      nextSafeAction: `User must confirm automated-actions consent (version '${AUTOMATED_ACTIONS_CONSENT_VERSION}').`,
+    };
+  }
+  if (params.previewExists && params.existingChangesLocked === true && !params.hasGuardrailOwnedWrite) {
+    return {
+      status: "blocked", phase: "blocked_existing_locked_autoliq",
+      blockers: ["preexisting_locked_autoliq_not_guardrail_owned"],
+      nextSafeAction: "Do not run apply=true. Use a clean demo account or investigate the existing AutoLiq record.",
+    };
+  }
+  if (!params.previewExists) {
+    return {
+      status: "preview_required", phase: "preview_required", blockers: [],
+      nextSafeAction: "Run GET /api/debug/broker-enforcement/daily-loss-recovery-probe?mode=read_only to populate AutoLiq state.",
+    };
+  }
+  return {
+    status: "candidate", phase: "candidate_for_demo_activation", blockers: [],
+    nextSafeAction: "Ready. Add to BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST and set BROKER_ENFORCEMENT_ENABLED=true. Review ENFORCEMENT_DRY_RUN first.",
+  };
+}
 
 export default async function SafetyConsolePage() {
   const currentUser = await getCurrentUser();
@@ -42,6 +149,7 @@ export default async function SafetyConsolePage() {
 
   const flags = readEnforcementFlagsFromEnv(process.env);
   const now = new Date();
+  const today = now.toISOString().slice(0, 10);
 
   const [
     brokerConnections,
@@ -183,7 +291,6 @@ export default async function SafetyConsolePage() {
 
   const allowlistSet = new Set(flags.allowlist);
 
-  // Map BrokerConnection.id → list of its protected accounts (for rollout-relevance).
   const accountsByConnection = new Map<string, typeof accounts>();
   for (const a of accounts) {
     if (!a.brokerConnectionId) continue;
@@ -192,9 +299,6 @@ export default async function SafetyConsolePage() {
     accountsByConnection.set(a.brokerConnectionId, list);
   }
 
-  // Per-connection rollout relevance — derived from account-level relevance.
-  // A connection is only rollout-relevant when at least one of its accounts is
-  // explicitly in scope: allowlisted, has active locks, or has enforcement history.
   const rolloutRelevantByConnection = new Map<string, boolean>();
   for (const c of brokerConnections) {
     const conAccounts = accountsByConnection.get(c.id) ?? [];
@@ -241,16 +345,8 @@ export default async function SafetyConsolePage() {
     };
   });
 
-  // Sort: active locks → broker_lock_failed → broker history (any) → allowlisted →
-  // active protected → everything else.
   accountSummaries.sort((a, b) => priorityRank(a) - priorityRank(b));
 
-  // Listener-worker env flags. The listener-worker runs as a separate Railway
-  // service and mirrors its own enforcement env into the ListenerWorkerStatus
-  // singleton row on every reconcile loop. resolveListenerFlags returns null
-  // (→ "not exposed") when the row is missing or stale, so we never present a
-  // stopped worker's old flag values as authoritative. These values — not the
-  // web/app process.env — gate the critical broker-write safety alerts.
   const listenerFlags = resolveListenerFlags({
     record: listenerWorkerStatus
       ? {
@@ -291,9 +387,6 @@ export default async function SafetyConsolePage() {
 
   const overallSeverity = deriveOverallSeverity(alerts);
 
-  // ── Rollout readiness ────────────────────────────────────────────────────────
-  // Index broker connection listener/reconciliation state by accountId so we
-  // can look up each account's connection status in O(1).
   const connectionByAccountId = new Map<
     string,
     { listenerStatus: string | null; lastReconciliationStatus: string | null }
@@ -309,7 +402,6 @@ export default async function SafetyConsolePage() {
     }
   }
 
-  // Count broker_lock_failed events per account.
   const brokerLockFailedCountByAccount = new Map<string, number>();
   for (const h of historicalEnforcements) {
     if (h.brokerLockStatus === "broker_lock_failed") {
@@ -364,6 +456,282 @@ export default async function SafetyConsolePage() {
   const rolloutListeners = listenerRows.filter((r) => r.isRolloutRelevant);
   const otherListeners = listenerRows.filter((r) => !r.isRolloutRelevant);
 
+  // ── Additional queries: DEMO7 diagnostic + activation candidates ──────────────
+  const [demo7Account, demo7LockEvents, allAccountsFull, allPreviewAudits, allWriteAudits] =
+    await Promise.all([
+      prisma.connectedAccount.findFirst({
+        where: { id: DEMO7_ACCOUNT_ID },
+        select: {
+          id: true,
+          userId: true,
+          label: true,
+          externalAccountId: true,
+          isActive: true,
+          protectionStatus: true,
+          brokerConnection: {
+            select: { env: true, connectionStatus: true, permissionLevel: true },
+          },
+          sessionState: {
+            select: {
+              riskState: true,
+              dailyPnl: true,
+              tradesCount: true,
+              tradeCountSource: true,
+              consecutiveLosses: true,
+              sessionDate: true,
+            },
+          },
+          riskRules: {
+            select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
+          },
+        },
+      }),
+      prisma.internalLockEvent.findMany({
+        where: { accountId: DEMO7_ACCOUNT_ID },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          ruleType: true,
+          tradingDay: true,
+          activeDedupKey: true,
+          clearedAt: true,
+          createdAt: true,
+          internalOnly: true,
+          brokerActionTaken: true,
+        },
+      }).catch(() => [] as never[]),
+      prisma.connectedAccount.findMany({
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          label: true,
+          externalAccountId: true,
+          platform: true,
+          isActive: true,
+          missingFromBrokerSince: true,
+          userId: true,
+          protectionStatus: true,
+          accountType: true,
+          brokerConnection: {
+            select: { env: true, connectionStatus: true, permissionLevel: true },
+          },
+          sessionState: { select: { riskState: true } },
+          riskRules: {
+            select: {
+              maxDailyLoss: true,
+              automatedActionsConsentAt: true,
+              automatedActionsConsentVersion: true,
+            },
+          },
+          user: {
+            select: {
+              guardianProfile: { select: { guardianEnabled: true } },
+              riskRules: {
+                select: {
+                  maxDailyLoss: true,
+                  automatedActionsConsentAt: true,
+                  automatedActionsConsentVersion: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.brokerRiskSettingsSyncAudit.findMany({
+        where: { outcome: "preview", ruleType: "daily_loss_recovery_probe" },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+        select: { id: true, accountId: true, createdAt: true, payloadPreviewJson: true },
+      }).catch(() => [] as never[]),
+      prisma.brokerRiskSettingsSyncAudit.findMany({
+        where: { outcome: "success", ruleType: { in: ["daily_loss_limit", "daily_loss_recovery_probe"] } },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+        select: { id: true, accountId: true, ruleType: true, brokerResponseJson: true, createdAt: true },
+      }).catch(() => [] as never[]),
+    ]);
+
+  // ── Index preview/write audits ────────────────────────────────────────────────
+  const latestPreviewByAccount = new Map<string, (typeof allPreviewAudits)[number]>();
+  for (const row of allPreviewAudits) {
+    if (row.accountId && !latestPreviewByAccount.has(row.accountId)) {
+      latestPreviewByAccount.set(row.accountId, row);
+    }
+  }
+  const writesByAccount = new Map<string, typeof allWriteAudits>();
+  for (const row of allWriteAudits) {
+    if (!row.accountId) continue;
+    const existing = writesByAccount.get(row.accountId) ?? [];
+    existing.push(row);
+    writesByAccount.set(row.accountId, existing);
+  }
+
+  // ── Build activation candidates ───────────────────────────────────────────────
+  const allowlistIdsForCandidates = parseBrokerEnforcementAllowlist(
+    process.env.BROKER_ENFORCEMENT_DEMO_ACCOUNT_ALLOWLIST,
+  );
+
+  const allAccountsWithReadiness = allAccountsFull.map((account) => {
+    const accountRuleConsent = account.riskRules
+      ? { consentAt: account.riskRules.automatedActionsConsentAt, consentVersion: account.riskRules.automatedActionsConsentVersion }
+      : null;
+    const defaultRuleConsent = account.user?.riskRules
+      ? { consentAt: account.user.riskRules.automatedActionsConsentAt, consentVersion: account.user.riskRules.automatedActionsConsentVersion }
+      : null;
+    const { state: resolvedConsent } = resolveConsentForAccount({
+      accountRiskRules: accountRuleConsent,
+      defaultRiskRules: defaultRuleConsent,
+    });
+    const consentValid = hasValidConsent(resolvedConsent);
+    const maxDailyLoss =
+      account.riskRules?.maxDailyLoss != null ? Number(account.riskRules.maxDailyLoss)
+      : account.user?.riskRules?.maxDailyLoss != null ? Number(account.user.riskRules.maxDailyLoss)
+      : null;
+    const env = account.brokerConnection?.env ?? null;
+    const connectionStatus = account.brokerConnection?.connectionStatus ?? null;
+    const permissionLevel = account.brokerConnection?.permissionLevel ?? null;
+    const validExternalAccountId = parseTradovateMasterId(account.externalAccountId) !== null;
+    const previewRow = latestPreviewByAccount.get(account.id) ?? null;
+    const writeRows = writesByAccount.get(account.id) ?? [];
+    const hasGuardrailOwnedWrite = writeRows.some((r) => r.brokerResponseJson != null);
+    let existingChangesLocked: boolean | null = null;
+    if (previewRow) {
+      const payload = previewRow.payloadPreviewJson as Record<string, unknown> | null;
+      const existing = payload?.existing as Record<string, unknown> | null | undefined;
+      existingChangesLocked = existing != null && typeof existing.changesLocked === "boolean" ? existing.changesLocked : null;
+    }
+    const guardianEnabled = account.user?.guardianProfile?.guardianEnabled ?? true;
+    const readiness = deriveActivationReadiness({
+      platform: account.platform,
+      env,
+      isActive: account.isActive,
+      missingFromBrokerSince: account.missingFromBrokerSince,
+      connectionStatus,
+      permissionLevel,
+      validExternalAccountId,
+      maxDailyLoss,
+      guardianEnabled,
+      consentValid,
+      hasGuardrailOwnedWrite,
+      previewExists: previewRow != null,
+      existingChangesLocked,
+    });
+    const canUseForRecoveryProbePreview =
+      env === "demo" &&
+      connectionStatus !== null &&
+      !NON_LIVE_CONNECTION_STATUSES_SET.has(connectionStatus) &&
+      permissionLevel === "full_access" &&
+      validExternalAccountId &&
+      account.missingFromBrokerSince == null;
+    return {
+      id: account.id,
+      label: account.label,
+      externalAccountId: account.externalAccountId,
+      platform: account.platform as string,
+      env,
+      connectionStatus,
+      permissionLevel,
+      isActive: account.isActive,
+      protectionStatus: account.protectionStatus,
+      accountType: account.accountType as string,
+      riskState: account.sessionState?.riskState ?? null,
+      allowlisted: allowlistIdsForCandidates.includes(account.id),
+      maxDailyLoss,
+      guardianEnabled,
+      consentValid,
+      validExternalAccountId,
+      canUseForRecoveryProbePreview,
+      readiness,
+    };
+  });
+
+  const demoCandidates = allAccountsWithReadiness.filter((a) => a.env === "demo");
+  const candidateCount = demoCandidates.filter((a) => a.readiness.status === "candidate").length;
+  const previewRequiredCount = demoCandidates.filter((a) => a.readiness.status === "preview_required").length;
+  const blockedCount = demoCandidates.filter((a) => a.readiness.status === "blocked").length;
+
+  // ── DEMO7 internal-lock diagnostic ────────────────────────────────────────────
+  type Demo7Diagnosis = {
+    canLock: boolean;
+    skipReasons: string[];
+    violations: ReturnType<typeof evaluateDryRunRules>["violations"];
+    wouldCreateLock: boolean;
+    computedDedupKey: string | null;
+    riskState: string | null;
+    dailyPnl: number | null;
+    maxDailyLoss: number | null;
+    tradingDay: string;
+    env: string;
+    activeLockCount: number;
+    totalLockCount: number;
+  };
+
+  let demo7Diagnosis: Demo7Diagnosis | null = null;
+
+  if (demo7Account) {
+    const session7 = demo7Account.sessionState;
+    const rules7 = demo7Account.riskRules;
+    const env7 = demo7Account.brokerConnection?.env ?? "live";
+    const skipReasons7: string[] = [];
+    if (!demo7Account.isActive) skipReasons7.push("isActive=false");
+    if (demo7Account.protectionStatus !== "protected") skipReasons7.push(`protectionStatus="${demo7Account.protectionStatus}"`);
+    if (!session7) skipReasons7.push("no LiveSessionState row");
+    if (!rules7) skipReasons7.push("no AccountRiskRules row");
+    const canLock7 = session7 != null && rules7 != null
+      ? canApplyInternalLock({ env: env7, riskState: session7.riskState, flagEnabled: true })
+      : false;
+    if (session7 && rules7 && !canLock7) {
+      if (env7 !== "demo") skipReasons7.push(`env="${env7}" (must be "demo")`);
+      if (session7.riskState === "STOPPED") skipReasons7.push('riskState="STOPPED" (already locked — idempotent skip)');
+    }
+    const tradingDay7 = session7?.sessionDate ?? today;
+    let violations7: ReturnType<typeof evaluateDryRunRules>["violations"] = [];
+    if (session7 && rules7) {
+      violations7 = evaluateDryRunRules({
+        accountId: demo7Account.id,
+        userId: demo7Account.userId,
+        externalAccountId: demo7Account.externalAccountId ?? null,
+        env: env7,
+        tradingDay: tradingDay7,
+        dailyPnl: Number(session7.dailyPnl),
+        tradesCount: session7.tradesCount,
+        tradeCountSource: session7.tradeCountSource,
+        consecutiveLosses: session7.consecutiveLosses,
+        maxDailyLoss: rules7.maxDailyLoss != null ? Number(rules7.maxDailyLoss) : null,
+        maxTradesPerDay: rules7.maxTradesPerDay ?? null,
+        stopAfterLosses: rules7.stopAfterLosses ?? null,
+        dailyProfitTarget: null,
+      }).violations;
+    }
+    const primaryViolation7 = violations7[0] ?? null;
+    const computedDedupKey7 = primaryViolation7
+      ? buildInternalLockDedupKey(demo7Account.id, primaryViolation7.ruleType, tradingDay7)
+      : null;
+    const wouldCreateLock7 =
+      demo7Account.isActive &&
+      demo7Account.protectionStatus === "protected" &&
+      session7 != null &&
+      rules7 != null &&
+      canLock7 &&
+      violations7.length > 0;
+    const activeLockCount7 = demo7LockEvents.filter((e) => e.clearedAt == null).length;
+    demo7Diagnosis = {
+      canLock: canLock7,
+      skipReasons: skipReasons7,
+      violations: violations7,
+      wouldCreateLock: wouldCreateLock7,
+      computedDedupKey: computedDedupKey7,
+      riskState: session7?.riskState ?? null,
+      dailyPnl: session7 != null ? Number(session7.dailyPnl) : null,
+      maxDailyLoss: rules7?.maxDailyLoss != null ? Number(rules7.maxDailyLoss) : null,
+      tradingDay: tradingDay7,
+      env: env7,
+      activeLockCount: activeLockCount7,
+      totalLockCount: demo7LockEvents.length,
+    };
+  }
+
   return (
     <AppShell
       eyebrow="Admin · Internal"
@@ -372,9 +740,25 @@ export default async function SafetyConsolePage() {
       note="Admin-only. Audit IDs are visible here intentionally."
     >
       <div className="grid gap-6">
+        <SafetyCopyBanner />
+        <QaStatusCard
+          demo7Diagnosis={demo7Diagnosis}
+          demo7LockEvents={demo7LockEvents}
+        />
         <OverallStatusBanner severity={overallSeverity} alertCount={alerts.length} />
         <AlertsCard alerts={alerts} />
+        <InternalLockDiagnosticSection
+          demo7Account={demo7Account ?? null}
+          diagnosis={demo7Diagnosis}
+          lockEvents={demo7LockEvents}
+        />
         <RolloutReadinessSection items={rolloutReadiness} />
+        <DailyLossActivationCandidatesSection
+          demoCandidates={demoCandidates}
+          candidateCount={candidateCount}
+          previewRequiredCount={previewRequiredCount}
+          blockedCount={blockedCount}
+        />
         <SectionCard
           title="Enforcement safety flags"
           description="Web/app env values plus listener status. Listener-worker env values are shown only when explicitly exposed."
@@ -424,7 +808,7 @@ export default async function SafetyConsolePage() {
         </SectionCard>
         <SectionCard
           title="Listener health — rollout-relevant connections"
-          description="Connections with at least one allowlisted, locked, or broker-enforced account. Only these affect overall severity. lastCloseCode/Reason is historical — current status is shown in the row header."
+          description="Connections with at least one allowlisted, locked, or broker-enforced account. Only these affect overall severity."
         >
           {rolloutListeners.length === 0 ? (
             <p className="text-sm text-stone-500">No rollout-relevant connections.</p>
@@ -434,7 +818,7 @@ export default async function SafetyConsolePage() {
         </SectionCard>
         <SectionCard
           title="Other connections (ignored for severity)"
-          description="Expired, archived, or unused broker connections. Shown for reference only; status changes here do not affect overall safety."
+          description="Expired, archived, or unused broker connections. Shown for reference only."
         >
           {otherListeners.length === 0 ? (
             <p className="text-sm text-stone-500">No other connections.</p>
@@ -448,6 +832,7 @@ export default async function SafetyConsolePage() {
         >
           <AccountTable rows={accountSummaries} />
         </SectionCard>
+        <FullAccountTable rows={allAccountsWithReadiness} />
         <RuleChangeAuditSection rows={ruleChangeAuditRows} />
         <BrokerSyncAuditSection rows={brokerSyncAuditRows} />
       </div>
@@ -475,6 +860,383 @@ function priorityRank(a: AccountSummary): number {
 }
 
 // ── Components ────────────────────────────────────────────────────────────────
+
+function SafetyCopyBanner() {
+  return (
+    <div className="rounded-2xl border border-stone-300 bg-stone-100 px-5 py-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-500">Operator safety notice</p>
+      <p className="mt-1 text-sm font-semibold text-stone-800">
+        Read-only console. This page does not write to Tradovate.
+      </p>
+      <ul className="mt-2 grid gap-0.5 text-xs text-stone-600">
+        <li>• Broker write buttons are intentionally absent.</li>
+        <li>• Do not enable C2/C3 until C1 rerun passes.</li>
+        <li>• All enforcement changes must go through env vars on the listener-worker Railway service.</li>
+        <li>• This page reads DB state only — listener-worker state is shown only when explicitly exposed via ListenerWorkerStatus.</li>
+      </ul>
+    </div>
+  );
+}
+
+type Demo7LockEvent = {
+  id: string;
+  ruleType: string;
+  tradingDay: string;
+  activeDedupKey: string | null;
+  clearedAt: Date | null;
+  createdAt: Date;
+  internalOnly: boolean;
+  brokerActionTaken: boolean;
+};
+
+type Demo7DiagnosisType = {
+  canLock: boolean;
+  skipReasons: string[];
+  violations: ReturnType<typeof evaluateDryRunRules>["violations"];
+  wouldCreateLock: boolean;
+  computedDedupKey: string | null;
+  riskState: string | null;
+  dailyPnl: number | null;
+  maxDailyLoss: number | null;
+  tradingDay: string;
+  env: string;
+  activeLockCount: number;
+  totalLockCount: number;
+} | null;
+
+function QaStatusCard({
+  demo7Diagnosis,
+  demo7LockEvents,
+}: {
+  demo7Diagnosis: Demo7DiagnosisType;
+  demo7LockEvents: Demo7LockEvent[];
+}) {
+  const c1Status = demo7Diagnosis
+    ? demo7Diagnosis.riskState === "STOPPED" && demo7Diagnosis.activeLockCount === 0
+      ? "PENDING — riskState=STOPPED but no InternalLockEvent (rerun needed)"
+      : demo7Diagnosis.activeLockCount > 0
+        ? `PASS — ${demo7Diagnosis.activeLockCount} active InternalLockEvent(s)`
+        : "PENDING next session reset"
+    : "UNKNOWN — account not found";
+
+  const c1StatusColor = c1Status.startsWith("PASS")
+    ? "text-emerald-700"
+    : c1Status.startsWith("PENDING")
+      ? "text-amber-700"
+      : "text-red-700";
+
+  return (
+    <SectionCard
+      title={`QA status — ${DEMO7_EXTERNAL_ID}`}
+      description={`accountId: ${DEMO7_ACCOUNT_ID}`}
+    >
+      <div className="grid gap-2 text-xs">
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+          <dl className="grid gap-1 sm:grid-cols-2">
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">rule-save write (rule-save gate):</dt>
+              <dd className="font-semibold text-emerald-700">PASS</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">C1 internal lock (listener path):</dt>
+              <dd className={`font-semibold ${c1StatusColor}`}>{c1Status}</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">C2 broker enforcement:</dt>
+              <dd className="font-semibold text-red-700">NO-GO — do not enable</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">C3 broker enforcement (live):</dt>
+              <dd className="font-semibold text-red-700">NO-GO — do not enable</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">Expected listener-worker commit:</dt>
+              <dd className="font-mono text-stone-700">{EXPECTED_LISTENER_COMMIT} or newer</dd>
+            </div>
+          </dl>
+        </div>
+        {demo7Diagnosis && (
+          <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
+            <span className="font-semibold text-stone-700">Live state: </span>
+            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
+          </div>
+        )}
+        <p className="text-[11px] text-stone-400 italic">
+          C1 rerun requires: session reset (riskState→NORMAL, dailyPnl reset), TRADOVATE_LISTENER_ENABLE_LIVE=true on listener-worker, new losing trade exceeding maxDailyLoss=40000.
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
+function InternalLockDiagnosticSection({
+  demo7Account,
+  diagnosis,
+  lockEvents,
+}: {
+  demo7Account: { id: string; label: string; externalAccountId: string | null; isActive: boolean; protectionStatus: string } | null;
+  diagnosis: Demo7DiagnosisType;
+  lockEvents: Demo7LockEvent[];
+}) {
+  return (
+    <SectionCard
+      title={`Internal-lock diagnostic — ${DEMO7_EXTERNAL_ID}`}
+      description="Live DB state for the C1 QA test account. No writes. Mirrors applyInternalLockForConnection gate logic."
+    >
+      {!demo7Account ? (
+        <p className="text-sm text-amber-700">Account {DEMO7_ACCOUNT_ID} not found in DB.</p>
+      ) : !diagnosis ? (
+        <p className="text-sm text-stone-500">Diagnosis unavailable.</p>
+      ) : (
+        <div className="grid gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                diagnosis.wouldCreateLock
+                  ? "bg-emerald-100 text-emerald-800"
+                  : diagnosis.riskState === "STOPPED" && diagnosis.activeLockCount === 0
+                    ? "bg-amber-100 text-amber-900"
+                    : "bg-stone-100 text-stone-700"
+              }`}
+            >
+              {diagnosis.wouldCreateLock
+                ? "Would create lock"
+                : diagnosis.riskState === "STOPPED"
+                  ? diagnosis.activeLockCount > 0
+                    ? "Already locked"
+                    : "STOPPED — no lock event (backfill path)"
+                  : "No lock would fire"}
+            </span>
+            <span className="font-mono text-stone-600">
+              {demo7Account.label} · {demo7Account.externalAccountId ?? "—"}
+            </span>
+          </div>
+
+          <dl className="grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-2">
+            <Row label="env" value={diagnosis.env} danger={diagnosis.env !== "demo"} />
+            <Row label="riskState" value={diagnosis.riskState ?? "—"} danger={diagnosis.riskState === "STOPPED"} />
+            <Row label="dailyPnl" value={String(diagnosis.dailyPnl ?? "—")} />
+            <Row label="maxDailyLoss" value={String(diagnosis.maxDailyLoss ?? "—")} />
+            <Row label="tradingDay" value={diagnosis.tradingDay} />
+            <Row label="canLock" value={String(diagnosis.canLock)} />
+            <Row label="activeLocks" value={String(diagnosis.activeLockCount)} danger={diagnosis.activeLockCount > 0} />
+            <Row label="totalLockRows" value={String(diagnosis.totalLockCount)} />
+          </dl>
+
+          {diagnosis.skipReasons.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800 mb-1">Gate skip reasons</p>
+              {diagnosis.skipReasons.map((r, i) => (
+                <p key={i} className="font-mono text-amber-700">{r}</p>
+              ))}
+            </div>
+          )}
+
+          {diagnosis.violations.length > 0 && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-800 mb-1">Rule violations detected</p>
+              {diagnosis.violations.map((v, i) => (
+                <p key={i} className="font-mono text-sky-700">
+                  {v.ruleType}: observed={v.observedAmount ?? v.observedCount} threshold={v.thresholdAmount ?? v.thresholdCount}
+                </p>
+              ))}
+              {diagnosis.computedDedupKey && (
+                <p className="mt-1 font-mono text-[10px] text-sky-600">dedupKey: {diagnosis.computedDedupKey}</p>
+              )}
+            </div>
+          )}
+
+          {lockEvents.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500">InternalLockEvent history (newest first)</p>
+              <div className="grid gap-1">
+                {lockEvents.map((e) => (
+                  <div
+                    key={e.id}
+                    className={`rounded border px-2 py-1 text-[11px] font-mono ${
+                      e.clearedAt == null ? "border-amber-200 bg-amber-50 text-amber-800" : "border-stone-100 bg-stone-50 text-stone-500"
+                    }`}
+                  >
+                    {e.ruleType} · day={e.tradingDay} · cleared={e.clearedAt ? e.clearedAt.toISOString().slice(0, 10) : "no"} · brokerAction={String(e.brokerActionTaken)} · {e.createdAt.toISOString()}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {lockEvents.length === 0 && (
+            <p className="text-stone-400 italic">No InternalLockEvent rows for this account.</p>
+          )}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+const READINESS_STATUS_CLS: Record<ActivationReadinessStatus, string> = {
+  candidate: "bg-emerald-100 text-emerald-800",
+  preview_required: "bg-sky-100 text-sky-800",
+  blocked: "bg-stone-200 text-stone-700",
+};
+
+function DailyLossActivationCandidatesSection({
+  demoCandidates,
+  candidateCount,
+  previewRequiredCount,
+  blockedCount,
+}: {
+  demoCandidates: Array<{
+    id: string;
+    label: string;
+    externalAccountId: string | null;
+    env: string | null;
+    isActive: boolean;
+    allowlisted: boolean;
+    maxDailyLoss: number | null;
+    readiness: AccountActivationReadiness;
+  }>;
+  candidateCount: number;
+  previewRequiredCount: number;
+  blockedCount: number;
+}) {
+  return (
+    <SectionCard
+      title="Daily Loss activation candidates"
+      description="Demo accounts evaluated for broker enforcement activation. Read-only — no env changes here."
+    >
+      <div className="grid gap-3">
+        <div className="flex flex-wrap gap-3 text-xs">
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+            {candidateCount} candidate{candidateCount !== 1 ? "s" : ""}
+          </span>
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-800">
+            {previewRequiredCount} preview required
+          </span>
+          <span className="rounded-full bg-stone-200 px-2 py-0.5 font-semibold text-stone-700">
+            {blockedCount} blocked
+          </span>
+        </div>
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span className="font-semibold">C2/C3 status: NO-GO.</span> Do not set BROKER_ENFORCEMENT_ENABLED=true until C1 rerun passes with TRADOVATE_LISTENER_ENABLE_LIVE=true.
+        </p>
+        {demoCandidates.length === 0 ? (
+          <p className="text-sm text-stone-500">No demo accounts found.</p>
+        ) : (
+          <div className="grid gap-2">
+            {demoCandidates.map((a) => (
+              <div
+                key={a.id}
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  a.readiness.status === "candidate"
+                    ? "border-emerald-200 bg-emerald-50"
+                    : a.readiness.status === "preview_required"
+                      ? "border-sky-100 bg-sky-50"
+                      : "border-stone-100 bg-stone-50"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-stone-800">
+                    {a.label}
+                    {a.externalAccountId ? (
+                      <span className="ml-2 font-mono text-[10px] text-stone-500">{a.externalAccountId}</span>
+                    ) : null}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {a.allowlisted && (
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Allowlisted</span>
+                    )}
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[a.readiness.status]}`}>
+                      {a.readiness.phase.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
+                  {a.maxDailyLoss != null && <span>maxDailyLoss: ${a.maxDailyLoss}</span>}
+                  {a.readiness.blockers.length > 0 && (
+                    <span className="text-amber-700">blockers: {a.readiness.blockers.join(", ")}</span>
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-stone-500 italic">{a.readiness.nextSafeAction}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+type FullAccountRow = {
+  id: string;
+  label: string;
+  externalAccountId: string | null;
+  platform: string;
+  env: string | null;
+  isActive: boolean;
+  protectionStatus: string;
+  accountType: string;
+  connectionStatus: string | null;
+  permissionLevel: string | null;
+  riskState: string | null;
+  maxDailyLoss: number | null;
+  canUseForRecoveryProbePreview: boolean;
+  readiness: AccountActivationReadiness;
+};
+
+function FullAccountTable({ rows }: { rows: FullAccountRow[] }) {
+  return (
+    <SectionCard
+      title="All connected accounts"
+      description="Every account in DB — env, protection status, connection details, Daily Loss readiness. Read-only."
+    >
+      {rows.length === 0 ? (
+        <p className="text-sm text-stone-500">No accounts found.</p>
+      ) : (
+        <div className="grid gap-2 text-xs">
+          {rows.map((r) => (
+            <div
+              key={r.id}
+              className={`rounded-lg border px-3 py-2 ${
+                r.protectionStatus !== "protected"
+                  ? "border-stone-100 bg-stone-50 opacity-70"
+                  : r.readiness.status === "candidate"
+                    ? "border-emerald-100 bg-emerald-50"
+                    : "border-stone-100 bg-stone-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-stone-800">
+                  {r.label}
+                  {r.externalAccountId ? (
+                    <span className="ml-2 font-mono text-[10px] text-stone-500">{r.externalAccountId}</span>
+                  ) : null}
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[r.readiness.status]}`}>
+                    {r.readiness.status}
+                  </span>
+                  {!r.isActive && (
+                    <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] text-stone-500">inactive</span>
+                  )}
+                  {r.canUseForRecoveryProbePreview && (
+                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">probe-ready</span>
+                  )}
+                </div>
+              </div>
+              <dl className="mt-1 grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-3">
+                <Row label="platform/env" value={`${r.platform}/${r.env ?? "—"}`} />
+                <Row label="protection" value={r.protectionStatus} />
+                <Row label="connectionStatus" value={r.connectionStatus ?? "—"} />
+                <Row label="permissionLevel" value={r.permissionLevel ?? "—"} />
+                <Row label="riskState" value={r.riskState ?? "—"} danger={r.riskState === "STOPPED"} />
+                {r.maxDailyLoss != null && <Row label="maxDailyLoss" value={`$${r.maxDailyLoss}`} />}
+              </dl>
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
 
 function OverallStatusBanner({
   severity,
@@ -565,14 +1327,6 @@ function FlagsGrid({
   source,
 }: {
   flags: ReturnType<typeof readEnforcementFlagsFromEnv>;
-  /**
-   * "web" — values from the web/app process.env. Informational only; these
-   *   never imply listener-worker safety state, so dangerous values are not
-   *   styled as critical.
-   * "listener" — values explicitly exposed by listener-worker diagnostics.
-   *   Dangerous values are highlighted because they reflect what gates the
-   *   real broker writes.
-   */
   source: "web" | "listener";
 }) {
   const isListener = source === "listener";
@@ -767,9 +1521,6 @@ function AccountTable({
   if (rows.length === 0) {
     return <p className="text-sm text-stone-500">No protected accounts.</p>;
   }
-  // Only show accounts that are explicitly in rollout scope: allowlisted,
-  // active lock, or enforcement history. Generic active-protected accounts
-  // are hidden to avoid noise.
   const visibleRows = rows.filter((r) => r.isRolloutRelevant);
   const hiddenCount = rows.length - visibleRows.length;
   return (
