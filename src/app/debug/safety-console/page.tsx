@@ -468,6 +468,7 @@ export default async function SafetyConsolePage() {
           externalAccountId: true,
           isActive: true,
           protectionStatus: true,
+          brokerConnectionId: true,
           brokerConnection: {
             select: { env: true, connectionStatus: true, permissionLevel: true },
           },
@@ -732,6 +733,20 @@ export default async function SafetyConsolePage() {
     };
   }
 
+  // ── DEMO7 connection lookup ───────────────────────────────────────────────────
+  const demo7ConnectionId = demo7Account?.brokerConnectionId ?? null;
+  const demo7ListenerStatus = demo7ConnectionId
+    ? (brokerConnections.find((c) => c.id === demo7ConnectionId)?.listenerStatus ?? null)
+    : null;
+
+  // ── Sort broker sync rows: DEMO7 first, then newest ──────────────────────────
+  const sortedBrokerSyncRows = [...brokerSyncAuditRows].sort((a, b) => {
+    const aIsDemo7 = a.account?.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+    const bIsDemo7 = b.account?.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+    if (aIsDemo7 !== bIsDemo7) return aIsDemo7 - bIsDemo7;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
   return (
     <AppShell
       eyebrow="Admin · Internal"
@@ -741,18 +756,29 @@ export default async function SafetyConsolePage() {
     >
       <div className="grid gap-6">
         <SafetyCopyBanner />
-        <QaStatusCard
+        <QaTargetFocusCard
           demo7Diagnosis={demo7Diagnosis}
-          demo7LockEvents={demo7LockEvents}
+          demo7ConnectionId={demo7ConnectionId}
+          demo7ListenerStatus={demo7ListenerStatus}
         />
+        <div id="qa-status">
+          <QaStatusCard
+            demo7Diagnosis={demo7Diagnosis}
+            demo7LockEvents={demo7LockEvents}
+          />
+        </div>
         <OverallStatusBanner severity={overallSeverity} alertCount={alerts.length} />
         <AlertsCard alerts={alerts} />
-        <InternalLockDiagnosticSection
-          demo7Account={demo7Account ?? null}
-          diagnosis={demo7Diagnosis}
-          lockEvents={demo7LockEvents}
-        />
-        <RolloutReadinessSection items={rolloutReadiness} />
+        <div id="internal-lock">
+          <InternalLockDiagnosticSection
+            demo7Account={demo7Account ?? null}
+            diagnosis={demo7Diagnosis}
+            lockEvents={demo7LockEvents}
+          />
+        </div>
+        <div id="rollout-readiness">
+          <RolloutReadinessSection items={rolloutReadiness} />
+        </div>
         <DailyLossActivationCandidatesSection
           demoCandidates={demoCandidates}
           candidateCount={candidateCount}
@@ -761,44 +787,49 @@ export default async function SafetyConsolePage() {
         />
         <SectionCard
           title="Enforcement safety flags"
-          description="Web/app env values plus listener status. Listener-worker env values are shown only when explicitly exposed."
+          description="Web/app env values (informational) and listener-worker env (authoritative). These are separate Railway services with independent env vars."
         >
           <div className="grid gap-4">
             <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
                 Web/app runtime env
                 <span className="ml-2 font-normal normal-case tracking-normal text-stone-400">
-                  — read from this Next.js process. Does NOT reflect listener-worker.
+                  — read from this Next.js process only. Does NOT control listener-worker behavior.
                 </span>
+              </p>
+              <p className="mb-2 rounded border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] text-stone-500">
+                GUARDRAIL_INTERNAL_LOCK_ENABLED shown here reflects the web/app process only.
+                The listener-worker controls C1 internal-lock behavior independently via its own env.
+                If listener reports true below while this shows false, the listener value is authoritative.
               </p>
               <FlagsGrid flags={flags} source="web" />
             </div>
             <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Listener-worker env (exposed by listener diagnostics)
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Listener-worker env
                 <span className="ml-2 font-normal normal-case tracking-normal text-stone-400">
-                  — authoritative for broker write behaviour.
+                  — authoritative for C1 internal-lock, C2/C3 broker-write behavior.
                 </span>
               </p>
               {listenerFlags === null ? (
                 <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
-                  Not exposed by listener status. The listener-worker is a separate Railway
-                  service; its env state is not visible to the web/app runtime. Verify
+                  Not exposed by listener status row. The listener-worker is a separate Railway
+                  service; its env is not visible to the web/app runtime. Verify
                   <span className="mx-1 font-mono">TRADOVATE_LISTENER_ENABLE_LIVE</span>,
                   <span className="mx-1 font-mono">BROKER_ENFORCEMENT_ENABLED</span>, and
-                  <span className="mx-1 font-mono">ENFORCEMENT_DRY_RUN</span>
-                  directly in the listener-worker service before any rollout decision.
+                  <span className="mx-1 font-mono">GUARDRAIL_INTERNAL_LOCK_ENABLED</span>
+                  directly in the listener-worker Railway service before any rollout decision.
                 </p>
               ) : (
                 <div className="grid gap-2">
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                    <span className="font-semibold">Listener-worker env verified.</span>{" "}
-                    Flags below were reported by the listener-worker itself
+                    <span className="font-semibold">Listener-worker env verified (authoritative).</span>{" "}
+                    These flags were reported by the listener-worker itself
                     {listenerFlagsReportedAt
                       ? ` at ${listenerFlagsReportedAt.toISOString()}`
                       : ""}
-                    . These values — not the web/app env above — gate broker-write
-                    safety alerts.
+                    . They control C1 internal-lock (GUARDRAIL_INTERNAL_LOCK_ENABLED) and C2/C3 broker
+                    writes (BROKER_ENFORCEMENT_ENABLED). Ignore the web-process values above for rollout decisions.
                   </p>
                   <FlagsGrid flags={listenerFlags} source="listener" />
                 </div>
@@ -834,7 +865,9 @@ export default async function SafetyConsolePage() {
         </SectionCard>
         <FullAccountTable rows={allAccountsWithReadiness} />
         <RuleChangeAuditSection rows={ruleChangeAuditRows} />
-        <BrokerSyncAuditSection rows={brokerSyncAuditRows} />
+        <div id="broker-sync">
+          <BrokerSyncAuditSection rows={sortedBrokerSyncRows} />
+        </div>
       </div>
     </AppShell>
   );
@@ -904,6 +937,68 @@ type Demo7DiagnosisType = {
   totalLockCount: number;
 } | null;
 
+function QaTargetFocusCard({
+  demo7Diagnosis,
+  demo7ConnectionId,
+  demo7ListenerStatus,
+}: {
+  demo7Diagnosis: Demo7DiagnosisType;
+  demo7ConnectionId: string | null;
+  demo7ListenerStatus: string | null;
+}) {
+  const c1Label = demo7Diagnosis
+    ? demo7Diagnosis.activeLockCount > 0
+      ? "C1: PASS"
+      : "C1: PENDING"
+    : "C1: UNKNOWN";
+  const c1Color = c1Label.includes("PASS") ? "text-emerald-700" : c1Label.includes("PENDING") ? "text-amber-700" : "text-red-700";
+
+  return (
+    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-600">Current QA target</p>
+          <p className="mt-0.5 text-base font-semibold text-sky-900">{DEMO7_EXTERNAL_ID}</p>
+          <dl className="mt-2 grid gap-x-4 gap-y-0.5 text-[11px] text-sky-800 sm:grid-cols-2">
+            <div className="flex gap-1.5">
+              <dt className="font-mono text-sky-600">accountId:</dt>
+              <dd className="font-mono">{DEMO7_ACCOUNT_ID}</dd>
+            </div>
+            {demo7ConnectionId && (
+              <div className="flex gap-1.5">
+                <dt className="font-mono text-sky-600">connectionId:</dt>
+                <dd className="font-mono">…{demo7ConnectionId.slice(-10)}</dd>
+              </div>
+            )}
+            {demo7ListenerStatus && (
+              <div className="flex gap-1.5">
+                <dt className="font-mono text-sky-600">listenerStatus:</dt>
+                <dd className="font-mono">{demo7ListenerStatus}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">rule-save: PASS</span>
+            <span className={`rounded-full px-2 py-0.5 font-semibold ${c1Label.includes("PASS") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{c1Label}</span>
+            <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C2: NO-GO</span>
+            <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C3: NO-GO</span>
+          </div>
+          <p className="mt-2 text-[11px] text-sky-700">
+            <span className="font-semibold">Next action:</span> Wait for next session reset, then rerun C1 with TRADOVATE_LISTENER_ENABLE_LIVE=true on the listener-worker.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1 text-[11px]">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-600">Quick links</p>
+          <a href="#qa-status" className="text-sky-700 underline hover:text-sky-900">→ QA status card</a>
+          <a href="#internal-lock" className="text-sky-700 underline hover:text-sky-900">→ Internal-lock diagnostic</a>
+          <a href="#rollout-readiness" className="text-sky-700 underline hover:text-sky-900">→ Rollout readiness</a>
+          <a href="#broker-sync" className="text-sky-700 underline hover:text-sky-900">→ Broker risk settings sync</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QaStatusCard({
   demo7Diagnosis,
   demo7LockEvents,
@@ -961,9 +1056,20 @@ function QaStatusCard({
             env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
           </div>
         )}
-        <p className="text-[11px] text-stone-400 italic">
-          C1 rerun requires: session reset (riskState→NORMAL, dailyPnl reset), TRADOVATE_LISTENER_ENABLE_LIVE=true on listener-worker, new losing trade exceeding maxDailyLoss=40000.
-        </p>
+        <div className="grid gap-1 text-[11px] text-stone-500">
+          <p className="font-semibold">C1 rerun checklist:</p>
+          <ul className="grid gap-0.5 pl-2">
+            <li>1. Reset session: riskState→NORMAL, dailyPnl reset (via debug reset endpoint or new session).</li>
+            <li>2. Set <span className="font-mono">GUARDRAIL_INTERNAL_LOCK_ENABLED=true</span> on listener-worker (controls C1 internal-lock path).</li>
+            <li>3. Set <span className="font-mono">TRADOVATE_LISTENER_ENABLE_LIVE=true</span> on listener-worker — required because C1 tests the WebSocket props path. Without it, the listener receives no live events and <span className="font-mono">applyInternalLockForConnection</span> never runs, even if Guardian sees the loss.</li>
+            <li>4. Make a losing trade exceeding maxDailyLoss=$40000 on {DEMO7_EXTERNAL_ID}.</li>
+            <li>5. Verify: InternalLockEvent row created, riskState=STOPPED, activeLocks=1.</li>
+          </ul>
+          <p className="mt-1 italic text-stone-400">
+            Note: C1 does NOT need BROKER_ENFORCEMENT_ENABLED=true — that flag gates C2/C3 broker writes only.
+            C1 only creates an app-internal lock row with no Tradovate calls.
+          </p>
+        </div>
       </div>
     </SectionCard>
   );
@@ -1120,46 +1226,83 @@ function DailyLossActivationCandidatesSection({
         </p>
         {demoCandidates.length === 0 ? (
           <p className="text-sm text-stone-500">No demo accounts found.</p>
-        ) : (
-          <div className="grid gap-2">
-            {demoCandidates.map((a) => (
-              <div
-                key={a.id}
-                className={`rounded-lg border px-3 py-2 text-xs ${
-                  a.readiness.status === "candidate"
-                    ? "border-emerald-200 bg-emerald-50"
-                    : a.readiness.status === "preview_required"
-                      ? "border-sky-100 bg-sky-50"
-                      : "border-stone-100 bg-stone-50"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-stone-800">
-                    {a.label}
-                    {a.externalAccountId ? (
-                      <span className="ml-2 font-mono text-[10px] text-stone-500">{a.externalAccountId}</span>
-                    ) : null}
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    {a.allowlisted && (
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Allowlisted</span>
-                    )}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[a.readiness.status]}`}>
-                      {a.readiness.phase.replace(/_/g, " ")}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
-                  {a.maxDailyLoss != null && <span>maxDailyLoss: ${a.maxDailyLoss}</span>}
-                  {a.readiness.blockers.length > 0 && (
-                    <span className="text-amber-700">blockers: {a.readiness.blockers.join(", ")}</span>
+        ) : (() => {
+          // Sort: DEMO7433035 first, then by status (candidate → preview_required → blocked)
+          const sorted = [...demoCandidates].sort((a, b) => {
+            const aIsTarget = a.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+            const bIsTarget = b.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+            if (aIsTarget !== bIsTarget) return aIsTarget - bIsTarget;
+            const statusOrder: Record<string, number> = { candidate: 0, preview_required: 1, blocked: 2 };
+            return (statusOrder[a.readiness.status] ?? 3) - (statusOrder[b.readiness.status] ?? 3);
+          });
+          const candidates = sorted.filter((a) => a.readiness.status === "candidate");
+          const previewRequired = sorted.filter((a) => a.readiness.status === "preview_required");
+          const blocked = sorted.filter((a) => a.readiness.status === "blocked");
+
+          const AccountRow = (a: typeof sorted[number]) => (
+            <div
+              key={a.id}
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                a.readiness.status === "candidate"
+                  ? "border-emerald-200 bg-emerald-50"
+                  : a.readiness.status === "preview_required"
+                    ? "border-sky-100 bg-sky-50"
+                    : "border-stone-100 bg-stone-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-stone-800">
+                  {a.label}
+                  {a.externalAccountId ? (
+                    <span className="ml-2 font-mono text-[10px] text-stone-500">{a.externalAccountId}</span>
+                  ) : null}
+                </span>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {a.allowlisted && (
+                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Allowlisted</span>
                   )}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[a.readiness.status]}`}>
+                    {a.readiness.phase.replace(/_/g, " ")}
+                  </span>
                 </div>
-                <p className="mt-1 text-[10px] text-stone-500 italic">{a.readiness.nextSafeAction}</p>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
+                {a.maxDailyLoss != null && <span>maxDailyLoss: ${a.maxDailyLoss}</span>}
+                {a.readiness.blockers.length > 0 && (
+                  <span className="text-amber-700">blockers: {a.readiness.blockers.join(", ")}</span>
+                )}
+              </div>
+              <p className="mt-1 text-[10px] text-stone-500 italic">{a.readiness.nextSafeAction}</p>
+            </div>
+          );
+
+          return (
+            <div className="grid gap-3">
+              {candidates.length > 0 && (
+                <div className="grid gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">Candidates ({candidates.length})</p>
+                  {candidates.map(AccountRow)}
+                </div>
+              )}
+              {previewRequired.length > 0 && (
+                <details className="group">
+                  <summary className="cursor-pointer list-none rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-sky-700 hover:bg-sky-100">
+                    Preview required ({previewRequired.length}) — click to expand
+                  </summary>
+                  <div className="mt-2 grid gap-2">{previewRequired.map(AccountRow)}</div>
+                </details>
+              )}
+              {blocked.length > 0 && (
+                <details>
+                  <summary className="cursor-pointer list-none rounded-lg border border-stone-200 bg-stone-100 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500 hover:bg-stone-200">
+                    Blocked ({blocked.length}) — click to expand
+                  </summary>
+                  <div className="mt-2 grid gap-2">{blocked.map(AccountRow)}</div>
+                </details>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </SectionCard>
   );
@@ -1183,55 +1326,83 @@ type FullAccountRow = {
 };
 
 function FullAccountTable({ rows }: { rows: FullAccountRow[] }) {
+  const sorted = [...rows].sort((a, b) => {
+    const aIsTarget = a.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+    const bIsTarget = b.externalAccountId === DEMO7_EXTERNAL_ID ? 0 : 1;
+    if (aIsTarget !== bIsTarget) return aIsTarget - bIsTarget;
+    const aIsDemo = a.env === "demo" ? 0 : 1;
+    const bIsDemo = b.env === "demo" ? 0 : 1;
+    if (aIsDemo !== bIsDemo) return aIsDemo - bIsDemo;
+    const statusOrder: Record<string, number> = { candidate: 0, preview_required: 1, blocked: 2 };
+    return (statusOrder[a.readiness.status] ?? 3) - (statusOrder[b.readiness.status] ?? 3);
+  });
+  const demoRows = sorted.filter((r) => r.env === "demo");
+  const nonDemoRows = sorted.filter((r) => r.env !== "demo");
+
+  const AccountRow = (r: FullAccountRow) => (
+    <div
+      key={r.id}
+      className={`rounded-lg border px-3 py-2 ${
+        r.protectionStatus !== "protected"
+          ? "border-stone-100 bg-stone-50 opacity-70"
+          : r.readiness.status === "candidate"
+            ? "border-emerald-100 bg-emerald-50"
+            : "border-stone-100 bg-stone-50"
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-stone-800">
+          {r.label}
+          {r.externalAccountId ? (
+            <span className="ml-2 font-mono text-[10px] text-stone-500">{r.externalAccountId}</span>
+          ) : null}
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[r.readiness.status]}`}>
+            {r.readiness.status}
+          </span>
+          {!r.isActive && (
+            <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] text-stone-500">inactive</span>
+          )}
+          {r.canUseForRecoveryProbePreview && (
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">probe-ready</span>
+          )}
+        </div>
+      </div>
+      <dl className="mt-1 grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-3">
+        <Row label="platform/env" value={`${r.platform}/${r.env ?? "—"}`} />
+        <Row label="protection" value={r.protectionStatus} />
+        <Row label="connectionStatus" value={r.connectionStatus ?? "—"} />
+        <Row label="permissionLevel" value={r.permissionLevel ?? "—"} />
+        <Row label="riskState" value={r.riskState ?? "—"} danger={r.riskState === "STOPPED"} />
+        {r.maxDailyLoss != null && <Row label="maxDailyLoss" value={`$${r.maxDailyLoss}`} />}
+      </dl>
+    </div>
+  );
+
   return (
     <SectionCard
       title="All connected accounts"
-      description="Every account in DB — env, protection status, connection details, Daily Loss readiness. Read-only."
+      description="Every account in DB — env, protection status, connection details, Daily Loss readiness. Demo first, then non-demo collapsed. Read-only."
     >
       {rows.length === 0 ? (
         <p className="text-sm text-stone-500">No accounts found.</p>
       ) : (
-        <div className="grid gap-2 text-xs">
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              className={`rounded-lg border px-3 py-2 ${
-                r.protectionStatus !== "protected"
-                  ? "border-stone-100 bg-stone-50 opacity-70"
-                  : r.readiness.status === "candidate"
-                    ? "border-emerald-100 bg-emerald-50"
-                    : "border-stone-100 bg-stone-50"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium text-stone-800">
-                  {r.label}
-                  {r.externalAccountId ? (
-                    <span className="ml-2 font-mono text-[10px] text-stone-500">{r.externalAccountId}</span>
-                  ) : null}
-                </span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${READINESS_STATUS_CLS[r.readiness.status]}`}>
-                    {r.readiness.status}
-                  </span>
-                  {!r.isActive && (
-                    <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[10px] text-stone-500">inactive</span>
-                  )}
-                  {r.canUseForRecoveryProbePreview && (
-                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">probe-ready</span>
-                  )}
-                </div>
-              </div>
-              <dl className="mt-1 grid gap-x-4 gap-y-0.5 text-[11px] text-stone-600 sm:grid-cols-3">
-                <Row label="platform/env" value={`${r.platform}/${r.env ?? "—"}`} />
-                <Row label="protection" value={r.protectionStatus} />
-                <Row label="connectionStatus" value={r.connectionStatus ?? "—"} />
-                <Row label="permissionLevel" value={r.permissionLevel ?? "—"} />
-                <Row label="riskState" value={r.riskState ?? "—"} danger={r.riskState === "STOPPED"} />
-                {r.maxDailyLoss != null && <Row label="maxDailyLoss" value={`$${r.maxDailyLoss}`} />}
-              </dl>
+        <div className="grid gap-3 text-xs">
+          {demoRows.length > 0 && (
+            <div className="grid gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">Demo accounts ({demoRows.length})</p>
+              {demoRows.map(AccountRow)}
             </div>
-          ))}
+          )}
+          {nonDemoRows.length > 0 && (
+            <details>
+              <summary className="cursor-pointer list-none rounded-lg border border-stone-200 bg-stone-100 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500 hover:bg-stone-200">
+                Non-demo accounts ({nonDemoRows.length}) — click to expand
+              </summary>
+              <div className="mt-2 grid gap-2">{nonDemoRows.map(AccountRow)}</div>
+            </details>
+          )}
         </div>
       )}
     </SectionCard>
@@ -1248,8 +1419,8 @@ function OverallStatusBanner({
   const cfg = {
     safe: {
       cls: "border-emerald-200 bg-emerald-50 text-emerald-900",
-      label: "All safety checks passing",
-      detail: "No active alerts. System is in safe mode.",
+      label: "Safe mode active — broker enforcement disabled",
+      detail: "No dangerous flags detected. This means the system is inert, not rollout-ready.",
     },
     info: {
       cls: "border-sky-200 bg-sky-50 text-sky-900",
@@ -1788,86 +1959,100 @@ const OUTCOME_CLS: Record<string, string> = {
 };
 
 function BrokerSyncAuditSection({ rows }: { rows: BrokerSyncAuditRow[] }) {
+  const TOP_N = 10;
+  const topRows = rows.slice(0, TOP_N);
+  const extraRows = rows.slice(TOP_N);
+
+  const SyncRow = (row: BrokerSyncAuditRow) => {
+    const outcomeCls = OUTCOME_CLS[row.outcome] ?? "bg-stone-200 text-stone-700";
+    const accountLabel = row.account?.label ?? null;
+    const externalId = row.account?.externalAccountId ?? null;
+    return (
+      <div
+        key={row.id}
+        className={`rounded-lg border px-3 py-2 text-xs ${
+          row.outcome === "success"
+            ? "border-emerald-200 bg-emerald-50"
+            : row.outcome === "failed"
+              ? "border-red-200 bg-red-50"
+              : row.outcome === "gate_blocked"
+                ? "border-amber-200 bg-amber-50"
+                : "border-stone-100 bg-stone-50"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-mono text-stone-700">
+            {accountLabel ?? "—"}
+            {externalId ? ` · ${externalId}` : ""}
+            {` · ${row.ruleType}`}
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${outcomeCls}`}
+            >
+              {row.outcome}
+            </span>
+            {row.dryRun && (
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                dry-run
+              </span>
+            )}
+            {!row.brokerEnforcementEnabled && (
+              <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500">
+                enforcement off
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
+          <span>{row.createdAt.toISOString()}</span>
+          <span>broker: {row.broker}</span>
+          {row.environment && <span>env: {row.environment}</span>}
+          {row.amount != null && <span>amount: ${row.amount}</span>}
+          {row.gateFailureReason && (
+            <span className="font-semibold text-amber-700">
+              gate: {row.gateFailureReason}
+            </span>
+          )}
+          {row.skipReason && <span>skip: {row.skipReason.slice(0, 80)}</span>}
+          {row.errorMessage && (
+            <span className="font-semibold text-red-700">
+              error: {row.errorMessage.slice(0, 120)}
+            </span>
+          )}
+          {row.payloadPreviewJson != null && (
+            <span>
+              payload: {JSON.stringify(row.payloadPreviewJson).slice(0, 80)}
+            </span>
+          )}
+          {row.brokerResponseJson != null && (
+            <span>
+              response: {JSON.stringify(row.brokerResponseJson).slice(0, 80)}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <SectionCard
       title="Broker risk settings sync"
-      description="Recent daily-loss rule-save sync attempts — newest first. Admin only. Shows gate outcomes, dry-run previews, and broker responses."
+      description="Recent daily-loss rule-save sync attempts — DEMO7433035 first, then newest. Admin only. Shows gate outcomes, dry-run previews, and broker responses."
     >
       {rows.length === 0 ? (
         <p className="text-sm text-stone-500">No broker risk-settings sync attempts yet.</p>
       ) : (
         <div className="grid gap-2">
-          {rows.map((row) => {
-            const outcomeCls = OUTCOME_CLS[row.outcome] ?? "bg-stone-200 text-stone-700";
-            const accountLabel = row.account?.label ?? null;
-            const externalId = row.account?.externalAccountId ?? null;
-            return (
-              <div
-                key={row.id}
-                className={`rounded-lg border px-3 py-2 text-xs ${
-                  row.outcome === "success"
-                    ? "border-emerald-200 bg-emerald-50"
-                    : row.outcome === "failed"
-                      ? "border-red-200 bg-red-50"
-                      : row.outcome === "gate_blocked"
-                        ? "border-amber-200 bg-amber-50"
-                        : "border-stone-100 bg-stone-50"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-stone-700">
-                    {accountLabel ?? "—"}
-                    {externalId ? ` · ${externalId}` : ""}
-                    {` · ${row.ruleType}`}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${outcomeCls}`}
-                    >
-                      {row.outcome}
-                    </span>
-                    {row.dryRun && (
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                        dry-run
-                      </span>
-                    )}
-                    {!row.brokerEnforcementEnabled && (
-                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500">
-                        enforcement off
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-stone-500">
-                  <span>{row.createdAt.toISOString()}</span>
-                  <span>broker: {row.broker}</span>
-                  {row.environment && <span>env: {row.environment}</span>}
-                  {row.amount != null && <span>amount: ${row.amount}</span>}
-                  {row.gateFailureReason && (
-                    <span className="font-semibold text-amber-700">
-                      gate: {row.gateFailureReason}
-                    </span>
-                  )}
-                  {row.skipReason && <span>skip: {row.skipReason.slice(0, 80)}</span>}
-                  {row.errorMessage && (
-                    <span className="font-semibold text-red-700">
-                      error: {row.errorMessage.slice(0, 120)}
-                    </span>
-                  )}
-                  {row.payloadPreviewJson != null && (
-                    <span>
-                      payload: {JSON.stringify(row.payloadPreviewJson).slice(0, 80)}
-                    </span>
-                  )}
-                  {row.brokerResponseJson != null && (
-                    <span>
-                      response: {JSON.stringify(row.brokerResponseJson).slice(0, 80)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {topRows.map(SyncRow)}
+          {extraRows.length > 0 && (
+            <details>
+              <summary className="cursor-pointer list-none rounded-lg border border-stone-200 bg-stone-100 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500 hover:bg-stone-200">
+                Older entries ({extraRows.length}) — click to expand
+              </summary>
+              <div className="mt-2 grid gap-2">{extraRows.map(SyncRow)}</div>
+            </details>
+          )}
         </div>
       )}
     </SectionCard>
