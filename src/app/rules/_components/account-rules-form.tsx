@@ -457,7 +457,7 @@ export function AccountRulesForm({
   });
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-5">
+    <form onSubmit={handleSubmit} className="grid gap-2.5 sm:gap-3">
 
       {!hasExistingRules && (
         <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
@@ -494,7 +494,7 @@ export function AccountRulesForm({
           dropping it keeps text readable while inputs still look disabled. */}
       <fieldset
         disabled={fieldsDisabled}
-        className={`m-0 min-w-0 grid gap-3 border-0 p-0 sm:gap-5${fieldsDisabled ? " cursor-not-allowed" : ""}`}
+        className={`m-0 min-w-0 grid gap-2.5 border-0 p-0 sm:gap-3${fieldsDisabled ? " cursor-not-allowed" : ""}`}
       >
 
       <CoreRulesSection

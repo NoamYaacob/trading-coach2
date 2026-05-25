@@ -14,6 +14,10 @@ type AppShellProps = {
   heroPreview?: ReactNode;
   statusStrip?: ReactNode;
   compactHero?: boolean;
+  /** Ultra-compact hero for control-panel-style pages where the rules / settings
+   *  body is the focus. Shrinks padding, type sizes, and the gap between hero
+   *  and the page body so the editor reaches the top of the viewport faster. */
+  denseHero?: boolean;
 };
 
 export async function AppShell({
@@ -26,6 +30,7 @@ export async function AppShell({
   heroPreview,
   statusStrip,
   compactHero = false,
+  denseHero = false,
 }: AppShellProps) {
   const user = await getCurrentUser();
 
@@ -41,20 +46,20 @@ export async function AppShell({
         <TopNav authenticated={Boolean(user)} />
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-10 overflow-x-hidden px-4 pb-0 sm:px-6 lg:px-10">
+      <main className={`mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col overflow-x-hidden px-4 pb-0 sm:px-6 lg:px-10 ${denseHero ? "gap-5" : "gap-10"}`}>
         {statusStrip ? <div className="-mt-4">{statusStrip}</div> : null}
 
-        <section className={`rounded-[2rem] border border-stone-200/80 bg-white/85 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur ${compactHero ? "p-3 sm:p-4 lg:p-5" : "p-3 sm:p-6 lg:p-8"}`}>
-          <div className={`grid ${compactHero ? "gap-4 lg:gap-6" : "gap-6 lg:gap-10"} ${heroPreview ? "lg:grid-cols-[1fr_auto] lg:items-end" : ""}`}>
+        <section className={`rounded-[2rem] border border-stone-200/80 bg-white/85 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur ${denseHero ? "p-2.5 sm:p-3 lg:p-4" : compactHero ? "p-3 sm:p-4 lg:p-5" : "p-3 sm:p-6 lg:p-8"}`}>
+          <div className={`grid ${denseHero ? "gap-2 lg:gap-3" : compactHero ? "gap-4 lg:gap-6" : "gap-6 lg:gap-10"} ${heroPreview ? "lg:grid-cols-[1fr_auto] lg:items-end" : ""}`}>
             <div>
               <div className="max-w-3xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
+                <p className={`font-semibold uppercase text-amber-700 ${denseHero ? "text-[10px] tracking-[0.24em]" : "text-xs tracking-[0.3em]"}`}>
                   {eyebrow}
                 </p>
-                <h1 className={`mt-3 font-semibold leading-tight tracking-[-0.04em] text-stone-950 ${compactHero ? "text-xl sm:text-2xl lg:text-3xl" : "text-2xl sm:text-3xl lg:text-4xl"}`}>
+                <h1 className={`font-semibold leading-tight tracking-[-0.04em] text-stone-950 ${denseHero ? "mt-1 text-lg sm:text-xl lg:text-2xl" : compactHero ? "mt-3 text-xl sm:text-2xl lg:text-3xl" : "mt-3 text-2xl sm:text-3xl lg:text-4xl"}`}>
                   {title}
                 </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+                <p className={`max-w-2xl text-stone-600 ${denseHero ? "mt-1 text-xs leading-5" : "mt-3 text-sm leading-6"}`}>
                   {description}
                 </p>
                 {note && (
