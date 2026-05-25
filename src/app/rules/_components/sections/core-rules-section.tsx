@@ -13,9 +13,9 @@
  * notifications, advanced broker actions, planned rules) lives in the
  * collapsed advanced area below this section.
  *
- * No long inline hint copy — each row exposes its explanation behind a "?"
- * disclosure. This card replaces the previous MoneyLimits + TradingBehavior
- * + Position & symbol (maxContracts portion) cards.
+ * Help is centralised: a single "About these rules" disclosure at the
+ * bottom of the card lists explanations for each rule. Per-row "?" buttons
+ * were removed to reduce visual noise on the always-visible card.
  *
  * The advanced broker-side raw contract cap toggle ALSO lives here so the
  * trader sees it in context with the rule it modifies, but it is folded
@@ -24,7 +24,7 @@
 import { REVIEW_INHERITED_HINT } from "../account-rules-form-logic";
 import { MAX_POSITION_SIZE_COPY } from "../position-size-copy";
 import { MaxPositionSizeConversionTable } from "../max-position-size-conversion-table";
-import { Field, NumberInput, NumberStepperInput, RuleRow, SectionCard } from "./field-primitives";
+import { NumberInput, NumberStepperInput, RuleRow, SectionCard } from "./field-primitives";
 
 export type CoreRulesValues = {
   maxDailyLoss: string;
@@ -66,12 +66,12 @@ export function CoreRulesSection({
   return (
     <SectionCard title="Core rules" ariaLabel="Core rules">
       {!hasExistingRules && (
-        <p className="-mt-1 text-xs text-stone-400">{REVIEW_INHERITED_HINT}</p>
+        <p className="-mt-1 text-xs text-stone-500">{REVIEW_INHERITED_HINT}</p>
       )}
       {showInheritedContext && (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-stone-100 bg-white px-3 py-2 text-[11px] text-stone-500">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[11px] text-stone-600">
           <div>
-            <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">
+            <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-500">
               Account size
             </dt>
             <dd className="text-stone-700">
@@ -82,7 +82,7 @@ export function CoreRulesSection({
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-400">
+            <dt className="text-[10px] uppercase tracking-[0.1em] text-stone-500">
               Daily profit target
             </dt>
             <dd className="text-stone-700">
@@ -101,17 +101,6 @@ export function CoreRulesSection({
           status="broker-eligible"
           inputWidth="w-28"
           pendingNote={pendingNotes?.maxDailyLoss ?? null}
-          info={
-            <>
-              <p>Locks when today&apos;s P&amp;L crosses this loss.</p>
-              <p className="mt-1.5">
-                On supported Tradovate connections with consent and full access
-                granted, Guardrail can also write this limit to Tradovate&apos;s own
-                risk settings so the broker enforces it independently. Off by
-                default — opt-in per account.
-              </p>
-            </>
-          }
         >
           <NumberInput
             value={values.maxDailyLoss}
@@ -125,7 +114,6 @@ export function CoreRulesSection({
           status="monitoring-only"
           inputWidth="w-28"
           pendingNote={pendingNotes?.riskPerTrade ?? null}
-          info={<p>Warning only — does not lock the account.</p>}
         >
           <NumberInput
             value={values.riskPerTrade}
@@ -138,13 +126,6 @@ export function CoreRulesSection({
           label="Max trades per day"
           status="guardrail-lock"
           pendingNote={pendingNotes?.maxTradesPerDay ?? null}
-          info={
-            <p>
-              Lock fires when today&apos;s trade count is strictly above this value.
-              Guardrail marks the account locked inside the app; no broker order
-              is cancelled or blocked.
-            </p>
-          }
         >
           <NumberStepperInput
             value={values.maxTradesPerDay}
@@ -157,12 +138,6 @@ export function CoreRulesSection({
           label="Stop after consecutive losses"
           status="guardrail-lock"
           pendingNote={pendingNotes?.stopAfterLosses ?? null}
-          info={
-            <p>
-              Same session only. A winning trade resets the streak to zero.
-              Guardrail marks the account locked inside the app; no broker action.
-            </p>
-          }
         >
           <NumberStepperInput
             value={values.stopAfterLosses}
@@ -175,7 +150,6 @@ export function CoreRulesSection({
           label={MAX_POSITION_SIZE_COPY.label}
           status="guardrail-lock"
           pendingNote={pendingNotes?.maxContracts ?? null}
-          info={<p>{MAX_POSITION_SIZE_COPY.hint}</p>}
         >
           <NumberStepperInput
             value={values.maxContracts}
@@ -185,19 +159,27 @@ export function CoreRulesSection({
         </RuleRow>
       </div>
 
-      {/* Conversion table sits OUTSIDE the row grid so it can occupy full
-          width when the user has entered a maxContracts value. */}
+      {/* Inline link expanders — kept subtle so the row grid above stays the
+          focal point. Contract sizing only renders the trigger when there is
+          something to expand (maxContracts entered); the broker-cap opt-in
+          only appears once a value is set. */}
       {values.maxContracts.trim() !== "" && (
-        <div className="mt-1">
-          <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
-        </div>
+        <details className="group text-xs">
+          <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1 text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+            <span className="text-[10px]">View contract sizing</span>
+            <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="mt-1.5">
+            <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
+          </div>
+        </details>
       )}
 
       {/* Advanced broker-side raw cap — opt-in expander tucked at the bottom. */}
       {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
         <button
           type="button"
-          className="w-fit text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
+          className="w-fit text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
           onClick={onShowAdvancedBrokerCap}
         >
           Advanced options
@@ -228,6 +210,51 @@ export function CoreRulesSection({
           </label>
         </div>
       )}
+
+      {/* Section-level rule explanations — replaces per-row "?" buttons so the
+          rule grid stays scannable. Collapsed by default; one click reveals
+          all five explanations together. */}
+      <details className="group border-t border-stone-200 pt-2 text-xs">
+        <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1 text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+          <span className="text-[10px]">About these rules</span>
+          <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <dl className="mt-2 grid gap-2 text-stone-600">
+          <div>
+            <dt className="font-medium text-stone-800">Daily loss limit</dt>
+            <dd className="mt-0.5">
+              Locks when today&apos;s P&amp;L crosses this loss. On supported
+              Tradovate connections with consent and full access granted,
+              Guardrail can also write this limit to Tradovate&apos;s own risk
+              settings so the broker enforces it independently. Off by
+              default — opt-in per account.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-stone-800">Risk per trade</dt>
+            <dd className="mt-0.5">Warning only — does not lock the account.</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-stone-800">Max trades per day</dt>
+            <dd className="mt-0.5">
+              Lock fires when today&apos;s trade count is strictly above this
+              value. Guardrail marks the account locked inside the app; no
+              broker order is cancelled or blocked.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-stone-800">Stop after consecutive losses</dt>
+            <dd className="mt-0.5">
+              Same session only. A winning trade resets the streak to zero.
+              Guardrail marks the account locked inside the app; no broker action.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-stone-800">{MAX_POSITION_SIZE_COPY.label}</dt>
+            <dd className="mt-0.5">{MAX_POSITION_SIZE_COPY.hint}</dd>
+          </div>
+        </dl>
+      </details>
     </SectionCard>
   );
 }

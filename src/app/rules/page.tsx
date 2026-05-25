@@ -333,11 +333,11 @@ export default async function RulesPage({
     <AppShell
       eyebrow="Trading Plan"
       title="Set your trading plan."
-      description="Configure rules per trading account. Each account needs its own Trading Plan for Guardrail to monitor it."
-      compactHero
+      description="Configure rules per trading account."
+      denseHero
     >
       {/* Two-column layout: selector sidebar + editor */}
-      <div className="grid gap-5 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-8">
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:items-start lg:gap-6">
 
         {/* ── Scope selector ──────────────────────────────────────────────── */}
 
@@ -376,7 +376,7 @@ export default async function RulesPage({
         </div>
 
         {/* ── Rule editor ─────────────────────────────────────────────────── */}
-        <div className="grid min-w-0 gap-5">
+        <div className="grid min-w-0 gap-3 sm:gap-3.5">
 
           {/* Scope context header */}
           <ScopeContextHeader
@@ -388,7 +388,7 @@ export default async function RulesPage({
           {/* Enforcement mode banner + How enforcement works — hidden in accounts overview (it has its own header) */}
           {!showAccountsOverview && (
             <>
-              <div className={`rounded-xl border px-4 py-3 text-xs ${enforcementInfo.cls}`}>
+              <div className={`rounded-xl border px-3.5 py-2 text-xs ${enforcementInfo.cls}`}>
                 <span className="font-semibold">{enforcementInfo.label}. </span>
                 {enforcementInfo.detail}
               </div>
@@ -439,6 +439,7 @@ export default async function RulesPage({
             selectedAccount ? (
               <SectionCard
                 key={selectedAccount.id}
+                compact
               >
                 <AccountRulesForm
                   accountId={selectedAccount.id}
@@ -558,21 +559,18 @@ function ScopeContextHeader({
   if (scope === "starter") {
     return (
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-          Trading Plan
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold tracking-tight text-stone-950">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight text-stone-950">
             Starter settings
           </h2>
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
             Starter
           </span>
         </div>
-        <p className="mt-0.5 text-sm text-stone-500">
+        <p className="mt-0.5 text-xs text-stone-500">
           Starter settings are a starting point for session defaults. Connected accounts still need their own Trading Plan to be monitored by Guardrail.
         </p>
-        <p className="mt-1 text-xs text-stone-400">
+        <p className="mt-0.5 text-[11px] text-stone-400">
           The enforcement engine reads account-specific rules, not this template directly.
         </p>
       </div>
@@ -596,11 +594,8 @@ function ScopeContextHeader({
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-        Trading Plan · Account
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold tracking-tight text-stone-950">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-semibold tracking-tight text-stone-950">
           {account.label}
         </h2>
         {hasAccountRules ? (
@@ -608,14 +603,16 @@ function ScopeContextHeader({
             Active plan
           </span>
         ) : (
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
             No plan yet
           </span>
         )}
+        {firmLine && (
+          <span className="text-xs text-stone-500">{firmLine}</span>
+        )}
       </div>
-      {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
       {!hasAccountRules && (
-        <p className="mt-1 text-xs text-stone-400">
+        <p className="mt-1 text-[11px] text-stone-500">
           No account-specific rules — Guardrail is not monitoring this account.
         </p>
       )}
