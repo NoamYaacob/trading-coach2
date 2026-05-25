@@ -791,3 +791,203 @@ describe("reset-session-state clears trade_limit locks (no ruleType filter)", ()
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// max_loss_streak (stopAfterLosses) internal-lock wiring — source scan
+//
+// Pure-evaluator semantics for max_loss_streak are covered in
+// dry-run-rule-evaluator.test.ts. These tests verify the DB integration
+// layer carries max_loss_streak through end-to-end without any broker
+// side-effects.
+//
+// Documented semantics: stopAfterLosses is the AT-LIMIT trigger. The lock
+// fires when consecutiveLosses REACHES the configured value
+// (consecutiveLosses >= stopAfterLosses). "Stop after 3 losses" means the
+// 3rd consecutive loss fires the lock. There is no allowance concept — the
+// threshold is reached at the limit, not exceeded past it.
+// ---------------------------------------------------------------------------
+
+describe("max_loss_streak internal-lock wiring (DB integration source-scan)", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+  const evaluatorSrc = readSrc("src/lib/guardian-engine/dry-run-rule-evaluator.ts");
+
+  it("dry-run evaluator emits max_loss_streak ruleType", () => {
+    assert.ok(
+      evaluatorSrc.includes('ruleType: "max_loss_streak"'),
+      "evaluator must emit max_loss_streak violations",
+    );
+  });
+
+  it("dry-run evaluator fires max_loss_streak when consecutiveLosses reaches the limit (>= semantics)", () => {
+    assert.ok(
+      evaluatorSrc.includes("input.consecutiveLosses >= input.stopAfterLosses"),
+      "evaluator must use >= so the lock fires ON the configured loss count, not after",
+    );
+  });
+
+  it("DB layer passes stopAfterLosses into the primary evaluator call", () => {
+    assert.ok(
+      dbSrc.includes("stopAfterLosses: rules.stopAfterLosses"),
+      "primary applyInternalLockForConnection path must pass stopAfterLosses to evaluateDryRunRules",
+    );
+  });
+
+  it("DB layer passes stopAfterLosses into the backfill evaluator call", () => {
+    const matches = [...dbSrc.matchAll(/stopAfterLosses: rules\.stopAfterLosses/g)];
+    assert.ok(
+      matches.length >= 2,
+      "backfill path must also pass stopAfterLosses so STOPPED-without-lock max_loss_streak cases get backfilled",
+    );
+  });
+
+  it("DB layer passes consecutiveLosses from sessionState", () => {
+    assert.ok(
+      dbSrc.includes("consecutiveLosses: session.consecutiveLosses"),
+      "DB layer must pass consecutiveLosses — evaluator needs it to compute the streak",
+    );
+  });
+
+  it("DB layer selects stopAfterLosses from riskRules", () => {
+    assert.ok(
+      dbSrc.includes("stopAfterLosses: true"),
+      "Prisma select must include stopAfterLosses so the evaluator receives the configured limit",
+    );
+  });
+
+  it("DB layer selects consecutiveLosses from sessionState", () => {
+    assert.ok(
+      dbSrc.includes("consecutiveLosses: true"),
+      "Prisma select must include consecutiveLosses from LiveSessionState",
+    );
+  });
+
+  it("upsert propagates the primary violation ruleType — max_loss_streak lands as ruleType=max_loss_streak", () => {
+    assert.ok(
+      dbSrc.includes("ruleType: primary.ruleType"),
+      "upsert must write primary.ruleType so max_loss_streak violations create ruleType=max_loss_streak InternalLockEvent rows",
+    );
+  });
+
+  it("dedup key includes ruleType — max_loss_streak gets its own slot (one per account+rule+day)", () => {
+    assert.ok(
+      dbSrc.match(/buildInternalLockDedupKey\([^)]*primary\.ruleType[^)]*\)/),
+      "activeDedupKey must include ruleType so max_loss_streak doesn't collide with daily_loss_limit or trade_limit",
+    );
+  });
+
+  it("internalOnly=true and brokerActionTaken=false on max_loss_streak lock rows", () => {
+    assert.ok(
+      dbSrc.includes("internalOnly: true"),
+      "all internal lock rows must set internalOnly=true",
+    );
+    assert.ok(
+      dbSrc.includes("brokerActionTaken: false"),
+      "all internal lock rows must set brokerActionTaken=false — broker writes are a separate Phase 2C path",
+    );
+  });
+
+  it("DB layer does not call Tradovate write endpoints for max_loss_streak", () => {
+    const forbidden = [
+      "TradovateClient",
+      "tradovate.post",
+      "tradovatePost",
+      "setRiskSetting",
+      "setDailyLoss",
+      "setAutoLiq",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "cancelAll",
+      "flattenPositions",
+      "flattenAll",
+      "applyBrokerDayLockout",
+    ];
+    for (const banned of forbidden) {
+      assert.ok(!dbSrc.includes(banned), `internal-lock-evaluator-db must not call ${banned}`);
+    }
+  });
+
+  it("idempotency: upsert (not create) is used so repeated evaluations of the same max_loss_streak breach do not duplicate rows", () => {
+    assert.ok(
+      dbSrc.includes("internalLockEvent.upsert"),
+      "upsert is required for idempotency — repeated props events must not create duplicate max_loss_streak rows",
+    );
+    assert.ok(
+      !dbSrc.includes("internalLockEvent.create("),
+      "bare create() would allow duplicate max_loss_streak InternalLockEvent rows on repeated evaluation",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// max_loss_streak broker-eligibility: stays internal-only.
+//
+// The broker enforcement simulation layer explicitly excludes max_loss_streak
+// from the broker-eligible set (only daily_loss_limit is eligible). This is
+// the safety guarantee that consecutive-loss breaches never trigger a
+// Tradovate setDailyLoss / setAutoLiq write, no matter what the
+// BROKER_ENFORCEMENT_ENABLED flag is set to.
+// ---------------------------------------------------------------------------
+
+describe("max_loss_streak stays internal-only (no broker eligibility)", () => {
+  const simSrc = readSrc("src/lib/guardian-engine/broker-enforcement-simulation.ts");
+
+  it("BROKER_ELIGIBLE_RULES does not include max_loss_streak", () => {
+    const match = simSrc.match(/BROKER_ELIGIBLE_RULES\s*=\s*new\s+Set\(\[([^\]]*)\]\)/);
+    assert.ok(match, "BROKER_ELIGIBLE_RULES must be defined as a Set literal");
+    const setContents = match![1];
+    assert.ok(
+      !setContents.includes("max_loss_streak"),
+      `BROKER_ELIGIBLE_RULES must NOT include "max_loss_streak" — found: ${setContents}`,
+    );
+    assert.ok(
+      setContents.includes("daily_loss_limit"),
+      "BROKER_ELIGIBLE_RULES must include daily_loss_limit (existing scope)",
+    );
+  });
+
+  it("simulation rejects non-eligible rule types (gates max_loss_streak)", () => {
+    assert.ok(
+      simSrc.includes("BROKER_ELIGIBLE_RULES.has(input.ruleType)"),
+      "simulation must gate on BROKER_ELIGIBLE_RULES.has(input.ruleType) so max_loss_streak is rejected",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reset-session-state clears max_loss_streak locks too.
+//
+// The reset endpoint uses updateMany filtered by accountId + clearedAt=null
+// only — no ruleType filter — so it clears ALL active locks including
+// max_loss_streak. This guarantees that a manual reset wipes the loss-streak
+// lock state alongside daily_loss_limit and trade_limit.
+// ---------------------------------------------------------------------------
+
+describe("reset-session-state clears max_loss_streak locks (no ruleType filter)", () => {
+  const resetSrc = readSrc(
+    "src/app/api/debug/accounts/[accountId]/reset-session-state/route.ts",
+  );
+
+  it("uses internalLockEvent.updateMany to clear all active locks including max_loss_streak", () => {
+    assert.ok(
+      resetSrc.includes("internalLockEvent.updateMany"),
+      "reset must use updateMany to clear all active locks for the account",
+    );
+  });
+
+  it("does not filter by ruleType — so trade_limit, daily_loss_limit, max_loss_streak all clear", () => {
+    const idx = resetSrc.indexOf("internalLockEvent.updateMany");
+    assert.ok(idx > -1);
+    const slice = resetSrc.slice(idx, idx + 400);
+    assert.ok(
+      !slice.includes("ruleType"),
+      "reset updateMany must not filter by ruleType — all active rule types must clear, including max_loss_streak",
+    );
+  });
+
+  it("clears activeDedupKey so a max_loss_streak lock can re-fire same day after reset", () => {
+    assert.ok(
+      resetSrc.includes("activeDedupKey: null"),
+      "reset must null out activeDedupKey so the max_loss_streak slot can be reused after manual reset",
+    );
+  });
+});
