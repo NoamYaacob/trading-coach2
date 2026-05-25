@@ -149,17 +149,28 @@ describe("daily_loss_limit rule", () => {
 // ── trade_limit ───────────────────────────────────────────────────────────────
 
 describe("trade_limit rule", () => {
-  it("fires violation when tradesCount reaches maxTradesPerDay", () => {
+  // Semantics: maxTradesPerDay is the inclusive allowance. The lock fires only
+  // when the count strictly EXCEEDS the cap (tradesCount > maxTradesPerDay).
+  // At-cap is still within the allowance and does NOT fire a lock.
+
+  it("does NOT fire when tradesCount === maxTradesPerDay (at-cap, within allowance)", () => {
     const { violations } = evaluateDryRunRules(
       makeInput({ maxTradesPerDay: 5, tradesCount: 5, tradeCountSource: "verified" }),
+    );
+    assert.equal(violations.length, 0, "at-cap is within allowance — must not lock");
+  });
+
+  it("fires violation when tradesCount exceeds maxTradesPerDay by one (cap + 1)", () => {
+    const { violations } = evaluateDryRunRules(
+      makeInput({ maxTradesPerDay: 5, tradesCount: 6, tradeCountSource: "verified" }),
     );
     assert.equal(violations.length, 1);
     assert.equal(violations[0].ruleType, "trade_limit");
     assert.equal(violations[0].thresholdCount, 5);
-    assert.equal(violations[0].observedCount, 5);
+    assert.equal(violations[0].observedCount, 6);
   });
 
-  it("fires violation when tradesCount exceeds maxTradesPerDay", () => {
+  it("fires violation when tradesCount far exceeds maxTradesPerDay", () => {
     const { violations } = evaluateDryRunRules(
       makeInput({ maxTradesPerDay: 5, tradesCount: 7, tradeCountSource: "verified" }),
     );
@@ -171,6 +182,22 @@ describe("trade_limit rule", () => {
       makeInput({ maxTradesPerDay: 5, tradesCount: 4, tradeCountSource: "verified" }),
     );
     assert.equal(violations.length, 0);
+  });
+
+  it("product semantics: maxTradesPerDay=3 allows 0,1,2,3 and locks at 4", () => {
+    // Concretizes the user-facing rule: "Max trades per day = 3" means 3 trades
+    // are permitted. The internal lock fires only when the 4th trade is counted.
+    for (const tradesCount of [0, 1, 2, 3]) {
+      const { violations } = evaluateDryRunRules(
+        makeInput({ maxTradesPerDay: 3, tradesCount, tradeCountSource: "verified" }),
+      );
+      assert.equal(violations.length, 0, `maxTradesPerDay=3, tradesCount=${tradesCount} must not lock`);
+    }
+    const { violations: lockedViolations } = evaluateDryRunRules(
+      makeInput({ maxTradesPerDay: 3, tradesCount: 4, tradeCountSource: "verified" }),
+    );
+    assert.equal(lockedViolations.length, 1, "maxTradesPerDay=3, tradesCount=4 must lock");
+    assert.equal(lockedViolations[0].ruleType, "trade_limit");
   });
 
   it("skips evaluation when maxTradesPerDay is null", () => {
@@ -198,7 +225,7 @@ describe("trade_limit rule", () => {
 
   it("embeds dry_run in dedup key", () => {
     const { violations } = evaluateDryRunRules(
-      makeInput({ maxTradesPerDay: 5, tradesCount: 5, tradeCountSource: "verified" }),
+      makeInput({ maxTradesPerDay: 5, tradesCount: 6, tradeCountSource: "verified" }),
     );
     assert.equal(violations[0].dedupKey, "acct_test:trade_limit:2026-05-19:dry_run");
   });
@@ -385,7 +412,7 @@ describe("dedup key uniqueness", () => {
 describe("output shape", () => {
   it("thresholdAmount is null for count-based rules", () => {
     const { violations } = evaluateDryRunRules(
-      makeInput({ maxTradesPerDay: 5, tradesCount: 5, tradeCountSource: "verified" }),
+      makeInput({ maxTradesPerDay: 5, tradesCount: 6, tradeCountSource: "verified" }),
     );
     assert.equal(violations[0].thresholdAmount, null);
   });
@@ -406,7 +433,7 @@ describe("output shape", () => {
 
   it("observedAmount is null for count-based rules", () => {
     const { violations } = evaluateDryRunRules(
-      makeInput({ maxTradesPerDay: 5, tradesCount: 5, tradeCountSource: "verified" }),
+      makeInput({ maxTradesPerDay: 5, tradesCount: 6, tradeCountSource: "verified" }),
     );
     assert.equal(violations[0].observedAmount, null);
   });

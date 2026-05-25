@@ -563,9 +563,11 @@ describe("InternalLockEvent schema — activeDedupKey unique constraint", () => 
 // dry-run-rule-evaluator.test.ts. These tests verify the DB integration
 // layer carries trade_limit through end-to-end without any broker side-effects.
 //
-// Documented semantics: maxTradesPerDay is the inclusive cap. The lock fires
-// when tradesCount >= maxTradesPerDay (the configured limit IS the trigger).
-// Suppressed unless tradeCountSource === "verified".
+// Documented semantics: maxTradesPerDay is the inclusive ALLOWANCE. The lock
+// fires only when tradesCount STRICTLY EXCEEDS the cap
+// (tradesCount > maxTradesPerDay) — at-cap is still within the allowance.
+// Suppressed unless tradeCountSource === "verified". Pre-order blocking
+// (which would use >=) is a separate future codepath and is not implemented.
 // ---------------------------------------------------------------------------
 
 describe("trade_limit internal-lock wiring (DB integration source-scan)", () => {
@@ -579,10 +581,23 @@ describe("trade_limit internal-lock wiring (DB integration source-scan)", () => 
     );
   });
 
-  it("dry-run evaluator fires trade_limit at-or-above limit (inclusive cap)", () => {
+  it("dry-run evaluator fires trade_limit ONLY when tradesCount strictly exceeds the cap", () => {
+    // Product semantics: maxTradesPerDay is the inclusive allowance.
+    // maxTradesPerDay=3 permits 3 trades; the lock fires when the 4th is counted.
     assert.ok(
-      evaluatorSrc.includes("input.tradesCount >= input.maxTradesPerDay"),
-      "evaluator must use >= so the configured maxTradesPerDay is the lock trigger",
+      evaluatorSrc.includes("input.tradesCount > input.maxTradesPerDay"),
+      "evaluator must use > (strict) so the cap is the allowance, not the trigger",
+    );
+    assert.ok(
+      !evaluatorSrc.includes("input.tradesCount >= input.maxTradesPerDay"),
+      "evaluator must NOT use >= — that would lock the user out at their last permitted trade",
+    );
+  });
+
+  it("dry-run evaluator documents the allowance semantics (not inclusive-cap-trigger)", () => {
+    assert.ok(
+      evaluatorSrc.includes("ALLOWANCE") || evaluatorSrc.includes("allowance"),
+      "evaluator comment must use the 'allowance' framing so the > comparison is unambiguous",
     );
   });
 

@@ -181,7 +181,34 @@ describe("eligibility: no risk rules", () => {
 // ── trade_limit rule mapping ──────────────────────────────────────────────────
 
 describe("trade_limit: would_fire", () => {
-  it("returns would_fire when maxTradesPerDay=1 and tradesCount>=1 with verified source", () => {
+  it("returns would_fire when maxTradesPerDay=1 and tradesCount>1 (allowance exceeded)", () => {
+    // Semantics: maxTradesPerDay=1 permits 1 trade; the lock fires on the 2nd.
+    // At-cap (tradesCount=1) is within the allowance and does NOT fire — see
+    // dry-run-rule-evaluator.ts for the > (strict) comparison.
+    const result = deriveAccountEvaluation(
+      makeInput({
+        sessionState: {
+          sessionDate: "2026-05-15",
+          dailyPnl: 0,
+          tradesCount: 2,
+          tradeCountSource: "verified",
+          consecutiveLosses: 0,
+          updatedAt: new Date(),
+        },
+        riskRules: { maxDailyLoss: null, maxTradesPerDay: 1, stopAfterLosses: null },
+      }),
+    );
+    assert.equal(result.evaluationEligible, true);
+    const tradeRule = result.ruleEvaluation.find((r) => r.ruleType === "trade_limit");
+    assert.ok(tradeRule, "trade_limit entry must exist");
+    assert.equal(tradeRule.status, "would_fire");
+    assert.equal(tradeRule.wouldFire, true);
+    assert.equal(tradeRule.threshold, 1);
+    assert.equal(tradeRule.observed, 2);
+    assert.equal(result.wouldFire, true);
+  });
+
+  it("does NOT fire when maxTradesPerDay=1 and tradesCount===1 (at-cap, within allowance)", () => {
     const result = deriveAccountEvaluation(
       makeInput({
         sessionState: {
@@ -198,11 +225,8 @@ describe("trade_limit: would_fire", () => {
     assert.equal(result.evaluationEligible, true);
     const tradeRule = result.ruleEvaluation.find((r) => r.ruleType === "trade_limit");
     assert.ok(tradeRule, "trade_limit entry must exist");
-    assert.equal(tradeRule.status, "would_fire");
-    assert.equal(tradeRule.wouldFire, true);
-    assert.equal(tradeRule.threshold, 1);
-    assert.equal(tradeRule.observed, 1);
-    assert.equal(result.wouldFire, true);
+    assert.equal(tradeRule.wouldFire, false, "at-cap is within allowance — must not fire");
+    assert.notEqual(tradeRule.status, "would_fire", "status must not be would_fire at the cap");
   });
 });
 

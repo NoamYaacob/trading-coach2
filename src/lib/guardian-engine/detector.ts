@@ -41,12 +41,15 @@ export function detectIntervention(
     };
   }
 
-  // Max trades per day reached
-  if (rules.maxTradesPerDay !== null && state.tradesCount >= rules.maxTradesPerDay) {
+  // Max trades per day exceeded — the allowance is inclusive, so the lock
+  // fires only after the user goes past the configured cap. See semantics in
+  // dry-run-rule-evaluator.ts. Trigger key stays "max_trades_reached" for
+  // schema/copy compatibility across the rest of the codebase.
+  if (rules.maxTradesPerDay !== null && state.tradesCount > rules.maxTradesPerDay) {
     return {
       action: "stop",
       trigger: "max_trades_reached",
-      message: `Max trades reached (${rules.maxTradesPerDay}).`,
+      message: `Max trades exceeded (${state.tradesCount}/${rules.maxTradesPerDay}).`,
     };
   }
 

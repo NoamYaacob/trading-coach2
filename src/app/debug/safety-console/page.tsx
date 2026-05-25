@@ -974,6 +974,8 @@ function QaTargetFocusCard({
     : "C1: UNKNOWN";
   const c1Color = c1Label.includes("PASS") ? "text-emerald-700" : c1Label.includes("PENDING") ? "text-amber-700" : "text-red-700";
 
+  // Semantics: tradesCount > maxTradesPerDay → WOULD LOCK. At cap is AT CAP.
+  // See dry-run-rule-evaluator.ts for the > (strict) allowance semantics.
   const tradeLimitLabel = !demo7Diagnosis
     ? "trade_limit: UNKNOWN"
     : demo7Diagnosis.maxTradesPerDay == null
@@ -982,10 +984,14 @@ function QaTargetFocusCard({
         ? "trade_limit: LOCKED"
         : demo7Diagnosis.tradesCount != null &&
             demo7Diagnosis.tradeCountSource === "verified" &&
-            demo7Diagnosis.tradesCount >= demo7Diagnosis.maxTradesPerDay
+            demo7Diagnosis.tradesCount > demo7Diagnosis.maxTradesPerDay
           ? "trade_limit: WOULD LOCK"
-          : `trade_limit: ${demo7Diagnosis.tradesCount ?? "—"}/${demo7Diagnosis.maxTradesPerDay}`;
-  const tradeLimitBadgeCls = tradeLimitLabel.includes("LOCKED") || tradeLimitLabel.includes("WOULD LOCK")
+          : demo7Diagnosis.tradesCount != null &&
+              demo7Diagnosis.tradeCountSource === "verified" &&
+              demo7Diagnosis.tradesCount === demo7Diagnosis.maxTradesPerDay
+            ? "trade_limit: AT CAP"
+            : `trade_limit: ${demo7Diagnosis.tradesCount ?? "—"}/${demo7Diagnosis.maxTradesPerDay}`;
+  const tradeLimitBadgeCls = tradeLimitLabel.includes("LOCKED") || tradeLimitLabel.includes("WOULD LOCK") || tradeLimitLabel.includes("AT CAP")
     ? "bg-amber-100 text-amber-900"
     : tradeLimitLabel.includes("not configured") || tradeLimitLabel.includes("UNKNOWN")
       ? "bg-stone-200 text-stone-600"
@@ -1061,9 +1067,11 @@ function QaStatusCard({
 
   // ── trade_limit (maxTradesPerDay) internal-lock status ────────────────────
   // Internal-only path: dry-run evaluator emits trade_limit when
-  // tradesCount >= maxTradesPerDay and tradeCountSource === "verified".
-  // Lock is created in InternalLockEvent with ruleType=trade_limit; never
-  // triggers a broker write (BROKER_ELIGIBLE_RULES excludes trade_limit).
+  // tradesCount > maxTradesPerDay (strict; allowance exceeded) and
+  // tradeCountSource === "verified". maxTradesPerDay is the inclusive
+  // ALLOWANCE — "Max trades per day = 3" permits 3 trades; the lock fires on
+  // the 4th. Lock is created in InternalLockEvent with ruleType=trade_limit;
+  // never triggers a broker write (BROKER_ELIGIBLE_RULES excludes trade_limit).
   const tradeLimitStatus = !demo7Diagnosis
     ? "UNKNOWN — account not found"
     : demo7Diagnosis.maxTradesPerDay == null
@@ -1074,15 +1082,19 @@ function QaStatusCard({
           ? `SUPPRESSED — tradeCountSource="${demo7Diagnosis.tradeCountSource}" (must be "verified")`
           : demo7Diagnosis.activeTradeLimitLock
             ? `LOCKED — trade_limit InternalLockEvent active (tradesCount=${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay})`
-            : demo7Diagnosis.tradesCount >= demo7Diagnosis.maxTradesPerDay
-              ? `WOULD LOCK — tradesCount=${demo7Diagnosis.tradesCount} >= maxTradesPerDay=${demo7Diagnosis.maxTradesPerDay} but no lock row yet`
-              : `OK — ${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay} used`;
+            : demo7Diagnosis.tradesCount > demo7Diagnosis.maxTradesPerDay
+              ? `WOULD LOCK — tradesCount=${demo7Diagnosis.tradesCount} > maxTradesPerDay=${demo7Diagnosis.maxTradesPerDay} but no lock row yet`
+              : demo7Diagnosis.tradesCount === demo7Diagnosis.maxTradesPerDay
+                ? `AT CAP — ${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay} (allowance fully used; next trade locks)`
+                : `OK — ${demo7Diagnosis.tradesCount}/${demo7Diagnosis.maxTradesPerDay} used`;
 
   const tradeLimitColor = tradeLimitStatus.startsWith("LOCKED") || tradeLimitStatus.startsWith("WOULD LOCK")
     ? "text-amber-700"
-    : tradeLimitStatus.startsWith("OK")
-      ? "text-emerald-700"
-      : "text-stone-500";
+    : tradeLimitStatus.startsWith("AT CAP")
+      ? "text-amber-700"
+      : tradeLimitStatus.startsWith("OK")
+        ? "text-emerald-700"
+        : "text-stone-500";
 
   return (
     <SectionCard
@@ -1127,7 +1139,9 @@ function QaStatusCard({
         {demo7Diagnosis && (
           <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
             <span className="font-semibold">trade_limit semantics:</span>{" "}
-            Inclusive cap — lock fires when <span className="font-mono">tradesCount &gt;= maxTradesPerDay</span>{" "}
+            Inclusive allowance — <span className="font-mono">maxTradesPerDay=3</span> permits trades 1–3; the lock fires
+            on trade 4. Internally: lock fires when{" "}
+            <span className="font-mono">tradesCount &gt; maxTradesPerDay</span>{" "}
             and <span className="font-mono">tradeCountSource === "verified"</span>. Internal-only — never triggers
             a Tradovate write (broker enforcement excludes trade_limit). Idempotent: re-evaluation upserts the same
             <span className="mx-1 font-mono">activeDedupKey</span> row.

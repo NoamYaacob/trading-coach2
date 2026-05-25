@@ -94,7 +94,7 @@ export const RULE_CAPABILITIES: readonly RuleCapability[] = [
     currentStatus: "partial",
     brokerSyncTruth: "guardrail_lockable",
     userFacingExplanation:
-      "Guardrail counts your trades during the session and locks your Guardrail account when the limit is reached. This is an app-side enforcement only — the broker will still accept orders if you bypass Guardrail. Broker-side trade-count enforcement is not supported by Tradovate.",
+      "Guardrail counts your trades during the session. The number you set is the inclusive allowance — for example, \"Max trades per day = 3\" permits 3 trades, and your Guardrail account is locked when a 4th trade is detected. This is an app-side enforcement only — the broker will still accept orders if you bypass Guardrail. Broker-side trade-count enforcement is not supported by Tradovate.",
   },
   {
     ruleKey: "stopAfterLosses",
