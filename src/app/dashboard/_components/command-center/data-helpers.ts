@@ -899,7 +899,7 @@ export function deriveTradingPermissionStatus(input: {
     return {
       level: "locked",
       headline: n === 1 ? "1 account locked" : `${n} accounts locked`,
-      subline: "Daily loss limit reached. Trading is stopped for the rest of the session.",
+      subline: "A rule limit was reached. Check each locked account for the specific rule that fired.",
     };
   }
 
@@ -908,7 +908,7 @@ export function deriveTradingPermissionStatus(input: {
     return {
       level: "warning",
       headline: n === 1 ? "1 account in warning" : `${n} accounts in warning`,
-      subline: "Approaching the daily loss limit. Monitor your positions closely.",
+      subline: "Approaching a rule limit. Check each account in warning for details.",
     };
   }
 

@@ -80,8 +80,7 @@ export default async function FeaturesPage() {
                 <p className="text-sm font-semibold text-stone-950">Partial</p>
               </div>
               <p className="text-sm leading-6 text-stone-600">
-                Broker-connected evaluation for these rules is in progress and ships after live
-                verification.
+                Guardrail evaluates these rules with app-level enforcement where available. No broker-side actions are active for these rules.
               </p>
             </div>
             <div>
@@ -161,7 +160,7 @@ function RuleEngineMockup() {
         ))}
       </div>
       <p className="mt-3 border-t border-stone-100 pt-2.5 text-[10px] text-stone-400">
-        4 active · 3 partial · 7 coming soon · evaluated in real time
+        4 active · 4 partial · 6 coming soon · evaluated in real time
       </p>
     </div>
   );

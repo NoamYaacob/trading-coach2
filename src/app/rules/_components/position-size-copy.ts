@@ -22,7 +22,7 @@
 export const MAX_POSITION_SIZE_COPY = {
   label: "Max standard-equivalent contracts",
   hint:
-    "Guardrail uses this limit to monitor position size. " +
+    "Guardrail monitors this limit and locks the session when exposure exceeds the cap. " +
     "Standard-equivalent sizing lets 1 NQ equal 10 MNQ.",
 } as const;
 

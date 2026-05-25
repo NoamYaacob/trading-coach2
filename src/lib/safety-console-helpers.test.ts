@@ -1859,10 +1859,10 @@ describe("source-scan: position-size copy does not expose internal terms", () =>
     );
   });
 
-  it("hint contains the simplified standard-equivalent explanation", () => {
+  it("hint contains the standard-equivalent explanation and describes enforcement", () => {
     assert.ok(
-      EXPORTED_VALUES.includes("Guardrail uses this limit to monitor position size"),
-      "position-size hint must contain the simplified explanation",
+      EXPORTED_VALUES.includes("Guardrail monitors this limit and locks the session when exposure exceeds the cap"),
+      "position-size hint must describe monitoring and session lock on breach",
     );
     assert.ok(
       EXPORTED_VALUES.includes("Standard-equivalent sizing lets 1 NQ equal 10 MNQ"),
