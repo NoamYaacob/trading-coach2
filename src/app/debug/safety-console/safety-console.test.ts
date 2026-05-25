@@ -236,3 +236,109 @@ describe("safety-console page — no env mutation", () => {
     assert.ok(!envWritePattern.test(CODE), "must not write to any process.env key");
   });
 });
+
+describe("safety-console page — overall status banner copy", () => {
+  it("does not say 'All safety checks passing'", () => {
+    assert.ok(
+      !CODE.includes("All safety checks passing"),
+      "must not use misleading 'All safety checks passing' label",
+    );
+  });
+
+  it("says 'Safe mode active' for the safe state", () => {
+    assert.ok(
+      CODE.includes("Safe mode active"),
+      "must use 'Safe mode active' copy for the safe/green state",
+    );
+  });
+
+  it("clarifies safe state means inert not rollout-ready", () => {
+    assert.ok(
+      CODE.includes("inert") || CODE.includes("not rollout-ready") || CODE.includes("enforcement disabled"),
+      "must clarify safe state means enforcement is disabled, not that rollout is ready",
+    );
+  });
+});
+
+describe("safety-console page — web vs listener env distinction", () => {
+  it("labels web runtime env as not controlling listener-worker", () => {
+    assert.ok(
+      CODE.includes("Does NOT control listener-worker") ||
+        CODE.includes("does NOT control listener-worker") ||
+        CODE.includes("not authoritative"),
+      "must label web runtime as not authoritative for listener",
+    );
+  });
+
+  it("labels listener-worker env as authoritative", () => {
+    assert.ok(
+      CODE.includes("authoritative"),
+      "must label listener-worker env as authoritative",
+    );
+  });
+
+  it("explains GUARDRAIL_INTERNAL_LOCK_ENABLED web value is not authoritative for listener", () => {
+    assert.ok(
+      CODE.includes("GUARDRAIL_INTERNAL_LOCK_ENABLED") &&
+        (CODE.includes("web/app process") || CODE.includes("web process") || CODE.includes("listener-worker") ),
+      "must clarify GUARDRAIL_INTERNAL_LOCK_ENABLED web vs listener distinction",
+    );
+  });
+});
+
+describe("safety-console page — C1 vs C2/C3 distinction in checklist", () => {
+  it("C1 checklist says TRADOVATE_LISTENER_ENABLE_LIVE is required for C1", () => {
+    assert.ok(
+      CODE.includes("TRADOVATE_LISTENER_ENABLE_LIVE"),
+      "must mention TRADOVATE_LISTENER_ENABLE_LIVE in C1 checklist",
+    );
+  });
+
+  it("C1 checklist says C1 does NOT need BROKER_ENFORCEMENT_ENABLED", () => {
+    assert.ok(
+      CODE.includes("C1 does NOT need BROKER_ENFORCEMENT_ENABLED") ||
+        CODE.includes("C1 does not need BROKER_ENFORCEMENT_ENABLED") ||
+        (CODE.includes("does NOT need") && CODE.includes("BROKER_ENFORCEMENT_ENABLED")),
+      "must clarify C1 does not need BROKER_ENFORCEMENT_ENABLED",
+    );
+  });
+
+  it("distinguishes C1 (internal lock) from C2/C3 (broker writes)", () => {
+    assert.ok(
+      CODE.includes("C2/C3 broker writes") ||
+        CODE.includes("gates C2/C3") ||
+        CODE.includes("C2/C3 broker-write"),
+      "must explain BROKER_ENFORCEMENT_ENABLED gates C2/C3 broker writes, not C1",
+    );
+  });
+});
+
+describe("safety-console page — QaTargetFocusCard present", () => {
+  it("renders QaTargetFocusCard component", () => {
+    assert.ok(
+      CODE.includes("QaTargetFocusCard"),
+      "must render QaTargetFocusCard component",
+    );
+  });
+
+  it("shows quick link anchors to key sections", () => {
+    assert.ok(CODE.includes("#qa-status"), "must have #qa-status anchor link");
+    assert.ok(CODE.includes("#internal-lock"), "must have #internal-lock anchor link");
+    assert.ok(CODE.includes("#rollout-readiness"), "must have #rollout-readiness anchor link");
+    assert.ok(CODE.includes("#broker-sync"), "must have #broker-sync anchor link");
+  });
+
+  it("shows rule-save PASS badge in focus card", () => {
+    assert.ok(
+      CODE.includes("rule-save: PASS") || CODE.includes("rule-save PASS"),
+      "must show rule-save PASS badge in focus card",
+    );
+  });
+
+  it("shows C2/C3 NO-GO badges in focus card", () => {
+    assert.ok(
+      CODE.includes("C2: NO-GO") || CODE.includes("C3: NO-GO"),
+      "must show C2/C3 NO-GO badges in focus card",
+    );
+  });
+});
