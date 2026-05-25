@@ -40,6 +40,7 @@ import {
 import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
 import { loadLivePositions } from "./tradovate/load-live-positions";
 import { parseSymbolLimits } from "../futures/symbol-limits";
+import { applyInternalLockForMaxPositionSize } from "../guardian-engine/max-position-size-internal-lock-db";
 
 /**
  * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
@@ -466,7 +467,7 @@ export async function syncTradovateAccount(
       }),
       prisma.connectedAccount.findUnique({
         where: { id: accountId },
-        select: { brokerConnection: { select: { connectionStatus: true, permissionLevel: true } } },
+        select: { brokerConnection: { select: { connectionStatus: true, permissionLevel: true, env: true } } },
       }),
     ]);
     // connectionStatus reflects webhook activity (connected_readonly → connected_live on
@@ -790,6 +791,32 @@ export async function syncTradovateAccount(
         ...(preFlattened !== undefined && { preFlattened }),
       }).catch((err) => {
         console.error("[enforcement] trigger failed", { accountId, error: err });
+      });
+    }
+
+    // ── max_position_size internal lock (Phase 2B extension) ───────────────
+    // Persist an InternalLockEvent whenever max_position_size wins the
+    // enforcement cascade. Idempotent: repeated syncs while in breach upsert
+    // the same row (refreshes observedAmount/updatedAt) via the dedup key.
+    //
+    // The lock helper is internal-only (no Tradovate calls, no broker writes,
+    // no cancel/flatten/order). Demo-only and gated by
+    // GUARDRAIL_INTERNAL_LOCK_ENABLED inside the helper — sync passes the
+    // brokerConnection.env through so live accounts are filtered out there.
+    if (enforcementTrigger === "max_position_size" && effectiveMaxContracts !== null) {
+      const env = accountConnInfo?.brokerConnection?.env ?? "live";
+      applyInternalLockForMaxPositionSize({
+        accountId,
+        userId,
+        env,
+        tradingDay: tradingDayKey,
+        maxContracts: effectiveMaxContracts,
+        currentMiniEquivalentExposure: maxPositionSizeDecision.totalMiniEquivalent,
+      }).catch((err) => {
+        console.error("[guardian] max_position_size internal lock upsert failed", {
+          accountId,
+          error: err,
+        });
       });
     }
 

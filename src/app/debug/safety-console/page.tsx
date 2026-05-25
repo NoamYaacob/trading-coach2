@@ -483,7 +483,7 @@ export default async function SafetyConsolePage() {
             },
           },
           riskRules: {
-            select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true },
+            select: { maxDailyLoss: true, maxTradesPerDay: true, stopAfterLosses: true, maxContracts: true },
           },
         },
       }),
@@ -674,6 +674,8 @@ export default async function SafetyConsolePage() {
     consecutiveLosses: number | null;
     stopAfterLosses: number | null;
     activeLossStreakLock: boolean;
+    maxContracts: number | null;
+    activeMaxPositionSizeLock: boolean;
   };
 
   let demo7Diagnosis: Demo7Diagnosis | null = null;
@@ -734,6 +736,9 @@ export default async function SafetyConsolePage() {
     const activeLossStreakLock7 = demo7LockEvents.some(
       (e) => e.clearedAt == null && e.ruleType === "max_loss_streak",
     );
+    const activeMaxPositionSizeLock7 = demo7LockEvents.some(
+      (e) => e.clearedAt == null && e.ruleType === "max_position_size",
+    );
     demo7Diagnosis = {
       canLock: canLock7,
       skipReasons: skipReasons7,
@@ -755,6 +760,8 @@ export default async function SafetyConsolePage() {
       consecutiveLosses: session7?.consecutiveLosses ?? null,
       stopAfterLosses: rules7?.stopAfterLosses ?? null,
       activeLossStreakLock: activeLossStreakLock7,
+      maxContracts: rules7?.maxContracts ?? null,
+      activeMaxPositionSizeLock: activeMaxPositionSizeLock7,
     };
   }
 
@@ -968,6 +975,8 @@ type Demo7DiagnosisType = {
   consecutiveLosses: number | null;
   stopAfterLosses: number | null;
   activeLossStreakLock: boolean;
+  maxContracts: number | null;
+  activeMaxPositionSizeLock: boolean;
 } | null;
 
 function QaTargetFocusCard({
@@ -1027,6 +1036,22 @@ function QaTargetFocusCard({
       ? "bg-stone-200 text-stone-600"
       : "bg-emerald-100 text-emerald-800";
 
+  // Semantics: lock fires when standard-equivalent exposure > maxContracts.
+  // The Safety Console does not have live exposure data — it only surfaces
+  // whether a max_position_size InternalLockEvent is active for the day.
+  const posSizeLabel = !demo7Diagnosis
+    ? "max_position_size: UNKNOWN"
+    : demo7Diagnosis.maxContracts == null
+      ? "max_position_size: not configured"
+      : demo7Diagnosis.activeMaxPositionSizeLock
+        ? "max_position_size: LOCKED"
+        : `max_position_size: cap=${demo7Diagnosis.maxContracts}`;
+  const posSizeBadgeCls = posSizeLabel.includes("LOCKED")
+    ? "bg-amber-100 text-amber-900"
+    : posSizeLabel.includes("not configured") || posSizeLabel.includes("UNKNOWN")
+      ? "bg-stone-200 text-stone-600"
+      : "bg-emerald-100 text-emerald-800";
+
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1056,6 +1081,7 @@ function QaTargetFocusCard({
             <span className={`rounded-full px-2 py-0.5 font-semibold ${c1Label.includes("PASS") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{c1Label}</span>
             <span className={`rounded-full px-2 py-0.5 font-semibold ${tradeLimitBadgeCls}`}>{tradeLimitLabel}</span>
             <span className={`rounded-full px-2 py-0.5 font-semibold ${lossStreakBadgeCls}`}>{lossStreakLabel}</span>
+            <span className={`rounded-full px-2 py-0.5 font-semibold ${posSizeBadgeCls}`}>{posSizeLabel}</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C2: NO-GO</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">C3: NO-GO</span>
           </div>
@@ -1151,6 +1177,28 @@ function QaStatusCard({
       ? "text-emerald-700"
       : "text-stone-500";
 
+  // ── max_position_size (maxContracts) internal-lock status ─────────────────
+  // Internal-only path: tradovate-sync.ts evaluates standard-equivalent
+  // exposure each sync cycle. When exposure > maxContracts, the sync sets
+  // riskState=STOPPED and applyInternalLockForMaxPositionSize upserts an
+  // InternalLockEvent (ruleType="max_position_size"). Allowance semantics:
+  // maxContracts=2 permits 2 standard-equivalent contracts; the lock fires
+  // when a 3rd is detected. Never triggers a broker write — max_position_size
+  // is not in BROKER_ELIGIBLE_RULES.
+  const posSizeStatus = !demo7Diagnosis
+    ? "UNKNOWN — account not found"
+    : demo7Diagnosis.maxContracts == null
+      ? "NOT CONFIGURED — maxContracts is null on AccountRiskRules"
+      : demo7Diagnosis.activeMaxPositionSizeLock
+        ? `LOCKED — max_position_size InternalLockEvent active (cap=${demo7Diagnosis.maxContracts})`
+        : `OK — cap=${demo7Diagnosis.maxContracts} (live exposure read from broker each sync cycle)`;
+
+  const posSizeColor = posSizeStatus.startsWith("LOCKED")
+    ? "text-amber-700"
+    : posSizeStatus.startsWith("OK")
+      ? "text-emerald-700"
+      : "text-stone-500";
+
   return (
     <SectionCard
       title={`QA status — ${DEMO7_EXTERNAL_ID}`}
@@ -1176,6 +1224,10 @@ function QaStatusCard({
               <dd className={`font-semibold ${lossStreakColor}`}>{lossStreakStatus}</dd>
             </div>
             <div className="flex items-baseline gap-2">
+              <dt className="font-mono text-stone-500">max_position_size internal lock (maxContracts):</dt>
+              <dd className={`font-semibold ${posSizeColor}`}>{posSizeStatus}</dd>
+            </div>
+            <div className="flex items-baseline gap-2">
               <dt className="font-mono text-stone-500">C2 broker enforcement:</dt>
               <dd className="font-semibold text-red-700">NO-GO — do not enable</dd>
             </div>
@@ -1192,7 +1244,7 @@ function QaStatusCard({
         {demo7Diagnosis && (
           <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
             <span className="font-semibold text-stone-700">Live state: </span>
-            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · tradesCount={demo7Diagnosis.tradesCount ?? "—"}/{demo7Diagnosis.maxTradesPerDay ?? "—"} (source={demo7Diagnosis.tradeCountSource ?? "—"}) · consecutiveLosses={demo7Diagnosis.consecutiveLosses ?? "—"}/{demo7Diagnosis.stopAfterLosses ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
+            env={demo7Diagnosis.env} · riskState={demo7Diagnosis.riskState ?? "—"} · dailyPnl={demo7Diagnosis.dailyPnl ?? "—"} · maxDailyLoss={demo7Diagnosis.maxDailyLoss ?? "—"} · tradesCount={demo7Diagnosis.tradesCount ?? "—"}/{demo7Diagnosis.maxTradesPerDay ?? "—"} (source={demo7Diagnosis.tradeCountSource ?? "—"}) · consecutiveLosses={demo7Diagnosis.consecutiveLosses ?? "—"}/{demo7Diagnosis.stopAfterLosses ?? "—"} · maxContracts={demo7Diagnosis.maxContracts ?? "—"} · activeLocks={demo7Diagnosis.activeLockCount} · totalLockRows={demo7Diagnosis.totalLockCount}
           </div>
         )}
         {demo7Diagnosis && (
@@ -1291,6 +1343,12 @@ function InternalLockDiagnosticSection({
               label="activeLossStreakLock"
               value={String(diagnosis.activeLossStreakLock)}
               danger={diagnosis.activeLossStreakLock}
+            />
+            <Row label="maxContracts" value={String(diagnosis.maxContracts ?? "—")} />
+            <Row
+              label="activeMaxPositionSizeLock"
+              value={String(diagnosis.activeMaxPositionSizeLock)}
+              danger={diagnosis.activeMaxPositionSizeLock}
             />
             <Row label="tradingDay" value={diagnosis.tradingDay} />
             <Row label="canLock" value={String(diagnosis.canLock)} />
