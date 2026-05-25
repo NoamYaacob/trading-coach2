@@ -47,6 +47,10 @@ type Props = {
   onBackToOverview: () => void;
   /** Hour timezone label for session cutoff context (CME → user TZ). */
   timezone?: string | null;
+  /** Raw broker-side contract cap toggle — surfaced under Max contracts
+   *  "Advanced options" disclosure. Kept reachable so users can opt in. */
+  rawBrokerHardLimitEnabled: boolean;
+  onRawBrokerHardLimitChange: (next: boolean) => void;
 };
 
 export function RuleDetailPane({
@@ -59,6 +63,8 @@ export function RuleDetailPane({
   onSelectRule,
   onBackToOverview,
   timezone,
+  rawBrokerHardLimitEnabled,
+  onRawBrokerHardLimitChange,
 }: Props) {
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start lg:gap-5">
@@ -82,6 +88,8 @@ export function RuleDetailPane({
           disabled={disabled}
           pendingNotes={pendingNotes}
           timezone={timezone}
+          rawBrokerHardLimitEnabled={rawBrokerHardLimitEnabled}
+          onRawBrokerHardLimitChange={onRawBrokerHardLimitChange}
         />
       </div>
     </div>
@@ -96,6 +104,8 @@ function EditorSwitch({
   disabled,
   pendingNotes,
   timezone,
+  rawBrokerHardLimitEnabled,
+  onRawBrokerHardLimitChange,
 }: Pick<
   Props,
   | "selectedId"
@@ -105,6 +115,8 @@ function EditorSwitch({
   | "disabled"
   | "pendingNotes"
   | "timezone"
+  | "rawBrokerHardLimitEnabled"
+  | "onRawBrokerHardLimitChange"
 >) {
   switch (selectedId) {
     case "daily-loss":
@@ -193,6 +205,48 @@ function EditorSwitch({
           subtitle="Hard app-level lock"
           description={MAX_POSITION_SIZE_COPY.hint}
           pendingNote={pendingNotes?.["max-contracts"] ?? null}
+          extra={
+            <details className="group grid gap-2 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-stone-700">
+                <span className="flex items-center gap-2">
+                  Advanced options
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                    Broker-side
+                  </span>
+                </span>
+                <span
+                  aria-hidden
+                  className="text-stone-400 transition-transform group-open:rotate-45"
+                >
+                  +
+                </span>
+              </summary>
+              <div className="mt-1 grid gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900">
+                <p className="font-semibold">Broker-side raw contract cap</p>
+                <p>
+                  Writes a raw contract cap to your Tradovate account so the
+                  broker rejects orders before execution. Tradovate counts every
+                  contract equally — 2&nbsp;MNQ counts as 2 contracts, even when
+                  that is well inside a 1-standard-equivalent limit. Use only if
+                  you want the broker to enforce a raw contract count.
+                </p>
+                <label className="mt-1 flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500 disabled:cursor-not-allowed"
+                    checked={rawBrokerHardLimitEnabled}
+                    disabled={disabled}
+                    onChange={(e) => onRawBrokerHardLimitChange(e.target.checked)}
+                    aria-label="Enable broker-side raw contract cap"
+                  />
+                  <span className="text-amber-900">
+                    Enable broker-side contract cap (applies to all contracts
+                    equally)
+                  </span>
+                </label>
+              </div>
+            </details>
+          }
         >
           <div className="grid gap-1.5">
             <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-500">

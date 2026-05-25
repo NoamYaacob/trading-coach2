@@ -639,6 +639,10 @@ export function AccountRulesForm({
           onSelectRule={(id) => setSelectedRuleId(id)}
           onBackToOverview={() => setSelectedRuleId(null)}
           timezone={timezone}
+          rawBrokerHardLimitEnabled={values.rawBrokerHardLimitEnabled}
+          onRawBrokerHardLimitChange={(next) =>
+            update("rawBrokerHardLimitEnabled", next)
+          }
         />
       )}
 
