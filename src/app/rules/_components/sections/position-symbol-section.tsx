@@ -20,7 +20,7 @@ import { MAX_POSITION_SIZE_COPY, SYMBOL_LIMITS_COPY } from "../position-size-cop
 import { MaxPositionSizeConversionTable } from "../max-position-size-conversion-table";
 import { SymbolLimitsTable, type SymbolLimitRow } from "../symbol-limits-table";
 import { RuleStatusBadge } from "../rule-status-badge";
-import { Field, NumberInput, SectionCard } from "./field-primitives";
+import { Field, NumberStepperInput, SectionCard } from "./field-primitives";
 
 export type PositionSymbolValues = {
   maxContracts: string;
@@ -64,11 +64,10 @@ export function PositionSymbolSection({
           details={MAX_POSITION_SIZE_COPY.hint}
           pendingNote={pendingNotes?.maxContracts ?? null}
         >
-          <NumberInput
+          <NumberStepperInput
             value={values.maxContracts}
             onChange={(v) => update("maxContracts", v)}
             placeholder="2"
-            integer
           />
           <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
           {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (

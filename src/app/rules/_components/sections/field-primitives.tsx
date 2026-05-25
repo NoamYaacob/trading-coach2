@@ -4,12 +4,18 @@
  * Field — label + optional badge + child input + at-most-one short hint line
  *   + optional "Learn more" disclosure with longer explanation.
  * NumberInput — numeric input (decimal or integer) with consistent styling.
+ * NumberStepperInput — +/− stepper for small positive integers (counts, not
+ *   dollar amounts). Inspired by OriginUI's number-input-with-plus-minus-buttons
+ *   pattern; implemented locally so no new runtime dependencies are introduced.
  *
  * Progressive disclosure: short hint is always visible; long copy goes behind
  * the `details` slot which renders a collapsed-by-default <details>. Keeps
  * each row scannable while preserving full transparency for users who want it.
  */
 import type { ReactNode } from "react";
+import { stepValue } from "./step-value";
+
+export { stepValue };
 
 export function Field({
   label,
@@ -73,6 +79,74 @@ export function NumberInput({
       placeholder={placeholder}
       className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm focus:border-stone-950 focus:outline-none"
     />
+  );
+}
+
+/**
+ * +/− stepper for small positive integers (max trades, contract counts, etc.).
+ * Never use for dollar amounts or free-form decimals — use NumberInput instead.
+ *
+ * - Hides browser native spinner arrows via [appearance:textfield]
+ * - Respects fieldset[disabled] automatically (buttons are type="button")
+ * - Explicit `disabled` prop also supported for programmatic lock
+ * - min defaults to 1 (matches server validation: must be > 0)
+ */
+export function NumberStepperInput({
+  value,
+  onChange,
+  placeholder,
+  min = 1,
+  max,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+}) {
+  const numVal = value.trim() === "" ? null : parseInt(value, 10);
+  const canDec =
+    !disabled &&
+    numVal !== null &&
+    Number.isFinite(numVal) &&
+    (min === undefined || numVal > min);
+  const canInc =
+    !disabled &&
+    (numVal === null || !Number.isFinite(numVal) || max === undefined || numVal < max);
+
+  return (
+    <div className="flex h-9 overflow-hidden rounded-xl border border-stone-200 bg-white focus-within:border-stone-950">
+      <button
+        type="button"
+        onClick={() => onChange(stepValue(value, -1, min, max))}
+        disabled={!canDec}
+        aria-label="Decrease"
+        className="flex w-9 shrink-0 items-center justify-center border-r border-stone-200 text-stone-500 transition hover:bg-stone-50 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        inputMode="numeric"
+        step={1}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="w-full min-w-0 bg-transparent px-2 text-center text-sm tabular-nums focus:outline-none disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(stepValue(value, 1, min, max))}
+        disabled={!canInc}
+        aria-label="Increase"
+        className="flex w-9 shrink-0 items-center justify-center border-l border-stone-200 text-stone-500 transition hover:bg-stone-50 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300"
+      >
+        +
+      </button>
+    </div>
   );
 }
 

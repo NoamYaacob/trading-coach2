@@ -13,7 +13,7 @@
  * disclosure so the section stays scannable.
  */
 import { RuleStatusBadge } from "../rule-status-badge";
-import { Field, NumberInput, SectionCard } from "./field-primitives";
+import { Field, NumberStepperInput, SectionCard } from "./field-primitives";
 
 export type TradingBehaviorValues = {
   maxTradesPerDay: string;
@@ -43,11 +43,10 @@ export function TradingBehaviorSection({ values, update, pendingNotes }: Props) 
           details="Lock fires when today's trade count is strictly above this value. Guardrail marks the account locked inside the app; no broker order is cancelled or blocked."
           pendingNote={pendingNotes?.maxTradesPerDay ?? null}
         >
-          <NumberInput
+          <NumberStepperInput
             value={values.maxTradesPerDay}
             onChange={(v) => update("maxTradesPerDay", v)}
             placeholder="5"
-            integer
           />
         </Field>
         <Field
@@ -57,11 +56,10 @@ export function TradingBehaviorSection({ values, update, pendingNotes }: Props) 
           details="Same session only. A winning trade resets the streak to zero. Guardrail marks the account locked inside the app; no broker action."
           pendingNote={pendingNotes?.stopAfterLosses ?? null}
         >
-          <NumberInput
+          <NumberStepperInput
             value={values.stopAfterLosses}
             onChange={(v) => update("stopAfterLosses", v)}
             placeholder="3"
-            integer
           />
         </Field>
       </div>
