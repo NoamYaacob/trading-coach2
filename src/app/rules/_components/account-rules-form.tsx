@@ -24,6 +24,7 @@ import { PositionSymbolSection } from "./sections/position-symbol-section";
 import { SessionCutoffSection } from "./sections/session-cutoff-section";
 import { NotificationsSection } from "./sections/notifications-section";
 import { AdvancedBrokerActionsSection } from "./sections/advanced-broker-actions-section";
+import { PlannedRulesSection } from "./sections/planned-rules-section";
 
 export type DefaultRuleValues = {
   maxDailyLoss: string;
@@ -561,6 +562,8 @@ export function AccountRulesForm({
       <NotificationsSection />
 
       <AdvancedBrokerActionsSection />
+
+      <PlannedRulesSection />
 
       {/* Trading session selector was removed from the account form for now —
           it is not part of the core account-risk setup, is not connected to

@@ -19,7 +19,6 @@
  * It is purely a transparency surface.
  */
 import { RuleStatusBadge } from "../rule-status-badge";
-import { SectionCard } from "./field-primitives";
 
 type AdvancedAction = {
   name: string;
@@ -49,32 +48,55 @@ const ADVANCED_ACTIONS: ReadonlyArray<AdvancedAction> = [
   },
 ];
 
+/**
+ * Advanced broker actions — collapsed by default.
+ *
+ * Informational only. Every action listed is a planned broker action and must
+ * never be presented as live. The card renders no input, button, or onClick —
+ * source-scan tests enforce this.
+ *
+ * Collapsed via <details> with the "Planned" status visible in the summary so
+ * users can see at a glance there is nothing to configure here today.
+ */
 export function AdvancedBrokerActionsSection() {
   return (
-    <SectionCard title="Advanced broker actions" ariaLabel="Advanced broker actions">
-      <p className="text-xs text-stone-500">
-        Broker-side actions Guardrail can perform on your Tradovate account.
-        These are not active for end users in this beta. Surfaced here so you
-        know what Guardrail does and does not control.
-      </p>
-      <ul className="grid gap-2">
-        {ADVANCED_ACTIONS.map(({ name, detail }) => (
-          <li
-            key={name}
-            className="grid gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5"
-          >
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-stone-700">{name}</span>
-              <RuleStatusBadge variant="planned-broker" />
-            </div>
-            <p className="text-xs text-stone-500">{detail}</p>
-          </li>
-        ))}
-      </ul>
-      <p className="text-[11px] text-stone-400">
-        Cancel orders, flatten positions, and broker-side order blocking are not
-        active in this beta.
-      </p>
-    </SectionCard>
+    <details
+      className="group rounded-2xl border border-stone-100 bg-stone-50/30 px-3 py-2.5 sm:px-4 sm:py-3"
+      aria-label="Advanced broker actions"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-stone-700">
+        <span className="flex items-center gap-2">
+          Advanced broker actions
+          <RuleStatusBadge variant="planned-broker" text="Planned" />
+        </span>
+        <span aria-hidden className="text-stone-400 transition-transform group-open:rotate-45">
+          +
+        </span>
+      </summary>
+      <div className="mt-3 grid gap-2">
+        <p className="text-xs text-stone-500">
+          Broker-side actions Guardrail can perform on your Tradovate account.
+          These are not active for end users in this beta.
+        </p>
+        <ul className="grid gap-1.5">
+          {ADVANCED_ACTIONS.map(({ name, detail }) => (
+            <li
+              key={name}
+              className="grid gap-0.5 rounded-xl border border-stone-200 bg-white px-3 py-2"
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-stone-700">{name}</span>
+                <RuleStatusBadge variant="planned-broker" />
+              </div>
+              <p className="text-xs text-stone-500">{detail}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[11px] text-stone-400">
+          Cancel orders, flatten positions, and broker-side order blocking are
+          not active in this beta.
+        </p>
+      </div>
+    </details>
   );
 }

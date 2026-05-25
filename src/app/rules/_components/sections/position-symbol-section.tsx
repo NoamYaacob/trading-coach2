@@ -7,8 +7,10 @@
  *   - Contract limits by symbol         — Saved · Evaluation coming soon.
  *     The schema column exists and the UI captures values, but the guardian
  *     evaluator does not read this yet.
- *   - Symbol blocks                     — Not active. Tradovate has no
- *     symbol-restriction API and there is no Guardrail evaluator wired.
+ *
+ * Symbol blocks is intentionally NOT shown here — it lives in the collapsed
+ * PlannedRulesSection at the bottom of the page so it doesn't compete
+ * visually with the rules that actually enforce today.
  *
  * Advanced broker hard limit toggle is preserved (account-form-only feature)
  * but kept hidden behind an "Advanced options" expander so it stays out of the
@@ -54,11 +56,12 @@ export function PositionSymbolSection({
 }: Props) {
   return (
     <SectionCard title="Position & symbol controls" ariaLabel="Position & symbol controls">
-      <div className="grid items-start gap-3 sm:grid-cols-2 sm:gap-4">
+      <div className="grid items-start gap-3 sm:grid-cols-2">
         <Field
           label={MAX_POSITION_SIZE_COPY.label}
           badge={<RuleStatusBadge variant="guardrail-lock" />}
-          hint={MAX_POSITION_SIZE_COPY.hint}
+          hint="Locks if live exposure exceeds this cap."
+          details={MAX_POSITION_SIZE_COPY.hint}
           pendingNote={pendingNotes?.maxContracts ?? null}
         >
           <NumberInput
@@ -67,9 +70,6 @@ export function PositionSymbolSection({
             placeholder="2"
             integer
           />
-          <span className="text-xs text-stone-400">
-            {SYMBOL_LIMITS_COPY.globalFallbackNote}
-          </span>
           <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
           {values.maxContracts.trim() !== "" && !showAdvancedBrokerCap && (
             <button
@@ -106,31 +106,27 @@ export function PositionSymbolSection({
             </div>
           )}
         </Field>
-        <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+        <div className="grid gap-1.5 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-semibold text-stone-700">
               {SYMBOL_LIMITS_COPY.heading}
             </span>
             <RuleStatusBadge variant="saved-eval-soon" />
           </div>
-          <p className="text-xs text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
           <SymbolLimitsTable
             value={values.symbolLimits}
             onChange={(rows) => update("symbolLimits", rows)}
             disabled={symbolLimitsDisabled}
           />
+          <details className="group text-xs text-stone-400">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-stone-600">
+              <span className="text-[10px]">Learn more</span>
+              <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
+            <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.globalFallbackNote}</p>
+          </details>
         </div>
-      </div>
-      <div className="grid items-start gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-stone-500">
-          Symbol blocks
-          <RuleStatusBadge variant="not-active" />
-        </div>
-        <p className="text-xs text-stone-400">
-          Planned. Tradovate does not expose a symbol-restriction API and the
-          Guardrail evaluator does not block by symbol yet. Surfaced for
-          transparency only.
-        </p>
       </div>
     </SectionCard>
   );
