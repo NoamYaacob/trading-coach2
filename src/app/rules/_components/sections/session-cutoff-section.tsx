@@ -87,7 +87,7 @@ export function SessionCutoffSection({
     <SectionCard
       title="Session cutoff"
       ariaLabel="Session cutoff"
-      badge={<RuleStatusBadge variant="monitoring-only" />}
+      badge={<RuleStatusBadge variant="monitoring-only" compact />}
     >
       <Field
         label={SESSION_WINDOW_COPY.endLabel}
@@ -116,7 +116,7 @@ export function SessionCutoffSection({
           <p className="text-xs font-medium text-stone-600">
             {SESSION_WINDOW_COPY.cutoffBehaviorLabel}
           </p>
-          <RuleStatusBadge variant="planned-broker" />
+          <RuleStatusBadge variant="planned-broker" compact />
         </div>
         <div className="grid gap-2">
           {SESSION_END_BEHAVIOR_OPTIONS.map(({ value, label, hint }) => (

@@ -23,6 +23,7 @@
 import {
   RULE_STATUS_CLS,
   RULE_STATUS_LABEL,
+  RULE_STATUS_LABEL_COMPACT,
   ruleStatusLabel,
   type RuleStatusVariant,
 } from "./rule-status-badge-helpers";
@@ -32,18 +33,22 @@ export { ruleStatusLabel, type RuleStatusVariant };
 export function RuleStatusBadge({
   variant,
   text,
+  compact = false,
 }: {
   variant: RuleStatusVariant;
-  /** Override the default variant label. Use sparingly — the variant labels
-   *  are canonical (one variant = one phrase) so the same rule reads the same
-   *  everywhere. Override only for unique short-form cases (e.g. inline). */
+  /** Override the default variant label. Use sparingly. */
   text?: string;
+  /** When true, renders the compact one-word label (e.g. "Lock" instead of
+   *  "Guardrail lock"). Use on form section cards where space is tight.
+   *  Full labels remain in HowEnforcementWorks and explanation surfaces. */
+  compact?: boolean;
 }) {
+  const label = text ?? (compact ? RULE_STATUS_LABEL_COMPACT[variant] : RULE_STATUS_LABEL[variant]);
   return (
     <span
       className={`inline-flex items-center rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${RULE_STATUS_CLS[variant]}`}
     >
-      {text ?? RULE_STATUS_LABEL[variant]}
+      {label}
     </span>
   );
 }

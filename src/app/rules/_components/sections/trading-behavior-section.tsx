@@ -38,7 +38,7 @@ export function TradingBehaviorSection({ values, update, pendingNotes }: Props) 
       <div className="grid items-start gap-3 sm:grid-cols-2">
         <Field
           label="Max trades per day"
-          badge={<RuleStatusBadge variant="guardrail-lock" />}
+          badge={<RuleStatusBadge variant="guardrail-lock" compact />}
           hint="Locks after the allowance is exceeded."
           details="Lock fires when today's trade count is strictly above this value. Guardrail marks the account locked inside the app; no broker order is cancelled or blocked."
           pendingNote={pendingNotes?.maxTradesPerDay ?? null}
@@ -51,7 +51,7 @@ export function TradingBehaviorSection({ values, update, pendingNotes }: Props) 
         </Field>
         <Field
           label="Stop after consecutive losses"
-          badge={<RuleStatusBadge variant="guardrail-lock" />}
+          badge={<RuleStatusBadge variant="guardrail-lock" compact />}
           hint="Locks after this many losing trades in a row."
           details="Same session only. A winning trade resets the streak to zero. Guardrail marks the account locked inside the app; no broker action."
           pendingNote={pendingNotes?.stopAfterLosses ?? null}

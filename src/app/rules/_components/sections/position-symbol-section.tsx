@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Position & symbol controls section card for the account Trading Plan form.
  *
@@ -15,7 +17,12 @@
  * Advanced broker hard limit toggle is preserved (account-form-only feature)
  * but kept hidden behind an "Advanced options" expander so it stays out of the
  * way for users who shouldn't touch it.
+ *
+ * Symbol limits empty state: the add-form is hidden until the user clicks
+ * "+ Add symbol limit" or until there is at least one configured row. This
+ * keeps the card compact when no limits are set.
  */
+import { useState } from "react";
 import { MAX_POSITION_SIZE_COPY, SYMBOL_LIMITS_COPY } from "../position-size-copy";
 import { MaxPositionSizeConversionTable } from "../max-position-size-conversion-table";
 import { SymbolLimitsTable, type SymbolLimitRow } from "../symbol-limits-table";
@@ -54,12 +61,16 @@ export function PositionSymbolSection({
   symbolLimitsDisabled,
   pendingNotes,
 }: Props) {
+  // Hidden until user clicks "+ Add symbol limit" or there is already a row.
+  const [symbolEditorOpen, setSymbolEditorOpen] = useState(false);
+  const showSymbolEditor = symbolEditorOpen || values.symbolLimits.length > 0;
+
   return (
     <SectionCard title="Position & symbol controls" ariaLabel="Position & symbol controls">
       <div className="grid items-start gap-3 sm:grid-cols-2">
         <Field
           label={MAX_POSITION_SIZE_COPY.label}
-          badge={<RuleStatusBadge variant="guardrail-lock" />}
+          badge={<RuleStatusBadge variant="guardrail-lock" compact />}
           hint="Locks if live exposure exceeds this cap."
           details={MAX_POSITION_SIZE_COPY.hint}
           pendingNote={pendingNotes?.maxContracts ?? null}
@@ -105,27 +116,52 @@ export function PositionSymbolSection({
             </div>
           )}
         </Field>
-        <div className="grid gap-1.5 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-semibold text-stone-700">
-              {SYMBOL_LIMITS_COPY.heading}
-            </span>
-            <RuleStatusBadge variant="saved-eval-soon" />
+
+        {/* ── Symbol limits: compact empty state or full editor ─────────────── */}
+        {!showSymbolEditor ? (
+          <div className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-stone-700">
+                {SYMBOL_LIMITS_COPY.heading}
+              </span>
+              <RuleStatusBadge variant="saved-eval-soon" compact />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSymbolEditorOpen(true)}
+              disabled={symbolLimitsDisabled}
+              className="inline-flex w-fit items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-800 disabled:cursor-not-allowed"
+              data-testid="add-symbol-limit-trigger"
+            >
+              <span aria-hidden>+</span> Add symbol limit
+            </button>
+            <p className="text-xs text-stone-400">
+              Optional per-symbol limits. Evaluation coming soon.
+            </p>
           </div>
-          <SymbolLimitsTable
-            value={values.symbolLimits}
-            onChange={(rows) => update("symbolLimits", rows)}
-            disabled={symbolLimitsDisabled}
-          />
-          <details className="group text-xs text-stone-400">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-stone-600">
-              <span className="text-[10px]">Learn more</span>
-              <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
-            </summary>
-            <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
-            <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.globalFallbackNote}</p>
-          </details>
-        </div>
+        ) : (
+          <div className="grid gap-1.5 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-stone-700">
+                {SYMBOL_LIMITS_COPY.heading}
+              </span>
+              <RuleStatusBadge variant="saved-eval-soon" compact />
+            </div>
+            <SymbolLimitsTable
+              value={values.symbolLimits}
+              onChange={(rows) => update("symbolLimits", rows)}
+              disabled={symbolLimitsDisabled}
+            />
+            <details className="group text-xs text-stone-400">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-stone-600">
+                <span className="text-[10px]">Learn more</span>
+                <span aria-hidden className="text-[10px] transition-transform group-open:rotate-45">+</span>
+              </summary>
+              <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.description}</p>
+              <p className="mt-1 text-stone-500">{SYMBOL_LIMITS_COPY.globalFallbackNote}</p>
+            </details>
+          </div>
+        )}
       </div>
     </SectionCard>
   );
