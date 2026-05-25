@@ -161,12 +161,95 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
         select: { id: true, ruleType: true },
         orderBy: { createdAt: "desc" },
       });
+
+      if (existingLock) {
+        results.push({
+          accountId: account.id,
+          createdOrUpdated: false,
+          internalLockEventId: existingLock.id,
+          ruleType: existingLock.ruleType,
+          skipReason: `riskState="${session.riskState}" (already STOPPED — idempotent skip)`,
+        });
+        continue;
+      }
+
+      // No InternalLockEvent found. This happens when the sync path
+      // (syncTradovateAccount) set riskState=STOPPED independently — the sync
+      // creates a GuardianIntervention but never an InternalLockEvent.
+      // Re-evaluate rules: if a breach is still active, backfill the
+      // InternalLockEvent so the broker enforcement chain can proceed.
+      const backfillTradingDay = session.sessionDate ?? today;
+      const backfillInput: DryRunRuleInput = {
+        accountId: account.id,
+        userId: account.userId,
+        externalAccountId: account.externalAccountId ?? null,
+        env,
+        tradingDay: backfillTradingDay,
+        dailyPnl: Number(session.dailyPnl),
+        tradesCount: session.tradesCount,
+        tradeCountSource: session.tradeCountSource,
+        consecutiveLosses: session.consecutiveLosses,
+        maxDailyLoss: rules.maxDailyLoss != null ? Number(rules.maxDailyLoss) : null,
+        maxTradesPerDay: rules.maxTradesPerDay ?? null,
+        stopAfterLosses: rules.stopAfterLosses ?? null,
+        dailyProfitTarget: null,
+      };
+      const { violations: backfillViolations } = evaluateDryRunRules(backfillInput);
+
+      if (backfillViolations.length === 0) {
+        results.push({
+          accountId: account.id,
+          createdOrUpdated: false,
+          internalLockEventId: null,
+          ruleType: null,
+          skipReason: `riskState="${session.riskState}" (already STOPPED — no active violation to backfill)`,
+        });
+        continue;
+      }
+
+      const backfillPrimary = backfillViolations[0];
+      const backfillDedupKey = buildInternalLockDedupKey(
+        account.id,
+        backfillPrimary.ruleType,
+        backfillTradingDay,
+      );
+
+      console.info("[guardian] backfilling InternalLockEvent — sync-path STOPPED without lock event", {
+        accountId: account.id,
+        ruleType: backfillPrimary.ruleType,
+        tradingDay: backfillTradingDay,
+        activeDedupKey: backfillDedupKey,
+      });
+
+      const backfilledLock = await prisma.internalLockEvent.upsert({
+        where: { activeDedupKey: backfillDedupKey },
+        create: {
+          accountId: account.id,
+          userId: account.userId,
+          ruleType: backfillPrimary.ruleType,
+          tradingDay: backfillTradingDay,
+          thresholdAmount: backfillPrimary.thresholdAmount,
+          thresholdCount: backfillPrimary.thresholdCount,
+          observedAmount: backfillPrimary.observedAmount,
+          observedCount: backfillPrimary.observedCount,
+          internalOnly: true,
+          brokerActionTaken: false,
+          activeDedupKey: backfillDedupKey,
+          updatedAt: new Date(),
+        },
+        update: {
+          observedAmount: backfillPrimary.observedAmount,
+          observedCount: backfillPrimary.observedCount,
+          updatedAt: new Date(),
+        },
+      });
+
       results.push({
         accountId: account.id,
-        createdOrUpdated: false,
-        internalLockEventId: existingLock?.id ?? null,
-        ruleType: existingLock?.ruleType ?? null,
-        skipReason: `riskState="${session.riskState}" (already STOPPED — idempotent skip)`,
+        createdOrUpdated: true,
+        internalLockEventId: backfilledLock.id,
+        ruleType: backfillPrimary.ruleType,
+        skipReason: null,
       });
       continue;
     }
