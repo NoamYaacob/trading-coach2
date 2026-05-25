@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { type SymbolLimitRow } from "./symbol-limits-table";
 import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-consent";
@@ -208,6 +208,26 @@ export function AccountRulesForm({
   copySourceAccounts,
 }: Props) {
   const router = useRouter();
+  // Read ?rule=daily-loss etc. from the URL so the editor can be deep-linked
+  // (e.g. from "Configure →" affordances elsewhere in the app, or for QA).
+  // Falls back to overview when the param is missing or doesn't match a known
+  // rule id. Pure UI; no server-state mutation.
+  const searchParams = useSearchParams();
+  const initialRuleFromUrl = (() => {
+    const raw = searchParams?.get("rule");
+    const valid = new Set<string>([
+      "daily-loss",
+      "risk-per-trade",
+      "max-trades-per-day",
+      "tilt-protection",
+      "max-contracts",
+      "per-symbol-limits",
+      "session-cutoff",
+      "notifications",
+      "advanced-broker-actions",
+    ]);
+    return raw && valid.has(raw) ? (raw as RuleId) : null;
+  })();
   const [values, setValues] = useState<AccountRulesValues>(initial);
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -221,7 +241,7 @@ export function AccountRulesForm({
   // Selected-rule editor toggle. null → show overview card grid. A rule id →
   // render the detail pane (sidebar rail + editor) for that rule. The save
   // button below saves all fields regardless of which rule is open.
-  const [selectedRuleId, setSelectedRuleId] = useState<RuleId | null>(null);
+  const [selectedRuleId, setSelectedRuleId] = useState<RuleId | null>(initialRuleFromUrl);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
