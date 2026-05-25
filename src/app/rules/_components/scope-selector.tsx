@@ -38,10 +38,10 @@ function AccountItem({
         aria-current={isSelected ? "page" : undefined}
         className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
           isSelected
-            ? "border-stone-950 bg-stone-100 text-stone-900"
+            ? "border-amber-600 bg-amber-50/60 text-stone-900"
             : isInactive
               ? "border-transparent text-stone-400 hover:bg-stone-50"
-              : "border-transparent text-stone-700 hover:bg-stone-50"
+              : "border-transparent text-stone-700 hover:bg-amber-50/30"
         }`}
       >
         <div className="flex min-w-0 items-start gap-2">
@@ -146,8 +146,8 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             aria-current={isStarterSelected ? "page" : undefined}
             className={`block w-full max-w-full overflow-hidden rounded-md border-l-2 py-1.5 pl-3 pr-2 transition ${
               isStarterSelected
-                ? "border-stone-950 bg-stone-100 text-stone-900"
-                : "border-transparent text-stone-700 hover:bg-stone-50"
+                ? "border-amber-600 bg-amber-50/60 text-stone-900"
+                : "border-transparent text-stone-700 hover:bg-amber-50/30"
             }`}
           >
             <div className="flex min-w-0 items-start gap-2">
@@ -161,7 +161,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
               </div>
               <span
                 className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${
-                  isStarterSelected ? "bg-stone-950 text-stone-50" : "bg-stone-100 text-stone-500"
+                  isStarterSelected ? "bg-amber-600 text-white" : "bg-stone-100 text-stone-500"
                 }`}
               >
                 Starter

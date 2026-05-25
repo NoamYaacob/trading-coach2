@@ -342,7 +342,7 @@ export default async function RulesPage({
         {/* ── Scope selector ──────────────────────────────────────────────── */}
 
         {/* Mobile: collapsible — collapses after scope selection so editor is visible */}
-        <details className="overflow-hidden rounded-2xl border border-stone-200 bg-white/90 lg:hidden">
+        <details className="overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 lg:hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
               Rule Target
@@ -359,10 +359,10 @@ export default async function RulesPage({
         </details>
 
         {/* Desktop: always-visible sticky sidebar */}
-        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200 bg-white/90 p-3 lg:block lg:sticky lg:top-6">
+        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 p-3 lg:block lg:sticky lg:top-6">
           <div className="mb-3 px-3.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-              Rule Target
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+              Trading Plan
             </p>
             <p className="mt-1 text-xs leading-snug text-stone-500">
               Choose where these rules apply.
@@ -697,7 +697,7 @@ function AccountsOverviewPanel({
               <Link
                 key={account.id}
                 href={buildAccountRulesUrl(account.id)}
-                className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 transition hover:border-stone-300 hover:bg-stone-50"
+                className="flex items-center justify-between rounded-xl border border-stone-200/80 bg-white px-4 py-3 transition hover:border-amber-200 hover:bg-amber-50/30"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-stone-900">{account.label}</p>

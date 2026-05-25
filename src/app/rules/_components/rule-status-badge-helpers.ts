@@ -35,11 +35,16 @@ export const RULE_STATUS_LABEL_COMPACT: Record<RuleStatusVariant, string> = {
 };
 
 export const RULE_STATUS_CLS: Record<RuleStatusVariant, string> = {
-  "broker-eligible": "border-emerald-200 bg-emerald-50 text-emerald-700",
-  "guardrail-lock": "border-red-200 bg-red-50 text-red-700",
-  "monitoring-only": "border-stone-200 bg-stone-100 text-stone-500",
-  "saved-eval-soon": "border-sky-200 bg-sky-50 text-sky-700",
-  "planned-broker": "border-amber-200 bg-amber-50 text-amber-700",
+  // broker: green — enforced by the broker (strongest signal)
+  "broker-eligible": "border-emerald-300 bg-emerald-50 text-emerald-700",
+  // lock: indigo — strong app-layer block (distinct from amber monitor)
+  "guardrail-lock": "border-indigo-200 bg-indigo-50 text-indigo-700",
+  // monitor: amber/gold — informational, no block
+  "monitoring-only": "border-amber-200 bg-amber-50 text-amber-700",
+  // saved: warm stone — configuration stored, evaluation pending
+  "saved-eval-soon": "border-stone-200 bg-stone-100 text-stone-600",
+  // planned: ghosted dashed — not active, roadmap item
+  "planned-broker": "border-dashed border-stone-300 bg-stone-50 text-stone-400",
   "not-active": "border-stone-200 bg-stone-50 text-stone-400",
 };
 

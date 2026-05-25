@@ -46,8 +46,9 @@ export function RuleStatusBadge({
   const label = text ?? (compact ? RULE_STATUS_LABEL_COMPACT[variant] : RULE_STATUS_LABEL[variant]);
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${RULE_STATUS_CLS[variant]}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.08em] ${RULE_STATUS_CLS[variant]}`}
     >
+      <span className="block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" aria-hidden="true" />
       {label}
     </span>
   );
