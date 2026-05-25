@@ -506,6 +506,8 @@ export function AccountRulesForm({
           maxContracts: values.maxContracts,
           rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
         }}
+        symbolLimits={values.symbolLimits}
+        disabled={fieldsDisabled}
         update={(key, value) => update(key as keyof AccountRulesValues, value as AccountRulesValues[keyof AccountRulesValues])}
         hasExistingRules={hasExistingRules}
         showInheritedContext={

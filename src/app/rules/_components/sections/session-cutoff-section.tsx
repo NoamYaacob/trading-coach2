@@ -92,6 +92,9 @@ export function SessionCutoffSection({
         <span className="flex items-center gap-2">
           Session cutoff
           <RuleStatusBadge variant="monitoring-only" compact />
+          <span className="text-xs font-normal text-stone-400">
+            {hour !== null ? `Stops at ${String(hour).padStart(2, "0")}:00 CME` : "Not set"}
+          </span>
         </span>
         <span aria-hidden className="text-stone-400 transition-transform group-open:rotate-45">
           +

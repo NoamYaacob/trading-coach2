@@ -1,18 +1,25 @@
 /**
- * Trading Plan polish pass — source-scan invariants for the dense-hero /
- * help-consolidation / contrast tweaks made after PR #37.
+ * Trading Plan control-panel redesign — source-scan invariants.
+ *
+ * Phase A (PR #38): dense-hero, help-consolidation, contrast tweaks.
+ * Phase B (PR #39): Core rules replaced by a 2-column card grid; six rules
+ *   stay honest; secondary rows upgraded with value summaries.
  *
  * These tests lock in:
  *  - AppShell exposes a `denseHero` mode and the rules page uses it.
- *  - The Core rules card no longer wires per-row info disclosures (the "?"
- *    circles are gone) and instead surfaces explanations via a single
- *    "About these rules" section-level disclosure.
- *  - The MaxPositionSizeConversionTable lives behind a "View contract sizing"
- *    expander rather than rendering inline.
- *  - The five collapsed advanced rows use the higher-contrast border-stone-200
- *    border style introduced in this pass.
- *  - The locked-fieldset readability invariant from PR #35 still holds — no
- *    section-wide opacity dimming.
+ *  - CoreRulesSection uses RuleCard / RuleCardGroup, not the old RuleRow list.
+ *  - Three section groups: Money limits / Trading behavior / Position & symbols.
+ *  - stopAfterLosses is labelled "Tilt protection" in the card.
+ *  - All five rule field keys appear in the section source.
+ *  - Status variants are honest: broker-eligible, monitoring-only, guardrail-lock,
+ *    saved-eval-soon.
+ *  - "About these rules" consolidated disclosure still present.
+ *  - MaxPositionSizeConversionTable still hidden behind "View contract sizing".
+ *  - MAX_POSITION_SIZE_COPY.hint still surfaces in the explanation.
+ *  - Five collapsed advanced rows use border-stone-200 (contrast regression guard).
+ *  - Locked-fieldset readability: no section-wide opacity dimming.
+ *  - AccountRulesForm passes symbolLimits and disabled to CoreRulesSection.
+ *  - Submit payload and validation are untouched.
  */
 import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -40,8 +47,6 @@ describe("AppShell — denseHero mode", () => {
   });
 
   it("denseHero applies smaller hero padding than the default", () => {
-    // The dense variant shrinks the hero section's padding so the page body
-    // reaches the top of the viewport faster.
     assert.match(
       SRC,
       /denseHero\s*\?\s*"p-2\.5/,
@@ -50,8 +55,6 @@ describe("AppShell — denseHero mode", () => {
   });
 
   it("denseHero shrinks the gap between hero and page body", () => {
-    // The default main gap is gap-10 — denseHero must use gap-5 so the rules
-    // editor sits closer to the hero.
     assert.match(
       SRC,
       /denseHero\s*\?\s*"gap-5"/,
@@ -69,29 +72,79 @@ test("rules page: uses denseHero on the AppShell", () => {
   );
 });
 
-// ── CoreRulesSection — no per-row "?" disclosures ────────────────────────────
+// ── CoreRulesSection — card grid layout ─────────────────────────────────────
 
-describe("CoreRulesSection — help is centralised, not per-row", () => {
+describe("CoreRulesSection — card grid layout (not RuleRow list)", () => {
   const SRC = readRules("sections/core-rules-section.tsx");
+
+  it("imports and uses RuleCard (new card primitive)", () => {
+    assert.ok(
+      SRC.includes("RuleCard"),
+      "CoreRulesSection must use RuleCard components",
+    );
+  });
+
+  it("does NOT use the old RuleRow list primitive", () => {
+    assert.ok(
+      !SRC.includes("RuleRow"),
+      "CoreRulesSection must not use RuleRow — the old list layout has been replaced by RuleCard",
+    );
+  });
+
+  it("renders the 'Money limits' section group", () => {
+    assert.ok(SRC.includes("Money limits"), "must render the Money limits section heading");
+  });
+
+  it("renders the 'Trading behavior' section group", () => {
+    assert.ok(SRC.includes("Trading behavior"), "must render the Trading behavior section heading");
+  });
+
+  it("renders the 'Position & symbols' section group", () => {
+    assert.ok(
+      SRC.includes("Position") && SRC.includes("symbols"),
+      "must render the Position & symbols section heading",
+    );
+  });
+
+  it("stopAfterLosses card is labelled 'Tilt protection'", () => {
+    assert.ok(
+      SRC.includes("Tilt protection"),
+      "stopAfterLosses must be labelled Tilt protection in the card — field key is unchanged",
+    );
+  });
+
+  it("all five rule field keys are referenced", () => {
+    const keys = ["maxDailyLoss", "riskPerTrade", "maxTradesPerDay", "stopAfterLosses", "maxContracts"];
+    for (const key of keys) {
+      assert.ok(SRC.includes(key), `CoreRulesSection must reference field key: ${key}`);
+    }
+  });
+
+  it("uses correct status variants for each rule", () => {
+    assert.ok(SRC.includes("broker-eligible"), "daily loss must use broker-eligible");
+    assert.ok(SRC.includes("monitoring-only"), "risk per trade must use monitoring-only");
+    assert.ok(SRC.includes("guardrail-lock"), "trade limits must use guardrail-lock");
+    assert.ok(SRC.includes("saved-eval-soon"), "per-symbol limits must use saved-eval-soon");
+  });
 
   it("no RuleRow passes the `info` prop (per-row help disclosures removed)", () => {
     assert.ok(
       !/\binfo=\{/.test(SRC),
-      "CoreRulesSection must not pass info={...} to any RuleRow — per-row '?' buttons were removed",
+      "CoreRulesSection must not pass info={...} to any RuleRow",
     );
   });
 
   it("surfaces a single section-level 'About these rules' disclosure", () => {
     assert.ok(
       SRC.includes("About these rules"),
-      "CoreRulesSection must include a single 'About these rules' disclosure summarising all rules",
+      "CoreRulesSection must include a single 'About these rules' disclosure",
     );
   });
 
-  it("still references MAX_POSITION_SIZE_COPY for the consolidated explanation", () => {
+  it("still references MAX_POSITION_SIZE_COPY.hint for the consolidated explanation", () => {
     assert.ok(
       SRC.includes("MAX_POSITION_SIZE_COPY.hint"),
-      "the consolidated explanation list must surface the standard-equivalent hint",
+      "the consolidated explanation list must surface MAX_POSITION_SIZE_COPY.hint",
     );
   });
 });
@@ -102,9 +155,6 @@ describe("MaxPositionSizeConversionTable — hidden behind 'View contract sizing
   const SRC = readRules("sections/core-rules-section.tsx");
 
   it("renders the table inside a <details> disclosure, not inline", () => {
-    // The previous version rendered <MaxPositionSizeConversionTable .../>
-    // directly under the row grid. The polish pass tucks it behind a
-    // collapsed trigger so the always-visible card stays compact.
     const tableIdx = SRC.indexOf("<MaxPositionSizeConversionTable");
     assert.ok(tableIdx !== -1, "CoreRulesSection must still render the conversion table");
     const preceding = SRC.slice(0, tableIdx);
@@ -124,6 +174,43 @@ describe("MaxPositionSizeConversionTable — hidden behind 'View contract sizing
   });
 });
 
+// ── AccountRulesForm wires new CoreRulesSection props ────────────────────────
+
+test("account form: passes symbolLimits and disabled to CoreRulesSection", () => {
+  const src = readFileSync(resolve(RULES_ROOT, "account-rules-form.tsx"), "utf8");
+  const coreIdx = src.indexOf("<CoreRulesSection");
+  assert.ok(coreIdx !== -1, "AccountRulesForm must render <CoreRulesSection");
+  // Extract the block from <CoreRulesSection up to <SymbolLimitsRow (the next sibling)
+  const symRowIdx = src.indexOf("<SymbolLimitsRow", coreIdx);
+  const block = src.slice(coreIdx, symRowIdx > coreIdx ? symRowIdx : coreIdx + 2000);
+  assert.ok(
+    block.includes("symbolLimits={values.symbolLimits}"),
+    "CoreRulesSection must receive symbolLimits={values.symbolLimits}",
+  );
+  assert.ok(
+    block.includes("disabled={fieldsDisabled}"),
+    "CoreRulesSection must receive disabled={fieldsDisabled}",
+  );
+});
+
+// ── Submit payload and validation untouched ───────────────────────────────────
+
+test("submit payload and validateRules call are unchanged", () => {
+  const src = readFileSync(resolve(RULES_ROOT, "account-rules-form.tsx"), "utf8");
+  assert.ok(
+    src.includes("maxDailyLoss: num(values.maxDailyLoss)"),
+    "submit payload must include maxDailyLoss",
+  );
+  assert.ok(
+    src.includes("riskPerTrade: num(values.riskPerTrade)"),
+    "submit payload must include riskPerTrade",
+  );
+  assert.ok(
+    src.includes("validateRules({"),
+    "form must still call validateRules before submit",
+  );
+});
+
 // ── Higher-contrast collapsed accordion rows ─────────────────────────────────
 
 const COLLAPSED_ROW_FILES = [
@@ -137,11 +224,13 @@ const COLLAPSED_ROW_FILES = [
 for (const rel of COLLAPSED_ROW_FILES) {
   test(`${rel}: uses higher-contrast border-stone-200 border`, () => {
     const src = readRules(rel);
-    // The collapsed-row wrapper sits BEFORE the aria-label attribute we use
-    // to identify it. Tightening the regex to the same line as aria-label
-    // would miss the class definition, which lives on the line before.
-    const ariaIdx = src.search(/aria-label="(Contract limits by symbol|Session cutoff|Notifications|Advanced broker actions|Planned rules)"/);
-    assert.ok(ariaIdx !== -1, `${rel} must declare an aria-label so this assertion can find the row`);
+    const ariaIdx = src.search(
+      /aria-label="(Contract limits by symbol|Session cutoff|Notifications|Advanced broker actions|Planned rules)"/,
+    );
+    assert.ok(
+      ariaIdx !== -1,
+      `${rel} must declare an aria-label so this assertion can find the row`,
+    );
     const block = src.slice(Math.max(0, ariaIdx - 240), ariaIdx);
     assert.ok(
       block.includes("border-stone-200"),
@@ -160,13 +249,15 @@ test("account form: locked fieldset still avoids section-wide opacity (regressio
   const src = readFileSync(resolve(RULES_ROOT, "account-rules-form.tsx"), "utf8");
   const idx = src.indexOf("disabled={fieldsDisabled}");
   assert.ok(idx !== -1, "form must still propagate fieldsDisabled through the fieldset");
-  const block = src.slice(idx, idx + 400);
+  // Look at the fieldset className — not just any occurrence of disabled={fieldsDisabled}
+  const fieldsetIdx = src.indexOf("<fieldset");
+  const fieldsetBlock = src.slice(fieldsetIdx, fieldsetIdx + 400);
   assert.ok(
-    !block.includes("opacity"),
+    !fieldsetBlock.includes("opacity"),
     "fieldset disabled wrapper must not apply opacity classes — text must remain readable",
   );
   assert.ok(
-    block.includes("cursor-not-allowed"),
+    fieldsetBlock.includes("cursor-not-allowed"),
     "fieldset disabled wrapper must keep cursor-not-allowed to signal the lock",
   );
 });
