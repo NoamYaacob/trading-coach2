@@ -116,6 +116,20 @@ describe("deriveTradingPermissionStatus locked level", () => {
     assert.ok(result !== null);
     assert.equal(result.level, "locked");
   });
+
+  it("locked subline does not claim 'Daily loss limit reached' — lock may be from any rule", () => {
+    // A lock can be triggered by daily loss, max trades, loss streak, or max position size.
+    // The subline must not hardcode 'Daily loss limit reached' which would mislead users
+    // whose account was locked by a different rule.
+    const result = deriveTradingPermissionStatus({
+      accounts: [makeAccount("locked")],
+    });
+    assert.ok(result !== null);
+    assert.ok(
+      !result.subline.toLowerCase().includes("daily loss limit reached"),
+      `locked subline must not say 'Daily loss limit reached' — got: "${result.subline}"`,
+    );
+  });
 });
 
 // ── Test 5: test_mode level ───────────────────────────────────────────────────

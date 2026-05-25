@@ -329,8 +329,8 @@ test("Max position size copy uses standard-equivalent model (Apex prop-firm fram
   assert.match(copySrc, /standard-equivalent/i, "copy must use standard-equivalent framing");
   assert.match(copySrc, /1 NQ equal 10 MNQ/i, "hint must explain the Apex 1 NQ = 10 MNQ sizing");
   assert.ok(
-    copySrc.includes("Guardrail uses this limit to monitor position size"),
-    "hint must use the simplified monitoring explanation",
+    copySrc.includes("Guardrail monitors this limit and locks the session when exposure exceeds the cap"),
+    "hint must describe that Guardrail locks the session on breach (not just monitors)",
   );
   assert.ok(
     !copySrc.includes("Broker-side blocking is not active yet"),
@@ -737,4 +737,93 @@ test("account form: notifications section drops the stale inherited-setting fram
     !/Alerts require a connected Telegram channel to fire/.test(src),
     "in-app notices fire without Telegram — the account form must not claim alerts need Telegram",
   );
+});
+
+// ── Enforcement accuracy: badges and footer ──────────────────────────────────
+
+test("both forms: max trades badge says 'Guardrail lock' not 'Monitoring only'", () => {
+  // max trades, stop after losses, and max contracts all create InternalLockEvent
+  // rows on breach (app-level enforcement). Their badges must reflect enforcement,
+  // not just monitoring. "Monitoring only" implies no action is taken — incorrect.
+  for (const [name, path] of Object.entries(FORM_FILES)) {
+    const src = read(path);
+    const maxTradesIdx = src.indexOf('"Max trades per day"');
+    assert.ok(maxTradesIdx !== -1, `${name}: label 'Max trades per day' must be present`);
+    const fieldBlock = src.slice(maxTradesIdx, maxTradesIdx + 400);
+    assert.ok(
+      fieldBlock.includes('text="Guardrail lock"'),
+      `${name}: max trades badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
+    );
+    assert.ok(
+      !fieldBlock.includes('text="Monitoring only"'),
+      `${name}: max trades badge must NOT say "Monitoring only" — it locks the account`,
+    );
+  }
+});
+
+test("both forms: stop after losses badge says 'Guardrail lock' not 'Monitoring only'", () => {
+  for (const [name, path] of Object.entries(FORM_FILES)) {
+    const src = read(path);
+    const idx = src.indexOf('"Stop after consecutive losses"');
+    assert.ok(idx !== -1, `${name}: label 'Stop after consecutive losses' must be present`);
+    const fieldBlock = src.slice(idx, idx + 400);
+    assert.ok(
+      fieldBlock.includes('text="Guardrail lock"'),
+      `${name}: stop-after-losses badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
+    );
+    assert.ok(
+      !fieldBlock.includes('text="Monitoring only"'),
+      `${name}: stop-after-losses badge must NOT say "Monitoring only" — it locks the account`,
+    );
+  }
+});
+
+test("both forms: max position size badge says 'Guardrail lock' not 'Monitoring only'", () => {
+  // max_position_size creates an InternalLockEvent via the sync path (demo-only).
+  for (const [name, path] of Object.entries(FORM_FILES)) {
+    const src = read(path);
+    const idx = src.indexOf("MAX_POSITION_SIZE_COPY.label");
+    assert.ok(idx !== -1, `${name}: MAX_POSITION_SIZE_COPY.label reference must be present`);
+    const fieldBlock = src.slice(idx - 20, idx + 400);
+    assert.ok(
+      fieldBlock.includes('text="Guardrail lock"'),
+      `${name}: max position size badge must say "Guardrail lock" — this rule creates an internal lock on breach`,
+    );
+    assert.ok(
+      !fieldBlock.includes('text="Monitoring only"'),
+      `${name}: max position size badge must NOT say "Monitoring only" — it locks the account`,
+    );
+  }
+});
+
+test("both forms: footer does NOT say 'All rules currently operate in monitoring mode'", () => {
+  // This phrase is incorrect: max trades, stop after losses, and max position size
+  // all create Guardrail internal locks on breach — they are not just monitoring.
+  for (const [name, path] of Object.entries(FORM_FILES)) {
+    const src = read(path);
+    assert.ok(
+      !src.includes("All rules currently operate in monitoring mode"),
+      `${name}: footer must not say "All rules currently operate in monitoring mode" — three rules create internal locks`,
+    );
+  }
+});
+
+test("both forms: footer distinguishes broker-backed daily loss from internal-lock rules", () => {
+  // The footer must accurately distinguish: daily loss can be broker-backed;
+  // other rules create Guardrail internal locks with no broker action.
+  for (const [name, path] of Object.entries(FORM_FILES)) {
+    const src = read(path);
+    assert.ok(
+      src.includes("Daily loss can be broker-backed"),
+      `${name}: footer must mention that Daily loss can be broker-backed`,
+    );
+    assert.ok(
+      src.includes("Guardrail internal locks") || src.includes("internal lock"),
+      `${name}: footer must mention that other rules create Guardrail internal locks`,
+    );
+    assert.ok(
+      src.includes("no broker actions are sent"),
+      `${name}: footer must state no broker actions are sent for non-daily-loss rules`,
+    );
+  }
 });

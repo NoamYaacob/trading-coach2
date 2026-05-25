@@ -261,21 +261,21 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field
             label="Max trades per day"
-            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
+            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
             pendingNote={pendingFieldNote(pendingPayload, "maxTradesPerDay", initial.maxTradesPerDay)}
           >
             <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
           </Field>
           <Field
             label="Stop after consecutive losses"
-            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
+            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
             pendingNote={pendingFieldNote(pendingPayload, "stopAfterLosses", initial.stopAfterLosses)}
           >
             <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
           </Field>
           <Field
             label={MAX_POSITION_SIZE_COPY.label}
-            badge={<StatusBadge variant="monitor" text="Monitoring only" />}
+            badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
             hint={MAX_POSITION_SIZE_COPY.hint}
             pendingNote={pendingFieldNote(pendingPayload, "maxContracts", initial.maxContracts)}
           >
@@ -383,7 +383,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       {/* ── Submit ──────────────────────────────────────────────────────── */}
       <div className="grid gap-2 border-t border-stone-100 pt-6">
         <p className="text-[11px] text-stone-500">
-          Rules are saved in Guardrail and used for session monitoring. All rules currently operate in monitoring mode — no broker actions are sent unless enforcement is explicitly enabled.
+          Rules are saved in Guardrail and used for session monitoring. Daily loss can be broker-backed on supported connections when enforcement is enabled. Other rules create Guardrail internal locks — no broker actions are sent.
         </p>
 
         {/* Automated-actions consent — required before broker writes can fire

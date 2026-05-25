@@ -120,6 +120,18 @@ describe("landing — rule roadmap honesty", () => {
       "the landing must not still claim five active rules or list News Blackout as active",
     );
   });
+
+  it("Max Contracts (position size) is not badged coming-soon — it has partial internal enforcement", () => {
+    // max_position_size has sync-path internal lock enforcement (PR #28).
+    // Leaving it as coming-soon would mislead users into thinking it does nothing.
+    const rule = RULES.find((r) => r.name.toLowerCase().includes("max contracts"));
+    assert.ok(rule, "RULES must list a Max Contracts rule");
+    assert.notEqual(
+      rule!.badge,
+      "coming-soon",
+      "Max Contracts has app-level internal lock enforcement — must not be badged coming-soon",
+    );
+  });
 });
 
 // ── Objections answered honestly ──────────────────────────────────────────────

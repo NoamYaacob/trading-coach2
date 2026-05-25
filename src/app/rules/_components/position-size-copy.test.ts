@@ -14,10 +14,10 @@ describe("MAX_POSITION_SIZE_COPY — label", () => {
 });
 
 describe("MAX_POSITION_SIZE_COPY — hint copy", () => {
-  it("hint uses the simplified position monitoring explanation", () => {
+  it("hint describes monitoring and session lock on breach", () => {
     assert.ok(
-      MAX_POSITION_SIZE_COPY.hint.includes("Guardrail uses this limit to monitor position size"),
-      "hint must use the simplified position monitoring explanation",
+      MAX_POSITION_SIZE_COPY.hint.includes("Guardrail monitors this limit and locks the session when exposure exceeds the cap"),
+      "hint must describe that Guardrail locks the session when exposure exceeds the cap",
     );
   });
 

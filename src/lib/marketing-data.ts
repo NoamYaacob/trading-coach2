@@ -79,9 +79,9 @@ export const RULES: Array<{ name: string; description: string; badge: RuleBadge 
     badge: "partial",
   },
   {
-    name: "Max Contracts / Order Size",
-    description: "Cap the position size per entry.",
-    badge: "coming-soon",
+    name: "Max Contracts (position size)",
+    description: "Guardrail monitors standard-equivalent position size and locks the session when the cap is exceeded. No pre-trade blocking.",
+    badge: "partial",
   },
   {
     name: "News Blackout",
