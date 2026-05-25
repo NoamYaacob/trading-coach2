@@ -356,10 +356,10 @@ const COMPONENT_SRC = readFileSync(
 );
 
 describe("BrokerListenerStatus component copy: enforcement framing", () => {
-  it("standard-equivalent mode says Guardrail monitors after sync (not pre-trade)", () => {
+  it("standard-equivalent mode says Guardrail checks position size after sync (not pre-trade)", () => {
     assert.ok(
-      COMPONENT_SRC.includes("Guardrail monitors position size after sync"),
-      "standard-equiv label must describe post-sync monitoring",
+      COMPONENT_SRC.includes("Guardrail checks position size after each sync and can lock this account inside the app."),
+      "standard-equiv label must describe post-sync monitoring with lock capability",
     );
     assert.ok(
       !COMPONENT_SRC.includes("pre-trade reject"),

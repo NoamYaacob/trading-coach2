@@ -489,7 +489,7 @@ export function deriveConnectionStatusLabel(rawStatus: string): string {
  *  but monitoring is live. The internal enum value remains "dry_run" and the
  *  env var remains ENFORCEMENT_DRY_RUN — this copy is the only user-visible text. */
 export const DRY_RUN_BANNER_COPY =
-  "Guardrail is monitoring your accounts. Broker-side enforcement is not active.";
+  "Guardrail monitors rules and can lock accounts inside the app. Broker-side enforcement is currently inactive.";
 
 // ── shouldShowEnforcementChip ─────────────────────────────────────────────────
 
@@ -592,7 +592,7 @@ export function derivePerAccountStateLabel(input: {
  *  Returns null when there's no useful state to highlight — the platform line
  *  then shows just "Connected · Synced 2m ago". */
 export type GroupStateSuffix =
-  | "Monitoring only"
+  | "Guardrail active"
   | "Consent required"
   | "Read-only monitoring"
   | "Broker risk settings enabled"
@@ -608,7 +608,7 @@ export function deriveGroupStateSuffix(input: {
   if (input.accounts.length === 0) return null;
   const dryRunAccounts = input.accounts.filter((a) => a.enforcementMode === "dry_run");
   if (dryRunAccounts.length > 0) {
-    return "Monitoring only";
+    return "Guardrail active";
   }
   if (input.accounts.some((a) => a.requiresAutomatedActionsConsent)) {
     return "Consent required";
@@ -865,32 +865,32 @@ export function deriveTradingPermissionStatus(input: {
         const n = lockedCount;
         return {
           level: "allowed",
-          headline: `Monitoring active · ${n} account${n > 1 ? "s" : ""} locked`,
+          headline: `Guardrail protection active · ${n} account${n > 1 ? "s" : ""} locked`,
           subline:
-            "Guardrail is watching your accounts. Broker-side enforcement is not active.",
+            "Guardrail monitors rules and can lock accounts inside the app. Broker-side enforcement is currently inactive.",
         };
       }
       return {
         level: "allowed",
-        headline: "Monitoring active",
+        headline: "Guardrail protection active",
         subline:
-          "Guardrail is watching your accounts. Broker-side enforcement is not active.",
+          "Guardrail monitors rules and can lock accounts inside the app. Broker-side enforcement is currently inactive.",
       };
     }
     if (lockedCount > 0) {
       const n = lockedCount;
       return {
         level: "test_mode",
-        headline: `Monitoring active · ${n} account${n > 1 ? "s" : ""} locked`,
+        headline: `Guardrail protection active · ${n} account${n > 1 ? "s" : ""} locked`,
         subline:
-          "Guardrail is watching your accounts. Broker-side enforcement is not active.",
+          "Guardrail monitors rules and can lock accounts inside the app. Broker-side enforcement is currently inactive.",
       };
     }
     return {
       level: "test_mode",
-      headline: "Monitoring active",
+      headline: "Guardrail protection active",
       subline:
-        "Guardrail is watching your accounts. Broker-side enforcement is not active.",
+        "Guardrail monitors rules and can lock accounts inside the app. Broker-side enforcement is currently inactive.",
     };
   }
 

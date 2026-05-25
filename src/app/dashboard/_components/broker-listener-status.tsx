@@ -56,7 +56,7 @@ export function BrokerListenerStatus({ data }: { data: BrokerListenerStatusData 
         <span className="text-[10px] text-stone-400">
           {data.rawBrokerHardLimitEnabled
             ? "Broker cap active · applies to all contracts"
-            : "Guardrail monitors position size after sync"}
+            : "Guardrail checks position size after each sync and can lock this account inside the app."}
         </span>
       )}
     </div>

@@ -1665,10 +1665,10 @@ describe("source-scan: broker-listener-status component uses customer-safe copy"
     );
   });
 
-  it("uses 'Guardrail monitors position size after sync' for standard mode", () => {
+  it("uses 'Guardrail checks position size after each sync and can lock this account inside the app.' for standard mode", () => {
     assert.ok(
-      LISTENER_STATUS_SRC.includes("Guardrail monitors position size after sync"),
-      "standard-equiv mode must use customer-safe monitoring copy",
+      LISTENER_STATUS_SRC.includes("Guardrail checks position size after each sync and can lock this account inside the app."),
+      "standard-equiv mode must describe post-sync monitoring with lock capability",
     );
   });
 
