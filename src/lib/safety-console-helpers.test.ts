@@ -28,10 +28,12 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
  */
 function readAccountFormAndSections(): string {
   const FORM = resolve(__dirname, "../app/rules/_components/account-rules-form.tsx");
+  // PR #37: MoneyLimits + TradingBehavior + Position-symbol's maxContracts
+  // were absorbed into core-rules-section.tsx. Position-symbol's per-symbol
+  // table moved to the collapsed symbol-limits-row.tsx.
   const SECTIONS = [
-    "../app/rules/_components/sections/money-limits-section.tsx",
-    "../app/rules/_components/sections/trading-behavior-section.tsx",
-    "../app/rules/_components/sections/position-symbol-section.tsx",
+    "../app/rules/_components/sections/core-rules-section.tsx",
+    "../app/rules/_components/sections/symbol-limits-row.tsx",
     "../app/rules/_components/sections/session-cutoff-section.tsx",
     "../app/rules/_components/sections/notifications-section.tsx",
     "../app/rules/_components/sections/advanced-broker-actions-section.tsx",

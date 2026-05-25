@@ -14,8 +14,68 @@
  */
 import type { ReactNode } from "react";
 import { stepValue } from "./step-value";
+import { RuleStatusBadge, type RuleStatusVariant } from "../rule-status-badge";
 
 export { stepValue };
+
+/**
+ * Compact rule row used by the Core rules section card.
+ *
+ * Layout: label + tiny status badge on the left; input on the right;
+ * optional "?" info disclosure that opens a tooltip-style panel below the
+ * row. No long hint copy is shown by default — everything beyond the rule
+ * name lives in the info disclosure or the page-level HowEnforcementWorks.
+ *
+ * The row uses div/details, not <label>, so the click-to-open info doesn't
+ * also dispatch a focus event on the input.
+ */
+export function RuleRow({
+  label,
+  status,
+  info,
+  pendingNote,
+  inputWidth = "w-32",
+  children,
+}: {
+  label: string;
+  status?: RuleStatusVariant;
+  /** Long explanation tucked behind the "?" trigger. Optional. */
+  info?: ReactNode;
+  pendingNote?: string | null;
+  /** Tailwind width class for the input wrapper. Defaults to w-32. */
+  inputWidth?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1 border-b border-stone-100 py-2.5 last:border-b-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm text-stone-800">{label}</span>
+          {status && <RuleStatusBadge variant={status} compact />}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className={inputWidth}>{children}</div>
+          {info && (
+            <details className="group relative">
+              <summary
+                aria-label="Show details"
+                className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-stone-200 bg-white text-[11px] font-medium text-stone-400 transition hover:border-stone-400 hover:text-stone-700"
+              >
+                ?
+              </summary>
+              <div className="absolute right-0 top-9 z-10 w-64 rounded-xl border border-stone-200 bg-white p-3 text-xs leading-relaxed text-stone-600 shadow-sm">
+                {info}
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
+      {pendingNote && (
+        <span className="text-xs font-medium text-amber-600">{pendingNote}</span>
+      )}
+    </div>
+  );
+}
 
 export function Field({
   label,

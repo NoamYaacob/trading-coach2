@@ -19,7 +19,7 @@ import { SESSION_WINDOW_COPY } from "../session-window-copy";
 import { CmeHourSelect } from "../cme-hour-select";
 import { cmeHourBoundaryNote } from "../cme-hour-parsing";
 import { RuleStatusBadge } from "../rule-status-badge";
-import { Field, SectionCard } from "./field-primitives";
+import { Field } from "./field-primitives";
 
 const TZ_CITY: Record<string, string> = {
   "Asia/Jerusalem": "Israel",
@@ -84,11 +84,20 @@ export function SessionCutoffSection({
   const localHour = hour !== null && showLocal ? cmeHourToLocalHour(hour, timezone) : null;
 
   return (
-    <SectionCard
-      title="Session cutoff"
-      ariaLabel="Session cutoff"
-      badge={<RuleStatusBadge variant="monitoring-only" compact />}
+    <details
+      className="group rounded-2xl border border-stone-100 bg-stone-50/30 px-3 py-2.5 sm:px-4 sm:py-3"
+      aria-label="Session cutoff"
     >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-stone-700">
+        <span className="flex items-center gap-2">
+          Session cutoff
+          <RuleStatusBadge variant="monitoring-only" compact />
+        </span>
+        <span aria-hidden className="text-stone-400 transition-transform group-open:rotate-45">
+          +
+        </span>
+      </summary>
+      <div className="mt-3 grid gap-2.5">
       <Field
         label={SESSION_WINDOW_COPY.endLabel}
         hint="Saved — cutoff scheduling is not automated yet."
@@ -146,6 +155,7 @@ export function SessionCutoffSection({
           ))}
         </div>
       </div>
-    </SectionCard>
+      </div>
+    </details>
   );
 }

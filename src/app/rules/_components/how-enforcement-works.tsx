@@ -14,14 +14,14 @@
  */
 export function HowEnforcementWorks() {
   return (
-    <details className="group rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-xs">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-stone-700">
-        How enforcement works
-        <span className="font-normal text-stone-400 transition-transform group-open:rotate-45">
-          +
+    <details className="group text-xs">
+      <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1.5 text-stone-400 underline-offset-2 hover:text-stone-700 hover:underline">
+        <span aria-hidden className="flex h-4 w-4 items-center justify-center rounded-full border border-stone-300 text-[9px] font-semibold">
+          ?
         </span>
+        <span className="font-medium">How enforcement works</span>
       </summary>
-      <div className="mt-3 grid gap-2.5 text-pretty text-stone-600">
+      <div className="mt-2 grid gap-2.5 rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-pretty text-stone-600">
         <p>
           Guardrail evaluates every rule against your live session and chooses one
           of four states per rule. Each rule on the form below is tagged with the
