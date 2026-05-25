@@ -614,11 +614,11 @@ function ScopeContextHeader({
         )}
       </div>
       {firmLine && <p className="mt-0.5 text-sm text-stone-500">{firmLine}</p>}
-      <p className="mt-1 text-xs text-stone-400">
-        {hasAccountRules
-          ? "Account-specific rules are active. Guardrail monitors this account during your trading session."
-          : "No account-specific rules — Guardrail is not monitoring this account. Create an override to enable enforcement."}
-      </p>
+      {!hasAccountRules && (
+        <p className="mt-1 text-xs text-stone-400">
+          No account-specific rules — Guardrail is not monitoring this account.
+        </p>
+      )}
     </div>
   );
 }
