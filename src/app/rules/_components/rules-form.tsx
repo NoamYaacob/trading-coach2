@@ -11,6 +11,7 @@ import { AUTOMATED_ACTIONS_CONSENT_TEXT } from "@/lib/brokers/automated-actions-
 import { validateRules } from "./rule-validation";
 import { CmeHourSelect } from "./cme-hour-select";
 import { cmeHourBoundaryNote } from "./cme-hour-parsing";
+import { NumberStepperInput } from "./sections/field-primitives";
 
 export type RulesFormValues = {
   accountSize: string;
@@ -264,14 +265,14 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
             badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
             pendingNote={pendingFieldNote(pendingPayload, "maxTradesPerDay", initial.maxTradesPerDay)}
           >
-            <NumberInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" integer />
+            <NumberStepperInput value={values.maxTradesPerDay} onChange={(v) => update("maxTradesPerDay", v)} placeholder="5" />
           </Field>
           <Field
             label="Stop after consecutive losses"
             badge={<StatusBadge variant="monitor" text="Guardrail lock" />}
             pendingNote={pendingFieldNote(pendingPayload, "stopAfterLosses", initial.stopAfterLosses)}
           >
-            <NumberInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" integer />
+            <NumberStepperInput value={values.stopAfterLosses} onChange={(v) => update("stopAfterLosses", v)} placeholder="3" />
           </Field>
           <Field
             label={MAX_POSITION_SIZE_COPY.label}
@@ -279,7 +280,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
             hint={MAX_POSITION_SIZE_COPY.hint}
             pendingNote={pendingFieldNote(pendingPayload, "maxContracts", initial.maxContracts)}
           >
-            <NumberInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" integer />
+            <NumberStepperInput value={values.maxContracts} onChange={(v) => update("maxContracts", v)} placeholder="2" />
             <MaxPositionSizeConversionTable maxContracts={values.maxContracts} />
           </Field>
         </div>
