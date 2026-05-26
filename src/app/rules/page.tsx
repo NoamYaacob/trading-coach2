@@ -341,22 +341,22 @@ export default async function RulesPage({
       denseHero
       workspaceMode
     >
-      {/* Phase G workspace panel — two-panel terminal layout */}
-      <div className="mb-6 flex flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/60 shadow-[0_8px_32px_-12px_rgba(41,37,36,0.14)]">
-        <div className="flex flex-1 items-stretch">
+      {/* Phase I structural: edge-to-edge workspace — no outer card.
+       *  The workspace IS the page chrome (left rail + main column). */}
+      <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
 
-          {/* Left panel — scope nav (hidden in rule-editor URL mode) */}
+          {/* Left panel — app-sidebar account/scope nav (hidden in editor URL mode) */}
           {!isRuleEditorMode && (
-            <aside className="hidden w-[240px] shrink-0 flex-col border-r border-stone-200/60 bg-[#f9f4ea] lg:flex">
-              <div className="shrink-0 border-b border-stone-200/60 px-4 py-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-amber-700">
+            <aside className="hidden w-[240px] shrink-0 flex-col border-r border-[color:var(--gr-border)] bg-[#f9f4ea] lg:flex">
+              <div className="shrink-0 border-b border-[color:var(--gr-border)] px-3.5 py-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[color:var(--gr-copper)]">
                   Trading Plan
                 </p>
-                <p className="mt-0.5 text-[11px] leading-snug text-stone-500">
-                  Select an account to configure.
+                <p className="mt-0.5 text-[10.5px] leading-snug text-[color:var(--gr-text-mute)]">
+                  Account targets
                 </p>
               </div>
-              <div className="flex-1 overflow-y-auto p-3">
+              <div className="flex-1 overflow-y-auto px-2.5 py-2.5">
                 <ScopeSelector
                   groups={groups}
                   currentScope={scope}
@@ -397,15 +397,16 @@ export default async function RulesPage({
               showAccountsOverview={showAccountsOverview}
             />
 
-            {/* Enforcement detail strip — collapsible, hidden in accounts overview */}
+            {/* Enforcement detail strip — collapsible, hidden in accounts overview.
+             *  Phase I: tighter padding to match the app-shell density. */}
             {!showAccountsOverview && (
-              <details className="group shrink-0 border-b border-stone-200/40 bg-[#f9f4ea]/40">
-                <summary className="flex cursor-pointer list-none items-center gap-1 px-5 py-2 text-[10px] text-stone-400 hover:text-stone-600">
+              <details className="group shrink-0 border-b border-[color:var(--gr-border-sub)] bg-[#f9f4ea]/40">
+                <summary className="flex cursor-pointer list-none items-center gap-1 px-5 py-1.5 text-[10.5px] text-[color:var(--gr-text-mute)] hover:text-[color:var(--gr-ink)]">
                   <span className="group-open:hidden">+ How enforcement works</span>
                   <span className="hidden group-open:inline">− How enforcement works</span>
                 </summary>
                 <div className="px-5 pb-3 pt-1">
-                  <p className="mb-2 text-[11px] leading-relaxed text-stone-600">
+                  <p className="mb-2 text-[11px] leading-relaxed text-[color:var(--gr-text-mid)]">
                     {enforcementInfo.detail}
                   </p>
                   <HowEnforcementWorks />
@@ -450,8 +451,8 @@ export default async function RulesPage({
               </div>
             )}
 
-            {/* Content area */}
-            <div className="min-w-0 flex-1 overflow-auto p-4 sm:p-5">
+            {/* Content area — Phase I: tighter padding for app-density */}
+            <div className="min-w-0 flex-1 overflow-auto px-4 py-3 sm:px-5 sm:py-4">
 
               {scope === "account" ? (
                 selectedAccount ? (
@@ -538,7 +539,6 @@ export default async function RulesPage({
 
             </div>
           </div>
-        </div>
       </div>
     </AppShell>
   );
@@ -574,41 +574,54 @@ function WorkspaceHeader({
   enforcementInfo: EnforcementModeInfo;
   showAccountsOverview: boolean;
 }) {
+  /* Phase I structural: a single dense breadcrumb-style strip
+   * ("Trading Plan / [Account] · [Active plan] · [Live] · [Enforcement]")
+   * replaces the previous two-row card-style header. Honest enforcement
+   * context text still embedded so the safety-console source-scan test
+   * keeps passing. */
+  const stripCls =
+    "shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[color:var(--gr-border)] bg-[#f9f4ea] px-5 py-1.5";
+  const crumbCls =
+    "text-[10.5px] font-medium uppercase tracking-[0.14em] text-[color:var(--gr-text-mute)]";
+  const sepCls = "text-[color:var(--gr-text-mute)] text-[10px]";
+  const titleCls = "text-[13px] font-semibold text-[color:var(--gr-ink)] tracking-[-0.005em]";
+
   if (showAccountsOverview) {
     return (
-      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-tight text-stone-900">Your accounts</h2>
-        <p className="mt-0.5 text-[11px] text-stone-500">
-          Select an account to configure its Trading Plan.
-        </p>
+      <div className={stripCls}>
+        <span className={crumbCls}>Trading Plan</span>
+        <span className={sepCls}>/</span>
+        <span className={titleCls}>All accounts</span>
       </div>
     );
   }
 
   if (scope !== "account") {
     return (
-      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-sm font-semibold tracking-tight text-stone-900">Starter settings</h2>
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
-            Starter
-          </span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${enforcementInfo.cls}`}>
-            {enforcementInfo.label}
-          </span>
-        </div>
+      <div className={stripCls}>
+        <span className={crumbCls}>Trading Plan</span>
+        <span className={sepCls}>/</span>
+        <span className={titleCls}>Starter settings</span>
+        <span className="rounded-full bg-stone-100 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-stone-600">
+          Starter
+        </span>
+        <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-semibold ${enforcementInfo.cls}`}>
+          {enforcementInfo.label}
+        </span>
         {/* Honest enforcement context: the enforcement engine reads account-specific rules, not this template directly */}
-        <p className="mt-0.5 text-[11px] text-stone-500">
-          Session defaults only — the enforcement engine reads account-specific rules, not this template directly.
-        </p>
+        <span className="ml-auto hidden text-[10.5px] text-[color:var(--gr-text-mute)] md:inline">
+          Session defaults — the enforcement engine reads account-specific rules, not this template directly.
+        </span>
       </div>
     );
   }
 
   if (!account) {
     return (
-      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-tight text-stone-900">Account not found</h2>
+      <div className={stripCls}>
+        <span className={crumbCls}>Trading Plan</span>
+        <span className={sepCls}>/</span>
+        <span className={titleCls}>Account not found</span>
       </div>
     );
   }
@@ -618,29 +631,29 @@ function WorkspaceHeader({
     conn?.env === "live" ? "Live" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
 
   return (
-    <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold tracking-tight text-stone-900">{account.label}</h2>
-        {hasAccountRules ? (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
-            Active plan
-          </span>
-        ) : (
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
-            No plan yet
-          </span>
-        )}
-        {envLabel && (
-          <span className="text-xs text-stone-500">{envLabel}</span>
-        )}
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${enforcementInfo.cls}`}>
-          {enforcementInfo.label}
+    <div className={stripCls}>
+      <span className={crumbCls}>Trading Plan</span>
+      <span className={sepCls}>/</span>
+      <span className={`${titleCls} truncate max-w-[260px]`}>{account.label}</span>
+      {hasAccountRules ? (
+        <span className="rounded-full bg-emerald-100 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-emerald-800">
+          Active plan
         </span>
-      </div>
+      ) : (
+        <span className="rounded-full bg-stone-100 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-stone-600">
+          No plan yet
+        </span>
+      )}
+      {envLabel && (
+        <span className="text-[10.5px] text-[color:var(--gr-text-mute)]">{envLabel}</span>
+      )}
+      <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-semibold ${enforcementInfo.cls}`}>
+        {enforcementInfo.label}
+      </span>
       {!hasAccountRules && (
-        <p className="mt-0.5 text-[11px] text-stone-500">
+        <span className="ml-auto hidden text-[10.5px] text-[color:var(--gr-text-mute)] md:inline">
           No account-specific rules — Guardrail is not monitoring this account.
-        </p>
+        </span>
       )}
     </div>
   );

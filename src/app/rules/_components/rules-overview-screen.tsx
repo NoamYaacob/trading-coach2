@@ -158,34 +158,35 @@ export function RulesOverviewScreen({
     : RULE_GROUPS;
 
   return (
-    <div className="grid gap-4" role="group" aria-label="Rules overview">
+    <div className="grid gap-3" role="group" aria-label="Rules overview">
 
-      {/* Stats strip — real data only; balance/P&L omitted (not available on this page) */}
-      <div className="grid grid-cols-3 divide-x divide-stone-200/60 overflow-hidden rounded-2xl border border-stone-200/60 bg-[#f9f4ea]/60">
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+      {/* Phase I: inline summary strip — compact horizontal row, not a big card.
+       * Only real data (Rules set, Session, Pending) — no fake balance/P&L. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11.5px]">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
             Rules set
-          </p>
-          <p className="mt-0.5 text-base font-bold tabular-nums text-stone-900">
+          </span>
+          <span className="font-semibold tabular-nums text-[color:var(--gr-ink)]">
             {configured} / 7
-          </p>
-        </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
             Session
-          </p>
-          <p className={`mt-0.5 text-base font-bold ${disabled ? "text-amber-700" : "text-stone-400"}`}>
+          </span>
+          <span className={`font-semibold ${disabled ? "text-amber-700" : "text-[color:var(--gr-text-mid)]"}`}>
             {disabled ? "Locked" : "Open"}
-          </p>
-        </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
             Pending
-          </p>
-          <p className={`mt-0.5 text-base font-bold ${hasPending ? "text-amber-700" : "text-stone-400"}`}>
+          </span>
+          <span className={`font-semibold ${hasPending ? "text-amber-700" : "text-[color:var(--gr-text-mid)]"}`}>
             {hasPending ? "Yes" : "None"}
-          </p>
-        </div>
+          </span>
+        </span>
       </div>
 
       {/* Group filter chips — Phase H: design tokens (ink-on-bg for active, surface for idle) */}

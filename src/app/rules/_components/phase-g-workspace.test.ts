@@ -90,13 +90,17 @@ describe("rules page — Phase G workspace layout", () => {
   });
 });
 
-describe("RulesOverviewScreen — Phase G visual", () => {
+describe("RulesOverviewScreen — Phase G visual (updated for Phase I)", () => {
   const SRC = read("rules-overview-screen.tsx");
 
-  it("stats strip uses warm elevated background", () => {
+  it("overview uses GR design tokens for type/surface colors", () => {
+    // Phase I structural redesign moved the stats-strip from a warm-bg card to
+    // an inline horizontal text strip. The bg-[#f9f4ea] selector is no longer
+    // in this file; the overview now uses --gr-ink and --gr-text-mute tokens
+    // alongside the workspace canvas which sits directly on #f3ece0 (page bg).
     assert.ok(
-      SRC.includes("f9f4ea"),
-      "stats strip must use the elevated warm bg (#f9f4ea) to match workspace visual hierarchy",
+      SRC.includes("--gr-ink") || SRC.includes("--gr-text-mute"),
+      "overview must reference GR design tokens (--gr-ink or --gr-text-mute)",
     );
   });
 });
