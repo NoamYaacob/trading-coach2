@@ -56,10 +56,23 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
         </p>
       </header>
 
-      {/* Enforcement explainer — broker-backed tint */}
-      <div className="grid gap-1.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-3.5">
-        <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100/60 text-emerald-700">
+      {/* Enforcement explainer — broker-backed tint using GR broker tokens */}
+      <div
+        className="grid gap-1.5 rounded-[14px] border p-3.5"
+        style={{
+          borderColor: "var(--gr-broker)",
+          backgroundColor: "var(--gr-broker-bg)",
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span
+            className="flex h-7 w-7 items-center justify-center rounded-lg border"
+            style={{
+              color: "var(--gr-broker)",
+              borderColor: "var(--gr-broker)",
+              backgroundColor: "var(--gr-broker-bg)",
+            }}
+          >
             <svg
               viewBox="0 0 16 16"
               fill="none"
@@ -74,10 +87,10 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
             </svg>
           </span>
           <div className="grid gap-0.5">
-            <p className="text-xs font-semibold text-stone-900">
+            <p className="text-[12.5px] font-semibold text-[color:var(--gr-ink)]">
               Broker-backed eligible
             </p>
-            <p className="text-[11px] text-stone-600">
+            <p className="text-[11.5px] leading-[1.5] text-[color:var(--gr-text-mid)]">
               Only rule Guardrail can write to Tradovate&apos;s broker-side risk
               settings. Opt-in per account; off by default. Without opt-in, the
               limit is enforced inside Guardrail as an app-level lock.
