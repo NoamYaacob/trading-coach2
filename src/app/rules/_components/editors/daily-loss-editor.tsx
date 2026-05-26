@@ -105,8 +105,8 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
       {/* Threshold input */}
       <section className="grid gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
         <div className="grid gap-0.5">
-          <h3 className="text-sm font-semibold text-stone-950">Threshold</h3>
-          <p className="text-[11px] text-stone-500">
+          <h3 className="text-sm font-semibold text-[color:var(--gr-ink)]">Threshold</h3>
+          <p className="text-[11px] text-[color:var(--gr-text-mute)]">
             Loss is measured against today&apos;s session P&amp;L. Reset at session
             close.
           </p>
@@ -169,82 +169,88 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
       </section>
 
       {/* What happens when limit is reached */}
-      <section className="grid gap-2 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
+      <section className="grid gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
         <div className="grid gap-0.5">
-          <h3 className="text-sm font-semibold text-stone-950">
+          <h3 className="text-sm font-semibold text-[color:var(--gr-ink)]">
             When the limit is reached
           </h3>
-          <p className="text-[11px] text-stone-500">
-            What Guardrail does on breach today. Broker-side actions need broker
-            integration and are not active.
+          <p className="text-[11px] text-[color:var(--gr-text-mute)]">
+            Broker-side actions require integration and are not yet active.
           </p>
         </div>
 
-        {/* Active actions */}
-        <div className="grid gap-px overflow-hidden rounded-xl border border-stone-200 bg-white">
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5" aria-hidden>
-                <rect x="3.5" y="7.5" width="9" height="6" rx="1" />
-                <path d="M5.5 7.5V5a2.5 2.5 0 015 0v2.5" />
-              </svg>
-            </div>
-            <div className="min-w-0 grow">
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs font-semibold text-stone-900">Lock account in Guardrail</p>
-                <RuleStatusBadge variant="guardrail-lock" compact />
+        {/* Active now actions */}
+        <div className="grid gap-1.5">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--gr-ink)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+            Active now
+          </p>
+          <div className="grid gap-px overflow-hidden rounded-xl border border-stone-200 bg-white">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5" aria-hidden>
+                  <rect x="3.5" y="7.5" width="9" height="6" rx="1" />
+                  <path d="M5.5 7.5V5a2.5 2.5 0 015 0v2.5" />
+                </svg>
               </div>
-              <p className="text-[11px] text-stone-500">
-                Guardrail records an internal lock event. Active.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 border-t border-stone-100 px-3 py-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5" aria-hidden>
-                <path d="M4 11V7a4 4 0 018 0v4l1 1.5H3z" />
-                <path d="M6.5 13.5a1.5 1.5 0 003 0" />
-              </svg>
-            </div>
-            <div className="min-w-0 grow">
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs font-semibold text-stone-900">Notify in-app + Telegram</p>
-                <RuleStatusBadge variant="monitoring-only" compact />
+              <div className="min-w-0 grow">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-semibold text-[color:var(--gr-ink)]">Lock account in Guardrail</p>
+                  <RuleStatusBadge variant="guardrail-lock" compact />
+                </div>
+                <p className="text-[11px] text-[color:var(--gr-text-mute)]">
+                  Guardrail records an internal lock event.
+                </p>
               </div>
-              <p className="text-[11px] text-stone-500">
-                Breach notice on the dashboard; Telegram if connected.
-              </p>
+            </div>
+            <div className="flex items-center gap-3 border-t border-stone-100 px-3 py-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5" aria-hidden>
+                  <path d="M4 11V7a4 4 0 018 0v4l1 1.5H3z" />
+                  <path d="M6.5 13.5a1.5 1.5 0 003 0" />
+                </svg>
+              </div>
+              <div className="min-w-0 grow">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-semibold text-[color:var(--gr-ink)]">Notify in-app + Telegram</p>
+                  <RuleStatusBadge variant="monitoring-only" compact />
+                </div>
+                <p className="text-[11px] text-[color:var(--gr-text-mute)]">
+                  Breach notice on the dashboard; Telegram if connected.
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Planned actions */}
-        <div className="mt-1.5">
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+        {/* Planned actions — visually disabled */}
+        <div className="grid gap-1.5">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--gr-text-mute)]">
+            <span className="h-1.5 w-1.5 rounded-full border border-dashed border-stone-400" aria-hidden />
             Planned · not active
           </p>
-          <div className="grid gap-px overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50/40">
+          <div className="grid gap-px overflow-hidden rounded-xl border border-dashed border-[color:var(--gr-border)] bg-[color:var(--gr-plan-bg)] opacity-60">
             {[
               { title: "Write broker-side daily-loss lock", sub: "PDLL action — opt-in per account" },
-              { title: "Auto-flatten open positions", sub: "Market orders sent via broker" },
-              { title: "Cancel pending orders", sub: "Working + GTC orders cancelled" },
+              { title: "Flatten open positions via broker", sub: "Market orders sent via broker API" },
+              { title: "Remove pending orders", sub: "Working + GTC orders via broker API" },
             ].map((row, i) => (
               <div
                 key={row.title}
-                className={`flex items-center gap-3 px-3 py-2 ${i > 0 ? "border-t border-stone-200/60" : ""}`}
+                className={`flex items-center gap-3 px-3 py-2 ${i > 0 ? "border-t border-[color:var(--gr-border-sub)]" : ""}`}
               >
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-stone-300 bg-white text-stone-400">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3 w-3" aria-hidden>
-                    <path d="M4 4l8 8" />
-                    <path d="M12 4l-8 8" />
+                    <circle cx="8" cy="8" r="5" />
+                    <path d="M8 5v3l2 1.5" />
                   </svg>
                 </div>
                 <div className="min-w-0 grow">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-medium text-stone-500">{row.title}</p>
+                    <p className="text-xs font-medium text-[color:var(--gr-text-mid)]">{row.title}</p>
                     <RuleStatusBadge variant="planned-broker" compact />
                   </div>
-                  <p className="text-[11px] text-stone-400">{row.sub}</p>
+                  <p className="text-[11px] text-[color:var(--gr-text-mute)]">{row.sub}</p>
                 </div>
               </div>
             ))}

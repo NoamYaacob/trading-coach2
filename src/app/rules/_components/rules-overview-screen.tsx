@@ -69,10 +69,10 @@ function RuleCard({
       onClick={onSelect}
       data-rule-id={rule.id}
       aria-label={`Open editor for ${rule.label}`}
-      className={`group relative flex flex-col rounded-[14px] border bg-[color:var(--gr-surface)] p-5 text-left transition-[border-color,box-shadow,background,transform] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
+      className={`group relative flex flex-col rounded-[14px] border bg-[color:var(--gr-surface-warm)] p-5 text-left transition-[border-color,box-shadow,background,transform] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
         disabled
-          ? "cursor-pointer border-[color:var(--gr-border)]"
-          : "border-[color:var(--gr-border)] hover:-translate-y-px hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
+          ? "cursor-pointer border-[color:var(--gr-border-hi)]"
+          : "border-[color:var(--gr-border-hi)] hover:-translate-y-px hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
       }`}
     >
       {/* Group eyebrow + enforcement chip */}
@@ -115,12 +115,28 @@ function RuleCard({
             <span className="rounded-full border border-stone-200 bg-stone-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               Locked
             </span>
+          ) : pendingNote ? (
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-amber-700">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              From template
+            </span>
           ) : isEmpty ? (
             <span className="text-[10.5px] text-[color:var(--gr-text-mute)]">
               Not configured
             </span>
+          ) : rule.status === "saved-eval-soon" ? (
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-saved)]">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" aria-hidden />
+              Saved
+            </span>
+          ) : rule.status === "planned-broker" || rule.status === "not-active" ? (
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-plan)]">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-dashed border-stone-400" aria-hidden />
+              Planned
+            </span>
           ) : (
-            <span className="text-[10.5px] text-[color:var(--gr-text-mid)]">
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-text-mid)]">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]" aria-hidden />
               Configured
             </span>
           )}
@@ -180,33 +196,40 @@ export function RulesOverviewScreen({
         </p>
       </header>
 
-      {/* Phase I: inline summary strip — compact horizontal row, not a big card.
-       * Only real data (Rules set, Session, Pending) — no fake balance/P&L. */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11.5px]">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
-            Rules set
-          </span>
-          <span className="font-semibold tabular-nums text-[color:var(--gr-ink)]">
-            {configured} / 7
-          </span>
+      {/* Phase I / Phase K: command-center status strip.
+       * Only real data (Rules set, Session, Pending) — no fake balance/P&L not available here. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* Rules set chip */}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--gr-border)] bg-[color:var(--gr-surface)] px-2.5 py-1 text-[11px]">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]" aria-hidden />
+          <span className="font-medium text-[color:var(--gr-text-mute)] uppercase tracking-[0.08em] text-[10px]">Rules set</span>
+          <span className="font-semibold tabular-nums text-[color:var(--gr-ink)]">{configured} / 7</span>
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
-            Session
-          </span>
-          <span className={`font-semibold ${disabled ? "text-amber-700" : "text-[color:var(--gr-text-mid)]"}`}>
-            {disabled ? "Locked" : "Open"}
-          </span>
+        {/* Session chip */}
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${
+          disabled
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : "border-[color:var(--gr-border)] bg-[color:var(--gr-surface)] text-[color:var(--gr-ink)]"
+        }`}>
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${disabled ? "bg-amber-400" : "bg-emerald-400"}`} aria-hidden />
+          <span className="font-medium text-[color:var(--gr-text-mute)] uppercase tracking-[0.08em] text-[10px]">Session</span>
+          <span className="font-semibold">{disabled ? "Locked" : "Open"}</span>
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--gr-text-mute)]">
-            Pending
+        {/* Pending chip */}
+        {hasPending && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-800">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+            <span className="font-medium uppercase tracking-[0.08em] text-[10px]">Pending</span>
+            <span className="font-semibold">Yes</span>
           </span>
-          <span className={`font-semibold ${hasPending ? "text-amber-700" : "text-[color:var(--gr-text-mid)]"}`}>
-            {hasPending ? "Yes" : "None"}
+        )}
+        {!hasPending && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--gr-border)] bg-[color:var(--gr-surface)] px-2.5 py-1 text-[11px]">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" aria-hidden />
+            <span className="font-medium text-[color:var(--gr-text-mute)] uppercase tracking-[0.08em] text-[10px]">Pending</span>
+            <span className="font-semibold text-[color:var(--gr-text-mid)]">None</span>
           </span>
-        </span>
+        )}
       </div>
 
       {/* Group filter chips — Phase H: design tokens (ink-on-bg for active, surface for idle) */}
