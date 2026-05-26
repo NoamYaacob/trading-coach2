@@ -69,39 +69,39 @@ function RuleCard({
       onClick={onSelect}
       data-rule-id={rule.id}
       aria-label={`Open editor for ${rule.label}`}
-      className={`group relative flex flex-col rounded-[14px] border bg-white p-5 text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-1 ${
+      className={`group relative flex flex-col rounded-[14px] border bg-white p-5 text-left transition-[border-color,box-shadow,background] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
         disabled
-          ? "cursor-pointer border-stone-200/80"
-          : "border-stone-200/80 hover:border-amber-300/70 hover:shadow-[0_4px_20px_rgba(162,61,16,0.07)] hover:-translate-y-px"
+          ? "cursor-pointer border-[color:var(--gr-border)]"
+          : "border-[color:var(--gr-border)] hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
       }`}
     >
       {/* Group eyebrow + enforcement chip */}
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-amber-700/60">
+        <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
           {rule.group}
         </span>
         <RuleStatusBadge variant={rule.status} compact />
       </div>
 
       {/* Rule title */}
-      <h3 className="mt-2.5 text-sm font-semibold leading-snug tracking-tight text-stone-900">
+      <h3 className="mt-2.5 text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
         {rule.label}
       </h3>
 
       {/* Sub-text */}
-      <p className="mt-0.5 text-[11px] leading-snug text-stone-400">
+      <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
         {rule.helper}
       </p>
 
-      {/* Value — prominent display */}
+      {/* Value — prominent display, tabular mono numerals */}
       <div className="mt-4 flex-1">
         <span
           className={
             isEmpty
-              ? "text-sm italic text-stone-300"
+              ? "text-sm italic text-[color:var(--gr-text-mute)]/60"
               : isViewOnly
-              ? "text-[13px] font-medium text-stone-600"
-              : "text-2xl font-bold tabular-nums leading-none tracking-tight text-stone-950"
+              ? "text-[13px] font-medium text-[color:var(--gr-text-mid)]"
+              : "text-2xl font-semibold tabular-nums leading-none tracking-[-0.015em] text-[color:var(--gr-ink)]"
           }
         >
           {isEmpty ? "Not set" : display}
@@ -109,25 +109,25 @@ function RuleCard({
       </div>
 
       {/* Footer row — state indicator + action affordance */}
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-stone-100/80 pt-2.5">
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
         <div className="flex min-w-0 items-center gap-1.5">
           {disabled ? (
             <span className="rounded-full border border-stone-200 bg-stone-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               Locked
             </span>
           ) : (
-            <span className="text-[10px] text-stone-400">
+            <span className="text-[10.5px] text-[color:var(--gr-text-mute)]">
               {isEmpty ? "Not configured" : "Configured"}
             </span>
           )}
         </div>
         {rule.editable && !disabled && (
-          <span className="shrink-0 text-[10px] font-semibold text-amber-700 opacity-0 transition group-hover:opacity-100">
+          <span className="shrink-0 text-[10.5px] font-semibold text-[color:var(--gr-copper)] opacity-0 transition group-hover:opacity-100">
             Configure →
           </span>
         )}
         {isViewOnly && (
-          <span className="shrink-0 text-[10px] font-medium text-stone-400">
+          <span className="shrink-0 text-[10.5px] font-medium text-[color:var(--gr-text-mute)]">
             View
           </span>
         )}
@@ -158,10 +158,10 @@ export function RulesOverviewScreen({
     : RULE_GROUPS;
 
   return (
-    <div className="grid gap-5" role="group" aria-label="Rules overview">
+    <div className="grid gap-4" role="group" aria-label="Rules overview">
 
       {/* Stats strip — real data only; balance/P&L omitted (not available on this page) */}
-      <div className="grid grid-cols-3 divide-x divide-stone-200/60 overflow-hidden rounded-2xl border border-stone-200/70 bg-stone-50/50">
+      <div className="grid grid-cols-3 divide-x divide-stone-200/60 overflow-hidden rounded-2xl border border-stone-200/60 bg-[#f9f4ea]/60">
         <div className="px-4 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
             Rules set
@@ -188,33 +188,42 @@ export function RulesOverviewScreen({
         </div>
       </div>
 
-      {/* Group filter chips */}
-      <div className="flex flex-wrap gap-2">
+      {/* Group filter chips — Phase H: design tokens (ink-on-bg for active, surface for idle) */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
           onClick={() => setActiveGroup(null)}
-          className={`btn-compact rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+          className={`btn-compact rounded-full border px-3 py-1.5 text-[12px] font-medium transition ${
             activeGroup === null
               ? "border-amber-300 bg-amber-50 text-amber-800"
-              : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-700"
+              : "border-[color:var(--gr-border)] bg-white text-[color:var(--gr-text-mid)] hover:border-[color:var(--gr-border-hi)] hover:text-[color:var(--gr-ink)]"
           }`}
+          aria-pressed={activeGroup === null}
         >
           All rules
+          <span className="ml-1.5 text-[10.5px] tabular-nums opacity-70">
+            {RULE_GROUPS.reduce((n, g) => n + rulesInGroup(g).length, 0)}
+          </span>
         </button>
-        {activeGroups.map((g) => (
-          <button
-            key={g}
-            type="button"
-            onClick={() => setActiveGroup(activeGroup === g ? null : g)}
-            className={`btn-compact rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
-              activeGroup === g
-                ? "border-amber-300 bg-amber-50 text-amber-800"
-                : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-700"
-            }`}
-          >
-            {g}
-          </button>
-        ))}
+        {activeGroups.map((g) => {
+          const count = rulesInGroup(g).length;
+          return (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setActiveGroup(activeGroup === g ? null : g)}
+              className={`btn-compact rounded-full border px-3 py-1.5 text-[12px] font-medium transition ${
+                activeGroup === g
+                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                  : "border-[color:var(--gr-border)] bg-white text-[color:var(--gr-text-mid)] hover:border-[color:var(--gr-border-hi)] hover:text-[color:var(--gr-ink)]"
+              }`}
+              aria-pressed={activeGroup === g}
+            >
+              {g}
+              <span className="ml-1.5 text-[10.5px] tabular-nums opacity-70">{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Rule cards — flat grid when showing all; grouped when a filter is active */}
