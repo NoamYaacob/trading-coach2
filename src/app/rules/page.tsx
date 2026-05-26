@@ -23,7 +23,7 @@ import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } fro
 import { mapDefaultRulesToAccountForm } from "./_components/account-rules-form-logic";
 import { buildRuleScopes, buildAccountRulesUrl } from "./_components/rule-scope-utils";
 import { ApplyPendingButton } from "./_components/apply-pending-button";
-import { computeEnforcementMode } from "./_components/enforcement-mode";
+import { computeEnforcementMode, type EnforcementModeInfo } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix, deriveScopeAccountBadge } from "./_components/scope-selector-helpers";
 import { parseSymbolLimits } from "@/lib/futures/symbol-limits";
 import { HowEnforcementWorks } from "./_components/how-enforcement-works";
@@ -339,211 +339,205 @@ export default async function RulesPage({
       title="Set your trading plan."
       description="Configure rules per trading account."
       denseHero
+      workspaceMode
     >
-      {/* Two-column layout: selector sidebar + editor.
-       *  In rule-editor mode (?rule=<id>) the page-level scope sidebar is
-       *  hidden so the rules rail inside the detail pane becomes the primary
-       *  left rail (two-column total: rail + editor). In overview mode the
-       *  scope sidebar stays visible (sticky on desktop). */}
-      <div
-        className={`grid gap-4 lg:items-start lg:gap-6 ${
-          isRuleEditorMode ? "lg:grid-cols-1" : "lg:grid-cols-[260px_1fr]"
-        }`}
-      >
+      {/* Phase G workspace panel — two-panel terminal layout */}
+      <div className="mb-6 flex flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/60 shadow-[0_8px_32px_-12px_rgba(41,37,36,0.14)]">
+        <div className="flex flex-1 items-stretch">
 
-        {/* ── Scope selector ──────────────────────────────────────────────── */}
-
-        {/* Scope sidebar — hidden in rule-editor mode so the rules rail
-         *  becomes the primary left rail (matches Claude Design's 2-column
-         *  layout). The "← All rules" affordance inside the rail handles
-         *  return-to-overview navigation. */}
-        {!isRuleEditorMode && (
-        <>
-        {/* Mobile: collapsible — collapses after scope selection so editor is visible */}
-        <details className="overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 lg:hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-              Rule Target
-            </span>
-            <span className="text-stone-400 select-none">▾</span>
-          </summary>
-          <div className="border-t border-stone-100 px-3 pb-3 pt-2">
-            <ScopeSelector
-              groups={groups}
-              currentScope={scope}
-              currentAccountId={id ?? null}
-            />
-          </div>
-        </details>
-
-        {/* Desktop: always-visible sticky sidebar */}
-        <div className="hidden min-w-0 overflow-hidden rounded-2xl border border-stone-200/80 bg-amber-50/40 p-3 lg:block lg:sticky lg:top-6">
-          <div className="mb-3 px-3.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
-              Trading Plan
-            </p>
-            <p className="mt-1 text-xs leading-snug text-stone-500">
-              Choose where these rules apply.
-            </p>
-          </div>
-          <ScopeSelector
-            groups={groups}
-            currentScope={scope}
-            currentAccountId={id ?? null}
-          />
-        </div>
-        </>
-        )}
-
-        {/* ── Rule editor ─────────────────────────────────────────────────── */}
-        <div className="grid min-w-0 gap-3 sm:gap-3.5">
-
-          {/* Scope context header */}
-          <ScopeContextHeader
-            scope={scope}
-            account={selectedAccount}
-            hasAccountRules={selectedAccount?.riskRules !== null}
-          />
-
-          {/* Enforcement mode banner + How enforcement works — hidden in accounts overview (it has its own header) */}
-          {!showAccountsOverview && (
-            <>
-              <div className={`rounded-xl border px-3.5 py-2 text-xs ${enforcementInfo.cls}`}>
-                <span className="font-semibold">{enforcementInfo.label}. </span>
-                {enforcementInfo.detail}
-              </div>
-
-              <HowEnforcementWorks />
-            </>
-          )}
-
-          {/* Changes pending panel — merges lock banner + pending banner into one */}
-          {showStarterForm && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">Changes pending</p>
-                <p className="mt-0.5 text-[11px] text-amber-800">
-                  {defaultCanApplyPendingNow
-                    ? "Ready to apply now — no active inheriting accounts in the way."
-                    : defaultPendingBlockReason
-                    ? `Cannot apply yet: ${defaultPendingBlockReason}`
-                    : "Pending changes are saved and will activate automatically at the next safe window."}
-                  {!ruleEditEligibility.canEditNow && accountRuleLockMessage
-                    ? ` ${accountRuleLockMessage}`
-                    : ""}
+          {/* Left panel — scope nav (hidden in rule-editor URL mode) */}
+          {!isRuleEditorMode && (
+            <aside className="hidden w-[240px] shrink-0 flex-col border-r border-stone-200/60 bg-[#f9f4ea] lg:flex">
+              <div className="shrink-0 border-b border-stone-200/60 px-4 py-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-amber-700">
+                  Trading Plan
                 </p>
-                {hasPendingPayload && riskRules?.pendingEffectiveDate && (
-                  <p className="mt-1 text-[11px] text-amber-800">
-                    Activates at:{" "}
-                    <span className="font-semibold">
-                      {formatPendingRuleActivation({
-                        nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
-                          ? protectionLock.nextTradingDayKey
-                          : riskRules!.pendingEffectiveDate!,
-                        sessionStartHour: riskRules?.sessionStartHour ?? null,
-                        userTimezone: traderProfile?.timezone ?? null,
-                      })}
-                    </span>
-                  </p>
-                )}
-                {hasPendingPayload && defaultCanApplyPendingNow && (
-                  <ApplyPendingButton url="/api/rules/apply-pending" />
-                )}
+                <p className="mt-0.5 text-[11px] leading-snug text-stone-500">
+                  Select an account to configure.
+                </p>
               </div>
-            </div>
-          )}
-
-          {/* Editor body */}
-          {scope === "account" ? (
-            selectedAccount ? (
-              /* Phase F: flat workspace — no SectionCard double-card. Content sits
-               * directly on the warm cream canvas, matching the Claude Design terminal feel. */
-              <div key={selectedAccount.id} className="min-w-0">
-                <AccountRulesForm
-                  accountId={selectedAccount.id}
-                  accountLabel={selectedAccount.label}
-                  hasExistingRules={selectedAccount.riskRules !== null}
-                  hasValidConsent={hasValidConsent({
-                    consentAt: selectedAccount.riskRules?.automatedActionsConsentAt ?? null,
-                    consentVersion:
-                      selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
-                  })}
-                  initial={accountInitial}
-                  isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending || hasAlreadyTradedToday}
-                  isHardLocked={hasAlreadyTradedToday}
-                  lockMessage={
-                    hasAlreadyTradedToday
-                      ? "Rules are locked for this session — this account has already traded. Changes can be made after the session resets."
-                      : accountIsLockedForPending
-                      ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
-                      : accountRuleLockMessage
-                  }
-                  pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
-                  pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
-                  canApplyPendingNow={accountCanApplyPendingNow}
-                  pendingBlockReason={accountPendingBlockReason}
-                  hasDefaultRules={hasDefaultRules}
-                  timezone={traderProfile?.timezone}
-                  defaultValues={accountDefaultValues}
-                  defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
-                  copySourceAccounts={copySourceAccounts}
+              <div className="flex-1 overflow-y-auto p-3">
+                <ScopeSelector
+                  groups={groups}
+                  currentScope={scope}
+                  currentAccountId={id ?? null}
                 />
               </div>
-            ) : (
-              <div className="rounded-xl border border-stone-200 bg-white/70 px-5 py-4">
-                <p className="text-sm font-medium text-stone-800">Account not found</p>
-                <p className="mt-1 text-sm text-stone-600">
-                  The selected account was not found.{" "}
-                  <Link href="/rules?scope=starter" className="font-medium underline-offset-2 hover:underline">
-                    Back to starter settings
-                  </Link>
-                </p>
-              </div>
-            )
-          ) : showAccountsOverview ? (
-            /* Accounts-first overview — shown when accounts exist and no explicit scope */
-            <AccountsOverviewPanel
-              accounts={scopeAccounts.filter((a) => a.missingFromBrokerSince == null)}
-              guardianEnabled={guardian.profile.guardianEnabled}
-              hasFullAccessAccount={hasFullAccessAccount}
+            </aside>
+          )}
+
+          {/* Main workspace */}
+          <div className="flex min-w-0 flex-1 flex-col bg-[#f3ece0]">
+
+            {/* Mobile scope selector (lg: hidden behind desktop left panel) */}
+            {!isRuleEditorMode && (
+              <details className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea] lg:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                    Rule Target
+                  </span>
+                  <span className="select-none text-stone-400">▾</span>
+                </summary>
+                <div className="border-t border-stone-100 px-3 pb-3 pt-2">
+                  <ScopeSelector
+                    groups={groups}
+                    currentScope={scope}
+                    currentAccountId={id ?? null}
+                  />
+                </div>
+              </details>
+            )}
+
+            {/* Workspace header strip */}
+            <WorkspaceHeader
+              scope={scope}
+              account={selectedAccount}
+              hasAccountRules={selectedAccount?.riskRules !== null}
+              enforcementInfo={enforcementInfo}
+              showAccountsOverview={showAccountsOverview}
             />
-          ) : (
-            /* Starter settings editor — flat workspace, no SectionCard card wrapper */
-            <div className="grid gap-4">
-              <div id="guardian-toggle" className="scroll-mt-20 rounded-xl border border-stone-200/70 bg-white/70 px-5 py-4">
-                <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
-              </div>
-              <RulesForm
-                initial={defaultInitial}
-                timezone={traderProfile?.timezone}
-                hasValidConsent={hasValidConsent({
-                  consentAt: riskRules?.automatedActionsConsentAt ?? null,
-                  consentVersion: riskRules?.automatedActionsConsentVersion ?? null,
-                })}
-                pendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
-              />
-            </div>
-          )}
 
-          {/* No broker accounts — push toward connection */}
-          {showStarterForm && groups.length === 0 && (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-              <p className="font-medium text-stone-950">No broker accounts connected.</p>
-              <p className="mt-1">
-                Connect a trading account to create a Trading Plan. Starter settings above are a starting point — each account needs its own rules for Guardrail to monitor it.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href="/accounts/connect/tradovate"
-                  className="inline-flex items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
-                >
-                  Connect Tradovate
-                </Link>
-              </div>
-            </div>
-          )}
+            {/* Enforcement detail strip — collapsible, hidden in accounts overview */}
+            {!showAccountsOverview && (
+              <details className="group shrink-0 border-b border-stone-200/40 bg-[#f9f4ea]/40">
+                <summary className="flex cursor-pointer list-none items-center gap-1 px-5 py-2 text-[10px] text-stone-400 hover:text-stone-600">
+                  <span className="group-open:hidden">+ How enforcement works</span>
+                  <span className="hidden group-open:inline">− How enforcement works</span>
+                </summary>
+                <div className="px-5 pb-3 pt-1">
+                  <p className="mb-2 text-[11px] leading-relaxed text-stone-600">
+                    {enforcementInfo.detail}
+                  </p>
+                  <HowEnforcementWorks />
+                </div>
+              </details>
+            )}
 
+            {/* Pending changes strip */}
+            {showStarterForm && (!ruleEditEligibility.canEditNow || (hasPendingPayload && riskRules?.pendingEffectiveDate)) && (
+              <div className="flex shrink-0 items-start gap-2.5 border-b border-amber-200 bg-amber-50/80 px-5 py-3 text-xs text-amber-900">
+                <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Changes pending</p>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    {defaultCanApplyPendingNow
+                      ? "Ready to apply now — no active inheriting accounts in the way."
+                      : defaultPendingBlockReason
+                      ? `Cannot apply yet: ${defaultPendingBlockReason}`
+                      : "Pending changes are saved and will activate automatically at the next safe window."}
+                    {!ruleEditEligibility.canEditNow && accountRuleLockMessage
+                      ? ` ${accountRuleLockMessage}`
+                      : ""}
+                  </p>
+                  {hasPendingPayload && riskRules?.pendingEffectiveDate && (
+                    <p className="mt-1 text-[11px] text-amber-800">
+                      Activates at:{" "}
+                      <span className="font-semibold">
+                        {formatPendingRuleActivation({
+                          nextTradingDayKey: !ruleEditEligibility.canEditNow && protectionLock.isLocked
+                            ? protectionLock.nextTradingDayKey
+                            : riskRules!.pendingEffectiveDate!,
+                          sessionStartHour: riskRules?.sessionStartHour ?? null,
+                          userTimezone: traderProfile?.timezone ?? null,
+                        })}
+                      </span>
+                    </p>
+                  )}
+                  {hasPendingPayload && defaultCanApplyPendingNow && (
+                    <ApplyPendingButton url="/api/rules/apply-pending" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Content area */}
+            <div className="min-w-0 flex-1 overflow-auto p-4 sm:p-5">
+
+              {scope === "account" ? (
+                selectedAccount ? (
+                  <div key={selectedAccount.id} className="min-w-0">
+                    <AccountRulesForm
+                      accountId={selectedAccount.id}
+                      accountLabel={selectedAccount.label}
+                      hasExistingRules={selectedAccount.riskRules !== null}
+                      hasValidConsent={hasValidConsent({
+                        consentAt: selectedAccount.riskRules?.automatedActionsConsentAt ?? null,
+                        consentVersion: selectedAccount.riskRules?.automatedActionsConsentVersion ?? null,
+                      })}
+                      initial={accountInitial}
+                      isLocked={!ruleEditEligibility.canEditNow || accountIsLockedForPending || hasAlreadyTradedToday}
+                      isHardLocked={hasAlreadyTradedToday}
+                      lockMessage={
+                        hasAlreadyTradedToday
+                          ? "Rules are locked for this session — this account has already traded. Changes can be made after the session resets."
+                          : accountIsLockedForPending
+                          ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
+                          : accountRuleLockMessage
+                      }
+                      pendingPayload={(selectedAccount?.riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                      pendingEffectiveDate={selectedAccount?.riskRules?.pendingEffectiveDate ?? null}
+                      canApplyPendingNow={accountCanApplyPendingNow}
+                      pendingBlockReason={accountPendingBlockReason}
+                      hasDefaultRules={hasDefaultRules}
+                      timezone={traderProfile?.timezone}
+                      defaultValues={accountDefaultValues}
+                      defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                      copySourceAccounts={copySourceAccounts}
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-stone-200 bg-white/70 px-5 py-4">
+                    <p className="text-sm font-medium text-stone-800">Account not found</p>
+                    <p className="mt-1 text-sm text-stone-600">
+                      The selected account was not found.{" "}
+                      <Link href="/rules?scope=starter" className="font-medium underline-offset-2 hover:underline">
+                        Back to starter settings
+                      </Link>
+                    </p>
+                  </div>
+                )
+              ) : showAccountsOverview ? (
+                <AccountsOverviewPanel
+                  accounts={scopeAccounts.filter((a) => a.missingFromBrokerSince == null)}
+                  guardianEnabled={guardian.profile.guardianEnabled}
+                  hasFullAccessAccount={hasFullAccessAccount}
+                />
+              ) : (
+                <div className="grid gap-4">
+                  <div id="guardian-toggle" className="scroll-mt-20 rounded-xl border border-stone-200/70 bg-white/70 px-5 py-4">
+                    <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
+                  </div>
+                  <RulesForm
+                    initial={defaultInitial}
+                    timezone={traderProfile?.timezone}
+                    hasValidConsent={hasValidConsent({
+                      consentAt: riskRules?.automatedActionsConsentAt ?? null,
+                      consentVersion: riskRules?.automatedActionsConsentVersion ?? null,
+                    })}
+                    pendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
+                  />
+                </div>
+              )}
+
+              {showStarterForm && groups.length === 0 && (
+                <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+                  <p className="font-medium text-stone-950">No broker accounts connected.</p>
+                  <p className="mt-1">
+                    Connect a trading account to create a Trading Plan. Starter settings above are a starting point — each account needs its own rules for Guardrail to monitor it.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/accounts/connect/tradovate"
+                      className="inline-flex items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-xs font-medium text-stone-50 transition hover:bg-stone-800"
+                    >
+                      Connect Tradovate
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
         </div>
       </div>
     </AppShell>
@@ -567,57 +561,66 @@ type SelectedAccount = {
   } | null;
 } | null;
 
-function ScopeContextHeader({
+function WorkspaceHeader({
   scope,
   account,
   hasAccountRules,
+  enforcementInfo,
+  showAccountsOverview,
 }: {
   scope: string;
   account: SelectedAccount;
   hasAccountRules?: boolean;
+  enforcementInfo: EnforcementModeInfo;
+  showAccountsOverview: boolean;
 }) {
-  if (scope === "starter") {
+  if (showAccountsOverview) {
     return (
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold tracking-tight text-stone-950">
-            Starter settings
-          </h2>
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
-            Starter
-          </span>
-        </div>
-        <p className="mt-0.5 text-xs text-stone-500">
-          Starter settings are a starting point for session defaults. Connected accounts still need their own Trading Plan to be monitored by Guardrail.
-        </p>
-        <p className="mt-0.5 text-[11px] text-stone-400">
-          The enforcement engine reads account-specific rules, not this template directly.
+      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-tight text-stone-900">Your accounts</h2>
+        <p className="mt-0.5 text-[11px] text-stone-500">
+          Select an account to configure its Trading Plan.
         </p>
       </div>
     );
   }
 
   if (scope !== "account") {
-    return null;
+    return (
+      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-sm font-semibold tracking-tight text-stone-900">Starter settings</h2>
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
+            Starter
+          </span>
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${enforcementInfo.cls}`}>
+            {enforcementInfo.label}
+          </span>
+        </div>
+        {/* Honest enforcement context: the enforcement engine reads account-specific rules, not this template directly */}
+        <p className="mt-0.5 text-[11px] text-stone-500">
+          Session defaults only — the enforcement engine reads account-specific rules, not this template directly.
+        </p>
+      </div>
+    );
   }
 
-  if (!account) return null;
+  if (!account) {
+    return (
+      <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-tight text-stone-900">Account not found</h2>
+      </div>
+    );
+  }
 
   const conn = account.brokerConnection;
-  const envLabel = conn?.env === "live" ? "Live account" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
-  const permSuffix = deriveAccountSubtitleSuffix(conn?.permissionLevel ?? null);
-  const firmLine = account.propFirm
-    ? account.propFirm
-    : conn
-    ? `${conn.platform === "tradovate" ? "Tradovate" : conn.platform} · ${envLabel}${permSuffix ? ` · ${permSuffix}` : ""}`
-    : null;
+  const envLabel =
+    conn?.env === "live" ? "Live" : conn?.env === "demo" ? "Demo / Sim" : (conn?.env ?? "");
 
   return (
-    <div>
+    <div className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea]/70 px-5 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold tracking-tight text-stone-950">
-          {account.label}
-        </h2>
+        <h2 className="text-sm font-semibold tracking-tight text-stone-900">{account.label}</h2>
         {hasAccountRules ? (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
             Active plan
@@ -627,12 +630,15 @@ function ScopeContextHeader({
             No plan yet
           </span>
         )}
-        {firmLine && (
-          <span className="text-xs text-stone-500">{firmLine}</span>
+        {envLabel && (
+          <span className="text-xs text-stone-500">{envLabel}</span>
         )}
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${enforcementInfo.cls}`}>
+          {enforcementInfo.label}
+        </span>
       </div>
       {!hasAccountRules && (
-        <p className="mt-1 text-[11px] text-stone-500">
+        <p className="mt-0.5 text-[11px] text-stone-500">
           No account-specific rules — Guardrail is not monitoring this account.
         </p>
       )}
