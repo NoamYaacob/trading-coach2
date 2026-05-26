@@ -69,10 +69,10 @@ function RuleCard({
       onClick={onSelect}
       data-rule-id={rule.id}
       aria-label={`Open editor for ${rule.label}`}
-      className={`group relative flex flex-col rounded-[14px] border bg-white p-5 text-left transition-[border-color,box-shadow,background] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
+      className={`group relative flex flex-col rounded-[14px] border bg-[color:var(--gr-surface)] p-5 text-left transition-[border-color,box-shadow,background,transform] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
         disabled
           ? "cursor-pointer border-[color:var(--gr-border)]"
-          : "border-[color:var(--gr-border)] hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
+          : "border-[color:var(--gr-border)] hover:-translate-y-px hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
       }`}
     >
       {/* Group eyebrow + enforcement chip */}
@@ -115,9 +115,13 @@ function RuleCard({
             <span className="rounded-full border border-stone-200 bg-stone-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               Locked
             </span>
-          ) : (
+          ) : isEmpty ? (
             <span className="text-[10.5px] text-[color:var(--gr-text-mute)]">
-              {isEmpty ? "Not configured" : "Configured"}
+              Not configured
+            </span>
+          ) : (
+            <span className="text-[10.5px] text-[color:var(--gr-text-mid)]">
+              Configured
             </span>
           )}
         </div>
@@ -127,7 +131,7 @@ function RuleCard({
           </span>
         )}
         {isViewOnly && (
-          <span className="shrink-0 text-[10.5px] font-medium text-[color:var(--gr-text-mute)]">
+          <span className="shrink-0 rounded-full border border-[color:var(--gr-border)] bg-[color:var(--gr-bg-elev)] px-1.5 py-px text-[10.5px] font-medium text-[color:var(--gr-plan)]">
             View
           </span>
         )}
@@ -159,6 +163,22 @@ export function RulesOverviewScreen({
 
   return (
     <div className="grid gap-3" role="group" aria-label="Rules overview">
+
+      {/* Phase J: editorial hero — sets workspace tone */}
+      <header className="grid gap-1.5 pb-2">
+        <h1
+          className="text-[26px] leading-[1.1] tracking-[-0.02em] text-[color:var(--gr-ink)] max-w-2xl"
+          style={{ fontFamily: "'Instrument Serif', 'Tiempos', Georgia, ui-serif, serif", fontWeight: 400 }}
+        >
+          Your <span className="relative inline-block">
+            guardrails
+            <span aria-hidden className="absolute inset-x-[-2px] bottom-[2px] -z-10 h-[10px] rounded-[5px] bg-[color:var(--gr-copper-bg)]" />
+          </span>, watching every tick.
+        </h1>
+        <p className="max-w-lg text-[12px] leading-[1.5] text-[color:var(--gr-text-mid)]">
+          Daily Loss is the only broker-backed rule. The rest run as app-level locks or monitors in Guardrail.
+        </p>
+      </header>
 
       {/* Phase I: inline summary strip — compact horizontal row, not a big card.
        * Only real data (Rules set, Session, Pending) — no fake balance/P&L. */}

@@ -45,7 +45,10 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
             Capital
           </span>
         </div>
-        <h2 className="text-xl font-semibold tracking-tight text-stone-950">
+        <h2
+          className="text-[20px] leading-[1.2] tracking-[-0.01em] text-[color:var(--gr-ink)]"
+          style={{ fontFamily: "'Instrument Serif', Georgia, ui-serif, serif", fontWeight: 400 }}
+        >
           Daily loss limit
         </h2>
         <p className="max-w-2xl text-xs leading-relaxed text-stone-600">

@@ -45,7 +45,13 @@ export async function AppShell({
      * Top nav stays for cross-page navigation but uses an integrated warm
      * surface (no visual separation from the workspace below). */
     return (
-      <div className="flex min-h-screen flex-col overflow-x-hidden bg-[#f3ece0] text-[color:var(--gr-ink)]">
+      <div
+        className="relative flex min-h-screen flex-col overflow-x-hidden bg-[#f3ece0] text-[color:var(--gr-ink)]"
+        style={{
+          backgroundImage:
+            "radial-gradient(ellipse 70% 50% at 15% 0%, rgba(180,160,120,0.08), transparent 60%), radial-gradient(ellipse 50% 40% at 85% 100%, rgba(180,160,120,0.07), transparent 60%)",
+        }}
+      >
         <header className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-[color:var(--gr-border)] bg-[color:var(--gr-bg-elev)] px-4 py-2.5 sm:gap-4 sm:px-6 lg:px-8">
           <Link href="/" className="shrink-0 text-[11px] font-bold uppercase tracking-[0.32em] text-[color:var(--gr-ink)] transition-opacity hover:opacity-80">
             Guardrail

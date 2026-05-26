@@ -70,8 +70,8 @@ describe("AppShell — Phase I edge-to-edge workspace", () => {
       "workspaceMode outer wrapper must use the warm cream canvas bg",
     );
     assert.ok(
-      !/radial-gradient/.test(block),
-      "workspaceMode must not use the marketing gradient bg",
+      !/radial-gradient[^"]*rgba\(113,63,18/.test(block),
+      "workspaceMode must not use the marketing gradient (rgba(113,63,18,...) accent)",
     );
   });
 
