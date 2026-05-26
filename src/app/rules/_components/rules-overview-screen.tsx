@@ -158,10 +158,10 @@ export function RulesOverviewScreen({
     : RULE_GROUPS;
 
   return (
-    <div className="grid gap-5" role="group" aria-label="Rules overview">
+    <div className="grid gap-4" role="group" aria-label="Rules overview">
 
       {/* Stats strip — real data only; balance/P&L omitted (not available on this page) */}
-      <div className="grid grid-cols-3 divide-x divide-stone-200/60 overflow-hidden rounded-2xl border border-stone-200/70 bg-stone-50/50">
+      <div className="grid grid-cols-3 divide-x divide-stone-200/60 overflow-hidden rounded-2xl border border-stone-200/60 bg-[#f9f4ea]/60">
         <div className="px-4 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
             Rules set
