@@ -217,35 +217,54 @@ export function RulesOverviewScreen({
         ))}
       </div>
 
-      {/* Rule cards — grouped by category */}
-      {visibleGroups.map((group) => {
-        const rules = rulesInGroup(group);
-        if (rules.length === 0) return null;
-        return (
-          <section key={group} className="grid gap-2.5">
-            <div className="flex items-baseline justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">
-                {group}
-              </p>
-              <p className="text-[10px] text-stone-400">
-                {rules.length} {rules.length === 1 ? "rule" : "rules"}
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {rules.map((r) => (
-                <RuleCard
-                  key={r.id}
-                  rule={r}
-                  display={ruleDisplayValue(r.id, values)}
-                  onSelect={() => onSelectRule(r.id)}
-                  disabled={disabled}
-                  pendingNote={pendingNotes?.[r.id] ?? null}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      {/* Rule cards — flat grid when showing all; grouped when a filter is active */}
+      {activeGroup === null ? (
+        /* All-rules flat grid: no section headers, matches Claude Design GrOverview */
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {RULE_GROUPS.flatMap((group) =>
+            rulesInGroup(group).map((r) => (
+              <RuleCard
+                key={r.id}
+                rule={r}
+                display={ruleDisplayValue(r.id, values)}
+                onSelect={() => onSelectRule(r.id)}
+                disabled={disabled}
+                pendingNote={pendingNotes?.[r.id] ?? null}
+              />
+            )),
+          )}
+        </div>
+      ) : (
+        /* Filtered view: single group header + that group's cards */
+        visibleGroups.map((group) => {
+          const rules = rulesInGroup(group);
+          if (rules.length === 0) return null;
+          return (
+            <section key={group} className="grid gap-2.5">
+              <div className="flex items-baseline justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">
+                  {group}
+                </p>
+                <p className="text-[10px] text-stone-400">
+                  {rules.length} {rules.length === 1 ? "rule" : "rules"}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {rules.map((r) => (
+                  <RuleCard
+                    key={r.id}
+                    rule={r}
+                    display={ruleDisplayValue(r.id, values)}
+                    onSelect={() => onSelectRule(r.id)}
+                    disabled={disabled}
+                    pendingNote={pendingNotes?.[r.id] ?? null}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })
+      )}
 
       {/* Enforcement key — explains badge meaning at the bottom of the overview */}
       <div className="rounded-xl border border-stone-100 bg-stone-50/60 px-4 py-3.5">
