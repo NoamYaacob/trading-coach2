@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/ui/app-shell";
-import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
@@ -458,10 +457,9 @@ export default async function RulesPage({
           {/* Editor body */}
           {scope === "account" ? (
             selectedAccount ? (
-              <SectionCard
-                key={selectedAccount.id}
-                compact
-              >
+              /* Phase F: flat workspace — no SectionCard double-card. Content sits
+               * directly on the warm cream canvas, matching the Claude Design terminal feel. */
+              <div key={selectedAccount.id} className="min-w-0">
                 <AccountRulesForm
                   accountId={selectedAccount.id}
                   accountLabel={selectedAccount.label}
@@ -491,16 +489,17 @@ export default async function RulesPage({
                   defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                   copySourceAccounts={copySourceAccounts}
                 />
-              </SectionCard>
+              </div>
             ) : (
-              <SectionCard title="Account not found">
-                <p className="text-sm text-stone-600">
+              <div className="rounded-xl border border-stone-200 bg-white/70 px-5 py-4">
+                <p className="text-sm font-medium text-stone-800">Account not found</p>
+                <p className="mt-1 text-sm text-stone-600">
                   The selected account was not found.{" "}
                   <Link href="/rules?scope=starter" className="font-medium underline-offset-2 hover:underline">
                     Back to starter settings
                   </Link>
                 </p>
-              </SectionCard>
+              </div>
             )
           ) : showAccountsOverview ? (
             /* Accounts-first overview — shown when accounts exist and no explicit scope */
@@ -510,9 +509,9 @@ export default async function RulesPage({
               hasFullAccessAccount={hasFullAccessAccount}
             />
           ) : (
-            /* Starter settings editor */
-            <SectionCard>
-              <div id="guardian-toggle" className="mb-5 scroll-mt-20">
+            /* Starter settings editor — flat workspace, no SectionCard card wrapper */
+            <div className="grid gap-4">
+              <div id="guardian-toggle" className="scroll-mt-20 rounded-xl border border-stone-200/70 bg-white/70 px-5 py-4">
                 <GuardianToggle initialEnabled={guardian.profile.guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
               </div>
               <RulesForm
@@ -524,7 +523,7 @@ export default async function RulesPage({
                 })}
                 pendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
               />
-            </SectionCard>
+            </div>
           )}
 
           {/* No broker accounts — push toward connection */}
@@ -664,11 +663,9 @@ function AccountsOverviewPanel({
   return (
     <div className="grid gap-5">
       {/* Guardian toggle — placed here so /rules#guardian-toggle anchor always works */}
-      <SectionCard>
-        <div id="guardian-toggle" className="scroll-mt-20">
-          <GuardianToggle initialEnabled={guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
-        </div>
-      </SectionCard>
+      <div id="guardian-toggle" className="scroll-mt-20 rounded-xl border border-stone-200/70 bg-white/70 px-5 py-4">
+        <GuardianToggle initialEnabled={guardianEnabled} hasFullAccessAccount={hasFullAccessAccount} />
+      </div>
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
