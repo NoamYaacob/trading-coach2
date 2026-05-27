@@ -131,6 +131,28 @@ button.btn-compact, [role="button"].btn-compact {
   min-width: unset;
 }
 
+/* GrShell — mobile drawer.  Below 1024px the 240px sidebar collapses into
+ * an overlay drawer toggled by the .gr-shell-nav-toggle hamburger.  Above the
+ * breakpoint the sidebar is part of the layout flow (default state). */
+@media (max-width: 1023px) {
+  .gr-shell-aside {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 180ms ease-out;
+    box-shadow: 4px 0 24px rgba(27, 24, 18, 0.12);
+  }
+  .gr-shell-aside.is-open {
+    transform: translateX(0);
+  }
+  .gr-shell-nav-toggle {
+    display: inline-flex !important;
+  }
+}
+
 /* Thin scroll track — used for account carousel and horizontal scroll areas */
 .gr-scroll-x {
   overflow-x: auto;
