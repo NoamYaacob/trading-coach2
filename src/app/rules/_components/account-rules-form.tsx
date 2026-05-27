@@ -394,7 +394,7 @@ export function AccountRulesForm({
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+            className="inline-flex items-center justify-center rounded-[9px] bg-[color:var(--gr-copper)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--gr-copper-hi)]"
           >
             Create rules for this account
           </button>
@@ -485,6 +485,37 @@ export function AccountRulesForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-2.5 sm:gap-3">
+
+      {/* Phase H: sticky save-state banner — appears when there are unsaved
+       *  changes. Matches the Claude Design's "copper banner under header"
+       *  pattern (HANDOFF §7 editor modes). The bottom save button remains
+       *  as the primary commit affordance. */}
+      {isDirty && (
+        <div
+          className="sticky top-2 z-20 flex items-center justify-between gap-3 rounded-[9px] border border-[color:var(--gr-copper-bd)] bg-[color:var(--gr-copper-bg)] px-4 py-2 text-xs text-[color:var(--gr-copper-hi)] backdrop-blur"
+          role="status"
+          aria-live="polite"
+          data-save-state="unsaved"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]"
+              aria-hidden
+            />
+            <span className="font-semibold">Unsaved changes</span>
+            <span className="text-[color:var(--gr-text-mid)] truncate">
+              Save to commit, or scroll down to discard.
+            </span>
+          </div>
+          <button
+            type="submit"
+            disabled={saving || isHardLocked || validationErrors.length > 0 || (!hasValidConsent && !consentChecked && selectedRuleId === null)}
+            className="shrink-0 inline-flex items-center justify-center rounded-[7px] bg-[color:var(--gr-copper)] px-3 py-1.5 text-[11.5px] font-medium text-white transition hover:bg-[color:var(--gr-copper-hi)] disabled:cursor-not-allowed disabled:bg-stone-300"
+          >
+            Save changes
+          </button>
+        </div>
+      )}
 
       {!hasExistingRules && (
         <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-700">
@@ -846,7 +877,7 @@ export function AccountRulesForm({
               <button
                 type="submit"
                 disabled={saveBtn.disabled}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-[9px] bg-[color:var(--gr-copper)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--gr-copper-hi)] disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-50"
               >
                 {saveBtn.label}
               </button>

@@ -45,19 +45,19 @@ function AccountItem({
         aria-current={isSelected ? "page" : undefined}
         className={`block w-full max-w-full overflow-hidden rounded-xl border-l-2 py-2 pl-3 pr-2 transition ${
           isSelected
-            ? "border-amber-600 bg-amber-50/60 text-stone-900"
+            ? "border-[color:var(--gr-copper-bd)] bg-[color:var(--gr-copper-bg)] text-[color:var(--gr-ink)]"
             : isInactive
-              ? "border-transparent text-stone-400 hover:bg-stone-50"
-              : "border-transparent text-stone-700 hover:bg-amber-50/30"
+              ? "border-transparent text-[color:var(--gr-text-mute)] hover:bg-[color:var(--gr-bg-elev)]"
+              : "border-transparent text-[color:var(--gr-text-mid)] hover:border-[color:var(--gr-copper-bd)] hover:bg-[color:var(--gr-copper-bg)]/40"
         }`}
       >
         <div className="flex min-w-0 items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className={`truncate text-[13px] ${isSelected ? "font-semibold" : "font-medium"}`}>
+            <p className={`truncate text-[13px] ${isSelected ? "font-semibold text-[color:var(--gr-ink)]" : "font-medium"}`}>
               {account.label}
             </p>
             {envLabel && (
-              <p className={`truncate text-[11px] ${isSelected ? "text-stone-500" : "text-stone-400"}`}>
+              <p className={`truncate text-[11px] ${isSelected ? "text-[color:var(--gr-text-mid)]" : "text-[color:var(--gr-text-mute)]"}`}>
                 {envLabel}
               </p>
             )}
@@ -110,10 +110,10 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
                     aria-hidden
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-bold text-stone-800">
+                    <p className="truncate text-[12px] font-bold text-[color:var(--gr-ink)]">
                       {group.firmLabel}
                     </p>
-                    <p className="truncate text-[10px] text-stone-400">
+                    <p className="truncate text-[10px] text-[color:var(--gr-text-mute)]">
                       {platformLabel} · {ENV_LABEL[group.env] ?? group.env}
                       {userId}
                     </p>
@@ -151,8 +151,8 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
         )}
 
         {/* Starter settings — always at bottom */}
-        <li className={`min-w-0 ${groups.length > 0 ? "mt-2 border-t border-stone-100 pt-2" : "mt-1"}`}>
-          <p className="px-3.5 pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
+        <li className={`min-w-0 ${groups.length > 0 ? "mt-2 border-t border-[color:var(--gr-border-sub)] pt-2" : "mt-1"}`}>
+          <p className="px-3.5 pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--gr-text-mute)]">
             Defaults
           </p>
           <Link
@@ -161,15 +161,15 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
             className={`block w-full max-w-full overflow-hidden rounded-xl border-l-2 py-2 pl-3 pr-2 transition ${
               isStarterSelected
                 ? "border-amber-600 bg-amber-50/60 text-stone-900"
-                : "border-transparent text-stone-700 hover:bg-amber-50/30"
+                : "border-transparent text-[color:var(--gr-text-mid)] hover:bg-[color:var(--gr-bg-elev)]"
             }`}
           >
             <div className="flex min-w-0 items-start gap-2">
               <div className="min-w-0 flex-1">
-                <p className={`truncate text-[13px] ${isStarterSelected ? "font-semibold" : "font-medium"}`}>
+                <p className={`truncate text-[13px] ${isStarterSelected ? "font-semibold text-[color:var(--gr-ink)]" : "font-medium"}`}>
                   Starter settings
                 </p>
-                <p className={`truncate text-[11px] ${isStarterSelected ? "text-stone-500" : "text-stone-400"}`}>
+                <p className={`truncate text-[11px] ${isStarterSelected ? "text-[color:var(--gr-text-mid)]" : "text-[color:var(--gr-text-mute)]"}`}>
                   Session defaults
                 </p>
               </div>
