@@ -96,7 +96,7 @@ function NavItemEl({ item }: { item: NavItem }) {
       <GrIcon name={item.icon} />
       <span style={{ flex: 1 }}>{item.label}</span>
       {item.badge != null && (
-        <GrBadge variant="warn" style={{ marginLeft: "auto", padding: "1px 6px", fontSize: "10px" }}>
+        <GrBadge variant="warn" className="ml-auto px-1.5 py-px text-[10px]">
           {item.badge}
         </GrBadge>
       )}
