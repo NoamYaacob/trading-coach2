@@ -124,18 +124,16 @@ describe("rules page.tsx: GrShell real-data props", () => {
   });
 });
 
-// ── 3. Other production pages still use AppShell ─────────────
+// ── 3. Shell migration state ──────────────────────────────────
 
 describe("other production pages: AppShell not replaced", () => {
-  it("dashboard still uses AppShell", () => {
+  // Dashboard migrated to GrShell in Phase 3 (dashboard redesign pass).
+  // This test now verifies the migration happened correctly.
+  it("dashboard uses GrShell (migrated from AppShell)", () => {
     const dashboard = read("app/dashboard/page.tsx");
     assert.ok(
-      dashboard.includes("AppShell") || dashboard.includes("app-shell"),
-      "dashboard page must still import/use AppShell",
-    );
-    assert.ok(
-      !dashboard.includes("GrShell"),
-      "dashboard page must NOT use GrShell",
+      dashboard.includes("GrShell"),
+      "dashboard page must use GrShell (migrated from AppShell in phase 3)",
     );
   });
 
