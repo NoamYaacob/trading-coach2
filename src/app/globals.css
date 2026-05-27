@@ -31,20 +31,42 @@
   --gr-copper-bg: rgba(162, 61, 16, 0.10);
   --gr-copper-bd: rgba(162, 61, 16, 0.30);
 
+  /* Extended surface tokens */
+  --gr-surface-hi: #dfd4bd;
+  --gr-text-faint: #b6ab94;
+
   /* Enforcement palette — strongest (broker green) → faintest (planned ghost) */
   --gr-broker: #2f7a2a;
   --gr-broker-bg: rgba(47, 122, 42, 0.12);
+  --gr-broker-bd: rgba(47, 122, 42, 0.30);
   --gr-lock: #3949ab;
   --gr-lock-bg: rgba(57, 73, 171, 0.10);
+  --gr-lock-bd: rgba(57, 73, 171, 0.28);
   --gr-mon: #b1771a;
   --gr-mon-bg: rgba(177, 119, 26, 0.12);
+  --gr-mon-bd: rgba(177, 119, 26, 0.32);
   --gr-saved: #615847;
   --gr-saved-bg: rgba(97, 88, 71, 0.08);
+  --gr-saved-bd: rgba(97, 88, 71, 0.20);
   --gr-plan: #8b8270;
   --gr-plan-bg: rgba(139, 130, 112, 0.06);
+  --gr-plan-bd: rgba(139, 130, 112, 0.30);
 
   /* State (not enforcement) */
+  --gr-warn: #b87618;
   --gr-warn-bg: rgba(184, 118, 24, 0.14);
+  --gr-warn-bd: rgba(184, 118, 24, 0.34);
+  --gr-ok: #3f7c2a;
+  --gr-ok-bg: rgba(63, 124, 42, 0.12);
+  --gr-ok-bd: rgba(63, 124, 42, 0.30);
+  --gr-bad: #a72d1f;
+  --gr-bad-bg: rgba(167, 45, 31, 0.10);
+  --gr-bad-bd: rgba(167, 45, 31, 0.30);
+
+  /* Radius scale */
+  --gr-r-sm: 7px;
+  --gr-r-md: 9px;
+  --gr-r-lg: 14px;
 }
 
 @theme inline {
