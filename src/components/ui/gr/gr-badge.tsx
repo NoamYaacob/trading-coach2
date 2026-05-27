@@ -17,10 +17,9 @@ export type GrBadgeVariant =
   | "ok" | "warn" | "bad" | "neutral"
   | "broker" | "lock" | "mon" | "saved" | "plan" | "copper";
 
-type Props = {
+type Props = React.HTMLAttributes<HTMLSpanElement> & {
   variant: GrBadgeVariant;
   children: React.ReactNode;
-  className?: string;
 };
 
 type TokenSet = { color: string; bg: string; border: string; borderStyle?: string };
@@ -38,10 +37,11 @@ const VARIANTS: Record<GrBadgeVariant, TokenSet> = {
   copper:  { color: "var(--gr-copper)",  bg: "var(--gr-copper-bg)",  border: "var(--gr-copper-bd)" },
 };
 
-export function GrBadge({ variant, children, className }: Props) {
+export function GrBadge({ variant, children, className, style, ...rest }: Props) {
   const t = VARIANTS[variant];
   return (
     <span
+      {...rest}
       className={className}
       style={{
         display: "inline-flex",
@@ -56,6 +56,7 @@ export function GrBadge({ variant, children, className }: Props) {
         background: t.bg,
         color: t.color,
         whiteSpace: "nowrap",
+        ...style,
       }}
     >
       {children}
