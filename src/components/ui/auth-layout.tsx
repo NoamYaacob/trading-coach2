@@ -54,7 +54,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 
           {/* Middle: value proposition */}
           <div className="max-w-[360px]">
-            <h2 className="text-4xl font-semibold leading-[1.1] tracking-[-0.04em] text-stone-50 xl:text-[2.75rem]">
+            <h2 className="text-4xl font-semibold leading-[1.1] tracking-[-0.04em] xl:text-[2.75rem]" style={{ color: 'var(--gr-bg)' }}>
               Build rules before the session.
               <br />
               Follow them during it.
@@ -62,8 +62,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 
             <ul className="mt-8 grid gap-3.5">
               {BULLETS.map((b) => (
-                <li key={b} className="flex items-start gap-3 text-sm text-stone-300">
-                  <span className="mt-px shrink-0 text-amber-500">✓</span>
+                <li key={b} className="flex items-start gap-3 text-sm" style={{ color: 'rgba(243,236,224,0.65)' }}>
+                  <span className="mt-px shrink-0" style={{ color: 'var(--gr-copper)' }}>✓</span>
                   {b}
                 </li>
               ))}

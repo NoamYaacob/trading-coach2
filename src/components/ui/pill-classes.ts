@@ -16,31 +16,31 @@ const BASE = "inline-flex items-center justify-center whitespace-nowrap rounded-
 // ─── Compact row actions (desktop table rows) ─────────────────────────────────
 
 export const PILL_ROW_PRIMARY =
-  `${BASE} bg-stone-950 px-2.5 py-1 text-[11px] font-medium text-stone-50 hover:bg-stone-800`;
+  `${BASE} bg-[var(--gr-ink)] px-2.5 py-1 text-[11px] font-medium text-[var(--gr-bg)] hover:opacity-85`;
 
 export const PILL_ROW_SECONDARY =
-  `${BASE} border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:border-stone-400 hover:text-stone-950`;
+  `${BASE} border border-[var(--gr-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--gr-text-mid)] hover:border-[var(--gr-text-mute)] hover:text-[var(--gr-ink)]`;
 
 // ─── Mobile card action buttons (touch-friendly, medium size) ─────────────────
 
 export const PILL_CARD_PRIMARY =
-  `${BASE} h-9 bg-stone-950 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800`;
+  `${BASE} h-9 bg-[var(--gr-ink)] px-4 text-xs font-medium text-[var(--gr-bg)] hover:opacity-85`;
 
 export const PILL_CARD_SECONDARY =
-  `${BASE} h-9 border border-stone-200 px-4 text-xs font-medium text-stone-700 hover:border-stone-400 hover:text-stone-950`;
+  `${BASE} h-9 border border-[var(--gr-border)] px-4 text-xs font-medium text-[var(--gr-text-mid)] hover:border-[var(--gr-text-mute)] hover:text-[var(--gr-ink)]`;
 
 // ─── Standard form CTAs ───────────────────────────────────────────────────────
 
 export const PILL_PRIMARY =
-  `${BASE} bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 hover:bg-stone-800`;
+  `${BASE} bg-[var(--gr-ink)] px-5 py-2.5 text-sm font-medium text-[var(--gr-bg)] hover:opacity-85`;
 
 export const PILL_SECONDARY =
-  `${BASE} border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-700 hover:border-stone-400 hover:text-stone-950`;
+  `${BASE} border border-[var(--gr-border)] px-5 py-2.5 text-sm font-medium text-[var(--gr-text-mid)] hover:border-[var(--gr-text-mute)] hover:text-[var(--gr-ink)]`;
 
 // ─── Dialog buttons ───────────────────────────────────────────────────────────
 
 export const PILL_DIALOG_PRIMARY =
-  `${BASE} h-10 bg-stone-950 px-6 text-sm font-medium text-white hover:bg-stone-800`;
+  `${BASE} h-10 bg-[var(--gr-ink)] px-6 text-sm font-medium text-white hover:opacity-85`;
 
 export const PILL_DIALOG_SECONDARY =
-  `${BASE} h-10 border border-stone-200 bg-white px-6 text-sm font-medium text-stone-700 hover:bg-stone-50`;
+  `${BASE} h-10 border border-[var(--gr-border)] bg-white px-6 text-sm font-medium text-[var(--gr-text-mid)] hover:bg-[var(--gr-bg-elev)]`;
