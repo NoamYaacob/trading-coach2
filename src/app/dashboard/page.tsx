@@ -688,7 +688,7 @@ export default async function DashboardPage() {
               </section>
             )}
 
-            {/* ── Two-up: Active rules + alerts ─────────────────────────── */}
+            {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
             <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* Active rules panel */}
               <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
@@ -746,6 +746,86 @@ export default async function DashboardPage() {
                     </Link>
                   </div>
                 )}
+              </div>
+
+              {/* Equity curve — placeholder until historical trade sync is available */}
+              <div style={{
+                background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)",
+                borderRadius: 14, padding: 22,
+                display: "flex", flexDirection: "column",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Equity curve</span>
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--gr-surface)", border: "1px solid var(--gr-border)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
+                    Coming soon
+                  </span>
+                </div>
+                {/* Empty state chart placeholder */}
+                <div style={{
+                  flex: 1, minHeight: 100,
+                  borderRadius: 8, border: "1px dashed var(--gr-border)",
+                  background: "var(--gr-surface)",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  gap: 8, padding: 24,
+                }}>
+                  {/* Decorative mini chart silhouette */}
+                  <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">
+                    <polyline
+                      points="0,22 10,18 20,20 30,12 38,14 50,6 64,10"
+                      stroke="var(--gr-border)"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  </svg>
+                  <p style={{ fontSize: 12.5, color: "var(--gr-text-mute)", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
+                    Balance history will appear here once broker trade sync is available.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
+            <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+              {/* Today's trades — placeholder until broker trade history is connected */}
+              <div style={{
+                background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
+                borderRadius: 14, padding: 22,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+                  <div>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
+                    {selectedAccount && (
+                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        {selectedAccount.label}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
+                    Coming soon
+                  </span>
+                </div>
+                {/* Table header placeholder */}
+                <div style={{ display: "flex", gap: 0, paddingBottom: 8, borderBottom: "1px solid var(--gr-border)", marginBottom: 12 }}>
+                  {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "P&L"].map((col) => (
+                    <span key={col} style={{ flex: col === "Symbol" ? 1.2 : 1, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
+                      {col}
+                    </span>
+                  ))}
+                </div>
+                {/* Empty state */}
+                <div style={{ padding: "24px 0", textAlign: "center" }}>
+                  <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0 }}>
+                    Synced fills will appear here once broker trade history is connected.
+                  </p>
+                  <Link
+                    href="/accounts"
+                    style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none", marginTop: 8, display: "inline-block" }}
+                  >
+                    Connect broker →
+                  </Link>
+                </div>
               </div>
 
               {/* Recent alerts */}
