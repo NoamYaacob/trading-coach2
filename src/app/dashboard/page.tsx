@@ -419,7 +419,19 @@ export default async function DashboardPage() {
                   Each card is one account — numbers are never combined
                 </span>
               </div>
-              <div className="gr-scroll-x" style={{ display: "flex", gap: 10, paddingBottom: 8, scrollSnapType: "x mandatory" }}>
+              {/*
+                * Responsive grid — no horizontal overflow, so the browser has no
+                * scroll position to restore on reload.  Cards wrap to the next row
+                * once the viewport is too narrow to fit them all.
+                * auto-fill + minmax(190px, 1fr) means:
+                *   1440px viewport → 240px sidebar → ~72px padding → ~1128px usable
+                *   → 5 columns at 190px min, cards grow to fill remaining space.
+                */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+                gap: 10,
+              }}>
                 {/* Auto-sync for stale accounts */}
                 {(() => {
                   const staleAccounts = commandCenter.accounts.filter(
@@ -447,15 +459,12 @@ export default async function DashboardPage() {
                     <div
                       key={acc.id}
                       style={{
-                        flexShrink: 0,
-                        width: 200,
                         padding: 14,
                         background: "var(--gr-surface)",
                         border: isSelected ? "1px solid var(--gr-copper)" : "1px solid var(--gr-border)",
                         boxShadow: isSelected ? "0 0 0 3px var(--gr-copper-bg)" : "none",
                         borderRadius: 12,
                         opacity: isExpired ? 0.72 : 1,
-                        scrollSnapAlign: "start",
                       }}
                     >
                       {/* Broker badge + state */}
@@ -561,12 +570,11 @@ export default async function DashboardPage() {
                   );
                 })}
 
-                {/* Add account tile */}
+                {/* Add account tile — occupies one grid cell */}
                 <Link
                   href="/accounts"
                   className="btn-compact"
                   style={{
-                    flexShrink: 0, width: 140,
                     background: "transparent",
                     border: "1px dashed var(--gr-border)",
                     borderRadius: 12,
@@ -574,7 +582,6 @@ export default async function DashboardPage() {
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     gap: 6, textDecoration: "none",
                     minHeight: 130,
-                    scrollSnapAlign: "start",
                   }}
                 >
                   <span style={{ fontSize: 20, lineHeight: 1 }}>+</span>
