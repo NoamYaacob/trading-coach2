@@ -89,27 +89,34 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-full px-3 py-1.5 text-sm transition-colors sm:px-3.5 ${
-                    active
-                      ? "bg-stone-100 font-medium text-stone-950"
-                      : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-950"
-                  }`}
+                  className="rounded-full px-3 py-1.5 text-[13.5px] transition-colors sm:px-3.5"
+                  style={{
+                    color: active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+                    background: active ? "var(--gr-surface-2)" : undefined,
+                    fontWeight: active ? 500 : undefined,
+                  }}
                 >
                   {item.label}
                 </Link>
               );
             })}
           </div>
-          <span className="mx-1.5 h-4 w-px shrink-0 bg-stone-200/80" aria-hidden />
+          <span
+            className="mx-1.5 h-4 w-px shrink-0"
+            style={{ background: "var(--gr-border)" }}
+            aria-hidden
+          />
           <Link
             href="/login"
-            className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm text-stone-600 transition-colors hover:text-stone-950 sm:px-3.5"
+            className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-[13.5px] transition-colors sm:px-3.5"
+            style={{ color: "var(--gr-text-mid)" }}
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-sm font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4"
+            className="whitespace-nowrap rounded-full px-3 py-1.5 text-[13.5px] font-medium text-white transition-opacity hover:opacity-90 sm:px-4"
+            style={{ background: "var(--gr-ink)" }}
           >
             Sign up
           </Link>
@@ -132,7 +139,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
             onClick={() => setMobileOpen((v) => !v)}
             aria-expanded={mobileOpen}
             aria-haspopup="menu"
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-950"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors"
+            style={{ color: "var(--gr-text-mid)" }}
           >
             Menu
             <span
@@ -146,7 +154,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
           {mobileOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.28)]"
+              className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-[14px] border py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.20)]"
+              style={{ background: "var(--gr-surface)", borderColor: "var(--gr-border)" }}
             >
               {MARKETING_NAV_MOBILE.map((item) => {
                 const active = pathname === item.href;
@@ -157,22 +166,24 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                     role="menuitem"
                     aria-current={active ? "page" : undefined}
                     onClick={() => setMobileOpen(false)}
-                    className={
-                      active
-                        ? "block bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950"
-                        : "block px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
-                    }
+                    className="block px-4 py-2 text-[13.5px] transition-colors"
+                    style={{
+                      color: active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+                      background: active ? "var(--gr-surface-2)" : undefined,
+                      fontWeight: active ? 600 : undefined,
+                    }}
                   >
                     {item.label}
                   </Link>
                 );
               })}
-              <div className="mx-4 my-1 h-px bg-stone-100" />
+              <div className="mx-4 my-1 h-px" style={{ background: "var(--gr-border-sub)" }} />
               <Link
                 href="/signup"
                 role="menuitem"
                 onClick={() => setMobileOpen(false)}
-                className="block px-4 py-2.5 text-sm font-medium text-stone-950 hover:bg-stone-50"
+                className="block px-4 py-2.5 text-sm font-medium transition-colors"
+                style={{ color: "var(--gr-ink)" }}
               >
                 Start free week
               </Link>
@@ -180,7 +191,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                 href="/login"
                 role="menuitem"
                 onClick={() => setMobileOpen(false)}
-                className="block px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 hover:text-stone-950"
+                className="block px-4 py-2 text-sm transition-colors"
+                style={{ color: "var(--gr-text-mid)" }}
               >
                 Log in
               </Link>
@@ -193,11 +205,12 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
 
   if (onMarketingRoute) {
     return (
-      <nav className="flex items-center gap-1">
+      <nav className="flex items-center gap-2">
         <LogoutButton />
         <Link
           href="/dashboard"
-          className="whitespace-nowrap rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)] transition-colors hover:bg-stone-800 sm:px-4 sm:py-2 sm:text-sm"
+          className="whitespace-nowrap rounded-full px-3 py-1.5 text-[13.5px] font-medium text-white transition-opacity hover:opacity-90 sm:px-4 sm:py-2"
+          style={{ background: "var(--gr-ink)" }}
         >
           Go to dashboard
         </Link>
@@ -205,15 +218,12 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
     );
   }
 
-  const pillBase = "shrink-0 rounded-full px-3.5 py-1.5 transition-colors sm:px-4 sm:py-2";
-  const pillActive = "bg-stone-950 font-medium text-stone-50 shadow-[0_2px_8px_-2px_rgba(28,25,23,0.35)]";
-  const pillIdle = "text-stone-600 hover:bg-stone-900/5 hover:text-stone-950";
-  const moreActive = MORE_NAV.some((item) => isActive(pathname, item));
+  const pillBase = "shrink-0 rounded-full px-3.5 py-1.5 text-[13.5px] transition-colors sm:px-4 sm:py-2";
 
   return (
     <div className="flex items-center">
       {/* ── Desktop nav (md+) ─────────────────────────────────────── */}
-      <nav className="hidden items-center text-sm md:flex" aria-label="Primary">
+      <nav className="hidden items-center md:flex" aria-label="Primary">
         <div className="flex items-center gap-0.5 sm:gap-1">
           {PRIMARY_NAV.map((item) => {
             const active = isActive(pathname, item);
@@ -222,7 +232,12 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`${pillBase} ${active ? pillActive : pillIdle}`}
+                className={pillBase}
+                style={{
+                  color: active ? "var(--gr-bg)" : "var(--gr-text-mid)",
+                  background: active ? "var(--gr-ink)" : undefined,
+                  fontWeight: active ? 500 : undefined,
+                }}
               >
                 {item.label}
               </Link>
@@ -232,26 +247,37 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
 
         {/* More dropdown */}
         <div className="relative ml-0.5 shrink-0 sm:ml-1" ref={moreRef}>
-          <button
-            type="button"
-            onClick={() => setMoreOpen((v) => !v)}
-            aria-expanded={moreOpen}
-            aria-haspopup="menu"
-            className={`${pillBase} ${moreActive ? pillActive : pillIdle} inline-flex items-center gap-1`}
-          >
-            More
-            <span
-              className={`text-[10px] transition-transform ${moreOpen ? "rotate-180" : ""}`}
-              aria-hidden
-            >
-              ▾
-            </span>
-          </button>
+          {(() => {
+            const moreActive = MORE_NAV.some((item) => isActive(pathname, item));
+            return (
+              <button
+                type="button"
+                onClick={() => setMoreOpen((v) => !v)}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                className={`${pillBase} inline-flex items-center gap-1`}
+                style={{
+                  color: moreActive ? "var(--gr-bg)" : "var(--gr-text-mid)",
+                  background: moreActive ? "var(--gr-ink)" : undefined,
+                  fontWeight: moreActive ? 500 : undefined,
+                }}
+              >
+                More
+                <span
+                  className={`text-[10px] transition-transform ${moreOpen ? "rotate-180" : ""}`}
+                  aria-hidden
+                >
+                  ▾
+                </span>
+              </button>
+            );
+          })()}
 
           {moreOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.28)]"
+              className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-[14px] border py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.18)]"
+              style={{ background: "var(--gr-surface)", borderColor: "var(--gr-border)" }}
             >
               {MORE_NAV.map((item) => {
                 const active = isActive(pathname, item);
@@ -262,11 +288,12 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                     role="menuitem"
                     aria-current={active ? "page" : undefined}
                     onClick={() => setMoreOpen(false)}
-                    className={
-                      active
-                        ? "block bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-950"
-                        : "block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
-                    }
+                    className="block px-4 py-2.5 text-[13.5px] transition-colors"
+                    style={{
+                      color: active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+                      background: active ? "var(--gr-surface-2)" : undefined,
+                      fontWeight: active ? 600 : undefined,
+                    }}
                   >
                     {item.label}
                   </Link>
@@ -276,7 +303,11 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
           )}
         </div>
 
-        <span className="mx-1 h-5 w-px shrink-0 bg-stone-200/80" aria-hidden />
+        <span
+          className="mx-1 h-5 w-px shrink-0"
+          style={{ background: "var(--gr-border)" }}
+          aria-hidden
+        />
         <LogoutButton />
       </nav>
 
@@ -297,7 +328,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
           onClick={() => setMobileOpen((v) => !v)}
           aria-expanded={mobileOpen}
           aria-haspopup="menu"
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-950"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors"
+          style={{ color: "var(--gr-text-mid)" }}
         >
           Menu
           <span
@@ -311,7 +343,8 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
         {mobileOpen && (
           <div
             role="menu"
-            className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-2xl border border-stone-200 bg-white py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.28)]"
+            className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-[14px] border py-1 shadow-[0_12px_40px_-12px_rgba(28,25,23,0.18)]"
+            style={{ background: "var(--gr-surface)", borderColor: "var(--gr-border)" }}
           >
             {ALL_NAV.map((item) => {
               const active = isActive(pathname, item);
@@ -322,17 +355,18 @@ export function TopNav({ authenticated }: { authenticated: boolean }) {
                   role="menuitem"
                   aria-current={active ? "page" : undefined}
                   onClick={() => setMobileOpen(false)}
-                  className={
-                    active
-                      ? "block bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950"
-                      : "block px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
-                  }
+                  className="block px-4 py-2 text-[13.5px] transition-colors"
+                  style={{
+                    color: active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+                    background: active ? "var(--gr-surface-2)" : undefined,
+                    fontWeight: active ? 600 : undefined,
+                  }}
                 >
                   {item.label}
                 </Link>
               );
             })}
-            <div className="mx-4 my-1 h-px bg-stone-100" />
+            <div className="mx-4 my-1 h-px" style={{ background: "var(--gr-border-sub)" }} />
             <LogoutButton variant="menu" />
           </div>
         )}

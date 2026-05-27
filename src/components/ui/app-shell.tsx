@@ -67,72 +67,185 @@ export async function AppShell({
   }
 
   return (
-    <div className="w-full min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(113,63,18,0.12),_transparent_32%),linear-gradient(180deg,_#f8f5ef_0%,_#f4efe6_100%)] text-stone-950">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-5 lg:px-10">
-        <Link
-          href="/"
-          className="shrink-0 text-sm font-bold uppercase tracking-[0.32em] text-stone-900 transition-opacity hover:opacity-80"
-        >
-          Guardrail
-        </Link>
-        <TopNav authenticated={Boolean(user)} />
+    <div
+      className="relative w-full min-h-screen overflow-x-hidden text-[color:var(--gr-ink)]"
+      style={{
+        background: "var(--gr-bg)",
+        backgroundImage:
+          "radial-gradient(ellipse 70% 50% at 15% 0%, rgba(180,160,120,0.08), transparent 60%), radial-gradient(ellipse 50% 40% at 85% 100%, rgba(180,160,120,0.07), transparent 60%)",
+      }}
+    >
+      {/* Sticky marketing header */}
+      <header
+        className="sticky top-0 z-20 border-b border-[color:var(--gr-border)]"
+        style={{ background: "rgba(243,236,224,0.85)", backdropFilter: "blur(14px)" }}
+      >
+        <div className="mx-auto flex h-16 w-full max-w-[1240px] items-center px-6 lg:px-8">
+          <Link
+            href="/"
+            className="shrink-0 text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--gr-ink)] transition-opacity hover:opacity-70"
+          >
+            Guardrail
+          </Link>
+          <div className="flex-1" />
+          <TopNav authenticated={Boolean(user)} />
+        </div>
       </header>
 
-      <main className={`mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col overflow-x-hidden px-4 pb-0 sm:px-6 lg:px-10 ${denseHero ? "gap-5" : "gap-10"}`}>
-        {statusStrip ? <div className="-mt-4">{statusStrip}</div> : null}
+      <main className={`flex flex-col ${denseHero ? "gap-5" : "gap-10"}`}>
+        {statusStrip ? <div>{statusStrip}</div> : null}
 
-        <section className={`rounded-[2rem] border border-stone-200/80 bg-white/85 shadow-[0_30px_80px_-45px_rgba(41,37,36,0.45)] backdrop-blur ${denseHero ? "p-2.5 sm:p-3 lg:p-4" : compactHero ? "p-3 sm:p-4 lg:p-5" : "p-3 sm:p-6 lg:p-8"}`}>
-          <div className={`grid ${denseHero ? "gap-2 lg:gap-3" : compactHero ? "gap-4 lg:gap-6" : "gap-6 lg:gap-10"} ${heroPreview ? "lg:grid-cols-[1fr_auto] lg:items-end" : ""}`}>
-            <div>
-              <div className="max-w-3xl">
-                <p className={`font-semibold uppercase text-amber-700 ${denseHero ? "text-[10px] tracking-[0.24em]" : "text-xs tracking-[0.3em]"}`}>
-                  {eyebrow}
-                </p>
-                <h1 className={`font-semibold leading-tight tracking-[-0.04em] text-stone-950 ${denseHero ? "mt-1 text-lg sm:text-xl lg:text-2xl" : compactHero ? "mt-3 text-xl sm:text-2xl lg:text-3xl" : "mt-3 text-2xl sm:text-3xl lg:text-4xl"}`}>
-                  {title}
-                </h1>
-                <p className={`max-w-2xl text-stone-600 ${denseHero ? "mt-1 text-xs leading-5" : "mt-3 text-sm leading-6"}`}>
-                  {description}
-                </p>
-                {note && (
-                  <p className="mt-3 text-xs leading-5 text-stone-500">{note}</p>
-                )}
-              </div>
-              {actions && (
-                <div className="mt-4 flex flex-row flex-wrap gap-3 sm:mt-5">
-                  {actions}
+        {/* Hero section */}
+        <section className="px-6 pb-6 pt-10 lg:px-8">
+          <div className="mx-auto max-w-[1240px]">
+            <div
+              className={`rounded-[14px] border border-[color:var(--gr-border)] bg-white ${
+                denseHero ? "p-2.5 sm:p-3 lg:p-4" : compactHero ? "p-5 sm:p-8 lg:p-10" : "p-8 sm:p-12 lg:p-16"
+              }`}
+              style={{ maxWidth: 1080 }}
+            >
+              {heroPreview ? (
+                <div
+                  className="grid items-end gap-8 lg:grid-cols-[1fr_auto]"
+                  style={{ gridTemplateColumns: heroPreview ? undefined : "1fr" }}
+                >
+                  <div>
+                    <HeroContent
+                      eyebrow={eyebrow}
+                      title={title}
+                      description={description}
+                      note={note}
+                      actions={actions}
+                      denseHero={denseHero}
+                      compactHero={compactHero}
+                    />
+                    <div className="mt-6 lg:hidden">{heroPreview}</div>
+                  </div>
+                  <div className="hidden lg:block">{heroPreview}</div>
                 </div>
-              )}
-              {heroPreview && (
-                <div className="mt-4 lg:hidden">
-                  {heroPreview}
-                </div>
+              ) : (
+                <HeroContent
+                  eyebrow={eyebrow}
+                  title={title}
+                  description={description}
+                  note={note}
+                  actions={actions}
+                  denseHero={denseHero}
+                  compactHero={compactHero}
+                />
               )}
             </div>
-            {heroPreview && (
-              <div className="hidden shrink-0 lg:block">
-                {heroPreview}
-              </div>
-            )}
           </div>
         </section>
 
-        {children}
+        {/* Page sections */}
+        <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-6 pb-0 lg:px-8">
+          {children}
+        </div>
 
-        <footer className="mt-6 border-t border-stone-200/70 py-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <p className="max-w-md text-xs leading-5 text-stone-400">
-              Guardrail is a discipline and risk-management tool. It does not provide financial advice or guarantee trading results. Trading involves substantial risk of loss.
+        {/* Footer */}
+        <footer
+          className="mt-16 border-t border-[color:var(--gr-border)]"
+          style={{ background: "var(--gr-bg)" }}
+        >
+          <div className="mx-auto max-w-[1240px] px-6 py-9 lg:px-8">
+            <p
+              className="mx-auto max-w-[920px] text-center text-[13px] leading-relaxed"
+              style={{ color: "var(--gr-text-mute)" }}
+            >
+              Guardrail is a trading-discipline and risk-control tool, not financial advice.
+              Guardrail starts in monitoring mode; broker-side enforcement applies only to Daily
+              Loss, only on supported connections, and only when you explicitly enable it. Trading
+              futures carries a substantial risk of loss.
             </p>
-            <nav className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-stone-400">
-              <Link href="/terms" className="transition hover:text-stone-600">Terms</Link>
-              <Link href="/privacy" className="transition hover:text-stone-600">Privacy</Link>
-              <Link href="/risk-disclaimer" className="transition hover:text-stone-600">Risk Disclaimer</Link>
-              <a href="mailto:support@guardrail.trade" className="transition hover:text-stone-600">Contact Support</a>
-            </nav>
+            <div
+              className="mt-7 flex flex-col items-center justify-between gap-4 border-t pt-5 sm:flex-row"
+              style={{ borderColor: "var(--gr-border-sub)" }}
+            >
+              <p className="max-w-sm text-[11.5px]" style={{ color: "var(--gr-text-mute)" }}>
+                Guardrail is a discipline and risk-management tool. It does not provide financial
+                advice or guarantee trading results.
+              </p>
+              <nav className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                {[
+                  { href: "/terms", label: "Terms" },
+                  { href: "/privacy", label: "Privacy" },
+                  { href: "/risk-disclaimer", label: "Risk Disclaimer" },
+                  { href: "mailto:support@guardrail-trade.com", label: "Contact Support" },
+                ].map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="text-[11.5px] transition-colors hover:text-[color:var(--gr-ink)]"
+                    style={{ color: "var(--gr-text-mute)" }}
+                  >
+                    {l.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
           </div>
         </footer>
       </main>
+    </div>
+  );
+}
+
+// ── Hero content block (shared) ────────────────────────────────────────────────
+
+function HeroContent({
+  eyebrow,
+  title,
+  description,
+  note,
+  actions,
+  denseHero,
+  compactHero,
+}: {
+  eyebrow: string;
+  title: ReactNode;
+  description: string;
+  note?: ReactNode;
+  actions?: ReactNode;
+  denseHero?: boolean;
+  compactHero?: boolean;
+}) {
+  return (
+    <div className="max-w-3xl">
+      <span
+        className="block text-[12px] font-semibold uppercase tracking-[0.18em]"
+        style={{ color: "var(--gr-copper)" }}
+      >
+        {eyebrow}
+      </span>
+      <h1
+        className={`font-semibold leading-tight tracking-[-0.025em] ${
+          denseHero
+            ? "mt-4 text-xl sm:text-2xl"
+            : compactHero
+            ? "mt-5 text-2xl sm:text-3xl"
+            : "mt-6 text-4xl sm:text-5xl"
+        }`}
+        style={{ color: "var(--gr-ink)", maxWidth: 880, lineHeight: 1.1 }}
+      >
+        {title}
+      </h1>
+      <p
+        className={`leading-[1.55] ${
+          denseHero ? "mt-2 text-[13px]" : "mt-6 text-[17px]"
+        }`}
+        style={{ color: "var(--gr-text-mid)", maxWidth: 760 }}
+      >
+        {description}
+      </p>
+      {note && (
+        <p className="mt-[22px] text-[13px]" style={{ color: "var(--gr-text-mute)" }}>
+          {note}
+        </p>
+      )}
+      {actions && (
+        <div className="mt-9 flex flex-row flex-wrap gap-3">{actions}</div>
+      )}
     </div>
   );
 }

@@ -76,8 +76,8 @@
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
-  --font-sans: var(--font-manrope);
-  --font-mono: var(--font-ibm-plex-mono);
+  --font-sans: var(--font-geist), 'Söhne', 'Inter', system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), var(--font-ibm-plex-mono), ui-monospace, monospace;
 }
 
 * {
@@ -89,9 +89,12 @@ html {
 }
 
 body {
-  background: var(--canvas);
-  color: var(--ink);
-  font-family: var(--font-manrope), sans-serif;
+  background: var(--gr-bg);
+  color: var(--gr-ink);
+  font-family: var(--font-geist), 'Söhne', 'Inter', -apple-system, system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
 }
 
 @layer base {
