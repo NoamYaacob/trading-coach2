@@ -30,9 +30,22 @@ function codeOnly(src: string): string {
 }
 
 describe("AdvancedBrokerActionsSection — all actions are planned, not active", () => {
-  it("lists all four planned broker actions", () => {
-    for (const name of ["PDLL action", "PDPT action", "Liquidate", "Liquidate & block"]) {
+  it("lists all four planned broker actions with product names (no internal codes)", () => {
+    // The honesty rule from the Guardrail 2 handoff (§11): forbidden phrasing
+    // like "Auto-flatten positions" / "Cancel all open orders" / "Lock account at
+    // broker" may appear only inside the Planned · not active block. Even there,
+    // we prefer product-friendly names over internal codes (PDLL/PDPT/Liquidate).
+    for (const name of [
+      "Broker-side daily loss lock",
+      "Broker-side profit target lock",
+      "Flatten positions through broker",
+      "Cancel pending orders through broker",
+    ]) {
       assert.ok(SRC.includes(name), `must list "${name}" as a planned action`);
+    }
+    const actionsBlock = SRC.slice(SRC.indexOf("const ADVANCED_ACTIONS"), SRC.indexOf("] as const;"));
+    for (const old of ['"PDLL action"', '"PDPT action"']) {
+      assert.ok(!actionsBlock.includes(old), `old internal code ${old} must not appear as a user-facing action name`);
     }
   });
 
