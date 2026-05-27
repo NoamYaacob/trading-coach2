@@ -18,7 +18,8 @@ export default async function SecurityPage() {
   const actions = user ? (
     <Link
       href="/dashboard"
-      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+      style={{ background: "var(--gr-ink)" }}
     >
       Open today&rsquo;s session
     </Link>
@@ -26,13 +27,15 @@ export default async function SecurityPage() {
     <>
       <Link
         href="/signup"
-        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+        style={{ background: "var(--gr-ink)" }}
       >
         Start free week
       </Link>
       <Link
         href="/how-it-works"
-        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border px-5 py-3 text-sm font-medium transition hover:opacity-80"
+        style={{ borderColor: "var(--gr-border-hi)", color: "var(--gr-text-mid)" }}
       >
         How it works
       </Link>
@@ -49,34 +52,40 @@ export default async function SecurityPage() {
       <div className="grid gap-8 sm:gap-12">
 
         {/* ── Data flow diagram ───────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
             Connection model
           </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
             Trade events in. No credentials out. No orders placed.
           </h2>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
 
             {/* Node 1: Broker */}
-            <div className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+            <div
+              className="flex-1 rounded-2xl border px-4 py-4"
+              style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)" }}
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--gr-text-mute)" }}>
                 Your broker account
               </p>
               <ul className="mt-3 grid gap-1.5">
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mid)" }}>
                   <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                   Trade fill events
                 </li>
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mid)" }}>
                   <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                   P&amp;L summary
                 </li>
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mute)" }}>
                   <span className="mt-0.5 shrink-0">✗</span>
                   No password shared
                 </li>
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mute)" }}>
                   <span className="mt-0.5 shrink-0">✗</span>
                   No orders placed
                 </li>
@@ -86,14 +95,17 @@ export default async function SecurityPage() {
             {/* Arrow 1 */}
             <div className="flex items-center justify-center sm:flex-col sm:justify-center sm:px-3">
               <div className="flex items-center gap-1.5 sm:flex-col sm:gap-0.5">
-                <span className="text-[10px] text-stone-400">read-only</span>
-                <span className="text-stone-300 sm:text-base">→</span>
+                <span className="text-[10px]" style={{ color: "var(--gr-text-mute)" }}>read-only</span>
+                <span style={{ color: "var(--gr-border-hi)" }} className="sm:text-base">→</span>
               </div>
             </div>
 
             {/* Node 2: Guardrail engine */}
-            <div className="flex-1 rounded-2xl border border-stone-800 bg-stone-950 px-4 py-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+            <div
+              className="flex-1 rounded-2xl border px-4 py-4"
+              style={{ borderColor: "var(--gr-ink)", background: "var(--gr-ink)" }}
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--gr-text-mute)" }}>
                 Guardrail rule engine
               </p>
               <ul className="mt-3 grid gap-1.5">
@@ -115,26 +127,29 @@ export default async function SecurityPage() {
             {/* Arrow 2 */}
             <div className="flex items-center justify-center sm:flex-col sm:justify-center sm:px-3">
               <div className="flex items-center gap-1.5 sm:flex-col sm:gap-0.5">
-                <span className="text-[10px] text-stone-400">when rule fires</span>
-                <span className="text-stone-300 sm:text-base">→</span>
+                <span className="text-[10px]" style={{ color: "var(--gr-text-mute)" }}>when rule fires</span>
+                <span style={{ color: "var(--gr-border-hi)" }} className="sm:text-base">→</span>
               </div>
             </div>
 
             {/* Node 3: Action */}
-            <div className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400">
+            <div
+              className="flex-1 rounded-2xl border px-4 py-4"
+              style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)" }}
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--gr-text-mute)" }}>
                 Action
               </p>
               <ul className="mt-3 grid gap-1.5">
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mid)" }}>
                   <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                   Telegram alert
                 </li>
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-600">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mid)" }}>
                   <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                   Session locked (app)
                 </li>
-                <li className="flex items-start gap-1.5 text-[11px] text-stone-400">
+                <li className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--gr-text-mute)" }}>
                   <span className="mt-0.5 shrink-0">→</span>
                   Broker-side: planned
                 </li>
@@ -145,9 +160,12 @@ export default async function SecurityPage() {
         </section>
 
         {/* ── Trust cards ─────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-800 bg-stone-950 p-5 sm:p-8">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8"
+          style={{ borderColor: "var(--gr-ink)", background: "var(--gr-ink)" }}
+        >
           <div className="mb-5 max-w-2xl sm:mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-text-mute)" }}>
               Your data, your control
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-50 sm:text-2xl">
@@ -187,16 +205,19 @@ export default async function SecurityPage() {
         </section>
 
         {/* ── What Guardrail accesses ─────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
             Data access
           </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
             What Guardrail reads. What it never touches.
           </h2>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: "var(--gr-text-mid)" }}>
                 What Guardrail reads
               </p>
               <ul className="grid gap-2">
@@ -207,7 +228,8 @@ export default async function SecurityPage() {
                 ].map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-3 py-2 text-sm text-stone-700 sm:px-4 sm:py-3"
+                    className="flex items-start gap-3 rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-3"
+                    style={{ background: "var(--gr-bg-elev)", color: "var(--gr-text-mid)" }}
                   >
                     <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                     {item}
@@ -216,7 +238,7 @@ export default async function SecurityPage() {
               </ul>
             </div>
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: "var(--gr-text-mute)" }}>
                 What Guardrail never does (read-only mode)
               </p>
               <ul className="grid gap-2">
@@ -228,16 +250,17 @@ export default async function SecurityPage() {
                 ].map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-3 rounded-2xl border border-stone-100 bg-stone-50/50 px-3 py-2 text-sm text-stone-500 sm:px-4 sm:py-3"
+                    className="flex items-start gap-3 rounded-2xl border px-3 py-2 text-sm sm:px-4 sm:py-3"
+                    style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)" }}
                   >
-                    <span className="mt-0.5 shrink-0 text-stone-400">✗</span>
+                    <span className="mt-0.5 shrink-0" style={{ color: "var(--gr-text-mute)" }}>✗</span>
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
           </div>
-          <p className="mt-4 text-xs leading-5 text-stone-400">
+          <p className="mt-4 text-xs leading-5" style={{ color: "var(--gr-text-mute)" }}>
             Broker-side order actions (cancel, flatten, block) require verified write-level API
             permissions. These are planned features and will only ship after live integration testing
             with each broker.
@@ -247,13 +270,13 @@ export default async function SecurityPage() {
         {/* ── Broker integrations ─────────────────────────────────────── */}
         <section>
           <div className="mb-5 max-w-2xl sm:mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
               Broker integrations
             </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
               Connect your broker account.
             </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
+            <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
               Guardrail starts read-only with Tradovate and only expands enforcement after verified
               broker support. All future integrations follow the same read-first pattern.
             </p>
@@ -264,10 +287,11 @@ export default async function SecurityPage() {
             ))}
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <p className="text-xs text-stone-400">Don&rsquo;t see your broker?</p>
+            <p className="text-xs" style={{ color: "var(--gr-text-mute)" }}>Don&rsquo;t see your broker?</p>
             <a
               href="mailto:support@guardrail.trade"
-              className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition hover:border-stone-500 hover:text-stone-950"
+              className="rounded-full border px-3 py-1 text-xs font-medium transition hover:opacity-80"
+              style={{ borderColor: "var(--gr-border-hi)", color: "var(--gr-text-mid)" }}
             >
               Request a broker
             </a>
@@ -275,20 +299,24 @@ export default async function SecurityPage() {
         </section>
 
         {!user && (
-          <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8">
+          <section
+            className="rounded-[14px] border p-5 sm:p-8"
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+          >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-xl font-semibold tracking-[-0.04em] text-stone-950">
+                <h2 className="text-xl font-semibold tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>
                   Start with read-only. Expand when you&rsquo;re ready.
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-stone-600">
+                <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
                   First week free — no credit card required.
                 </p>
               </div>
               <div className="flex flex-row flex-wrap gap-3">
                 <Link
                   href="/signup"
-                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+                  style={{ background: "var(--gr-ink)" }}
                 >
                   Start free week
                 </Link>

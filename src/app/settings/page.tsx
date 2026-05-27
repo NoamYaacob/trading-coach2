@@ -143,41 +143,45 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         {/* Trading profile */}
         {traderProfile && (
-          <details className="group rounded-[1.75rem] border border-stone-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.25)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em] text-stone-950">
+          <details
+            className="group rounded-[14px] border p-6"
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em]" style={{ color: "var(--gr-ink)" }}>
               Trading profile
-              <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+              <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
             </summary>
             <dl className="mt-5 grid gap-3 text-sm">
               {normalizeDisplay(traderProfile.primaryMarket, MARKETS) && (
-                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-                  <dt className="font-medium text-stone-500">Market</dt>
-                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.primaryMarket, MARKETS)}</dd>
+                <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+                  <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Market</dt>
+                  <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.primaryMarket, MARKETS)}</dd>
                 </div>
               )}
               {normalizeDisplay(traderProfile.tradingStyle, STYLES) && (
-                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-                  <dt className="font-medium text-stone-500">Style</dt>
-                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.tradingStyle, STYLES)}</dd>
+                <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+                  <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Style</dt>
+                  <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingStyle, STYLES)}</dd>
                 </div>
               )}
               {normalizeDisplay(traderProfile.tradingSession, SESSIONS) && (
-                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-                  <dt className="font-medium text-stone-500">Session</dt>
-                  <dd className="text-stone-950">{normalizeDisplay(traderProfile.tradingSession, SESSIONS)}</dd>
+                <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+                  <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Session</dt>
+                  <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingSession, SESSIONS)}</dd>
                 </div>
               )}
               {humanizeExperience(traderProfile.tradingExperience) && (
-                <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-                  <dt className="font-medium text-stone-500">Experience</dt>
-                  <dd className="text-stone-950">{humanizeExperience(traderProfile.tradingExperience)}</dd>
+                <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+                  <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Experience</dt>
+                  <dd style={{ color: "var(--gr-ink)" }}>{humanizeExperience(traderProfile.tradingExperience)}</dd>
                 </div>
               )}
             </dl>
             <div className="mt-4">
               <a
                 href="/onboarding/profile?edit=1"
-                className="inline-flex h-9 items-center justify-center rounded-full border border-stone-200 px-5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
+                className="inline-flex h-9 items-center justify-center rounded-full border px-5 text-xs font-medium transition hover:opacity-80"
+                style={{ borderColor: "var(--gr-border)", color: "var(--gr-text-mid)" }}
               >
                 Edit trading profile
               </a>
@@ -188,13 +192,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {/* Account info */}
         <SectionCard title="Account">
           <dl className="grid gap-3 text-sm">
-            <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-              <dt className="font-medium text-stone-500">Email</dt>
-              <dd className="text-stone-950">{user.email}</dd>
+            <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+              <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Email</dt>
+              <dd style={{ color: "var(--gr-ink)" }}>{user.email}</dd>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-              <dt className="font-medium text-stone-500">Member since</dt>
-              <dd className="text-stone-950">
+            <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+              <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Member since</dt>
+              <dd style={{ color: "var(--gr-ink)" }}>
                 {user.createdAt.toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
@@ -202,9 +206,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 })}
               </dd>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
-              <dt className="font-medium text-stone-500">Plan</dt>
-              <dd className="text-stone-950">
+            <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+              <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Plan</dt>
+              <dd style={{ color: "var(--gr-ink)" }}>
                 {user.subscriptionStatus === "TRIALING"
                   ? "Trial active"
                   : user.subscriptionStatus.charAt(0).toUpperCase() + user.subscriptionStatus.slice(1).toLowerCase()}
@@ -231,20 +235,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           description="Optional services connected to your account."
         >
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-500">Telegram</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Telegram</p>
             <TelegramConnection
               connected={Boolean(telegramConnection)}
               username={telegramConnection?.telegramUsername ?? null}
               botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
             />
           </div>
-          <details className="group mt-4 rounded-xl border border-stone-100 bg-stone-50/50 px-4 py-3">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-stone-950">
+          <details className="group mt-4 rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>
               Product status
-              <span className="text-xs font-normal text-stone-400 transition-transform group-open:rotate-45">+</span>
+              <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
             </summary>
             <div className="mt-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-500">Product status</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Product status</p>
               <ProductStatusPanel variant="compact" />
             </div>
           </details>
@@ -266,13 +270,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div className="mt-5 flex items-center gap-3">
             <Link
               href="/accounts/connect/tradovate"
-              className="inline-flex h-9 items-center rounded-full bg-stone-950 px-5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+              className="inline-flex h-9 items-center rounded-full px-5 text-sm font-medium text-white transition hover:opacity-90"
+              style={{ background: "var(--gr-ink)" }}
             >
               Connect Tradovate
             </Link>
             <Link
               href="/dashboard"
-              className="text-sm text-stone-500 underline-offset-2 hover:underline"
+              className="text-sm underline-offset-2 hover:underline"
+              style={{ color: "var(--gr-text-mute)" }}
             >
               Manage accounts on Dashboard
             </Link>
@@ -280,9 +286,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </SectionCard>
 
         {/* Danger zone */}
-        <section className="rounded-[1.75rem] border border-red-200 bg-white/90 p-6 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.35)]">
+        <section className="rounded-[14px] border border-red-200 p-6" style={{ background: "var(--gr-surface)" }}>
           <h2 className="text-xl font-semibold tracking-[-0.03em] text-red-900">Danger zone</h2>
-          <p className="mt-2 text-sm leading-6 text-stone-600">Irreversible actions that affect your entire account.</p>
+          <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>Irreversible actions that affect your entire account.</p>
           <div className="mt-5 rounded-xl border border-red-100 bg-red-50/50 p-5">
             <h3 className="text-sm font-semibold text-red-900">Delete account</h3>
             <div className="mt-3">

@@ -289,27 +289,32 @@ export default async function DashboardPage() {
 
         {/* ── State A: No accounts — setup prompt ───────────────────────────── */}
         {noAccounts && (
-          <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+          <section
+            className="rounded-[14px] border p-5 sm:p-8"
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
               Getting started
             </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
               Connect your first trading account.
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+            <p className="mt-3 max-w-2xl text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
               Guardrail starts working once it can read account activity. Connect Tradovate to
               monitor daily loss, trades used, account status, and rule breaches.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <Link
                 href="/accounts/connect/tradovate"
-                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                className="rounded-full px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                style={{ background: "var(--gr-ink)" }}
               >
                 Connect Tradovate
               </Link>
               <Link
                 href="/rules"
-                className="rounded-full border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-500 transition hover:border-stone-400 hover:text-stone-700"
+                className="rounded-full border px-5 py-2.5 text-sm font-medium transition hover:opacity-80"
+                style={{ borderColor: "var(--gr-border)", color: "var(--gr-text-mid)" }}
               >
                 Set up rules first
               </Link>
@@ -320,7 +325,7 @@ export default async function DashboardPage() {
         {/* ── State B: Broker-connected — configuration nav only ────────────── */}
         {hasBrokerAccount && (
           <div className="grid gap-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-text-mute)" }}>
               Configuration
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -348,20 +353,27 @@ export default async function DashboardPage() {
 
 function GuardianPausedPanel() {
   return (
-    <section className="rounded-[2rem] border border-stone-200 bg-stone-50 px-6 py-4 shadow-[0_24px_70px_-50px_rgba(28,25,23,0.2)]">
-      <span className="inline-flex rounded-full bg-stone-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white">
+    <section
+      className="rounded-[14px] border px-6 py-4"
+      style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)" }}
+    >
+      <span
+        className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white"
+        style={{ background: "var(--gr-text-mute)" }}
+      >
         Paused
       </span>
-      <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+      <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl" style={{ color: "var(--gr-ink)" }}>
         Protection is paused.
       </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+      <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
         Your rules are saved. Enable protection before the session starts.
       </p>
       <div className="mt-4">
         <a
           href="/rules#guardian-toggle"
-          className="inline-flex rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+          className="inline-flex rounded-full px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          style={{ background: "var(--gr-ink)" }}
         >
           Enable protection
         </a>
@@ -382,11 +394,12 @@ function NavCard({
   return (
     <Link
       href={href}
-      className="group flex flex-col rounded-2xl border border-stone-200 bg-white/90 px-3 py-2 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.08)] transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_10px_28px_-8px_rgba(28,25,23,0.16)] sm:p-5"
+      className="group flex flex-col rounded-[14px] border px-3 py-2 shadow-sm transition-all hover:-translate-y-0.5 sm:p-5"
+      style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
     >
-      <p className="text-sm font-semibold text-stone-950">{title}</p>
-      <p className="mt-1 flex-1 text-xs leading-5 text-stone-500">{description}</p>
-      <p className="mt-2 text-xs font-semibold text-stone-400 transition-colors group-hover:text-stone-700 sm:mt-4">
+      <p className="text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>{title}</p>
+      <p className="mt-1 flex-1 text-xs leading-5" style={{ color: "var(--gr-text-mute)" }}>{description}</p>
+      <p className="mt-2 text-xs font-semibold sm:mt-4" style={{ color: "var(--gr-text-mute)" }}>
         →
       </p>
     </Link>

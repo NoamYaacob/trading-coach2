@@ -18,7 +18,8 @@ export default async function FeaturesPage() {
   const actions = user ? (
     <Link
       href="/dashboard"
-      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+      style={{ background: "var(--gr-ink)" }}
     >
       Open today&rsquo;s session
     </Link>
@@ -26,13 +27,15 @@ export default async function FeaturesPage() {
     <>
       <Link
         href="/signup"
-        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+        style={{ background: "var(--gr-ink)" }}
       >
         Start free week
       </Link>
       <Link
         href="/pricing"
-        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border px-5 py-3 text-sm font-medium transition hover:opacity-80"
+        style={{ borderColor: "var(--gr-border-hi)", color: "var(--gr-text-mid)" }}
       >
         See pricing
       </Link>
@@ -57,38 +60,41 @@ export default async function FeaturesPage() {
           <RuleCardLegend />
         </section>
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
             Status guide
           </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
             Active, Partial, and Coming Soon explained.
           </h2>
           <div className="mt-5 grid gap-5 sm:grid-cols-3">
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Active</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>Active</p>
               </div>
-              <p className="text-sm leading-6 text-stone-600">
+              <p className="text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
                 Fully live — evaluated against every trade event from your connected broker account in real time.
               </p>
             </div>
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Partial</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>Partial</p>
               </div>
-              <p className="text-sm leading-6 text-stone-600">
+              <p className="text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
                 Guardrail evaluates these rules with app-level enforcement where available. No broker-side actions are active for these rules.
               </p>
             </div>
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-stone-300" aria-hidden />
-                <p className="text-sm font-semibold text-stone-950">Coming soon</p>
+                <span className="h-2 w-2 rounded-full" style={{ background: "var(--gr-surface-hi)" }} aria-hidden />
+                <p className="text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>Coming soon</p>
               </div>
-              <p className="text-sm leading-6 text-stone-600">
+              <p className="text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
                 On the roadmap. These rules are designed and scoped. The rule engine is built to add
                 them without changing the core loop.
               </p>
@@ -97,20 +103,24 @@ export default async function FeaturesPage() {
         </section>
 
         {!user && (
-          <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8">
+          <section
+            className="rounded-[14px] border p-5 sm:p-8"
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+          >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-xl font-semibold tracking-[-0.04em] text-stone-950">
+                <h2 className="text-xl font-semibold tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>
                   Your rules, enforced. Starting now.
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-stone-600">
+                <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
                   First week free — no credit card required.
                 </p>
               </div>
               <div className="flex flex-row flex-wrap gap-3">
                 <Link
                   href="/signup"
-                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+                  style={{ background: "var(--gr-ink)" }}
                 >
                   Start free week
                 </Link>
@@ -127,30 +137,38 @@ export default async function FeaturesPage() {
 
 function RuleEngineMockup() {
   const rules = [
-    { name: "Daily Loss Limit",    dot: "bg-emerald-500", row: "border-emerald-100/60 bg-emerald-50/50", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
-    { name: "Max Trades Per Day",  dot: "bg-emerald-500", row: "border-emerald-100/60 bg-emerald-50/50", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
-    { name: "Loss Streak Stop",    dot: "bg-emerald-500", row: "border-emerald-100/60 bg-emerald-50/50", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
-    { name: "Daily Profit Target", dot: "bg-amber-400",   row: "border-amber-100/60 bg-amber-50/50",     badge: "bg-amber-100 text-amber-700",     label: "Partial" },
-    { name: "Weekly Loss Limit",   dot: "bg-stone-300",   row: "border-stone-100/60 bg-stone-50",        badge: "bg-stone-100 text-stone-400",     label: "Soon"    },
-    { name: "Payout Protection",   dot: "bg-stone-300",   row: "border-stone-100/60 bg-stone-50",        badge: "bg-stone-100 text-stone-400",     label: "Soon"    },
+    { name: "Daily Loss Limit",    dot: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
+    { name: "Max Trades Per Day",  dot: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
+    { name: "Loss Streak Stop",    dot: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700", label: "Active"  },
+    { name: "Daily Profit Target", dot: "bg-amber-400",   badge: "bg-amber-100 text-amber-700",     label: "Partial" },
+    { name: "Weekly Loss Limit",   dot: "",               badge: "bg-stone-100 text-stone-400",     label: "Soon"    },
+    { name: "Payout Protection",   dot: "",               badge: "bg-stone-100 text-stone-400",     label: "Soon"    },
   ];
 
   return (
-    <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-4 shadow-[0_8px_28px_-8px_rgba(28,25,23,0.10)] sm:p-5">
+    <div
+      className="rounded-[14px] border p-4 sm:p-5"
+      style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+    >
       <div className="mb-3 flex items-center justify-between">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "var(--gr-text-mute)" }}>
           Rule engine
         </p>
-        <span className="text-[10px] text-stone-400">14 rules total</span>
+        <span className="text-[10px]" style={{ color: "var(--gr-text-mute)" }}>14 rules total</span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {rules.map((rule) => (
           <div
             key={rule.name}
-            className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 ${rule.row}`}
+            className="flex items-center gap-2 rounded-xl border px-2.5 py-2"
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)" }}
           >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${rule.dot}`} aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-stone-800 sm:text-xs">
+            {rule.dot ? (
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${rule.dot}`} aria-hidden />
+            ) : (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--gr-surface-hi)" }} aria-hidden />
+            )}
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium sm:text-xs" style={{ color: "var(--gr-ink)" }}>
               {rule.name}
             </span>
             <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${rule.badge}`}>
@@ -159,7 +177,7 @@ function RuleEngineMockup() {
           </div>
         ))}
       </div>
-      <p className="mt-3 border-t border-stone-100 pt-2.5 text-[10px] text-stone-400">
+      <p className="mt-3 border-t pt-2.5 text-[10px]" style={{ borderColor: "var(--gr-border)", color: "var(--gr-text-mute)" }}>
         4 active · 4 partial · 6 coming soon · evaluated in real time
       </p>
     </div>
