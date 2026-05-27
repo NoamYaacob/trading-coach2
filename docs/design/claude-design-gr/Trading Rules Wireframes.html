@@ -1,0 +1,1935 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trading Rules — Wireframes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Architects+Daughter&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: 'Patrick Hand', cursive; }
+    * { box-sizing: border-box; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+/* === design-canvas.jsx === */
+
+// DesignCanvas.jsx — Figma-ish design canvas wrapper
+// Warm gray grid bg + Sections + Artboards + PostIt notes.
+// Artboards are reorderable (grip-drag), deletable, labels/titles are
+// inline-editable, and any artboard can be opened in a fullscreen focus
+// overlay (←/→/Esc). State persists to a .design-canvas.state.json sidecar
+// via the host bridge. No assets, no deps.
+//
+// Usage:
+//   <DesignCanvas>
+//     <DCSection id="onboarding" title="Onboarding" subtitle="First-run variants">
+//       <DCArtboard id="a" label="A · Dusk" width={260} height={480}>…</DCArtboard>
+//       <DCArtboard id="b" label="B · Minimal" width={260} height={480}>…</DCArtboard>
+//     </DCSection>
+//   </DesignCanvas>
+
+const DC = {
+  bg: '#f0eee9',
+  grid: 'rgba(0,0,0,0.06)',
+  label: 'rgba(60,50,40,0.7)',
+  title: 'rgba(40,30,20,0.85)',
+  subtitle: 'rgba(60,50,40,0.6)',
+  postitBg: '#fef4a8',
+  postitText: '#5a4a2a',
+  font: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+};
+
+// One-time CSS injection (classes are dc-prefixed so they don't collide with
+// the hosted design's own styles).
+if (typeof document !== 'undefined' && !document.getElementById('dc-styles')) {
+  const s = document.createElement('style');
+  s.id = 'dc-styles';
+  s.textContent = [
+    '.dc-editable{cursor:text;outline:none;white-space:nowrap;border-radius:3px;padding:0 2px;margin:0 -2px}',
+    '.dc-editable:focus{background:#fff;box-shadow:0 0 0 1.5px #c96442}',
+    '[data-dc-slot]{transition:transform .18s cubic-bezier(.2,.7,.3,1)}',
+    '[data-dc-slot].dc-dragging{transition:none;z-index:10;pointer-events:none}',
+    '[data-dc-slot].dc-dragging .dc-card{box-shadow:0 12px 40px rgba(0,0,0,.25),0 0 0 2px #c96442;transform:scale(1.02)}',
+    // isolation:isolate contains artboard content's z-indexes so a
+    // z-indexed child (sticky navbar etc.) can't paint over .dc-header or
+    // the .dc-menu popover that drops into the top of the card.
+    '.dc-card{isolation:isolate;transition:box-shadow .15s,transform .15s}',
+    '.dc-card *{scrollbar-width:none}',
+    '.dc-card *::-webkit-scrollbar{display:none}',
+    // Per-artboard header: grip + label on the left, delete/expand on the
+    // right. Single flex row; when the artboard's on-screen width is too
+    // narrow for both the label yields (ellipsis, then hidden entirely below
+    // ~4ch via the container query) and the buttons stay on the row.
+    '.dc-header{position:absolute;bottom:100%;left:-4px;margin-bottom:calc(4px * var(--dc-inv-zoom,1));z-index:2;',
+    '  display:flex;align-items:center;container-type:inline-size}',
+    '.dc-labelrow{display:flex;align-items:center;gap:4px;height:24px;flex:1 1 auto;min-width:0}',
+    '.dc-grip{flex:0 0 auto;cursor:grab;display:flex;align-items:center;padding:5px 4px;border-radius:4px;transition:background .12s,opacity .12s}',
+    '.dc-grip:hover{background:rgba(0,0,0,.08)}',
+    '.dc-grip:active{cursor:grabbing}',
+    '.dc-labeltext{flex:1 1 auto;min-width:0;cursor:pointer;border-radius:4px;padding:3px 6px;',
+    '  display:flex;align-items:center;transition:background .12s;overflow:hidden}',
+    // Below ~4ch of label room: hide the label entirely, and drop the grip to
+    // hover-only (same reveal rule as .dc-btns) so a narrow header is clean
+    // until the card is moused.
+    '@container (max-width: 110px){',
+    '  .dc-labeltext{display:none}',
+    '  .dc-grip{opacity:0}',
+    '  [data-dc-slot]:hover .dc-grip{opacity:1}',
+    '}',
+    '.dc-labeltext:hover{background:rgba(0,0,0,.05)}',
+    '.dc-labeltext .dc-editable{overflow:hidden;text-overflow:ellipsis;max-width:100%}',
+    '.dc-labeltext .dc-editable:focus{overflow:visible;text-overflow:clip}',
+    '.dc-btns{flex:0 0 auto;margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .12s}',
+    '[data-dc-slot]:hover .dc-btns,.dc-btns:has(.dc-menu){opacity:1}',
+    '.dc-expand,.dc-kebab{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;padding:0;',
+    '  background:transparent;color:rgba(60,50,40,.7);display:flex;align-items:center;justify-content:center;',
+    '  font:inherit;transition:background .12s,color .12s}',
+    '.dc-expand:hover,.dc-kebab:hover{background:rgba(0,0,0,.06);color:#2a251f}',
+    // Slot hosting an open menu floats above later siblings (which otherwise
+    // paint on top — same z-index:auto, later DOM order) so the popup isn't
+    // clipped by the next card.
+    '[data-dc-slot]:has(.dc-menu){z-index:10}',
+    '.dc-menu{position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border-radius:8px;',
+    '  box-shadow:0 8px 28px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.05);padding:4px;min-width:160px;z-index:10}',
+    '.dc-menu button{display:block;width:100%;padding:7px 10px;border:0;background:transparent;',
+    '  border-radius:5px;font-family:inherit;font-size:13px;font-weight:500;line-height:1.2;',
+    '  color:#29261b;cursor:pointer;text-align:left;transition:background .12s;white-space:nowrap}',
+    '.dc-menu button:hover{background:rgba(0,0,0,.05)}',
+    '.dc-menu hr{border:0;border-top:1px solid rgba(0,0,0,.08);margin:4px 2px}',
+    '.dc-menu .dc-danger{color:#c96442}',
+    '.dc-menu .dc-danger:hover{background:rgba(201,100,66,.1)}',
+    // Chrome (titles / labels / buttons) counter-scales against the viewport
+    // zoom so it stays a constant on-screen size. --dc-inv-zoom is set by
+    // DCViewport on every transform update and inherits to all descendants —
+    // any overlay inside the world (e.g. a TweaksPanel on an artboard) can use
+    // it the same way.
+    //
+    // The header uses transform:scale (out-of-flow, so layout impact doesn't
+    // matter) with its world-space width set to card-width / inv-zoom so that
+    // after counter-scaling its on-screen width exactly matches the card's —
+    // that's what lets the container query + text-overflow behave against the
+    // card's visible edge at every zoom level.
+    //
+    // The section head uses CSS zoom instead of transform so its layout box
+    // grows with the counter-scale, pushing the card row down — otherwise the
+    // constant-screen-size title would overflow into the (shrinking) world-
+    // space gap and overlap the artboard headers at low zoom.
+    '.dc-header{width:calc((100% + 4px) / var(--dc-inv-zoom,1));',
+    '  transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom left}',
+    '.dc-sectionhead{zoom:var(--dc-inv-zoom,1)}',
+  ].join('\n');
+  document.head.appendChild(s);
+}
+
+const DCCtx = React.createContext(null);
+
+// Recursively unwrap React.Fragment so <>…</> grouping doesn't hide
+// DCSection/DCArtboard children from the type-based walks below.
+function dcFlatten(children) {
+  const out = [];
+  React.Children.forEach(children, (c) => {
+    if (c && c.type === React.Fragment) out.push(...dcFlatten(c.props.children));
+    else out.push(c);
+  });
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────
+// DesignCanvas — stateful wrapper around the pan/zoom viewport.
+// Owns runtime state (per-section order, renamed titles/labels, hidden
+// artboards, focused artboard). Order/titles/labels/hidden persist to a
+// .design-canvas.state.json
+// sidecar next to the HTML. Reads go via plain fetch() so the saved
+// arrangement is visible anywhere the HTML + sidecar are served together
+// (omelette preview, direct link, downloaded zip). Writes go through the
+// host's window.omelette bridge — editing requires the omelette runtime.
+// Focus is ephemeral.
+// ─────────────────────────────────────────────────────────────
+const DC_STATE_FILE = '.design-canvas.state.json';
+
+function DesignCanvas({ children, minScale, maxScale, style }) {
+  const [state, setState] = React.useState({ sections: {}, focus: null });
+  // Hold rendering until the sidecar read settles so the saved order/titles
+  // appear on first paint (no source-order flash). didRead gates writes until
+  // the read settles so the empty initial state can't clobber a slow read;
+  // skipNextWrite suppresses the one echo-write that would otherwise follow
+  // hydration.
+  const [ready, setReady] = React.useState(false);
+  const didRead = React.useRef(false);
+  const skipNextWrite = React.useRef(false);
+
+  React.useEffect(() => {
+    let off = false;
+    fetch('./' + DC_STATE_FILE)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((saved) => {
+        if (off || !saved || !saved.sections) return;
+        skipNextWrite.current = true;
+        setState((s) => ({ ...s, sections: saved.sections }));
+      })
+      .catch(() => {})
+      .finally(() => { didRead.current = true; if (!off) setReady(true); });
+    const t = setTimeout(() => { if (!off) setReady(true); }, 150);
+    return () => { off = true; clearTimeout(t); };
+  }, []);
+
+  React.useEffect(() => {
+    if (!didRead.current) return;
+    if (skipNextWrite.current) { skipNextWrite.current = false; return; }
+    const t = setTimeout(() => {
+      window.omelette?.writeFile(DC_STATE_FILE, JSON.stringify({ sections: state.sections })).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [state.sections]);
+
+  // Build registries synchronously from children so FocusOverlay can read
+  // them in the same render. Fragments are flattened; wrapping in other
+  // elements still opts out of focus/reorder.
+  const registry = {};     // slotId -> { sectionId, artboard }
+  const sectionMeta = {};  // sectionId -> { title, subtitle, slotIds[] }
+  const sectionOrder = [];
+  dcFlatten(children).forEach((sec) => {
+    if (!sec || sec.type !== DCSection) return;
+    const sid = sec.props.id ?? sec.props.title;
+    if (!sid) return;
+    sectionOrder.push(sid);
+    const persisted = state.sections[sid] || {};
+    const abs = [];
+    dcFlatten(sec.props.children).forEach((ab) => {
+      if (!ab || ab.type !== DCArtboard) return;
+      const aid = ab.props.id ?? ab.props.label;
+      if (aid) abs.push([aid, ab]);
+    });
+    // hidden is scoped to one source revision — when the agent regenerates
+    // (artboard-ID set changes), prior deletes don't apply to new content.
+    const srcKey = abs.map(([k]) => k).join('\x1f');
+    const hidden = persisted.srcKey === srcKey ? (persisted.hidden || []) : [];
+    const srcIds = [];
+    abs.forEach(([aid, ab]) => {
+      if (hidden.includes(aid)) return;
+      registry[`${sid}/${aid}`] = { sectionId: sid, artboard: ab };
+      srcIds.push(aid);
+    });
+    const kept = (persisted.order || []).filter((k) => srcIds.includes(k));
+    sectionMeta[sid] = {
+      title: persisted.title ?? sec.props.title,
+      subtitle: sec.props.subtitle,
+      slotIds: [...kept, ...srcIds.filter((k) => !kept.includes(k))],
+    };
+  });
+
+  const api = React.useMemo(() => ({
+    state,
+    section: (id) => state.sections[id] || {},
+    patchSection: (id, p) => setState((s) => ({
+      ...s,
+      sections: { ...s.sections, [id]: { ...s.sections[id], ...(typeof p === 'function' ? p(s.sections[id] || {}) : p) } },
+    })),
+    setFocus: (slotId) => setState((s) => ({ ...s, focus: slotId })),
+  }), [state]);
+
+  // Esc exits focus; any outside pointerdown commits an in-progress rename.
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') api.setFocus(null); };
+    const onPd = (e) => {
+      const ae = document.activeElement;
+      if (ae && ae.isContentEditable && !ae.contains(e.target)) ae.blur();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPd, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPd, true);
+    };
+  }, [api]);
+
+  return (
+    <DCCtx.Provider value={api}>
+      <DCViewport minScale={minScale} maxScale={maxScale} style={style}>{ready && children}</DCViewport>
+      {state.focus && registry[state.focus] && (
+        <DCFocusOverlay entry={registry[state.focus]} sectionMeta={sectionMeta} sectionOrder={sectionOrder} />
+      )}
+    </DCCtx.Provider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DCViewport — transform-based pan/zoom (internal)
+//
+// Input mapping (Figma-style):
+//   • trackpad pinch  → zoom   (ctrlKey wheel; Safari gesture* events)
+//   • trackpad scroll → pan    (two-finger)
+//   • mouse wheel     → zoom   (notched; distinguished from trackpad scroll)
+//   • middle-drag / primary-drag-on-bg → pan
+//
+// Transform state lives in a ref and is written straight to the DOM
+// (translate3d + will-change) so wheel ticks don't go through React —
+// keeps pans at 60fps on dense canvases.
+// ─────────────────────────────────────────────────────────────
+function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
+  const vpRef = React.useRef(null);
+  const worldRef = React.useRef(null);
+  const tf = React.useRef({ x: 0, y: 0, scale: 1 });
+  // Persist viewport across reloads so the user lands back where they were
+  // after an agent edit or browser refresh. The sandbox origin is already
+  // per-project; pathname keeps multiple canvas files in one project apart.
+  const tfKey = 'dc-viewport:' + location.pathname;
+  const saveT = React.useRef(0);
+
+  const lastPostedScale = React.useRef();
+  const apply = React.useCallback(() => {
+    const { x, y, scale } = tf.current;
+    const el = worldRef.current;
+    if (!el) return;
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+    // Exposed for zoom-invariant chrome (labels, buttons, TweaksPanel).
+    el.style.setProperty('--dc-inv-zoom', String(1 / scale));
+    // Keep the host toolbar's % readout in sync with the canvas scale. Pan
+    // ticks leave scale unchanged — skip the cross-frame post for those.
+    if (lastPostedScale.current !== scale) {
+      lastPostedScale.current = scale;
+      window.parent.postMessage({ type: '__dc_zoom', scale }, '*');
+    }
+    clearTimeout(saveT.current);
+    saveT.current = setTimeout(() => {
+      try { localStorage.setItem(tfKey, JSON.stringify(tf.current)); } catch {}
+    }, 200);
+  }, [tfKey]);
+
+  React.useLayoutEffect(() => {
+    const flush = () => {
+      clearTimeout(saveT.current);
+      try { localStorage.setItem(tfKey, JSON.stringify(tf.current)); } catch {}
+    };
+    try {
+      const s = JSON.parse(localStorage.getItem(tfKey) || 'null');
+      if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.scale)) {
+        tf.current = { x: s.x, y: s.y, scale: Math.min(maxScale, Math.max(minScale, s.scale)) };
+        apply();
+      }
+    } catch {}
+    // Flush on pagehide and unmount so a reload within the 200ms debounce
+    // window doesn't drop the last pan/zoom.
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
+  }, []);
+
+  React.useEffect(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+
+    const zoomAt = (cx, cy, factor) => {
+      const r = vp.getBoundingClientRect();
+      const px = cx - r.left, py = cy - r.top;
+      const t = tf.current;
+      const next = Math.min(maxScale, Math.max(minScale, t.scale * factor));
+      const k = next / t.scale;
+      // --dc-inv-zoom consumers (.dc-sectionhead's CSS zoom, each section's
+      // marginBottom) reflow on every scale change, vertically shifting the
+      // world layout — so a world point mathematically pinned under the cursor
+      // drifts as you zoom (content creeps up on zoom-in, down on zoom-out).
+      // Anchor the DOM element under the cursor instead: record its screen Y,
+      // apply the transform + --dc-inv-zoom, then cancel whatever vertical
+      // drift the reflow introduced so it stays put on screen.
+      let marker = null, markerY0 = 0;
+      if (k !== 1) {
+        const hit = document.elementFromPoint(cx, cy);
+        marker = hit && hit.closest ? hit.closest('[data-dc-slot],[data-dc-section]') : null;
+        if (marker) markerY0 = marker.getBoundingClientRect().top;
+      }
+      // keep the world point under the cursor fixed
+      t.x = px - (px - t.x) * k;
+      t.y = py - (py - t.y) * k;
+      t.scale = next;
+      apply();
+      if (marker) {
+        // A pure zoom around (cx, cy) maps screen Y → cy + (Y - cy) * k. Any
+        // departure after the --dc-inv-zoom reflow is the layout drift.
+        const drift = marker.getBoundingClientRect().top - (cy + (markerY0 - cy) * k);
+        if (Math.abs(drift) > 0.1) { t.y -= drift; apply(); }
+      }
+    };
+
+    // Mouse-wheel vs trackpad-scroll heuristic. A physical wheel sends
+    // line-mode deltas (Firefox) or large integer pixel deltas with no X
+    // component (Chrome/Safari, typically multiples of 100/120). Trackpad
+    // two-finger scroll sends small/fractional pixel deltas, often with
+    // non-zero deltaX. ctrlKey is set by the browser for trackpad pinch.
+    const isMouseWheel = (e) =>
+      e.deltaMode !== 0 ||
+      (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40);
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      if (isGesturing) return; // Safari: gesture* owns the pinch — discard concurrent wheels
+      if ((e.ctrlKey || e.metaKey) && !isMouseWheel(e)) {
+        // trackpad pinch, or ctrl/cmd + smooth-scroll mouse. Notched
+        // wheels fall through to the fixed-step branch below.
+        zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+      } else if (isMouseWheel(e)) {
+        // notched mouse wheel — fixed-ratio step per click
+        zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+      } else {
+        // trackpad two-finger scroll — pan
+        tf.current.x -= e.deltaX;
+        tf.current.y -= e.deltaY;
+        apply();
+      }
+    };
+
+    // Safari sends native gesture* events for trackpad pinch with a smooth
+    // e.scale; preferring these over the ctrl+wheel fallback gives a much
+    // better feel there. No-ops on other browsers. Safari also fires
+    // ctrlKey wheel events during the same pinch — isGesturing makes
+    // onWheel drop those entirely so they neither zoom nor pan.
+    let gsBase = 1;
+    let isGesturing = false;
+    const onGestureStart = (e) => { e.preventDefault(); isGesturing = true; gsBase = tf.current.scale; };
+    const onGestureChange = (e) => {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
+    };
+    const onGestureEnd = (e) => { e.preventDefault(); isGesturing = false; };
+
+    // Drag-pan: middle button anywhere, or primary button on canvas
+    // background (anything that isn't an artboard or an inline editor).
+    let drag = null;
+    const onPointerDown = (e) => {
+      const onBg = !e.target.closest('[data-dc-slot], .dc-editable');
+      if (!(e.button === 1 || (e.button === 0 && onBg))) return;
+      e.preventDefault();
+      vp.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
+      vp.style.cursor = 'grabbing';
+    };
+    const onPointerMove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      tf.current.x += e.clientX - drag.lx;
+      tf.current.y += e.clientY - drag.ly;
+      drag.lx = e.clientX; drag.ly = e.clientY;
+      apply();
+    };
+    const onPointerUp = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      vp.releasePointerCapture(e.pointerId);
+      drag = null;
+      vp.style.cursor = '';
+    };
+
+    // Host-driven zoom (toolbar % menu). Zooms around viewport centre so the
+    // visible midpoint stays fixed — matching the host's iframe-zoom feel.
+    const onHostMsg = (e) => {
+      const d = e.data;
+      if (d && d.type === '__dc_set_zoom' && typeof d.scale === 'number') {
+        const r = vp.getBoundingClientRect();
+        zoomAt(r.left + r.width / 2, r.top + r.height / 2, d.scale / tf.current.scale);
+      } else if (d && d.type === '__dc_probe') {
+        // Host's [readyGen] reset asks whether a canvas is present; it
+        // fires on the iframe's native 'load', which for canvases with
+        // images/fonts is after our mount-time announce, so re-announce.
+        // Clear the pan-tick guard so apply() re-posts the current scale
+        // even if it's unchanged — the host just reset dcScale to 1.
+        window.parent.postMessage({ type: '__dc_present' }, '*');
+        lastPostedScale.current = undefined;
+        apply();
+      }
+    };
+    window.addEventListener('message', onHostMsg);
+    // Announce canvas mode so the host toolbar proxies its % control here
+    // instead of scaling the iframe element (which would just shrink the
+    // viewport window of an infinite canvas). The apply() that follows emits
+    // the initial __dc_zoom so the toolbar % is correct before first pinch.
+    // lastPostedScale reset mirrors the __dc_probe handler: the layout
+    // effect's restore-path apply() may already have posted the restored
+    // scale (before __dc_present), so clear the guard to re-post it in order.
+    window.parent.postMessage({ type: '__dc_present' }, '*');
+    lastPostedScale.current = undefined;
+    apply();
+
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    vp.addEventListener('gesturestart', onGestureStart, { passive: false });
+    vp.addEventListener('gesturechange', onGestureChange, { passive: false });
+    vp.addEventListener('gestureend', onGestureEnd, { passive: false });
+    vp.addEventListener('pointerdown', onPointerDown);
+    vp.addEventListener('pointermove', onPointerMove);
+    vp.addEventListener('pointerup', onPointerUp);
+    vp.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('message', onHostMsg);
+      vp.removeEventListener('wheel', onWheel);
+      vp.removeEventListener('gesturestart', onGestureStart);
+      vp.removeEventListener('gesturechange', onGestureChange);
+      vp.removeEventListener('gestureend', onGestureEnd);
+      vp.removeEventListener('pointerdown', onPointerDown);
+      vp.removeEventListener('pointermove', onPointerMove);
+      vp.removeEventListener('pointerup', onPointerUp);
+      vp.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [apply, minScale, maxScale]);
+
+  const gridSvg = `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M120 0H0v120' fill='none' stroke='${encodeURIComponent(DC.grid)}' stroke-width='1'/%3E%3C/svg%3E")`;
+  return (
+    <div
+      ref={vpRef}
+      className="design-canvas"
+      style={{
+        height: '100vh', width: '100vw',
+        background: DC.bg,
+        overflow: 'hidden',
+        overscrollBehavior: 'none',
+        touchAction: 'none',
+        position: 'relative',
+        fontFamily: DC.font,
+        boxSizing: 'border-box',
+        ...style,
+      }}
+    >
+      <div
+        ref={worldRef}
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          transformOrigin: '0 0',
+          willChange: 'transform',
+          width: 'max-content', minWidth: '100%',
+          minHeight: '100%',
+          padding: '60px 0 80px',
+        }}
+      >
+        <div style={{ position: 'absolute', inset: -6000, backgroundImage: gridSvg, backgroundSize: '120px 120px', pointerEvents: 'none', zIndex: -1 }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DCSection — editable title + h-row of artboards in persisted order
+// ─────────────────────────────────────────────────────────────
+function DCSection({ id, title, subtitle, children, gap = 48 }) {
+  const ctx = React.useContext(DCCtx);
+  const sid = id ?? title;
+  const all = React.Children.toArray(dcFlatten(children));
+  const artboards = all.filter((c) => c && c.type === DCArtboard);
+  const rest = all.filter((c) => !(c && c.type === DCArtboard));
+  const sec = (ctx && sid && ctx.section(sid)) || {};
+  // Must match DesignCanvas's srcKey computation exactly (it filters falsy
+  // IDs), or onDelete persists a srcKey that DesignCanvas never recognizes.
+  const allIds = artboards.map((a) => a.props.id ?? a.props.label).filter(Boolean);
+  const srcKey = allIds.join('\x1f');
+  const hidden = sec.srcKey === srcKey ? (sec.hidden || []) : [];
+  const srcOrder = allIds.filter((k) => !hidden.includes(k));
+
+  const order = React.useMemo(() => {
+    const kept = (sec.order || []).filter((k) => srcOrder.includes(k));
+    return [...kept, ...srcOrder.filter((k) => !kept.includes(k))];
+  }, [sec.order, srcOrder.join('|')]);
+
+  const byId = Object.fromEntries(artboards.map((a) => [a.props.id ?? a.props.label, a]));
+
+  // marginBottom counter-scales so the on-screen gap between sections stays
+  // constant — otherwise at low zoom the (world-space) gap collapses while
+  // the screen-constant sectionhead below it doesn't, and the title reads as
+  // belonging to the section above. paddingBottom below is just enough for
+  // the 24px artboard-header (abs-positioned above each card) plus ~8px, so
+  // the title sits tight against its own row at every zoom.
+  return (
+    <div data-dc-section={sid}
+      style={{ marginBottom: 'calc(80px * var(--dc-inv-zoom, 1))', position: 'relative' }}>
+      <div style={{ padding: '0 60px' }}>
+        <div className="dc-sectionhead" style={{ paddingBottom: 36 }}>
+          <DCEditable tag="div" value={sec.title ?? title}
+            onChange={(v) => ctx && sid && ctx.patchSection(sid, { title: v })}
+            style={{ fontSize: 28, fontWeight: 600, color: DC.title, letterSpacing: -0.4, marginBottom: 6, display: 'inline-block' }} />
+          {subtitle && <div style={{ fontSize: 16, color: DC.subtitle }}>{subtitle}</div>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start', width: 'max-content' }}>
+        {order.map((k) => (
+          <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
+            label={(sec.labels || {})[k] ?? byId[k].props.label}
+            onRename={(v) => ctx && ctx.patchSection(sid, (x) => ({ labels: { ...x.labels, [k]: v } }))}
+            onReorder={(next) => ctx && ctx.patchSection(sid, { order: next })}
+            onDelete={() => ctx && ctx.patchSection(sid, (x) => ({
+              hidden: [...(x.srcKey === srcKey ? (x.hidden || []) : []), k],
+              srcKey,
+            }))}
+            onFocus={() => ctx && ctx.setFocus(`${sid}/${k}`)} />
+        ))}
+      </div>
+      {rest}
+    </div>
+  );
+}
+
+// DCArtboard — marker; rendered by DCArtboardFrame via DCSection.
+function DCArtboard() { return null; }
+
+// Per-artboard export (kind: 'png' | 'html'). Both paths share the same
+// self-contained clone: computed styles baked in, @font-face / <img> /
+// inline-style background-image urls inlined as data URIs. PNG wraps the
+// clone in foreignObject→canvas at 3× the artboard's natural width×height
+// (same pipeline the host uses for page captures); HTML wraps it in a
+// minimal standalone document. Both are independent of viewport zoom.
+async function dcExport(node, w, h, name, kind) {
+  try { await document.fonts.ready; } catch {}
+  const toDataURL = (url) => fetch(url).then((r) => r.blob()).then((b) => new Promise((res) => {
+    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(url); fr.readAsDataURL(b);
+  })).catch(() => url);
+
+  // Collect @font-face rules. ss.cssRules throws SecurityError on
+  // cross-origin sheets (e.g. fonts.googleapis.com) — in that case fetch
+  // the CSS text directly (those endpoints send ACAO:*) and regex-extract
+  // the blocks. @import and @media/@supports are walked so nested
+  // @font-face rules aren't missed.
+  const fontRules = [], pending = [], seen = new Set();
+  const scrapeCss = (href) => {
+    if (seen.has(href)) return; seen.add(href);
+    pending.push(fetch(href).then((r) => r.text()).then((css) => {
+      for (const m of css.match(/@font-face\s*{[^}]*}/g) || []) fontRules.push({ css: m, base: href });
+      for (const m of css.matchAll(/@import\s+(?:url\()?['"]?([^'")\s;]+)/g))
+        scrapeCss(new URL(m[1], href).href);
+    }).catch(() => {}));
+  };
+  const walk = (rules, base) => {
+    for (const r of rules) {
+      if (r.type === CSSRule.FONT_FACE_RULE) fontRules.push({ css: r.cssText, base });
+      else if (r.type === CSSRule.IMPORT_RULE && r.styleSheet) {
+        const ibase = r.styleSheet.href || base;
+        try { walk(r.styleSheet.cssRules, ibase); } catch { scrapeCss(ibase); }
+      } else if (r.cssRules) walk(r.cssRules, base);
+    }
+  };
+  for (const ss of document.styleSheets) {
+    const base = ss.href || location.href;
+    try { walk(ss.cssRules, base); } catch { if (ss.href) scrapeCss(ss.href); }
+  }
+  while (pending.length) await pending.shift();
+  const fontCss = (await Promise.all(fontRules.map(async (rule) => {
+    let out = rule.css, m; const re = /url\((['"]?)([^'")]+)\1\)/g;
+    while ((m = re.exec(rule.css))) {
+      if (m[2].indexOf('data:') === 0) continue;
+      let abs; try { abs = new URL(m[2], rule.base).href; } catch { continue; }
+      out = out.split(m[0]).join('url("' + await toDataURL(abs) + '")');
+    }
+    return out;
+  }))).join('\n');
+
+  const cloneStyled = (src) => {
+    if (src.nodeType === 8 || (src.nodeType === 1 && src.tagName === 'SCRIPT')) return document.createTextNode('');
+    const dst = src.cloneNode(false);
+    if (src.nodeType === 1) {
+      const cs = getComputedStyle(src); let txt = '';
+      for (let i = 0; i < cs.length; i++) txt += cs[i] + ':' + cs.getPropertyValue(cs[i]) + ';';
+      dst.setAttribute('style', txt + 'animation:none;transition:none;');
+      if (src.tagName === 'CANVAS') try { const im = document.createElement('img'); im.src = src.toDataURL(); im.setAttribute('style', txt); return im; } catch {}
+    }
+    for (let c = src.firstChild; c; c = c.nextSibling) dst.appendChild(cloneStyled(c));
+    return dst;
+  };
+  const clone = cloneStyled(node);
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  // Drop the card's own shadow/radius so the export is a flush w×h rect;
+  // the artboard's own background (if any) is already in the computed style.
+  clone.style.boxShadow = 'none'; clone.style.borderRadius = '0';
+
+  const jobs = [];
+  clone.querySelectorAll('img').forEach((el) => {
+    const s = el.getAttribute('src');
+    if (s && s.indexOf('data:') !== 0) jobs.push(toDataURL(el.src).then((d) => el.setAttribute('src', d)));
+  });
+  [clone, ...clone.querySelectorAll('*')].forEach((el) => {
+    const bg = el.style.backgroundImage; if (!bg) return;
+    let m; const re = /url\(["']?([^"')]+)["']?\)/g;
+    while ((m = re.exec(bg))) {
+      const tok = m[0], url = m[1];
+      if (url.indexOf('data:') === 0) continue;
+      jobs.push(toDataURL(url).then((d) => { el.style.backgroundImage = el.style.backgroundImage.split(tok).join('url("' + d + '")'); }));
+    }
+  });
+  await Promise.all(jobs);
+
+  const xml = new XMLSerializer().serializeToString(clone);
+  const save = (blob, ext) => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name + '.' + ext; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  if (kind === 'html') {
+    const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + name + '</title>' +
+      (fontCss ? '<style>' + fontCss + '</style>' : '') +
+      '</head><body style="margin:0">' + xml + '</body></html>';
+    return save(new Blob([html], { type: 'text/html' }), 'html');
+  }
+
+  // PNG: the SVG's own width/height must be the output resolution — an
+  // <img>-loaded SVG rasterizes at its intrinsic size, so sizing it at 1×
+  // and ctx.scale()-ing up would just upscale a 1× bitmap. viewBox maps the
+  // w×h foreignObject onto the px·w × px·h SVG canvas so the browser renders
+  // the HTML at full resolution.
+  const px = 3;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w * px + '" height="' + h * px +
+    '" viewBox="0 0 ' + w + ' ' + h + '"><foreignObject width="' + w + '" height="' + h + '">' +
+    (fontCss ? '<style><![CDATA[' + fontCss + ']]></style>' : '') + xml + '</foreignObject></svg>';
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = () => rej(new Error('svg load failed'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  const cv = document.createElement('canvas');
+  cv.width = w * px; cv.height = h * px;
+  cv.getContext('2d').drawImage(img, 0, 0);
+  cv.toBlob((blob) => save(blob, 'png'), 'image/png');
+}
+
+function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorder, onFocus, onDelete }) {
+  const { id: rawId, label: rawLabel, width = 260, height = 480, children, style = {} } = artboard.props;
+  const id = rawId ?? rawLabel;
+  const ref = React.useRef(null);
+  const cardRef = React.useRef(null);
+  const menuRef = React.useRef(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
+
+  // ⋯ menu: close on any outside pointerdown. Two-click delete lives inside
+  // the menu — first click arms the row, second commits; closing disarms.
+  React.useEffect(() => {
+    if (!menuOpen) { setConfirming(false); return; }
+    const off = (e) => { if (!menuRef.current || !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('pointerdown', off, true);
+    return () => document.removeEventListener('pointerdown', off, true);
+  }, [menuOpen]);
+
+  const doExport = (kind) => {
+    setMenuOpen(false);
+    if (!cardRef.current) return;
+    const name = String(label || id || 'artboard').replace(/[^\w\s.-]+/g, '_');
+    dcExport(cardRef.current, width, height, name, kind)
+      .catch((e) => console.error('[design-canvas] export failed:', e));
+  };
+
+  // Live drag-reorder: dragged card sticks to cursor; siblings slide into
+  // their would-be slots in real time via transforms. DOM order only
+  // changes on drop.
+  const onGripDown = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const me = ref.current;
+    // translateX is applied in local (pre-scale) space but pointer deltas and
+    // getBoundingClientRect().left are screen-space — divide by the viewport's
+    // current scale so the dragged card tracks the cursor at any zoom level.
+    const scale = me.getBoundingClientRect().width / me.offsetWidth || 1;
+    const peers = Array.from(document.querySelectorAll(`[data-dc-section="${sectionId}"] [data-dc-slot]`));
+    const homes = peers.map((el) => ({ el, id: el.dataset.dcSlot, x: el.getBoundingClientRect().left }));
+    const slotXs = homes.map((h) => h.x);
+    const startIdx = order.indexOf(id);
+    const startX = e.clientX;
+    let liveOrder = order.slice();
+    me.classList.add('dc-dragging');
+
+    const layout = () => {
+      for (const h of homes) {
+        if (h.id === id) continue;
+        const slot = liveOrder.indexOf(h.id);
+        h.el.style.transform = `translateX(${(slotXs[slot] - h.x) / scale}px)`;
+      }
+    };
+
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      me.style.transform = `translateX(${dx / scale}px)`;
+      const cur = homes[startIdx].x + dx;
+      let nearest = 0, best = Infinity;
+      for (let i = 0; i < slotXs.length; i++) {
+        const d = Math.abs(slotXs[i] - cur);
+        if (d < best) { best = d; nearest = i; }
+      }
+      if (liveOrder.indexOf(id) !== nearest) {
+        liveOrder = order.filter((k) => k !== id);
+        liveOrder.splice(nearest, 0, id);
+        layout();
+      }
+    };
+
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      const finalSlot = liveOrder.indexOf(id);
+      me.classList.remove('dc-dragging');
+      me.style.transform = `translateX(${(slotXs[finalSlot] - homes[startIdx].x) / scale}px)`;
+      // After the settle transition, kill transitions + clear transforms +
+      // commit the reorder in the same frame so there's no visual snap-back.
+      setTimeout(() => {
+        for (const h of homes) { h.el.style.transition = 'none'; h.el.style.transform = ''; }
+        if (liveOrder.join('|') !== order.join('|')) onReorder(liveOrder);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          for (const h of homes) h.el.style.transition = '';
+        }));
+      }, 180);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+
+  return (
+    <div ref={ref} data-dc-slot={id} style={{ position: 'relative', flexShrink: 0 }}>
+      <div className="dc-header" data-omelette-chrome="" style={{ color: DC.label }} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="dc-labelrow">
+          <div className="dc-grip" onPointerDown={onGripDown} title="Drag to reorder">
+            <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/><circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/><circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>
+          </div>
+          <div className="dc-labeltext" onClick={onFocus} title="Click to focus">
+            <DCEditable value={label} onChange={onRename} onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: 15, fontWeight: 500, color: DC.label, lineHeight: 1 }} />
+          </div>
+        </div>
+        <div className="dc-btns">
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button className="dc-kebab" title="More" onClick={() => setMenuOpen((o) => !o)}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="2.5" cy="6" r="1.1"/><circle cx="6" cy="6" r="1.1"/><circle cx="9.5" cy="6" r="1.1"/></svg>
+            </button>
+            {menuOpen && (
+              <div className="dc-menu" onPointerDown={(e) => e.stopPropagation()}>
+                <button onClick={() => doExport('png')}>Download PNG</button>
+                <button onClick={() => doExport('html')}>Download HTML</button>
+                <hr />
+                <button className="dc-danger"
+                  onClick={() => { if (confirming) { setMenuOpen(false); onDelete(); } else setConfirming(true); }}>
+                  {confirming ? 'Click again to delete' : 'Delete'}
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="dc-expand" onClick={onFocus} title="Focus">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M7 1h4v4M5 11H1V7M11 1L7.5 4.5M1 11l3.5-3.5"/></svg>
+          </button>
+        </div>
+      </div>
+      <div ref={cardRef} className="dc-card"
+        style={{ borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)', overflow: 'hidden', width, height, background: '#fff', ...style }}>
+        {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 13, fontFamily: DC.font }}>{id}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Inline rename — commits on blur or Enter.
+function DCEditable({ value, onChange, style, tag = 'span', onClick }) {
+  const T = tag;
+  return (
+    <T className="dc-editable" contentEditable suppressContentEditableWarning
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={(e) => onChange && onChange(e.currentTarget.textContent)}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      style={style}>{value}</T>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Focus mode — overlay one artboard; ←/→ within section, ↑/↓ across
+// sections, Esc or backdrop click to exit.
+// ─────────────────────────────────────────────────────────────
+function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
+  const ctx = React.useContext(DCCtx);
+  const { sectionId, artboard } = entry;
+  const sec = ctx.section(sectionId);
+  const meta = sectionMeta[sectionId];
+  const peers = meta.slotIds;
+  const aid = artboard.props.id ?? artboard.props.label;
+  const idx = peers.indexOf(aid);
+  const secIdx = sectionOrder.indexOf(sectionId);
+
+  const go = (d) => { const n = peers[(idx + d + peers.length) % peers.length]; if (n) ctx.setFocus(`${sectionId}/${n}`); };
+  const goSection = (d) => {
+    // Sections whose artboards are all deleted have slotIds:[] — step past
+    // them to the next non-empty section so ↑/↓ doesn't dead-end.
+    const n = sectionOrder.length;
+    for (let i = 1; i < n; i++) {
+      const ns = sectionOrder[(((secIdx + d * i) % n) + n) % n];
+      const first = sectionMeta[ns] && sectionMeta[ns].slotIds[0];
+      if (first) { ctx.setFocus(`${ns}/${first}`); return; }
+    }
+  };
+
+  React.useEffect(() => {
+    const k = (e) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); goSection(-1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); goSection(1); }
+    };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  });
+
+  const { width = 260, height = 480, children } = artboard.props;
+  const [vp, setVp] = React.useState({ w: window.innerWidth, h: window.innerHeight });
+  React.useEffect(() => { const r = () => setVp({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const scale = Math.max(0.1, Math.min((vp.w - 200) / width, (vp.h - 260) / height, 2));
+
+  const [ddOpen, setDd] = React.useState(false);
+  const Arrow = ({ dir, onClick }) => (
+    <button onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{ position: 'absolute', top: '50%', [dir]: 28, transform: 'translateY(-50%)',
+        border: 'none', background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.9)',
+        width: 44, height: 44, borderRadius: 22, fontSize: 18, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.08)')}>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d={dir === 'left' ? 'M11 3L5 9l6 6' : 'M7 3l6 6-6 6'} /></svg>
+    </button>
+  );
+
+  // Portal to body so position:fixed is the real viewport regardless of any
+  // transform on DesignCanvas's ancestors (including the canvas zoom itself).
+  return ReactDOM.createPortal(
+    <div onClick={() => ctx.setFocus(null)}
+      onWheel={(e) => e.preventDefault()}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(24,20,16,.6)', backdropFilter: 'blur(14px)',
+        fontFamily: DC.font, color: '#fff' }}>
+
+      {/* top bar: section dropdown (left) · close (right) */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72, display: 'flex', alignItems: 'flex-start', padding: '16px 20px 0', gap: 16 }}>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setDd((o) => !o)}
+            style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', padding: '6px 8px',
+              borderRadius: 6, textAlign: 'left', fontFamily: 'inherit' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>{meta.title}</span>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ opacity: .7 }}><path d="M2 4l3.5 3.5L9 4"/></svg>
+            </span>
+            {meta.subtitle && <span style={{ display: 'block', fontSize: 13, opacity: .6, fontWeight: 400, marginTop: 2 }}>{meta.subtitle}</span>}
+          </button>
+          {ddOpen && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#2a251f', borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,.4)', padding: 4, minWidth: 200, zIndex: 10 }}>
+              {sectionOrder.filter((sid) => sectionMeta[sid].slotIds.length).map((sid) => (
+                <button key={sid} onClick={() => { setDd(false); const f = sectionMeta[sid].slotIds[0]; if (f) ctx.setFocus(`${sid}/${f}`); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
+                    background: sid === sectionId ? 'rgba(255,255,255,.1)' : 'transparent', color: '#fff',
+                    padding: '8px 12px', borderRadius: 5, fontSize: 14, fontWeight: sid === sectionId ? 600 : 400, fontFamily: 'inherit' }}>
+                  {sectionMeta[sid].title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => ctx.setFocus(null)}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.12)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,.7)', width: 32, height: 32,
+            borderRadius: 16, fontSize: 20, cursor: 'pointer', lineHeight: 1, transition: 'background .12s' }}>×</button>
+      </div>
+
+      {/* card centered, label + index below — only the card itself stops
+          propagation so any backdrop click (including the margins around
+          the card) exits focus */}
+      <div
+        style={{ position: 'absolute', top: 64, bottom: 56, left: 100, right: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: width * scale, height: height * scale, position: 'relative' }}>
+          <div style={{ width, height, transform: `scale(${scale})`, transformOrigin: 'top left', background: '#fff', borderRadius: 2, overflow: 'hidden',
+            boxShadow: '0 20px 80px rgba(0,0,0,.4)' }}>
+            {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb' }}>{aid}</div>}
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()} style={{ fontSize: 14, fontWeight: 500, opacity: .85, textAlign: 'center' }}>
+          {(sec.labels || {})[aid] ?? artboard.props.label}
+          <span style={{ opacity: .5, marginLeft: 10, fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {peers.length}</span>
+        </div>
+      </div>
+
+      <Arrow dir="left" onClick={() => go(-1)} />
+      <Arrow dir="right" onClick={() => go(1)} />
+
+      {/* dots */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8 }}>
+        {peers.map((p, i) => (
+          <button key={p} onClick={() => ctx.setFocus(`${sectionId}/${p}`)}
+            style={{ border: 'none', padding: 0, cursor: 'pointer', width: 6, height: 6, borderRadius: 3,
+              background: i === idx ? '#fff' : 'rgba(255,255,255,.3)' }} />
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Post-it — absolute-positioned sticky note
+// ─────────────────────────────────────────────────────────────
+function DCPostIt({ children, top, left, right, bottom, rotate = -2, width = 180 }) {
+  return (
+    <div style={{
+      position: 'absolute', top, left, right, bottom, width,
+      background: DC.postitBg, padding: '14px 16px',
+      fontFamily: '"Comic Sans MS", "Marker Felt", "Segoe Print", cursive',
+      fontSize: 14, lineHeight: 1.4, color: DC.postitText,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)',
+      transform: `rotate(${rotate}deg)`,
+      zIndex: 5,
+    }}>{children}</div>
+  );
+}
+
+Object.assign(window, { DesignCanvas, DCSection, DCArtboard, DCPostIt });
+
+
+
+/* === primitives.jsx === */
+// Sketchy wireframe primitives — hand-drawn aesthetic for Trading Rules wireframes.
+
+const WFCOLORS = {
+  ink: '#2a2620',
+  paper: '#fdfbf4',
+  paper2: '#f5efe0',
+  paper3: '#efe7d2',
+  muted: '#7a6e5e',
+  faint: '#bfb39b',
+  ok: '#3f7a36',
+  warn: '#b87a1a',
+  bad: '#b53a30',
+  accent: '#2f5c8a',
+  highlight: '#fff3b0',
+};
+
+const FONT_HAND = "'Patrick Hand', 'Bradley Hand', cursive";
+const FONT_TITLE = "'Architects Daughter', 'Patrick Hand', cursive";
+const FONT_MONO = "'JetBrains Mono', 'Courier New', monospace";
+
+if (typeof document !== 'undefined' && !document.getElementById('wf-styles')) {
+  const s = document.createElement('style');
+  s.id = 'wf-styles';
+  s.textContent = `
+    .wf-board { font-family: ${FONT_HAND}; color: ${WFCOLORS.ink}; background: ${WFCOLORS.paper}; height: 100%; box-sizing: border-box; position: relative; overflow: hidden; }
+    .wf-board::before { content:''; position:absolute; inset:0; background-image: radial-gradient(circle, ${WFCOLORS.faint}55 0.8px, transparent 0.8px); background-size: 22px 22px; opacity: .35; pointer-events: none; }
+    .wf-board > * { position: relative; }
+
+    .wf-sb { border: 1.5px solid ${WFCOLORS.ink}; border-radius: 9px 12px 7px 14px; background: ${WFCOLORS.paper}; position: relative; }
+    .wf-sb-2 { border-radius: 12px 8px 13px 10px; }
+    .wf-sb-3 { border-radius: 7px 14px 9px 12px; }
+    .wf-sb-pill { border-radius: 999px; }
+    .wf-shadow { box-shadow: 2px 3px 0 -1px ${WFCOLORS.ink}; }
+    .wf-shadow-sm { box-shadow: 1.5px 2px 0 -1px ${WFCOLORS.ink}; }
+    .wf-rot-l { transform: rotate(-0.4deg); }
+    .wf-rot-r { transform: rotate(0.3deg); }
+
+    .wf-h1 { font-family: ${FONT_TITLE}; font-size: 30px; margin: 0; letter-spacing: 0.3px; line-height: 1.05; }
+    .wf-h2 { font-family: ${FONT_TITLE}; font-size: 20px; margin: 0; letter-spacing: 0.2px; }
+    .wf-h3 { font-family: ${FONT_HAND}; font-size: 16px; margin: 0; font-weight: 700; }
+    .wf-mono { font-family: ${FONT_MONO}; font-weight: 600; letter-spacing: -0.3px; }
+    .wf-mute { color: ${WFCOLORS.muted}; }
+    .wf-tiny { font-size: 11px; }
+    .wf-small { font-size: 13px; }
+
+    .wf-row { display: flex; align-items: center; }
+    .wf-col { display: flex; flex-direction: column; }
+    .wf-gap-1 { gap: 4px; } .wf-gap-2 { gap: 8px; } .wf-gap-3 { gap: 12px; } .wf-gap-4 { gap: 16px; } .wf-gap-5 { gap: 20px; } .wf-gap-6 { gap: 24px; } .wf-gap-8 { gap: 32px; }
+    .wf-grow { flex: 1 1 auto; min-width: 0; }
+    .wf-between { justify-content: space-between; }
+    .wf-center { justify-content: center; }
+    .wf-end { justify-content: flex-end; }
+
+    .wf-input { font-family: ${FONT_MONO}; font-size: 14px; background: transparent; border: none; border-bottom: 1.5px dashed ${WFCOLORS.ink}; padding: 2px 6px; color: ${WFCOLORS.ink}; outline: none; min-width: 0; }
+    .wf-input:focus { border-bottom-style: solid; background: ${WFCOLORS.highlight}66; }
+    .wf-input--solid { border: 1.5px solid ${WFCOLORS.ink}; border-radius: 6px 9px 7px 11px; padding: 4px 8px; }
+
+    .wf-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 3px; font-size: 12px; font-family: ${FONT_HAND}; border: 1.5px solid currentColor; border-radius: 999px; background: ${WFCOLORS.paper}; line-height: 1.2; }
+    .wf-badge--ok { color: ${WFCOLORS.ok}; }
+    .wf-badge--warn { color: ${WFCOLORS.warn}; }
+    .wf-badge--bad { color: ${WFCOLORS.bad}; }
+    .wf-badge--neutral { color: ${WFCOLORS.muted}; }
+    .wf-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    .wf-toggle { width: 34px; height: 19px; border: 1.5px solid ${WFCOLORS.ink}; border-radius: 999px; position: relative; background: ${WFCOLORS.paper}; flex: 0 0 auto; }
+    .wf-toggle--on { background: ${WFCOLORS.ok}; }
+    .wf-toggle--bad { background: ${WFCOLORS.bad}33; }
+    .wf-toggle::after { content: ''; position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%; background: ${WFCOLORS.paper}; border: 1.5px solid ${WFCOLORS.ink}; }
+    .wf-toggle--on::after { left: auto; right: 1px; }
+
+    .wf-btn { font-family: ${FONT_HAND}; font-size: 14px; padding: 5px 13px; border: 1.5px solid ${WFCOLORS.ink}; background: ${WFCOLORS.paper}; border-radius: 8px 11px 7px 13px; cursor: pointer; color: ${WFCOLORS.ink}; box-shadow: 1.5px 2px 0 -1px ${WFCOLORS.ink}; }
+    .wf-btn--primary { background: ${WFCOLORS.ink}; color: ${WFCOLORS.paper}; }
+    .wf-btn--ghost { box-shadow: none; background: transparent; }
+    .wf-btn--sm { font-size: 12px; padding: 3px 9px; }
+
+    .wf-chip { padding: 3px 10px 4px; font-size: 13px; border: 1.5px solid ${WFCOLORS.ink}; border-radius: 999px; background: ${WFCOLORS.paper}; font-family: ${FONT_HAND}; display: inline-flex; align-items: center; gap: 6px; line-height: 1.2; cursor: pointer; }
+    .wf-chip--active { background: ${WFCOLORS.ink}; color: ${WFCOLORS.paper}; }
+    .wf-chip--ghost { border-style: dashed; color: ${WFCOLORS.muted}; }
+
+    .wf-divider { height: 4px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 4'><path d='M0 2 Q 5 0 10 2 T 20 2 T 30 2 T 40 2 T 50 2 T 60 2 T 70 2 T 80 2 T 90 2 T 100 2' stroke='%232a2620' stroke-width='1.2' fill='none' opacity='0.55'/></svg>"); background-size: 100px 4px; background-repeat: repeat-x; background-position: 0 50%; }
+    .wf-vdiv { width: 1.5px; background: ${WFCOLORS.ink}; opacity: 0.18; }
+    .wf-hdiv { height: 1.5px; background: ${WFCOLORS.ink}; opacity: 0.18; }
+
+    .wf-slot { background: repeating-linear-gradient(135deg, ${WFCOLORS.paper2}, ${WFCOLORS.paper2} 7px, transparent 7px, transparent 14px); border: 1.5px dashed ${WFCOLORS.ink}; border-radius: 8px 11px 7px 12px; display: flex; align-items: center; justify-content: center; font-family: ${FONT_MONO}; font-size: 11px; color: ${WFCOLORS.muted}; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .wf-progress { height: 8px; border: 1.5px solid ${WFCOLORS.ink}; border-radius: 999px; background: ${WFCOLORS.paper}; overflow: hidden; position: relative; }
+    .wf-progress > i { display:block; height: 100%; background: ${WFCOLORS.ink}; }
+    .wf-progress--ok > i { background: ${WFCOLORS.ok}; }
+    .wf-progress--warn > i { background: ${WFCOLORS.warn}; }
+    .wf-progress--bad > i { background: ${WFCOLORS.bad}; }
+
+    .wf-tab { font-family: ${FONT_HAND}; font-size: 14px; padding: 6px 14px; border: none; background: transparent; cursor: pointer; color: ${WFCOLORS.muted}; border-bottom: 2px dashed transparent; }
+    .wf-tab--active { color: ${WFCOLORS.ink}; border-bottom-color: ${WFCOLORS.ink}; border-bottom-style: solid; }
+
+    .wf-kbd { font-family: ${FONT_MONO}; font-size: 11px; padding: 1px 5px; border: 1.5px solid ${WFCOLORS.ink}; border-radius: 4px; background: ${WFCOLORS.paper2}; }
+
+    .wf-stamp { display: inline-block; padding: 2px 8px; border: 2px solid currentColor; border-radius: 4px; font-family: ${FONT_TITLE}; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; transform: rotate(-4deg); }
+
+    /* Squiggly underline for headings */
+    .wf-squig { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 6'><path d='M0 4 Q 4 1 8 4 T 16 4 T 24 4 T 32 4 T 40 4 T 48 4 T 56 4 T 64 4 T 72 4 T 80 4' stroke='%23b87a1a' stroke-width='1.6' fill='none'/></svg>"); background-size: 80px 6px; background-repeat: repeat-x; background-position: 0 100%; padding-bottom: 5px; }
+
+    /* arrow */
+    .wf-arrow::after { content: '→'; font-family: ${FONT_TITLE}; opacity: 0.7; }
+
+    /* tally for sparkline-ish */
+    .wf-spark { display: flex; align-items: flex-end; gap: 2px; height: 24px; }
+    .wf-spark > span { width: 4px; background: ${WFCOLORS.ink}; border-radius: 1px; opacity: 0.65; }
+  `;
+  document.head.appendChild(s);
+}
+
+const SB = ({ children, style, className = '', shadow = true, ...rest }) => (
+  <div className={`wf-sb ${shadow ? 'wf-shadow' : ''} ${className}`} style={style} {...rest}>{children}</div>
+);
+
+const Badge = ({ type = 'ok', children }) => (
+  <span className={`wf-badge wf-badge--${type}`}>
+    <span className="wf-dot" />
+    {children}
+  </span>
+);
+
+const Toggle = ({ on = false, bad = false }) => (
+  <div className={`wf-toggle ${on ? 'wf-toggle--on' : ''} ${bad ? 'wf-toggle--bad' : ''}`} />
+);
+
+const Btn = ({ primary, ghost, sm, children, style }) => (
+  <button className={`wf-btn ${primary ? 'wf-btn--primary' : ''} ${ghost ? 'wf-btn--ghost' : ''} ${sm ? 'wf-btn--sm' : ''}`} style={style}>{children}</button>
+);
+
+const Chip = ({ active, ghost, children, style }) => (
+  <span className={`wf-chip ${active ? 'wf-chip--active' : ''} ${ghost ? 'wf-chip--ghost' : ''}`} style={style}>{children}</span>
+);
+
+const Slot = ({ label, h = 80, style }) => (
+  <div className="wf-slot" style={{ height: h, ...style }}>{label}</div>
+);
+
+const Progress = ({ pct = 50, type = '' }) => (
+  <div className={`wf-progress ${type ? 'wf-progress--' + type : ''}`}>
+    <i style={{ width: pct + '%' }} />
+  </div>
+);
+
+const Spark = ({ vals = [4, 7, 5, 9, 6, 11, 8, 14, 10, 13, 16, 12] }) => (
+  <div className="wf-spark">
+    {vals.map((v, i) => <span key={i} style={{ height: v * 1.5 + 'px' }} />)}
+  </div>
+);
+
+const Divider = ({ style }) => <div className="wf-divider" style={style} />;
+
+const ScribbleTitle = ({ children, color = WFCOLORS.ink }) => (
+  <h2 className="wf-h2 wf-squig" style={{ color, display: 'inline-block' }}>{children}</h2>
+);
+
+Object.assign(window, {
+  WFCOLORS, FONT_HAND, FONT_TITLE, FONT_MONO,
+  SB, Badge, Toggle, Btn, Chip, Slot, Progress, Spark, Divider, ScribbleTitle,
+});
+
+
+/* === variations.jsx === */
+// Trading Rules — 5 desktop wireframe variations + 2 mobile.
+// All variations share the same data so comparison stays honest.
+
+const ACCOUNTS = [
+  { id: 'eval50', label: 'Eval $50K', tv: 'TV4128', status: 'warn' },
+  { id: 'fund100', label: 'Funded $100K', tv: 'TV9102', status: 'ok' },
+  { id: 'fund50', label: 'Funded $50K', tv: 'TV7715', status: 'ok' },
+  { id: 'pers', label: 'Personal', tv: 'TV2200', status: 'ok' },
+];
+
+const RULES = [
+  { id: 'daily-loss', name: 'Daily Loss Limit', val: '$1,200', curr: '$840 used', pct: 70, status: 'warn', on: true, group: 'Risk' },
+  { id: 'max-dd', name: 'Max Drawdown', val: '$2,500', curr: 'trailing $1,150', pct: 46, status: 'ok', on: true, group: 'Risk' },
+  { id: 'risk-trade', name: 'Risk per Trade', val: '1% · $500', curr: 'auto-SL', pct: 100, status: 'ok', on: true, group: 'Risk' },
+  { id: 'pos-size', name: 'Position Size', val: '5 contracts', curr: 'NQ, ES capped', pct: 100, status: 'ok', on: true, group: 'Position' },
+  { id: 'max-open', name: 'Max Open Positions', val: '3', curr: '2 open now', pct: 67, status: 'ok', on: true, group: 'Position' },
+  { id: 'profit-tgt', name: 'Daily Profit Target', val: '$3,000', curr: '$1,840 today', pct: 61, status: 'ok', on: true, group: 'Goals' },
+  { id: 'hours', name: 'Trading Hours', val: '08:30→16:00 ET', curr: 'Mon–Fri', pct: 100, status: 'ok', on: true, group: 'Schedule' },
+  { id: 'consistency', name: 'Consistency', val: '≤ 40% best day', curr: 'within range', pct: 100, status: 'ok', on: true, group: 'Goals' },
+  { id: 'news', name: 'News Blackout', val: '5 min ±', curr: 'CPI Thu 8:30', pct: 0, status: 'bad', on: false, group: 'Schedule' },
+];
+
+// ─────────────────────────────────────────────────────────────────
+// V1 · Accordion list (sparse → expandable, view-then-edit)
+// ─────────────────────────────────────────────────────────────────
+const V1Accordion = () => {
+  const expandedId = 'daily-loss';
+  return (
+    <div className="wf-board" style={{ padding: 28 }}>
+      {/* Header */}
+      <div className="wf-row wf-between" style={{ marginBottom: 18 }}>
+        <div>
+          <h1 className="wf-h1">Trading Rules</h1>
+          <div className="wf-mute wf-small" style={{ marginTop: 4 }}>
+            9 rules · synced with Tradovate · last change 2 min ago
+          </div>
+        </div>
+        <div className="wf-row wf-gap-2">
+          <Btn ghost>discard</Btn>
+          <Btn primary>save 2 changes</Btn>
+        </div>
+      </div>
+
+      {/* Account row */}
+      <div className="wf-row wf-gap-2" style={{ marginBottom: 8, alignItems: 'center' }}>
+        <span className="wf-mute wf-small">editing for —</span>
+        {ACCOUNTS.map((a, i) => (
+          <Chip key={a.id} active={i === 0}>
+            <span className="wf-dot" style={{ color: a.status === 'warn' ? WFCOLORS.warn : WFCOLORS.ok }} />
+            {a.label} <span className="wf-mute wf-tiny" style={{ marginLeft: 4 }}>{a.tv}</span>
+          </Chip>
+        ))}
+        <span style={{ marginLeft: 'auto' }}>
+          <Chip ghost>+ apply to all 4</Chip>
+        </span>
+      </div>
+
+      <div className="wf-divider" style={{ margin: '14px 0 18px' }} />
+
+      {/* Accordion */}
+      <SB style={{ padding: 0 }}>
+        {RULES.map((r, i) => {
+          const open = r.id === expandedId;
+          return (
+            <div key={r.id}>
+              <div className="wf-row" style={{ padding: '14px 20px', alignItems: 'center', gap: 16 }}>
+                <span className="wf-mono wf-mute wf-tiny" style={{ width: 22 }}>{String(i + 1).padStart(2, '0')}</span>
+                <Toggle on={r.on} bad={!r.on} />
+                <span className="wf-h3" style={{ width: 200 }}>{r.name}</span>
+                <span className="wf-mute wf-tiny" style={{ width: 70 }}>{r.group}</span>
+                <span className="wf-grow wf-mono wf-small" style={{ textAlign: 'right' }}>{r.val}</span>
+                <span style={{ width: 100, textAlign: 'right' }}>
+                  <Badge type={r.status}>{r.status === 'ok' ? 'on track' : r.status === 'warn' ? '70%' : 'off'}</Badge>
+                </span>
+                <span className="wf-mute" style={{ width: 18, textAlign: 'center' }}>{open ? '▾' : '▸'}</span>
+              </div>
+
+              {open && (
+                <div style={{ padding: '4px 24px 22px 70px', background: WFCOLORS.paper2, borderTop: `1.5px dashed ${WFCOLORS.ink}22`, borderBottom: `1.5px dashed ${WFCOLORS.ink}22` }}>
+                  <div className="wf-row wf-gap-6" style={{ marginTop: 16, alignItems: 'flex-start' }}>
+                    <div className="wf-col wf-gap-3" style={{ flex: 1 }}>
+                      <div className="wf-row wf-gap-4">
+                        <label className="wf-col wf-gap-1">
+                          <span className="wf-mute wf-tiny">loss limit ($)</span>
+                          <input className="wf-input wf-input--solid" defaultValue="1200" style={{ width: 110 }} />
+                        </label>
+                        <label className="wf-col wf-gap-1">
+                          <span className="wf-mute wf-tiny">resets at</span>
+                          <input className="wf-input wf-input--solid" defaultValue="17:00 ET" style={{ width: 110 }} />
+                        </label>
+                        <label className="wf-col wf-gap-1">
+                          <span className="wf-mute wf-tiny">warn at</span>
+                          <input className="wf-input wf-input--solid" defaultValue="80%" style={{ width: 80 }} />
+                        </label>
+                      </div>
+                      <div className="wf-col wf-gap-2" style={{ marginTop: 6 }}>
+                        <span className="wf-mute wf-tiny">when triggered →</span>
+                        <div className="wf-row wf-gap-2" style={{ flexWrap: 'wrap' }}>
+                          <Chip active>close all positions</Chip>
+                          <Chip active>cancel pending orders</Chip>
+                          <Chip active>lock account till reset</Chip>
+                          <Chip ghost>+ add action</Chip>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="wf-col wf-gap-2" style={{ width: 240 }}>
+                      <span className="wf-mute wf-tiny">today's usage</span>
+                      <SB shadow={false} style={{ padding: 12, background: WFCOLORS.paper }}>
+                        <div className="wf-row wf-between" style={{ marginBottom: 6 }}>
+                          <span className="wf-mono" style={{ fontSize: 18, color: WFCOLORS.warn }}>−$840</span>
+                          <span className="wf-mute wf-tiny">of $1,200</span>
+                        </div>
+                        <Progress pct={70} type="warn" />
+                        <div className="wf-mute wf-tiny" style={{ marginTop: 6 }}>resets in 4h 12m</div>
+                      </SB>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {i < RULES.length - 1 && !open && (
+                <div className="wf-hdiv" style={{ marginLeft: 20, marginRight: 20 }} />
+              )}
+            </div>
+          );
+        })}
+      </SB>
+
+      <div className="wf-row wf-center" style={{ marginTop: 14 }}>
+        <Btn ghost>+ add custom rule</Btn>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────
+// V2 · Dashboard cards (status-forward, dense)
+// ─────────────────────────────────────────────────────────────────
+const V2Dashboard = () => {
+  return (
+    <div className="wf-board" style={{ padding: 26 }}>
+      {/* Header strip with global compliance */}
+      <div className="wf-row wf-between" style={{ marginBottom: 18 }}>
+        <div className="wf-row wf-gap-4" style={{ alignItems: 'flex-end' }}>
+          <h1 className="wf-h1">Rules · Eval $50K</h1>
+          <span className="wf-mute wf-small" style={{ marginBottom: 4 }}>TV4128 · live</span>
+        </div>
+        <div className="wf-row wf-gap-2">
+          <Btn ghost sm>↻ sync</Btn>
+          <Btn ghost sm>copy from…</Btn>
+          <Btn primary>edit rules</Btn>
+        </div>
+      </div>
+
+      {/* Account tabs */}
+      <div className="wf-row" style={{ borderBottom: `1.5px solid ${WFCOLORS.ink}22`, marginBottom: 20 }}>
+        {ACCOUNTS.map((a, i) => (
+          <button key={a.id} className={`wf-tab ${i === 0 ? 'wf-tab--active' : ''}`}>
+            <span className="wf-dot" style={{ display: 'inline-block', marginRight: 6, color: a.status === 'warn' ? WFCOLORS.warn : WFCOLORS.ok }} />
+            {a.label}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', alignSelf: 'center' }} className="wf-row wf-gap-2">
+          <span className="wf-mute wf-small">overall:</span>
+          <Badge type="warn">1 warning · 1 disabled</Badge>
+        </span>
+      </div>
+
+      {/* Card grid 3x3 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        {RULES.map((r, i) => (
+          <SB key={r.id} className={i % 4 === 1 ? 'wf-rot-r' : i % 4 === 3 ? 'wf-rot-l' : ''} style={{ padding: 16 }}>
+            <div className="wf-row wf-between" style={{ marginBottom: 10 }}>
+              <span className="wf-h3">{r.name}</span>
+              <Badge type={r.status}>
+                {r.status === 'ok' ? 'on track' : r.status === 'warn' ? '70% used' : 'disabled'}
+              </Badge>
+            </div>
+            <div className="wf-row wf-between" style={{ alignItems: 'flex-end', marginBottom: 12 }}>
+              <span className="wf-mono" style={{ fontSize: 26, lineHeight: 1, color: r.status === 'bad' ? WFCOLORS.muted : WFCOLORS.ink }}>{r.val}</span>
+              <span className="wf-mute wf-tiny" style={{ textAlign: 'right', maxWidth: 110 }}>{r.curr}</span>
+            </div>
+            <Progress pct={r.status === 'bad' ? 0 : r.pct} type={r.status} />
+            <div className="wf-row wf-between" style={{ marginTop: 10 }}>
+              <span className="wf-mute wf-tiny">{r.group}</span>
+              <span className="wf-row wf-gap-2">
+                <Toggle on={r.on} />
+                <span className="wf-tiny" style={{ textDecoration: 'underline', textDecorationStyle: 'dashed' }}>edit</span>
+              </span>
+            </div>
+          </SB>
+        ))}
+      </div>
+
+      <div className="wf-row wf-center wf-gap-2" style={{ marginTop: 18 }}>
+        <Btn ghost>+ add custom rule</Btn>
+        <span className="wf-mute wf-tiny">⌘N</span>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────
+// V3 · Split view (master/detail, focused inline edit)
+// ─────────────────────────────────────────────────────────────────
+const V3Split = () => {
+  const selectedId = 'daily-loss';
+  return (
+    <div className="wf-board" style={{ padding: 0, display: 'flex' }}>
+      {/* Left rail */}
+      <div style={{ width: 280, padding: '24px 18px', borderRight: `1.5px dashed ${WFCOLORS.ink}33`, background: WFCOLORS.paper2 }}>
+        <h1 className="wf-h1" style={{ fontSize: 22, marginBottom: 4 }}>Rules</h1>
+        <div className="wf-mute wf-tiny" style={{ marginBottom: 16 }}>Guardrail · v2</div>
+
+        <SB shadow={false} style={{ padding: 10, marginBottom: 18, background: WFCOLORS.paper }}>
+          <div className="wf-mute wf-tiny" style={{ marginBottom: 6 }}>account</div>
+          <div className="wf-row wf-between" style={{ alignItems: 'center' }}>
+            <div>
+              <div className="wf-h3">Eval $50K</div>
+              <div className="wf-mute wf-tiny wf-mono">TV4128</div>
+            </div>
+            <span className="wf-mute">▾</span>
+          </div>
+        </SB>
+
+        {['Risk', 'Position', 'Goals', 'Schedule'].map(grp => (
+          <div key={grp} style={{ marginBottom: 14 }}>
+            <div className="wf-mute wf-tiny" style={{ textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, paddingLeft: 4 }}>{grp}</div>
+            <div className="wf-col" style={{ gap: 2 }}>
+              {RULES.filter(r => r.group === grp).map(r => {
+                const sel = r.id === selectedId;
+                return (
+                  <div key={r.id} className="wf-row wf-between" style={{
+                    padding: '8px 10px',
+                    background: sel ? WFCOLORS.ink : 'transparent',
+                    color: sel ? WFCOLORS.paper : WFCOLORS.ink,
+                    borderRadius: '7px 11px 6px 12px',
+                    cursor: 'pointer',
+                  }}>
+                    <span className="wf-row wf-gap-2" style={{ alignItems: 'center' }}>
+                      <span className="wf-dot" style={{ color: r.status === 'ok' ? WFCOLORS.ok : r.status === 'warn' ? WFCOLORS.warn : WFCOLORS.bad }} />
+                      <span className="wf-small">{r.name}</span>
+                    </span>
+                    {!r.on && <span className="wf-tiny" style={{ opacity: 0.7 }}>off</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div className="wf-hdiv" style={{ margin: '14px 0' }} />
+        <Btn ghost sm style={{ width: '100%' }}>+ add custom rule</Btn>
+      </div>
+
+      {/* Detail pane */}
+      <div className="wf-grow" style={{ padding: 32, overflow: 'hidden' }}>
+        {/* Breadcrumb + actions */}
+        <div className="wf-row wf-between" style={{ marginBottom: 18 }}>
+          <div className="wf-mute wf-small">
+            Rules <span className="wf-arrow" /> Risk <span className="wf-arrow" /> <span style={{ color: WFCOLORS.ink, fontWeight: 600 }}>Daily Loss Limit</span>
+          </div>
+          <div className="wf-row wf-gap-2">
+            <Btn ghost sm>history</Btn>
+            <Btn ghost sm>duplicate to →</Btn>
+            <Btn primary sm>apply</Btn>
+          </div>
+        </div>
+
+        <div className="wf-row wf-between" style={{ alignItems: 'flex-start', marginBottom: 22 }}>
+          <div>
+            <h1 className="wf-h1">Daily Loss Limit</h1>
+            <p className="wf-mute wf-small" style={{ margin: '6px 0 0', maxWidth: 480 }}>
+              Stops trading for the day if realized + unrealized P&L drops below this threshold. Required by most prop firms.
+            </p>
+          </div>
+          <div className="wf-row wf-gap-2" style={{ alignItems: 'center' }}>
+            <span className="wf-small">enabled</span>
+            <Toggle on />
+          </div>
+        </div>
+
+        {/* Main form columns */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 28 }}>
+          <SB style={{ padding: 22 }}>
+            <ScribbleTitle>Threshold</ScribbleTitle>
+            <div className="wf-row wf-gap-4" style={{ marginTop: 16, alignItems: 'flex-end' }}>
+              <label className="wf-col wf-gap-1" style={{ flex: 1 }}>
+                <span className="wf-mute wf-tiny">amount ($)</span>
+                <input className="wf-input wf-input--solid" defaultValue="1,200" style={{ fontSize: 22 }} />
+              </label>
+              <label className="wf-col wf-gap-1" style={{ flex: 1 }}>
+                <span className="wf-mute wf-tiny">or % of balance</span>
+                <input className="wf-input wf-input--solid" defaultValue="2.4%" style={{ fontSize: 22 }} />
+              </label>
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              <div className="wf-row wf-between" style={{ marginBottom: 6 }}>
+                <span className="wf-mute wf-tiny">resets at</span>
+                <span className="wf-mute wf-tiny">timezone: ET</span>
+              </div>
+              <div className="wf-row wf-gap-2">
+                {['00:00', '17:00', '18:00', 'custom…'].map((t, i) => (
+                  <Chip key={t} active={i === 1}>{t}</Chip>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              <div className="wf-mute wf-tiny" style={{ marginBottom: 8 }}>warn me when P&L hits</div>
+              <div className="wf-row wf-gap-3" style={{ alignItems: 'center' }}>
+                <span className="wf-mono wf-small">50%</span>
+                <SB shadow={false} style={{ flex: 1, height: 12, padding: 0, position: 'relative', background: WFCOLORS.paper2 }}>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '80%', background: WFCOLORS.warn + '55', borderRadius: 'inherit' }} />
+                  <div style={{ position: 'absolute', left: '80%', top: -4, width: 12, height: 18, background: WFCOLORS.ink, borderRadius: 3, transform: 'translateX(-6px)' }} />
+                </SB>
+                <span className="wf-mono wf-small">100%</span>
+                <span className="wf-mono" style={{ fontSize: 16, minWidth: 50, textAlign: 'right' }}>80%</span>
+              </div>
+            </div>
+          </SB>
+
+          <SB style={{ padding: 22 }}>
+            <ScribbleTitle color={WFCOLORS.bad}>When triggered</ScribbleTitle>
+            <div className="wf-col wf-gap-2" style={{ marginTop: 14 }}>
+              {[
+                ['close all open positions', true],
+                ['cancel pending orders', true],
+                ['lock account until reset', true],
+                ['notify by email + push', true],
+                ['send Discord webhook', false],
+              ].map(([txt, on]) => (
+                <div key={txt} className="wf-row wf-gap-3" style={{ padding: '6px 0' }}>
+                  <Toggle on={on} />
+                  <span className="wf-small">{txt}</span>
+                </div>
+              ))}
+            </div>
+            <div className="wf-hdiv" style={{ margin: '16px 0' }} />
+            <div className="wf-mute wf-tiny" style={{ marginBottom: 6 }}>cooldown after trigger</div>
+            <div className="wf-row wf-gap-2">
+              {['none', '1 hr', 'till reset', 'next day'].map((t, i) => (
+                <Chip key={t} active={i === 2}>{t}</Chip>
+              ))}
+            </div>
+          </SB>
+        </div>
+
+        {/* Live status bar */}
+        <SB style={{ marginTop: 22, padding: 18 }}>
+          <div className="wf-row wf-between" style={{ alignItems: 'center' }}>
+            <div className="wf-row wf-gap-4" style={{ alignItems: 'center' }}>
+              <div>
+                <div className="wf-mute wf-tiny">right now</div>
+                <div className="wf-mono" style={{ fontSize: 24, color: WFCOLORS.warn }}>−$840 / $1,200</div>
+              </div>
+              <div className="wf-vdiv" style={{ height: 36 }} />
+              <div className="wf-col wf-gap-1">
+                <Spark vals={[3, 5, 4, 6, 8, 7, 10, 9, 12, 14, 13, 16]} />
+                <span className="wf-mute wf-tiny">P&L · last 12 trades</span>
+              </div>
+            </div>
+            <Btn ghost sm>open positions ↗</Btn>
+          </div>
+        </SB>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────
+// V4 · Matrix table (power-user, rules × accounts, dense)
+// ─────────────────────────────────────────────────────────────────
+const V4Matrix = () => {
+  const cellVals = {
+    'daily-loss':  ['$1,200', '$2,500', '$1,200', '—'],
+    'max-dd':      ['$2,500', '$5,000', '$2,500', '—'],
+    'risk-trade':  ['1%',    '0.5%',   '1%',    '2%'],
+    'pos-size':    ['5',     '10',     '5',     '20'],
+    'max-open':    ['3',     '5',      '3',     '∞'],
+    'profit-tgt':  ['$3,000','$5,000', '$3,000','—'],
+    'hours':       ['8:30-16','8:30-16','8:30-16','24/5'],
+    'consistency': ['40%',   '40%',    '40%',   '—'],
+    'news':        ['off',   '5min ±', '5min ±','off'],
+  };
+  const statuses = {
+    'daily-loss':  ['warn', 'ok', 'ok', 'neutral'],
+    'max-dd':      ['ok', 'ok', 'ok', 'neutral'],
+    'risk-trade':  ['ok', 'ok', 'ok', 'ok'],
+    'pos-size':    ['ok', 'ok', 'ok', 'ok'],
+    'max-open':    ['ok', 'ok', 'ok', 'ok'],
+    'profit-tgt':  ['ok', 'ok', 'ok', 'neutral'],
+    'hours':       ['ok', 'ok', 'ok', 'ok'],
+    'consistency': ['ok', 'ok', 'ok', 'neutral'],
+    'news':        ['bad', 'ok', 'ok', 'neutral'],
+  };
+  const tone = s => s === 'ok' ? WFCOLORS.ok : s === 'warn' ? WFCOLORS.warn : s === 'bad' ? WFCOLORS.bad : WFCOLORS.faint;
+
+  return (
+    <div className="wf-board" style={{ padding: 26 }}>
+      <div className="wf-row wf-between" style={{ marginBottom: 14 }}>
+        <div>
+          <h1 className="wf-h1">Rules matrix</h1>
+          <div className="wf-mute wf-small" style={{ marginTop: 4 }}>9 rules · 4 accounts · click any cell to edit · ⇧-click for bulk</div>
+        </div>
+        <div className="wf-row wf-gap-2">
+          <Btn ghost sm>⇩ export csv</Btn>
+          <Btn ghost sm>↻ pull from broker</Btn>
+          <Btn primary>save all</Btn>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="wf-row wf-gap-3" style={{ marginBottom: 14, alignItems: 'center' }}>
+        <span className="wf-mute wf-small">filter:</span>
+        {['all', 'enabled', 'violations', 'warnings', 'risk', 'schedule'].map((t, i) => (
+          <Chip key={t} active={i === 0}>{t}</Chip>
+        ))}
+        <span style={{ marginLeft: 'auto' }} className="wf-row wf-gap-2 wf-mute wf-tiny">
+          <span><span className="wf-dot" style={{ color: WFCOLORS.ok, display: 'inline-block', marginRight: 4 }} />ok</span>
+          <span><span className="wf-dot" style={{ color: WFCOLORS.warn, display: 'inline-block', marginRight: 4 }} />near limit</span>
+          <span><span className="wf-dot" style={{ color: WFCOLORS.bad, display: 'inline-block', marginRight: 4 }} />violation</span>
+          <span><span className="wf-dot" style={{ color: WFCOLORS.faint, display: 'inline-block', marginRight: 4 }} />n/a</span>
+        </span>
+      </div>
+
+      {/* Matrix */}
+      <SB style={{ padding: 0, overflow: 'hidden' }}>
+        {/* Column header */}
+        <div className="wf-row" style={{ background: WFCOLORS.paper2, borderBottom: `1.5px solid ${WFCOLORS.ink}` }}>
+          <div style={{ width: 230, padding: '12px 16px', borderRight: `1.5px solid ${WFCOLORS.ink}22` }} className="wf-mute wf-tiny">rule</div>
+          {ACCOUNTS.map((a, i) => (
+            <div key={a.id} className="wf-col" style={{ flex: 1, padding: '10px 14px', borderRight: i < ACCOUNTS.length - 1 ? `1.5px solid ${WFCOLORS.ink}22` : 'none' }}>
+              <span className="wf-h3" style={{ fontSize: 14 }}>{a.label}</span>
+              <span className="wf-mono wf-tiny wf-mute">{a.tv} · {a.status}</span>
+            </div>
+          ))}
+          <div style={{ width: 80, padding: 12 }} className="wf-mute wf-tiny" >actions</div>
+        </div>
+
+        {RULES.map((r, ri) => (
+          <div key={r.id} className="wf-row" style={{ borderBottom: ri < RULES.length - 1 ? `1px solid ${WFCOLORS.ink}15` : 'none', minHeight: 56 }}>
+            <div style={{ width: 230, padding: '12px 16px', borderRight: `1.5px solid ${WFCOLORS.ink}22`, background: WFCOLORS.paper }} className="wf-col wf-gap-1">
+              <div className="wf-row wf-gap-2" style={{ alignItems: 'center' }}>
+                <Toggle on={r.on} />
+                <span className="wf-h3" style={{ fontSize: 14 }}>{r.name}</span>
+              </div>
+              <span className="wf-mute wf-tiny" style={{ marginLeft: 42 }}>{r.group.toLowerCase()}</span>
+            </div>
+            {cellVals[r.id].map((v, i) => {
+              const st = statuses[r.id][i];
+              return (
+                <div key={i} style={{
+                  flex: 1, padding: '14px', borderRight: i < ACCOUNTS.length - 1 ? `1.5px solid ${WFCOLORS.ink}22` : 'none',
+                  background: st === 'warn' ? WFCOLORS.warn + '14' : st === 'bad' ? WFCOLORS.bad + '14' : 'transparent',
+                  borderLeft: ri === 0 && i === 0 ? 'none' : undefined,
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}>
+                  <div className="wf-row" style={{ alignItems: 'center', gap: 6 }}>
+                    <span className="wf-dot" style={{ color: tone(st), flex: '0 0 auto' }} />
+                    <span className="wf-mono wf-small">{v}</span>
+                  </div>
+                  {st !== 'neutral' && (
+                    <Progress pct={r.pct} type={st} />
+                  )}
+                </div>
+              );
+            })}
+            <div style={{ width: 80, padding: 12 }} className="wf-row wf-gap-1">
+              <Btn ghost sm>⋯</Btn>
+            </div>
+          </div>
+        ))}
+      </SB>
+
+      <div className="wf-row wf-between" style={{ marginTop: 14, alignItems: 'center' }}>
+        <span className="wf-mute wf-tiny">
+          tip: select column → <span className="wf-kbd">⌘C</span> / <span className="wf-kbd">⌘V</span> to copy rules between accounts
+        </span>
+        <Btn ghost sm>+ add rule row</Btn>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────
+// V5 · Guided wizard (first-run / onboarding)
+// ─────────────────────────────────────────────────────────────────
+const V5Wizard = () => {
+  const steps = ['Connect', 'Account', 'Daily Loss', 'Drawdown', 'Position', 'Schedule', 'News', 'Review'];
+  const current = 2;
+  return (
+    <div className="wf-board" style={{ padding: 0, display: 'flex' }}>
+      {/* Side step rail */}
+      <div style={{ width: 240, padding: '32px 22px', background: WFCOLORS.paper3, borderRight: `1.5px solid ${WFCOLORS.ink}22` }}>
+        <div className="wf-mono wf-mute wf-tiny" style={{ marginBottom: 6 }}>SET-UP / STEP 3 of 8</div>
+        <h2 className="wf-h2" style={{ marginBottom: 22 }}>Build your<br />Trading Rules</h2>
+        <div className="wf-col" style={{ gap: 4 }}>
+          {steps.map((s, i) => {
+            const done = i < current;
+            const active = i === current;
+            return (
+              <div key={s} className="wf-row wf-gap-2" style={{ padding: '7px 6px', alignItems: 'center', opacity: i > current + 1 ? 0.55 : 1 }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  border: `1.5px solid ${WFCOLORS.ink}`,
+                  background: done ? WFCOLORS.ink : active ? WFCOLORS.highlight : WFCOLORS.paper,
+                  color: done ? WFCOLORS.paper : WFCOLORS.ink,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: FONT_MONO, fontSize: 11,
+                }}>{done ? '✓' : i + 1}</span>
+                <span className="wf-small" style={{ fontWeight: active ? 700 : 400 }}>{s}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="wf-hdiv" style={{ margin: '24px 0' }} />
+        <div className="wf-mute wf-tiny" style={{ lineHeight: 1.5 }}>
+          You can change every rule later from the Rules page. This wizard just sets sensible defaults for your prop-firm eval.
+        </div>
+      </div>
+
+      {/* Main area */}
+      <div className="wf-grow wf-col" style={{ padding: '36px 56px', justifyContent: 'space-between' }}>
+        <div>
+          {/* Progress dots */}
+          <div className="wf-row wf-gap-1" style={{ marginBottom: 18 }}>
+            {steps.map((_, i) => (
+              <div key={i} style={{
+                flex: 1, height: 5,
+                background: i <= current ? WFCOLORS.ink : WFCOLORS.faint + '66',
+                borderRadius: 3,
+              }} />
+            ))}
+          </div>
+
+          <h1 className="wf-h1" style={{ fontSize: 36, marginBottom: 6 }}>
+            <span className="wf-squig">Daily loss limit</span>
+          </h1>
+          <p className="wf-mute" style={{ fontSize: 15, maxWidth: 540, marginTop: 14, lineHeight: 1.55 }}>
+            How much can you lose in a single day before Guardrail closes everything and locks the account? Most $50K evals require this to be at most <span className="wf-mono" style={{ color: WFCOLORS.ink }}>$1,250</span>.
+          </p>
+
+          {/* Big number input */}
+          <div className="wf-row wf-gap-4" style={{ marginTop: 32, alignItems: 'flex-end' }}>
+            <label className="wf-col wf-gap-2">
+              <span className="wf-mute wf-tiny">stop trading after losing</span>
+              <div className="wf-row" style={{ alignItems: 'baseline', gap: 4 }}>
+                <span className="wf-mono" style={{ fontSize: 56, color: WFCOLORS.muted }}>$</span>
+                <input className="wf-input" defaultValue="1,200" style={{
+                  fontSize: 56, width: 200, fontFamily: FONT_MONO, fontWeight: 700,
+                  borderBottom: `2px solid ${WFCOLORS.ink}`, padding: '0 8px',
+                }} />
+              </div>
+            </label>
+            <div className="wf-col wf-gap-2" style={{ marginBottom: 14 }}>
+              <span className="wf-mute wf-tiny">or pick a preset</span>
+              <div className="wf-row wf-gap-2">
+                {['$500', '$1,000', '$1,200', '$2,000', 'custom'].map((t, i) => (
+                  <Chip key={t} active={i === 2}>{t}</Chip>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Slider */}
+          <div style={{ marginTop: 32, maxWidth: 620 }}>
+            <div className="wf-row wf-between" style={{ marginBottom: 6 }}>
+              <span className="wf-mute wf-tiny">as % of account balance ($50,000)</span>
+              <span className="wf-mono">2.4%</span>
+            </div>
+            <SB shadow={false} style={{ height: 14, padding: 0, position: 'relative', background: WFCOLORS.paper2 }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '24%', background: WFCOLORS.ink, borderRadius: 'inherit' }} />
+              <div style={{ position: 'absolute', left: '24%', top: -5, width: 14, height: 22, background: WFCOLORS.ink, borderRadius: 4, transform: 'translateX(-7px)' }} />
+              <div style={{ position: 'absolute', left: '40%', top: -2, bottom: -2, width: 1, background: WFCOLORS.bad, borderLeft: `2px dashed ${WFCOLORS.bad}` }} />
+              <div style={{ position: 'absolute', left: '40%', top: -22, transform: 'translateX(-50%)', fontFamily: FONT_HAND, fontSize: 11, color: WFCOLORS.bad }}>prop firm cap</div>
+            </SB>
+            <div className="wf-row wf-between wf-mute wf-tiny" style={{ marginTop: 8 }}>
+              <span>$0</span><span>$2,500</span><span>$5,000</span>
+            </div>
+          </div>
+
+          {/* When triggered preview */}
+          <SB style={{ marginTop: 28, padding: 16, background: WFCOLORS.paper2, maxWidth: 620 }}>
+            <div className="wf-row wf-gap-2" style={{ alignItems: 'center', marginBottom: 8 }}>
+              <span className="wf-stamp" style={{ color: WFCOLORS.bad }}>preview</span>
+              <span className="wf-small">when you hit −$1,200, Guardrail will:</span>
+            </div>
+            <div className="wf-col wf-gap-1" style={{ paddingLeft: 8 }}>
+              {['close all open positions', 'cancel pending orders', 'lock your Tradovate account until 5pm ET'].map((t, i) => (
+                <div key={t} className="wf-row wf-gap-2 wf-small">
+                  <span className="wf-mono wf-mute" style={{ width: 16 }}>{i + 1}.</span>
+                  <span>{t}</span>
+                </div>
+              ))}
+            </div>
+            <div className="wf-mute wf-tiny" style={{ marginTop: 8, fontStyle: 'italic' }}>(you can change these in the next step)</div>
+          </SB>
+        </div>
+
+        {/* Footer nav */}
+        <div className="wf-row wf-between" style={{ marginTop: 24, paddingTop: 18, borderTop: `1.5px dashed ${WFCOLORS.ink}22` }}>
+          <Btn ghost>← back to Account</Btn>
+          <div className="wf-row wf-gap-2 wf-mute wf-small" style={{ alignItems: 'center' }}>
+            <span className="wf-kbd">⏎</span> to continue
+          </div>
+          <div className="wf-row wf-gap-2">
+            <Btn ghost>skip step</Btn>
+            <Btn primary>continue →</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Mobile · two screens
+// ─────────────────────────────────────────────────────────────────
+const M1Mobile = () => (
+  <div className="wf-board" style={{ padding: 14 }}>
+    <div className="wf-row wf-between" style={{ marginBottom: 12 }}>
+      <span className="wf-mono wf-tiny wf-mute">9:41</span>
+      <span className="wf-mono wf-tiny wf-mute">●●● 5G ▮</span>
+    </div>
+    <div className="wf-row wf-between" style={{ marginBottom: 14 }}>
+      <span className="wf-h2">Rules</span>
+      <Btn ghost sm>edit</Btn>
+    </div>
+    <div className="wf-row wf-gap-2" style={{ marginBottom: 14, overflow: 'hidden' }}>
+      <Chip active>Eval $50K</Chip>
+      <Chip>Funded $100K</Chip>
+      <Chip>+2</Chip>
+    </div>
+    <SB style={{ padding: 12, marginBottom: 12 }}>
+      <div className="wf-row wf-between" style={{ marginBottom: 8 }}>
+        <span className="wf-mute wf-tiny">today</span>
+        <Badge type="warn">1 near limit</Badge>
+      </div>
+      <div className="wf-mono" style={{ fontSize: 22, color: WFCOLORS.warn }}>−$840 / $1,200</div>
+      <Progress pct={70} type="warn" />
+    </SB>
+    <div className="wf-col wf-gap-2">
+      {RULES.slice(0, 6).map(r => (
+        <SB key={r.id} shadow={false} style={{ padding: 12 }}>
+          <div className="wf-row wf-between">
+            <div className="wf-col wf-gap-1">
+              <span className="wf-h3" style={{ fontSize: 14 }}>{r.name}</span>
+              <span className="wf-mono wf-tiny wf-mute">{r.val}</span>
+            </div>
+            <div className="wf-row wf-gap-2" style={{ alignItems: 'center' }}>
+              <Badge type={r.status}>{r.status === 'ok' ? 'ok' : r.status === 'warn' ? '70%' : 'off'}</Badge>
+              <span className="wf-mute">›</span>
+            </div>
+          </div>
+        </SB>
+      ))}
+    </div>
+    <div className="wf-row" style={{
+      position: 'absolute', bottom: 0, left: 0, right: 0,
+      padding: 10, justifyContent: 'space-around',
+      borderTop: `1.5px solid ${WFCOLORS.ink}22`, background: WFCOLORS.paper,
+    }}>
+      {['home', 'rules', 'trades', 'me'].map((t, i) => (
+        <div key={t} className="wf-col" style={{ alignItems: 'center', gap: 2 }}>
+          <div style={{ width: 18, height: 18, border: `1.5px solid ${WFCOLORS.ink}`, borderRadius: 4, opacity: i === 1 ? 1 : 0.4 }} />
+          <span className="wf-tiny" style={{ opacity: i === 1 ? 1 : 0.5 }}>{t}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const M2MobileEdit = () => (
+  <div className="wf-board" style={{ padding: 14 }}>
+    <div className="wf-row wf-between" style={{ marginBottom: 12 }}>
+      <span className="wf-mono wf-tiny wf-mute">9:41</span>
+      <span className="wf-mono wf-tiny wf-mute">●●● 5G ▮</span>
+    </div>
+    <div className="wf-row wf-between" style={{ marginBottom: 14, alignItems: 'center' }}>
+      <span className="wf-mute">‹</span>
+      <span className="wf-h3">Daily Loss</span>
+      <span className="wf-mute"> </span>
+    </div>
+
+    <SB style={{ padding: 14, marginBottom: 14 }}>
+      <div className="wf-mute wf-tiny" style={{ marginBottom: 4 }}>limit</div>
+      <div className="wf-row" style={{ alignItems: 'baseline', gap: 2 }}>
+        <span className="wf-mono" style={{ fontSize: 32, color: WFCOLORS.muted }}>$</span>
+        <input className="wf-input" defaultValue="1,200" style={{ fontSize: 32, width: 120, fontFamily: FONT_MONO, fontWeight: 700 }} />
+      </div>
+      <div className="wf-row wf-gap-1" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+        {['$500', '$1k', '$1.2k', '$2k'].map((t, i) => <Chip key={t} active={i === 2}>{t}</Chip>)}
+      </div>
+    </SB>
+
+    <SB style={{ padding: 14, marginBottom: 14 }}>
+      <div className="wf-row wf-between" style={{ marginBottom: 6 }}>
+        <span className="wf-mute wf-tiny">today's usage</span>
+        <span className="wf-mono wf-tiny">70%</span>
+      </div>
+      <Progress pct={70} type="warn" />
+      <div className="wf-mute wf-tiny" style={{ marginTop: 6 }}>−$840 · resets in 4h 12m</div>
+    </SB>
+
+    <SB style={{ padding: 14, marginBottom: 14 }}>
+      <div className="wf-h3" style={{ fontSize: 14, marginBottom: 10 }}>when triggered</div>
+      <div className="wf-col wf-gap-2">
+        {[['close positions', true], ['cancel orders', true], ['lock account', true], ['push notify', true]].map(([t, on]) => (
+          <div key={t} className="wf-row wf-between" style={{ alignItems: 'center' }}>
+            <span className="wf-small">{t}</span>
+            <Toggle on={on} />
+          </div>
+        ))}
+      </div>
+    </SB>
+
+    <div className="wf-row wf-gap-2" style={{ marginTop: 14 }}>
+      <Btn ghost style={{ flex: 1 }}>cancel</Btn>
+      <Btn primary style={{ flex: 2 }}>save</Btn>
+    </div>
+  </div>
+);
+
+Object.assign(window, { V1Accordion, V2Dashboard, V3Split, V4Matrix, V5Wizard, M1Mobile, M2MobileEdit });
+
+
+/* === app.jsx === */
+// Main app — assembles the design canvas with all variations as artboards.
+
+const App = () => (
+  <DesignCanvas
+    title="Trading Rules"
+    subtitle="Guardrail 2 · 5 desktop layouts + 2 mobile · sketchy wireframes for the Configure flow"
+  >
+    <DCSection
+      id="desktop"
+      title="Desktop · Configure"
+      subtitle="Same data, five organising principles. Pick what fits your mental model — they can be combined (e.g. cards on overview + split-view on edit)."
+    >
+      <DCArtboard id="v1" label="A · Accordion list — sparse, view-then-edit, scales to many rules" width={1280} height={920}>
+        <V1Accordion />
+      </DCArtboard>
+      <DCArtboard id="v2" label="B · Cards dashboard — status-forward, scannable, account-tabbed" width={1280} height={920}>
+        <V2Dashboard />
+      </DCArtboard>
+      <DCArtboard id="v3" label="C · Split view — focused inline editing, sidebar nav" width={1440} height={920}>
+        <V3Split />
+      </DCArtboard>
+      <DCArtboard id="v4" label="D · Matrix — power-user, rules × accounts, copy-paste between" width={1440} height={920}>
+        <V4Matrix />
+      </DCArtboard>
+      <DCArtboard id="v5" label="E · Guided wizard — first-run only, one rule per step" width={1280} height={920}>
+        <V5Wizard />
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection
+      id="mobile"
+      title="Mobile · companion views"
+      subtitle="Mostly read-only on the go, with one-tap drill-down to edit a single rule. Designed to pair with desktop variant A or B."
+    >
+      <DCArtboard id="m1" label="Overview · all rules + today's usage" width={380} height={780}>
+        <M1Mobile />
+      </DCArtboard>
+      <DCArtboard id="m2" label="Edit a single rule (Daily Loss)" width={380} height={780}>
+        <M2MobileEdit />
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+  </script>
+</body>
+</html>
