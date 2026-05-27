@@ -419,7 +419,7 @@ export default async function DashboardPage() {
                   Each card is one account — numbers are never combined
                 </span>
               </div>
-              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+              <div className="gr-scroll-x" style={{ display: "flex", gap: 10, paddingBottom: 8, scrollSnapType: "x mandatory" }}>
                 {/* Auto-sync for stale accounts */}
                 {(() => {
                   const staleAccounts = commandCenter.accounts.filter(
@@ -448,13 +448,14 @@ export default async function DashboardPage() {
                       key={acc.id}
                       style={{
                         flexShrink: 0,
-                        width: 240,
-                        padding: 16,
+                        width: 200,
+                        padding: 14,
                         background: "var(--gr-surface)",
                         border: isSelected ? "1px solid var(--gr-copper)" : "1px solid var(--gr-border)",
                         boxShadow: isSelected ? "0 0 0 3px var(--gr-copper-bg)" : "none",
                         borderRadius: 12,
                         opacity: isExpired ? 0.72 : 1,
+                        scrollSnapAlign: "start",
                       }}
                     >
                       {/* Broker badge + state */}
@@ -565,14 +566,15 @@ export default async function DashboardPage() {
                   href="/accounts"
                   className="btn-compact"
                   style={{
-                    flexShrink: 0, width: 180,
+                    flexShrink: 0, width: 140,
                     background: "transparent",
                     border: "1px dashed var(--gr-border)",
                     borderRadius: 12,
                     color: "var(--gr-text-mute)",
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     gap: 6, textDecoration: "none",
-                    minHeight: 140,
+                    minHeight: 130,
+                    scrollSnapAlign: "start",
                   }}
                 >
                   <span style={{ fontSize: 20, lineHeight: 1 }}>+</span>
@@ -886,9 +888,52 @@ export default async function DashboardPage() {
               </div>
             </section>
 
-            {/* ── Full command center (broker account table) ─────────────── */}
+            {/* ── Accounts detail (collapsible) ─────────────────────────── */}
             <section style={{ padding: "0 36px 36px" }}>
-              <CommandCenter data={commandCenter} />
+              <details
+                className="group"
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid var(--gr-border)",
+                  background: "var(--gr-bg-elev)",
+                  overflow: "hidden",
+                }}
+              >
+                <summary
+                  className="btn-compact"
+                  style={{
+                    cursor: "pointer",
+                    listStyle: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "14px 20px",
+                    userSelect: "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
+                      Accounts detail
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                      {commandCenter.accounts.length} account{commandCenter.accounts.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 18, lineHeight: 1, color: "var(--gr-text-mute)",
+                      transition: "transform 0.2s",
+                      display: "inline-block",
+                    }}
+                    className="group-open:rotate-45"
+                  >
+                    +
+                  </span>
+                </summary>
+                <div style={{ borderTop: "1px solid var(--gr-border)", padding: "0" }}>
+                  <CommandCenter data={commandCenter} />
+                </div>
+              </details>
             </section>
           </>
         )}

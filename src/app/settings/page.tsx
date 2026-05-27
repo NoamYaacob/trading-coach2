@@ -125,11 +125,39 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const hasPassword = Boolean(dbUser?.passwordHash);
   const googleConnected = Boolean(googleConnection);
 
+  // ── Sidebar: compact account list (same style as dashboard) ──────────────
+  const SidebarAccountList = connectedAccounts.length > 0 ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {connectedAccounts.slice(0, 5).map((acc) => {
+        const dot = acc.connectionStatus === "connection_error"
+          ? "var(--gr-bad)"
+          : acc.connectionStatus?.startsWith("connected")
+            ? "var(--gr-ok)"
+            : "var(--gr-text-faint)";
+        return (
+          <div key={acc.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 8 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {acc.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <Link
+      href="/accounts/connect/tradovate"
+      style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
+    >
+      Connect first account →
+    </Link>
+  );
+
   return (
     <GrShell
       breadcrumb={["Settings"]}
-      sidebarContent={null}
-      sidebarLabel="Settings"
+      sidebarContent={SidebarAccountList}
+      sidebarLabel="Accounts"
       navItems={SETTINGS_NAV}
       userInitials={userInitials}
       hideApiStatus

@@ -130,3 +130,23 @@ button.btn-compact, [role="button"].btn-compact {
   min-height: unset;
   min-width: unset;
 }
+
+/* Thin scroll track — used for account carousel and horizontal scroll areas */
+.gr-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gr-border) transparent;
+}
+.gr-scroll-x::-webkit-scrollbar {
+  height: 4px;
+}
+.gr-scroll-x::-webkit-scrollbar-track {
+  background: transparent;
+}
+.gr-scroll-x::-webkit-scrollbar-thumb {
+  background: var(--gr-border);
+  border-radius: 2px;
+}
+.gr-scroll-x::-webkit-scrollbar-thumb:hover {
+  background: var(--gr-border-hi);
+}
