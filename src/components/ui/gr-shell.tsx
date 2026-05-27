@@ -1,32 +1,54 @@
 /**
  * GrShell — Guardrail 2 application shell.
  *
- * A PARALLEL shell — does NOT replace the existing AppShell.
- * Used only in the /debug/gr-shell design-system showcase.
- * Must NOT be imported by any production page.
+ * Phase 1: debug-only showcase (all mock data, no real props).
+ * Phase 2: production shell for /rules (Trading Plan page).
  *
- * Source: /tmp/guardrail-2/project/gr-shell.jsx  GrShell component.
+ * The shell accepts optional real-data props. When these props are omitted
+ * (undefined), the component falls back to mock/preview data so the
+ * /debug/gr-shell showcase continues to work unchanged.
  *
  * Layout:
  *   ┌──────────────┬──────────────────────────────────────────┐
  *   │  240px side  │  56px header                             │
  *   │  ─────────── │  ────────────────────────────────────────│
  *   │  logo        │                                          │
- *   │  account sel │   {children}                             │
+ *   │  sidebar slot│   {children}                             │
  *   │  nav         │                                          │
  *   │  API status  │                                          │
  *   └──────────────┴──────────────────────────────────────────┘
  *
- * All data rendered is mock/preview. No real account data flows through here.
+ * Real-data props (Phase 2):
+ *   sidebarContent  ReactNode | null | undefined
+ *                   undefined = show mock GrAccountSelector (debug path)
+ *                   null      = empty slot (e.g. editor mode, no sidebar content)
+ *                   ReactNode = real content
+ *   sidebarLabel    Label above the sidebar slot (default "Account")
+ *   navItems        Real nav items with hrefs; undefined = show mock nav
+ *   userInitials    2-char header avatar; undefined = "AN" (mock)
+ *   hideSidebar     When true the 240px sidebar is hidden (rule editor mode)
+ *   hideApiStatus   When true the mock API status card is hidden (production)
  */
 
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { GrAccountSelector } from "./gr/gr-account-selector";
 import { GrIcon } from "./gr/gr-icon";
 import type { GrIconName } from "./gr/gr-icon";
 import { GrBadge } from "./gr/gr-badge";
+
+// ── Public nav-item type (exported for page.tsx RULES_NAV) ────
+
+export type GrNavItem = {
+  id: string;
+  label: string;
+  icon: GrIconName;
+  href?: string;
+  active?: boolean;
+  badge?: number;
+};
 
 // ── Logo ──────────────────────────────────────────────────────
 
@@ -58,15 +80,7 @@ function GrLogo({ size = 28 }: { size?: number }) {
 
 // ── Nav item ─────────────────────────────────────────────────
 
-type NavItem = {
-  id: string;
-  label: string;
-  icon: GrIconName;
-  active?: boolean;
-  badge?: number;
-};
-
-const NAV_ITEMS: NavItem[] = [
+const MOCK_NAV_ITEMS: GrNavItem[] = [
   { id: "home",     label: "Dashboard",    icon: "home" },
   { id: "rules",    label: "Trading Plan", icon: "shield", active: true },
   { id: "trades",   label: "Trades",       icon: "chart" },
@@ -75,24 +89,9 @@ const NAV_ITEMS: NavItem[] = [
   { id: "settings", label: "Settings",     icon: "settings" },
 ];
 
-function NavItemEl({ item }: { item: NavItem }) {
-  return (
-    <div
-      role="menuitem"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 11px",
-        borderRadius: 8,
-        fontSize: "13.5px",
-        color: item.active ? "var(--gr-bg)" : "var(--gr-text-mid)",
-        cursor: "pointer",
-        background: item.active ? "var(--gr-ink)" : "transparent",
-        transition: "background .1s, color .1s",
-        fontWeight: item.active ? 500 : 400,
-      }}
-    >
+function NavItemEl({ item }: { item: GrNavItem }) {
+  const inner = (
+    <>
       <GrIcon name={item.icon} />
       <span style={{ flex: 1 }}>{item.label}</span>
       {item.badge != null && (
@@ -100,6 +99,35 @@ function NavItemEl({ item }: { item: NavItem }) {
           {item.badge}
         </GrBadge>
       )}
+    </>
+  );
+
+  const sharedStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 11px",
+    borderRadius: 8,
+    fontSize: "13.5px",
+    color: item.active ? "var(--gr-bg)" : "var(--gr-text-mid)",
+    cursor: "pointer",
+    background: item.active ? "var(--gr-ink)" : "transparent",
+    transition: "background .1s, color .1s",
+    fontWeight: item.active ? 500 : 400,
+    textDecoration: "none",
+  };
+
+  if (item.href) {
+    return (
+      <Link href={item.href} style={sharedStyle}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <div role="menuitem" style={sharedStyle}>
+      {inner}
     </div>
   );
 }
@@ -160,15 +188,45 @@ function ApiStatusCard() {
 type Props = {
   children?: React.ReactNode;
   breadcrumb?: string[];
+  /** Sidebar slot content.
+   *  undefined = show mock GrAccountSelector (debug/showcase path)
+   *  null      = show empty slot (editor mode — no content needed)
+   *  ReactNode = real production content (e.g. ScopeSelector) */
+  sidebarContent?: React.ReactNode | null;
+  /** Label above the sidebar slot. Default: "Account" */
+  sidebarLabel?: string;
+  /** Real nav items with hrefs. Omit to use mock MOCK_NAV_ITEMS. */
+  navItems?: GrNavItem[];
+  /** Header avatar initials. Default: "AN" (mock). */
+  userInitials?: string;
+  /** When true, hides the 240px sidebar (rule editor mode). */
+  hideSidebar?: boolean;
+  /** When true, hides the mock API status card (production use). */
+  hideApiStatus?: boolean;
 };
 
-export function GrShell({ children, breadcrumb = ["Trading Plan"] }: Props) {
+export function GrShell({
+  children,
+  breadcrumb = ["Trading Plan"],
+  sidebarContent,
+  sidebarLabel,
+  navItems,
+  userInitials,
+  hideSidebar = false,
+  hideApiStatus = false,
+}: Props) {
+  // undefined = show mock account selector; null/ReactNode = use slot
+  const showMockAccountSelector = sidebarContent === undefined;
+  const resolvedNav = navItems ?? MOCK_NAV_ITEMS;
+  const resolvedInitials = userInitials ?? "AN";
+  const resolvedSidebarLabel = sidebarLabel ?? "Account";
+
   return (
     <div
       className="gr"
       style={{
         display: "flex",
-        height: "100%",
+        height: "100dvh",
         alignItems: "stretch",
         background: "var(--gr-bg)",
         color: "var(--gr-text)",
@@ -178,80 +236,88 @@ export function GrShell({ children, breadcrumb = ["Trading Plan"] }: Props) {
         position: "relative",
       }}
     >
-      {/* Sidebar */}
-      <aside
-        style={{
-          width: 240,
-          flexShrink: 0,
-          borderRight: "1px solid var(--gr-border)",
-          background: "var(--gr-bg-elev)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Logo row */}
-        <div
+      {/* Sidebar — hidden in rule-editor mode */}
+      {!hideSidebar && (
+        <aside
           style={{
-            padding: "20px 18px",
-            borderBottom: "1px solid var(--gr-border)",
+            width: 240,
+            flexShrink: 0,
+            borderRight: "1px solid var(--gr-border)",
+            background: "var(--gr-bg-elev)",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <GrLogo />
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span
-                style={{
-                  fontSize: "15.5px",
-                  fontWeight: 600,
-                  color: "var(--gr-ink)",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                Guardrail
-              </span>
-              <span style={{ fontSize: "11.5px", color: "var(--gr-text-mute)" }}>
-                v2 preview
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Account selector */}
-        <div
-          style={{ padding: 14, borderBottom: "1px solid var(--gr-border)" }}
-        >
+          {/* Logo row */}
           <div
             style={{
-              fontSize: "11px",
-              fontWeight: 500,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--gr-text-mute)",
-              padding: "0 4px 8px",
+              padding: "20px 18px",
+              borderBottom: "1px solid var(--gr-border)",
             }}
           >
-            Account
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <GrLogo />
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span
+                  style={{
+                    fontSize: "15.5px",
+                    fontWeight: 600,
+                    color: "var(--gr-ink)",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  Guardrail
+                </span>
+                <span style={{ fontSize: "11.5px", color: "var(--gr-text-mute)" }}>
+                  v2 preview
+                </span>
+              </div>
+            </div>
           </div>
-          <GrAccountSelector />
-        </div>
 
-        {/* Nav */}
-        <nav
-          role="menu"
-          style={{ padding: 10, display: "flex", flexDirection: "column", gap: 2 }}
-        >
-          {NAV_ITEMS.map((n) => (
-            <NavItemEl key={n.id} item={n} />
-          ))}
-        </nav>
+          {/* Sidebar content slot */}
+          <div
+            style={{ padding: 14, borderBottom: "1px solid var(--gr-border)" }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 500,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--gr-text-mute)",
+                padding: "0 4px 8px",
+              }}
+            >
+              {resolvedSidebarLabel}
+            </div>
+            {showMockAccountSelector ? (
+              <GrAccountSelector />
+            ) : sidebarContent != null ? (
+              sidebarContent
+            ) : null}
+          </div>
 
-        <div style={{ flex: 1 }} />
+          {/* Nav */}
+          <nav
+            role="menu"
+            style={{ padding: 10, display: "flex", flexDirection: "column", gap: 2 }}
+          >
+            {resolvedNav.map((n) => (
+              <NavItemEl key={n.id} item={n} />
+            ))}
+          </nav>
 
-        {/* API status */}
-        <div style={{ padding: 14, borderTop: "1px solid var(--gr-border)" }}>
-          <ApiStatusCard />
-        </div>
-      </aside>
+          <div style={{ flex: 1 }} />
+
+          {/* API status — hidden in production */}
+          {!hideApiStatus && (
+            <div style={{ padding: 14, borderTop: "1px solid var(--gr-border)" }}>
+              <ApiStatusCard />
+            </div>
+          )}
+        </aside>
+      )}
 
       {/* Main */}
       <div
@@ -381,7 +447,7 @@ export function GrShell({ children, breadcrumb = ["Trading Plan"] }: Props) {
                 fontWeight: 600,
               }}
             >
-              AN
+              {resolvedInitials}
             </div>
           </div>
         </header>

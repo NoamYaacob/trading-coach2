@@ -15,7 +15,8 @@
  * Balance / P&L are omitted (not available on this page — no fabricated telemetry).
  */
 import { useState } from "react";
-import { RuleStatusBadge } from "./rule-status-badge";
+import { GrEnforcementChip } from "@/components/ui/gr/gr-enforcement-chip";
+import { GrChip } from "@/components/ui/gr/gr-chip";
 import {
   RULE_GROUPS,
   rulesInGroup,
@@ -80,7 +81,7 @@ function RuleCard({
         <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
           {rule.group}
         </span>
-        <RuleStatusBadge variant={rule.status} compact />
+        <GrEnforcementChip variant={rule.status} />
       </div>
 
       {/* Rule title */}
@@ -232,40 +233,30 @@ export function RulesOverviewScreen({
         )}
       </div>
 
-      {/* Group filter chips — Phase H: design tokens (ink-on-bg for active, surface for idle) */}
+      {/* Group filter chips — G2 GrChip primitives */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
+        <GrChip
+          active={activeGroup === null}
           onClick={() => setActiveGroup(null)}
-          className={`btn-compact rounded-full border px-3 py-1.5 text-[12px] font-medium transition ${
-            activeGroup === null
-              ? "border-amber-300 bg-amber-50 text-amber-800"
-              : "border-[color:var(--gr-border)] bg-white text-[color:var(--gr-text-mid)] hover:border-[color:var(--gr-border-hi)] hover:text-[color:var(--gr-ink)]"
-          }`}
           aria-pressed={activeGroup === null}
         >
           All rules
-          <span className="ml-1.5 text-[10.5px] tabular-nums opacity-70">
+          <span className="ml-1 tabular-nums opacity-70 text-[10.5px]">
             {RULE_GROUPS.reduce((n, g) => n + rulesInGroup(g).length, 0)}
           </span>
-        </button>
+        </GrChip>
         {activeGroups.map((g) => {
           const count = rulesInGroup(g).length;
           return (
-            <button
+            <GrChip
               key={g}
-              type="button"
+              active={activeGroup === g}
               onClick={() => setActiveGroup(activeGroup === g ? null : g)}
-              className={`btn-compact rounded-full border px-3 py-1.5 text-[12px] font-medium transition ${
-                activeGroup === g
-                  ? "border-amber-300 bg-amber-50 text-amber-800"
-                  : "border-[color:var(--gr-border)] bg-white text-[color:var(--gr-text-mid)] hover:border-[color:var(--gr-border-hi)] hover:text-[color:var(--gr-ink)]"
-              }`}
               aria-pressed={activeGroup === g}
             >
               {g}
-              <span className="ml-1.5 text-[10.5px] tabular-nums opacity-70">{count}</span>
-            </button>
+              <span className="ml-1 tabular-nums opacity-70 text-[10.5px]">{count}</span>
+            </GrChip>
           );
         })}
       </div>
