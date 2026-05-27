@@ -11,14 +11,14 @@ export function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* ── Form column ──────────────────────────────────────────── */}
-      <div className="flex w-full flex-col bg-white lg:max-w-[480px] xl:max-w-[520px]">
+      <div className="flex w-full flex-col lg:max-w-[480px] xl:max-w-[520px]" style={{ background: 'var(--gr-bg)' }}>
         <div className="flex h-full flex-col px-6 py-8 sm:px-10 lg:px-12">
           {/* Brand mark */}
           <Link
             href="/"
             className="inline-flex w-fit items-center gap-2.5 transition-opacity hover:opacity-70"
           >
-            <span className="text-[10px] font-bold uppercase tracking-[0.38em] text-stone-900">
+            <span className="text-[10px] font-bold uppercase tracking-[0.38em]" style={{ color: 'var(--gr-ink)' }}>
               Guardrail
             </span>
           </Link>
@@ -29,14 +29,14 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Footer */}
-          <p className="text-[11px] text-stone-400">
+          <p className="text-[11px]" style={{ color: 'var(--gr-text-faint)' }}>
             © {new Date().getFullYear()} Guardrail. All rights reserved.
           </p>
         </div>
       </div>
 
       {/* ── Brand column (lg+) ───────────────────────────────────── */}
-      <div className="relative hidden flex-1 flex-col justify-between overflow-hidden bg-stone-950 lg:flex">
+      <div className="relative hidden flex-1 flex-col justify-between overflow-hidden lg:flex" style={{ background: 'var(--gr-ink)' }}>
         {/* Subtle dot-grid background */}
         <div
           className="absolute inset-0 opacity-[0.035]"

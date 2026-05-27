@@ -35,9 +35,12 @@ export function RuleCard({
 }) {
   const cfg = RULE_BADGE_CONFIG[badge];
   return (
-    <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-3 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)] sm:px-5 sm:py-5">
+    <div
+      className="rounded-[14px] border px-3 py-3 shadow-sm sm:px-5 sm:py-5"
+      style={{ borderColor: 'var(--gr-border)', background: 'var(--gr-surface)' }}
+    >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
-        <p className="text-sm font-semibold leading-5 text-stone-950">{name}</p>
+        <p className="text-sm font-semibold leading-5" style={{ color: 'var(--gr-ink)' }}>{name}</p>
         <span
           className={`inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] sm:gap-1.5 sm:px-2.5 sm:text-[10px] sm:tracking-[0.16em] ${cfg.bg} ${cfg.text}`}
         >
@@ -45,7 +48,7 @@ export function RuleCard({
           {cfg.label}
         </span>
       </div>
-      <p className="mt-1.5 text-xs leading-4 text-stone-500 sm:mt-2 sm:text-sm sm:leading-5">
+      <p className="mt-1.5 text-xs leading-4 sm:mt-2 sm:text-sm sm:leading-5" style={{ color: 'var(--gr-text-mute)' }}>
         {description}
       </p>
     </div>
@@ -54,7 +57,7 @@ export function RuleCard({
 
 export function RuleCardLegend() {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-stone-400">
+    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs" style={{ color: 'var(--gr-text-mute)' }}>
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
         Active
@@ -64,7 +67,7 @@ export function RuleCardLegend() {
         Monitoring only
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-stone-300" aria-hidden />
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--gr-surface-hi)' }} aria-hidden />
         Coming soon
       </span>
     </div>
