@@ -14,7 +14,8 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
     return (
       <button
         onClick={handleLogout}
-        className="block w-full px-4 py-2 text-left text-sm text-stone-700 hover:bg-stone-50 hover:text-stone-950"
+        className="block w-full px-4 py-2 text-left text-[13.5px] transition-colors"
+        style={{ color: "var(--gr-text-mid)" }}
       >
         Log out
       </button>
@@ -24,7 +25,8 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
   return (
     <button
       onClick={handleLogout}
-      className="shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs text-stone-500 transition hover:text-stone-950 sm:px-4 sm:py-2 sm:text-sm"
+      className="shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[13.5px] transition-opacity hover:opacity-70 sm:px-4 sm:py-2"
+      style={{ color: "var(--gr-text-mid)" }}
     >
       Log out
     </button>

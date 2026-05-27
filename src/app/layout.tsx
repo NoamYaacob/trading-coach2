@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Manrope } from "next/font/google";
+import { Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import { BrowserTimeZoneSync } from "@/components/timezone/browser-timezone-sync";
 import "./globals.css";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const geist = Geist({
+  variable: "--font-geist",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
@@ -31,7 +36,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${ibmPlexMono.variable} h-full overflow-x-hidden antialiased`}
+      className={`${geist.variable} ${geistMono.variable} ${ibmPlexMono.variable} h-full overflow-x-hidden antialiased`}
     >
       <body className="min-h-full overflow-x-hidden bg-canvas text-ink">
         <BrowserTimeZoneSync />

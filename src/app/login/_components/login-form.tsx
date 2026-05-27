@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const INPUT =
-  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+const INPUT_CLS = [
+  "h-11 w-full rounded-xl border px-3.5 text-sm outline-none transition",
+  "placeholder:opacity-50 focus:ring-2",
+].join(" ");
 
-const INPUT_PW =
-  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 pl-3.5 pr-10 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+const INPUT_PW_CLS = [
+  "h-11 w-full rounded-xl border pl-3.5 pr-10 text-sm outline-none transition",
+  "placeholder:opacity-50 focus:ring-2",
+].join(" ");
 
-const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
+const LABEL_CLS = "text-xs font-semibold uppercase tracking-[0.12em]";
 
 function GoogleLogo() {
   return (
@@ -37,7 +41,8 @@ function EyeToggle({
       type="button"
       onClick={onToggle}
       aria-label={label}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-stone-600"
+      className="absolute right-3 top-1/2 -translate-y-1/2 transition hover:opacity-70"
+      style={{ color: "var(--gr-text-mute)" }}
     >
       {visible ? (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
@@ -105,10 +110,10 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
   return (
     <div>
       {/* Heading */}
-      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-[2rem]">
+      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.04em] sm:text-[2rem]" style={{ color: "var(--gr-ink)" }}>
         Log in to Guardrail
       </h1>
-      <p className="mt-2 text-sm leading-6 text-stone-500">
+      <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mute)" }}>
         Continue to your trading dashboard, rules, and broker connection.
       </p>
 
@@ -122,7 +127,8 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       <div className="mt-4 sm:mt-6">
         <a
           href="/api/auth/google/connect?mode=auth"
-          className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-full border border-stone-200 bg-white text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50"
+          className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-full border text-sm font-medium transition hover:opacity-80"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)", color: "var(--gr-text-mid)" }}
         >
           <GoogleLogo />
           Continue with Google
@@ -132,10 +138,10 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       {/* Divider */}
       <div className="relative my-4 sm:my-6">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-stone-200" />
+          <div className="w-full border-t" style={{ borderColor: "var(--gr-border)" }} />
         </div>
         <div className="relative flex justify-center">
-          <span className="bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+          <span className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ background: "var(--gr-bg)", color: "var(--gr-text-mute)" }}>
             or
           </span>
         </div>
@@ -144,12 +150,17 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       {/* Email / password form */}
       <form onSubmit={handleSubmit} className="grid gap-5">
         <label className="grid gap-2">
-          <span className={LABEL}>Email</span>
+          <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Email</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={INPUT}
+            className={INPUT_CLS}
+            style={{
+              borderColor: "var(--gr-border)",
+              background: "var(--gr-bg-elev)",
+              color: "var(--gr-ink)",
+            }}
             placeholder="trader@example.com"
             autoComplete="email"
             required
@@ -158,10 +169,11 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
 
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
-            <span className={LABEL}>Password</span>
+            <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Password</span>
             <Link
               href="/forgot-password"
-              className="text-xs text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline"
+              className="text-xs underline-offset-2 hover:underline"
+              style={{ color: "var(--gr-text-mute)" }}
             >
               Forgot password?
             </Link>
@@ -171,7 +183,12 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={INPUT_PW}
+              className={INPUT_PW_CLS}
+              style={{
+                borderColor: "var(--gr-border)",
+                background: "var(--gr-bg-elev)",
+                color: "var(--gr-ink)",
+              }}
               placeholder="Your password"
               autoComplete="current-password"
               required
@@ -193,22 +210,24 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
         <button
           type="submit"
           disabled={!formValid || isSubmitting}
-          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
+          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: "var(--gr-ink)" }}
         >
           {isSubmitting ? "Logging in…" : "Log in"}
         </button>
 
-        <p className="text-center text-xs text-stone-400">
+        <p className="text-center text-xs" style={{ color: "var(--gr-text-mute)" }}>
           Your rules stay saved to your account.
         </p>
       </form>
 
       {/* Switch link */}
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-6 text-center text-sm" style={{ color: "var(--gr-text-mute)" }}>
         New to Guardrail?{" "}
         <Link
           href="/signup"
-          className="font-medium text-stone-950 underline-offset-2 hover:underline"
+          className="font-medium underline-offset-2 hover:underline"
+          style={{ color: "var(--gr-ink)" }}
         >
           Create an account
         </Link>

@@ -17,7 +17,8 @@ export default async function PricingPage() {
   const actions = user ? (
     <Link
       href="/dashboard"
-      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+      style={{ background: "var(--gr-ink)" }}
     >
       Open today&rsquo;s session
     </Link>
@@ -25,13 +26,15 @@ export default async function PricingPage() {
     <>
       <Link
         href="/signup"
-        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+        style={{ background: "var(--gr-ink)" }}
       >
         Start free week
       </Link>
       <Link
         href="/login"
-        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border px-5 py-3 text-sm font-medium transition hover:opacity-80"
+        style={{ borderColor: "var(--gr-border-hi)", color: "var(--gr-text-mid)" }}
       >
         Log in
       </Link>
@@ -48,18 +51,21 @@ export default async function PricingPage() {
       <div className="grid gap-8 sm:gap-12">
 
         {/* ── Price card ──────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8 lg:p-10">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8 lg:p-10"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
           <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
                 What you pay
               </p>
               <div className="mt-4 flex items-baseline gap-2">
-                <span className="text-5xl font-bold tracking-[-0.04em] text-stone-950">$25</span>
-                <span className="text-base text-stone-500">/ month after trial</span>
+                <span className="text-5xl font-bold tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>$25</span>
+                <span className="text-base" style={{ color: "var(--gr-text-mute)" }}>/ month after trial</span>
               </div>
-              <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
-              <p className="mt-1 text-xs text-stone-400">
+              <p className="mt-2 text-sm" style={{ color: "var(--gr-text-mute)" }}>Billed monthly. Cancel any time.</p>
+              <p className="mt-1 text-xs" style={{ color: "var(--gr-text-faint)" }}>
                 Less than the cost of one avoidable mistake.
               </p>
               <div className="mt-6 rounded-2xl border border-amber-200/70 bg-amber-50/50 px-4 py-3">
@@ -73,13 +79,15 @@ export default async function PricingPage() {
                 <div className="mt-5 flex flex-row flex-wrap gap-3">
                   <Link
                     href="/signup"
-                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                    className="rounded-full px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+                    style={{ background: "var(--gr-ink)" }}
                   >
                     Start free week
                   </Link>
                   <Link
                     href="/login"
-                    className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+                    className="rounded-full border px-5 py-3 text-sm font-medium transition hover:opacity-80"
+                    style={{ borderColor: "var(--gr-border-hi)", color: "var(--gr-text-mid)" }}
                   >
                     Log in
                   </Link>
@@ -87,12 +95,13 @@ export default async function PricingPage() {
               )}
             </div>
             <div>
-              <p className="mb-4 text-sm font-semibold text-stone-950">Included:</p>
+              <p className="mb-4 text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>Included:</p>
               <ul className="grid gap-2 sm:gap-2.5">
                 {INCLUDED_FEATURES.map((feature) => (
                   <li
                     key={feature}
-                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-3 py-2 text-sm text-stone-700 sm:px-4 sm:py-3"
+                    className="flex items-start gap-3 rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-3"
+                    style={{ background: "var(--gr-bg-elev)", color: "var(--gr-text-mid)" }}
                   >
                     <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
                     {feature}
@@ -104,15 +113,18 @@ export default async function PricingPage() {
         </section>
 
         {/* ── ROI calculator ──────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.15)] sm:p-8 lg:p-10">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8 lg:p-10"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
           <div className="mb-5 max-w-2xl sm:mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
               The math
             </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] sm:text-2xl" style={{ color: "var(--gr-ink)" }}>
               What are your broken rules costing you?
             </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
+            <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
               A broken rule is not always one big loss. The damage is the pattern.
             </p>
           </div>
@@ -120,21 +132,25 @@ export default async function PricingPage() {
         </section>
 
         {/* ── FAQ teaser ──────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+        <section
+          className="rounded-[14px] border p-5 sm:p-8"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--gr-copper)" }}>
             Questions about pricing
           </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950">
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>
             Everything is in the FAQ.
           </h2>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
+          <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mid)" }}>
             Questions about what&rsquo;s included, broker connections, enforcement scope, and prop
             firm support are all answered there.
           </p>
           <div className="mt-4">
             <Link
               href="/faq"
-              className="text-sm font-medium text-stone-700 underline-offset-2 transition hover:text-stone-950 hover:underline"
+              className="text-sm font-medium underline-offset-2 transition hover:underline"
+              style={{ color: "var(--gr-text-mid)" }}
             >
               Read the full FAQ →
             </Link>

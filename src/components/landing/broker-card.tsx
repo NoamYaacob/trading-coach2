@@ -10,12 +10,14 @@ export function BrokerCard({
   const isLive = status === "live";
   return (
     <div
-      className={`rounded-[1.75rem] border px-5 py-5 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)] ${
-        isLive ? "border-stone-200 bg-white/90" : "border-stone-100 bg-stone-50/60"
-      }`}
+      className="rounded-[14px] border px-5 py-5 shadow-sm"
+      style={{
+        borderColor: 'var(--gr-border)',
+        background: isLive ? 'var(--gr-surface)' : 'var(--gr-bg-elev)',
+      }}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className={`text-sm font-semibold ${isLive ? "text-stone-950" : "text-stone-500"}`}>
+        <p className="text-sm font-semibold" style={{ color: isLive ? 'var(--gr-ink)' : 'var(--gr-text-mute)' }}>
           {name}
         </p>
         <span
@@ -27,7 +29,7 @@ export function BrokerCard({
         </span>
       </div>
       {description && (
-        <p className="mt-2 text-xs leading-5 text-stone-500">{description}</p>
+        <p className="mt-2 text-xs leading-5" style={{ color: 'var(--gr-text-mute)' }}>{description}</p>
       )}
     </div>
   );

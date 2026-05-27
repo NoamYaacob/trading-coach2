@@ -15,13 +15,17 @@ function GoogleLogo() {
   );
 }
 
-const INPUT =
-  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+const INPUT_CLS = [
+  "h-11 w-full rounded-xl border px-3.5 text-sm outline-none transition",
+  "placeholder:opacity-50 focus:ring-2",
+].join(" ");
 
-const INPUT_PW =
-  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 pl-3.5 pr-10 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
+const INPUT_PW_CLS = [
+  "h-11 w-full rounded-xl border pl-3.5 pr-10 text-sm outline-none transition",
+  "placeholder:opacity-50 focus:ring-2",
+].join(" ");
 
-const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
+const LABEL_CLS = "text-xs font-semibold uppercase tracking-[0.12em]";
 
 function EyeToggle({
   visible,
@@ -37,7 +41,8 @@ function EyeToggle({
       type="button"
       onClick={onToggle}
       aria-label={label}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-stone-600"
+      className="absolute right-3 top-1/2 -translate-y-1/2 transition hover:opacity-70"
+      style={{ color: "var(--gr-text-mute)" }}
     >
       {visible ? (
         <svg
@@ -133,10 +138,10 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
   return (
     <div>
       {/* Heading */}
-      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.04em] text-stone-950 sm:text-[2rem]">
+      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.04em] sm:text-[2rem]" style={{ color: "var(--gr-ink)" }}>
         Start your Guardrail trial
       </h1>
-      <p className="mt-2 text-sm leading-6 text-stone-500">
+      <p className="mt-2 text-sm leading-6" style={{ color: "var(--gr-text-mute)" }}>
         Create your account, set your rules, and prepare your broker connection.
       </p>
 
@@ -150,7 +155,8 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
       <div className="mt-4 sm:mt-6">
         <a
           href="/api/auth/google/connect?mode=auth"
-          className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-full border border-stone-200 bg-white text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50"
+          className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-full border text-sm font-medium transition hover:opacity-80"
+          style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)", color: "var(--gr-text-mid)" }}
         >
           <GoogleLogo />
           Continue with Google
@@ -160,10 +166,10 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
       {/* Divider */}
       <div className="relative my-4 sm:my-6">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-stone-200" />
+          <div className="w-full border-t" style={{ borderColor: "var(--gr-border)" }} />
         </div>
         <div className="relative flex justify-center">
-          <span className="bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+          <span className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ background: "var(--gr-bg)", color: "var(--gr-text-mute)" }}>
             or
           </span>
         </div>
@@ -173,12 +179,13 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
       <form onSubmit={handleSubmit} className="grid gap-4 sm:gap-5">
         {/* Email */}
         <label className="grid gap-2">
-          <span className={LABEL}>Email</span>
+          <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Email</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={INPUT}
+            className={INPUT_CLS}
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)", color: "var(--gr-ink)" }}
             placeholder="trader@example.com"
             autoComplete="email"
             required
@@ -187,13 +194,14 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
 
         {/* Password */}
         <div className="grid gap-2">
-          <span className={LABEL}>Password</span>
+          <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Password</span>
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={INPUT_PW}
+              className={INPUT_PW_CLS}
+              style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)", color: "var(--gr-ink)" }}
               placeholder="Create a strong password"
               autoComplete="new-password"
             />
@@ -219,8 +227,9 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
                 <li
                   key={key}
                   className={`flex items-center gap-1.5 text-xs transition-colors ${
-                    rules[key] ? "text-emerald-600" : "text-stone-400"
+                    rules[key] ? "text-emerald-600" : ""
                   }`}
+                  style={!rules[key] ? { color: "var(--gr-text-mute)" } : undefined}
                 >
                   <span className="w-3 shrink-0 text-center">
                     {rules[key] ? "✓" : "·"}
@@ -234,13 +243,14 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
 
         {/* Confirm password */}
         <div className="grid gap-2">
-          <span className={LABEL}>Confirm password</span>
+          <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Confirm password</span>
           <div className="relative">
             <input
               type={showConfirm ? "text" : "password"}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className={INPUT_PW}
+              className={INPUT_PW_CLS}
+              style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)", color: "var(--gr-ink)" }}
               placeholder="Re-enter your password"
               autoComplete="new-password"
             />
@@ -264,38 +274,40 @@ export function SignupForm({ oauthError }: { oauthError?: string }) {
         <button
           type="submit"
           disabled={!formValid || isSubmitting}
-          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
+          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: "var(--gr-ink)" }}
         >
           {isSubmitting ? "Creating account…" : "Create account"}
         </button>
 
-        <p className="text-center text-xs text-stone-400">
+        <p className="text-center text-xs" style={{ color: "var(--gr-text-mute)" }}>
           Start your trial now. You&apos;ll add billing before your paid plan begins.
         </p>
 
-        <p className="text-center text-xs text-stone-400">
+        <p className="text-center text-xs" style={{ color: "var(--gr-text-mute)" }}>
           By creating an account, you agree to the{" "}
-          <Link href="/terms" className="underline underline-offset-2 hover:text-stone-600">
+          <Link href="/terms" className="underline underline-offset-2 hover:opacity-70" style={{ color: "var(--gr-text-mid)" }}>
             Terms
           </Link>{" "}
           and{" "}
-          <Link href="/privacy" className="underline underline-offset-2 hover:text-stone-600">
+          <Link href="/privacy" className="underline underline-offset-2 hover:opacity-70" style={{ color: "var(--gr-text-mid)" }}>
             Privacy Policy
           </Link>
           .
         </p>
       </form>
 
-      <p className="mt-3 text-center text-xs text-stone-400 sm:mt-5">
+      <p className="mt-3 text-center text-xs sm:mt-5" style={{ color: "var(--gr-text-mute)" }}>
         Next: set your first rules and prepare your broker connection.
       </p>
 
       {/* Switch link */}
-      <p className="mt-2 text-center text-sm text-stone-500 sm:mt-3">
+      <p className="mt-2 text-center text-sm sm:mt-3" style={{ color: "var(--gr-text-mute)" }}>
         Already using Guardrail?{" "}
         <Link
           href="/login"
-          className="font-medium text-stone-950 underline-offset-2 hover:underline"
+          className="font-medium underline-offset-2 hover:underline"
+          style={{ color: "var(--gr-ink)" }}
         >
           Log in
         </Link>

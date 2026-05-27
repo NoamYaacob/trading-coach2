@@ -24,13 +24,52 @@ const ACTIVE_RULE_NAMES = [
   "Session Hours",
 ];
 
+// ── GR design tokens (inline style helpers) ────────────────────────────────────
+const GR = {
+  ink: "var(--gr-ink)",
+  textMid: "var(--gr-text-mid)",
+  textMute: "var(--gr-text-mute)",
+  textFaint: "var(--gr-text-faint)",
+  copper: "var(--gr-copper)",
+  border: "var(--gr-border)",
+  borderSub: "var(--gr-border-sub)",
+  surface: "var(--gr-surface)",
+  surface2: "var(--gr-surface-2)",
+  surfaceWarm: "var(--gr-surface-warm)",
+  bgElev: "var(--gr-bg-elev)",
+  ok: "var(--gr-ok)",
+  okBg: "var(--gr-ok-bg)",
+  bad: "var(--gr-bad)",
+  badBg: "var(--gr-bad-bg)",
+};
+
+// Shared card style
+const cardStyle: React.CSSProperties = {
+  background: GR.surface,
+  border: `1px solid ${GR.border}`,
+  borderRadius: 14,
+};
+
+// Label / eyebrow
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="text-[12px] font-semibold uppercase tracking-[0.18em]"
+      style={{ color: GR.copper }}
+    >
+      {children}
+    </p>
+  );
+}
+
 export default async function Home() {
   const user = await getCurrentUser();
 
   const heroActions = user ? (
     <Link
       href="/dashboard"
-      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+      className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+      style={{ background: GR.ink }}
     >
       Open today&rsquo;s session
     </Link>
@@ -38,13 +77,15 @@ export default async function Home() {
     <>
       <Link
         href="/signup"
-        className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+        className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+        style={{ background: GR.ink }}
       >
         Start free week
       </Link>
       <a
         href="#how-it-works"
-        className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+        className="rounded-full border px-5 py-3 text-[14px] font-medium transition-colors hover:border-opacity-80"
+        style={{ borderColor: GR.border, color: GR.textMid }}
       >
         See how it works ↓
       </a>
@@ -53,7 +94,7 @@ export default async function Home() {
 
   return (
     <AppShell
-      eyebrow="FOR FUTURES & PROP FIRM TRADERS"
+      eyebrow="For futures & prop firm traders"
       title={
         <>
           You know your rules.
@@ -71,113 +112,137 @@ export default async function Home() {
       actions={heroActions}
       heroPreview={user ? undefined : <HeroStatusPreview />}
     >
-      <div className="grid gap-8 sm:gap-12 lg:gap-16">
+      <div className="grid gap-6 pb-16">
 
         {/* ── Pain ─────────────────────────────────────────────────────── */}
-        <section>
-          <div className="mb-4 max-w-2xl sm:mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              The real problem
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+        <section className="pt-2">
+          <div className="mb-5 max-w-2xl">
+            <SectionLabel>The real problem</SectionLabel>
+            <h2
+              className="mt-2 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-4xl"
+              style={{ color: GR.ink, lineHeight: 1.2 }}
+            >
               You know your rules.{" "}
-              <span className="text-stone-400">You break them anyway.</span>
+              <span style={{ color: GR.textFaint }}>You break them anyway.</span>
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+            <p className="mt-4 max-w-2xl text-[15px] leading-[1.6]" style={{ color: GR.textMid }}>
               Every futures trader sets rules before the market opens. Then the session starts,
               pressure builds, and the rules you made when thinking clearly are the ones you break.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {PAIN_SCENARIOS.map((s) => (
-              <div
-                key={s.title}
-                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
-              >
-                <p className="text-sm font-semibold text-stone-950">{s.title}</p>
-                <p className="mt-2 text-sm leading-6 text-stone-600">{s.body}</p>
+              <div key={s.title} style={cardStyle} className="p-6 sm:p-7">
+                <p className="text-[18px] font-semibold leading-snug tracking-[-0.01em]" style={{ color: GR.ink }}>
+                  {s.title}
+                </p>
+                <p className="mt-3 text-[14px] leading-[1.55]" style={{ color: GR.textMid }}>
+                  {s.body}
+                </p>
               </div>
             ))}
           </div>
         </section>
 
         {/* ── How it works ─────────────────────────────────────────────── */}
-        <section id="how-it-works">
-          <div className="mb-4 max-w-2xl sm:mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              How it works
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+        <section id="how-it-works" className="pt-2">
+          <div className="mb-5 max-w-2xl">
+            <SectionLabel>How it works</SectionLabel>
+            <h2
+              className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+              style={{ color: GR.ink, lineHeight: 1.2 }}
+            >
               Three steps. One operating loop.
             </h2>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {STEPS.map((step) => (
-              <div
-                key={step.n}
-                className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(28,25,23,0.10)] sm:px-6 sm:py-6"
-              >
+              <div key={step.n} style={cardStyle} className="p-6 sm:p-7">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-2xl font-bold text-stone-200">{step.n}</p>
+                  <p
+                    className="font-mono text-3xl font-medium leading-none tracking-[-0.02em]"
+                    style={{ color: GR.textFaint }}
+                  >
+                    {step.n}
+                  </p>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${step.tagCls}`}
+                    className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] ${step.tagCls}`}
                   >
                     {step.tag}
                   </span>
                 </div>
-                <h3 className="mt-3 text-base font-semibold leading-6 tracking-[-0.02em] text-stone-950">
+                <h3
+                  className="mt-9 text-[18px] font-semibold leading-snug tracking-[-0.01em]"
+                  style={{ color: GR.ink }}
+                >
                   {step.title}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-stone-600">{step.detail}</p>
+                <p className="mt-2.5 text-[14px] leading-[1.55]" style={{ color: GR.textMid }}>
+                  {step.detail}
+                </p>
               </div>
             ))}
           </div>
-          <div className="mt-4">
+          <div className="mt-5">
             <Link
               href="/how-it-works"
-              className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+              className="text-[14px] transition-colors hover:opacity-80"
+              style={{ color: GR.textMid }}
             >
               Session states and enforcement scope →
             </Link>
           </div>
         </section>
 
-        {/* ── Features highlight ────────────────────────────────────────── */}
-        <section>
-          <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+        {/* ── Rule engine ──────────────────────────────────────────────── */}
+        <section className="pt-2">
+          <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr] lg:items-start">
             <div>
-              <div className="mb-4 max-w-2xl sm:mb-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                  Rule engine
-                </p>
-                <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
-                  Four active rules. Ten more on the way.
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-stone-600">
-                  Loss limits, trade caps, session windows, and news locks — evaluated in real time
-                  against every trade event.
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <SectionLabel>Rule engine</SectionLabel>
+              <h2
+                className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+                style={{ color: GR.ink, lineHeight: 1.2 }}
+              >
+                Four active rules. Ten more on the way.
+              </h2>
+              <p className="mt-4 text-[15px] leading-[1.6]" style={{ color: GR.textMid, maxWidth: 580 }}>
+                Loss limits, trade caps, session windows, and news locks — evaluated in real time
+                against every trade event.
+              </p>
+              <div className="mt-8 grid gap-2 sm:grid-cols-2">
                 {ACTIVE_RULE_NAMES.map((name) => (
                   <div
                     key={name}
-                    className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 shadow-[0_4px_14px_-4px_rgba(28,25,23,0.06)]"
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={{
+                      background: GR.surface,
+                      border: `1px solid ${GR.border}`,
+                      borderRadius: 14,
+                    }}
                   >
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-                    <span className="text-sm font-medium text-stone-950">{name}</span>
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: GR.ok }}
+                      aria-hidden
+                    />
+                    <span className="text-[14.5px] font-medium" style={{ color: GR.ink }}>
+                      {name}
+                    </span>
                   </div>
                 ))}
               </div>
-              <div className="mt-4">
+              <div className="mt-5">
                 <Link
                   href="/features"
-                  className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+                  className="text-[14px] transition-opacity hover:opacity-70"
+                  style={{ color: GR.textMid }}
                 >
                   View all 14 rules — Active, Partial, and Coming Soon →
                 </Link>
               </div>
             </div>
+
+            {/* Trading plan card */}
             <div className="hidden lg:block">
               <RulesConfigCard />
             </div>
@@ -185,15 +250,22 @@ export default async function Home() {
         </section>
 
         {/* ── Prop firm ─────────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-amber-200/80 bg-amber-50/30 p-5 sm:p-8">
-          <div className="mb-5 max-w-2xl sm:mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-              Prop firm pressure
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+        <section
+          className="rounded-[14px] p-8 sm:p-10"
+          style={{
+            background: GR.surfaceWarm,
+            border: `1px solid rgba(162,61,16,0.30)`,
+          }}
+        >
+          <div className="mb-6 max-w-2xl">
+            <SectionLabel>Prop firm pressure</SectionLabel>
+            <h2
+              className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+              style={{ color: GR.ink, lineHeight: 1.2 }}
+            >
               Prop firm rules do not forgive emotional trades.
             </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
+            <p className="mt-4 text-[15px] leading-[1.6]" style={{ color: GR.textMid }}>
               One rule break can cost the challenge, the funded account, or the payout.
             </p>
           </div>
@@ -201,78 +273,110 @@ export default async function Home() {
             {PROP_FIRM_CARDS.map((card) => (
               <div
                 key={card.title}
-                className="rounded-2xl border border-amber-100 bg-white/80 px-5 py-5"
+                className="p-6"
+                style={{
+                  background: GR.surface,
+                  border: `1px solid ${GR.border}`,
+                  borderRadius: 14,
+                }}
               >
-                <p className="text-sm font-semibold text-stone-950">{card.title}</p>
-                <p className="mt-2 text-sm leading-6 text-stone-600">{card.body}</p>
+                <p className="text-[17px] font-semibold leading-snug" style={{ color: GR.ink }}>
+                  {card.title}
+                </p>
+                <p className="mt-3 text-[14px] leading-[1.55]" style={{ color: GR.textMid }}>
+                  {card.body}
+                </p>
               </div>
             ))}
           </div>
-          <div className="mt-5">
+          <div className="mt-6">
             <Link
               href="/prop-firms"
-              className="text-sm font-medium text-amber-800 underline-offset-2 transition hover:text-amber-950 hover:underline"
+              className="text-[14px] font-medium transition-opacity hover:opacity-70"
+              style={{ color: GR.copper }}
             >
               Built for prop firms: evaluation, funded, and payout protection →
             </Link>
           </div>
         </section>
 
-        {/* ── Trust summary ─────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-800 bg-stone-950 p-5 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">
-            Your data, your control
-          </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-50 sm:text-2xl">
+        {/* ── Trust / security ──────────────────────────────────────────── */}
+        <section
+          className="rounded-[14px] p-8 sm:p-10"
+          style={{ background: GR.ink, color: "var(--gr-bg)" }}
+        >
+          <SectionLabel>
+            <span style={{ color: "rgba(255,255,255,0.55)" }}>Your data, your control</span>
+          </SectionLabel>
+          <h2
+            className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+            style={{ color: "var(--gr-bg)", lineHeight: 1.2 }}
+          >
             Read-only first. No trading credentials.
           </h2>
-          <ul className="mt-5 grid gap-3">
-            <li className="flex items-start gap-3 text-sm text-stone-300">
-              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
-              Read-only connection — Guardrail receives trade events. It cannot place or cancel orders.
-            </li>
-            <li className="flex items-start gap-3 text-sm text-stone-300">
-              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
-              No broker password stored — connections use broker authorization or scoped tokens.
-            </li>
-            <li className="flex items-start gap-3 text-sm text-stone-300">
-              <span className="mt-0.5 shrink-0 font-bold text-emerald-500">✓</span>
-              Disconnect any time from account settings. Rule configuration is kept, data is not.
-            </li>
+          <ul className="mt-8 grid gap-4 max-w-[920px]">
+            {[
+              "Read-only connection — Guardrail receives trade events. It cannot place or cancel orders.",
+              "No broker password stored — connections use broker authorization or scoped tokens.",
+              "Disconnect any time from account settings. Rule configuration is kept, data is not.",
+            ].map((item) => (
+              <li key={item} className="flex items-start gap-3 text-[15px]" style={{ color: "rgba(255,255,255,0.92)" }}>
+                <span className="mt-0.5 shrink-0 text-lg font-bold leading-none" style={{ color: GR.ok }}>✓</span>
+                {item}
+              </li>
+            ))}
           </ul>
-          <div className="mt-5">
+          <div className="mt-7">
             <Link
               href="/security"
-              className="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-200 hover:underline"
+              className="text-[14px] transition-opacity hover:opacity-80"
+              style={{ color: "rgba(255,255,255,0.55)" }}
             >
-              Security & read-only access details →
+              Security &amp; read-only access details →
             </Link>
           </div>
         </section>
 
         {/* ── Pricing preview ───────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_20px_60px_-40px_rgba(28,25,23,0.22)] sm:p-8">
-          <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+        <section
+          className="rounded-[14px] p-8 sm:p-10"
+          style={{
+            background: GR.surface,
+            border: `1px solid ${GR.border}`,
+          }}
+        >
+          <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                Pricing
-              </p>
-              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-3xl">
+              <SectionLabel>Pricing</SectionLabel>
+              <h2
+                className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+                style={{ color: GR.ink, lineHeight: 1.2 }}
+              >
                 First week free.
               </h2>
-              <p className="mt-3 text-base leading-7 text-stone-600">
+              <p className="mt-4 text-[15px] leading-[1.6]" style={{ color: GR.textMid }}>
                 Full access for 7 days — no credit card required. Then $25/month.
               </p>
-              <div className="mt-5 flex items-baseline gap-2">
-                <span className="text-4xl font-bold tracking-[-0.04em] text-stone-950">$25</span>
-                <span className="text-base text-stone-500">/ month after trial</span>
+              <div className="mt-6 flex items-baseline gap-2.5">
+                <span
+                  className="font-mono text-5xl font-semibold leading-none tracking-[-0.03em]"
+                  style={{ color: GR.ink }}
+                >
+                  $25
+                </span>
+                <span className="text-[14px]" style={{ color: GR.textMute }}>
+                  / month after trial
+                </span>
               </div>
-              <p className="mt-2 text-sm text-stone-500">Billed monthly. Cancel any time.</p>
-              <div className="mt-5 flex flex-row flex-wrap gap-3">
+              <p className="mt-2 text-[11.5px]" style={{ color: GR.textMute }}>
+                Billed monthly. Cancel any time.
+              </p>
+              <div className="mt-7 flex flex-row flex-wrap gap-3">
                 {user ? (
                   <Link
                     href="/dashboard"
-                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                    className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+                    style={{ background: GR.ink }}
                   >
                     Open today&rsquo;s session
                   </Link>
@@ -280,13 +384,15 @@ export default async function Home() {
                   <>
                     <Link
                       href="/signup"
-                      className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                      className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+                      style={{ background: GR.ink }}
                     >
                       Start free week
                     </Link>
                     <Link
                       href="/pricing"
-                      className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+                      className="rounded-full border px-5 py-3 text-[14px] font-medium transition-colors"
+                      style={{ borderColor: GR.border, color: GR.textMid }}
                     >
                       See pricing details
                     </Link>
@@ -295,35 +401,45 @@ export default async function Home() {
               </div>
             </div>
             <div>
-              <p className="mb-3 text-sm font-semibold text-stone-950">Included:</p>
-              <ul className="grid gap-2">
+              <p className="text-[15px] font-semibold" style={{ color: GR.ink }}>
+                Included:
+              </p>
+              <ul className="mt-4 grid gap-2">
                 {INCLUDED_FEATURES.slice(0, 4).map((feature) => (
                   <li
                     key={feature}
-                    className="flex items-start gap-3 rounded-2xl bg-stone-50 px-3 py-2 text-sm text-stone-700 sm:px-4 sm:py-3"
+                    className="flex items-start gap-3 rounded-[10px] px-3 py-3 text-[14px]"
+                    style={{
+                      background: GR.bgElev,
+                      color: GR.ink,
+                    }}
                   >
-                    <span className="mt-0.5 shrink-0 font-bold text-emerald-600">✓</span>
+                    <span className="mt-0.5 shrink-0 font-bold leading-none" style={{ color: GR.ok }}>
+                      ✓
+                    </span>
                     {feature}
                   </li>
                 ))}
               </ul>
               <Link
                 href="/pricing"
-                className="mt-3 block text-xs text-stone-400 underline-offset-2 transition hover:text-stone-700 hover:underline"
+                className="mt-4 block text-[13.5px] transition-opacity hover:opacity-70"
+                style={{ color: GR.textMute }}
               >
-                All included features & cost calculator →
+                All included features &amp; cost calculator →
               </Link>
             </div>
           </div>
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────────── */}
-        <section id="faq">
-          <div className="mb-4 sm:mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              FAQ
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl">
+        <section id="faq" className="pt-2">
+          <div className="mb-5">
+            <SectionLabel>FAQ</SectionLabel>
+            <h2
+              className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl"
+              style={{ color: GR.ink, lineHeight: 1.2 }}
+            >
               Common questions.
             </h2>
           </div>
@@ -334,22 +450,32 @@ export default async function Home() {
               <details
                 key={faq.q}
                 name="faq"
-                className="group rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 transition-colors hover:bg-stone-50/60 sm:px-6 sm:py-4"
+                className="group cursor-pointer rounded-[14px] border px-6 py-4 transition-colors"
+                style={{
+                  background: GR.surface,
+                  borderColor: GR.border,
+                }}
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold tracking-[-0.02em] text-stone-950 sm:text-base">
+                <summary className="flex list-none items-center justify-between gap-4 text-[16px] font-medium leading-snug tracking-[-0.01em]" style={{ color: GR.ink }}>
                   {faq.q}
-                  <span className="shrink-0 text-stone-500 transition-transform group-open:rotate-45">
+                  <span
+                    className="shrink-0 text-xl font-light transition-transform group-open:rotate-45"
+                    style={{ color: GR.textMute }}
+                  >
                     +
                   </span>
                 </summary>
-                <p className="mt-3 text-sm leading-6 text-stone-600">{faq.a}</p>
+                <p className="mt-4 text-[14px] leading-[1.6]" style={{ color: GR.textMid }}>
+                  {faq.a}
+                </p>
               </details>
             ))}
           </div>
-          <div className="mt-4">
+          <div className="mt-5">
             <Link
               href="/faq"
-              className="text-sm font-medium text-stone-600 underline-offset-2 transition hover:text-stone-950 hover:underline"
+              className="text-[14px] transition-opacity hover:opacity-70"
+              style={{ color: GR.textMid }}
             >
               Read all {FAQS.length} questions →
             </Link>
@@ -357,13 +483,22 @@ export default async function Home() {
         </section>
 
         {/* ── Final CTA ────────────────────────────────────────────────── */}
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-[0_24px_70px_-45px_rgba(28,25,23,0.32)] sm:p-8 lg:p-10">
+        <section
+          className="rounded-[14px] p-8 sm:p-10"
+          style={{
+            background: GR.surface,
+            border: `1px solid ${GR.border}`,
+          }}
+        >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <h2 className="text-xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-2xl lg:text-3xl">
+              <h2
+                className="text-3xl font-semibold leading-snug tracking-[-0.02em]"
+                style={{ color: GR.ink, lineHeight: 1.15 }}
+              >
                 Your rules, enforced. Starting now.
               </h2>
-              <p className="mt-3 text-base leading-7 text-stone-600">
+              <p className="mt-3 text-[15px] leading-[1.6]" style={{ color: GR.textMid }}>
                 Configure your limits. Run today&rsquo;s session. Let Guardrail lock the moment a
                 rule breaks.
               </p>
@@ -372,7 +507,8 @@ export default async function Home() {
               {user ? (
                 <Link
                   href="/dashboard"
-                  className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                  className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ background: GR.ink }}
                 >
                   Open today&rsquo;s session
                 </Link>
@@ -380,13 +516,15 @@ export default async function Home() {
                 <>
                   <Link
                     href="/signup"
-                    className="rounded-full bg-stone-950 px-5 py-3 text-sm font-medium text-stone-50 transition hover:bg-stone-800"
+                    className="rounded-full px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+                    style={{ background: GR.ink }}
                   >
                     Start free week
                   </Link>
                   <Link
                     href="/login"
-                    className="rounded-full border border-stone-400 px-5 py-3 text-sm font-medium text-stone-800 transition hover:border-stone-950 hover:text-stone-950"
+                    className="rounded-full border px-5 py-3 text-[14px] font-medium transition-colors"
+                    style={{ borderColor: GR.border, color: GR.textMid }}
                   >
                     Log in
                   </Link>
@@ -396,8 +534,8 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* ── Risk disclaimer ──────────────────────────────────────────── */}
-        <p className="text-center text-xs leading-5 text-stone-400">
+        {/* ── Risk disclaimer ────────────────────────────────────────── */}
+        <p className="pb-2 text-center text-[11.5px] leading-relaxed" style={{ color: "var(--gr-text-faint)" }}>
           Guardrail is a trading-discipline and risk-control tool, not financial advice. Guardrail
           starts in monitoring mode; broker-side enforcement applies only to Daily Loss, only on
           supported connections, and only when you explicitly enable it. Trading futures carries a
@@ -413,31 +551,58 @@ export default async function Home() {
 
 function RulesConfigCard() {
   return (
-    <div className="w-56 rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-[0_8px_28px_-8px_rgba(28,25,23,0.10)]">
-      <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-400">
+    <div
+      className="rounded-[14px] border p-5"
+      style={{
+        background: "var(--gr-surface)",
+        borderColor: "var(--gr-border)",
+        width: 224,
+      }}
+    >
+      <p
+        className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+        style={{ color: "var(--gr-text-mute)" }}
+      >
         Trading plan
       </p>
-      <div className="grid gap-1.5">
+      <div className="grid gap-0">
         {[
           { rule: "Daily loss limit", value: "$500" },
           { rule: "Max trades", value: "5 / day" },
           { rule: "Loss streak stop", value: "3 losses" },
           { rule: "Session hours", value: "9:30 – 12:00" },
-        ].map(({ rule, value }) => (
+        ].map(({ rule, value }, i, arr) => (
           <div
             key={rule}
-            className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-1.5"
+            className="flex items-center justify-between gap-2 py-3"
+            style={{
+              borderBottom: i < arr.length - 1 ? `1px solid var(--gr-border-sub)` : undefined,
+            }}
           >
-            <span className="text-[11px] text-stone-600">{rule}</span>
-            <span className="shrink-0 font-mono text-[11px] font-semibold text-stone-950">
+            <span className="text-[13px]" style={{ color: "var(--gr-text-mid)" }}>
+              {rule}
+            </span>
+            <span
+              className="shrink-0 font-mono text-[13px] font-semibold"
+              style={{ color: "var(--gr-ink)" }}
+            >
               {value}
             </span>
           </div>
         ))}
       </div>
-      <div className="mt-3 flex items-center gap-1.5 border-t border-stone-100 pt-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-        <span className="text-[10px] text-stone-500">4 rules active · session live</span>
+      <div
+        className="mt-3 flex items-center gap-1.5 border-t pt-3"
+        style={{ borderColor: "var(--gr-border-sub)" }}
+      >
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ background: "var(--gr-ok)" }}
+          aria-hidden
+        />
+        <span className="text-[11.5px]" style={{ color: "var(--gr-text-mute)" }}>
+          4 rules active · session live
+        </span>
       </div>
     </div>
   );
@@ -447,40 +612,77 @@ function RulesConfigCard() {
 
 function HeroStatusPreview() {
   return (
-    <div className="w-full rounded-2xl border border-red-300/60 bg-white/95 p-3 shadow-[0_8px_28px_-8px_rgba(185,28,28,0.18)] lg:w-60 lg:p-4">
-      <div className="mb-1 flex items-center justify-between">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+    <div
+      className="w-full rounded-[14px] border p-4 lg:w-64"
+      style={{
+        background: "var(--gr-surface)",
+        borderColor: "var(--gr-bad-bd, rgba(167,45,31,0.30))",
+      }}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <p
+          className="font-mono text-[10px] uppercase tracking-[0.2em]"
+          style={{ color: "var(--gr-text-mute)" }}
+        >
           Today&rsquo;s session
         </p>
-        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+        <span
+          className="rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
+          style={{
+            background: "var(--gr-bad-bg)",
+            color: "var(--gr-bad)",
+            border: "1px solid var(--gr-bad-bd)",
+          }}
+        >
           Locked
         </span>
       </div>
-      <p className="mb-1 text-sm font-semibold tracking-[-0.02em] text-stone-950">Session locked</p>
-      <p className="mb-2 text-[11px] text-red-700">Daily loss limit reached</p>
-      <div className="flex flex-col gap-2">
+      <p className="mb-1 text-[14px] font-semibold" style={{ color: "var(--gr-ink)" }}>
+        Session locked
+      </p>
+      <p className="mb-3 text-[11.5px]" style={{ color: "var(--gr-bad)" }}>
+        Daily loss limit reached
+      </p>
+      <div className="flex flex-col gap-3">
         <div>
-          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+          <div className="mb-1.5 flex justify-between text-[11px]" style={{ color: "var(--gr-text-mute)" }}>
             <span>Loss used</span>
-            <span className="font-semibold text-red-700">$500 / $500</span>
+            <span className="font-semibold" style={{ color: "var(--gr-bad)" }}>$500 / $500</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-red-100">
-            <div className="h-full w-full rounded-full bg-red-500" />
+          <div
+            className="h-1.5 overflow-hidden rounded-full"
+            style={{ background: "var(--gr-bad-bg)" }}
+          >
+            <div className="h-full w-full rounded-full" style={{ background: "var(--gr-bad)" }} />
           </div>
         </div>
         <div>
-          <div className="mb-1 flex justify-between text-[11px] text-stone-500">
+          <div className="mb-1.5 flex justify-between text-[11px]" style={{ color: "var(--gr-text-mute)" }}>
             <span>Trades</span>
             <span>5 / 5</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
-            <div className="h-full w-full rounded-full bg-stone-400" />
+          <div
+            className="h-1.5 overflow-hidden rounded-full"
+            style={{ background: "var(--gr-surface-2)" }}
+          >
+            <div className="h-full w-full rounded-full" style={{ background: "var(--gr-text-mute)" }} />
           </div>
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between border-t border-stone-100 pt-2">
-        <p className="text-[10px] text-stone-400">Next reset: tomorrow</p>
-        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">
+      <div
+        className="mt-3 flex items-center justify-between border-t pt-3"
+        style={{ borderColor: "var(--gr-border-sub)" }}
+      >
+        <p className="text-[10.5px]" style={{ color: "var(--gr-text-mute)" }}>
+          Next reset: tomorrow
+        </p>
+        <span
+          className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+          style={{
+            background: "var(--gr-surface-2)",
+            color: "var(--gr-text-mid)",
+          }}
+        >
           New entries disabled
         </span>
       </div>

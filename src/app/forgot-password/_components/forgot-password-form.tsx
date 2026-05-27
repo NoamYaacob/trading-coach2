@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 
-const INPUT =
-  "h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white focus:ring-2 focus:ring-stone-200";
-const LABEL = "text-xs font-semibold uppercase tracking-[0.12em] text-stone-500";
+const INPUT_CLS = [
+  "h-11 w-full rounded-xl border px-3.5 text-sm outline-none transition",
+  "placeholder:opacity-50 focus:ring-2",
+].join(" ");
+
+const LABEL_CLS = "text-xs font-semibold uppercase tracking-[0.12em]";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -45,16 +48,17 @@ export function ForgotPasswordForm() {
   if (submitted) {
     return (
       <div>
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
+        <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>
           Check your email.
         </h1>
-        <p className="mt-2.5 text-sm leading-6 text-stone-500">
+        <p className="mt-2.5 text-sm leading-6" style={{ color: "var(--gr-text-mute)" }}>
           If an account exists for that email, we&apos;ll send a reset link.
         </p>
-        <p className="mt-6 text-center text-sm text-stone-500">
+        <p className="mt-6 text-center text-sm" style={{ color: "var(--gr-text-mute)" }}>
           <a
             href="/login"
-            className="font-medium text-stone-950 underline-offset-2 hover:underline"
+            className="font-medium underline-offset-2 hover:underline"
+            style={{ color: "var(--gr-ink)" }}
           >
             Back to log in
           </a>
@@ -65,21 +69,22 @@ export function ForgotPasswordForm() {
 
   return (
     <div>
-      <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-stone-950">
+      <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em]" style={{ color: "var(--gr-ink)" }}>
         Reset your password.
       </h1>
-      <p className="mt-2.5 text-sm leading-6 text-stone-500">
+      <p className="mt-2.5 text-sm leading-6" style={{ color: "var(--gr-text-mute)" }}>
         Enter your email and we&apos;ll send a reset link if an account exists.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 grid gap-5">
         <label className="grid gap-2">
-          <span className={LABEL}>Email</span>
+          <span className={LABEL_CLS} style={{ color: "var(--gr-text-mute)" }}>Email</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={INPUT}
+            className={INPUT_CLS}
+            style={{ borderColor: "var(--gr-border)", background: "var(--gr-bg-elev)", color: "var(--gr-ink)" }}
             placeholder="trader@example.com"
             autoComplete="email"
             required
@@ -95,16 +100,18 @@ export function ForgotPasswordForm() {
         <button
           type="submit"
           disabled={!formValid || isSubmitting}
-          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full bg-stone-950 text-sm font-medium text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
+          className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: "var(--gr-ink)" }}
         >
           {isSubmitting ? "Sending…" : "Send reset link"}
         </button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-6 text-center text-sm" style={{ color: "var(--gr-text-mute)" }}>
         <a
           href="/login"
-          className="font-medium text-stone-950 underline-offset-2 hover:underline"
+          className="font-medium underline-offset-2 hover:underline"
+          style={{ color: "var(--gr-ink)" }}
         >
           Back to log in
         </a>
