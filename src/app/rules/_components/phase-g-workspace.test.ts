@@ -50,15 +50,18 @@ describe("AppShell — workspaceMode", () => {
 describe("rules page — Phase G workspace layout", () => {
   const SRC = readRepo("src/app/rules/page.tsx");
 
-  it("uses workspaceMode on AppShell", () => {
+  it("uses GrShell as wrapper (Phase 2: replaced AppShell workspaceMode)", () => {
+    // Phase 2 replaced AppShell (with its workspaceMode prop) with GrShell.
     assert.ok(
-      SRC.includes("workspaceMode"),
-      "rules page must set workspaceMode on AppShell to enable flat workspace layout",
+      SRC.includes("GrShell"),
+      "rules page must use GrShell as wrapper (not AppShell with workspaceMode)",
     );
   });
 
-  it("denseHero still set (Phase A invariant)", () => {
-    assert.ok(/\bdenseHero\b/.test(SRC), "rules page must still use denseHero");
+  it("passes hideSidebar prop to GrShell (Phase 2: replaced denseHero/workspaceMode)", () => {
+    // In GrShell, hideSidebar collapses the sidebar for the rule-editor mode,
+    // replacing the old denseHero + workspaceMode AppShell props.
+    assert.ok(SRC.includes("hideSidebar"), "rules page must pass hideSidebar to GrShell");
   });
 
   it("has WorkspaceHeader sub-component", () => {
@@ -75,17 +78,22 @@ describe("rules page — Phase G workspace layout", () => {
     );
   });
 
-  it("main workspace uses warm canvas bg (#f3ece0)", () => {
+  it("GrShell uses var(--gr-bg) token for the page background (Phase 2: replaces #f3ece0 literal)", () => {
+    // Phase 2: the warm canvas bg is now expressed as var(--gr-bg) in gr-shell.tsx.
+    // The rules page itself no longer needs to set the canvas color.
+    const shell = readRepo("src/components/ui/gr-shell.tsx");
     assert.ok(
-      SRC.includes("#f3ece0"),
-      "main workspace must use warm cream canvas bg (#f3ece0) matching Claude Design bg token",
+      shell.includes("var(--gr-bg)"),
+      "GrShell must use var(--gr-bg) for the warm canvas background",
     );
   });
 
-  it("left panel is 240px wide", () => {
+  it("GrShell sidebar is 240px wide (Phase 2: sidebar moved into GrShell)", () => {
+    // Phase 2: the 240px sidebar moved from the rules page aside into GrShell itself.
+    const shell = readRepo("src/components/ui/gr-shell.tsx");
     assert.ok(
-      SRC.includes("w-[240px]"),
-      "workspace left panel must be 240px wide matching Claude Design sidebar spec",
+      shell.includes("240"),
+      "GrShell must define the 240px sidebar width internally",
     );
   });
 });
