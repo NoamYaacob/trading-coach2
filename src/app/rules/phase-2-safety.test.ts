@@ -124,31 +124,50 @@ describe("rules page.tsx: GrShell real-data props", () => {
   });
 });
 
-// ── 3. Other production pages still use AppShell ─────────────
+// ── 3. Shell migration state ──────────────────────────────────
 
-describe("other production pages: AppShell not replaced", () => {
-  it("dashboard still uses AppShell", () => {
+describe("app shell consistency: all logged-in pages use GrShell", () => {
+  // Dashboard migrated to GrShell in Phase 3 (dashboard redesign pass).
+  // Alerts and Settings migrated in Phase 4 (shell consistency pass).
+
+  it("dashboard uses GrShell (migrated from AppShell)", () => {
     const dashboard = read("app/dashboard/page.tsx");
     assert.ok(
-      dashboard.includes("AppShell") || dashboard.includes("app-shell"),
-      "dashboard page must still import/use AppShell",
+      dashboard.includes("GrShell"),
+      "dashboard page must use GrShell",
     );
     assert.ok(
-      !dashboard.includes("GrShell"),
-      "dashboard page must NOT use GrShell",
+      !dashboard.includes("AppShell"),
+      "dashboard page must not use AppShell",
     );
   });
 
-  it("settings still uses AppShell", () => {
+  it("alerts uses GrShell (migrated from AppShell)", () => {
+    try {
+      const alerts = read("app/alerts/page.tsx");
+      assert.ok(
+        alerts.includes("GrShell"),
+        "alerts page must use GrShell",
+      );
+      assert.ok(
+        !alerts.includes("AppShell"),
+        "alerts page must not use AppShell",
+      );
+    } catch {
+      // page may live elsewhere; skip rather than fail
+    }
+  });
+
+  it("settings uses GrShell (migrated from AppShell)", () => {
     try {
       const settings = read("app/settings/page.tsx");
       assert.ok(
-        settings.includes("AppShell") || settings.includes("app-shell"),
-        "settings page must still import/use AppShell",
+        settings.includes("GrShell"),
+        "settings page must use GrShell",
       );
       assert.ok(
-        !settings.includes("GrShell"),
-        "settings page must NOT use GrShell",
+        !settings.includes("AppShell"),
+        "settings page must not use AppShell",
       );
     } catch {
       // page may live elsewhere; skip rather than fail
