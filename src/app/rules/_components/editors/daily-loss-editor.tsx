@@ -231,9 +231,9 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
           </p>
           <div className="grid gap-px overflow-hidden rounded-xl border border-dashed border-[color:var(--gr-border)] bg-[color:var(--gr-plan-bg)] opacity-60">
             {[
-              { title: "Write broker-side daily-loss lock", sub: "PDLL action — opt-in per account" },
-              { title: "Flatten open positions via broker", sub: "Market orders sent via broker API" },
-              { title: "Remove pending orders", sub: "Working + GTC orders via broker API" },
+              { title: "Broker-side daily loss lock", sub: "Broker-side enforcement — opt-in per account" },
+              { title: "Flatten positions through broker", sub: "Market orders sent via broker API" },
+              { title: "Cancel pending orders through broker", sub: "Working + GTC orders via broker API" },
             ].map((row, i) => (
               <div
                 key={row.title}

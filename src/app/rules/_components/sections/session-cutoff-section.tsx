@@ -17,7 +17,7 @@
 import { cmeHourToLocalHour, SESSION_WINDOW_TIMEZONE } from "@/lib/trading-day";
 import { SESSION_WINDOW_COPY } from "../session-window-copy";
 import { CmeHourSelect } from "../cme-hour-select";
-import { cmeHourBoundaryNote } from "../cme-hour-parsing";
+import { cmeHourBoundaryNote, formatCmeHourLabel } from "../cme-hour-parsing";
 import { RuleStatusBadge } from "../rule-status-badge";
 import { Field } from "./field-primitives";
 
@@ -93,7 +93,7 @@ export function SessionCutoffSection({
           Session cutoff
           <RuleStatusBadge variant="monitoring-only" compact />
           <span className="text-xs font-normal text-stone-400">
-            {hour !== null ? `Stops at ${String(hour).padStart(2, "0")}:00 CME` : "Not set"}
+            {hour !== null ? `Stops at ${formatCmeHourLabel(hour)}` : "Not set"}
           </span>
         </span>
         <span aria-hidden className="text-stone-400 transition-transform group-open:rotate-45">

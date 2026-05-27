@@ -27,24 +27,24 @@ type AdvancedAction = {
 
 const ADVANCED_ACTIONS: ReadonlyArray<AdvancedAction> = [
   {
-    name: "PDLL action",
+    name: "Broker-side daily loss lock",
     detail:
-      "Personal daily loss limit action — when the daily-loss rule fires, ask Tradovate to enforce the limit broker-side. Planned broker action — not active yet for end users.",
+      "When the daily-loss rule fires, ask Tradovate to enforce the limit broker-side. Planned broker action — not active yet for end users.",
   },
   {
-    name: "PDPT action",
+    name: "Broker-side profit target lock",
     detail:
-      "Personal daily profit target action — broker-side enforcement of the profit target. The code path is marked live-QA-required and is not safely active in production.",
+      "Broker-side enforcement of the daily profit target. The code path is marked live-QA-required and is not safely active in production.",
   },
   {
-    name: "Liquidate",
+    name: "Flatten positions through broker",
     detail:
       "Close every open position on the connected Tradovate account via the broker API. Endpoint is reachable but not verified on live accounts; not wired to any user trigger today.",
   },
   {
-    name: "Liquidate & block",
+    name: "Cancel pending orders through broker",
     detail:
-      "Flatten positions and then write the broker-side daily-loss lock so no new orders can open. Depends on Liquidate verification and broker-write opt-in. Planned only.",
+      "Flatten positions and then write the broker-side daily-loss lock so no new orders can open. Depends on flatten verification and broker-write opt-in. Planned only.",
   },
 ];
 

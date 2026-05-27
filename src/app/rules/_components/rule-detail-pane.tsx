@@ -349,24 +349,24 @@ function EditorSwitch({
             <div className="grid gap-2">
               {[
                 {
-                  name: "PDLL action",
+                  name: "Broker-side daily loss lock",
                   detail:
-                    "Personal daily loss limit action — ask Tradovate to enforce the limit broker-side. Planned broker action; not active.",
+                    "Ask Tradovate to enforce the daily loss limit broker-side. Planned broker action; not active.",
                 },
                 {
-                  name: "PDPT action",
+                  name: "Broker-side profit target lock",
                   detail:
-                    "Personal daily profit target action — broker-side enforcement of a profit target. Code path is live-QA-required; not active.",
+                    "Broker-side enforcement of a profit target. Code path is live-QA-required; not active.",
                 },
                 {
-                  name: "Liquidate",
+                  name: "Flatten positions through broker",
                   detail:
                     "Close every open position via the broker API. Endpoint reachable but unverified on live; not wired to any trigger today.",
                 },
                 {
-                  name: "Liquidate & block",
+                  name: "Cancel pending orders through broker",
                   detail:
-                    "Flatten positions and write the broker-side daily-loss lock. Depends on Liquidate verification and broker-write opt-in.",
+                    "Flatten positions and write the broker-side daily-loss lock. Depends on flatten verification and broker-write opt-in.",
                 },
               ].map((a) => (
                 <div
