@@ -103,21 +103,20 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
       </div>
 
       {/* Threshold input */}
-      <section className="grid gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
-        <div className="grid gap-0.5">
+      <section className="grid gap-2.5 rounded-2xl border border-[color:var(--gr-border-hi)] bg-[color:var(--gr-surface-warm)] p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
+        <div className="flex items-baseline justify-between">
           <h3 className="text-sm font-semibold text-[color:var(--gr-ink)]">Threshold</h3>
-          <p className="text-[11px] text-[color:var(--gr-text-mute)]">
-            Loss is measured against today&apos;s session P&amp;L. Reset at session
-            close.
+          <p className="text-[10.5px] text-[color:var(--gr-text-mute)]">
+            Resets at session close
           </p>
         </div>
 
-        <div className="grid gap-1.5">
-          <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-500">
-            Daily loss limit
+        <div className="grid gap-1">
+          <label className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-[color:var(--gr-text-mute)]">
+            Daily loss limit (USD)
           </label>
-          <div className="flex h-12 items-stretch overflow-hidden rounded-xl border border-stone-200 bg-white transition focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-200/60">
-            <span className="flex items-center border-r border-stone-200 bg-amber-50/40 px-3 text-xs font-medium text-stone-500">
+          <div className="flex h-11 items-stretch overflow-hidden rounded-xl border border-[color:var(--gr-border-hi)] bg-white transition focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-200/60">
+            <span className="flex items-center border-r border-[color:var(--gr-border)] bg-amber-50/40 px-3 text-xs font-semibold text-[color:var(--gr-text-mid)]">
               USD
             </span>
             <input
@@ -129,13 +128,9 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
               disabled={disabled}
               placeholder="500"
               aria-label="Daily loss limit in USD"
-              className="w-full min-w-0 bg-transparent px-3 text-lg font-semibold tabular-nums text-stone-950 focus:outline-none disabled:cursor-not-allowed disabled:text-stone-500"
+              className="w-full min-w-0 bg-transparent px-3 text-xl font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none disabled:cursor-not-allowed disabled:text-stone-400"
             />
           </div>
-          <p className="text-[11px] text-stone-400">
-            Enter the maximum loss for one trading day. The session resets at
-            CME close.
-          </p>
         </div>
 
         {pendingNote && (
@@ -146,36 +141,32 @@ export function DailyLossEditor({ value, onChange, pendingNote, disabled }: Prop
 
         {/* Visual scale — purely illustrative, computed from value */}
         {hasValue && (
-          <div className="grid gap-1.5 pt-1">
-            <div className="flex items-center justify-between text-[10px] tabular-nums text-stone-400">
-              <span>$0</span>
-              <span>${Math.round(numeric / 2).toLocaleString("en-US")}</span>
-              <span className="font-semibold text-stone-700">
-                ${numeric.toLocaleString("en-US")}
-              </span>
-            </div>
-            <div className="relative h-1.5 overflow-hidden rounded-full bg-stone-100">
+          <div className="grid gap-1 pt-0.5">
+            <div className="relative h-1 overflow-hidden rounded-full bg-[color:var(--gr-border-sub)]">
               <div
-                className="h-full rounded-full bg-amber-500/70"
+                className="h-full rounded-full bg-amber-400/80"
                 style={{ width: "100%" }}
                 aria-hidden
               />
             </div>
-            <p className="text-[10px] text-stone-400">
-              Locks at <span className="tabular-nums text-stone-700">${numeric.toLocaleString("en-US")}</span> of loss.
-            </p>
+            <div className="flex items-center justify-between text-[10px] tabular-nums text-[color:var(--gr-text-mute)]">
+              <span>$0</span>
+              <span className="font-medium text-[color:var(--gr-ink)]">
+                –${numeric.toLocaleString("en-US")} limit
+              </span>
+            </div>
           </div>
         )}
       </section>
 
       {/* What happens when limit is reached */}
-      <section className="grid gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
-        <div className="grid gap-0.5">
+      <section className="grid gap-2.5 rounded-2xl border border-[color:var(--gr-border)] bg-white p-4 shadow-[0_1px_4px_rgba(41,37,36,0.05)]">
+        <div className="flex items-baseline justify-between">
           <h3 className="text-sm font-semibold text-[color:var(--gr-ink)]">
             When the limit is reached
           </h3>
-          <p className="text-[11px] text-[color:var(--gr-text-mute)]">
-            Broker-side actions require integration and are not yet active.
+          <p className="text-[10.5px] text-[color:var(--gr-text-mute)]">
+            Broker-side not yet active
           </p>
         </div>
 

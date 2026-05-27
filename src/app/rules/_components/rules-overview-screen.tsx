@@ -69,7 +69,7 @@ function RuleCard({
       onClick={onSelect}
       data-rule-id={rule.id}
       aria-label={`Open editor for ${rule.label}`}
-      className={`group relative flex flex-col rounded-[14px] border bg-[color:var(--gr-surface-warm)] p-5 text-left transition-[border-color,box-shadow,background,transform] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
+      className={`group relative flex flex-col rounded-[14px] border bg-[color:var(--gr-surface-warm)] p-3.5 text-left transition-[border-color,box-shadow,background,transform] duration-150 focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:shadow-[0_0_0_4px_var(--gr-copper-bg)] ${
         disabled
           ? "cursor-pointer border-[color:var(--gr-border-hi)]"
           : "border-[color:var(--gr-border-hi)] hover:-translate-y-px hover:border-[color:var(--gr-copper)] hover:bg-[color:var(--gr-bg-elev)] hover:shadow-[0_0_0_4px_var(--gr-copper-bg)]"
@@ -84,17 +84,17 @@ function RuleCard({
       </div>
 
       {/* Rule title */}
-      <h3 className="mt-2.5 text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
+      <h3 className="mt-2 text-[13.5px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
         {rule.label}
       </h3>
 
       {/* Sub-text */}
-      <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
+      <p className="mt-0.5 text-[11px] leading-[1.4] text-[color:var(--gr-text-mute)]">
         {rule.helper}
       </p>
 
       {/* Value — prominent display, tabular mono numerals */}
-      <div className="mt-4 flex-1">
+      <div className="mt-3 flex-1">
         <span
           className={
             isEmpty
@@ -109,7 +109,7 @@ function RuleCard({
       </div>
 
       {/* Footer row — state indicator + action affordance */}
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-[color:var(--gr-border-sub)] pt-2">
         <div className="flex min-w-0 items-center gap-1.5">
           {disabled ? (
             <span className="rounded-full border border-stone-200 bg-stone-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-500">

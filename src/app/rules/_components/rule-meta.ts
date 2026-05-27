@@ -21,6 +21,7 @@
  */
 import type { RuleStatusVariant } from "./rule-status-badge";
 import type { SymbolLimitRow } from "./symbol-limits-table";
+import { isValidCmeHour, formatCmeHourLabel } from "./cme-hour-parsing.ts";
 
 export type RuleGroup =
   | "Capital"
@@ -197,7 +198,7 @@ export function ruleDisplayValue(id: RuleId, values: OverviewValues): string {
     }
     case "session-cutoff": {
       const h = parseInt(values.allowedEndHour, 10);
-      return Number.isFinite(h) ? `Stops at ${String(h).padStart(2, "0")}:00 CME` : "";
+      return isValidCmeHour(h) ? `Stops at ${formatCmeHourLabel(h)}` : "";
     }
     case "notifications":
       return "In-app active · Telegram optional";

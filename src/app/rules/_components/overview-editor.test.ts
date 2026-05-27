@@ -154,10 +154,10 @@ describe("ruleDisplayValue — value formatting", () => {
     assert.equal(ruleDisplayValue("max-trades-per-day", baseValues), "");
   });
 
-  it("formats session-cutoff as 'Stops at HH:00 CME'", () => {
+  it("formats session-cutoff as 'Stops at H:00 AM/PM CT' using valid CME hour labels", () => {
     assert.equal(
       ruleDisplayValue("session-cutoff", { ...baseValues, allowedEndHour: "15" }),
-      "Stops at 15:00 CME",
+      "Stops at 3:00 PM CT",
     );
   });
 

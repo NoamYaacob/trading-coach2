@@ -215,7 +215,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
     <form onSubmit={handleSubmit} className="grid gap-6">
 
       {/* ── Money limits ────────────────────────────────────────────────── */}
-      <div role="group" aria-label="Money limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <div role="group" aria-label="Money limits" className="grid gap-4 rounded-2xl border border-[color:var(--gr-border-sub)] bg-[color:var(--gr-surface-warm)] p-4">
         <p className="text-sm font-semibold text-stone-950">Money limits</p>
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field
@@ -257,7 +257,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       </div>
 
       {/* ── Trading limits ──────────────────────────────────────────────── */}
-      <div role="group" aria-label="Trading limits" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <div role="group" aria-label="Trading limits" className="grid gap-4 rounded-2xl border border-[color:var(--gr-border-sub)] bg-[color:var(--gr-surface-warm)] p-4">
         <p className="text-sm font-semibold text-stone-950">Trading limits</p>
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field
@@ -287,7 +287,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
       </div>
 
       {/* ── Daily cutoff ─────────────────────────────────────────────────── */}
-      <div role="group" aria-label="Daily cutoff" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <div role="group" aria-label="Daily cutoff" className="grid gap-4 rounded-2xl border border-[color:var(--gr-border-sub)] bg-[color:var(--gr-surface-warm)] p-4">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-stone-950">
           {SESSION_WINDOW_COPY.legend}
@@ -356,7 +356,7 @@ export function RulesForm({ initial, timezone, hasValidConsent, pendingPayload }
           Read-only honest summary — there is no per-rule alert toggle today.
           Rule-breach notices render in-app on the Dashboard; Telegram delivers
           the two proactive warnings the engine actually sends. */}
-      <div role="group" aria-label="Notifications" className="grid gap-4 rounded-2xl border border-stone-100 bg-stone-50/50 p-5">
+      <div role="group" aria-label="Notifications" className="grid gap-4 rounded-2xl border border-[color:var(--gr-border-sub)] bg-[color:var(--gr-surface-warm)] p-4">
         <p className="text-sm font-semibold text-stone-950">Notifications</p>
         <div className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">
           Rule-breach notices appear in-app on the Dashboard. Connect Telegram to also

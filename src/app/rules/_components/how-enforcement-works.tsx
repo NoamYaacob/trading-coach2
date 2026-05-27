@@ -11,6 +11,9 @@
  *     create a Guardrail app-level lock — no broker writes.
  *   - Cutoff behavior, contract limits by symbol, and PDLL/PDPT broker actions
  *     are not active today.
+ *
+ * Phase L: grouped-row layout — no long full-width paragraphs.
+ * Each enforcement variant is one tight row: chip label + short description.
  */
 export function HowEnforcementWorks() {
   return (
@@ -21,44 +24,63 @@ export function HowEnforcementWorks() {
         </span>
         <span className="font-medium">How enforcement works</span>
       </summary>
-      <div className="mt-2 grid gap-2.5 rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 text-pretty text-stone-600">
-        <p>
-          Guardrail evaluates every rule against your live session and chooses one
-          of four states per rule. Each rule on the form below is tagged with the
-          state it actually has — no hidden assumptions.
+
+      <div className="mt-2 w-fit max-w-lg rounded-xl border border-stone-200 bg-stone-50/70 px-3 py-2.5">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-400">
+          What each badge means
         </p>
-        <ul className="grid gap-1.5">
-          <li>
-            <span className="font-medium text-emerald-700">Broker-backed eligible</span> —
-            Daily Loss only. On supported Tradovate connections with full API access,
-            the limit can be written to Tradovate&apos;s own risk settings so the broker
-            enforces it directly. Off by default; opt-in per account.
-          </li>
-          <li>
-            <span className="font-medium text-indigo-700">Guardrail lock</span> —
-            When the rule breaches, Guardrail marks the account locked inside the app
-            and records a lock event. No broker orders are cancelled, blocked, or
-            flattened — the lock is app-level only.
-          </li>
-          <li>
-            <span className="font-medium text-amber-700">Monitoring only</span> —
-            Warning or display behavior. The rule does not lock the account.
-          </li>
-          <li>
-            <span className="font-medium text-stone-600">Saved · Evaluation coming soon</span> —
-            Your value is saved with the plan, but the evaluator that uses it ships
-            later. Setting it today has no effect on lock behavior yet.
-          </li>
-          <li>
-            <span className="font-medium text-stone-400">Planned broker action</span> —
-            The integration exists but is not safely active in production. Surfaced
-            for transparency; not used to lock or modify your broker account today.
-          </li>
-        </ul>
-        <p className="mt-1 text-stone-500">
-          Cancel orders, flatten positions, and broker-side order blocking are not
-          active in this beta. Telegram alerts and in-app notices are delivered when
-          configured. Read-only connections support monitoring and alerts only.
+
+        <div className="grid gap-px overflow-hidden rounded-lg border border-stone-200 bg-stone-200">
+
+          <div className="flex items-start gap-2.5 bg-white px-3 py-2">
+            <span className="mt-0.5 shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+              Broker-backed eligible
+            </span>
+            <p className="text-[11px] leading-[1.45] text-stone-600">
+              Daily Loss only. On supported Tradovate connections, the limit can be written to the broker&apos;s own risk settings. Off by default; opt-in per account.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 bg-white px-3 py-2">
+            <span className="mt-0.5 shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-indigo-700">
+              Guardrail lock
+            </span>
+            <p className="text-[11px] leading-[1.45] text-stone-600">
+              Guardrail marks the account locked inside the app — the lock is app-level only. No broker orders are cancelled or blocked.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 bg-white px-3 py-2">
+            <span className="mt-0.5 shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+              Monitoring only
+            </span>
+            <p className="text-[11px] leading-[1.45] text-stone-600">
+              Warning or display behavior — the rule does not lock the account.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 bg-white px-3 py-2">
+            <span className="mt-0.5 shrink-0 rounded-full border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-600">
+              Saved · Evaluation coming soon
+            </span>
+            <p className="text-[11px] leading-[1.45] text-stone-600">
+              Value is saved. The evaluator ships later — no effect on lock behavior yet.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 bg-white px-3 py-2">
+            <span className="mt-0.5 shrink-0 rounded-full border border-dashed border-stone-300 bg-white px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+              Planned broker action
+            </span>
+            <p className="text-[11px] leading-[1.45] text-stone-500">
+              Not safely active in production — not used to lock or modify your broker account today.
+            </p>
+          </div>
+
+        </div>
+
+        <p className="mt-2 text-[10.5px] text-stone-400">
+          Cancel orders, flatten positions, and broker-side order blocking are not active in this beta.
         </p>
       </div>
     </details>
