@@ -10,7 +10,8 @@
  * A "Back to overview" button at the top lets the user return to the card
  * grid without selecting a specific rule.
  */
-import { RuleStatusBadge } from "./rule-status-badge";
+import { GrEnforcementChip } from "@/components/ui/gr/gr-enforcement-chip";
+import { GrButton } from "@/components/ui/gr/gr-button";
 import {
   RULE_GROUPS,
   rulesInGroup,
@@ -38,13 +39,15 @@ export function RulesRail({
       className="grid gap-3 rounded-2xl border border-stone-200/80 bg-amber-50/30 p-3"
     >
       {/* Back to overview */}
-      <button
+      <GrButton
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={onBackToOverview}
-        className="inline-flex w-fit items-center gap-1 text-[11px] font-medium text-amber-700 underline-offset-2 hover:underline"
+        style={{ justifyContent: "flex-start", color: "var(--gr-copper)", minHeight: "unset", minWidth: "unset" }}
       >
         ← All rules
-      </button>
+      </GrButton>
 
       {/* Grouped rules list */}
       <div className="grid gap-3">
@@ -80,7 +83,7 @@ export function RulesRail({
                           >
                             {r.label}
                           </span>
-                          <RuleStatusBadge variant={r.status} compact />
+                          <GrEnforcementChip variant={r.status} />
                         </div>
                         <div className="mt-0.5 truncate text-[10px] tabular-nums text-stone-400">
                           {display.trim() === "" ? "Not set" : display}

@@ -63,13 +63,12 @@ describe("AppShell — denseHero mode", () => {
   });
 });
 
-test("rules page: uses denseHero on the AppShell", () => {
+test("rules page: uses GrShell as wrapper (Phase 2: replaced AppShell + denseHero)", () => {
+  // Phase 2 replaced AppShell (with its denseHero prop) with GrShell.
+  // denseHero was an AppShell-only prop that is not present in GrShell.
   const src = readFileSync(resolve(REPO_ROOT, "src/app/rules/page.tsx"), "utf8");
-  assert.match(src, /\bdenseHero\b/, "rules page must opt into the AppShell's denseHero mode");
-  assert.ok(
-    !/compactHero\s*$/m.test(src),
-    "rules page must not also set the looser compactHero prop",
-  );
+  assert.ok(src.includes("GrShell"), "rules page must use GrShell as root wrapper");
+  assert.ok(!src.includes("AppShell"), "rules page must not reference AppShell");
 });
 
 // ── CoreRulesSection — card grid layout ─────────────────────────────────────

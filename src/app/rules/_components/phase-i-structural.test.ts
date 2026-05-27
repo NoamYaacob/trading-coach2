@@ -99,10 +99,12 @@ describe("rules page — Phase I flat workspace", () => {
     );
   });
 
-  it("workspace flex row sits directly inside <AppShell>", () => {
+  it("content wrapper is a flex column directly inside <GrShell> (Phase 2)", () => {
+    // Phase 2: the AppShell+outer-flex-row structure was replaced with GrShell.
+    // The content area is now a flex-col div directly inside GrShell.
     assert.ok(
-      SRC.includes("flex min-w-0 flex-1 items-stretch overflow-hidden"),
-      "workspace must use a flex row directly under AppShell (no outer card wrapper)",
+      SRC.includes("flex min-w-0 flex-1 flex-col"),
+      "content wrapper must be a flex-col div inside GrShell (not the old items-stretch flex row)",
     );
   });
 
@@ -128,16 +130,20 @@ describe("rules page — Phase I flat workspace", () => {
     );
   });
 
-  it("denseHero invariant still set (Phase A → I preserved)", () => {
-    assert.ok(/\bdenseHero\b/.test(SRC), "rules page must still set denseHero on AppShell");
+  it("GrShell used as root wrapper (Phase 2: denseHero/AppShell replaced)", () => {
+    // Phase 2 replaced AppShell (with its denseHero prop) with GrShell.
+    assert.ok(SRC.includes("GrShell"), "rules page must use GrShell as root wrapper");
+    assert.ok(!SRC.includes("AppShell"), "rules page must not reference AppShell");
   });
 
-  it("workspaceMode invariant still set (Phase G → I preserved)", () => {
-    assert.ok(SRC.includes("workspaceMode"), "rules page must still set workspaceMode");
+  it("hideApiStatus prop passed (Phase 2: suppresses mock API card in production)", () => {
+    // GrShell's hideApiStatus replaces the old workspaceMode prod suppression.
+    assert.ok(SRC.includes("hideApiStatus"), "rules page must pass hideApiStatus to GrShell");
   });
 
-  it("left panel is still 240px (Phase G spec preserved)", () => {
-    assert.ok(SRC.includes("w-[240px]"), "workspace left panel must remain 240px wide");
+  it("sidebarContent prop wired with real ScopeSelector (Phase 2: sidebar in GrShell)", () => {
+    // The 240px left panel is now GrShell's own sidebar, populated via sidebarContent.
+    assert.ok(SRC.includes("sidebarContent"), "rules page must wire sidebarContent into GrShell");
   });
 
   it("min-w-0 invariant still on the account form wrapper (Phase F)", () => {

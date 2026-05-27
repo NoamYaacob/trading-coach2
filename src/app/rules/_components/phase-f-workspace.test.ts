@@ -71,10 +71,12 @@ describe("rules page — Phase F workspace layout", () => {
     );
   });
 
-  it("denseHero is still set (Phase A invariant)", () => {
+  it("uses GrShell as page wrapper (Phase 2: replaced AppShell + denseHero)", () => {
+    // Phase 2 replaced AppShell (with its denseHero prop) with GrShell.
+    // denseHero was an AppShell-specific prop that no longer applies.
     assert.ok(
-      /\bdenseHero\b/.test(SRC),
-      "rules page must still use denseHero on AppShell",
+      SRC.includes("GrShell"),
+      "rules page must use GrShell as wrapper (not AppShell)",
     );
   });
 

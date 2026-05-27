@@ -183,8 +183,8 @@ describe("ruleDisplayValue — value formatting", () => {
 describe("RulesOverviewScreen — overview screen structure", () => {
   const SRC = read("rules-overview-screen.tsx");
 
-  it("renders RuleStatusBadge for each card", () => {
-    assert.ok(SRC.includes("RuleStatusBadge"), "overview must render enforcement chips on cards");
+  it("renders GrEnforcementChip for each card (Phase 2: replaced RuleStatusBadge)", () => {
+    assert.ok(SRC.includes("GrEnforcementChip"), "overview must render GrEnforcementChip (G2 primitive) on cards");
   });
 
   it("groups rules by RULE_GROUPS (Capital, Discipline, etc.)", () => {

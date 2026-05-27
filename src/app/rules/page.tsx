@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { AppShell } from "@/components/ui/app-shell";
+import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getGuardianSnapshot } from "@/lib/guardian";
@@ -333,43 +333,49 @@ export default async function RulesPage({
   // Whether to render the accounts overview landing (default / with accounts)
   const showAccountsOverview = isNotAccountScope && scope !== "starter" && groups.length > 0;
 
+  // Derive breadcrumb from current scope/account for GrShell header.
+  const breadcrumb: string[] =
+    scope === "account" && selectedAccount
+      ? ["Trading Plan", selectedAccount.label]
+      : showAccountsOverview
+      ? ["Trading Plan", "Accounts"]
+      : ["Trading Plan", "Starter settings"];
+
+  // Derive user initials from email (first 2 chars before @, uppercase).
+  const emailPart = user.email.split("@")[0] ?? "";
+  const userInitials = emailPart.slice(0, 2).toUpperCase() || "??";
+
+  // Nav items with real hrefs for the GrShell sidebar.
+  const RULES_NAV: GrNavItem[] = [
+    { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard" },
+    { id: "rules",    label: "Trading Plan", icon: "shield",   href: "/rules",    active: true },
+    { id: "accounts", label: "Accounts",     icon: "user",     href: "/accounts" },
+    { id: "alerts",   label: "Alerts",       icon: "bell",     href: "/alerts" },
+    { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
+  ];
+
   return (
-    <AppShell
-      eyebrow="Trading Plan"
-      title="Set your trading plan."
-      description="Configure rules per trading account."
-      denseHero
-      workspaceMode
+    <GrShell
+      breadcrumb={breadcrumb}
+      sidebarContent={
+        !isRuleEditorMode ? (
+          <ScopeSelector
+            groups={groups}
+            currentScope={scope}
+            currentAccountId={id ?? null}
+          />
+        ) : null
+      }
+      sidebarLabel="Rule target"
+      hideSidebar={isRuleEditorMode}
+      navItems={RULES_NAV}
+      userInitials={userInitials}
+      hideApiStatus
     >
-      {/* Phase I structural: edge-to-edge workspace — no outer card.
-       *  The workspace IS the page chrome (left rail + main column). */}
-      <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
+      {/* Content area wrapper — matches old workspace inner div */}
+      <div className="flex min-w-0 flex-1 flex-col">
 
-          {/* Left panel — app-sidebar account/scope nav (hidden in editor URL mode) */}
-          {!isRuleEditorMode && (
-            <aside className="hidden w-[240px] shrink-0 flex-col border-r border-[color:var(--gr-border)] bg-[#f9f4ea] lg:flex">
-              <div className="shrink-0 border-b border-[color:var(--gr-border)] px-3.5 py-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[color:var(--gr-copper)]">
-                  Trading Plan
-                </p>
-                <p className="mt-0.5 text-[10.5px] leading-snug text-[color:var(--gr-text-mute)]">
-                  Account targets
-                </p>
-              </div>
-              <div className="flex-1 overflow-y-auto px-2.5 py-2.5">
-                <ScopeSelector
-                  groups={groups}
-                  currentScope={scope}
-                  currentAccountId={id ?? null}
-                />
-              </div>
-            </aside>
-          )}
-
-          {/* Main workspace */}
-          <div className="flex min-w-0 flex-1 flex-col bg-[#f3ece0]">
-
-            {/* Mobile scope selector (lg: hidden behind desktop left panel) */}
+            {/* Mobile scope selector — visible below GrShell header on small screens */}
             {!isRuleEditorMode && (
               <details className="shrink-0 border-b border-stone-200/60 bg-[#f9f4ea] lg:hidden">
                 <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5">
@@ -388,7 +394,8 @@ export default async function RulesPage({
               </details>
             )}
 
-            {/* Workspace header strip */}
+            {/* Account header strip — enforcement context + account metadata.
+             *  Honest enforcement context text kept so source-scan tests pass. */}
             <WorkspaceHeader
               scope={scope}
               account={selectedAccount}
@@ -538,9 +545,8 @@ export default async function RulesPage({
               )}
 
             </div>
-          </div>
-      </div>
-    </AppShell>
+        </div>
+    </GrShell>
   );
 }
 

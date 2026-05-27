@@ -49,14 +49,16 @@ describe("RulesOverviewScreen — Phase E filter chips", () => {
     );
   });
 
-  it("selected chip uses amber styling", () => {
+  it("selected chip uses GrChip with G2 token styling (Phase 2: replaced amber Tailwind classes)", () => {
+    // Phase 2 replaced the hand-rolled <button> chips with <GrChip> which uses
+    // CSS variable tokens (var(--gr-ink) active bg, var(--gr-surface) idle bg).
     assert.ok(
-      SRC.includes("bg-amber-50"),
-      "active filter chip must use amber-50 background for warm accent",
+      SRC.includes("GrChip"),
+      "active filter chip must use GrChip G2 primitive",
     );
     assert.ok(
-      SRC.includes("border-amber-300"),
-      "active filter chip must use amber-300 border",
+      SRC.includes("active={"),
+      "GrChip must receive the active prop for state styling",
     );
   });
 });
