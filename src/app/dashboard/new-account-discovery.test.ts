@@ -182,4 +182,38 @@ describe("Pending account surfacing — dashboard and settings (test 4)", () => 
       "NewAccountsPanel must offer a copy_from rules choice",
     );
   });
+
+  it("settings PendingAccountCard setup CTA links to /rules?scope=account, not /accounts/{id}/setup", () => {
+    const src = readFileSync(
+      join(__dirname, "../settings/_components/broker-connections-section.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      !src.includes("/accounts/${acct.id}/setup") && !src.includes("/accounts/${acct.id}/setup"),
+      "PendingAccountCard must not link to /accounts/{id}/setup — that route does not exist",
+    );
+    assert.ok(
+      src.includes("/rules?scope=account&id=${acct.id}"),
+      "PendingAccountCard must link to /rules?scope=account&id={accountId}",
+    );
+  });
+
+  it("dashboard panel and settings card use the same setup destination (/rules?scope=account)", () => {
+    const dashSrc = readFileSync(
+      join(__dirname, "_components/command-center/new-accounts-panel.tsx"),
+      "utf8",
+    );
+    const settingsSrc = readFileSync(
+      join(__dirname, "../settings/_components/broker-connections-section.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      dashSrc.includes("/rules?scope=account"),
+      "NewAccountsPanel must route to /rules?scope=account",
+    );
+    assert.ok(
+      settingsSrc.includes("/rules?scope=account"),
+      "PendingAccountCard must route to /rules?scope=account",
+    );
+  });
 });

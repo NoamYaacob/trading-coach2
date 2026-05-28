@@ -311,7 +311,7 @@ function PendingAccountCard({ acct }: { acct: BrokerAccountRow }) {
           </p>
         </div>
         <Link
-          href={`/accounts/${acct.id}/setup`}
+          href={`/rules?scope=account&id=${acct.id}`}
           className="inline-flex shrink-0 items-center rounded-full bg-stone-950 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-stone-800"
         >
           Set rules
