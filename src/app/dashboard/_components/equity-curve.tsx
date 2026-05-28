@@ -26,7 +26,7 @@ import Link from "next/link";
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
-type Timeframe = "7d" | "30d" | "all";
+type Timeframe = "7d" | "14d" | "30d" | "all";
 
 type Props = {
   /** Round-trip trades for the selected account (already <= 30d). */
@@ -51,7 +51,7 @@ function filterByTimeframe(
   tf: Timeframe,
 ): RoundTripTrade[] {
   if (tf === "all") return trades;
-  const days = tf === "7d" ? 7 : 30;
+  const days = tf === "7d" ? 7 : tf === "14d" ? 14 : 30;
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   return trades.filter((t) => t.closedAt.getTime() >= cutoff);
 }
@@ -112,7 +112,10 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
       >
         <div>
           <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>
-            Equity curve
+            Equity curve{" "}
+            <span style={{ fontSize: 12, fontWeight: 400, color: "var(--gr-text-mute)" }}>
+              · {timeframe === "7d" ? "last 7 days" : timeframe === "14d" ? "last 14 days" : timeframe === "30d" ? "last 30 days" : "all time"}
+            </span>
           </span>
           <div
             style={{
@@ -127,6 +130,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <div style={{ display: "flex", gap: 4 }}>
             {toggleButton("7d", "7D")}
+            {toggleButton("14d", "14D")}
             {toggleButton("30d", "30D")}
             {toggleButton("all", "All")}
           </div>
@@ -258,26 +262,58 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        style={{ width: "100%", height: 80 }}
+        style={{ width: "100%", height: 90 }}
         aria-hidden="true"
       >
+        <defs>
+          <linearGradient id="equityGradFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Dashed grid lines */}
+        {[0.25, 0.5, 0.75].map((frac) => (
+          <line
+            key={frac}
+            x1={0} x2={W}
+            y1={frac * H} y2={frac * H}
+            stroke="var(--gr-border)"
+            strokeWidth="0.4"
+            strokeDasharray="2 3"
+          />
+        ))}
+        {/* Zero baseline when curve crosses zero */}
         {cumMin < 0 && cumMax > 0 && (
           <line
-            x1={0}
-            x2={W}
-            y1={sy(0)}
-            y2={sy(0)}
+            x1={0} x2={W}
+            y1={sy(0)} y2={sy(0)}
             stroke="var(--gr-border)"
-            strokeWidth="0.5"
-            strokeDasharray="2 2"
+            strokeWidth="0.7"
+            strokeDasharray="3 2"
           />
         )}
+        {/* Fill under the line */}
+        <path
+          d={`${pathPoints} L${sx(points[points.length - 1]!.x).toFixed(2)},${H} L${sx(points[0]!.x).toFixed(2)},${H} Z`}
+          fill="url(#equityGradFill)"
+        />
+        {/* Main line */}
         <path
           d={pathPoints}
           stroke={lineColor}
-          strokeWidth="1.2"
+          strokeWidth="1.5"
           fill="none"
           strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {/* Endpoint dot */}
+        <circle
+          cx={sx(points[points.length - 1]!.x)}
+          cy={sy(points[points.length - 1]!.y)}
+          r="2"
+          fill={lineColor}
+          stroke="var(--gr-surface)"
+          strokeWidth="1"
         />
       </svg>
     </div>

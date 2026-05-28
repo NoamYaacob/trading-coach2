@@ -51,6 +51,7 @@ import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-accoun
 import { EquityCurve } from "@/app/dashboard/_components/equity-curve";
 import { PnlCalendar } from "@/app/dashboard/_components/pnl-calendar";
 import { TraderInsights } from "@/app/dashboard/_components/trader-insights";
+import { profitFactor } from "@/app/dashboard/_components/insights";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -271,6 +272,11 @@ export default async function DashboardPage({
     : [];
   const todayTrades = recentTrades.filter((t) => t.closedAt >= todayStart);
 
+  // Win rate and profit factor for KPI strip (honest 30d stats)
+  const wins30d = recentTrades.filter((t) => t.pnl > 0).length;
+  const winRate30d = recentTrades.length > 0 ? wins30d / recentTrades.length : null;
+  const pf30d = profitFactor(recentTrades);
+
   // Nav items — same as /rules, but home is active
   const DASHBOARD_NAV: GrNavItem[] = [
     { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard", active: true },
@@ -480,10 +486,10 @@ export default async function DashboardPage({
                 * from stretching to fill the container.
                 */}
               <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 260px))",
-                justifyContent: "start",
+                display: "flex",
                 gap: 10,
+                overflowX: "auto",
+                paddingBottom: 6,
               }}>
                 {/* Auto-sync for stale accounts (active only — no point
                   * trying to sync accounts the broker no longer returns). */}
@@ -517,7 +523,8 @@ export default async function DashboardPage({
                       key={acc.id}
                       style={{
                         position: "relative",
-                        padding: 14,
+                        flex: "0 0 260px",
+                        padding: 16,
                         background: "var(--gr-surface)",
                         border: isSelected ? "1px solid var(--gr-copper)" : "1px solid var(--gr-border)",
                         boxShadow: isSelected ? "0 0 0 3px var(--gr-copper-bg)" : "none",
@@ -698,22 +705,20 @@ export default async function DashboardPage({
                       highlight: true,
                     },
                     {
-                      label: "Loss budget left",
-                      value: selectedAccount.remainingDailyLoss != null
-                        ? `$${selectedAccount.remainingDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : selectedAccount.maxDailyLoss != null ? `$${selectedAccount.maxDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} limit` : "No limit set",
-                      sub: selectedAccount.dailyLossUsedPct != null
-                        ? `${Math.round(selectedAccount.dailyLossUsedPct * 100)}% used`
-                        : "Set a daily loss rule",
-                      tone: (selectedAccount.dailyLossUsedPct ?? 0) > 0.8 ? "warn" : "ok",
+                      label: "Win rate · 30D",
+                      value: winRate30d != null ? `${Math.round(winRate30d * 100)}%` : "—",
+                      sub: winRate30d != null
+                        ? `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
+                        : "No round-trips in last 30 days",
+                      tone: winRate30d != null && winRate30d >= 0.5 ? "ok" : "warn",
                     },
                     {
-                      label: "Trades today",
-                      value: selectedAccount.tradesCount != null ? String(selectedAccount.tradesCount) : "—",
-                      sub: selectedAccount.maxTradesPerDay != null
-                        ? `of ${selectedAccount.maxTradesPerDay} limit`
-                        : "No trade limit set",
-                      tone: selectedAccount.tradesUsedPct != null && selectedAccount.tradesUsedPct > 0.8 ? "warn" : "ok",
+                      label: "Profit factor · 30D",
+                      value: pf30d != null ? pf30d.toFixed(2) : "—",
+                      sub: pf30d != null
+                        ? pf30d >= 1 ? "Gross wins exceed losses" : "Gross losses exceed wins"
+                        : recentTrades.length === 0 ? "No round-trips in window" : "No losing trades yet",
+                      tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
                   ].map((k) => (
                     <div
@@ -995,31 +1000,27 @@ export default async function DashboardPage({
                 {activeAlerts.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {activeAlerts.map((alert) => {
-                      const bg = alert.status === "blocked" || alert.status === "triggered"
-                        ? "var(--gr-bad-bg)"
-                        : alert.status === "warning"
-                        ? "var(--gr-warn-bg)"
-                        : "var(--gr-surface)";
-                      const fg = alert.status === "blocked" || alert.status === "triggered"
-                        ? "var(--gr-bad)"
-                        : alert.status === "warning"
-                        ? "var(--gr-warn)"
-                        : "var(--gr-text-mid)";
+                      const isHard = alert.status === "blocked" || alert.status === "triggered";
+                      const isWarn = alert.status === "warning";
+                      const iconBg = isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-surface)";
+                      const iconFg = isHard ? "var(--gr-bad)" : isWarn ? "var(--gr-warn)" : "var(--gr-text-mid)";
+                      const iconBd = isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-border)";
+                      const icon = isHard ? "⚑" : isWarn ? "△" : "●";
                       return (
-                        <div key={alert.ruleId} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <div key={alert.ruleId} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                           <div style={{
-                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                            background: bg, color: fg,
+                            width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                            background: iconBg, color: iconFg,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            border: "1px solid var(--gr-border)",
-                            fontSize: 13,
+                            border: `1px solid ${iconBd}`,
+                            fontSize: 14, lineHeight: 1,
                           }}>
-                            {alert.status === "blocked" || alert.status === "triggered" ? "⚠" : "!"}
+                            {icon}
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>{ruleLabel(alert.ruleId)}</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{ruleLabel(alert.ruleId)}</span>
                             {alert.message && (
-                              <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>{alert.message}</span>
+                              <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.4 }}>{alert.message}</span>
                             )}
                           </div>
                         </div>
@@ -1028,8 +1029,12 @@ export default async function DashboardPage({
                   </div>
                 ) : (
                   <div style={{ padding: "24px 0", textAlign: "center" }}>
-                    <div style={{ fontSize: 22, marginBottom: 8 }}>✓</div>
-                    <p style={{ fontSize: 13, color: "var(--gr-text-mute)" }}>No active alerts.</p>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9, background: "var(--gr-ok-bg)", color: "var(--gr-ok)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 18, margin: "0 auto 10px",
+                    }}>✓</div>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>All clear</p>
                     <p style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 4 }}>
                       All monitored rules are within limits.
                     </p>
