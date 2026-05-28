@@ -45,7 +45,6 @@ export const metadata: Metadata = {
 const SETTINGS_NAV: GrNavItem[] = [
   { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard" },
   { id: "rules",    label: "Trading Plan", icon: "shield",   href: "/rules" },
-  { id: "accounts", label: "Accounts",     icon: "user",     href: "/accounts" },
   { id: "alerts",   label: "Alerts",       icon: "bell",     href: "/alerts" },
   { id: "settings", label: "Settings",     icon: "settings", href: "/settings", active: true },
 ];
