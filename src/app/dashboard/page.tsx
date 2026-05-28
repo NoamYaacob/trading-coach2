@@ -251,9 +251,9 @@ export default async function DashboardPage({
   // otherwise drives the honest empty state.
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const recentTrades = selectedAccount
-    ? await loadAccountTrades(selectedAccount.id, { since: sevenDaysAgo })
+    ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
   const todayTrades = recentTrades.filter((t) => t.closedAt >= todayStart);
 
@@ -623,23 +623,6 @@ export default async function DashboardPage({
                   );
                 })}
 
-                {/* Add account tile — occupies one grid cell */}
-                <Link
-                  href="/accounts/connect/tradovate"
-                  className="btn-compact"
-                  style={{
-                    background: "transparent",
-                    border: "1px dashed var(--gr-border)",
-                    borderRadius: 12,
-                    color: "var(--gr-text-mute)",
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                    gap: 6, textDecoration: "none",
-                    minHeight: 130,
-                  }}
-                >
-                  <span style={{ fontSize: 20, lineHeight: 1 }}>+</span>
-                  <span style={{ fontSize: 12, fontWeight: 500 }}>Connect another</span>
-                </Link>
               </div>
             </section>
 
@@ -771,43 +754,97 @@ export default async function DashboardPage({
                     View all →
                   </Link>
                 </div>
-                {violationFeed.results.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    {violationFeed.results.filter(r => r.status !== "ok" || violationFeed.results.indexOf(r) < 5).slice(0, 6).map((rule, idx, arr) => {
-                      const dot = rule.status === "blocked" ? "var(--gr-bad)"
-                        : rule.status === "triggered" ? "var(--gr-bad)"
-                        : rule.status === "warning" ? "var(--gr-warn)"
-                        : "var(--gr-ok)";
-                      return (
-                        <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>{ruleLabel(rule.ruleId)}</span>
+                {(() => {
+                  // Build a pct map for rules that have quantitative limits
+                  const rulePct: Record<string, number | null> = {};
+                  const ruleValueLabel: Record<string, string> = {};
+                  if (selectedAccount) {
+                    if (selectedAccount.dailyLossUsedPct != null) {
+                      rulePct["max_daily_loss"] = selectedAccount.dailyLossUsedPct;
+                      const used = selectedAccount.maxDailyLoss != null && selectedAccount.remainingDailyLoss != null
+                        ? selectedAccount.maxDailyLoss - selectedAccount.remainingDailyLoss
+                        : null;
+                      ruleValueLabel["max_daily_loss"] = used != null && selectedAccount.maxDailyLoss != null
+                        ? `$${Math.abs(used).toFixed(0)} / $${selectedAccount.maxDailyLoss.toFixed(0)}`
+                        : `${Math.round(selectedAccount.dailyLossUsedPct * 100)}%`;
+                    }
+                    if (selectedAccount.tradesUsedPct != null) {
+                      rulePct["max_trades_per_day"] = selectedAccount.tradesUsedPct;
+                      ruleValueLabel["max_trades_per_day"] = selectedAccount.tradesCount != null && selectedAccount.maxTradesPerDay != null
+                        ? `${selectedAccount.tradesCount} / ${selectedAccount.maxTradesPerDay}`
+                        : `${Math.round(selectedAccount.tradesUsedPct * 100)}%`;
+                    }
+                    if (guardian.evaluation.consecutiveLosses > 0 && riskRules?.stopAfterLosses != null && riskRules.stopAfterLosses > 0) {
+                      const pct = guardian.evaluation.consecutiveLosses / riskRules.stopAfterLosses;
+                      rulePct["stop_after_consecutive_losses"] = pct;
+                      ruleValueLabel["stop_after_consecutive_losses"] = `${guardian.evaluation.consecutiveLosses} / ${riskRules.stopAfterLosses} losses`;
+                    }
+                  }
+
+                  const displayRules = violationFeed.results
+                    .filter(r => r.status !== "ok" || violationFeed.results.indexOf(r) < 5)
+                    .slice(0, 6);
+
+                  if (displayRules.length === 0) {
+                    return (
+                      <div style={{ padding: "24px 0", textAlign: "center" }}>
+                        <p style={{ fontSize: 13, color: "var(--gr-text-mute)" }}>No rules configured yet.</p>
+                        <Link href="/rules" style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none", marginTop: 6, display: "inline-block" }}>
+                          Set up your Trading Plan →
+                        </Link>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {displayRules.map((rule, idx, arr) => {
+                        const dot = rule.status === "blocked" || rule.status === "triggered" ? "var(--gr-bad)"
+                          : rule.status === "warning" ? "var(--gr-warn)"
+                          : "var(--gr-ok)";
+                        const pct = rulePct[rule.ruleId] ?? null;
+                        const valLabel = ruleValueLabel[rule.ruleId] ?? null;
+                        const barColor = pct != null
+                          ? pct >= 0.8 ? "var(--gr-bad)" : pct >= 0.5 ? "var(--gr-warn)" : "var(--gr-ok)"
+                          : null;
+                        return (
+                          <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>{ruleLabel(rule.ruleId)}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                {valLabel && (
+                                  <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: barColor ?? "var(--gr-text-mute)", fontWeight: 600 }}>
+                                    {valLabel}
+                                  </span>
+                                )}
+                                {rule.status !== "ok" && (
+                                  <span style={{ fontSize: 10.5, fontWeight: 600, color: rule.status === "warning" ? "var(--gr-warn)" : "var(--gr-bad)" }}>
+                                    {rule.status}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            {rule.status !== "ok" && (
-                              <span style={{ fontSize: 10.5, fontWeight: 600, color: rule.status === "warning" ? "var(--gr-warn)" : "var(--gr-bad)" }}>
-                                {rule.status}
-                              </span>
+                            {pct != null && (
+                              <div style={{ height: 3, borderRadius: 99, background: "var(--gr-border)", overflow: "hidden" }}>
+                                <div style={{
+                                  height: "100%", borderRadius: 99,
+                                  width: `${Math.min(100, Math.round(pct * 100))}%`,
+                                  background: barColor!,
+                                }} />
+                              </div>
+                            )}
+                            {idx < arr.length - 1 && (
+                              <div style={{ height: 1, background: "var(--gr-border-sub, var(--gr-border))", marginTop: 2 }} />
                             )}
                           </div>
-                          {idx < arr.length - 1 && (
-                            <div style={{ height: 1, background: "var(--gr-border-sub, var(--gr-border))", marginTop: 4 }} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ padding: "24px 0", textAlign: "center" }}>
-                    <p style={{ fontSize: 13, color: "var(--gr-text-mute)" }}>
-                      No rules configured yet.
-                    </p>
-                    <Link href="/rules" style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none", marginTop: 6, display: "inline-block" }}>
-                      Set up your Trading Plan →
-                    </Link>
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Equity curve — cumulative realized P&L from real trades */}
@@ -821,7 +858,7 @@ export default async function DashboardPage({
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Equity curve</span>
                     {selectedAccount && (
                       <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        Cumulative realized P&L · last 7d
+                        Cumulative realized P&L · last 30d
                       </div>
                     )}
                   </div>
@@ -855,7 +892,7 @@ export default async function DashboardPage({
                         </svg>
                         <p style={{ fontSize: 12.5, color: "var(--gr-text-mute)", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
                           {recentTrades.length === 0
-                            ? "No closed round-trips in the last 7 days for this account."
+                            ? "No closed round-trips in the last 30 days for this account."
                             : "Curve appears once at least 2 round-trips have closed in the window."}
                         </p>
                       </div>
@@ -1073,62 +1110,168 @@ export default async function DashboardPage({
               </div>
             </section>
 
-            {/* ── Accounts detail (collapsible) ─────────────────────────── */}
-            <section style={{ padding: "0 36px 36px" }}>
-              <details
-                className="group"
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid var(--gr-border)",
-                  background: "var(--gr-bg-elev)",
-                  overflow: "hidden",
-                }}
-              >
-                <summary
-                  className="btn-compact"
+            {/* ── P&L Calendar — last 30 days ──────────────────────────── */}
+            {selectedAccount && (
+              <section style={{ padding: "0 36px 20px" }}>
+                <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+                    <div>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>P&amp;L calendar</span>
+                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        Daily realized P&amp;L · last 30 days · {selectedAccount.label}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/trades?accountId=${selectedAccount.id}`}
+                      className="btn-compact"
+                      style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
+                    >
+                      View trades →
+                    </Link>
+                  </div>
+                  {(() => {
+                    // Build last 30-day calendar grid (5 weeks × 7 days, Sun–Sat)
+                    const now = new Date();
+                    const start = new Date(now);
+                    start.setDate(now.getDate() - 29);
+                    // Align to Sunday
+                    const gridStart = new Date(start);
+                    gridStart.setDate(start.getDate() - start.getDay());
+
+                    // Aggregate trades by calendar day (using displayTimeZone)
+                    const dayMap = new Map<string, { pnl: number; count: number }>();
+                    for (const t of recentTrades) {
+                      const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+                      const cur = dayMap.get(key) ?? { pnl: 0, count: 0 };
+                      dayMap.set(key, { pnl: cur.pnl + t.pnl, count: cur.count + 1 });
+                    }
+
+                    const todayKey = now.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+                    const startKey = start.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+
+                    const cells: Array<{ key: string; dayNum: number; inRange: boolean; data: { pnl: number; count: number } | null }> = [];
+                    for (let i = 0; i < 35; i++) {
+                      const d = new Date(gridStart);
+                      d.setDate(gridStart.getDate() + i);
+                      const key = d.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+                      cells.push({
+                        key,
+                        dayNum: d.getDate(),
+                        inRange: key >= startKey && key <= todayKey,
+                        data: dayMap.get(key) ?? null,
+                      });
+                    }
+
+                    const tradingDays = cells.filter(c => c.inRange && c.data && c.data.count > 0);
+                    const winDays = tradingDays.filter(c => c.data!.pnl > 0).length;
+                    const lossDays = tradingDays.filter(c => c.data!.pnl < 0).length;
+                    const totalPnl = tradingDays.reduce((s, c) => s + c.data!.pnl, 0);
+
+                    return (
+                      <>
+                        {tradingDays.length > 0 && (
+                          <div style={{ display: "flex", gap: 20, marginBottom: 14, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12, color: "var(--gr-text-mute)" }}>
+                              <span style={{ color: "var(--gr-ok)", fontWeight: 600 }}>{winDays}W</span>
+                              {" · "}
+                              <span style={{ color: "var(--gr-bad)", fontWeight: 600 }}>{lossDays}L</span>
+                              {" · "}
+                              {tradingDays.length} days traded
+                            </span>
+                            <span style={{ fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 600, color: totalPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
+                              {fmt$(totalPnl)} total
+                            </span>
+                          </div>
+                        )}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+                          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
+                            <div key={d} style={{ fontSize: 9.5, color: "var(--gr-text-faint)", textAlign: "center", padding: "2px 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>{d}</div>
+                          ))}
+                          {cells.map((cell, i) => {
+                            const hasTrades = cell.data != null && cell.data.count > 0;
+                            const pnl = cell.data?.pnl ?? 0;
+                            return (
+                              <div
+                                key={i}
+                                title={hasTrades ? `${fmt$(pnl)} · ${cell.data!.count} trade${cell.data!.count !== 1 ? "s" : ""}` : undefined}
+                                style={{
+                                  padding: "5px 3px",
+                                  borderRadius: 5,
+                                  textAlign: "center",
+                                  minHeight: 38,
+                                  background: !cell.inRange ? "transparent"
+                                    : hasTrades && pnl > 0 ? "var(--gr-ok-bg)"
+                                    : hasTrades && pnl < 0 ? "var(--gr-bad-bg)"
+                                    : "transparent",
+                                  border: cell.key === todayKey ? "1px solid var(--gr-copper)" : "1px solid transparent",
+                                  opacity: !cell.inRange ? 0.2 : 1,
+                                }}
+                              >
+                                <div style={{ fontSize: 9.5, color: cell.key === todayKey ? "var(--gr-copper)" : "var(--gr-text-mute)", fontWeight: cell.key === todayKey ? 700 : 400 }}>
+                                  {cell.dayNum}
+                                </div>
+                                {hasTrades && (
+                                  <div style={{
+                                    fontSize: 8.5, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                                    color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+                                    fontWeight: 600, lineHeight: 1.2, marginTop: 2,
+                                  }}>
+                                    {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {tradingDays.length === 0 && (
+                          <div style={{ padding: "16px 0", textAlign: "center", fontSize: 12.5, color: "var(--gr-text-mute)" }}>
+                            No closed trades in the last 30 days. Calendar fills as trades close.
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </section>
+            )}
+
+            {/* ── Accounts detail (collapsible) — expired accounts + management only ── */}
+            {hasExpiredAccount && ( /* Expired / unavailable accounts */
+              <section style={{ padding: "0 36px 36px" }}>
+                <details
+                  className="group"
                   style={{
-                    cursor: "pointer",
-                    listStyle: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "14px 20px",
-                    userSelect: "none",
+                    borderRadius: 14, border: "1px solid var(--gr-border)",
+                    background: "var(--gr-bg-elev)", overflow: "hidden",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
-                      Accounts detail
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-                      {commandCenter.accounts.length} account{commandCenter.accounts.length !== 1 ? "s" : ""}
-                      {hasExpiredAccount && (
-                        <span style={{ marginLeft: 6, color: "var(--gr-warn)" }}>
-                          · {expiredAccounts.length} expired
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <span
+                  <summary
+                    className="btn-compact"
                     style={{
-                      fontSize: 18, lineHeight: 1, color: "var(--gr-text-mute)",
-                      transition: "transform 0.2s",
-                      display: "inline-block",
+                      cursor: "pointer", listStyle: "none",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "14px 20px", userSelect: "none",
                     }}
-                    className="group-open:rotate-45"
                   >
-                    +
-                  </span>
-                </summary>
-                {/* ── Expired / unavailable accounts (inside Accounts detail) ── */}
-                {hasExpiredAccount && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
+                        Expired / unavailable accounts
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--gr-warn)" }}>
+                        · {expiredAccounts.length} account{expiredAccounts.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <span
+                      style={{ fontSize: 18, lineHeight: 1, color: "var(--gr-text-mute)", transition: "transform 0.2s", display: "inline-block" }}
+                      className="group-open:rotate-45"
+                    >
+                      +
+                    </span>
+                  </summary>
                   <div style={{ borderTop: "1px solid var(--gr-border)", padding: "16px 20px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
-                      <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-                        Expired / unavailable · {expiredAccounts.length}
-                      </span>
                       <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-                        Historical data preserved — Archive to hide
+                        Historical data preserved — Archive to hide permanently
                       </span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1138,29 +1281,18 @@ export default async function DashboardPage({
                           <div
                             key={acc.id}
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 12,
+                              display: "flex", alignItems: "center", gap: 12,
                               padding: "9px 12px",
-                              background: "var(--gr-surface)",
-                              border: "1px solid var(--gr-border)",
+                              background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
                               borderRadius: 10,
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
-                                {acc.label}
-                              </span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{acc.label}</span>
                               <span style={{
-                                marginLeft: 8,
-                                fontSize: 10,
-                                padding: "1px 6px",
-                                borderRadius: 999,
-                                background: "var(--gr-bg-elev)",
-                                color: "var(--gr-text-mute)",
-                                fontWeight: 500,
-                                letterSpacing: "0.04em",
-                                textTransform: "uppercase",
+                                marginLeft: 8, fontSize: 10, padding: "1px 6px", borderRadius: 999,
+                                background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
+                                fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
                               }}>
                                 {isUnavailable ? "unavailable" : "expired"}
                               </span>
@@ -1192,12 +1324,9 @@ export default async function DashboardPage({
                       })}
                     </div>
                   </div>
-                )}
-                <div style={{ borderTop: "1px solid var(--gr-border)", padding: "0" }}>
-                  <CommandCenter data={commandCenter} />
-                </div>
-              </details>
-            </section>
+                </details>
+              </section>
+            )}
           </>
         )}
         </div>

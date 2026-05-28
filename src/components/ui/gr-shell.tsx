@@ -38,6 +38,7 @@ import { GrAccountSelector } from "./gr/gr-account-selector";
 import { GrIcon } from "./gr/gr-icon";
 import type { GrIconName } from "./gr/gr-icon";
 import { GrBadge } from "./gr/gr-badge";
+import { LogoutButton } from "./logout-button";
 
 // ── Public nav-item type (exported for page.tsx RULES_NAV) ────
 
@@ -231,6 +232,25 @@ export function GrShell({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [mobileNavOpen]);
+
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [quickOpen, setQuickOpen] = React.useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+  const quickRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!userMenuOpen && !quickOpen) return;
+    function handleDown(e: MouseEvent) {
+      if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+      if (quickOpen && quickRef.current && !quickRef.current.contains(e.target as Node)) {
+        setQuickOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleDown);
+    return () => document.removeEventListener("mousedown", handleDown);
+  }, [userMenuOpen, quickOpen]);
 
   return (
     <div
@@ -429,83 +449,116 @@ export function GrShell({
           <div style={{ flex: 1 }} />
 
           {/* Header actions */}
-          <div
+<div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--gr-text-mute)" }}>
+  {/* Quick nav palette */}
+  <div ref={quickRef} style={{ position: "relative" }}>
+    <button
+      type="button"
+      onClick={() => setQuickOpen((v) => !v)}
+      aria-label="Quick navigation"
+      aria-expanded={quickOpen}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "6px 12px",
+        border: "1px solid var(--gr-border)", borderRadius: "var(--gr-r-md)",
+        background: "var(--gr-surface)", fontSize: "12.5px",
+        cursor: "pointer", color: "var(--gr-text-mute)",
+      }}
+    >
+      <GrIcon name="search" size="sm" />
+      <span>Quick nav…</span>
+      <span style={{
+        marginLeft: 32, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+        fontSize: "10.5px", padding: "1.5px 5px",
+        border: "1px solid var(--gr-border)", borderRadius: 4,
+        background: "var(--gr-surface)", color: "var(--gr-text-mid)",
+      }}>⌘K</span>
+    </button>
+    {quickOpen && (
+      <div style={{
+        position: "absolute", right: 0, top: "calc(100% + 6px)",
+        minWidth: 220, background: "var(--gr-surface)",
+        border: "1px solid var(--gr-border)", borderRadius: 10,
+        boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
+      }}>
+        {resolvedNav.filter((n) => n.href).map((n, i, arr) => (
+          <Link
+            key={n.id}
+            href={n.href!}
+            onClick={() => setQuickOpen(false)}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              color: "var(--gr-text-mute)",
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 14px", fontSize: "13.5px",
+              color: n.active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+              textDecoration: "none",
+              fontWeight: n.active ? 500 : 400,
+              borderBottom: i < arr.length - 1 ? "1px solid var(--gr-border)" : "none",
+              background: n.active ? "var(--gr-bg-elev)" : "transparent",
             }}
           >
-            {/* Quick search */}
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Quick action"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 12px",
-                border: "1px solid var(--gr-border)",
-                borderRadius: "var(--gr-r-md)",
-                background: "var(--gr-surface)",
-                fontSize: "12.5px",
-                cursor: "pointer",
-              }}
-            >
-              <GrIcon name="search" size="sm" />
-              <span>Quick action…</span>
-              <span
-                style={{
-                  marginLeft: 32,
-                  fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                  fontSize: "10.5px",
-                  padding: "1.5px 5px",
-                  border: "1px solid var(--gr-border)",
-                  borderRadius: 4,
-                  background: "var(--gr-surface)",
-                  color: "var(--gr-text-mid)",
-                }}
-              >
-                ⌘K
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label="Notifications"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 7,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                color: "var(--gr-text-mute)",
-                borderRadius: 8,
-              }}
-            >
-              <GrIcon name="bell" />
-            </button>
-            <div
-              aria-label="User avatar"
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 999,
-                background: "var(--gr-copper)",
-                color: "white",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "11.5px",
-                fontWeight: 600,
-              }}
-            >
-              {resolvedInitials}
-            </div>
-          </div>
+            <GrIcon name={n.icon} size="sm" />
+            {n.label}
+          </Link>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {/* Bell — links to /alerts */}
+  <Link
+    href="/alerts"
+    aria-label="Notifications"
+    style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      padding: 7, border: "none", background: "transparent",
+      color: "var(--gr-text-mute)", borderRadius: 8, textDecoration: "none",
+    }}
+  >
+    <GrIcon name="bell" />
+  </Link>
+
+  {/* User avatar — opens settings/logout dropdown */}
+  <div ref={userMenuRef} style={{ position: "relative" }}>
+    <button
+      type="button"
+      onClick={() => setUserMenuOpen((v) => !v)}
+      aria-label="User menu"
+      aria-expanded={userMenuOpen}
+      style={{
+        width: 30, height: 30, borderRadius: 999,
+        background: "var(--gr-copper)", color: "white",
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        fontSize: "11.5px", fontWeight: 600,
+        border: "none", cursor: "pointer", padding: 0,
+      }}
+    >
+      {resolvedInitials}
+    </button>
+    {userMenuOpen && (
+      <div style={{
+        position: "absolute", right: 0, top: "calc(100% + 6px)",
+        minWidth: 160, background: "var(--gr-surface)",
+        border: "1px solid var(--gr-border)", borderRadius: 10,
+        boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
+      }}>
+        <Link
+          href="/settings"
+          onClick={() => setUserMenuOpen(false)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 14px", fontSize: "13.5px",
+            color: "var(--gr-text-mid)", textDecoration: "none",
+            borderBottom: "1px solid var(--gr-border)",
+          }}
+        >
+          <GrIcon name="settings" size="sm" />
+          Settings
+        </Link>
+        <LogoutButton variant="menu" />
+      </div>
+    )}
+  </div>
+</div>
         </header>
 
         {/* Page content */}
