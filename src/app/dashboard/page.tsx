@@ -47,6 +47,7 @@ import {
   isAccountActive,
   partitionAccountsByActive,
 } from "@/app/dashboard/_components/command-center/active-status";
+import { NewAccountsPanel } from "@/app/dashboard/_components/command-center/new-accounts-panel";
 import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-account-button";
 import { EquityCurve } from "@/app/dashboard/_components/equity-curve";
 import { PnlCalendar } from "@/app/dashboard/_components/pnl-calendar";
@@ -681,6 +682,13 @@ export default async function DashboardPage({
 
               </div>
             </section>
+
+            {/* ── New accounts — pending setup ────────────────────────── */}
+            {commandCenter.pendingAccounts.length > 0 && (
+              <section className="dash-section" style={{ padding: "0 36px 16px" }}>
+                <NewAccountsPanel accounts={commandCenter.pendingAccounts} />
+              </section>
+            )}
 
             {/* ── Selected account context bar ──────────────────────────── */}
             {selectedAccount && (

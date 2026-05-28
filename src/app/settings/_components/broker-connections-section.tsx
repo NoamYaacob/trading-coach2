@@ -119,34 +119,41 @@ function permDisplay(perm: string | null | undefined): PermDisplay {
 // ── Classification ────────────────────────────────────────────────────────────
 
 /**
- * Classifies accounts into three mutually-exclusive buckets.
+ * Classifies accounts into four mutually-exclusive buckets.
  *
  * Precedence:
  *   1. inactive  — missing from broker (missingFromBrokerSince set)
- *   2. needsAttention — OAuth token expired but account still exists in broker
- *   3. connected — everything else
+ *   2. pending   — pending_decision (new account, not yet set up)
+ *   3. needsAttention — OAuth token expired but account still exists in broker
+ *   4. connected — everything else
  *
  * Inactive takes highest precedence so an account that is both "missing from
  * broker" and "in an expired connection" ends up in the inactive section (where
  * Remove from Guardrail is offered), not in the reconnect group.
  */
 function classifyAccounts(accounts: BrokerAccountRow[]) {
+  const pending = accounts.filter(
+    (a) => a.protectionStatus === "pending_decision" && a.missingFromBrokerSince == null,
+  );
+  const pendingIds = new Set(pending.map((a) => a.id));
+
   const inactive = accounts.filter((a) => a.missingFromBrokerSince != null);
   const inactiveIds = new Set(inactive.map((a) => a.id));
 
   const needsAttention = accounts.filter(
     (a) =>
       !inactiveIds.has(a.id) &&
+      !pendingIds.has(a.id) &&
       (isExpiredStatus(a.connectionStatus) ||
         (a.brokerConnection != null && isExpiredStatus(a.brokerConnection.connectionStatus))),
   );
   const needsAttentionIds = new Set(needsAttention.map((a) => a.id));
 
   const connected = accounts.filter(
-    (a) => !inactiveIds.has(a.id) && !needsAttentionIds.has(a.id),
+    (a) => !inactiveIds.has(a.id) && !needsAttentionIds.has(a.id) && !pendingIds.has(a.id),
   );
 
-  return { needsAttention, inactive, connected };
+  return { pending, needsAttention, inactive, connected };
 }
 
 /**
@@ -280,6 +287,40 @@ function OrphanedConnectionRow({ bc }: { bc: BrokerConnectionRow }) {
   );
 }
 
+// ── Pending account card ──────────────────────────────────────────────────────
+
+/**
+ * One card per pending_decision account (new account not yet set up).
+ * Rendered at the top of the section with an amber treatment to draw attention.
+ */
+function PendingAccountCard({ acct }: { acct: BrokerAccountRow }) {
+  const platform = platformLabel(acct.platform);
+  const env = envLabel(acct.brokerConnection?.env);
+  const subtitle = [platform, env].filter(Boolean).join(" ");
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1 text-sm">
+          <p className="font-medium text-stone-950">{acct.label}</p>
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+            <span>{subtitle}</span>
+            <StatusPill label="Setup needed" color="amber" />
+          </div>
+          <p className="text-xs text-amber-800">
+            New account found. Set up rules before trading.
+          </p>
+        </div>
+        <Link
+          href={`/accounts/${acct.id}/setup`}
+          className="inline-flex shrink-0 items-center rounded-full bg-stone-950 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-stone-800"
+        >
+          Set rules
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // ── Section component ─────────────────────────────────────────────────────────
 
 export function BrokerConnectionsSection({
@@ -293,7 +334,7 @@ export function BrokerConnectionsSection({
   disconnectWindow: DisconnectWindowState;
   userTz: string | null;
 }) {
-  const { needsAttention, inactive, connected } = classifyAccounts(accounts);
+  const { pending, needsAttention, inactive, connected } = classifyAccounts(accounts);
 
   const expiredGroups = groupExpiredByConnection(needsAttention);
 
@@ -306,12 +347,13 @@ export function BrokerConnectionsSection({
     (bc) => isExpiredStatus(bc.connectionStatus) && !linkedConnectionIds.has(bc.id),
   );
 
+  const hasPending = pending.length > 0;
   const hasNeedsAttention = expiredGroups.length > 0;
   const hasOrphaned = orphanedExpired.length > 0;
   const hasConnected = connected.length > 0;
   const hasInactive = inactive.length > 0;
 
-  if (!hasNeedsAttention && !hasOrphaned && !hasConnected && !hasInactive) {
+  if (!hasPending && !hasNeedsAttention && !hasOrphaned && !hasConnected && !hasInactive) {
     return <p className="text-sm text-stone-500">No broker connected yet.</p>;
   }
 
@@ -327,6 +369,20 @@ export function BrokerConnectionsSection({
           live sync and broker-side enforcement pause until you reconnect.
         </p>
       </div>
+
+      {/* ── New accounts — pending setup ────────────────────────────────── */}
+      {hasPending && (
+        <div className="grid gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
+            New — needs setup
+          </p>
+          <div className="grid gap-2">
+            {pending.map((acct) => (
+              <PendingAccountCard key={acct.id} acct={acct} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Needs attention ─────────────────────────────────────────────── */}
       {hasNeedsAttention && (

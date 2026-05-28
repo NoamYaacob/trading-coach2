@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   PRIMARY_NAV,
@@ -7,6 +10,8 @@ import {
   ALL_NAV,
   ADD_ACCOUNT_HREF,
 } from "../../components/ui/nav-config.ts";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // ── Test 1: Broker connections not in primary nav ────────────────────────────
 
@@ -71,11 +76,22 @@ describe("Dashboard Add account CTA (test 4)", () => {
 // ── Test 5: Dashboard still shows new account detected panel ─────────────────
 
 describe("New account detected panel on Dashboard (test 5)", () => {
-  // NewAccountsPanel is rendered in CommandCenter when
-  // data.pendingAccounts.length > 0. Nothing changed in that path.
-  it("pending accounts trigger NewAccountsPanel on Dashboard", () => {
-    const pendingAccounts = [{ id: "test-1", label: "TEST-MFFU-001" }];
-    assert.ok(pendingAccounts.length > 0);
+  // After the PR #68/69 dashboard redesign, CommandCenter is only shown for the
+  // demo preview (no real accounts). NewAccountsPanel is now rendered directly
+  // in dashboard/page.tsx when commandCenter.pendingAccounts.length > 0.
+  it("dashboard page.tsx imports and renders NewAccountsPanel for pending accounts", () => {
+    const dashboardSource = readFileSync(
+      join(__dirname, "page.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      dashboardSource.includes("NewAccountsPanel"),
+      "dashboard/page.tsx must import and use NewAccountsPanel for pending accounts",
+    );
+    assert.ok(
+      dashboardSource.includes("pendingAccounts"),
+      "dashboard/page.tsx must reference commandCenter.pendingAccounts",
+    );
   });
 });
 

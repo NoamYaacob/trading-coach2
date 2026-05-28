@@ -89,7 +89,7 @@ const ACCOUNT_TYPE_PILLS: { value: AccountTypeChoice; label: string }[] = [
 // ── Row mode ─────────────────────────────────────────────────────────────────
 
 type RowMode = "idle" | "reviewing" | "busy_add" | "busy_ignore" | "dismissed";
-type RulesChoice = "default" | "account_specific";
+type RulesChoice = "default" | "copy_from" | "account_specific";
 
 // ── Rules card buttons ────────────────────────────────────────────────────────
 
@@ -112,9 +112,14 @@ function RulesCards({
             detail: "Use your default rules for this account.",
           },
           {
+            value: "copy_from" as RulesChoice,
+            label: "Copy from existing account",
+            detail: "Start from another account's saved rules.",
+          },
+          {
             value: "account_specific" as RulesChoice,
-            label: "Create account-specific rules",
-            detail: "Set custom limits after adding it.",
+            label: "Set rules from scratch",
+            detail: "Configure custom limits for this account.",
           },
         ] as const
       ).map((opt) => (
@@ -189,7 +194,7 @@ function PendingAccountRow({ account }: { account: PendingDiscoveredAccount }) {
         setMode("reviewing");
         return;
       }
-      if (rulesChoice === "account_specific") {
+      if (rulesChoice === "account_specific" || rulesChoice === "copy_from") {
         router.push(`/rules?scope=account&id=${account.id}`);
       } else {
         router.refresh();
