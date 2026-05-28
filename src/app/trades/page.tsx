@@ -6,6 +6,10 @@ import type { Metadata } from "next";
 import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
 import { getCurrentUser } from "@/lib/auth";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
+import {
+  isAccountActive,
+  partitionAccountsByActive,
+} from "@/app/dashboard/_components/command-center/active-status";
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradeFilters } from "./_components/trade-filters";
@@ -97,12 +101,20 @@ export default async function TradesPage({
 
   const commandCenter = await loadCommandCenterData(currentUser.id, currentUser.email);
   const accounts = commandCenter.accounts;
+  const { active: activeAccounts } = partitionAccountsByActive(accounts);
   const hasAccounts = accounts.length > 0;
+  const hasActiveAccount = activeAccounts.length > 0;
 
-  // Pick selected account from query or auto-select first
+  // Pick selected account:
+  //  - explicit ?accountId= deep link wins (active OR expired — lets users
+  //    view historical trades for an expired account)
+  //  - else auto-select first active account
+  //  - never auto-select an expired account
   const selectedAccount = params.accountId
-    ? accounts.find((a) => a.id === params.accountId) ?? accounts[0] ?? null
-    : accounts[0] ?? null;
+    ? accounts.find((a) => a.id === params.accountId) ?? activeAccounts[0] ?? null
+    : activeAccounts[0] ?? null;
+  const selectedAccountIsExpired =
+    selectedAccount != null && !isAccountActive(selectedAccount);
 
   // Load real trades for the selected account
   const since = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
@@ -145,10 +157,10 @@ export default async function TradesPage({
     return q ? `/trades?${q}` : "/trades";
   };
 
-  // ── Sidebar: compact account list ────────────────────────────────────────
-  const SidebarAccountList = hasAccounts ? (
+  // ── Sidebar: compact account list (active accounts only) ─────────────────
+  const SidebarAccountList = hasActiveAccount ? (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {accounts.slice(0, 4).map((acc) => (
+      {activeAccounts.slice(0, 4).map((acc) => (
         <Link
           key={acc.id}
           href={buildHref({ accountId: acc.id })}
@@ -182,9 +194,9 @@ export default async function TradesPage({
           )}
         </Link>
       ))}
-      {accounts.length > 4 && (
+      {activeAccounts.length > 4 && (
         <span style={{ fontSize: 11, color: "var(--gr-text-mute)", padding: "4px 8px" }}>
-          +{accounts.length - 4} more
+          +{activeAccounts.length - 4} more
         </span>
       )}
     </div>
@@ -193,7 +205,7 @@ export default async function TradesPage({
       href="/accounts/connect/tradovate"
       style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
     >
-      Connect first account →
+      {hasAccounts ? "Reconnect or add account →" : "Connect first account →"}
     </Link>
   );
 
@@ -201,7 +213,7 @@ export default async function TradesPage({
     <GrShell
       breadcrumb={["Trades"]}
       sidebarContent={SidebarAccountList}
-      sidebarLabel={hasAccounts ? "Accounts" : "Connect"}
+      sidebarLabel={hasActiveAccount ? "Accounts" : "Connect"}
       navItems={TRADES_NAV}
       userInitials={userInitials}
       hideApiStatus
@@ -214,15 +226,17 @@ export default async function TradesPage({
             Closed round-trips · last {rangeDays}d
           </span>
           <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.15, color: "var(--gr-ink)", margin: "6px 0 0" }}>
-            {hasAccounts ? (
+            {!hasAccounts ? (
+              <>No accounts connected yet.</>
+            ) : selectedAccount ? (
               <>
                 Trades for{" "}
                 <span style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}>
-                  {selectedAccount?.label ?? "—"}
+                  {selectedAccount.label}
                 </span>
               </>
             ) : (
-              <>No accounts connected yet.</>
+              <>No active accounts.</>
             )}
           </h1>
         </section>
@@ -249,13 +263,42 @@ export default async function TradesPage({
               </Link>
             </div>
           </section>
+        ) : !selectedAccount ? (
+          /* ── All accounts expired/unavailable, no deep link ──────────── */
+          <section style={{ padding: "4px 36px 36px" }}>
+            <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: "32px 36px" }}>
+              <p style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-copper)", marginBottom: 12 }}>
+                All accounts expired or unavailable
+              </p>
+              <h2 style={{ fontSize: 22, fontWeight: 600, color: "var(--gr-ink)", marginBottom: 10 }}>
+                No live accounts to show trades for.
+              </h2>
+              <p style={{ fontSize: 13.5, color: "var(--gr-text-mid)", marginBottom: 18, lineHeight: 1.55 }}>
+                Historical trade data is preserved. View it from the dashboard, archive accounts you no longer need, or reconnect a broker.
+              </p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Link
+                  href="/dashboard"
+                  style={{ display: "inline-flex", padding: "8px 16px", borderRadius: 9, background: "var(--gr-ink)", color: "var(--gr-bg)", textDecoration: "none", fontSize: 13, fontWeight: 500 }}
+                >
+                  Manage accounts
+                </Link>
+                <Link
+                  href="/accounts/connect/tradovate"
+                  style={{ display: "inline-flex", padding: "8px 16px", borderRadius: 9, border: "1px solid var(--gr-border)", color: "var(--gr-text-mid)", textDecoration: "none", fontSize: 13 }}
+                >
+                  Reconnect broker
+                </Link>
+              </div>
+            </div>
+          </section>
         ) : (
           <>
-            {/* ── Account picker strip ─────────────────────────────────── */}
-            {accounts.length > 1 && (
+            {/* ── Account picker strip (active accounts only) ──────────── */}
+            {activeAccounts.length > 1 && (
               <section style={{ padding: "0 36px 16px" }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {accounts.map((acc) => {
+                  {activeAccounts.map((acc) => {
                     const isSelected = acc.id === selectedAccount?.id;
                     return (
                       <Link
@@ -276,6 +319,54 @@ export default async function TradesPage({
                       </Link>
                     );
                   })}
+                </div>
+              </section>
+            )}
+
+            {/* ── Expired account notice (when deep-linked) ────────────── */}
+            {selectedAccountIsExpired && (
+              <section style={{ padding: "0 36px 16px" }}>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    background: "var(--gr-bg-elev)",
+                    border: "1px solid var(--gr-border)",
+                    borderRadius: 10,
+                    fontSize: 12.5,
+                    color: "var(--gr-text-mid)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{
+                    fontSize: 10,
+                    padding: "1px 7px",
+                    borderRadius: 999,
+                    background: "var(--gr-surface)",
+                    color: "var(--gr-text-mute)",
+                    fontWeight: 600,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    flexShrink: 0,
+                  }}>
+                    {selectedAccount?.status === "unavailable" ? "unavailable" : "expired"}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    Viewing historical trades for an expired or unavailable account.
+                    {activeAccounts.length > 0 && " Switch to an active account from the sidebar to monitor live activity."}
+                  </span>
+                  <Link
+                    href="/dashboard"
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--gr-copper)",
+                      textDecoration: "none",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Manage on dashboard →
+                  </Link>
                 </div>
               </section>
             )}
