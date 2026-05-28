@@ -30,6 +30,20 @@ describe("/trades page: structural contract", () => {
     assert.ok(!page.includes("AppShell"), "must not reference AppShell");
   });
 
+  it("does not hide the GrShell sidebar (hideSidebar must be absent)", () => {
+    assert.ok(
+      !page.includes("hideSidebar"),
+      "must not pass hideSidebar — the nav rail and sidebar must be visible on /trades",
+    );
+  });
+
+  it("passes sidebarLabel to GrShell so the sidebar section has a heading", () => {
+    assert.ok(
+      page.includes("sidebarLabel"),
+      "must pass sidebarLabel prop so the sidebar section shows a heading",
+    );
+  });
+
   it("loads real trades via loadAccountTrades", () => {
     assert.ok(
       page.includes("loadAccountTrades"),
