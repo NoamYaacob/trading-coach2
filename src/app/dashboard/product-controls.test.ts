@@ -14,38 +14,102 @@ function read(rel: string): string {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
-describe("GrShell: header controls are not dead buttons", () => {
+describe("GrShell: header controls are functional dropdowns", () => {
   const shell = read("components/ui/gr-shell.tsx");
 
-  it("bell button links to /alerts", () => {
+  it("bell is a dropdown with recent alerts and a 'View all alerts' link", () => {
     assert.ok(
-      shell.includes('href="/alerts"'),
-      "bell must link to /alerts",
+      shell.includes("bellOpen") && shell.includes("setBellOpen"),
+      "bell must be a stateful dropdown (bellOpen state)",
+    );
+    assert.ok(
+      shell.includes("Recent alerts"),
+      "bell dropdown must show a 'Recent alerts' heading",
+    );
+    assert.ok(
+      shell.includes("View all alerts"),
+      "bell dropdown must include a 'View all alerts' link to /alerts",
     );
   });
 
-  it("avatar opens a user menu with settings link", () => {
+  it("bell shows an unread-count badge when alerts exist", () => {
     assert.ok(
-      shell.includes('href="/settings"'),
-      "avatar dropdown must include a link to /settings",
+      shell.includes("activeAlertCount"),
+      "bell must compute activeAlertCount from recentAlerts",
     );
   });
 
-  it("avatar menu includes logout action", () => {
+  it("avatar menu includes account/profile, billing, and logout", () => {
+    assert.ok(
+      shell.includes("Account &amp; profile") || shell.includes("Account & profile"),
+      "avatar dropdown must include 'Account & profile'",
+    );
+    assert.ok(
+      shell.includes("Plan &amp; billing") || shell.includes("Plan & billing"),
+      "avatar dropdown must include 'Plan & billing'",
+    );
     assert.ok(
       shell.includes("LogoutButton"),
       "avatar dropdown must include LogoutButton",
     );
+    assert.ok(
+      shell.includes('href="/pricing"'),
+      "Plan & billing must link to the existing /pricing page",
+    );
   });
 
-  it("quick-nav palette has navigation links", () => {
+  it("quick-nav palette has both Navigate and Actions sections", () => {
     assert.ok(
       shell.includes("Quick nav"),
       "quick action must say 'Quick nav' (not the old dead 'Quick action')",
     );
     assert.ok(
       shell.includes("resolvedNav.filter"),
-      "quick nav must iterate the resolvedNav items to build links",
+      "quick nav must iterate the resolvedNav items to build navigation links",
+    );
+    assert.ok(
+      shell.includes("Navigate") && shell.includes("Actions"),
+      "quick nav must have both Navigate and Actions section headers",
+    );
+    assert.ok(
+      shell.includes("Connect account"),
+      "quick nav Actions must include 'Connect account'",
+    );
+    assert.ok(
+      shell.includes("GrShellSyncButton"),
+      "quick nav Actions must include the Sync accounts button",
+    );
+  });
+});
+
+describe("GrShellSyncButton: client action", () => {
+  const btn = read("components/ui/gr-shell-sync-button.tsx");
+  it("calls POST /api/accounts/sync-all", () => {
+    assert.ok(
+      btn.includes('"/api/accounts/sync-all"'),
+      "sync button must POST to /api/accounts/sync-all",
+    );
+    assert.ok(
+      btn.includes('method: "POST"'),
+      "sync button must use POST method",
+    );
+    assert.ok(
+      btn.includes("router.refresh"),
+      "sync button must router.refresh() on success",
+    );
+  });
+});
+
+describe("/dashboard: passes alerts data to the shell", () => {
+  const page = read("app/dashboard/page.tsx");
+  it("dashboard maps activeViolations into bellAlerts for the shell", () => {
+    assert.ok(
+      page.includes("bellAlerts"),
+      "dashboard must build a bellAlerts payload",
+    );
+    assert.ok(
+      page.includes("recentAlerts={bellAlerts}"),
+      "dashboard must pass bellAlerts to <GrShell recentAlerts={...} />",
     );
   });
 });

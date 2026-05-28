@@ -39,8 +39,9 @@ import { GrIcon } from "./gr/gr-icon";
 import type { GrIconName } from "./gr/gr-icon";
 import { GrBadge } from "./gr/gr-badge";
 import { LogoutButton } from "./logout-button";
+import { GrShellSyncButton } from "./gr-shell-sync-button";
 
-// ── Public nav-item type (exported for page.tsx RULES_NAV) ────
+// ── Public types ─────────────────────────────────────────────
 
 export type GrNavItem = {
   id: string;
@@ -49,6 +50,13 @@ export type GrNavItem = {
   href?: string;
   active?: boolean;
   badge?: number;
+};
+
+export type GrRecentAlert = {
+  id: string;
+  label: string;
+  message?: string | null;
+  severity: "warning" | "blocked" | "triggered" | "ok";
 };
 
 // ── Logo ──────────────────────────────────────────────────────
@@ -204,6 +212,9 @@ type Props = {
   hideSidebar?: boolean;
   /** When true, hides the mock API status card (production use). */
   hideApiStatus?: boolean;
+  /** Recent alerts shown in the bell dropdown. Undefined = bell shows
+   *  the honest "Open alerts page" empty state. Empty array = "No active alerts". */
+  recentAlerts?: GrRecentAlert[];
 };
 
 export function GrShell({
@@ -215,6 +226,7 @@ export function GrShell({
   userInitials,
   hideSidebar = false,
   hideApiStatus = false,
+  recentAlerts,
 }: Props) {
   // undefined = show mock account selector; null/ReactNode = use slot
   const showMockAccountSelector = sidebarContent === undefined;
@@ -235,11 +247,13 @@ export function GrShell({
 
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [quickOpen, setQuickOpen] = React.useState(false);
+  const [bellOpen, setBellOpen] = React.useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
   const quickRef = React.useRef<HTMLDivElement>(null);
+  const bellRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (!userMenuOpen && !quickOpen) return;
+    if (!userMenuOpen && !quickOpen && !bellOpen) return;
     function handleDown(e: MouseEvent) {
       if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
@@ -247,10 +261,18 @@ export function GrShell({
       if (quickOpen && quickRef.current && !quickRef.current.contains(e.target as Node)) {
         setQuickOpen(false);
       }
+      if (bellOpen && bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setBellOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleDown);
     return () => document.removeEventListener("mousedown", handleDown);
-  }, [userMenuOpen, quickOpen]);
+  }, [userMenuOpen, quickOpen, bellOpen]);
+
+  // Count alerts that require attention for the bell badge.
+  const activeAlertCount = recentAlerts
+    ? recentAlerts.filter((a) => a.severity !== "ok").length
+    : 0;
 
   return (
     <div
@@ -449,116 +471,250 @@ export function GrShell({
           <div style={{ flex: 1 }} />
 
           {/* Header actions */}
-<div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--gr-text-mute)" }}>
-  {/* Quick nav palette */}
-  <div ref={quickRef} style={{ position: "relative" }}>
-    <button
-      type="button"
-      onClick={() => setQuickOpen((v) => !v)}
-      aria-label="Quick navigation"
-      aria-expanded={quickOpen}
-      style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "6px 12px",
-        border: "1px solid var(--gr-border)", borderRadius: "var(--gr-r-md)",
-        background: "var(--gr-surface)", fontSize: "12.5px",
-        cursor: "pointer", color: "var(--gr-text-mute)",
-      }}
-    >
-      <GrIcon name="search" size="sm" />
-      <span>Quick nav…</span>
-      <span style={{
-        marginLeft: 32, fontFamily: "var(--font-ibm-plex-mono, monospace)",
-        fontSize: "10.5px", padding: "1.5px 5px",
-        border: "1px solid var(--gr-border)", borderRadius: 4,
-        background: "var(--gr-surface)", color: "var(--gr-text-mid)",
-      }}>⌘K</span>
-    </button>
-    {quickOpen && (
-      <div style={{
-        position: "absolute", right: 0, top: "calc(100% + 6px)",
-        minWidth: 220, background: "var(--gr-surface)",
-        border: "1px solid var(--gr-border)", borderRadius: 10,
-        boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
-      }}>
-        {resolvedNav.filter((n) => n.href).map((n, i, arr) => (
-          <Link
-            key={n.id}
-            href={n.href!}
-            onClick={() => setQuickOpen(false)}
-            style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 14px", fontSize: "13.5px",
-              color: n.active ? "var(--gr-ink)" : "var(--gr-text-mid)",
-              textDecoration: "none",
-              fontWeight: n.active ? 500 : 400,
-              borderBottom: i < arr.length - 1 ? "1px solid var(--gr-border)" : "none",
-              background: n.active ? "var(--gr-bg-elev)" : "transparent",
-            }}
-          >
-            <GrIcon name={n.icon} size="sm" />
-            {n.label}
-          </Link>
-        ))}
-      </div>
-    )}
-  </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--gr-text-mute)" }}>
+            {/* Quick nav palette — nav destinations + common actions */}
+            <div ref={quickRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setQuickOpen((v) => !v)}
+                aria-label="Quick navigation"
+                aria-expanded={quickOpen}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px",
+                  border: "1px solid var(--gr-border)", borderRadius: "var(--gr-r-md)",
+                  background: "var(--gr-surface)", fontSize: "12.5px",
+                  cursor: "pointer", color: "var(--gr-text-mute)",
+                }}
+              >
+                <GrIcon name="search" size="sm" />
+                <span>Quick nav…</span>
+                <span style={{
+                  marginLeft: 32, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                  fontSize: "10.5px", padding: "1.5px 5px",
+                  border: "1px solid var(--gr-border)", borderRadius: 4,
+                  background: "var(--gr-surface)", color: "var(--gr-text-mid)",
+                }}>⌘K</span>
+              </button>
+              {quickOpen && (
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 6px)",
+                  minWidth: 240, background: "var(--gr-surface)",
+                  border: "1px solid var(--gr-border)", borderRadius: 10,
+                  boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
+                }}>
+                  <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-faint)" }}>
+                    Navigate
+                  </div>
+                  {resolvedNav.filter((n) => n.href).map((n) => (
+                    <Link
+                      key={n.id}
+                      href={n.href!}
+                      onClick={() => setQuickOpen(false)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "9px 14px", fontSize: "13.5px",
+                        color: n.active ? "var(--gr-ink)" : "var(--gr-text-mid)",
+                        textDecoration: "none",
+                        fontWeight: n.active ? 500 : 400,
+                        background: n.active ? "var(--gr-bg-elev)" : "transparent",
+                      }}
+                    >
+                      <GrIcon name={n.icon} size="sm" />
+                      {n.label}
+                    </Link>
+                  ))}
+                  <div style={{ borderTop: "1px solid var(--gr-border)", padding: "8px 14px 4px", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-faint)", marginTop: 4 }}>
+                    Actions
+                  </div>
+                  <Link
+                    href="/accounts/connect/tradovate"
+                    onClick={() => setQuickOpen(false)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "9px 14px", fontSize: "13.5px",
+                      color: "var(--gr-text-mid)", textDecoration: "none",
+                    }}
+                  >
+                    <GrIcon name="plus" size="sm" />
+                    Connect account
+                  </Link>
+                  <GrShellSyncButton onDone={() => setQuickOpen(false)} />
+                </div>
+              )}
+            </div>
 
-  {/* Bell — links to /alerts */}
-  <Link
-    href="/alerts"
-    aria-label="Notifications"
-    style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      padding: 7, border: "none", background: "transparent",
-      color: "var(--gr-text-mute)", borderRadius: 8, textDecoration: "none",
-    }}
-  >
-    <GrIcon name="bell" />
-  </Link>
+            {/* Bell — dropdown with recent alerts */}
+            <div ref={bellRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setBellOpen((v) => !v)}
+                aria-label="Notifications"
+                aria-expanded={bellOpen}
+                style={{
+                  position: "relative",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  padding: 7, border: "none", background: "transparent",
+                  color: "var(--gr-text-mute)", borderRadius: 8, cursor: "pointer",
+                }}
+              >
+                <GrIcon name="bell" />
+                {activeAlertCount > 0 && (
+                  <span
+                    aria-label={`${activeAlertCount} active alert${activeAlertCount !== 1 ? "s" : ""}`}
+                    style={{
+                      position: "absolute", top: 2, right: 2,
+                      minWidth: 14, height: 14, borderRadius: 999,
+                      background: "var(--gr-bad)", color: "white",
+                      fontSize: 9, fontWeight: 700,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 3px",
+                      border: "1.5px solid var(--gr-bg)",
+                    }}
+                  >
+                    {activeAlertCount > 9 ? "9+" : activeAlertCount}
+                  </span>
+                )}
+              </button>
+              {bellOpen && (
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 6px)",
+                  width: 320, background: "var(--gr-surface)",
+                  border: "1px solid var(--gr-border)", borderRadius: 10,
+                  boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
+                }}>
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--gr-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--gr-ink)" }}>Recent alerts</span>
+                    {activeAlertCount > 0 && (
+                      <span style={{ fontSize: 10.5, color: "var(--gr-bad)", fontWeight: 600 }}>
+                        {activeAlertCount} active
+                      </span>
+                    )}
+                  </div>
+                  {recentAlerts === undefined ? (
+                    <div style={{ padding: "16px 14px", fontSize: 12, color: "var(--gr-text-mute)", textAlign: "center" }}>
+                      Open the alerts page to see what Guardrail is monitoring.
+                    </div>
+                  ) : recentAlerts.length === 0 ? (
+                    <div style={{ padding: "16px 14px", fontSize: 12, color: "var(--gr-text-mute)", textAlign: "center" }}>
+                      No active alerts. All monitored rules are within limits.
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                      {recentAlerts.slice(0, 5).map((a) => {
+                        const tone = a.severity === "blocked" || a.severity === "triggered" ? "var(--gr-bad)"
+                          : a.severity === "warning" ? "var(--gr-warn)"
+                          : "var(--gr-ok)";
+                        const tonebg = a.severity === "blocked" || a.severity === "triggered" ? "var(--gr-bad-bg)"
+                          : a.severity === "warning" ? "var(--gr-warn-bg)"
+                          : "var(--gr-ok-bg)";
+                        return (
+                          <div key={a.id} style={{ display: "flex", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--gr-border-sub, var(--gr-border))" }}>
+                            <div style={{
+                              width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                              background: tonebg, color: tone,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 11, fontWeight: 700,
+                            }}>
+                              {a.severity === "blocked" || a.severity === "triggered" ? "!" : "•"}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--gr-ink)" }}>{a.label}</div>
+                              {a.message && (
+                                <div style={{ fontSize: 11, color: "var(--gr-text-mute)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {a.message}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <Link
+                    href="/alerts"
+                    onClick={() => setBellOpen(false)}
+                    style={{
+                      display: "block", padding: "10px 14px",
+                      fontSize: 12.5, fontWeight: 500,
+                      color: "var(--gr-copper)", textDecoration: "none",
+                      textAlign: "center",
+                      borderTop: "1px solid var(--gr-border)",
+                      background: "var(--gr-bg-elev)",
+                    }}
+                  >
+                    View all alerts →
+                  </Link>
+                </div>
+              )}
+            </div>
 
-  {/* User avatar — opens settings/logout dropdown */}
-  <div ref={userMenuRef} style={{ position: "relative" }}>
-    <button
-      type="button"
-      onClick={() => setUserMenuOpen((v) => !v)}
-      aria-label="User menu"
-      aria-expanded={userMenuOpen}
-      style={{
-        width: 30, height: 30, borderRadius: 999,
-        background: "var(--gr-copper)", color: "white",
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        fontSize: "11.5px", fontWeight: 600,
-        border: "none", cursor: "pointer", padding: 0,
-      }}
-    >
-      {resolvedInitials}
-    </button>
-    {userMenuOpen && (
-      <div style={{
-        position: "absolute", right: 0, top: "calc(100% + 6px)",
-        minWidth: 160, background: "var(--gr-surface)",
-        border: "1px solid var(--gr-border)", borderRadius: 10,
-        boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
-      }}>
-        <Link
-          href="/settings"
-          onClick={() => setUserMenuOpen(false)}
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "10px 14px", fontSize: "13.5px",
-            color: "var(--gr-text-mid)", textDecoration: "none",
-            borderBottom: "1px solid var(--gr-border)",
-          }}
-        >
-          <GrIcon name="settings" size="sm" />
-          Settings
-        </Link>
-        <LogoutButton variant="menu" />
-      </div>
-    )}
-  </div>
-</div>
+            {/* User avatar — account/profile/billing/logout menu */}
+            <div ref={userMenuRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                aria-label="User menu"
+                aria-expanded={userMenuOpen}
+                style={{
+                  width: 30, height: 30, borderRadius: 999,
+                  background: "var(--gr-copper)", color: "white",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "11.5px", fontWeight: 600,
+                  border: "none", cursor: "pointer", padding: 0,
+                }}
+              >
+                {resolvedInitials}
+              </button>
+              {userMenuOpen && (
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 6px)",
+                  minWidth: 200, background: "var(--gr-surface)",
+                  border: "1px solid var(--gr-border)", borderRadius: 10,
+                  boxShadow: "0 8px 24px rgba(27,24,18,0.14)", overflow: "hidden", zIndex: 200,
+                }}>
+                  <Link
+                    href="/settings"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 14px", fontSize: "13.5px",
+                      color: "var(--gr-text-mid)", textDecoration: "none",
+                    }}
+                  >
+                    <GrIcon name="user" size="sm" />
+                    Account &amp; profile
+                  </Link>
+                  <Link
+                    href="/pricing"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 14px", fontSize: "13.5px",
+                      color: "var(--gr-text-mid)", textDecoration: "none",
+                    }}
+                  >
+                    <GrIcon name="sparkle" size="sm" />
+                    Plan &amp; billing
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 14px", fontSize: "13.5px",
+                      color: "var(--gr-text-mid)", textDecoration: "none",
+                      borderBottom: "1px solid var(--gr-border)",
+                    }}
+                  >
+                    <GrIcon name="settings" size="sm" />
+                    Settings
+                  </Link>
+                  <LogoutButton variant="menu" />
+                </div>
+              )}
+            </div>
+          </div>
         </header>
 
         {/* Page content */}
