@@ -24,6 +24,20 @@ const TRADES_NAV: GrNavItem[] = [
 
 type FilterKey = "all" | "winning" | "losing";
 
+function statusColor(status: string): string {
+  if (status === "warning") return "var(--gr-warn)";
+  if (status === "locked") return "var(--gr-bad)";
+  if (status === "allowed") return "var(--gr-ok)";
+  return "var(--gr-text-faint)";
+}
+
+function pnlColor(v: number | null): string {
+  if (v == null) return "var(--gr-text-mute)";
+  if (v > 0) return "var(--gr-ok)";
+  if (v < 0) return "var(--gr-bad)";
+  return "var(--gr-text-mute)";
+}
+
 function fmt$(v: number): string {
   const abs = Math.abs(v);
   const sign = v >= 0 ? "+" : "−";
@@ -131,16 +145,69 @@ export default async function TradesPage({
     return q ? `/trades?${q}` : "/trades";
   };
 
+  // ── Sidebar: compact account list ────────────────────────────────────────
+  const SidebarAccountList = hasAccounts ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {accounts.slice(0, 4).map((acc) => (
+        <Link
+          key={acc.id}
+          href={buildHref({ accountId: acc.id })}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 8px",
+            borderRadius: 8,
+            background: acc.id === selectedAccount?.id ? "var(--gr-surface)" : "transparent",
+            border: acc.id === selectedAccount?.id ? "1px solid var(--gr-border)" : "1px solid transparent",
+            textDecoration: "none",
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: statusColor(acc.status),
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {acc.label}
+          </span>
+          {acc.dailyPnl != null && (
+            <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl), flexShrink: 0 }}>
+              {fmt$(acc.dailyPnl)}
+            </span>
+          )}
+        </Link>
+      ))}
+      {accounts.length > 4 && (
+        <span style={{ fontSize: 11, color: "var(--gr-text-mute)", padding: "4px 8px" }}>
+          +{accounts.length - 4} more
+        </span>
+      )}
+    </div>
+  ) : (
+    <Link
+      href="/accounts/connect/tradovate"
+      style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
+    >
+      Connect first account →
+    </Link>
+  );
+
   return (
     <GrShell
       breadcrumb={["Trades"]}
-      sidebarContent={null}
-      hideSidebar
+      sidebarContent={SidebarAccountList}
+      sidebarLabel={hasAccounts ? "Accounts" : "Connect"}
       navItems={TRADES_NAV}
       userInitials={userInitials}
       hideApiStatus
     >
       <div style={{ overflowY: "auto", height: "100%" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <section style={{ padding: "28px 36px 16px" }}>
           <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
@@ -294,7 +361,7 @@ export default async function TradesPage({
 
             {/* ── Trades table ─────────────────────────────────────────── */}
             <section style={{ padding: "0 36px 36px" }}>
-              <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, overflow: "hidden", overflowX: "auto" }}>
                 {filteredTrades.length === 0 ? (
                   <div style={{ padding: "48px 24px", textAlign: "center" }}>
                     <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>—</div>
@@ -353,7 +420,7 @@ export default async function TradesPage({
                             </tr>
                             {rows.map((t) => {
                               const sideOk = t.side === "LONG";
-                              const pnlColor = t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                              const rowPnlColor = t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
                               return (
                                 <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mid)" }}>
@@ -388,7 +455,7 @@ export default async function TradesPage({
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 11.5, color: "var(--gr-text-mute)" }}>
                                     {fmtHold(t.holdMs)}
                                   </td>
-                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: pnlColor }}>
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowPnlColor }}>
                                     {fmt$(t.pnl)}
                                   </td>
                                 </tr>
@@ -410,6 +477,7 @@ export default async function TradesPage({
             </section>
           </>
         )}
+        </div>
       </div>
     </GrShell>
   );
