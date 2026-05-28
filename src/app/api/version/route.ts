@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { buildVersionInfo } from "./version-info.ts";
+import { buildVersionInfo } from "./version-info";
 
 export const dynamic = "force-dynamic";
 
