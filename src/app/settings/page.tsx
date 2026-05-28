@@ -95,6 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         missingFromBrokerSince: true,
         lastSyncAt: true,
         brokerConnectionId: true,
+        pendingProtectionStatus: true,
         brokerConnection: {
           select: {
             id: true,

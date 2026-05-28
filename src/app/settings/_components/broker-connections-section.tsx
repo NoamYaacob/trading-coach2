@@ -6,6 +6,7 @@ import { computeAccountDisconnectState, type DisconnectWindowState } from "@/lib
 import { RemoveAccountButton } from "./remove-account-button";
 import { RemoveBrokerConnectionButton } from "./remove-broker-connection-button";
 import { AccountDiscoveryHelper } from "./account-discovery-helper";
+import { DisconnectConnectionButton } from "./disconnect-connection-button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export type BrokerAccountRow = {
   missingFromBrokerSince: Date | null;
   lastSyncAt: Date | null;
   brokerConnectionId: string | null;
+  pendingProtectionStatus: string | null;
   brokerConnection: {
     id: string;
     env: string;
@@ -305,20 +307,27 @@ function BrokerConnectionCard({
           </p>
         </div>
 
-        {/* Right: reconnect CTA for expired */}
-        {expired && (
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <Link
-              href={reconnectUrl}
-              className="inline-flex items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
-            >
-              Reconnect {envLabel(conn.env) ? `${envLabel(conn.env)} connection` : "connection"}
-            </Link>
-            {linkedAccounts.length === 0 && (
-              <RemoveBrokerConnectionButton connectionId={conn.id} />
-            )}
-          </div>
-        )}
+        {/* Right: reconnect CTA (expired) or disconnect CTA (active) */}
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {expired ? (
+            <>
+              <Link
+                href={reconnectUrl}
+                className="inline-flex items-center rounded-full bg-amber-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-amber-800"
+              >
+                Reconnect {envLabel(conn.env) ? `${envLabel(conn.env)} connection` : "connection"}
+              </Link>
+              {linkedAccounts.length === 0 && (
+                <RemoveBrokerConnectionButton connectionId={conn.id} />
+              )}
+            </>
+          ) : (
+            <DisconnectConnectionButton
+              connectionId={conn.id}
+              linkedAccountCount={connectedAccts.length}
+            />
+          )}
+        </div>
       </div>
 
       {/* Linked accounts list */}
@@ -371,6 +380,11 @@ function BrokerConnectionCard({
                     )}
                     {acct.protectionStatus === "pending_decision" && (
                       <p className="text-xs text-amber-700">Setup needed before trading</p>
+                    )}
+                    {acct.pendingProtectionStatus === "archived" && (
+                      <p className="text-xs text-amber-700">
+                        Removal scheduled — will take effect at the next trading session reset
+                      </p>
                     )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">

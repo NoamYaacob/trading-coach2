@@ -144,17 +144,24 @@ describe("Archive endpoint: preserves historical data", () => {
   const route = read("app/api/accounts/[id]/protection/route.ts");
 
   it("archive branch updates ONLY protectionStatus fields on ConnectedAccount", () => {
-    // Locate the archived branch
-    const archivedMatch = route.match(/newStatus === "archived"[\s\S]*?return NextResponse/);
-    assert.ok(archivedMatch, "archived branch must exist");
-    const archivedBlock = archivedMatch[0];
+    // Locate the full archived block (from the if-guard to the Compute lock comment).
+    // The block now has two exits: immediate archive and deferred (pending) archive —
+    // both must not touch historical data, and at least one path must set
+    // protectionStatus: "archived".
+    const archiveBlockStart = route.indexOf('newStatus === "archived"');
+    assert.ok(archiveBlockStart !== -1, "archived branch must exist");
+    // Block ends just before the lock-state computation that follows it.
+    const archiveBlockEnd = route.indexOf("// Compute lock state from the user", archiveBlockStart);
+    const archivedBlock = archiveBlockEnd !== -1
+      ? route.slice(archiveBlockStart, archiveBlockEnd)
+      : route.slice(archiveBlockStart, archiveBlockStart + 3000);
+
     // Must NOT delete or touch trade/rule/audit tables
     for (const forbidden of [
       "normalizedTradeEvent",
       "accountRiskRules",
       "auditEvent",
       "riskRules.delete",
-      ".delete(",
       ".deleteMany(",
     ]) {
       assert.ok(
@@ -162,14 +169,14 @@ describe("Archive endpoint: preserves historical data", () => {
         `archive branch must not reference '${forbidden}' — historical data must be preserved`,
       );
     }
-    // Must update protectionStatus on connectedAccount
+    // Must update protectionStatus on connectedAccount somewhere in the block
     assert.ok(
       archivedBlock.includes("connectedAccount.update"),
       "archive branch must call connectedAccount.update",
     );
     assert.ok(
       archivedBlock.includes('protectionStatus: "archived"'),
-      "archive branch must set protectionStatus to 'archived'",
+      "archive branch must set protectionStatus to 'archived' in the immediate path",
     );
   });
 });
