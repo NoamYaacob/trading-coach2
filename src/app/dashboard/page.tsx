@@ -98,9 +98,15 @@ function timeGreeting(): string {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ accountId?: string }>;
+}) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect("/login");
+
+  const { accountId: selectedAccountId } = await searchParams;
 
   const user = await prisma.user.findUnique({
     where: { id: currentUser.id },
@@ -212,12 +218,15 @@ export default async function DashboardPage() {
     ? commandCenter.accounts.filter((a) => a.connectionStatus !== "error").length
     : 0;
 
-  // "Selected" account = first with warning, else first with data, else first
-  const selectedAccount =
+  // "Selected" account = URL ?accountId= if valid, else first with warning/locked, else first with data, else first
+  const autoSelectedAccount =
     commandCenter.accounts.find((a) => a.status === "warning" || a.status === "locked") ??
     commandCenter.accounts.find((a) => a.balance != null) ??
     commandCenter.accounts[0] ??
     null;
+  const selectedAccount = selectedAccountId
+    ? (commandCenter.accounts.find((a) => a.id === selectedAccountId) ?? autoSelectedAccount)
+    : autoSelectedAccount;
 
   // Active (non-ok) rule results for the alerts panel
   const activeAlerts = violationFeed.activeViolations.slice(0, 5);
@@ -226,7 +235,6 @@ export default async function DashboardPage() {
   const DASHBOARD_NAV: GrNavItem[] = [
     { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard", active: true },
     { id: "rules",    label: "Trading Plan", icon: "shield",   href: "/rules" },
-    { id: "accounts", label: "Accounts",     icon: "user",     href: "/accounts" },
     { id: "alerts",   label: "Alerts",       icon: "bell",     href: "/alerts" },
     { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
   ];
@@ -330,7 +338,7 @@ export default async function DashboardPage() {
                 </Link>
               )}
               <Link
-                href="/accounts"
+                href="/accounts/connect/tradovate"
                 className="btn-compact"
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
@@ -459,6 +467,7 @@ export default async function DashboardPage() {
                     <div
                       key={acc.id}
                       style={{
+                        position: "relative",
                         padding: 14,
                         background: "var(--gr-surface)",
                         border: isSelected ? "1px solid var(--gr-copper)" : "1px solid var(--gr-border)",
@@ -554,7 +563,7 @@ export default async function DashboardPage() {
                         </>
                       ) : (
                         <Link
-                          href="/accounts"
+                          href="/accounts/connect/tradovate"
                           className="btn-compact"
                           style={{
                             display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -566,13 +575,23 @@ export default async function DashboardPage() {
                           Reconnect →
                         </Link>
                       )}
+                      {/* Full-card selection overlay — covers non-expired cards so clicking
+                        * anywhere navigates to ?accountId=... without nested-link issues.
+                        * Rendered last so it stacks above normal-flow card content. */}
+                      {!isExpired && (
+                        <Link
+                          href={`/dashboard?accountId=${acc.id}`}
+                          aria-label={`Select ${acc.label}`}
+                          style={{ position: "absolute", inset: 0, borderRadius: 12 }}
+                        />
+                      )}
                     </div>
                   );
                 })}
 
                 {/* Add account tile — occupies one grid cell */}
                 <Link
-                  href="/accounts"
+                  href="/accounts/connect/tradovate"
                   className="btn-compact"
                   style={{
                     background: "transparent",
@@ -618,7 +637,7 @@ export default async function DashboardPage() {
                   </div>
                   <div style={{ flex: 1 }} />
                   <Link
-                    href="/rules"
+                    href={`/rules?scope=account&id=${selectedAccount.id}`}
                     className="btn-compact"
                     style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, border: "1px solid var(--gr-border)", background: "var(--gr-surface)", color: "var(--gr-text-mid)", textDecoration: "none" }}
                   >
@@ -711,7 +730,7 @@ export default async function DashboardPage() {
                     )}
                   </div>
                   <Link
-                    href="/rules"
+                    href={selectedAccount ? `/rules?scope=account&id=${selectedAccount.id}` : "/rules"}
                     className="btn-compact"
                     style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
                   >

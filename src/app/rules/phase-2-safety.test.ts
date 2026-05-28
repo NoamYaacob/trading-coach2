@@ -113,8 +113,10 @@ describe("rules page.tsx: GrShell real-data props", () => {
   });
 
   it("RULES_NAV has real href entries", () => {
-    // Confirm real hrefs are wired (not mock)
-    const realHrefs = ["/dashboard", "/rules", "/accounts", "/settings"];
+    // Confirm real hrefs are wired (not mock).
+    // /accounts is intentionally removed from the sidebar (it only redirected
+    // to /dashboard); account connection lives at /accounts/connect/tradovate.
+    const realHrefs = ["/dashboard", "/rules", "/settings"];
     for (const href of realHrefs) {
       assert.ok(
         page.includes(href),
