@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 
-import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
+import { GrShell, type GrNavItem, type GrRecentAlert } from "@/components/ui/gr-shell";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
@@ -246,6 +246,17 @@ export default async function DashboardPage({
   // Active (non-ok) rule results for the alerts panel
   const activeAlerts = violationFeed.activeViolations.slice(0, 5);
 
+  // Bell-dropdown payload — shared with the shell. Maps the violation feed
+  // into the small alert shape the shell expects.
+  const bellAlerts: GrRecentAlert[] = activeAlerts.map((a) => ({
+    id: a.ruleId,
+    label: ruleLabel(a.ruleId),
+    message: a.message,
+    severity: a.status === "blocked" || a.status === "triggered"
+      ? a.status
+      : a.status === "warning" ? "warning" : "ok",
+  }));
+
   // Real trade history for the selected account — used by Today's trades and
   // Equity curve panels. Loaded only when we have a selection; empty array
   // otherwise drives the honest empty state.
@@ -324,6 +335,7 @@ export default async function DashboardPage({
       navItems={DASHBOARD_NAV}
       userInitials={userInitials}
       hideApiStatus
+      recentAlerts={bellAlerts}
     >
       <div style={{ overflowY: "auto", height: "100%" }}>
         <div style={{ maxWidth: 1400, margin: "0 auto" }}>
