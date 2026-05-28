@@ -195,8 +195,9 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 10,
+          justifyContent: "center",
+          gap: 12,
+          marginBottom: 12,
         }}
       >
         <button
@@ -205,11 +206,12 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
           aria-label="Previous month"
           className="btn-compact"
           style={{
-            padding: "3px 9px",
+            width: 28, height: 28,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
             fontSize: 12,
-            borderRadius: 6,
+            borderRadius: 7,
             border: "1px solid var(--gr-border)",
-            background: "transparent",
+            background: "var(--gr-surface)",
             color: "var(--gr-text-mid)",
             cursor: "pointer",
           }}
@@ -218,10 +220,12 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
         </button>
         <span
           style={{
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: 600,
             color: "var(--gr-ink)",
             letterSpacing: "-0.01em",
+            minWidth: 140,
+            textAlign: "center",
           }}
         >
           {monthLabel(viewYear, viewMonth)}
@@ -233,18 +237,38 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
           disabled={isCurrentMonth}
           className="btn-compact"
           style={{
-            padding: "3px 9px",
+            width: 28, height: 28,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
             fontSize: 12,
-            borderRadius: 6,
+            borderRadius: 7,
             border: "1px solid var(--gr-border)",
-            background: "transparent",
+            background: "var(--gr-surface)",
             color: isCurrentMonth ? "var(--gr-text-faint)" : "var(--gr-text-mid)",
             cursor: isCurrentMonth ? "not-allowed" : "pointer",
-            opacity: isCurrentMonth ? 0.5 : 1,
+            opacity: isCurrentMonth ? 0.4 : 1,
           }}
         >
           ▶
         </button>
+        {!isCurrentMonth && (
+          <button
+            type="button"
+            onClick={() => setMonthOffset(0)}
+            className="btn-compact"
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              borderRadius: 7,
+              border: "1px solid var(--gr-border)",
+              background: "transparent",
+              color: "var(--gr-copper)",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            Today
+          </button>
+        )}
       </div>
 
       {/* Historical-data caveat — visible whenever the user navigates to a
@@ -303,17 +327,17 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
       )}
 
       {/* Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
         {DOW_LABELS.map((d) => (
           <div
             key={d}
             style={{
-              fontSize: 9.5,
+              fontSize: 10,
               color: "var(--gr-text-faint)",
               textAlign: "center",
-              padding: "2px 0",
-              fontWeight: 500,
-              letterSpacing: "0.04em",
+              padding: "4px 0 6px",
+              fontWeight: 600,
+              letterSpacing: "0.06em",
               textTransform: "uppercase",
             }}
           >
@@ -330,65 +354,81 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
             : cell.inMonth
             ? `${cell.key} · no trades`
             : undefined;
+          const cellBg = !cell.inMonth
+            ? "transparent"
+            : hasTrades && pnl > 0
+            ? "var(--gr-ok-bg)"
+            : hasTrades && pnl < 0
+            ? "var(--gr-bad-bg)"
+            : "var(--gr-bg-elev)";
+          const cellBorder = isToday
+            ? "1.5px solid var(--gr-copper)"
+            : cell.inMonth
+            ? "1px solid var(--gr-border)"
+            : "1px solid transparent";
           return (
             <div
               key={i}
               title={title}
               style={{
-                padding: "5px 3px",
-                borderRadius: 5,
-                textAlign: "center",
-                minHeight: 44,
+                padding: "6px 4px 5px",
+                borderRadius: 8,
+                textAlign: "left",
+                minHeight: 58,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
+                alignItems: "stretch",
+                justifyContent: "space-between",
                 gap: 2,
-                background: !cell.inMonth
-                  ? "transparent"
-                  : hasTrades && pnl > 0
-                  ? "var(--gr-ok-bg)"
-                  : hasTrades && pnl < 0
-                  ? "var(--gr-bad-bg)"
-                  : "transparent",
-                border: isToday
-                  ? "1px solid var(--gr-copper)"
-                  : "1px solid transparent",
-                opacity: !cell.inMonth ? 0.25 : 1,
+                background: cellBg,
+                border: cellBorder,
+                boxShadow: isToday ? "0 0 0 2px var(--gr-copper-bg)" : "none",
+                opacity: !cell.inMonth ? 0.3 : 1,
+                position: "relative",
               }}
             >
-              <div
-                style={{
-                  fontSize: 10,
-                  color: isToday ? "var(--gr-copper)" : "var(--gr-text-mute)",
-                  fontWeight: isToday ? 700 : 400,
-                }}
-              >
-                {cell.dayNum}
-              </div>
-              {hasTrades && (
-                <>
-                  <div
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 2px" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: isToday ? "var(--gr-copper)" : "var(--gr-text-mid)",
+                    fontWeight: isToday ? 700 : 500,
+                    lineHeight: 1,
+                  }}
+                >
+                  {cell.dayNum}
+                </span>
+                {hasTrades && (
+                  <span
                     style={{
                       fontSize: 9,
-                      fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                      color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
-                      fontWeight: 600,
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 8.5,
                       color: "var(--gr-text-faint)",
                       fontWeight: 500,
+                      letterSpacing: "0.04em",
                     }}
                   >
-                    {data!.count}t
-                  </div>
-                </>
+                    {data!.count}T
+                  </span>
+                )}
+              </div>
+              {hasTrades ? (
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                    color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    textAlign: "center",
+                    paddingBottom: 2,
+                  }}
+                >
+                  {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
+                </div>
+              ) : (
+                cell.inMonth && (
+                  <div style={{ height: 12 }} />
+                )
               )}
             </div>
           );

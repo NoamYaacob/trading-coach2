@@ -296,7 +296,7 @@ export function TraderInsights({
   ].filter((c) => c != null);
 
   return (
-    <section style={{ padding: "0 36px 20px" }}>
+    <section className="dash-section" style={{ padding: "0 36px 20px" }}>
       <div
         style={{
           display: "flex",
@@ -321,6 +321,7 @@ export function TraderInsights({
         </span>
       </div>
       <div
+        className="dash-insights-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",

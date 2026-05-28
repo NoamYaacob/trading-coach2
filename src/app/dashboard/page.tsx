@@ -51,6 +51,7 @@ import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-accoun
 import { EquityCurve } from "@/app/dashboard/_components/equity-curve";
 import { PnlCalendar } from "@/app/dashboard/_components/pnl-calendar";
 import { TraderInsights } from "@/app/dashboard/_components/trader-insights";
+import { profitFactor } from "@/app/dashboard/_components/insights";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -74,6 +75,28 @@ const RULE_LABELS: Record<string, string> = {
 
 function ruleLabel(ruleId: string): string {
   return RULE_LABELS[ruleId] ?? ruleId.replace(/_/g, " ");
+}
+
+// ── Honest enforcement classification ──────────────────────────────────────
+// Guardrail today is read-only — we observe broker fills and surface state
+// to the trader, we do not block orders.  Daily-loss + max-position can be
+// broker-enforced once the broker exposes the limit (we surface the broker
+// value verbatim in that case).  Everything else is monitor-only until the
+// app-lock implementation lands.
+type Enforcement = "broker" | "lock" | "monitor" | "utility";
+
+function ruleEnforcement(ruleId: string, hasBrokerLimit: boolean): Enforcement {
+  if (ruleId === "max_daily_loss" && hasBrokerLimit) return "broker";
+  if (ruleId === "max_position_size" && hasBrokerLimit) return "broker";
+  if (
+    ruleId === "session_not_started" ||
+    ruleId === "session_closed" ||
+    ruleId === "guardian_disabled" ||
+    ruleId === "trading_day_disabled"
+  ) {
+    return "utility";
+  }
+  return "monitor";
 }
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
@@ -271,6 +294,11 @@ export default async function DashboardPage({
     : [];
   const todayTrades = recentTrades.filter((t) => t.closedAt >= todayStart);
 
+  // Win rate and profit factor for KPI strip (honest 30d stats)
+  const wins30d = recentTrades.filter((t) => t.pnl > 0).length;
+  const winRate30d = recentTrades.length > 0 ? wins30d / recentTrades.length : null;
+  const pf30d = profitFactor(recentTrades);
+
   // Nav items — same as /rules, but home is active
   const DASHBOARD_NAV: GrNavItem[] = [
     { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard", active: true },
@@ -340,13 +368,25 @@ export default async function DashboardPage({
       hideApiStatus
       recentAlerts={bellAlerts}
     >
+      <style>{`
+        @media (max-width: 900px) {
+          .dash-row-2col { grid-template-columns: 1fr !important; }
+          .dash-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .dash-insights-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .dash-section { padding-left: 16px !important; padding-right: 16px !important; }
+        }
+        @media (max-width: 540px) {
+          .dash-kpi-grid { grid-template-columns: 1fr !important; }
+          .dash-insights-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       <div style={{ overflowY: "auto", height: "100%" }}>
         <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* ── Auto-refresh for live data ─────────────────────────────────── */}
         {hasBrokerAccount && <DashboardAutoRefresh />}
 
         {/* ── Hero ──────────────────────────────────────────────────────── */}
-        <section style={{ padding: "28px 36px 18px" }}>
+        <section className="dash-section" style={{ padding: "28px 36px 18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 620 }}>
               <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
@@ -400,7 +440,7 @@ export default async function DashboardPage({
 
         {/* ── No-accounts state ─────────────────────────────────────────── */}
         {!hasBrokerAccount && (
-          <section style={{ padding: "4px 36px 36px" }}>
+          <section className="dash-section" style={{ padding: "4px 36px 36px" }}>
             <div style={{
               background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
               borderRadius: 14, padding: "32px 36px",
@@ -463,7 +503,7 @@ export default async function DashboardPage({
         {hasBrokerAccount && (
           <>
             {/* ── Account strip ─────────────────────────────────────────── */}
-            <section style={{ padding: "4px 36px 20px" }}>
+            <section className="dash-section" style={{ padding: "4px 36px 20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
                   Your accounts · {activeAccounts.length}
@@ -480,10 +520,10 @@ export default async function DashboardPage({
                 * from stretching to fill the container.
                 */}
               <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 260px))",
-                justifyContent: "start",
+                display: "flex",
                 gap: 10,
+                overflowX: "auto",
+                paddingBottom: 6,
               }}>
                 {/* Auto-sync for stale accounts (active only — no point
                   * trying to sync accounts the broker no longer returns). */}
@@ -517,7 +557,8 @@ export default async function DashboardPage({
                       key={acc.id}
                       style={{
                         position: "relative",
-                        padding: 14,
+                        flex: "0 0 260px",
+                        padding: 16,
                         background: "var(--gr-surface)",
                         border: isSelected ? "1px solid var(--gr-copper)" : "1px solid var(--gr-border)",
                         boxShadow: isSelected ? "0 0 0 3px var(--gr-copper-bg)" : "none",
@@ -643,7 +684,7 @@ export default async function DashboardPage({
 
             {/* ── Selected account context bar ──────────────────────────── */}
             {selectedAccount && (
-              <section style={{ padding: "0 36px 18px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 18px" }}>
                 <div style={{
                   background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)",
                   borderRadius: 12, padding: "12px 18px",
@@ -681,8 +722,8 @@ export default async function DashboardPage({
 
             {/* ── KPI strip ─────────────────────────────────────────────── */}
             {selectedAccount && (
-              <section style={{ padding: "0 36px 20px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              <section className="dash-section" style={{ padding: "0 36px 20px" }}>
+                <div className="dash-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                   {[
                     {
                       label: "Balance",
@@ -698,22 +739,20 @@ export default async function DashboardPage({
                       highlight: true,
                     },
                     {
-                      label: "Loss budget left",
-                      value: selectedAccount.remainingDailyLoss != null
-                        ? `$${selectedAccount.remainingDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : selectedAccount.maxDailyLoss != null ? `$${selectedAccount.maxDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} limit` : "No limit set",
-                      sub: selectedAccount.dailyLossUsedPct != null
-                        ? `${Math.round(selectedAccount.dailyLossUsedPct * 100)}% used`
-                        : "Set a daily loss rule",
-                      tone: (selectedAccount.dailyLossUsedPct ?? 0) > 0.8 ? "warn" : "ok",
+                      label: "Win rate · 30D",
+                      value: winRate30d != null ? `${Math.round(winRate30d * 100)}%` : "—",
+                      sub: winRate30d != null
+                        ? `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
+                        : "No round-trips in last 30 days",
+                      tone: winRate30d != null && winRate30d >= 0.5 ? "ok" : "warn",
                     },
                     {
-                      label: "Trades today",
-                      value: selectedAccount.tradesCount != null ? String(selectedAccount.tradesCount) : "—",
-                      sub: selectedAccount.maxTradesPerDay != null
-                        ? `of ${selectedAccount.maxTradesPerDay} limit`
-                        : "No trade limit set",
-                      tone: selectedAccount.tradesUsedPct != null && selectedAccount.tradesUsedPct > 0.8 ? "warn" : "ok",
+                      label: "Profit factor · 30D",
+                      value: pf30d != null ? pf30d.toFixed(2) : "—",
+                      sub: pf30d != null
+                        ? pf30d >= 1 ? "Gross wins exceed losses" : "Gross losses exceed wins"
+                        : recentTrades.length === 0 ? "No round-trips in window" : "No losing trades yet",
+                      tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
                   ].map((k) => (
                     <div
@@ -760,7 +799,7 @@ export default async function DashboardPage({
             )}
 
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
-            <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* Active rules panel */}
               <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
@@ -784,6 +823,7 @@ export default async function DashboardPage({
                   // Build a pct map for rules that have quantitative limits
                   const rulePct: Record<string, number | null> = {};
                   const ruleValueLabel: Record<string, string> = {};
+                  const ruleHasBrokerLimit: Record<string, boolean> = {};
                   if (selectedAccount) {
                     if (selectedAccount.dailyLossUsedPct != null) {
                       rulePct["max_daily_loss"] = selectedAccount.dailyLossUsedPct;
@@ -793,6 +833,7 @@ export default async function DashboardPage({
                       ruleValueLabel["max_daily_loss"] = used != null && selectedAccount.maxDailyLoss != null
                         ? `$${Math.abs(used).toFixed(0)} / $${selectedAccount.maxDailyLoss.toFixed(0)}`
                         : `${Math.round(selectedAccount.dailyLossUsedPct * 100)}%`;
+                      ruleHasBrokerLimit["max_daily_loss"] = selectedAccount.maxDailyLoss != null;
                     }
                     if (selectedAccount.tradesUsedPct != null) {
                       rulePct["max_trades_per_day"] = selectedAccount.tradesUsedPct;
@@ -800,21 +841,22 @@ export default async function DashboardPage({
                         ? `${selectedAccount.tradesCount} / ${selectedAccount.maxTradesPerDay}`
                         : `${Math.round(selectedAccount.tradesUsedPct * 100)}%`;
                     }
-                    if (guardian.evaluation.consecutiveLosses > 0 && riskRules?.stopAfterLosses != null && riskRules.stopAfterLosses > 0) {
-                      const pct = guardian.evaluation.consecutiveLosses / riskRules.stopAfterLosses;
+                    if (riskRules?.stopAfterLosses != null && riskRules.stopAfterLosses > 0) {
+                      const losses = guardian.evaluation.consecutiveLosses;
+                      const pct = losses / riskRules.stopAfterLosses;
                       rulePct["stop_after_consecutive_losses"] = pct;
-                      ruleValueLabel["stop_after_consecutive_losses"] = `${guardian.evaluation.consecutiveLosses} / ${riskRules.stopAfterLosses} losses`;
+                      ruleValueLabel["stop_after_consecutive_losses"] = `${losses} / ${riskRules.stopAfterLosses} losses`;
                     }
                   }
 
-                  const displayRules = violationFeed.results
-                    .filter(r => r.status !== "ok" || violationFeed.results.indexOf(r) < 5)
-                    .slice(0, 6);
+                  // Show the violation feed's first 5 entries — prioritises warning/blocked,
+                  // falls back to OK rules so the panel is never empty when rules exist.
+                  const displayRules = violationFeed.results.slice(0, 5);
 
                   if (displayRules.length === 0) {
                     return (
-                      <div style={{ padding: "24px 0", textAlign: "center" }}>
-                        <p style={{ fontSize: 13, color: "var(--gr-text-mute)" }}>No rules configured yet.</p>
+                      <div style={{ padding: "20px 0 8px", textAlign: "center" }}>
+                        <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0 }}>No rules configured yet.</p>
                         <Link href="/rules" style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none", marginTop: 6, display: "inline-block" }}>
                           Set up your Trading Plan →
                         </Link>
@@ -822,48 +864,99 @@ export default async function DashboardPage({
                     );
                   }
 
+                  function EnforcementBadge({ type }: { type: Enforcement }) {
+                    const meta = type === "broker"
+                      ? { label: "Broker", bg: "var(--gr-copper-bg)", fg: "var(--gr-copper)", title: "Broker-backed limit — surfaced verbatim from the broker." }
+                      : type === "lock"
+                      ? { label: "Lock", bg: "var(--gr-bad-bg)", fg: "var(--gr-bad)", title: "App-layer lock — Guardrail blocks order submission." }
+                      : type === "utility"
+                      ? { label: "Session", bg: "var(--gr-bg-elev)", fg: "var(--gr-text-mute)", title: "Session/state gate." }
+                      : { label: "Monitor", bg: "var(--gr-bg-elev)", fg: "var(--gr-text-mid)", title: "Monitor only — Guardrail tracks and notifies, it does not block trades." };
+                    return (
+                      <span
+                        title={meta.title}
+                        style={{
+                          fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+                          padding: "1px 6px", borderRadius: 999,
+                          background: meta.bg, color: meta.fg,
+                          border: "1px solid var(--gr-border)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {meta.label}
+                      </span>
+                    );
+                  }
+
                   return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {displayRules.map((rule, idx, arr) => {
-                        const dot = rule.status === "blocked" || rule.status === "triggered" ? "var(--gr-bad)"
-                          : rule.status === "warning" ? "var(--gr-warn)"
-                          : "var(--gr-ok)";
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      {displayRules.map((rule) => {
+                        const isHard = rule.status === "blocked" || rule.status === "triggered";
+                        const isWarn = rule.status === "warning";
+                        const dot = isHard ? "var(--gr-bad)" : isWarn ? "var(--gr-warn)" : "var(--gr-ok)";
                         const pct = rulePct[rule.ruleId] ?? null;
                         const valLabel = ruleValueLabel[rule.ruleId] ?? null;
                         const barColor = pct != null
                           ? pct >= 0.8 ? "var(--gr-bad)" : pct >= 0.5 ? "var(--gr-warn)" : "var(--gr-ok)"
+                          : "var(--gr-text-faint)";
+                        const enforcement = ruleEnforcement(
+                          rule.ruleId,
+                          ruleHasBrokerLimit[rule.ruleId] ?? false,
+                        );
+                        // Only show a state pill when there's actually a state to announce.
+                        // Combining "Not configured" with "ACTIVE" is incoherent.
+                        const stateLabel = isHard
+                          ? rule.status
+                          : isWarn ? "warning"
                           : null;
                         return (
-                          <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>{ruleLabel(rule.ruleId)}</span>
+                          <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                                <span style={{
+                                  fontSize: 13, fontWeight: 600, color: "var(--gr-ink)",
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>
+                                  {ruleLabel(rule.ruleId)}
+                                </span>
+                                <EnforcementBadge type={enforcement} />
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                {valLabel && (
-                                  <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: barColor ?? "var(--gr-text-mute)", fontWeight: 600 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                                {valLabel ? (
+                                  <span style={{
+                                    fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                                    color: "var(--gr-ink)", fontWeight: 600,
+                                  }}>
                                     {valLabel}
                                   </span>
+                                ) : (
+                                  <span style={{ fontSize: 11, color: "var(--gr-text-faint)" }}>
+                                    Not configured
+                                  </span>
                                 )}
-                                {rule.status !== "ok" && (
-                                  <span style={{ fontSize: 10.5, fontWeight: 600, color: rule.status === "warning" ? "var(--gr-warn)" : "var(--gr-bad)" }}>
-                                    {rule.status}
+                                {stateLabel && (
+                                  <span style={{
+                                    fontSize: 9.5, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+                                    padding: "1px 6px", borderRadius: 999,
+                                    background: isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-ok-bg)",
+                                    color: isHard ? "var(--gr-bad)" : isWarn ? "var(--gr-warn)" : "var(--gr-ok)",
+                                  }}>
+                                    {stateLabel}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            {pct != null && (
-                              <div style={{ height: 3, borderRadius: 99, background: "var(--gr-border)", overflow: "hidden" }}>
-                                <div style={{
-                                  height: "100%", borderRadius: 99,
-                                  width: `${Math.min(100, Math.round(pct * 100))}%`,
-                                  background: barColor!,
-                                }} />
-                              </div>
-                            )}
-                            {idx < arr.length - 1 && (
-                              <div style={{ height: 1, background: "var(--gr-border-sub, var(--gr-border))", marginTop: 2 }} />
+                            <div style={{ height: 5, borderRadius: 99, background: "var(--gr-bg-elev)", overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 99,
+                                width: pct != null ? `${Math.min(100, Math.max(2, Math.round(pct * 100)))}%` : "100%",
+                                background: pct != null ? barColor : "repeating-linear-gradient(45deg, var(--gr-border) 0 4px, transparent 4px 8px)",
+                                opacity: pct != null ? 1 : 0.45,
+                              }} />
+                            </div>
+                            {rule.message && isHard && (
+                              <span style={{ fontSize: 11, color: "var(--gr-bad)", marginTop: 2 }}>{rule.message}</span>
                             )}
                           </div>
                         );
@@ -882,7 +975,7 @@ export default async function DashboardPage({
             </section>
 
             {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
-            <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
               {/* Today's trades — real round-trips for the selected account */}
               <div style={{
                 background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
@@ -906,13 +999,22 @@ export default async function DashboardPage({
                   </Link>
                 </div>
                 {todayTrades.length === 0 ? (
-                  <div style={{ padding: "28px 0", textAlign: "center" }}>
-                    <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0 }}>
-                      No closed round-trips yet today.
-                    </p>
-                    <p style={{ fontSize: 11.5, color: "var(--gr-text-faint)", marginTop: 4, lineHeight: 1.5 }}>
-                      Round-trips appear here as your broker reports fills — Guardrail does not invent activity.
-                    </p>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px", borderRadius: 10,
+                    border: "1px dashed var(--gr-border)",
+                    background: "var(--gr-bg-elev)",
+                  }}>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: 6,
+                      background: "var(--gr-surface)", color: "var(--gr-text-mute)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 13, flexShrink: 0,
+                    }}>—</span>
+                    <span style={{ fontSize: 12, color: "var(--gr-text-mute)", lineHeight: 1.5 }}>
+                      <span style={{ color: "var(--gr-text-mid)", fontWeight: 500 }}>No closed round-trips yet today.</span>
+                      {" "}Round-trips appear as your broker reports fills — Guardrail does not invent activity.
+                    </span>
                   </div>
                 ) : (
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -995,31 +1097,27 @@ export default async function DashboardPage({
                 {activeAlerts.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {activeAlerts.map((alert) => {
-                      const bg = alert.status === "blocked" || alert.status === "triggered"
-                        ? "var(--gr-bad-bg)"
-                        : alert.status === "warning"
-                        ? "var(--gr-warn-bg)"
-                        : "var(--gr-surface)";
-                      const fg = alert.status === "blocked" || alert.status === "triggered"
-                        ? "var(--gr-bad)"
-                        : alert.status === "warning"
-                        ? "var(--gr-warn)"
-                        : "var(--gr-text-mid)";
+                      const isHard = alert.status === "blocked" || alert.status === "triggered";
+                      const isWarn = alert.status === "warning";
+                      const iconBg = isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-surface)";
+                      const iconFg = isHard ? "var(--gr-bad)" : isWarn ? "var(--gr-warn)" : "var(--gr-text-mid)";
+                      const iconBd = isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-border)";
+                      const icon = isHard ? "⚑" : isWarn ? "△" : "●";
                       return (
-                        <div key={alert.ruleId} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <div key={alert.ruleId} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                           <div style={{
-                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                            background: bg, color: fg,
+                            width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                            background: iconBg, color: iconFg,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            border: "1px solid var(--gr-border)",
-                            fontSize: 13,
+                            border: `1px solid ${iconBd}`,
+                            fontSize: 14, lineHeight: 1,
                           }}>
-                            {alert.status === "blocked" || alert.status === "triggered" ? "⚠" : "!"}
+                            {icon}
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>{ruleLabel(alert.ruleId)}</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{ruleLabel(alert.ruleId)}</span>
                             {alert.message && (
-                              <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>{alert.message}</span>
+                              <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.4 }}>{alert.message}</span>
                             )}
                           </div>
                         </div>
@@ -1028,8 +1126,12 @@ export default async function DashboardPage({
                   </div>
                 ) : (
                   <div style={{ padding: "24px 0", textAlign: "center" }}>
-                    <div style={{ fontSize: 22, marginBottom: 8 }}>✓</div>
-                    <p style={{ fontSize: 13, color: "var(--gr-text-mute)" }}>No active alerts.</p>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9, background: "var(--gr-ok-bg)", color: "var(--gr-ok)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 18, margin: "0 auto 10px",
+                    }}>✓</div>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>All clear</p>
                     <p style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 4 }}>
                       All monitored rules are within limits.
                     </p>
@@ -1040,7 +1142,7 @@ export default async function DashboardPage({
 
             {/* ── P&L Calendar — full month grid, client island ────────── */}
             {selectedAccount && (
-              <section style={{ padding: "0 36px 20px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 20px" }}>
                 <PnlCalendar
                   trades={recentTrades}
                   timezone={displayTimeZone}
@@ -1052,7 +1154,7 @@ export default async function DashboardPage({
 
             {/* ── Accounts detail (collapsible) — expired accounts + management only ── */}
             {hasExpiredAccount && ( /* Expired / unavailable accounts */
-              <section style={{ padding: "0 36px 36px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 36px" }}>
                 <details
                   className="group"
                   style={{
