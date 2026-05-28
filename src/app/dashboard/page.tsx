@@ -326,6 +326,7 @@ export default async function DashboardPage({
       hideApiStatus
     >
       <div style={{ overflowY: "auto", height: "100%" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* ── Auto-refresh for live data ─────────────────────────────────── */}
         {hasBrokerAccount && <DashboardAutoRefresh />}
 
@@ -457,16 +458,16 @@ export default async function DashboardPage({
                 </span>
               </div>
               {/*
-                * Responsive grid — no horizontal overflow, so the browser has no
-                * scroll position to restore on reload.  Cards wrap to the next row
-                * once the viewport is too narrow to fit them all.
-                * auto-fill + minmax(190px, 1fr) means:
-                *   1440px viewport → 240px sidebar → ~72px padding → ~1128px usable
-                *   → 5 columns at 190px min, cards grow to fill remaining space.
+                * Responsive grid — cards have a min of 190px and a max of 260px
+                * so they stay card-sized on wide screens (2 accounts won't expand
+                * to fill 1400px each). auto-fill still wraps to new rows on narrow
+                * viewports, and justify-content:start prevents the last partial row
+                * from stretching to fill the container.
                 */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 260px))",
+                justifyContent: "start",
                 gap: 10,
               }}>
                 {/* Auto-sync for stale accounts (active only — no point
@@ -641,99 +642,6 @@ export default async function DashboardPage({
                 </Link>
               </div>
             </section>
-
-            {/* ── Expired / unavailable accounts ────────────────────────── */}
-            {hasExpiredAccount && (
-              <section style={{ padding: "0 36px 20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-                    Expired / unavailable accounts · {expiredAccounts.length}
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-                    Historical data preserved. Archive to hide from this dashboard.
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {expiredAccounts.map((acc) => {
-                    const isUnavailable = acc.status === "unavailable";
-                    const reasonCopy = isUnavailable
-                      ? "This account is no longer available from the broker."
-                      : "Broker connection expired.";
-                    return (
-                      <div
-                        key={acc.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 14,
-                          padding: "12px 14px",
-                          background: "var(--gr-surface)",
-                          border: "1px solid var(--gr-border)",
-                          borderRadius: 12,
-                          opacity: 0.85,
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                            <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
-                              {acc.label}
-                            </span>
-                            <span style={{
-                              fontSize: 10,
-                              padding: "1px 7px",
-                              borderRadius: 999,
-                              background: "var(--gr-bg-elev)",
-                              color: "var(--gr-text-mute)",
-                              fontWeight: 500,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                            }}>
-                              {isUnavailable ? "unavailable" : "expired"}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
-                            {reasonCopy} {(acc.platformLabel ?? acc.propFirm) ? `· ${acc.platformLabel ?? acc.propFirm}` : ""}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                          <Link
-                            href={`/trades?accountId=${acc.id}`}
-                            style={{
-                              padding: "5px 10px",
-                              fontSize: 11.5,
-                              border: "1px solid var(--gr-border)",
-                              background: "transparent",
-                              color: "var(--gr-text-mid)",
-                              borderRadius: 7,
-                              textDecoration: "none",
-                            }}
-                          >
-                            View history
-                          </Link>
-                          {!isUnavailable && (
-                            <Link
-                              href="/accounts/connect/tradovate"
-                              style={{
-                                padding: "5px 10px",
-                                fontSize: 11.5,
-                                border: "1px solid var(--gr-border)",
-                                background: "var(--gr-bg-elev)",
-                                color: "var(--gr-text-mid)",
-                                borderRadius: 7,
-                                textDecoration: "none",
-                              }}
-                            >
-                              Reconnect broker
-                            </Link>
-                          )}
-                          <ArchiveAccountButton accountId={acc.id} accountLabel={acc.label} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
 
             {/* ── Selected account context bar ──────────────────────────── */}
             {selectedAccount && (
@@ -1194,6 +1102,11 @@ export default async function DashboardPage({
                     </span>
                     <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
                       {commandCenter.accounts.length} account{commandCenter.accounts.length !== 1 ? "s" : ""}
+                      {hasExpiredAccount && (
+                        <span style={{ marginLeft: 6, color: "var(--gr-warn)" }}>
+                          · {expiredAccounts.length} expired
+                        </span>
+                      )}
                     </span>
                   </div>
                   <span
@@ -1207,6 +1120,79 @@ export default async function DashboardPage({
                     +
                   </span>
                 </summary>
+                {/* ── Expired / unavailable accounts (inside Accounts detail) ── */}
+                {hasExpiredAccount && (
+                  <div style={{ borderTop: "1px solid var(--gr-border)", padding: "16px 20px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
+                        Expired / unavailable · {expiredAccounts.length}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                        Historical data preserved — Archive to hide
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {expiredAccounts.map((acc) => {
+                        const isUnavailable = acc.status === "unavailable";
+                        return (
+                          <div
+                            key={acc.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "9px 12px",
+                              background: "var(--gr-surface)",
+                              border: "1px solid var(--gr-border)",
+                              borderRadius: 10,
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
+                                {acc.label}
+                              </span>
+                              <span style={{
+                                marginLeft: 8,
+                                fontSize: 10,
+                                padding: "1px 6px",
+                                borderRadius: 999,
+                                background: "var(--gr-bg-elev)",
+                                color: "var(--gr-text-mute)",
+                                fontWeight: 500,
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                              }}>
+                                {isUnavailable ? "unavailable" : "expired"}
+                              </span>
+                              {(acc.platformLabel ?? acc.propFirm) && (
+                                <span style={{ marginLeft: 6, fontSize: 11, color: "var(--gr-text-mute)" }}>
+                                  · {acc.platformLabel ?? acc.propFirm}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                              <Link
+                                href={`/trades?accountId=${acc.id}`}
+                                style={{ padding: "4px 9px", fontSize: 11, border: "1px solid var(--gr-border)", background: "transparent", color: "var(--gr-text-mid)", borderRadius: 6, textDecoration: "none" }}
+                              >
+                                History
+                              </Link>
+                              {!isUnavailable && (
+                                <Link
+                                  href="/accounts/connect/tradovate"
+                                  style={{ padding: "4px 9px", fontSize: 11, border: "1px solid var(--gr-border)", background: "var(--gr-bg-elev)", color: "var(--gr-text-mid)", borderRadius: 6, textDecoration: "none" }}
+                                >
+                                  Reconnect
+                                </Link>
+                              )}
+                              <ArchiveAccountButton accountId={acc.id} accountLabel={acc.label} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div style={{ borderTop: "1px solid var(--gr-border)", padding: "0" }}>
                   <CommandCenter data={commandCenter} />
                 </div>
@@ -1214,6 +1200,7 @@ export default async function DashboardPage({
             </section>
           </>
         )}
+        </div>
       </div>
     </GrShell>
   );

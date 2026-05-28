@@ -52,8 +52,8 @@ describe("/dashboard: expired-account isolation", () => {
 
   it("renders the expired-accounts group with archive action when expired accounts exist", () => {
     assert.ok(
-      page.includes("Expired / unavailable accounts"),
-      "must render the 'Expired / unavailable accounts' section heading",
+      page.includes("Expired / unavailable"),
+      "must render the 'Expired / unavailable' section heading",
     );
     assert.ok(
       page.includes("ArchiveAccountButton"),
