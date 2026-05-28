@@ -72,16 +72,17 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         onClick={() => setTimeframe(tf)}
         aria-pressed={active}
         style={{
-          padding: "3px 9px",
+          padding: "3px 10px",
           borderRadius: 6,
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: 600,
-          border: `1px solid ${active ? "var(--gr-copper)" : "var(--gr-border)"}`,
-          background: active ? "var(--gr-copper-bg)" : "transparent",
-          color: active ? "var(--gr-copper)" : "var(--gr-text-mid)",
+          border: `1px solid ${active ? "var(--gr-copper)" : "transparent"}`,
+          background: active ? "var(--gr-copper-bg)" : "var(--gr-surface)",
+          color: active ? "var(--gr-copper)" : "var(--gr-text-mute)",
           cursor: "pointer",
-          letterSpacing: "0.04em",
+          letterSpacing: "0.05em",
           textTransform: "uppercase",
+          transition: "background 0.12s, color 0.12s, border-color 0.12s",
         }}
       >
         {label}
@@ -95,7 +96,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         background: "var(--gr-bg-elev)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
-        padding: 22,
+        padding: "18px 20px",
         display: "flex",
         flexDirection: "column",
       }}
@@ -104,7 +105,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 10,
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
@@ -262,7 +263,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        style={{ width: "100%", height: 90 }}
+        style={{ width: "100%", height: 100 }}
         aria-hidden="true"
       >
         <defs>

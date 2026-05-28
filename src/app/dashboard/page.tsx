@@ -386,7 +386,7 @@ export default async function DashboardPage({
         {hasBrokerAccount && <DashboardAutoRefresh />}
 
         {/* ── Hero ──────────────────────────────────────────────────────── */}
-        <section className="dash-section" style={{ padding: "28px 36px 18px" }}>
+        <section className="dash-section" style={{ padding: "22px 36px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 620 }}>
               <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
@@ -503,7 +503,7 @@ export default async function DashboardPage({
         {hasBrokerAccount && (
           <>
             {/* ── Account strip ─────────────────────────────────────────── */}
-            <section className="dash-section" style={{ padding: "4px 36px 20px" }}>
+            <section className="dash-section" style={{ padding: "4px 36px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
                   Your accounts · {activeAccounts.length}
@@ -684,7 +684,7 @@ export default async function DashboardPage({
 
             {/* ── Selected account context bar ──────────────────────────── */}
             {selectedAccount && (
-              <section className="dash-section" style={{ padding: "0 36px 18px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 14px" }}>
                 <div style={{
                   background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)",
                   borderRadius: 12, padding: "12px 18px",
@@ -722,7 +722,7 @@ export default async function DashboardPage({
 
             {/* ── KPI strip ─────────────────────────────────────────────── */}
             {selectedAccount && (
-              <section className="dash-section" style={{ padding: "0 36px 20px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 16px" }}>
                 <div className="dash-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                   {[
                     {
@@ -759,15 +759,15 @@ export default async function DashboardPage({
                       key={k.label}
                       style={{
                         background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
-                        borderRadius: 12, padding: 18,
+                        borderRadius: 12, padding: "14px 16px",
                       }}
                     >
                       <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
                         {k.label}
                       </span>
                       <div style={{
-                        fontSize: 26, fontWeight: 600, lineHeight: 1, letterSpacing: "-0.02em",
-                        marginTop: 8, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                        fontSize: 24, fontWeight: 600, lineHeight: 1, letterSpacing: "-0.02em",
+                        marginTop: 7, fontFamily: "var(--font-ibm-plex-mono, monospace)",
                         color: k.highlight && k.tone === "warn"
                           ? "var(--gr-warn)"
                           : k.tone === "warn" && !k.highlight ? "var(--gr-warn)"
@@ -787,22 +787,11 @@ export default async function DashboardPage({
               </section>
             )}
 
-            {/* ── Trader insights — 2×3 stat-card grid ──────────────────── */}
-            {selectedAccount && (
-              <TraderInsights
-                selectedAccount={selectedAccount}
-                guardian={guardian}
-                riskRules={riskRules}
-                recentTrades={recentTrades}
-                timezone={displayTimeZone}
-              />
-            )}
-
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
-            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* Active rules panel */}
-              <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+              <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: "18px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Active rules</span>
                     {selectedAccount && (
@@ -889,7 +878,7 @@ export default async function DashboardPage({
                   }
 
                   return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {displayRules.map((rule) => {
                         const isHard = rule.status === "blocked" || rule.status === "triggered";
                         const isWarn = rule.status === "warning";
@@ -910,22 +899,22 @@ export default async function DashboardPage({
                           : isWarn ? "warning"
                           : null;
                         return (
-                          <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                          <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: 1 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
                                 <span style={{
-                                  fontSize: 13, fontWeight: 600, color: "var(--gr-ink)",
+                                  fontSize: 12.5, fontWeight: 600, color: "var(--gr-ink)",
                                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                                 }}>
                                   {ruleLabel(rule.ruleId)}
                                 </span>
                                 <EnforcementBadge type={enforcement} />
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
                                 {valLabel ? (
                                   <span style={{
-                                    fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                                    fontSize: 11.5, fontFamily: "var(--font-ibm-plex-mono, monospace)",
                                     color: "var(--gr-ink)", fontWeight: 600,
                                   }}>
                                     {valLabel}
@@ -937,7 +926,7 @@ export default async function DashboardPage({
                                 )}
                                 {stateLabel && (
                                   <span style={{
-                                    fontSize: 9.5, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+                                    fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
                                     padding: "1px 6px", borderRadius: 999,
                                     background: isHard ? "var(--gr-bad-bg)" : isWarn ? "var(--gr-warn-bg)" : "var(--gr-ok-bg)",
                                     color: isHard ? "var(--gr-bad)" : isWarn ? "var(--gr-warn)" : "var(--gr-ok)",
@@ -947,7 +936,7 @@ export default async function DashboardPage({
                                 )}
                               </div>
                             </div>
-                            <div style={{ height: 5, borderRadius: 99, background: "var(--gr-bg-elev)", overflow: "hidden" }}>
+                            <div style={{ height: 4, borderRadius: 99, background: "var(--gr-bg-elev)", overflow: "hidden" }}>
                               <div style={{
                                 height: "100%", borderRadius: 99,
                                 width: pct != null ? `${Math.min(100, Math.max(2, Math.round(pct * 100)))}%` : "100%",
@@ -956,7 +945,7 @@ export default async function DashboardPage({
                               }} />
                             </div>
                             {rule.message && isHard && (
-                              <span style={{ fontSize: 11, color: "var(--gr-bad)", marginTop: 2 }}>{rule.message}</span>
+                              <span style={{ fontSize: 11, color: "var(--gr-bad)", marginTop: 1 }}>{rule.message}</span>
                             )}
                           </div>
                         );
@@ -974,14 +963,25 @@ export default async function DashboardPage({
               />
             </section>
 
+            {/* ── Trader insights — 2×3 compact stat-card grid ──────────── */}
+            {selectedAccount && (
+              <TraderInsights
+                selectedAccount={selectedAccount}
+                guardian={guardian}
+                riskRules={riskRules}
+                recentTrades={recentTrades}
+                timezone={displayTimeZone}
+              />
+            )}
+
             {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
-            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 16px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
               {/* Today's trades — real round-trips for the selected account */}
               <div style={{
                 background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
-                borderRadius: 14, padding: 22,
+                borderRadius: 14, padding: "18px 20px",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
                     {selectedAccount && (
@@ -1083,8 +1083,8 @@ export default async function DashboardPage({
               </div>
 
               {/* Recent alerts */}
-              <div style={{ background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+              <div style={{ background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: "18px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
                   <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Recent alerts</span>
                   <Link
                     href="/alerts"
@@ -1142,7 +1142,7 @@ export default async function DashboardPage({
 
             {/* ── P&L Calendar — full month grid, client island ────────── */}
             {selectedAccount && (
-              <section className="dash-section" style={{ padding: "0 36px 20px" }}>
+              <section className="dash-section" style={{ padding: "0 36px 16px" }}>
                 <PnlCalendar
                   trades={recentTrades}
                   timezone={displayTimeZone}

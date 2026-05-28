@@ -79,13 +79,13 @@ function StatCard({
       style={{
         background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
-        borderRadius: 12,
-        padding: 16,
+        borderRadius: 10,
+        padding: "12px 14px",
       }}
     >
       <span
         style={{
-          fontSize: 10.5,
+          fontSize: 10,
           fontWeight: 500,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
@@ -96,11 +96,11 @@ function StatCard({
       </span>
       <div
         style={{
-          fontSize: 20,
+          fontSize: 17,
           fontWeight: 600,
           lineHeight: 1,
           letterSpacing: "-0.02em",
-          marginTop: 8,
+          marginTop: 6,
           fontFamily: "var(--font-ibm-plex-mono, monospace)",
           color: valueColor,
         }}
@@ -110,8 +110,8 @@ function StatCard({
       {sub && (
         <span
           style={{
-            fontSize: 11,
-            marginTop: 6,
+            fontSize: 10.5,
+            marginTop: 4,
             display: "inline-block",
             color: "var(--gr-text-mute)",
             lineHeight: 1.4,
@@ -296,12 +296,12 @@ export function TraderInsights({
   ].filter((c) => c != null);
 
   return (
-    <section className="dash-section" style={{ padding: "0 36px 20px" }}>
+    <section className="dash-section" style={{ padding: "0 36px 16px" }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 10,
+          marginBottom: 8,
           alignItems: "center",
         }}
       >
@@ -325,7 +325,7 @@ export function TraderInsights({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 12,
+          gap: 8,
         }}
       >
         {cards}
