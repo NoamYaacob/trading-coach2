@@ -42,6 +42,7 @@ import {
   resolveDisplayTimeZone,
 } from "@/lib/timezone";
 import { needsSync } from "@/lib/sync-freshness";
+import { loadAccountTrades } from "@/lib/trades/load";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -231,10 +232,22 @@ export default async function DashboardPage({
   // Active (non-ok) rule results for the alerts panel
   const activeAlerts = violationFeed.activeViolations.slice(0, 5);
 
+  // Real trade history for the selected account — used by Today's trades and
+  // Equity curve panels. Loaded only when we have a selection; empty array
+  // otherwise drives the honest empty state.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentTrades = selectedAccount
+    ? await loadAccountTrades(selectedAccount.id, { since: sevenDaysAgo })
+    : [];
+  const todayTrades = recentTrades.filter((t) => t.closedAt >= todayStart);
+
   // Nav items — same as /rules, but home is active
   const DASHBOARD_NAV: GrNavItem[] = [
     { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard", active: true },
     { id: "rules",    label: "Trading Plan", icon: "shield",   href: "/rules" },
+    { id: "trades",   label: "Trades",       icon: "chart",    href: "/trades" },
     { id: "alerts",   label: "Alerts",       icon: "bell",     href: "/alerts" },
     { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
   ];
@@ -776,47 +789,115 @@ export default async function DashboardPage({
                 )}
               </div>
 
-              {/* Equity curve — placeholder until historical trade sync is available */}
+              {/* Equity curve — cumulative realized P&L from real trades */}
               <div style={{
                 background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)",
                 borderRadius: 14, padding: 22,
                 display: "flex", flexDirection: "column",
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Equity curve</span>
-                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--gr-surface)", border: "1px solid var(--gr-border)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
-                    Coming soon
-                  </span>
+                  <div>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Equity curve</span>
+                    {selectedAccount && (
+                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        Cumulative realized P&L · last 7d
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    href={selectedAccount ? `/trades?accountId=${selectedAccount.id}&range=7` : "/trades"}
+                    className="btn-compact"
+                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
+                  >
+                    Open →
+                  </Link>
                 </div>
-                {/* Empty state chart placeholder */}
-                <div style={{
-                  flex: 1, minHeight: 100,
-                  borderRadius: 8, border: "1px dashed var(--gr-border)",
-                  background: "var(--gr-surface)",
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center",
-                  gap: 8, padding: 24,
-                }}>
-                  {/* Decorative mini chart silhouette */}
-                  <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">
-                    <polyline
-                      points="0,22 10,18 20,20 30,12 38,14 50,6 64,10"
-                      stroke="var(--gr-border)"
-                      strokeWidth="1.5"
-                      strokeLinejoin="round"
-                      fill="none"
-                    />
-                  </svg>
-                  <p style={{ fontSize: 12.5, color: "var(--gr-text-mute)", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
-                    Balance history will appear here once broker trade sync is available.
-                  </p>
-                </div>
+                {(() => {
+                  if (recentTrades.length < 2) {
+                    return (
+                      <div style={{
+                        flex: 1, minHeight: 100,
+                        borderRadius: 8, border: "1px dashed var(--gr-border)",
+                        background: "var(--gr-surface)",
+                        display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center",
+                        gap: 8, padding: 24,
+                      }}>
+                        <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">
+                          <polyline
+                            points="0,22 10,18 20,20 30,12 38,14 50,6 64,10"
+                            stroke="var(--gr-border)"
+                            strokeWidth="1.5"
+                            strokeLinejoin="round"
+                            fill="none"
+                          />
+                        </svg>
+                        <p style={{ fontSize: 12.5, color: "var(--gr-text-mute)", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
+                          {recentTrades.length === 0
+                            ? "No closed round-trips in the last 7 days for this account."
+                            : "Curve appears once at least 2 round-trips have closed in the window."}
+                        </p>
+                      </div>
+                    );
+                  }
+                  // Reverse to chronological order and build cumulative pnl points
+                  const chrono = [...recentTrades].reverse();
+                  let cum = 0;
+                  const points: { x: number; y: number }[] = [];
+                  const tMin = chrono[0]!.closedAt.getTime();
+                  const tMax = chrono[chrono.length - 1]!.closedAt.getTime();
+                  const tRange = Math.max(1, tMax - tMin);
+                  for (const t of chrono) {
+                    cum += t.pnl;
+                    points.push({ x: (t.closedAt.getTime() - tMin) / tRange, y: cum });
+                  }
+                  const cumMin = Math.min(0, ...points.map((p) => p.y));
+                  const cumMax = Math.max(0, ...points.map((p) => p.y));
+                  const yRange = Math.max(1, cumMax - cumMin);
+                  // SVG: 100 wide, 40 tall
+                  const W = 100;
+                  const H = 40;
+                  const sx = (x: number) => x * W;
+                  const sy = (y: number) => H - ((y - cumMin) / yRange) * H;
+                  const pathPoints = points
+                    .map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`)
+                    .join(" ");
+                  const finalY = points[points.length - 1]!.y;
+                  const lineColor = finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                  return (
+                    <div style={{ flex: 1, minHeight: 100, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 22, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
+                          {fmt$(finalY)}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                          {recentTrades.length} trade{recentTrades.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 80 }} aria-hidden="true">
+                        {/* Zero baseline */}
+                        {cumMin < 0 && cumMax > 0 && (
+                          <line
+                            x1={0}
+                            x2={W}
+                            y1={sy(0)}
+                            y2={sy(0)}
+                            stroke="var(--gr-border)"
+                            strokeWidth="0.5"
+                            strokeDasharray="2 2"
+                          />
+                        )}
+                        <path d={pathPoints} stroke={lineColor} strokeWidth="1.2" fill="none" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  );
+                })()}
               </div>
             </section>
 
             {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
             <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
-              {/* Today's trades — placeholder until broker trade history is connected */}
+              {/* Today's trades — real round-trips for the selected account */}
               <div style={{
                 background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
                 borderRadius: 14, padding: 22,
@@ -830,30 +911,87 @@ export default async function DashboardPage({
                       </div>
                     )}
                   </div>
-                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
-                    Coming soon
-                  </span>
-                </div>
-                {/* Table header placeholder */}
-                <div style={{ display: "flex", gap: 0, paddingBottom: 8, borderBottom: "1px solid var(--gr-border)", marginBottom: 12 }}>
-                  {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "P&L"].map((col) => (
-                    <span key={col} style={{ flex: col === "Symbol" ? 1.2 : 1, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-                      {col}
-                    </span>
-                  ))}
-                </div>
-                {/* Empty state */}
-                <div style={{ padding: "24px 0", textAlign: "center" }}>
-                  <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0 }}>
-                    Synced fills will appear here once broker trade history is connected.
-                  </p>
                   <Link
-                    href="/accounts"
-                    style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none", marginTop: 8, display: "inline-block" }}
+                    href={selectedAccount ? `/trades?accountId=${selectedAccount.id}` : "/trades"}
+                    className="btn-compact"
+                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
                   >
-                    Connect broker →
+                    All trades →
                   </Link>
                 </div>
+                {todayTrades.length === 0 ? (
+                  <div style={{ padding: "28px 0", textAlign: "center" }}>
+                    <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0 }}>
+                      No closed round-trips yet today.
+                    </p>
+                    <p style={{ fontSize: 11.5, color: "var(--gr-text-faint)", marginTop: 4, lineHeight: 1.5 }}>
+                      Round-trips appear here as your broker reports fills — Guardrail does not invent activity.
+                    </p>
+                  </div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                    <thead>
+                      <tr>
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "P&L"].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: h === "P&L" ? "right" : "left",
+                              padding: "8px 4px",
+                              borderBottom: "1px solid var(--gr-border)",
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              color: "var(--gr-text-mute)",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {todayTrades.slice(0, 6).map((t) => {
+                        const sideOk = t.side === "LONG";
+                        const pnlCol = t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                        const sign = t.pnl >= 0 ? "+" : "−";
+                        return (
+                          <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
+                            <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>
+                              {t.closedAt.toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit", hour12: true })}
+                            </td>
+                            <td style={{ padding: "10px 4px", fontSize: 13, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 500, color: "var(--gr-ink)" }}>{t.symbol}</td>
+                            <td style={{ padding: "10px 4px" }}>
+                              <span style={{
+                                fontSize: 10,
+                                padding: "1px 6px",
+                                borderRadius: 999,
+                                background: sideOk ? "var(--gr-ok-bg)" : "var(--gr-bad-bg)",
+                                color: sideOk ? "var(--gr-ok)" : "var(--gr-bad)",
+                                fontWeight: 600,
+                                letterSpacing: "0.05em",
+                                textTransform: "uppercase",
+                              }}>
+                                {t.side}
+                              </span>
+                            </td>
+                            <td style={{ padding: "10px 4px", fontSize: 12.5, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-ink)" }}>{t.qty}</td>
+                            <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>
+                              {t.entryPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </td>
+                            <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>
+                              {t.exitPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </td>
+                            <td style={{ padding: "10px 4px", textAlign: "right", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlCol }}>
+                              {sign}${Math.abs(t.pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               {/* Recent alerts */}

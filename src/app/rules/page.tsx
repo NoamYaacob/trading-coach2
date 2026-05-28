@@ -349,6 +349,7 @@ export default async function RulesPage({
   const RULES_NAV: GrNavItem[] = [
     { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard" },
     { id: "rules",    label: "Trading Plan", icon: "shield",   href: "/rules",    active: true },
+    { id: "trades",   label: "Trades",       icon: "chart",    href: "/trades" },
     { id: "alerts",   label: "Alerts",       icon: "bell",     href: "/alerts" },
     { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
   ];
