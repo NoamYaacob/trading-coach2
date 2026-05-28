@@ -98,6 +98,90 @@ describe("reconstructRoundTrips: broker pnl is preferred", () => {
   });
 });
 
+describe("reconstructRoundTrips: open positions and reversals", () => {
+  it("does not emit a trade for an entry fill with no matching close", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+    ]);
+    assert.equal(trades.length, 0);
+  });
+
+  it("flips LONG to SHORT (reversal): emits the LONG round-trip and leaves a SHORT open", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      // Sell 2 contracts: closes the long 1 (emit) and opens a short 1 (no emit yet)
+      fill({ id: "2", side: "SELL", quantity: "2", price: "105", occurredAt: new Date("2026-01-01T14:10:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.side, "LONG");
+    assert.equal(trades[0]!.qty, 1);
+    assert.equal(trades[0]!.entryPrice, 100);
+    assert.equal(trades[0]!.exitPrice, 105);
+    assert.equal(trades[0]!.pnl, 5);
+  });
+
+  it("flips SHORT to LONG (reversal): emits SHORT round-trip, leaves LONG open", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "SELL", quantity: "1", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "BUY", quantity: "3", price: "95", occurredAt: new Date("2026-01-01T14:10:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.side, "SHORT");
+    assert.equal(trades[0]!.entryPrice, 100);
+    assert.equal(trades[0]!.exitPrice, 95);
+    // SHORT pnl = (95 - 100) * 1 * -1 = 5 (favourable, price dropped)
+    assert.equal(trades[0]!.pnl, 5);
+  });
+
+  it("after a flip the new opposite position closes normally on next fill", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "2", price: "105", occurredAt: new Date("2026-01-01T14:10:00Z") }),
+      // Close the new short 1 at 102 — short pnl = (102-105)*1*-1 = 3
+      fill({ id: "3", side: "BUY", quantity: "1", price: "102", occurredAt: new Date("2026-01-01T14:20:00Z") }),
+    ]);
+    assert.equal(trades.length, 2);
+    assert.equal(trades[1]!.side, "SHORT");
+    assert.equal(trades[1]!.entryPrice, 105);
+    assert.equal(trades[1]!.exitPrice, 102);
+    assert.equal(trades[1]!.pnl, 3);
+  });
+});
+
+describe("reconstructRoundTrips: P&L sign correctness", () => {
+  it("LONG that goes up = positive P&L", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", price: "110", occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.ok(trades[0]!.pnl > 0, `LONG up should be positive, got ${trades[0]!.pnl}`);
+  });
+
+  it("LONG that goes down = negative P&L", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", price: "95", occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.ok(trades[0]!.pnl < 0, `LONG down should be negative, got ${trades[0]!.pnl}`);
+  });
+
+  it("SHORT that goes down = positive P&L (price moved favourably)", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "SELL", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "BUY", price: "90", occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.ok(trades[0]!.pnl > 0, `SHORT down should be positive, got ${trades[0]!.pnl}`);
+  });
+
+  it("SHORT that goes up = negative P&L", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "SELL", price: "100", occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "BUY", price: "110", occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.ok(trades[0]!.pnl < 0, `SHORT up should be negative, got ${trades[0]!.pnl}`);
+  });
+});
+
 describe("reconstructRoundTrips: edge cases", () => {
   it("returns empty array for no fills", () => {
     assert.deepEqual(reconstructRoundTrips([]), []);
