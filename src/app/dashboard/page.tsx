@@ -48,6 +48,9 @@ import {
   partitionAccountsByActive,
 } from "@/app/dashboard/_components/command-center/active-status";
 import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-account-button";
+import { EquityCurve } from "@/app/dashboard/_components/equity-curve";
+import { PnlCalendar } from "@/app/dashboard/_components/pnl-calendar";
+import { TraderInsights } from "@/app/dashboard/_components/trader-insights";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -745,6 +748,17 @@ export default async function DashboardPage({
               </section>
             )}
 
+            {/* ── Trader insights — 2×3 stat-card grid ──────────────────── */}
+            {selectedAccount && (
+              <TraderInsights
+                selectedAccount={selectedAccount}
+                guardian={guardian}
+                riskRules={riskRules}
+                recentTrades={recentTrades}
+                timezone={displayTimeZone}
+              />
+            )}
+
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
             <section style={{ padding: "0 36px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* Active rules panel */}
@@ -859,110 +873,12 @@ export default async function DashboardPage({
                 })()}
               </div>
 
-              {/* Equity curve — cumulative realized P&L from real trades */}
-              <div style={{
-                background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)",
-                borderRadius: 14, padding: 22,
-                display: "flex", flexDirection: "column",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
-                  <div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Equity curve</span>
-                    {selectedAccount && (
-                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        Cumulative realized P&L · last 30d
-                      </div>
-                    )}
-                  </div>
-                  <Link
-                    href={selectedAccount ? `/trades?accountId=${selectedAccount.id}&range=7` : "/trades"}
-                    className="btn-compact"
-                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
-                  >
-                    Open →
-                  </Link>
-                </div>
-                {(() => {
-                  if (recentTrades.length < 2) {
-                    return (
-                      <div style={{
-                        flex: 1, minHeight: 100,
-                        borderRadius: 8, border: "1px dashed var(--gr-border)",
-                        background: "var(--gr-surface)",
-                        display: "flex", flexDirection: "column",
-                        alignItems: "center", justifyContent: "center",
-                        gap: 8, padding: 24,
-                      }}>
-                        <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">
-                          <polyline
-                            points="0,22 10,18 20,20 30,12 38,14 50,6 64,10"
-                            stroke="var(--gr-border)"
-                            strokeWidth="1.5"
-                            strokeLinejoin="round"
-                            fill="none"
-                          />
-                        </svg>
-                        <p style={{ fontSize: 12.5, color: "var(--gr-text-mute)", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
-                          {recentTrades.length === 0
-                            ? "No closed round-trips in the last 30 days for this account."
-                            : "Curve appears once at least 2 round-trips have closed in the window."}
-                        </p>
-                      </div>
-                    );
-                  }
-                  // Reverse to chronological order and build cumulative pnl points
-                  const chrono = [...recentTrades].reverse();
-                  let cum = 0;
-                  const points: { x: number; y: number }[] = [];
-                  const tMin = chrono[0]!.closedAt.getTime();
-                  const tMax = chrono[chrono.length - 1]!.closedAt.getTime();
-                  const tRange = Math.max(1, tMax - tMin);
-                  for (const t of chrono) {
-                    cum += t.pnl;
-                    points.push({ x: (t.closedAt.getTime() - tMin) / tRange, y: cum });
-                  }
-                  const cumMin = Math.min(0, ...points.map((p) => p.y));
-                  const cumMax = Math.max(0, ...points.map((p) => p.y));
-                  const yRange = Math.max(1, cumMax - cumMin);
-                  // SVG: 100 wide, 40 tall
-                  const W = 100;
-                  const H = 40;
-                  const sx = (x: number) => x * W;
-                  const sy = (y: number) => H - ((y - cumMin) / yRange) * H;
-                  const pathPoints = points
-                    .map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`)
-                    .join(" ");
-                  const finalY = points[points.length - 1]!.y;
-                  const lineColor = finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
-                  return (
-                    <div style={{ flex: 1, minHeight: 100, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <span style={{ fontSize: 22, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
-                          {fmt$(finalY)}
-                        </span>
-                        <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-                          {recentTrades.length} trade{recentTrades.length !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 80 }} aria-hidden="true">
-                        {/* Zero baseline */}
-                        {cumMin < 0 && cumMax > 0 && (
-                          <line
-                            x1={0}
-                            x2={W}
-                            y1={sy(0)}
-                            y2={sy(0)}
-                            stroke="var(--gr-border)"
-                            strokeWidth="0.5"
-                            strokeDasharray="2 2"
-                          />
-                        )}
-                        <path d={pathPoints} stroke={lineColor} strokeWidth="1.2" fill="none" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  );
-                })()}
-              </div>
+              {/* Equity curve — client island, cumulative realized P&L w/ timeframe toggles */}
+              <EquityCurve
+                trades={recentTrades}
+                tradesHref={selectedAccount ? `/trades?accountId=${selectedAccount.id}` : "/trades"}
+                dataSourceLabel="From broker fills"
+              />
             </section>
 
             {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
@@ -1122,128 +1038,15 @@ export default async function DashboardPage({
               </div>
             </section>
 
-            {/* ── P&L Calendar — last 30 days ──────────────────────────── */}
+            {/* ── P&L Calendar — full month grid, client island ────────── */}
             {selectedAccount && (
               <section style={{ padding: "0 36px 20px" }}>
-                <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: 22 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
-                    <div>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>P&amp;L calendar</span>
-                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        Daily realized P&amp;L · last 30 days · {selectedAccount.label}
-                      </div>
-                    </div>
-                    <Link
-                      href={`/trades?accountId=${selectedAccount.id}`}
-                      className="btn-compact"
-                      style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", background: "transparent", color: "var(--gr-copper)", textDecoration: "none" }}
-                    >
-                      View trades →
-                    </Link>
-                  </div>
-                  {(() => {
-                    // Build last 30-day calendar grid (5 weeks × 7 days, Sun–Sat)
-                    const now = new Date();
-                    const start = new Date(now);
-                    start.setDate(now.getDate() - 29);
-                    // Align to Sunday
-                    const gridStart = new Date(start);
-                    gridStart.setDate(start.getDate() - start.getDay());
-
-                    // Aggregate trades by calendar day (using displayTimeZone)
-                    const dayMap = new Map<string, { pnl: number; count: number }>();
-                    for (const t of recentTrades) {
-                      const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
-                      const cur = dayMap.get(key) ?? { pnl: 0, count: 0 };
-                      dayMap.set(key, { pnl: cur.pnl + t.pnl, count: cur.count + 1 });
-                    }
-
-                    const todayKey = now.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
-                    const startKey = start.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
-
-                    const cells: Array<{ key: string; dayNum: number; inRange: boolean; data: { pnl: number; count: number } | null }> = [];
-                    for (let i = 0; i < 35; i++) {
-                      const d = new Date(gridStart);
-                      d.setDate(gridStart.getDate() + i);
-                      const key = d.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
-                      cells.push({
-                        key,
-                        dayNum: d.getDate(),
-                        inRange: key >= startKey && key <= todayKey,
-                        data: dayMap.get(key) ?? null,
-                      });
-                    }
-
-                    const tradingDays = cells.filter(c => c.inRange && c.data && c.data.count > 0);
-                    const winDays = tradingDays.filter(c => c.data!.pnl > 0).length;
-                    const lossDays = tradingDays.filter(c => c.data!.pnl < 0).length;
-                    const totalPnl = tradingDays.reduce((s, c) => s + c.data!.pnl, 0);
-
-                    return (
-                      <>
-                        {tradingDays.length > 0 && (
-                          <div style={{ display: "flex", gap: 20, marginBottom: 14, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 12, color: "var(--gr-text-mute)" }}>
-                              <span style={{ color: "var(--gr-ok)", fontWeight: 600 }}>{winDays}W</span>
-                              {" · "}
-                              <span style={{ color: "var(--gr-bad)", fontWeight: 600 }}>{lossDays}L</span>
-                              {" · "}
-                              {tradingDays.length} days traded
-                            </span>
-                            <span style={{ fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 600, color: totalPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
-                              {fmt$(totalPnl)} total
-                            </span>
-                          </div>
-                        )}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-                          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
-                            <div key={d} style={{ fontSize: 9.5, color: "var(--gr-text-faint)", textAlign: "center", padding: "2px 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>{d}</div>
-                          ))}
-                          {cells.map((cell, i) => {
-                            const hasTrades = cell.data != null && cell.data.count > 0;
-                            const pnl = cell.data?.pnl ?? 0;
-                            return (
-                              <div
-                                key={i}
-                                title={hasTrades ? `${fmt$(pnl)} · ${cell.data!.count} trade${cell.data!.count !== 1 ? "s" : ""}` : undefined}
-                                style={{
-                                  padding: "5px 3px",
-                                  borderRadius: 5,
-                                  textAlign: "center",
-                                  minHeight: 38,
-                                  background: !cell.inRange ? "transparent"
-                                    : hasTrades && pnl > 0 ? "var(--gr-ok-bg)"
-                                    : hasTrades && pnl < 0 ? "var(--gr-bad-bg)"
-                                    : "transparent",
-                                  border: cell.key === todayKey ? "1px solid var(--gr-copper)" : "1px solid transparent",
-                                  opacity: !cell.inRange ? 0.2 : 1,
-                                }}
-                              >
-                                <div style={{ fontSize: 9.5, color: cell.key === todayKey ? "var(--gr-copper)" : "var(--gr-text-mute)", fontWeight: cell.key === todayKey ? 700 : 400 }}>
-                                  {cell.dayNum}
-                                </div>
-                                {hasTrades && (
-                                  <div style={{
-                                    fontSize: 8.5, fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                                    color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
-                                    fontWeight: 600, lineHeight: 1.2, marginTop: 2,
-                                  }}>
-                                    {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {tradingDays.length === 0 && (
-                          <div style={{ padding: "16px 0", textAlign: "center", fontSize: 12.5, color: "var(--gr-text-mute)" }}>
-                            No closed trades in the last 30 days. Calendar fills as trades close.
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
+                <PnlCalendar
+                  trades={recentTrades}
+                  timezone={displayTimeZone}
+                  accountLabel={selectedAccount.label}
+                  tradesHref={`/trades?accountId=${selectedAccount.id}`}
+                />
               </section>
             )}
 

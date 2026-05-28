@@ -151,17 +151,21 @@ describe("/dashboard: layout and CTA hygiene", () => {
   });
 
   it("P&L calendar section exists and uses real trade data", () => {
+    // The calendar moved into its own client component file.  The dashboard
+    // still imports + renders <PnlCalendar /> but the dayMap / empty-state
+    // wiring lives in the component now.
     assert.ok(
-      page.includes("P&L calendar") || page.includes("P&amp;L calendar"),
-      "must render a P&L calendar heading",
+      page.includes("<PnlCalendar"),
+      "dashboard must render the <PnlCalendar /> client island",
+    );
+    const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+    assert.ok(
+      calendar.includes("dayMap"),
+      "calendar must aggregate trades by day (dayMap)",
     );
     assert.ok(
-      page.includes("dayMap"),
-      "must aggregate trades by day (dayMap)",
-    );
-    assert.ok(
-      page.includes("No closed trades in the last 30 days"),
-      "must show an honest empty state when no calendar data exists",
+      calendar.includes("No closed trades in the last 30 days"),
+      "calendar must show an honest empty state when no data exists",
     );
   });
 
@@ -173,6 +177,13 @@ describe("/dashboard: layout and CTA hygiene", () => {
     assert.ok(
       !page.includes("sevenDaysAgo"),
       "must not use the old sevenDaysAgo variable",
+    );
+    // The equity-curve UI moved to its own client component with timeframe
+    // toggles.  Verify the file exists and exposes the toggle states.
+    const equity = read("app/dashboard/_components/equity-curve.tsx");
+    assert.ok(
+      equity.includes("\"7d\"") && equity.includes("\"30d\"") && equity.includes("\"all\""),
+      "equity curve component must expose 7d / 30d / all timeframe states",
     );
   });
 
