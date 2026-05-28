@@ -164,7 +164,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       <div
         style={{
           flex: 1,
-          minHeight: 100,
+          minHeight: 80,
           borderRadius: 8,
           border: "1px dashed var(--gr-border)",
           background: "var(--gr-surface)",
@@ -172,8 +172,8 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 8,
-          padding: 24,
+          gap: 6,
+          padding: "16px 24px",
         }}
       >
         <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">

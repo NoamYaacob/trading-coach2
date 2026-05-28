@@ -903,10 +903,11 @@ export default async function DashboardPage({
                           rule.ruleId,
                           ruleHasBrokerLimit[rule.ruleId] ?? false,
                         );
+                        // Only show a state pill when there's actually a state to announce.
+                        // Combining "Not configured" with "ACTIVE" is incoherent.
                         const stateLabel = isHard
                           ? rule.status
                           : isWarn ? "warning"
-                          : pct == null ? "active"
                           : null;
                         return (
                           <div key={rule.ruleId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
