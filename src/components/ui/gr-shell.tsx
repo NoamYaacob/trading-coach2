@@ -221,6 +221,17 @@ export function GrShell({
   const resolvedInitials = userInitials ?? "AN";
   const resolvedSidebarLabel = sidebarLabel ?? "Account";
 
+  // Mobile drawer state — sidebar collapses below 1024px into an overlay drawer.
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileNavOpen]);
+
   return (
     <div
       className="gr"
@@ -236,9 +247,25 @@ export function GrShell({
         position: "relative",
       }}
     >
-      {/* Sidebar — hidden in rule-editor mode */}
+      {/* Mobile drawer backdrop */}
+      {!hideSidebar && mobileNavOpen && (
+        <div
+          aria-hidden
+          onClick={() => setMobileNavOpen(false)}
+          className="gr-shell-backdrop"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(27, 24, 18, 0.45)",
+            zIndex: 40,
+          }}
+        />
+      )}
+
+      {/* Sidebar — hidden in rule-editor mode; collapses to drawer on mobile */}
       {!hideSidebar && (
         <aside
+          className={`gr-shell-aside${mobileNavOpen ? " is-open" : ""}`}
           style={{
             width: 240,
             flexShrink: 0,
@@ -330,6 +357,7 @@ export function GrShell({
       >
         {/* Top bar */}
         <header
+          className="gr-shell-header"
           style={{
             height: 56,
             padding: "0 28px",
@@ -341,6 +369,34 @@ export function GrShell({
             flexShrink: 0,
           }}
         >
+          {/* Mobile nav toggle — visible only on small screens */}
+          {!hideSidebar && (
+            <button
+              type="button"
+              aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="gr-shell-nav-toggle btn-compact"
+              style={{
+                display: "none",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 36,
+                height: 36,
+                marginRight: 4,
+                marginLeft: -8,
+                padding: 0,
+                border: "1px solid var(--gr-border)",
+                borderRadius: 8,
+                background: "var(--gr-surface)",
+                color: "var(--gr-text-mid)",
+                cursor: "pointer",
+              }}
+            >
+              <GrIcon name={mobileNavOpen ? "x" : "menu"} />
+            </button>
+          )}
+
           {/* Breadcrumb */}
           <nav
             aria-label="breadcrumb"

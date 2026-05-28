@@ -86,7 +86,7 @@ function pnlColor(v: number | null): string {
 function fmt$(v: number): string {
   const abs = Math.abs(v);
   const sign = v >= 0 ? "+" : "−";
-  return `${sign}$${abs.toLocaleString()}`;
+  return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function timeGreeting(): string {
@@ -528,7 +528,7 @@ export default async function DashboardPage() {
                             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <span style={{ fontSize: 10.5, color: "var(--gr-text-mute)" }}>Balance</span>
                               <span style={{ fontSize: 17, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-ink)", letterSpacing: "-0.01em" }}>
-                                {acc.balance != null ? `$${acc.balance.toLocaleString()}` : "—"}
+                                {acc.balance != null ? `$${acc.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                               </span>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "right" }}>
@@ -635,7 +635,7 @@ export default async function DashboardPage() {
                   {[
                     {
                       label: "Balance",
-                      value: selectedAccount.balance != null ? `$${selectedAccount.balance.toLocaleString()}` : "—",
+                      value: selectedAccount.balance != null ? `$${selectedAccount.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—",
                       sub: selectedAccount.dailyPnl != null ? `${fmt$(selectedAccount.dailyPnl)} today` : "No sync yet",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
@@ -649,8 +649,8 @@ export default async function DashboardPage() {
                     {
                       label: "Loss budget left",
                       value: selectedAccount.remainingDailyLoss != null
-                        ? `$${selectedAccount.remainingDailyLoss.toLocaleString()}`
-                        : selectedAccount.maxDailyLoss != null ? `$${selectedAccount.maxDailyLoss.toLocaleString()} limit` : "No limit set",
+                        ? `$${selectedAccount.remainingDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : selectedAccount.maxDailyLoss != null ? `$${selectedAccount.maxDailyLoss.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} limit` : "No limit set",
                       sub: selectedAccount.dailyLossUsedPct != null
                         ? `${Math.round(selectedAccount.dailyLossUsedPct * 100)}% used`
                         : "Set a daily loss rule",
