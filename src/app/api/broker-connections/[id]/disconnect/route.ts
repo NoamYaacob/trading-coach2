@@ -4,8 +4,9 @@
  * Safely disconnects an entire broker connection:
  *   1. Evaluates each linked account for rule-breach / session-lock status.
  *   2. Clean accounts → archived immediately (protectionStatus = "archived").
- *   3. Locked accounts → scheduled via pendingProtectionStatus / effectiveDate
- *      (same mechanism as the pending-rule-promoter cron).
+ *   3. Locked accounts → scheduled via pendingProtectionStatus / effectiveDate.
+ *      The promote-pending-rules cron promotes these to protectionStatus = "archived"
+ *      once pendingProtectionEffectiveDate arrives (via pending-connected-account-promoter).
  *   4. If all accounts are now archived: deletes the BrokerConnection row.
  *   5. If any accounts are scheduled: leaves the connection intact until the
  *      cron promotes the pending archives (next trading day).

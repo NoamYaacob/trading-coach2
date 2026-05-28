@@ -3,6 +3,10 @@ import type { NextRequest } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { promotePendingRules, type PromoterPrisma } from "@/lib/pending-rule-promoter";
+import {
+  promotePendingConnectedAccountProtection,
+  type AccountProtectionPromoterPrisma,
+} from "@/lib/pending-connected-account-promoter";
 
 /**
  * POST /api/cron/promote-pending-rules
@@ -41,19 +45,31 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // The promoter is structurally typed (PromoterPrisma) so the deep
-    // generic types of @prisma/client don't bleed into its API surface.
-    // Prisma's findMany result type is wider than our subset; the cast is
-    // safe because we only read the three columns we listed in `select`.
-    const summary = await promotePendingRules(prisma as unknown as PromoterPrisma);
+    // Both promoters are structurally typed so the deep generic types of
+    // @prisma/client don't bleed into their API surfaces. The casts are safe
+    // because we only read the columns listed in each `select`.
+    const [summary, accountProtectionSummary] = await Promise.all([
+      promotePendingRules(prisma as unknown as PromoterPrisma),
+      promotePendingConnectedAccountProtection(
+        prisma as unknown as AccountProtectionPromoterPrisma,
+      ),
+    ]);
     if (
       summary.promotedAccountCount > 0 ||
       summary.promotedDefaultCount > 0 ||
-      summary.failedCount > 0
+      summary.failedCount > 0 ||
+      accountProtectionSummary.promotedCount > 0 ||
+      accountProtectionSummary.failedCount > 0
     ) {
-      console.info("[cron/promote-pending-rules] done", summary);
+      console.info("[cron/promote-pending-rules] done", { ...summary, accountProtectionSummary });
     }
-    return NextResponse.json({ ok: true, ...summary });
+    return NextResponse.json({
+      ok: true,
+      ...summary,
+      promotedAccountProtectionCount: accountProtectionSummary.promotedCount,
+      skippedAccountProtectionCount: accountProtectionSummary.skippedFutureDateCount,
+      failedAccountProtectionCount: accountProtectionSummary.failedCount,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[cron/promote-pending-rules] fatal error", { message });

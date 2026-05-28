@@ -438,6 +438,93 @@ describe("RemoveAccountButton uses archive endpoint, not hard delete", () => {
   });
 });
 
+// ── Pending archive self-promotion ───────────────────────────────────────────
+
+describe("pending archive promotion — cron path exists and self-resolves", () => {
+  test("pending-connected-account-promoter.ts exists and exports the promoter function", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    assert.ok(
+      src.includes("promotePendingConnectedAccountProtection"),
+      "pending-connected-account-promoter.ts must export promotePendingConnectedAccountProtection",
+    );
+  });
+
+  test("promoter queries pendingProtectionStatus = 'archived'", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    assert.ok(
+      src.includes('pendingProtectionStatus: "archived"'),
+      "promoter must filter rows by pendingProtectionStatus = 'archived'",
+    );
+  });
+
+  test("promoter compares effectiveDate to todayKey (date-gate logic present)", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    assert.ok(
+      src.includes("todayKey"),
+      "promoter must compute todayKey and gate on it",
+    );
+    assert.ok(
+      src.includes("effectiveDate"),
+      "promoter must reference effectiveDate in its gating logic",
+    );
+  });
+
+  test("cron route wires the connected-account promoter", () => {
+    const src = readApi("cron/promote-pending-rules/route.ts");
+    assert.ok(
+      src.includes("promotePendingConnectedAccountProtection"),
+      "promote-pending-rules cron must call promotePendingConnectedAccountProtection",
+    );
+  });
+
+  test("cron route returns promotedAccountProtectionCount in response", () => {
+    const src = readApi("cron/promote-pending-rules/route.ts");
+    assert.ok(
+      src.includes("promotedAccountProtectionCount"),
+      "cron response must include promotedAccountProtectionCount so callers can observe promotions",
+    );
+  });
+
+  test("promoter sets protectionStatus = 'archived' on promotion", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    assert.ok(
+      src.includes('protectionStatus: "archived"'),
+      "promoter must write protectionStatus: 'archived'",
+    );
+  });
+
+  test("promoter clears both pending fields on promotion", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    assert.ok(
+      src.includes("pendingProtectionStatus: null"),
+      "promoter must clear pendingProtectionStatus",
+    );
+    assert.ok(
+      src.includes("pendingProtectionEffectiveDate: null"),
+      "promoter must clear pendingProtectionEffectiveDate",
+    );
+  });
+
+  test("promoter source does not reference forbidden historical tables", () => {
+    const src = readLib("pending-connected-account-promoter.ts");
+    for (const forbidden of [
+      "normalizedTradeEvent",
+      "accountRiskRules",
+      "internalLockEvent",
+      "guardianStatus",
+      "brokerOrderActionLog",
+      "ruleChangeAudit",
+      "deleteMany",
+      ".delete(",
+    ]) {
+      assert.ok(
+        !src.includes(forbidden),
+        `pending-connected-account-promoter.ts must not reference '${forbidden}'`,
+      );
+    }
+  });
+});
+
 // ── No user can remove another user's data ────────────────────────────────────
 
 describe("ownership enforcement", () => {
