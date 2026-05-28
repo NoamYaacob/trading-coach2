@@ -43,6 +43,11 @@ import {
 } from "@/lib/timezone";
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
+import {
+  isAccountActive,
+  partitionAccountsByActive,
+} from "@/app/dashboard/_components/command-center/active-status";
+import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-account-button";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -215,15 +220,24 @@ export default async function DashboardPage({
     ? currentUser.email.slice(0, 2).toUpperCase()
     : "??";
 
-  const liveAccounts = hasBrokerAccount
-    ? commandCenter.accounts.filter((a) => a.connectionStatus !== "error").length
-    : 0;
+  // Partition into active (selectable for trading) and expired (kept for
+  // historical data but hidden from primary selectors). Expired = broker
+  // /account/list no longer returns it, or the broker token has expired.
+  const { active: activeAccounts, expired: expiredAccounts } =
+    partitionAccountsByActive(commandCenter.accounts);
+  const hasActiveAccount = activeAccounts.length > 0;
+  const hasExpiredAccount = expiredAccounts.length > 0;
 
-  // "Selected" account = URL ?accountId= if valid, else first with warning/locked, else first with data, else first
+  const liveAccounts = activeAccounts.length;
+
+  // "Selected" account = URL ?accountId= if valid (active or expired allowed
+  // via deep link), else first active with warning/locked, else first active
+  // with data, else first active. Auto-select never lands on an expired
+  // account — that would confuse users into thinking it's live.
   const autoSelectedAccount =
-    commandCenter.accounts.find((a) => a.status === "warning" || a.status === "locked") ??
-    commandCenter.accounts.find((a) => a.balance != null) ??
-    commandCenter.accounts[0] ??
+    activeAccounts.find((a) => a.status === "warning" || a.status === "locked") ??
+    activeAccounts.find((a) => a.balance != null) ??
+    activeAccounts[0] ??
     null;
   const selectedAccount = selectedAccountId
     ? (commandCenter.accounts.find((a) => a.id === selectedAccountId) ?? autoSelectedAccount)
@@ -252,10 +266,10 @@ export default async function DashboardPage({
     { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
   ];
 
-  // ── Sidebar: compact account list (real data, no mock) ────────────────────
-  const SidebarAccountList = hasBrokerAccount ? (
+  // ── Sidebar: compact account list (active accounts only) ─────────────────
+  const SidebarAccountList = hasActiveAccount ? (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {commandCenter.accounts.slice(0, 4).map((acc) => (
+      {activeAccounts.slice(0, 4).map((acc) => (
         <div
           key={acc.id}
           style={{
@@ -287,9 +301,9 @@ export default async function DashboardPage({
           )}
         </div>
       ))}
-      {commandCenter.accounts.length > 4 && (
+      {activeAccounts.length > 4 && (
         <span style={{ fontSize: 11, color: "var(--gr-text-mute)", padding: "4px 8px" }}>
-          +{commandCenter.accounts.length - 4} more
+          +{activeAccounts.length - 4} more
         </span>
       )}
     </div>
@@ -298,7 +312,7 @@ export default async function DashboardPage({
       href="/accounts/connect/tradovate"
       style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
     >
-      Connect first account →
+      {hasExpiredAccount ? "Reconnect or add account →" : "Connect first account →"}
     </Link>
   );
 
@@ -306,7 +320,7 @@ export default async function DashboardPage({
     <GrShell
       breadcrumb={["Dashboard"]}
       sidebarContent={SidebarAccountList}
-      sidebarLabel={hasBrokerAccount ? "Accounts" : "Connect"}
+      sidebarLabel={hasActiveAccount ? "Accounts" : "Connect"}
       navItems={DASHBOARD_NAV}
       userInitials={userInitials}
       hideApiStatus
@@ -323,7 +337,9 @@ export default async function DashboardPage({
                 {timeGreeting()}, {displayName}
               </span>
               <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.15, color: "var(--gr-ink)", margin: 0 }}>
-                {hasBrokerAccount ? (
+                {!hasBrokerAccount ? (
+                  <>No accounts connected yet.</>
+                ) : hasActiveAccount ? (
                   <>Watching{" "}
                     <span style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic", color: "var(--gr-ink)" }}>
                       {liveAccounts}
@@ -331,7 +347,7 @@ export default async function DashboardPage({
                     {" "}live account{liveAccounts !== 1 ? "s" : ""}.
                   </>
                 ) : (
-                  <>No accounts connected yet.</>
+                  <>No live accounts — all connected accounts are expired or unavailable.</>
                 )}
               </h1>
             </div>
@@ -434,7 +450,7 @@ export default async function DashboardPage({
             <section style={{ padding: "4px 36px 20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-                  Your accounts · {commandCenter.accounts.length}
+                  Your accounts · {activeAccounts.length}
                 </span>
                 <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
                   Each card is one account — numbers are never combined
@@ -453,9 +469,10 @@ export default async function DashboardPage({
                 gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
                 gap: 10,
               }}>
-                {/* Auto-sync for stale accounts */}
+                {/* Auto-sync for stale accounts (active only — no point
+                  * trying to sync accounts the broker no longer returns). */}
                 {(() => {
-                  const staleAccounts = commandCenter.accounts.filter(
+                  const staleAccounts = activeAccounts.filter(
                     (a) => a.platform === "tradovate" && needsSync(a.lastSyncAt),
                   );
                   const staleConnectionIds = [
@@ -473,9 +490,12 @@ export default async function DashboardPage({
                   ) : null;
                 })()}
 
-                {commandCenter.accounts.map((acc) => {
+                {activeAccounts.map((acc) => {
                   const isSelected = acc.id === selectedAccount?.id;
-                  const isExpired = acc.status === "not_connected" || acc.status === "unavailable";
+                  // Defensive — all entries here are active, but keep the
+                  // expired-card visual fallback intact in case isAccountActive
+                  // ever loosens its definition.
+                  const isExpired = !isAccountActive(acc);
                   return (
                     <div
                       key={acc.id}
@@ -621,6 +641,99 @@ export default async function DashboardPage({
                 </Link>
               </div>
             </section>
+
+            {/* ── Expired / unavailable accounts ────────────────────────── */}
+            {hasExpiredAccount && (
+              <section style={{ padding: "0 36px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
+                    Expired / unavailable accounts · {expiredAccounts.length}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                    Historical data preserved. Archive to hide from this dashboard.
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {expiredAccounts.map((acc) => {
+                    const isUnavailable = acc.status === "unavailable";
+                    const reasonCopy = isUnavailable
+                      ? "This account is no longer available from the broker."
+                      : "Broker connection expired.";
+                    return (
+                      <div
+                        key={acc.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 14,
+                          padding: "12px 14px",
+                          background: "var(--gr-surface)",
+                          border: "1px solid var(--gr-border)",
+                          borderRadius: 12,
+                          opacity: 0.85,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
+                              {acc.label}
+                            </span>
+                            <span style={{
+                              fontSize: 10,
+                              padding: "1px 7px",
+                              borderRadius: 999,
+                              background: "var(--gr-bg-elev)",
+                              color: "var(--gr-text-mute)",
+                              fontWeight: 500,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}>
+                              {isUnavailable ? "unavailable" : "expired"}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
+                            {reasonCopy} {(acc.platformLabel ?? acc.propFirm) ? `· ${acc.platformLabel ?? acc.propFirm}` : ""}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                          <Link
+                            href={`/trades?accountId=${acc.id}`}
+                            style={{
+                              padding: "5px 10px",
+                              fontSize: 11.5,
+                              border: "1px solid var(--gr-border)",
+                              background: "transparent",
+                              color: "var(--gr-text-mid)",
+                              borderRadius: 7,
+                              textDecoration: "none",
+                            }}
+                          >
+                            View history
+                          </Link>
+                          {!isUnavailable && (
+                            <Link
+                              href="/accounts/connect/tradovate"
+                              style={{
+                                padding: "5px 10px",
+                                fontSize: 11.5,
+                                border: "1px solid var(--gr-border)",
+                                background: "var(--gr-bg-elev)",
+                                color: "var(--gr-text-mid)",
+                                borderRadius: 7,
+                                textDecoration: "none",
+                              }}
+                            >
+                              Reconnect broker
+                            </Link>
+                          )}
+                          <ArchiveAccountButton accountId={acc.id} accountLabel={acc.label} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* ── Selected account context bar ──────────────────────────── */}
             {selectedAccount && (
