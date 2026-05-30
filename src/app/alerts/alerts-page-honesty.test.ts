@@ -202,8 +202,172 @@ describe("/alerts page — filter chips", () => {
   it("filter chips use Link href, not onClick (URL-param based navigation)", () => {
     assert.ok(
       !ALERTS_PAGE_SRC.includes("onClick") &&
-        ALERTS_PAGE_SRC.includes('filter=${'),
+        ALERTS_PAGE_SRC.includes('sp.set("filter"'),
       "filter chips must navigate via URL params (?filter=...), not onClick handlers",
+    );
+  });
+});
+
+// ── Account switcher ──────────────────────────────────────────────────────────
+
+describe("/alerts page — account switcher", () => {
+  it("renders an 'All accounts' option", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("All accounts"),
+      "the account switcher must offer an 'All accounts' option",
+    );
+  });
+
+  it("account selection is controlled by the accountId URL param", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("params.accountId") &&
+        ALERTS_PAGE_SRC.includes('sp.set("accountId"'),
+      "the selected account must come from / build into the accountId URL param",
+    );
+  });
+
+  it("scopes the feed by accountId when an account is selected", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("requestedAccountId ? { accountId: requestedAccountId }"),
+      "the feed query must filter by accountId only when one is requested",
+    );
+  });
+
+  it("'All accounts' clears the accountId param (does not filter by account)", () => {
+    // The All-accounts link passes accountId: null, which buildHref omits from
+    // the query string — so no accountId filter is applied.
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("buildHref({ accountId: null })"),
+      "the All-accounts pill must clear the accountId param",
+    );
+  });
+
+  it("switcher pills render friendly account labels, not raw ids", () => {
+    // Pills map over switcher accounts and render acc.label (the friendly
+    // broker label). acc.id may only appear as a React key / comparison, never
+    // as a rendered JSX text child (e.g. `>{acc.id}<`).
+    const switcherIdx = ALERTS_PAGE_SRC.indexOf("Account switcher");
+    const filterIdx = ALERTS_PAGE_SRC.indexOf("Filter chips");
+    const block = ALERTS_PAGE_SRC.slice(switcherIdx, filterIdx);
+    assert.ok(
+      block.includes("{acc.label}"),
+      "account switcher pills must show acc.label",
+    );
+    assert.ok(
+      !/>\s*\{acc\.id\}\s*</.test(block),
+      "account switcher pills must not render raw acc.id as visible text",
+    );
+  });
+});
+
+// ── Humanized trigger labels + softened technical messages ────────────────────
+
+describe("/alerts page — humanized labels", () => {
+  it("maps technical trigger types to friendly titles", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"trade_limit":') &&
+        ALERTS_PAGE_SRC.includes('return "Trade limit"'),
+      "trade_limit must map to 'Trade limit'",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"max_position_size":') &&
+        ALERTS_PAGE_SRC.includes('return "Max position size"'),
+      "max_position_size must map to 'Max position size'",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"daily_loss_limit":') &&
+        ALERTS_PAGE_SRC.includes('return "Daily loss limit"'),
+      "daily_loss_limit must map to 'Daily loss limit'",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"outside_session_hours":') &&
+        ALERTS_PAGE_SRC.includes('return "Outside trading hours"'),
+      "outside_session_hours must map to 'Outside trading hours'",
+    );
+  });
+
+  it("softens technical/log messages instead of showing them raw", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("isTechnicalMessage") &&
+        ALERTS_PAGE_SRC.includes("TECHNICAL_MARKERS"),
+      "the page must detect and soften technical messages",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("rowSummary"),
+      "the page must compute a human row summary, not render raw message verbatim",
+    );
+  });
+
+  it("does not surface raw broker endpoint / autoliq tokens as row copy constants", () => {
+    // These raw tokens must never be hard-coded user-facing strings. (They may
+    // legitimately appear inside the TECHNICAL_MARKERS detector regex.)
+    const markersIdx = ALERTS_PAGE_SRC.indexOf("TECHNICAL_MARKERS");
+    const markersEnd = ALERTS_PAGE_SRC.indexOf(";", markersIdx);
+    const withoutDetector =
+      ALERTS_PAGE_SRC.slice(0, markersIdx) + ALERTS_PAGE_SRC.slice(markersEnd);
+    assert.ok(
+      !withoutDetector.includes("userAccountAutoLiq") &&
+        !withoutDetector.includes("dailyLossAutoLiq") &&
+        !withoutDetector.includes("connected_readonly"),
+      "raw broker tokens must not be rendered as user-facing copy",
+    );
+  });
+});
+
+// ── Grouping of repeated alerts ───────────────────────────────────────────────
+
+describe("/alerts page — repeated alert grouping", () => {
+  it("groups consecutive repeats by triggerType + accountId + day", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("last.triggerType === e.triggerType") &&
+        ALERTS_PAGE_SRC.includes("last.accountId === e.accountId") &&
+        ALERTS_PAGE_SRC.includes("dayKey(last.createdAt) === dayKey(e.createdAt)"),
+      "the feed must collapse consecutive same-type/account/day alerts into one row",
+    );
+  });
+
+  it("shows a count when a row groups multiple alerts", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("row.count > 1") &&
+        ALERTS_PAGE_SRC.includes("similar"),
+      "a grouped row must show how many similar alerts it represents",
+    );
+  });
+});
+
+// ── Per-filter / per-account empty states ─────────────────────────────────────
+
+describe("/alerts page — empty states", () => {
+  it("has a 'No alerts today' empty state for Today only", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("No alerts today"),
+      "Today-only with no results must show 'No alerts today'",
+    );
+  });
+
+  it("has a 'No rule alerts yet' empty state for Rule alerts", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("No rule alerts yet"),
+      "Rule-alerts filter with no results must show 'No rule alerts yet'",
+    );
+  });
+
+  it("has a 'No alerts for this account yet' empty state for a selected account", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("No alerts for this account yet"),
+      "an account-scoped view with no results must show a per-account empty state",
+    );
+  });
+});
+
+// ── No raw DB ids in visible text ─────────────────────────────────────────────
+
+describe("/alerts page — no raw ids leaked", () => {
+  it("event.id is only used as a React key, never rendered as text", () => {
+    // event.id may seed row.key; row.key is used as a React key prop only.
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("{event.id}") && !ALERTS_PAGE_SRC.includes("{row.accountId}"),
+      "raw event/account ids must not be rendered as visible text",
     );
   });
 });
