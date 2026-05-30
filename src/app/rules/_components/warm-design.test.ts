@@ -128,14 +128,14 @@ describe("ScopeSelector — copper/amber active state", () => {
     );
   });
 
-  it("selected starter badge uses amber (not stone-950)", () => {
+  it("selected starter item uses an amber accent (not stone-950)", () => {
     assert.ok(
-      SRC.includes("bg-amber-600"),
-      "selected starter badge must use amber-600 (copper-adjacent)",
+      SRC.includes("border-amber") && SRC.includes("bg-amber-50"),
+      "selected starter item must use an amber accent (copper-adjacent)",
     );
     assert.ok(
       !SRC.includes("bg-stone-950"),
-      "selected starter badge must not use stone-950 after design update",
+      "selected starter item must not use stone-950 after design update",
     );
   });
 });

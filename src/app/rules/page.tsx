@@ -653,7 +653,7 @@ function WorkspaceHeader({
         </span>
       ) : (
         <span className="rounded-full bg-stone-100 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-stone-600">
-          No plan yet
+          Needs rules
         </span>
       )}
       {envLabel && (

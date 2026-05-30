@@ -137,11 +137,23 @@ describe("copy endpoint: session lock (3 signals)", () => {
     );
   });
 
-  it("applies lock even for first-time setup (no isFirstTimeSetup exemption)", () => {
+  it("exempts first-time setup but blocks copy that replaces existing rules", () => {
     const s = src();
+    // Copy into an account with NO existing rules is first-time setup (only adds
+    // protection) → allowed. Copy into an account that already has rules could
+    // weaken active monitoring → blocked after trading starts.
     assert.ok(
-      !s.includes("isFirstTimeSetup"),
-      "copy endpoint must NOT have a first-time-setup exemption — copying after trading is always blocked",
+      s.includes("isFirstTimeSetup"),
+      "copy endpoint must compute isFirstTimeSetup from existing target rules",
+    );
+    assert.ok(
+      /!isFirstTimeSetup\s*&&\s*\(liveStateHasTraded\s*\|\|\s*hasTradeEventToday\)/.test(s),
+      "the session lock must be gated by !isFirstTimeSetup (replace-only block)",
+    );
+    assert.ok(
+      s.includes("where: { accountId: id }") &&
+        s.includes("accountId: true"),
+      "must look up existing target AccountRiskRules to detect first-time setup",
     );
   });
 

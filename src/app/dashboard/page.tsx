@@ -334,7 +334,7 @@ export default async function DashboardPage({
               flexShrink: 0,
             }}
           />
-          <span style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span title={acc.label} style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {acc.label}
           </span>
           {acc.dailyPnl != null && (
@@ -613,7 +613,7 @@ export default async function DashboardPage({
 
                       {/* Account name + ref */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 12 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)" }}>{acc.label}</span>
+                        <span title={acc.label} style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acc.label}</span>
                         {acc.connectionStatus && acc.connectionStatus !== "connected_live" && (
                           <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
                             {({

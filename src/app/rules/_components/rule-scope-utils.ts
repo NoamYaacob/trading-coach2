@@ -32,6 +32,9 @@ export type RuleScopeAccount = {
   label: string;
   platform: string;
   propFirm: string | null;
+  /** evaluation | funded | personal | demo | null — drives the sidebar
+   *  metadata suffix (e.g. "Demo · MyFundedFutures · Evaluation"). */
+  accountType?: string | null;
   connectionStatus: string;
   brokerConnectionId: string | null;
   hasAccountRules: boolean;

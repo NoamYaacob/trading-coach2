@@ -935,7 +935,7 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
             isWeekendClose={isWeekendClose}
           />
           <div className="min-w-0">
-            <p className="min-w-[140px] text-sm font-semibold text-stone-950">{account.label}</p>
+            <p title={account.label} className="min-w-[140px] truncate text-sm font-semibold text-stone-950">{account.label}</p>
             <p className="mt-0.5 text-[11px] text-stone-500">
               {account.platformLabel}
               <span aria-hidden> · </span>
@@ -1080,7 +1080,7 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
       <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-3 shadow-[0_2px_8px_-4px_rgba(28,25,23,0.06)]">
         <div className="flex min-w-0 items-center gap-2">
           <StatusBadge status="unavailable" setupNeededReason={null} />
-          <p className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
+          <p title={account.label} className="min-w-0 truncate text-sm font-semibold text-stone-950">{account.label}</p>
         </div>
         <p className="mt-0.5 text-[11px] text-stone-500">
           {account.platformLabel}

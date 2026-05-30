@@ -351,63 +351,94 @@ export default async function AlertsPage() {
               )}
             </SectionCard>
 
-            {/* ── Coming soon ───────────────────────────────────── */}
-            <SectionCard
-              title="Coming soon / Planned"
-              description="On the roadmap — not sending alerts yet."
+            {/* ── Planned / coming soon — collapsed so it doesn't dominate the
+                page or read as if these alerts are active. Everything below the
+                fold is roadmap-only. ──────────────────────────────────────── */}
+            <details
+              style={{
+                borderRadius: 14,
+                border: "1px solid var(--gr-border)",
+                background: "var(--gr-surface)",
+              }}
             >
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {comingSoon.map((t, i) => (
-                  <div
-                    key={t.label}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-                      padding: "10px 0",
-                      borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-text-mute)", margin: 0 }}>{t.label}</p>
-                      <p style={{ fontSize: 12, color: "var(--gr-text-faint)", margin: 0, lineHeight: 1.4 }}>{t.description}</p>
-                    </div>
-                    <span style={{
-                      flexShrink: 0, borderRadius: 999,
-                      padding: "2px 9px", fontSize: 11, fontWeight: 600,
-                      color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
-                      border: "1px solid rgba(0,0,0,0.06)",
-                    }}>
-                      Planned
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            {/* ── Alert preferences (planned) ───────────────────── */}
-            <SectionCard title="Alert preferences">
-              <div style={{
-                borderRadius: 10,
-                border: "1px solid var(--gr-warn-bd, var(--gr-border))",
-                background: "var(--gr-warn-bg)",
-                padding: "14px 16px",
-                display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
-              }}>
-                <div>
-                  <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)", margin: "0 0 4px" }}>Per-alert preferences</p>
-                  <p style={{ fontSize: 12.5, color: "var(--gr-text-mid)", margin: 0, lineHeight: 1.5 }}>
-                    Alert preferences are planned. Today, Guardrail sends core safety alerts based on your active rules.
-                  </p>
-                </div>
+              <summary
+                style={{
+                  listStyle: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  padding: "16px 20px",
+                }}
+              >
+                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: "var(--gr-ink)" }}>
+                    Planned &amp; coming soon
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--gr-text-mute)" }}>
+                    On the roadmap — not sending alerts yet.
+                  </span>
+                </span>
                 <span style={{
                   flexShrink: 0, borderRadius: 999, padding: "2px 9px",
                   fontSize: 11, fontWeight: 600,
                   color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
                   border: "1px solid rgba(0,0,0,0.06)",
                 }}>
-                  Planned
+                  {comingSoon.length + 1} planned
                 </span>
+              </summary>
+
+              <div style={{ padding: "0 20px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
+                {/* Coming soon list */}
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {comingSoon.map((t, i) => (
+                    <div
+                      key={t.label}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+                        padding: "10px 0",
+                        borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-text-mute)", margin: 0 }}>{t.label}</p>
+                        <p style={{ fontSize: 12, color: "var(--gr-text-faint)", margin: 0, lineHeight: 1.4 }}>{t.description}</p>
+                      </div>
+                      <span style={{
+                        flexShrink: 0, borderRadius: 999,
+                        padding: "2px 9px", fontSize: 11, fontWeight: 600,
+                        color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
+                        border: "1px solid rgba(0,0,0,0.06)",
+                      }}>
+                        Planned
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Alert preferences (planned) */}
+                <div style={{
+                  borderRadius: 10,
+                  border: "1px solid var(--gr-warn-bd, var(--gr-border))",
+                  background: "var(--gr-warn-bg)",
+                  padding: "14px 16px",
+                  display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
+                }}>
+                  <div>
+                    <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)", margin: "0 0 4px" }}>Per-alert preferences</p>
+                    <p style={{ fontSize: 12.5, color: "var(--gr-text-mid)", margin: 0, lineHeight: 1.5 }}>
+                      Alert preferences are planned. Today, Guardrail sends core safety alerts based on your active rules.
+                    </p>
+                  </div>
+                  <span style={{
+                    flexShrink: 0, borderRadius: 999, padding: "2px 9px",
+                    fontSize: 11, fontWeight: 600,
+                    color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                  }}>
+                    Planned
+                  </span>
+                </div>
               </div>
-            </SectionCard>
+            </details>
 
           </div>
         </section>

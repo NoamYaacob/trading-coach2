@@ -26,6 +26,13 @@ import {
   type RuleMeta,
 } from "./rule-meta";
 
+export type InlineSaveResult = {
+  ok: boolean;
+  locked?: boolean;
+  pending?: boolean;
+  message?: string;
+};
+
 type Props = {
   values: OverviewValues;
   onSelectRule: (id: RuleId) => void;
@@ -33,7 +40,275 @@ type Props = {
    *  but the editor will refuse mutations downstream. */
   disabled?: boolean;
   pendingNotes?: Partial<Record<RuleId, string | null>>;
+  /** Persists a single core-rule value inline. When provided, the five core
+   *  rules (daily loss, risk per trade, max trades, tilt, max contracts) edit
+   *  in place on the card instead of opening the detail pane. */
+  onSaveInline?: (key: string, rawValue: string) => Promise<InlineSaveResult>;
+  /** Message shown on a locked card when trading already started today. */
+  inlineLockMessage?: string | null;
 };
+
+/**
+ * The five core rules that edit inline on their overview card. Maps each rule
+ * id to its AccountRulesValues key, input kind, and a plain-language help line.
+ * Other rules (per-symbol, session cutoff, notifications, advanced) still open
+ * the detail pane.
+ */
+const INLINE_RULES: Record<
+  string,
+  {
+    valueKey: "maxDailyLoss" | "riskPerTrade" | "maxTradesPerDay" | "stopAfterLosses" | "maxContracts";
+    kind: "money" | "count";
+    help: string;
+  }
+> = {
+  "daily-loss": {
+    valueKey: "maxDailyLoss",
+    kind: "money",
+    help: "Guardrail locks the account the moment today's P&L crosses this loss. On supported Tradovate connections with full access, it can also be written to Tradovate's own risk settings so the broker enforces it.",
+  },
+  "risk-per-trade": {
+    valueKey: "riskPerTrade",
+    kind: "money",
+    help: "A warning only — Guardrail flags trades risking more than this, but does not lock the account.",
+  },
+  "max-trades-per-day": {
+    valueKey: "maxTradesPerDay",
+    kind: "count",
+    help: "Guardrail locks the account after this many completed round-trips in one trading day. Resets at the next session.",
+  },
+  "tilt-protection": {
+    valueKey: "stopAfterLosses",
+    kind: "count",
+    help: "Locks the account after this many losses in a row. A winning trade resets the streak. Protects against revenge trading.",
+  },
+  "max-contracts": {
+    valueKey: "maxContracts",
+    kind: "count",
+    help: "Guardrail locks the account if an open position exceeds this contract count, measured in standard-equivalent contracts.",
+  },
+};
+
+function rawValueForRule(id: RuleId, values: OverviewValues): string {
+  const cfg = INLINE_RULES[id];
+  if (!cfg) return "";
+  switch (cfg.valueKey) {
+    case "maxDailyLoss": return values.maxDailyLoss;
+    case "riskPerTrade": return values.riskPerTrade;
+    case "maxTradesPerDay": return values.maxTradesPerDay;
+    case "stopAfterLosses": return values.stopAfterLosses;
+    case "maxContracts": return values.maxContracts;
+  }
+}
+
+/**
+ * Inline-editable core-rule card. View → Edit (in place) → Save / Cancel, with
+ * a "?" help disclosure and a blocked state when trading already started today.
+ * No separate detail page needed for these common rules.
+ */
+function InlineRuleCard({
+  rule,
+  display,
+  rawValue,
+  kind,
+  help,
+  disabled,
+  lockMessage,
+  pendingNote,
+  onSave,
+}: {
+  rule: RuleMeta;
+  display: string;
+  rawValue: string;
+  kind: "money" | "count";
+  help: string;
+  disabled?: boolean;
+  lockMessage?: string | null;
+  pendingNote?: string | null;
+  onSave: (rawValue: string) => Promise<InlineSaveResult>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [draft, setDraft] = useState(rawValue);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "locked" | "error" | "pending"; text: string } | null>(null);
+  const isEmpty = display.trim() === "";
+
+  function startEdit() {
+    setDraft(rawValue);
+    setFeedback(null);
+    setEditing(true);
+  }
+  function cancel() {
+    setEditing(false);
+    setDraft(rawValue);
+    setFeedback(null);
+  }
+  async function save() {
+    setSaving(true);
+    setFeedback(null);
+    const res = await onSave(draft);
+    setSaving(false);
+    if (res.ok) {
+      setEditing(false);
+      if (res.pending) {
+        setFeedback({ kind: "pending", text: res.message ?? "Saved as pending — applies at the next safe window." });
+      }
+    } else if (res.locked) {
+      setFeedback({
+        kind: "locked",
+        text:
+          res.message ??
+          "You already started trading this account today. To protect your rules, changes will be available next trading day.",
+      });
+    } else {
+      setFeedback({ kind: "error", text: res.message ?? "Could not save. Please try again." });
+    }
+  }
+
+  return (
+    <div
+      data-rule-id={rule.id}
+      data-inline-editable="true"
+      className="group relative flex flex-col rounded-[14px] border border-[color:var(--gr-border-hi)] bg-[color:var(--gr-surface-warm)] p-5 text-left"
+    >
+      {/* Group eyebrow + enforcement chip */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
+          {rule.group}
+        </span>
+        <GrEnforcementChip variant={rule.status} />
+      </div>
+
+      {/* Rule title + help */}
+      <div className="mt-2.5 flex items-start gap-1.5">
+        <h3 className="text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
+          {rule.label}
+        </h3>
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          aria-label={`Help for ${rule.label}`}
+          aria-expanded={showHelp}
+          className={`mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold transition ${
+            showHelp
+              ? "border-amber-400 bg-amber-50 text-amber-700"
+              : "border-stone-300 bg-white text-stone-400 hover:border-stone-400 hover:text-stone-600"
+          }`}
+        >
+          ?
+        </button>
+      </div>
+      <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
+        {rule.helper}
+      </p>
+      {showHelp && (
+        <p className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
+          {help}
+        </p>
+      )}
+
+      {/* Value or inline editor */}
+      <div className="mt-4 flex-1">
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            {kind === "money" && (
+              <span className="text-base font-semibold text-[color:var(--gr-text-mid)]">$</span>
+            )}
+            <input
+              type="number"
+              inputMode={kind === "money" ? "decimal" : "numeric"}
+              step={kind === "money" ? "any" : 1}
+              min={kind === "count" ? 1 : undefined}
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); void save(); }
+                if (e.key === "Escape") { e.preventDefault(); cancel(); }
+              }}
+              className="w-full min-w-0 rounded-lg border border-[color:var(--gr-copper)] bg-white px-2.5 py-1.5 text-lg font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--gr-copper-bg)]"
+            />
+          </div>
+        ) : (
+          <span
+            className={
+              isEmpty
+                ? "text-sm italic text-[color:var(--gr-text-mute)]/60"
+                : "text-2xl font-semibold tabular-nums leading-none tracking-[-0.015em] text-[color:var(--gr-ink)]"
+            }
+          >
+            {isEmpty ? "Not set" : display}
+          </span>
+        )}
+      </div>
+
+      {/* Footer — Edit, or Save/Cancel, or Locked */}
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
+        {disabled ? (
+          <span
+            title={lockMessage ?? undefined}
+            className="rounded-full border border-stone-200 bg-stone-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-stone-500"
+          >
+            Locked
+          </span>
+        ) : editing ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="rounded-lg bg-[color:var(--gr-copper)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[color:var(--gr-copper-hi)] disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={cancel}
+              disabled={saving}
+              className="rounded-lg border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition hover:border-stone-400 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-50"
+          >
+            {isEmpty ? "Set value" : "Edit"}
+          </button>
+        )}
+        {!editing && !disabled && !isEmpty && (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-text-mid)]">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]" aria-hidden />
+            Configured
+          </span>
+        )}
+      </div>
+
+      {feedback && (
+        <p
+          className={`mt-2 border-t pt-2 text-[10.5px] font-medium ${
+            feedback.kind === "locked"
+              ? "border-amber-100 text-amber-700"
+              : feedback.kind === "pending"
+                ? "border-sky-100 text-sky-700"
+                : "border-red-100 text-red-600"
+          }`}
+        >
+          {feedback.text}
+        </p>
+      )}
+      {pendingNote && !feedback && (
+        <p className="mt-2 border-t border-amber-100 pt-2 text-[10px] font-medium text-amber-700">
+          {pendingNote}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Count of user-configurable rules with a value entered (excludes static-display rules). */
 function countSetRules(values: OverviewValues): number {
@@ -168,8 +443,42 @@ export function RulesOverviewScreen({
   onSelectRule,
   disabled,
   pendingNotes,
+  onSaveInline,
+  inlineLockMessage,
 }: Props) {
   const configured = countSetRules(values);
+
+  /** Renders the inline-editable card for the 5 core rules, else the
+   *  navigate-to-detail card. */
+  function renderRuleCard(r: RuleMeta) {
+    const inlineCfg = INLINE_RULES[r.id];
+    if (inlineCfg && onSaveInline) {
+      return (
+        <InlineRuleCard
+          key={r.id}
+          rule={r}
+          display={ruleDisplayValue(r.id, values)}
+          rawValue={rawValueForRule(r.id, values)}
+          kind={inlineCfg.kind}
+          help={inlineCfg.help}
+          disabled={disabled}
+          lockMessage={inlineLockMessage}
+          pendingNote={pendingNotes?.[r.id] ?? null}
+          onSave={(rawValue) => onSaveInline(inlineCfg.valueKey, rawValue)}
+        />
+      );
+    }
+    return (
+      <RuleCard
+        key={r.id}
+        rule={r}
+        display={ruleDisplayValue(r.id, values)}
+        onSelect={() => onSelectRule(r.id)}
+        disabled={disabled}
+        pendingNote={pendingNotes?.[r.id] ?? null}
+      />
+    );
+  }
   const hasPending = pendingNotes && Object.values(pendingNotes).some((v) => v != null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
 
@@ -266,16 +575,7 @@ export function RulesOverviewScreen({
         /* All-rules flat grid: no section headers, matches Claude Design GrOverview */
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {RULE_GROUPS.flatMap((group) =>
-            rulesInGroup(group).map((r) => (
-              <RuleCard
-                key={r.id}
-                rule={r}
-                display={ruleDisplayValue(r.id, values)}
-                onSelect={() => onSelectRule(r.id)}
-                disabled={disabled}
-                pendingNote={pendingNotes?.[r.id] ?? null}
-              />
-            )),
+            rulesInGroup(group).map((r) => renderRuleCard(r)),
           )}
         </div>
       ) : (
@@ -294,16 +594,7 @@ export function RulesOverviewScreen({
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {rules.map((r) => (
-                  <RuleCard
-                    key={r.id}
-                    rule={r}
-                    display={ruleDisplayValue(r.id, values)}
-                    onSelect={() => onSelectRule(r.id)}
-                    disabled={disabled}
-                    pendingNote={pendingNotes?.[r.id] ?? null}
-                  />
-                ))}
+                {rules.map((r) => renderRuleCard(r))}
               </div>
             </section>
           );

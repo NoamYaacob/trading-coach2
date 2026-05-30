@@ -302,69 +302,106 @@ export function AccountRulesForm({
     return data;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  /** Builds the riskRules PATCH payload from a given values snapshot. The
+   *  parameter is named `values` (shadowing the state) so the payload shape
+   *  reads identically to the original inline submit. */
+  function buildRiskRulesPayload(values: AccountRulesValues) {
+    const hasPresets = values.sessionPresets.length > 0;
+    return {
+      maxDailyLoss: num(values.maxDailyLoss),
+      riskPerTrade: num(values.riskPerTrade),
+      maxTradesPerDay: int(values.maxTradesPerDay),
+      stopAfterLosses: int(values.stopAfterLosses),
+      allowedEndHour: int(values.allowedEndHour),
+      sessionEndBehavior: values.sessionEndBehavior || null,
+      selectedSessionPresets: hasPresets ? values.sessionPresets : (values.sessionIsCustom ? null : []),
+      sessionPreset: values.sessionIsCustom ? "custom" : null,
+      sessionStartTime: values.sessionIsCustom ? (values.sessionStartTime.trim() || null) : null,
+      sessionEndTime: values.sessionIsCustom ? (values.sessionEndTime.trim() || null) : null,
+      sessionTimezone: values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null,
+      ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
+      maxContracts: int(values.maxContracts),
+      rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
+      maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits),
+    };
+  }
+
+  type PersistResult = { ok: boolean; locked?: boolean; pending?: boolean; message?: string };
+
+  /**
+   * Validates and persists a values snapshot. Shared by the full-form Save
+   * button (handleSubmit) and the inline per-rule editors on the overview
+   * cards. Server-side enforcement (session-already-traded 423, pending
+   * deferral) is authoritative — this only surfaces the result.
+   */
+  async function persist(vals: AccountRulesValues, opts?: { consent?: boolean }): Promise<PersistResult> {
     const errs = validateRules({
-      maxDailyLoss: effectiveValue(values.maxDailyLoss, defaultValues?.maxDailyLoss),
-      riskPerTrade: effectiveValue(values.riskPerTrade, defaultValues?.riskPerTrade),
-      maxTradesPerDay: effectiveValue(values.maxTradesPerDay, defaultValues?.maxTradesPerDay),
-      stopAfterLosses: effectiveValue(values.stopAfterLosses, defaultValues?.stopAfterLosses),
+      maxDailyLoss: effectiveValue(vals.maxDailyLoss, defaultValues?.maxDailyLoss),
+      riskPerTrade: effectiveValue(vals.riskPerTrade, defaultValues?.riskPerTrade),
+      maxTradesPerDay: effectiveValue(vals.maxTradesPerDay, defaultValues?.maxTradesPerDay),
+      stopAfterLosses: effectiveValue(vals.stopAfterLosses, defaultValues?.stopAfterLosses),
     });
     if (errs.length > 0) {
       setError(errs[0].message);
-      return;
+      return { ok: false, message: errs[0].message };
     }
     setSaving(true);
     setError(null);
     try {
-      const hasPresets = values.sessionPresets.length > 0;
+      const hasPresets = vals.sessionPresets.length > 0;
       const data = await sendPatch({
-        riskRules: {
-          maxDailyLoss: num(values.maxDailyLoss),
-          riskPerTrade: num(values.riskPerTrade),
-          maxTradesPerDay: int(values.maxTradesPerDay),
-          stopAfterLosses: int(values.stopAfterLosses),
-          allowedEndHour: int(values.allowedEndHour),
-          sessionEndBehavior: values.sessionEndBehavior || null,
-          selectedSessionPresets: hasPresets ? values.sessionPresets : (values.sessionIsCustom ? null : []),
-          sessionPreset: values.sessionIsCustom ? "custom" : null,
-          sessionStartTime: values.sessionIsCustom ? (values.sessionStartTime.trim() || null) : null,
-          sessionEndTime: values.sessionIsCustom ? (values.sessionEndTime.trim() || null) : null,
-          sessionTimezone: values.sessionIsCustom ? (values.sessionTimezone.trim() || null) : null,
-          ruleEditLockBufferMinutes: values.ruleEditLockBufferMinutes ? parseInt(values.ruleEditLockBufferMinutes, 10) || null : null,
-          maxContracts: int(values.maxContracts),
-          rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
-          maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits),
-        },
+        riskRules: buildRiskRulesPayload(vals),
         // Stamp consent only on submissions where the user explicitly checked
         // the box. Re-saves of rules on already-consented accounts pass false
         // and leave the existing consent timestamp intact server-side.
-        automatedActionsConsentChecked: consentChecked,
+        automatedActionsConsentChecked: opts?.consent ?? consentChecked,
       });
+      let result: PersistResult;
       if (data.rulesLock?.applied === false) {
-        const pendingPresets = hasPresets ? values.sessionPresets.slice() : (values.sessionIsCustom ? null : []);
+        const pendingPresets = hasPresets ? vals.sessionPresets.slice() : (vals.sessionIsCustom ? null : []);
         setLocalPendingPresets(pendingPresets);
         setLocalPendingDate(data.rulesLock.effectiveDate ?? null);
         setPendingMessage("Saved as pending — these rules take effect at the next safe window.");
         // Pending save: the DB active fields did NOT change. Roll the form
         // input back to the active baseline so the fields keep showing the
-        // currently-active rules. The diff renders active (initial) → pending
-        // (server-loaded pendingPayloadJson) correctly because `values` is no
-        // longer holding the user's just-submitted edits.
+        // currently-active rules.
         setValues(initial);
+        result = { ok: true, pending: true, message: data.rulesLock.message };
       } else {
         setLocalPendingPresets(null);
         setLocalPendingDate(null);
         setPendingMessage(null);
         setSavedAt(new Date());
+        result = { ok: true };
       }
       setIsDirty(false);
       router.refresh();
+      return result;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save.");
+      const message = err instanceof Error ? err.message : "Failed to save.";
+      // sendPatch throws the server lock message on a 423 (already traded today).
+      const locked = /next trading day|already started trading/i.test(message);
+      // Locked is shown inline on the card, not in the form-level error banner.
+      if (!locked) setError(message);
+      return { ok: false, locked, message };
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await persist(values);
+  }
+
+  /** Inline per-rule save from an overview card. Applies one field to the
+   *  current values snapshot and persists immediately (no separate detail
+   *  page needed for the common core rules). The key is always one of the five
+   *  inline string-valued fields (daily loss, risk, trades, tilt, contracts). */
+  async function handleSaveInline(key: string, rawValue: string): Promise<PersistResult> {
+    const next = { ...values, [key]: rawValue } as AccountRulesValues;
+    setValues(next);
+    return persist(next);
   }
 
   async function handleRemove() {
@@ -592,6 +629,8 @@ export function AccountRulesForm({
             allowedEndHour: values.allowedEndHour,
           }}
           onSelectRule={(id) => setSelectedRuleId(id)}
+          onSaveInline={handleSaveInline}
+          inlineLockMessage={isHardLocked ? lockMessage ?? null : null}
           disabled={fieldsDisabled}
           pendingNotes={{
             "daily-loss": defaultPendingNote(
