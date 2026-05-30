@@ -483,6 +483,16 @@ export function AccountRulesForm({
   const banner = computeAccountRulesBanner(hasExistingRules, isLocked, showForm, lockMessage);
   const fieldsDisabled = Boolean(isHardLocked && hasExistingRules);
 
+  // The five core rules save inline on their own cards (handleSaveInline →
+  // persist), so the page-level "Save rules" button is only needed when there
+  // are genuine page-level changes to commit: unsaved detail-pane edits
+  // (isDirty), a first-time create (no rules yet), or a freshly-ticked consent
+  // box. When none of those hold we hide the bottom button entirely instead of
+  // showing a disabled "No changes to save" control that makes users think they
+  // must click both the card Save and the bottom Save.
+  const hasPageLevelSave =
+    isDirty || !hasExistingRules || (!hasValidConsent && consentChecked);
+
   // Cross-field validation: check the effective values (account override, falling
   // back to inherited default) so we catch invalid combos created by inheritance.
   const validationErrors = validateRules({
@@ -908,9 +918,12 @@ export function AccountRulesForm({
           </ul>
         )}
 
-        {/* Primary save row */}
+        {/* Primary save row — the page-level Save button only appears when
+            there are page-level changes to commit. Inline core-rule cards save
+            on their own, so we never show a disabled "No changes to save"
+            button that would make users think both saves are required. */}
         <div className="flex flex-wrap items-center gap-3">
-          {(() => {
+          {hasPageLevelSave && (() => {
             const saveBtn = computeAccountSaveButtonState({
               isDirty,
               saving,
@@ -935,9 +948,6 @@ export function AccountRulesForm({
           })()}
           {isDirty && !saving && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
-          )}
-          {!isDirty && !saving && hasExistingRules && !savedAt && !error && (
-            <span className="text-xs text-stone-400">No changes to save.</span>
           )}
           {savedAt && !pendingMessage && !isDirty && (
             <span className="text-xs text-emerald-700">
