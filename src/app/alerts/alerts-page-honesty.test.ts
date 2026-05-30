@@ -520,6 +520,100 @@ describe("/alerts page — empty states", () => {
   });
 });
 
+// ── Date grouping (Today / Last 7 days / Older) ───────────────────────────────
+
+describe("/alerts page — date grouping", () => {
+  it("defines the three date groups in order", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('label: "Today"') &&
+        ALERTS_PAGE_SRC.includes('label: "Last 7 days"') &&
+        ALERTS_PAGE_SRC.includes('label: "Older"'),
+      "the feed must define Today / Last 7 days / Older groups",
+    );
+    const today = ALERTS_PAGE_SRC.indexOf('label: "Today"');
+    const week = ALERTS_PAGE_SRC.indexOf('label: "Last 7 days"');
+    const older = ALERTS_PAGE_SRC.indexOf('label: "Older"');
+    assert.ok(today < week && week < older, "groups must be ordered Today → Last 7 days → Older");
+  });
+
+  it("buckets each row by createdAt into today / week / older", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("function dateBucket") &&
+        ALERTS_PAGE_SRC.includes("d >= todayStart") &&
+        ALERTS_PAGE_SRC.includes("d >= weekAgo"),
+      "dateBucket must classify rows by today / last-7-days / older",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("groupedRows[dateBucket(r.createdAt)].push(r)"),
+      "rows must be distributed into the grouped buckets",
+    );
+  });
+
+  it("only renders groups that have rows", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("DATE_GROUPS.filter((g) => groupedRows[g.key].length > 0)"),
+      "empty date groups must not render a header",
+    );
+  });
+
+  it("keeps the compact row design (severity icon + action label) inside groups", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("<SeverityIcon severity={severity} />") &&
+        ALERTS_PAGE_SRC.includes("{actionLabel} →"),
+      "grouped rows must keep the compact severity-icon + action-link design",
+    );
+  });
+});
+
+// ── Sticky filter bar (not clipped under the shell header) ────────────────────
+
+describe("/alerts page — sticky filter bar", () => {
+  it("pins the switcher + chips with a sticky offset of top: 0", () => {
+    assert.ok(
+      /position:\s*"sticky",\s*top:\s*0/.test(ALERTS_PAGE_SRC),
+      "the filter bar must use position: sticky with top: 0 (sits under the shell header)",
+    );
+  });
+
+  it("the sticky bar has an opaque background so rows are not visible through it", () => {
+    const stickyIdx = ALERTS_PAGE_SRC.indexOf('position: "sticky"');
+    assert.ok(stickyIdx !== -1, "must have a sticky bar");
+    const block = ALERTS_PAGE_SRC.slice(stickyIdx, stickyIdx + 200);
+    assert.ok(
+      block.includes("background: \"var(--gr-bg)\""),
+      "the sticky filter bar must have an opaque background",
+    );
+  });
+});
+
+// ── Filtered alert count (not a global total) ─────────────────────────────────
+
+describe("/alerts page — filtered alert count", () => {
+  it("the title badge count derives from the filtered feedEvents, not a global query", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("const alertCount = feedEvents.length"),
+      "alertCount must come from feedEvents (which already applies account/filter/today)",
+    );
+    // It must NOT be wired to the global system-alert count used for chip gating.
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("const alertCount = systemAlertCount") &&
+        !/alertCount\s*=\s*systemAlertCount/.test(ALERTS_PAGE_SRC),
+      "alertCount must not reuse the global systemAlertCount",
+    );
+  });
+
+  it("the feed query applies accountId, triggerType and today constraints", () => {
+    const feedIdx = ALERTS_PAGE_SRC.indexOf("guardianIntervention.findMany");
+    const block = ALERTS_PAGE_SRC.slice(feedIdx, feedIdx + 420);
+    assert.ok(
+      block.includes("accountId: requestedAccountId") &&
+        block.includes("triggerType: { in: triggerTypeFilter }") &&
+        block.includes("createdAt: { gte: todayStart }"),
+      "the feed query (which feeds the count) must apply account/filter/today constraints",
+    );
+  });
+});
+
 // ── No raw DB ids in visible text ─────────────────────────────────────────────
 
 describe("/alerts page — no raw ids leaked", () => {

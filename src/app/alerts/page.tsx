@@ -344,6 +344,25 @@ export default async function AlertsPage({
     });
   }
 
+  // ── Date grouping: Today / Last 7 days / Older ────────────────────────────
+  // Rows are already newest-first, so each bucket is contiguous. Only groups
+  // with rows are rendered.
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  function dateBucket(d: Date): "today" | "week" | "older" {
+    if (d >= todayStart) return "today";
+    if (d >= weekAgo) return "week";
+    return "older";
+  }
+  const DATE_GROUPS: Array<{ key: "today" | "week" | "older"; label: string }> = [
+    { key: "today", label: "Today" },
+    { key: "week",  label: "Last 7 days" },
+    { key: "older", label: "Older" },
+  ];
+  const groupedRows: Record<"today" | "week" | "older", FeedRow[]> = {
+    today: [], week: [], older: [],
+  };
+  for (const r of rows) groupedRows[dateBucket(r.createdAt)].push(r);
+
   // ── Account switcher (top of page) ────────────────────────────────────────
   const selectableAccounts = switcherAccounts.filter((acc) => {
     const effectiveStatus =
@@ -425,6 +444,9 @@ export default async function AlertsPage({
     );
 
   // ── Empty-state copy + optional action, varying by what's filtered ────────
+  // The title badge reflects the *currently filtered* result set (selected
+  // account + filter + today), never a global total — feedEvents already has
+  // those constraints applied in the query above.
   const alertCount = feedEvents.length;
   type EmptyState = { title: string; body: string; action?: { href: string; label: string } };
   const emptyState: EmptyState = (() => {
@@ -476,7 +498,7 @@ export default async function AlertsPage({
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
 
           {/* ── Header ──────────────────────────────────────────────────── */}
-          <section style={{ padding: "28px 32px 14px" }}>
+          <section style={{ padding: "14px 32px 12px" }}>
             <span
               style={{
                 fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em",
@@ -530,6 +552,18 @@ export default async function AlertsPage({
             </div>
           </section>
 
+          {/* ── Sticky filter bar: account switcher + chips ─────────────────
+              Pinned to the top of the scroll area (top: 0 = directly under the
+              56px shell header) with an opaque background, so rows scroll
+              underneath without the controls being clipped or hidden. */}
+          <div
+            style={{
+              position: "sticky", top: 0, zIndex: 5,
+              background: "var(--gr-bg)",
+              borderBottom: "1px solid var(--gr-border-sub)",
+              paddingTop: 4, marginBottom: 8,
+            }}
+          >
           {/* ── Account switcher ────────────────────────────────────────── */}
           {selectableAccounts.length > 0 && (
             <section
@@ -615,6 +649,7 @@ export default async function AlertsPage({
               Today only
             </Link>
           </section>
+          </div>
 
           {/* ── Alert feed ──────────────────────────────────────────────── */}
           <section style={{ padding: "0 32px 36px" }}>
@@ -660,101 +695,117 @@ export default async function AlertsPage({
                 )}
               </div>
             ) : (
-              <div
-                style={{
-                  border: "1px solid var(--gr-border)",
-                  background: "var(--gr-surface)",
-                  borderRadius: 14,
-                  padding: "4px 18px",
-                }}
-              >
-                {rows.map((row, i) => {
-                  const severity = rowSeverity(row.triggerType);
-                  const label = triggerLabel(row.triggerType);
-                  const summary = rowSummary(row.triggerType, row.message);
-                  const meta = accountMeta.get(row.accountId);
-                  const accountName = meta?.name ?? null;
-                  const viewHref = triggerViewHref(row.triggerType, row.accountId);
-                  const actionLabel = triggerActionLabel(row.triggerType);
-                  return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {DATE_GROUPS.filter((g) => groupedRows[g.key].length > 0).map((g) => (
+                  <div key={g.key}>
+                    {/* Subtle date-group header */}
                     <div
-                      key={row.key}
                       style={{
-                        display: "flex", alignItems: "center", gap: 13,
-                        padding: "13px 0",
-                        borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
+                        fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
+                        textTransform: "uppercase", color: "var(--gr-text-mute)",
+                        padding: "0 4px 7px",
                       }}
                     >
-                      <SeverityIcon severity={severity} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            display: "flex", alignItems: "center",
-                            gap: 8, flexWrap: "wrap",
-                          }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
-                            {label}
-                          </span>
-                          {accountName && (
-                            <span
-                              title={meta?.brokerId ?? undefined}
-                              style={{
-                                fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
-                                background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
-                                border: "1px solid var(--gr-border-sub)",
-                                maxWidth: 180, overflow: "hidden",
-                                textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              }}
-                            >
-                              {accountName}
-                            </span>
-                          )}
-                          {row.count > 1 && (
-                            <span
-                              style={{
-                                fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
-                                background: "var(--gr-surface)", color: "var(--gr-text-mute)",
-                                border: "1px solid var(--gr-border-sub)",
-                              }}
-                            >
-                              {row.count} similar
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex", alignItems: "baseline", gap: 8,
-                            marginTop: 3, minWidth: 0,
-                          }}
-                        >
-                          <span
+                      {g.label}
+                    </div>
+                    <div
+                      style={{
+                        border: "1px solid var(--gr-border)",
+                        background: "var(--gr-surface)",
+                        borderRadius: 14,
+                        padding: "4px 18px",
+                      }}
+                    >
+                      {groupedRows[g.key].map((row, i) => {
+                        const severity = rowSeverity(row.triggerType);
+                        const label = triggerLabel(row.triggerType);
+                        const summary = rowSummary(row.triggerType, row.message);
+                        const meta = accountMeta.get(row.accountId);
+                        const accountName = meta?.name ?? null;
+                        const viewHref = triggerViewHref(row.triggerType, row.accountId);
+                        const actionLabel = triggerActionLabel(row.triggerType);
+                        return (
+                          <div
+                            key={row.key}
                             style={{
-                              fontSize: 12, color: "var(--gr-text-mid)", lineHeight: 1.4,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              flex: 1, minWidth: 0,
+                              display: "flex", alignItems: "center", gap: 13,
+                              padding: "13px 0",
+                              borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
                             }}
                           >
-                            {summary}
-                          </span>
-                          <span style={{ fontSize: 11, color: "var(--gr-text-faint)", flexShrink: 0 }}>
-                            {formatRelative(row.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-                      <Link
-                        href={viewHref}
-                        style={{
-                          flexShrink: 0, fontSize: 12, fontWeight: 500,
-                          color: "var(--gr-copper)", textDecoration: "none",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {actionLabel} →
-                      </Link>
+                            <SeverityIcon severity={severity} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  display: "flex", alignItems: "center",
+                                  gap: 8, flexWrap: "wrap",
+                                }}
+                              >
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
+                                  {label}
+                                </span>
+                                {accountName && (
+                                  <span
+                                    title={meta?.brokerId ?? undefined}
+                                    style={{
+                                      fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
+                                      background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
+                                      border: "1px solid var(--gr-border-sub)",
+                                      maxWidth: 180, overflow: "hidden",
+                                      textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {accountName}
+                                  </span>
+                                )}
+                                {row.count > 1 && (
+                                  <span
+                                    style={{
+                                      fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
+                                      background: "var(--gr-surface)", color: "var(--gr-text-mute)",
+                                      border: "1px solid var(--gr-border-sub)",
+                                    }}
+                                  >
+                                    {row.count} similar
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex", alignItems: "baseline", gap: 8,
+                                  marginTop: 3, minWidth: 0,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: 12, color: "var(--gr-text-mid)", lineHeight: 1.4,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                    flex: 1, minWidth: 0,
+                                  }}
+                                >
+                                  {summary}
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--gr-text-faint)", flexShrink: 0 }}>
+                                  {formatRelative(row.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                            <Link
+                              href={viewHref}
+                              style={{
+                                flexShrink: 0, fontSize: 12, fontWeight: 500,
+                                color: "var(--gr-copper)", textDecoration: "none",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {actionLabel} →
+                            </Link>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
           </section>
