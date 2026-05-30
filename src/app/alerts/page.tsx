@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
-import { SectionCard } from "@/components/ui/section-card";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -19,7 +18,6 @@ const ALERTS_NAV: GrNavItem[] = [
   { id: "settings", label: "Settings",     icon: "settings", href: "/settings" },
 ];
 
-/** Map broker connectionStatus string to a simple traffic-light colour */
 function connStatusColor(s: string | null | undefined): string {
   if (!s) return "var(--gr-text-faint)";
   if (s.startsWith("connected")) return "var(--gr-ok)";
@@ -27,29 +25,151 @@ function connStatusColor(s: string | null | undefined): string {
   return "var(--gr-text-faint)";
 }
 
-export default async function AlertsPage() {
+const RULE_TRIGGER_TYPES = new Set([
+  "near_daily_loss_limit",
+  "daily_loss_limit",
+  "exceeded_trade_count",
+  "max_loss_streak",
+  "consecutive_losses_warning",
+  "position_size_limit",
+]);
+
+const SYSTEM_TRIGGER_TYPES = new Set([
+  "outside_session_hours",
+]);
+
+function triggerCategory(t: string): "rule" | "system" | "broker" {
+  if (RULE_TRIGGER_TYPES.has(t)) return "rule";
+  if (SYSTEM_TRIGGER_TYPES.has(t)) return "system";
+  return "broker";
+}
+
+function triggerLabel(t: string): string {
+  switch (t) {
+    case "near_daily_loss_limit":      return "Daily loss limit warning";
+    case "daily_loss_limit":           return "Daily loss limit reached";
+    case "exceeded_trade_count":       return "Max trades exceeded";
+    case "max_loss_streak":            return "Loss streak limit reached";
+    case "consecutive_losses_warning": return "Approaching loss streak limit";
+    case "position_size_limit":        return "Position size limit";
+    case "outside_session_hours":      return "Outside trading session";
+    default:                           return t.replace(/_/g, " ");
+  }
+}
+
+function triggerSeverity(t: string): "warn" | "bad" | "ok" {
+  switch (t) {
+    case "near_daily_loss_limit":
+    case "consecutive_losses_warning":
+      return "warn";
+    case "daily_loss_limit":
+    case "exceeded_trade_count":
+    case "max_loss_streak":
+    case "position_size_limit":
+      return "bad";
+    default:
+      return "ok";
+  }
+}
+
+function triggerViewHref(t: string, accountId: string | null): string {
+  const cat = triggerCategory(t);
+  if (cat === "rule") return accountId ? `/rules?scope=account&id=${accountId}` : "/rules";
+  // Broker-connection events have no intervention source yet; the helper is
+  // kept for when one exists, but no Broker filter chip is exposed today.
+  if (cat === "broker") return "/settings#broker-connections";
+  // System/session events (e.g. outside_session_hours) are trading-activity
+  // events, so they route to the Dashboard — never to Settings.
+  return accountId ? `/dashboard?accountId=${accountId}` : "/dashboard";
+}
+
+function filterChipHref(key: string, todayOnly: boolean): string {
+  if (key === "all") return todayOnly ? "/alerts?today=1" : "/alerts";
+  return todayOnly ? `/alerts?filter=${key}&today=1` : `/alerts?filter=${key}`;
+}
+
+function formatRelative(date: Date): string {
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function SeverityIcon({ severity }: { severity: "warn" | "bad" | "ok" }) {
+  const base: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 15, fontWeight: 700,
+  };
+  if (severity === "bad") return (
+    <span style={{ ...base, background: "var(--gr-bad-bg)", color: "var(--gr-bad)" }}>!</span>
+  );
+  if (severity === "warn") return (
+    <span style={{ ...base, background: "var(--gr-warn-bg)", color: "var(--gr-warn)" }}>▲</span>
+  );
+  return (
+    <span style={{ ...base, background: "var(--gr-ok-bg)", color: "var(--gr-ok)" }}>i</span>
+  );
+}
+
+// Note: no "Broker" chip — there is no broker-connection event source yet, so a
+// Broker filter would only ever show an empty state. The chip stays hidden until
+// a real broker-event source exists.
+const FILTER_CHIPS = [
+  { key: "all",    label: "All" },
+  { key: "rule",   label: "Rule alerts" },
+  { key: "system", label: "System" },
+] as const;
+
+export default async function AlertsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string; today?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const userInitials = user.email
-    ? user.email.slice(0, 2).toUpperCase()
-    : "??";
+  const params = await searchParams;
+  const activeFilter = params.filter ?? "all";
+  const todayOnly = params.today === "1";
 
-  const [telegramConnection, riskRules, sidebarAccounts] = await Promise.all([
-    prisma.telegramConnection.findUnique({
-      where: { userId: user.id },
-      select: { telegramUsername: true, telegramChatId: true },
-    }),
-    prisma.riskRules.findUnique({
-      where: { userId: user.id },
-      select: {
-        maxDailyLoss: true,
-        maxTradesPerDay: true,
-        stopAfterLosses: true,
-        sessionStartHour: true,
-        sessionEndHour: true,
-      },
-    }),
+  const userInitials = user.email ? user.email.slice(0, 2).toUpperCase() : "??";
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  let triggerTypeFilter: string[] | undefined;
+  if (activeFilter === "rule") {
+    triggerTypeFilter = [...RULE_TRIGGER_TYPES];
+  } else if (activeFilter === "system") {
+    triggerTypeFilter = [...SYSTEM_TRIGGER_TYPES];
+  } else if (activeFilter === "broker") {
+    triggerTypeFilter = [];
+  }
+
+  const [feedEvents, sidebarAccounts] = await Promise.all([
+    triggerTypeFilter?.length === 0
+      ? Promise.resolve([] as Array<{ id: string; accountId: string | null; triggerType: string; outcome: string | null; message: string | null; createdAt: Date }>)
+      : prisma.guardianIntervention.findMany({
+          where: {
+            userId: user.id,
+            ...(triggerTypeFilter ? { triggerType: { in: triggerTypeFilter } } : {}),
+            ...(todayOnly ? { createdAt: { gte: todayStart } } : {}),
+          },
+          select: {
+            id: true,
+            accountId: true,
+            triggerType: true,
+            outcome: true,
+            message: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
     prisma.connectedAccount.findMany({
       where: {
         userId: user.id,
@@ -67,11 +187,22 @@ export default async function AlertsPage() {
     }),
   ]);
 
-  const telegramReady = Boolean(telegramConnection?.telegramChatId);
+  const accountIdsInFeed = [
+    ...new Set(feedEvents.map((e) => e.accountId).filter(Boolean) as string[]),
+  ].filter((id) => !sidebarAccounts.find((a) => a.id === id));
 
-  // ── Sidebar account list (matches dashboard sidebar) ──────────────────────
-  // Exclude accounts on an expired / errored connection (BrokerConnection
-  // status is authoritative), then cap at 5 — same rule the dashboard applies.
+  const extraAccounts =
+    accountIdsInFeed.length > 0
+      ? await prisma.connectedAccount.findMany({
+          where: { id: { in: accountIdsInFeed }, userId: user.id },
+          select: { id: true, label: true },
+        })
+      : [];
+
+  const accountLabelMap = new Map<string, string>();
+  for (const a of sidebarAccounts) accountLabelMap.set(a.id, a.label);
+  for (const a of extraAccounts) accountLabelMap.set(a.id, a.label);
+
   const selectableAccounts = sidebarAccounts
     .filter((acc) => {
       const effectiveStatus =
@@ -79,114 +210,51 @@ export default async function AlertsPage() {
       return effectiveStatus !== "expired" && effectiveStatus !== "connection_error";
     })
     .slice(0, 5);
-  const SidebarAccountList = selectableAccounts.length > 0 ? (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {selectableAccounts.map((acc) => (
-        <div
-          key={acc.id}
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "7px 8px", borderRadius: 8,
-          }}
-        >
-          <span style={{
-            width: 7, height: 7, borderRadius: "50%",
-            background: connStatusColor(acc.connectionStatus), flexShrink: 0,
-          }} />
-          <span style={{
-            fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {acc.label}
-          </span>
-        </div>
-      ))}
-    </div>
-  ) : (
-    <Link
-      href="/accounts/connect/tradovate"
-      style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
-    >
-      Connect first account →
-    </Link>
-  );
 
-  const channels = [
-    {
-      label: "In-app",
-      status: "Available",
-      statusColor: "var(--gr-ok)",
-      statusBg: "var(--gr-ok-bg)",
-      detail: "Alert banners on the Dashboard and Guardian pages. Always active — no configuration needed.",
-      future: null as string | null,
-      enabled: true,
-      action: null as { href: string; label: string } | null,
-    },
-    {
-      label: "Telegram",
-      status: telegramReady ? "Connected" : "Not connected",
-      statusColor: telegramReady ? "var(--gr-ok)" : "var(--gr-text-mute)",
-      statusBg: telegramReady ? "var(--gr-ok-bg)" : "var(--gr-bg-elev)",
-      detail: telegramReady
-        ? `Connected as @${telegramConnection?.telegramUsername ?? "unknown"}. Sends alerts for rule breaches (daily loss, loss streak) and behavioral patterns (revenge entry, rapid trading, size increase after a loss).`
-        : "Telegram alerts are not connected yet. Once connected, Guardrail sends rule-breach and behavioral alerts straight to your chat.",
-      future: "Planned: per-alert preferences and a daily digest summary.",
-      enabled: telegramReady,
-      action: telegramReady ? null : ({ href: "/settings", label: "Set up Telegram" } as { href: string; label: string }),
-    },
-    {
-      label: "Email",
-      status: "Coming soon",
-      statusColor: "var(--gr-warn)",
-      statusBg: "var(--gr-warn-bg)",
-      detail: "Email alerts for lockout events and daily summaries. Not yet available.",
-      future: null as string | null,
-      enabled: false,
-      action: null as { href: string; label: string } | null,
-    },
-  ];
+  const SidebarAccountList =
+    selectableAccounts.length > 0 ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {selectableAccounts.map((acc) => (
+          <div
+            key={acc.id}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "7px 8px", borderRadius: 8,
+            }}
+          >
+            <span
+              style={{
+                width: 7, height: 7, borderRadius: "50%",
+                background: connStatusColor(acc.connectionStatus), flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              {acc.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <Link
+        href="/accounts/connect/tradovate"
+        style={{ fontSize: 12.5, color: "var(--gr-copper)", textDecoration: "none" }}
+      >
+        Connect first account →
+      </Link>
+    );
 
-  const ruleTriggers = [
-    {
-      label: "Daily loss limit reached",
-      description: "An in-app notice when your daily P&L hits the loss limit, plus a Telegram early warning at 80% of the limit.",
-      active: riskRules?.maxDailyLoss != null,
-      requires: "Daily loss limit",
-    },
-    {
-      label: "Max trades exceeded",
-      description: "An in-app notice when you exceed your maximum trades-per-day limit.",
-      active: riskRules?.maxTradesPerDay != null,
-      requires: "Max trades per day",
-    },
-    {
-      label: "Consecutive losses",
-      description: "An in-app notice at your loss-streak limit, plus a Telegram warning one loss before it.",
-      active: riskRules?.stopAfterLosses != null,
-      requires: "Stop after losses",
-    },
-    {
-      label: "Outside trading hours",
-      description: "An in-app notice when the market is closed or your session window has ended.",
-      active: riskRules?.sessionStartHour != null && riskRules?.sessionEndHour != null,
-      requires: "Session hours",
-    },
-  ];
-
-  const behavioralTriggers = [
-    { label: "Revenge entry",          description: "Fires when you re-enter a position within 2 minutes of a loss." },
-    { label: "Rapid trading",          description: "Fires when 3 or more trades are placed within a 5-minute window." },
-    { label: "Size increase after loss", description: "Fires when a position is more than 25% larger than your previous losing trade." },
-  ];
-
-  const comingSoon = [
-    { label: "Daily profit target hit",     description: "Alert when session P&L reaches your profit target." },
-    { label: "Unrealized drawdown",         description: "Alert when an open position's unrealized loss exceeds your per-trade risk limit." },
-    { label: "Pre-news window",             description: "Alert before high-impact economic events." },
-    { label: "News lockout",                description: "Warns on trades placed around scheduled news releases." },
-    { label: "Session start & end reminders", description: "Reminders when your trading session opens and closes." },
-    { label: "In-app notification center", description: "A central feed to browse and revisit past alerts." },
-  ];
+  const todayChipHref = todayOnly
+    ? activeFilter === "all"
+      ? "/alerts"
+      : `/alerts?filter=${activeFilter}`
+    : activeFilter === "all"
+      ? "/alerts?today=1"
+      : `/alerts?filter=${activeFilter}&today=1`;
 
   return (
     <GrShell
@@ -198,250 +266,180 @@ export default async function AlertsPage() {
       hideApiStatus
     >
       <div style={{ overflowY: "auto", height: "100%" }}>
-        {/* ── Page heading ──────────────────────────────────────── */}
-        <section style={{ padding: "28px 36px 20px" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-            Alerts
+
+        {/* ── Page heading ─────────────────────────────────────────────── */}
+        <section style={{ padding: "28px 36px 16px" }}>
+          <span
+            style={{
+              fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em",
+              textTransform: "uppercase", color: "var(--gr-text-mute)",
+            }}
+          >
+            ALERTS
           </span>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 6px" }}>
-            How will I be notified?
-          </h1>
-          <p style={{ fontSize: 14, color: "var(--gr-text-mid)", margin: 0 }}>
-            Where Guardrail sends alerts when rules trigger.
-          </p>
-        </section>
-
-        {/* ── Content ───────────────────────────────────────────── */}
-        <section style={{ padding: "0 36px 36px" }}>
-          <div className="grid gap-6">
-
-            {/* ── Channels ──────────────────────────────────────── */}
-            <SectionCard title="Channels">
-              <div className="grid gap-3 sm:grid-cols-3">
-                {channels.map((ch) => (
-                  <div
-                    key={ch.label}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid var(--gr-border)",
-                      background: ch.enabled ? "var(--gr-surface)" : "var(--gr-bg-elev)",
-                      padding: "14px 16px",
-                      opacity: ch.enabled ? 1 : 0.75,
-                      display: "flex", flexDirection: "column", gap: 8,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)", margin: 0 }}>{ch.label}</p>
-                      <span style={{
-                        flexShrink: 0, borderRadius: 999,
-                        padding: "2px 8px",
-                        fontSize: 11, fontWeight: 600,
-                        color: ch.statusColor,
-                        background: ch.statusBg,
-                        border: `1px solid ${ch.statusColor}26`,
-                      }}>
-                        {ch.status}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 12.5, color: "var(--gr-text-mid)", lineHeight: 1.5, margin: 0 }}>{ch.detail}</p>
-                    {ch.future && (
-                      <p style={{ fontSize: 11.5, color: "var(--gr-text-mute)", fontStyle: "italic", margin: 0 }}>{ch.future}</p>
-                    )}
-                    {ch.action && (
-                      <a
-                        href={ch.action.href}
-                        style={{ fontSize: 12.5, fontWeight: 500, color: "var(--gr-copper)", textDecoration: "none", marginTop: 2 }}
-                      >
-                        {ch.action.label} →
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            {/* ── Rule-based triggers ───────────────────────────── */}
-            <SectionCard
-              title="Rule-based alerts — active today"
-              description="Active when the matching rule is configured."
-              actions={
-                <a
-                  href="/rules"
-                  style={{ fontSize: 12, fontWeight: 500, color: "var(--gr-text-mute)", textDecoration: "none" }}
-                >
-                  Set rules →
-                </a>
-              }
-            >
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {ruleTriggers.map((t, i) => (
-                  <div
-                    key={t.label}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-                      padding: "10px 0",
-                      borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>{t.label}</p>
-                      <p style={{ fontSize: 12, color: "var(--gr-text-mute)", margin: 0, lineHeight: 1.4 }}>{t.description}</p>
-                    </div>
-                    <span style={{
-                      flexShrink: 0, borderRadius: 999,
-                      padding: "2px 9px", fontSize: 11, fontWeight: 600,
-                      color: t.active ? "var(--gr-ok)" : "var(--gr-text-mute)",
-                      background: t.active ? "var(--gr-ok-bg)" : "var(--gr-bg-elev)",
-                      border: t.active ? "1px solid rgba(0,0,0,0.06)" : "1px solid var(--gr-border-sub)",
-                    }}>
-                      {t.active ? "Active" : "Off"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {ruleTriggers.some((t) => !t.active) && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--gr-border-sub)", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {ruleTriggers.filter((t) => !t.active).map((t) => (
-                    <p key={t.label} style={{ fontSize: 12, color: "var(--gr-text-mute)", margin: 0 }}>
-                      Set <span style={{ fontWeight: 500, color: "var(--gr-text-mid)" }}>{t.requires}</span> in{" "}
-                      <a href="/rules" style={{ fontWeight: 500, color: "var(--gr-copper)", textDecoration: "none" }}>Rules</a>{" "}
-                      to enable <span style={{ fontWeight: 500 }}>{t.label}</span>.
-                    </p>
-                  ))}
-                </div>
-              )}
-            </SectionCard>
-
-            {/* ── Behavioral triggers ───────────────────────────── */}
-            <SectionCard
-              title="Behavioral alerts — active today"
-              description="Always active when Telegram is connected — no rule configuration needed."
-            >
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {behavioralTriggers.map((t, i) => (
-                  <div
-                    key={t.label}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-                      padding: "10px 0",
-                      borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>{t.label}</p>
-                      <p style={{ fontSize: 12, color: "var(--gr-text-mute)", margin: 0, lineHeight: 1.4 }}>{t.description}</p>
-                    </div>
-                    <span style={{
-                      flexShrink: 0, borderRadius: 999,
-                      padding: "2px 9px", fontSize: 11, fontWeight: 600,
-                      color: telegramReady ? "var(--gr-ok)" : "var(--gr-text-mute)",
-                      background: telegramReady ? "var(--gr-ok-bg)" : "var(--gr-bg-elev)",
-                      border: telegramReady ? "1px solid rgba(0,0,0,0.06)" : "1px solid var(--gr-border-sub)",
-                    }}>
-                      {telegramReady ? "Active" : "Needs Telegram"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {!telegramReady && (
-                <p style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--gr-border-sub)", fontSize: 12, color: "var(--gr-text-mute)" }}>
-                  <a href="/settings" style={{ fontWeight: 500, color: "var(--gr-copper)", textDecoration: "none" }}>Set up Telegram</a>{" "}
-                  to receive behavioral alerts.
-                </p>
-              )}
-            </SectionCard>
-
-            {/* ── Planned / coming soon — collapsed so it doesn't dominate the
-                page or read as if these alerts are active. Everything below the
-                fold is roadmap-only. ──────────────────────────────────────── */}
-            <details
-              style={{
-                borderRadius: 14,
-                border: "1px solid var(--gr-border)",
-                background: "var(--gr-surface)",
-              }}
-            >
-              <summary
+          <div
+            style={{
+              display: "flex", alignItems: "flex-end",
+              justifyContent: "space-between", gap: 12, marginTop: 6,
+            }}
+          >
+            <div>
+              <h1
                 style={{
-                  listStyle: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-                  padding: "16px 20px",
+                  fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em",
+                  lineHeight: 1.2, color: "var(--gr-ink)", margin: "0 0 6px",
                 }}
               >
-                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 600, color: "var(--gr-ink)" }}>
-                    Planned &amp; coming soon
-                  </span>
-                  <span style={{ fontSize: 12.5, color: "var(--gr-text-mute)" }}>
-                    On the roadmap — not sending alerts yet.
-                  </span>
-                </span>
-                <span style={{
-                  flexShrink: 0, borderRadius: 999, padding: "2px 9px",
-                  fontSize: 11, fontWeight: 600,
-                  color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
-                  border: "1px solid rgba(0,0,0,0.06)",
-                }}>
-                  {comingSoon.length + 1} planned
-                </span>
-              </summary>
-
-              <div style={{ padding: "0 20px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
-                {/* Coming soon list */}
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {comingSoon.map((t, i) => (
-                    <div
-                      key={t.label}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-                        padding: "10px 0",
-                        borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, color: "var(--gr-text-mute)", margin: 0 }}>{t.label}</p>
-                        <p style={{ fontSize: 12, color: "var(--gr-text-faint)", margin: 0, lineHeight: 1.4 }}>{t.description}</p>
-                      </div>
-                      <span style={{
-                        flexShrink: 0, borderRadius: 999,
-                        padding: "2px 9px", fontSize: 11, fontWeight: 600,
-                        color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
-                        border: "1px solid rgba(0,0,0,0.06)",
-                      }}>
-                        Planned
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Alert preferences (planned) */}
-                <div style={{
-                  borderRadius: 10,
-                  border: "1px solid var(--gr-warn-bd, var(--gr-border))",
-                  background: "var(--gr-warn-bg)",
-                  padding: "14px 16px",
-                  display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
-                }}>
-                  <div>
-                    <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)", margin: "0 0 4px" }}>Per-alert preferences</p>
-                    <p style={{ fontSize: 12.5, color: "var(--gr-text-mid)", margin: 0, lineHeight: 1.5 }}>
-                      Alert preferences are planned. Today, Guardrail sends core safety alerts based on your active rules.
-                    </p>
-                  </div>
-                  <span style={{
-                    flexShrink: 0, borderRadius: 999, padding: "2px 9px",
-                    fontSize: 11, fontWeight: 600,
-                    color: "var(--gr-warn)", background: "var(--gr-warn-bg)",
-                    border: "1px solid rgba(0,0,0,0.06)",
-                  }}>
-                    Planned
-                  </span>
-                </div>
-              </div>
-            </details>
-
+                Alerts
+              </h1>
+              <p style={{ fontSize: 14, color: "var(--gr-text-mid)", margin: 0 }}>
+                Everything Guardrail noticed about your trading plan and broker connections.
+              </p>
+            </div>
+            <Link
+              href="/settings#alerts-telegram"
+              style={{
+                fontSize: 12.5, color: "var(--gr-text-mute)",
+                textDecoration: "none", flexShrink: 0, whiteSpace: "nowrap",
+              }}
+            >
+              Notification settings →
+            </Link>
           </div>
         </section>
+
+        {/* ── Filter chips ─────────────────────────────────────────────── */}
+        <section
+          style={{ padding: "0 36px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}
+        >
+          {FILTER_CHIPS.map((chip) => {
+            const isActive = activeFilter === chip.key;
+            return (
+              <Link
+                key={chip.key}
+                href={filterChipHref(chip.key, todayOnly)}
+                style={{
+                  display: "inline-block",
+                  padding: "5px 14px",
+                  borderRadius: 999,
+                  fontSize: 12.5,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? "var(--gr-ink)" : "var(--gr-text-mute)",
+                  background: isActive ? "var(--gr-surface)" : "transparent",
+                  border: isActive ? "1px solid var(--gr-border)" : "1px solid transparent",
+                  textDecoration: "none",
+                }}
+              >
+                {chip.label}
+              </Link>
+            );
+          })}
+          <Link
+            href={todayChipHref}
+            style={{
+              display: "inline-block",
+              padding: "5px 14px",
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: todayOnly ? 600 : 400,
+              color: todayOnly ? "var(--gr-ink)" : "var(--gr-text-mute)",
+              background: todayOnly ? "var(--gr-surface)" : "transparent",
+              border: todayOnly ? "1px solid var(--gr-border)" : "1px solid transparent",
+              textDecoration: "none",
+            }}
+          >
+            Today only
+          </Link>
+        </section>
+
+        {/* ── Alert feed ───────────────────────────────────────────────── */}
+        <section style={{ padding: "0 36px 36px" }}>
+          {feedEvents.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "64px 24px", color: "var(--gr-text-mute)" }}>
+              <p style={{ fontSize: 16, fontWeight: 500, margin: "0 0 8px" }}>
+                No alerts yet
+              </p>
+              <p style={{ fontSize: 13.5, margin: 0, lineHeight: 1.5 }}>
+                Guardrail will show rule breaches, session events, and broker sync events here.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {feedEvents.map((event, i) => {
+                const severity = triggerSeverity(event.triggerType);
+                const label = triggerLabel(event.triggerType);
+                const accountLabel = event.accountId
+                  ? accountLabelMap.get(event.accountId)
+                  : null;
+                const viewHref = triggerViewHref(event.triggerType, event.accountId ?? null);
+                return (
+                  <div
+                    key={event.id}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 14,
+                      padding: "14px 0",
+                      borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
+                    }}
+                  >
+                    <SeverityIcon severity={severity} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex", alignItems: "center",
+                          gap: 8, flexWrap: "wrap", marginBottom: 2,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}
+                        >
+                          {label}
+                        </span>
+                        {accountLabel && (
+                          <span
+                            style={{
+                              fontSize: 11, padding: "1px 7px", borderRadius: 999,
+                              background: "var(--gr-bg-elev)",
+                              color: "var(--gr-text-mute)",
+                              border: "1px solid var(--gr-border-sub)",
+                            }}
+                          >
+                            {accountLabel}
+                          </span>
+                        )}
+                      </div>
+                      {event.message && (
+                        <p
+                          style={{
+                            fontSize: 12.5, color: "var(--gr-text-mid)",
+                            margin: "0 0 4px", lineHeight: 1.4,
+                          }}
+                        >
+                          {event.message}
+                        </p>
+                      )}
+                      <span style={{ fontSize: 11.5, color: "var(--gr-text-faint)" }}>
+                        {formatRelative(event.createdAt)}
+                      </span>
+                    </div>
+                    <Link
+                      href={viewHref}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: 12.5, fontWeight: 500,
+                        color: "var(--gr-copper)",
+                        textDecoration: "none",
+                        padding: "5px 0",
+                      }}
+                    >
+                      View →
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
       </div>
     </GrShell>
   );
