@@ -193,3 +193,108 @@ describe("E. 'Why don't I see my new account?' helper", () => {
     assert.ok(!src.includes("OAuth token"), "must not surface OAuth token jargon");
   });
 });
+
+// ── F. Settings section hierarchy ─────────────────────────────────────────────
+
+describe("F. Settings section order for a normal user", () => {
+  const PAGE = read("./page.tsx");
+
+  // Index of each section's SectionCard title (or heading) in source order.
+  function pos(label: string): number {
+    const i = PAGE.indexOf(label);
+    assert.ok(i !== -1, `section "${label}" must be present`);
+    return i;
+  }
+
+  test("sections appear in the order Account → Plan & Billing → Broker connections → Alerts & Telegram → Security → Danger zone", () => {
+    const account = pos('title="Account"');
+    const plan = pos('title="Plan & Billing"');
+    const broker = pos('title="Broker connections"');
+    const alerts = pos('title="Alerts & Telegram"');
+    const security = pos('title="Security"');
+    const danger = pos("Danger zone");
+
+    assert.ok(account < plan, "Account before Plan & Billing");
+    assert.ok(plan < broker, "Plan & Billing before Broker connections");
+    assert.ok(broker < alerts, "Broker connections before Alerts & Telegram");
+    assert.ok(alerts < security, "Alerts & Telegram before Security");
+    assert.ok(security < danger, "Security before Danger zone");
+  });
+
+  test("Broker connections appears before the Telegram alerts section and Security", () => {
+    const broker = pos('title="Broker connections"');
+    const alerts = pos('title="Alerts & Telegram"');
+    const security = pos('title="Security"');
+    assert.ok(broker < alerts, "Broker connections must come before the Alerts & Telegram section");
+    assert.ok(broker < security, "Broker connections must come before Security");
+  });
+});
+
+describe("F. Product status is hidden from the main Settings flow", () => {
+  const PAGE = read("./page.tsx");
+
+  test("Product status is not a top-level Settings section", () => {
+    // It must not be rendered as its own SectionCard.
+    assert.ok(
+      !PAGE.includes('title="Product status"') && !PAGE.includes('title="Connections"'),
+      "Product status / Connections must not be a top-level section",
+    );
+  });
+
+  test("Product status lives inside a collapsed Advanced <details> (hidden by default)", () => {
+    // Anchor on the unique ProductStatusPanel render (the literal word
+    // "Advanced" also appears as a humanizeExperience return value).
+    const panelIdx = PAGE.indexOf("<ProductStatusPanel");
+    assert.ok(panelIdx !== -1, "must still render ProductStatusPanel");
+    const detailsBefore = PAGE.lastIndexOf("<details", panelIdx);
+    assert.ok(detailsBefore !== -1, "ProductStatusPanel must be inside a <details>");
+    // The enclosing <details> opening tag must NOT have `open` → collapsed by default.
+    const openTag = PAGE.slice(detailsBefore, PAGE.indexOf(">", detailsBefore));
+    assert.ok(!/\bopen\b/.test(openTag), "Advanced <details> must not be open by default");
+    // The "Advanced" summary label must sit between that <details> and the panel.
+    const advancedSummary = PAGE.indexOf("Advanced", detailsBefore);
+    assert.ok(
+      advancedSummary !== -1 && advancedSummary < panelIdx,
+      "the Advanced summary must precede the product status content",
+    );
+  });
+
+  test("Advanced/Product status sits near the bottom — after Security, before Danger zone", () => {
+    const security = PAGE.indexOf('title="Security"');
+    const panel = PAGE.indexOf("<ProductStatusPanel");
+    const danger = PAGE.indexOf("Danger zone");
+    assert.ok(security < panel, "Product status panel must come after Security");
+    assert.ok(panel < danger, "Product status panel must come before Danger zone");
+  });
+});
+
+// ── G. Broker card: user-friendly linked-account summary ──────────────────────
+
+describe("G. Broker card linked-account summary", () => {
+  const SECTION = read("./_components/broker-connections-section.tsx");
+
+  test("single linked account shows its label inline", () => {
+    assert.ok(
+      SECTION.includes("1 linked account") && SECTION.includes("activeAccounts[0].label"),
+      "one account → '1 linked account · <label>'",
+    );
+  });
+
+  test("multiple linked accounts expand into a label list", () => {
+    assert.ok(
+      SECTION.includes("{activeAccounts.length} linked accounts"),
+      "many accounts → 'N linked accounts' summary",
+    );
+    assert.ok(
+      /activeAccounts\.map\(\(acct\)[\s\S]*?acct\.label/.test(SECTION),
+      "many accounts → expandable list of labels",
+    );
+  });
+
+  test("archived accounts stay in their own collapsed list", () => {
+    assert.ok(
+      SECTION.includes("archived account(s) under this connection"),
+      "archived accounts must remain in a separate collapsed list",
+    );
+  });
+});

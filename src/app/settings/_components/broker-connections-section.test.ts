@@ -63,11 +63,34 @@ describe("BrokerConnectionCard — user-facing content only", () => {
     );
   });
 
-  test("card shows linked account count using the true total", () => {
+  test("card shows a user-friendly linked-account summary (label inline for one)", () => {
+    const card = cardSource();
+    assert.ok(card.includes("linked account"), "card must show a linked-account summary");
+    // Single account → show its label inline ("1 linked account · <label>").
     assert.ok(
-      cardSource().includes("linkedAccounts.length") &&
-        cardSource().includes("linked account"),
-      "card must display the true total linked account count",
+      card.includes("1 linked account") && card.includes("activeAccounts[0].label"),
+      "a single linked account must show its label inline",
+    );
+  });
+
+  test("multiple linked accounts collapse into an expandable label list", () => {
+    const card = cardSource();
+    assert.ok(
+      card.includes("{activeAccounts.length} linked accounts"),
+      "multiple accounts must show a count summary",
+    );
+    assert.ok(
+      /activeAccounts\.map\(\(acct\)[\s\S]*?acct\.label/.test(card),
+      "multiple accounts must render an expandable list of account labels",
+    );
+  });
+
+  test("linked-account summary is based on active (non-archived) accounts", () => {
+    const card = cardSource();
+    assert.ok(
+      card.includes("activeAccounts.length === 0") &&
+        card.includes("activeAccounts.length === 1"),
+      "summary must branch on the active (non-archived) account count",
     );
   });
 });

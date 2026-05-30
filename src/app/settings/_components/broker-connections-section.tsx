@@ -175,10 +175,33 @@ function BrokerConnectionCard({
           {/* Provider */}
           <p className="text-sm font-medium text-stone-800">{platformLabel(conn.platform)}</p>
 
-          {/* Linked account count — true total (active + archived) */}
-          <p className="text-xs text-stone-500">
-            {linkedAccounts.length} linked account(s)
-          </p>
+          {/* Linked account summary — user-friendly. One account shows its label
+              inline; multiple accounts collapse into an expandable label list.
+              Archived accounts are summarized separately below. */}
+          {activeAccounts.length === 0 ? (
+            <p className="text-xs text-stone-400">No linked accounts</p>
+          ) : activeAccounts.length === 1 ? (
+            <p className="text-xs text-stone-500">
+              1 linked account ·{" "}
+              <span className="font-medium text-stone-700">{activeAccounts[0].label}</span>
+            </p>
+          ) : (
+            <details className="text-xs text-stone-500">
+              <summary className="cursor-pointer list-none">
+                <span className="underline-offset-2 hover:underline">
+                  {activeAccounts.length} linked accounts
+                </span>
+              </summary>
+              <ul className="mt-1.5 grid gap-1 pl-0.5">
+                {activeAccounts.map((acct) => (
+                  <li key={acct.id} className="flex items-center gap-1.5">
+                    <span aria-hidden className="text-stone-300">·</span>
+                    <span className="font-medium text-stone-700">{acct.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           {/* Scheduled-removal note — surfaced at connection level so a deferred
               archive (locked / rule-active account) stays visible without

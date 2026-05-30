@@ -231,55 +231,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </div>
             )}
 
-            {/* Trading profile */}
-            {traderProfile && (
-              <details
-                className="group rounded-[14px] border p-6"
-                style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
-              >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em]" style={{ color: "var(--gr-ink)" }}>
-                  Trading profile
-                  <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
-                </summary>
-                <dl className="mt-5 grid gap-3 text-sm">
-                  {normalizeDisplay(traderProfile.primaryMarket, MARKETS) && (
-                    <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                      <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Market</dt>
-                      <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.primaryMarket, MARKETS)}</dd>
-                    </div>
-                  )}
-                  {normalizeDisplay(traderProfile.tradingStyle, STYLES) && (
-                    <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                      <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Style</dt>
-                      <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingStyle, STYLES)}</dd>
-                    </div>
-                  )}
-                  {normalizeDisplay(traderProfile.tradingSession, SESSIONS) && (
-                    <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                      <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Session</dt>
-                      <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingSession, SESSIONS)}</dd>
-                    </div>
-                  )}
-                  {humanizeExperience(traderProfile.tradingExperience) && (
-                    <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                      <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Experience</dt>
-                      <dd style={{ color: "var(--gr-ink)" }}>{humanizeExperience(traderProfile.tradingExperience)}</dd>
-                    </div>
-                  )}
-                </dl>
-                <div className="mt-4">
-                  <a
-                    href="/onboarding/profile?edit=1"
-                    className="inline-flex h-9 items-center justify-center rounded-full border px-5 text-xs font-medium transition hover:opacity-80"
-                    style={{ borderColor: "var(--gr-border)", color: "var(--gr-text-mid)" }}
-                  >
-                    Edit trading profile
-                  </a>
-                </div>
-              </details>
-            )}
-
-            {/* Account info */}
+            {/* 1 ── Account info */}
             <SectionCard title="Account">
               <dl className="grid gap-3 text-sm">
                 <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
@@ -297,9 +249,57 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   </dd>
                 </div>
               </dl>
+
+              {/* Trading profile — collapsed detail kept close to the account it describes */}
+              {traderProfile && (
+                <details
+                  className="group mt-4 rounded-xl border px-4 py-3"
+                  style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>
+                    Trading profile
+                    <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
+                  </summary>
+                  <dl className="mt-4 grid gap-3 text-sm">
+                    {normalizeDisplay(traderProfile.primaryMarket, MARKETS) && (
+                      <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-surface)" }}>
+                        <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Market</dt>
+                        <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.primaryMarket, MARKETS)}</dd>
+                      </div>
+                    )}
+                    {normalizeDisplay(traderProfile.tradingStyle, STYLES) && (
+                      <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-surface)" }}>
+                        <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Style</dt>
+                        <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingStyle, STYLES)}</dd>
+                      </div>
+                    )}
+                    {normalizeDisplay(traderProfile.tradingSession, SESSIONS) && (
+                      <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-surface)" }}>
+                        <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Session</dt>
+                        <dd style={{ color: "var(--gr-ink)" }}>{normalizeDisplay(traderProfile.tradingSession, SESSIONS)}</dd>
+                      </div>
+                    )}
+                    {humanizeExperience(traderProfile.tradingExperience) && (
+                      <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-surface)" }}>
+                        <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Experience</dt>
+                        <dd style={{ color: "var(--gr-ink)" }}>{humanizeExperience(traderProfile.tradingExperience)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  <div className="mt-4">
+                    <a
+                      href="/onboarding/profile?edit=1"
+                      className="inline-flex h-9 items-center justify-center rounded-full border px-5 text-xs font-medium transition hover:opacity-80"
+                      style={{ borderColor: "var(--gr-border)", color: "var(--gr-text-mid)" }}
+                    >
+                      Edit trading profile
+                    </a>
+                  </div>
+                </details>
+              )}
             </SectionCard>
 
-            {/* Plan & Billing */}
+            {/* 2 ── Plan & Billing */}
             <SectionCard
               title="Plan & Billing"
               description="Your current Guardrail plan."
@@ -310,44 +310,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               />
             </SectionCard>
 
-            {/* Security: sign-in methods */}
-            <SectionCard
-              title="Security"
-              description="How you sign in to Guardrail."
-            >
-              <SignInMethods
-                hasPassword={hasPassword}
-                googleConnected={googleConnected}
-                googleEmail={googleConnection?.email ?? null}
-              />
-            </SectionCard>
-
-            {/* Connections: Telegram */}
-            <SectionCard
-              title="Connections"
-              description="Optional services connected to your account."
-            >
-              <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Telegram</p>
-                <TelegramConnection
-                  connected={Boolean(telegramConnection)}
-                  username={telegramConnection?.telegramUsername ?? null}
-                  botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
-                />
-              </div>
-              <details className="group mt-4 rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold" style={{ color: "var(--gr-ink)" }}>
-                  Product status
-                  <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
-                </summary>
-                <div className="mt-4">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Product status</p>
-                  <ProductStatusPanel variant="compact" />
-                </div>
-              </details>
-            </SectionCard>
-
-            {/* Broker connections — grouped by status */}
+            {/* 3 ── Broker connections */}
             <SectionCard
               title="Broker connections"
               description="Connect, disconnect, and reconnect your broker accounts."
@@ -377,6 +340,47 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </Link>
               </div>
             </SectionCard>
+
+            {/* 4 ── Alerts & Telegram */}
+            <SectionCard
+              title="Alerts & Telegram"
+              description="Where Guardrail sends your alerts."
+            >
+              <TelegramConnection
+                connected={Boolean(telegramConnection)}
+                username={telegramConnection?.telegramUsername ?? null}
+                botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
+              />
+            </SectionCard>
+
+            {/* 5 ── Security: sign-in methods */}
+            <SectionCard
+              title="Security"
+              description="How you sign in to Guardrail."
+            >
+              <SignInMethods
+                hasPassword={hasPassword}
+                googleConnected={googleConnected}
+                googleEmail={googleConnection?.email ?? null}
+              />
+            </SectionCard>
+
+            {/* Advanced — collapsed, near the bottom. Holds the product/roadmap
+                status panel, which is internal/roadmap context rather than a
+                user setting, so it is hidden by default. */}
+            <details
+              className="group rounded-[14px] border p-6"
+              style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em]" style={{ color: "var(--gr-ink)" }}>
+                Advanced
+                <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
+              </summary>
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Product status</p>
+                <ProductStatusPanel variant="compact" />
+              </div>
+            </details>
 
             {/* Danger zone */}
             <section className="rounded-[14px] border border-red-200 p-6" style={{ background: "var(--gr-surface)" }}>
