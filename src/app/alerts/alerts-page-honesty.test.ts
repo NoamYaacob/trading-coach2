@@ -206,3 +206,21 @@ describe("AlertPreferences model", () => {
     );
   });
 });
+
+// ── Sidebar only shows active accounts ────────────────────────────────────────
+
+describe("/alerts page — sidebar account filtering", () => {
+  it("sidebar query restricts to protected and monitor_only protectionStatus", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"protected"') && ALERTS_PAGE_SRC.includes('"monitor_only"'),
+      "alerts sidebar must restrict to protected/monitor_only — not { not: 'archived' }",
+    );
+  });
+
+  it("sidebar query filters out accounts missing from broker", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("missingFromBrokerSince: null"),
+      "alerts sidebar must filter missingFromBrokerSince: null to exclude unavailable accounts",
+    );
+  });
+});

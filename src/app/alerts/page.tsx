@@ -51,7 +51,12 @@ export default async function AlertsPage() {
       },
     }),
     prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
+      where: {
+        userId: user.id,
+        isActive: true,
+        protectionStatus: { in: ["protected", "monitor_only"] },
+        missingFromBrokerSince: null,
+      },
       select: { id: true, label: true, connectionStatus: true },
       orderBy: { createdAt: "asc" },
       take: 5,

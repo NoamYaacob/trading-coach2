@@ -132,9 +132,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const googleConnected = Boolean(googleConnection);
 
   // ── Sidebar: compact account list (same style as dashboard) ──────────────
-  const SidebarAccountList = connectedAccounts.length > 0 ? (
+  // Only show selectable accounts: active protection status, broker still returning them.
+  const sidebarAccounts = connectedAccounts.filter(
+    (acc) =>
+      (acc.protectionStatus === "protected" || acc.protectionStatus === "monitor_only") &&
+      acc.missingFromBrokerSince == null,
+  );
+  const SidebarAccountList = sidebarAccounts.length > 0 ? (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {connectedAccounts.slice(0, 5).map((acc) => {
+      {sidebarAccounts.slice(0, 5).map((acc) => {
         const dot = acc.connectionStatus === "connection_error"
           ? "var(--gr-bad)"
           : acc.connectionStatus?.startsWith("connected")

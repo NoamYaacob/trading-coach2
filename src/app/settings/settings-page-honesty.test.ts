@@ -177,3 +177,28 @@ describe("Settings page — danger zone", () => {
     );
   });
 });
+
+// ── Sidebar only shows active accounts ────────────────────────────────────────
+
+describe("Settings page — sidebar account filtering", () => {
+  it("filters the sidebar to protected and monitor_only accounts only", () => {
+    assert.ok(
+      PAGE_SRC.includes('"protected"') && PAGE_SRC.includes('"monitor_only"'),
+      "settings sidebar must restrict to protected/monitor_only protectionStatus",
+    );
+  });
+
+  it("excludes accounts missing from broker (missingFromBrokerSince = null check)", () => {
+    assert.ok(
+      PAGE_SRC.includes("missingFromBrokerSince == null"),
+      "settings sidebar must filter out accounts with missingFromBrokerSince set",
+    );
+  });
+
+  it("uses a separate sidebarAccounts variable so connectedAccounts remains full for broker section", () => {
+    assert.ok(
+      PAGE_SRC.includes("sidebarAccounts"),
+      "settings page must compute sidebarAccounts separately from connectedAccounts",
+    );
+  });
+});
