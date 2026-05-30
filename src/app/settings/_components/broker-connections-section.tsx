@@ -120,20 +120,30 @@ function permDisplay(perm: string | null | undefined): PermDisplay {
  *   3. needsAttention — OAuth token expired but account still exists in broker
  *   4. connected — everything else
  *
- * Inactive takes highest precedence so an account that is both "missing from
- * broker" and "in an expired connection" ends up in the inactive section (where
- * Remove from Guardrail is offered), not in the reconnect group.
+ * Archived accounts (protectionStatus === "archived") are excluded from all
+ * standalone sections. They only appear inside BrokerConnectionCard via the
+ * per-connection accountsByConn grouping. This avoids double-rendering and
+ * prevents showing "Remove from Guardrail" for accounts that are already
+ * archived.
+ *
+ * Inactive takes highest precedence among the non-archived accounts so an
+ * account that is both "missing from broker" and "in an expired connection"
+ * ends up in the inactive section (where Remove from Guardrail is offered).
  */
 function classifyAccounts(accounts: BrokerAccountRow[]) {
-  const pending = accounts.filter(
+  // Archived accounts are shown inside their connection card — exclude them
+  // from all standalone buckets.
+  const nonArchived = accounts.filter((a) => a.protectionStatus !== "archived");
+
+  const inactive = nonArchived.filter((a) => a.missingFromBrokerSince != null);
+  const inactiveIds = new Set(inactive.map((a) => a.id));
+
+  const pending = nonArchived.filter(
     (a) => a.protectionStatus === "pending_decision" && a.missingFromBrokerSince == null,
   );
   const pendingIds = new Set(pending.map((a) => a.id));
 
-  const inactive = accounts.filter((a) => a.missingFromBrokerSince != null);
-  const inactiveIds = new Set(inactive.map((a) => a.id));
-
-  const needsAttention = accounts.filter(
+  const needsAttention = nonArchived.filter(
     (a) =>
       !inactiveIds.has(a.id) &&
       !pendingIds.has(a.id) &&
@@ -142,7 +152,7 @@ function classifyAccounts(accounts: BrokerAccountRow[]) {
   );
   const needsAttentionIds = new Set(needsAttention.map((a) => a.id));
 
-  const connected = accounts.filter(
+  const connected = nonArchived.filter(
     (a) => !inactiveIds.has(a.id) && !needsAttentionIds.has(a.id) && !pendingIds.has(a.id),
   );
 
@@ -204,7 +214,12 @@ function BrokerConnectionCard({
     conn.tokenExpiresAt.getTime() - now.getTime() < 30 * 60 * 1000;
 
   const canDiscover = !expired;
-  const connectedAccts = linkedAccounts.filter((a) => a.missingFromBrokerSince == null);
+  // Non-archived, present-in-broker accounts: what the disconnect endpoint acts on.
+  const connectedAccts = linkedAccounts.filter(
+    (a) => a.missingFromBrokerSince == null && a.protectionStatus !== "archived",
+  );
+  // True when the backend will allow DELETE (all linked accounts are already archived).
+  const canRemoveConnection = linkedAccounts.every((a) => a.protectionStatus === "archived");
 
   const reconnectUrl = reconnectUrlForConnection(conn);
 
@@ -301,9 +316,9 @@ function BrokerConnectionCard({
             )}
           </p>
 
-          {/* Linked account count */}
+          {/* Linked account count — true total including archived accounts */}
           <p className="text-xs text-stone-500">
-            {connectedAccts.length} linked account(s)
+            {linkedAccounts.length} linked account(s)
           </p>
         </div>
 
@@ -317,8 +332,12 @@ function BrokerConnectionCard({
               >
                 Reconnect {envLabel(conn.env) ? `${envLabel(conn.env)} connection` : "connection"}
               </Link>
-              {linkedAccounts.length === 0 && (
+              {canRemoveConnection ? (
                 <RemoveBrokerConnectionButton connectionId={conn.id} />
+              ) : (
+                <p className="text-right text-xs text-stone-400">
+                  Remove linked accounts first, then remove this connection.
+                </p>
               )}
             </>
           ) : (
@@ -334,25 +353,29 @@ function BrokerConnectionCard({
       {linkedAccounts.length > 0 && (
         <div className="mt-3 grid gap-2 border-t border-stone-100 pt-3">
           {linkedAccounts.map((acct) => {
+            const isArchived = acct.protectionStatus === "archived";
+            const isMissing = acct.missingFromBrokerSince != null;
             const { pill, copy, showReconnect } = permDisplay(
               acct.brokerConnection?.permissionLevel,
             );
             const isLive = acct.connectionStatus === "connected_live";
             const disconnectState = computeAccountDisconnectState(acct, disconnectWindow);
-            const isMissing = acct.missingFromBrokerSince != null;
+            const dimmed = isArchived || isMissing;
 
             return (
               <div
                 key={acct.id}
-                className={`rounded-lg border px-3 py-2.5 ${isMissing ? "border-stone-100 bg-stone-50" : "border-stone-100 bg-white"}`}
+                className={`rounded-lg border px-3 py-2.5 ${dimmed ? "border-stone-100 bg-stone-50" : "border-stone-100 bg-white"}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="grid gap-1 text-sm">
-                    <p className={`font-medium ${isMissing ? "text-stone-400" : "text-stone-950"}`}>
+                    <p className={`font-medium ${dimmed ? "text-stone-400" : "text-stone-950"}`}>
                       {acct.label}
                     </p>
                     <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
-                      {isMissing ? (
+                      {isArchived ? (
+                        <StatusPill label="Archived" color="stone" />
+                      ) : isMissing ? (
                         <StatusPill label="Inactive" color="stone" />
                       ) : (
                         <>
@@ -370,13 +393,18 @@ function BrokerConnectionCard({
                         </>
                       )}
                     </div>
-                    {!isMissing && (
-                      <p className="text-xs text-stone-500">{copy}</p>
+                    {isArchived && (
+                      <p className="text-xs text-stone-400">
+                        Already archived. Will be unlinked when this connection is removed.
+                      </p>
                     )}
-                    {isMissing && (
+                    {!isArchived && isMissing && (
                       <p className="text-xs text-stone-400">
                         No longer active in Tradovate. You can remove it from Guardrail.
                       </p>
+                    )}
+                    {!isArchived && !isMissing && (
+                      <p className="text-xs text-stone-500">{copy}</p>
                     )}
                     {acct.protectionStatus === "pending_decision" && (
                       <p className="text-xs text-amber-700">Setup needed before trading</p>
@@ -388,7 +416,7 @@ function BrokerConnectionCard({
                     )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    {!isMissing && showReconnect && acct.brokerConnection && (
+                    {!isArchived && !isMissing && showReconnect && acct.brokerConnection && (
                       <Link
                         href={`/accounts/connect/tradovate?env=${acct.brokerConnection.env}&reconnect=${acct.brokerConnection.id}`}
                         className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:border-stone-400"
@@ -396,7 +424,7 @@ function BrokerConnectionCard({
                         Reconnect with full access
                       </Link>
                     )}
-                    {isMissing ? (
+                    {isArchived ? null : isMissing ? (
                       <RemoveAccountButton accountId={acct.id} redirectTo="/settings" />
                     ) : (
                       <DisconnectButton

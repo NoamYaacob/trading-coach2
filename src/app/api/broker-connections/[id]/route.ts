@@ -22,20 +22,37 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Only allow deleting connections that have no active linked accounts —
-  // removing a live connection's token while accounts exist would silently
-  // break their sync without any visible warning to the user.
-  const linkedCount = await prisma.connectedAccount.count({
-    where: { brokerConnectionId: id, isActive: true },
+  // Block if any non-archived active accounts are still linked.
+  // Archived accounts are safe to unlink: their brokerConnectionId is nulled
+  // before deletion so the ConnectedAccount row (and all historical data on it)
+  // is preserved. Never deletes NormalizedTradeEvent, AccountRiskRules,
+  // InternalLockEvent, GuardianStatus, BrokerOrderActionLog, or RuleChangeAudit.
+  const activeLinkedCount = await prisma.connectedAccount.count({
+    where: {
+      brokerConnectionId: id,
+      isActive: true,
+      protectionStatus: { not: "archived" },
+    },
   });
-  if (linkedCount > 0) {
+  if (activeLinkedCount > 0) {
     return NextResponse.json(
-      { error: "has_linked_accounts", message: "Cannot remove a connection with linked accounts." },
+      {
+        error: "has_linked_accounts",
+        message: "Remove linked accounts first, then remove this connection.",
+      },
       { status: 409 },
     );
   }
 
-  await prisma.brokerConnection.delete({ where: { id } });
+  // All remaining linked accounts (if any) are archived. Unlink them in the
+  // same transaction as the delete so the connection is never left dangling.
+  await prisma.$transaction([
+    prisma.connectedAccount.updateMany({
+      where: { brokerConnectionId: id, isActive: true },
+      data: { brokerConnectionId: null },
+    }),
+    prisma.brokerConnection.delete({ where: { id } }),
+  ]);
 
   console.info("[broker-connections/delete] connection removed", {
     brokerConnectionId: id,
@@ -44,3 +61,4 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
 
   return NextResponse.json({ ok: true });
 }
+

@@ -530,3 +530,102 @@ describe("final polish pass", () => {
     assert.ok(src.includes("lastReconciledAccountCount: number | null"), "BrokerConnectionRow must include lastReconciledAccountCount");
   });
 });
+
+// ── Linked-account count accuracy (archived accounts included) ────────────────
+
+describe("BrokerConnectionCard — linked account count includes all statuses", () => {
+  test("count uses linkedAccounts.length (total), not connectedAccts.length (active-only)", () => {
+    const src = read(SECTION_FILE);
+    const cardStart = src.indexOf("function BrokerConnectionCard");
+    const cardEnd = src.indexOf("\nfunction ", cardStart + 1);
+    const cardSrc = src.slice(cardStart, cardEnd);
+    // The count line must reference linkedAccounts.length
+    assert.ok(
+      /linkedAccounts\.length.*linked account/.test(cardSrc) ||
+        /linked account.*linkedAccounts\.length/.test(cardSrc),
+      "card must use linkedAccounts.length for the total linked account count",
+    );
+  });
+
+  test("card does not use connectedAccts.length as the displayed count", () => {
+    const src = read(SECTION_FILE);
+    const cardStart = src.indexOf("function BrokerConnectionCard");
+    const cardEnd = src.indexOf("\nfunction ", cardStart + 1);
+    const cardSrc = src.slice(cardStart, cardEnd);
+    // connectedAccts.length is allowed for the DisconnectConnectionButton prop,
+    // but must not be the rendered count text.
+    const countLineMatch = cardSrc.match(/\{connectedAccts\.length\}\s*linked account/);
+    assert.ok(
+      !countLineMatch,
+      "card must not render connectedAccts.length as the linked account count — use linkedAccounts.length for accuracy",
+    );
+  });
+});
+
+// ── Remove connection button condition ────────────────────────────────────────
+
+describe("BrokerConnectionCard — remove connection button guards", () => {
+  test("RemoveBrokerConnectionButton shows when all linked accounts are archived", () => {
+    const src = read(SECTION_FILE);
+    const cardStart = src.indexOf("function BrokerConnectionCard");
+    const cardEnd = src.indexOf("\nfunction ", cardStart + 1);
+    const cardSrc = src.slice(cardStart, cardEnd);
+    assert.ok(
+      cardSrc.includes('protectionStatus === "archived"') &&
+        cardSrc.includes("every"),
+      "card must gate RemoveBrokerConnectionButton on every linked account being archived",
+    );
+  });
+
+  test("expired connection shows helper text when non-archived accounts are linked", () => {
+    const src = read(SECTION_FILE);
+    const cardStart = src.indexOf("function BrokerConnectionCard");
+    const cardEnd = src.indexOf("\nfunction ", cardStart + 1);
+    const cardSrc = src.slice(cardStart, cardEnd);
+    assert.ok(
+      cardSrc.includes("Remove linked accounts first"),
+      "card must show 'Remove linked accounts first' helper text for non-archiveable state",
+    );
+  });
+
+  test("classifyAccounts excludes archived accounts from standalone sections", () => {
+    const src = read(SECTION_FILE);
+    const fnStart = src.indexOf("function classifyAccounts");
+    const fnEnd = src.indexOf("\nfunction ", fnStart + 1);
+    const fnSrc = src.slice(fnStart, fnEnd);
+    assert.ok(
+      fnSrc.includes('protectionStatus !== "archived"'),
+      "classifyAccounts must exclude archived accounts from standalone buckets",
+    );
+  });
+
+  test("archived accounts inside card show 'Already archived' text, not a remove button", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(
+      src.includes("Already archived"),
+      "card must show 'Already archived' copy for archived linked accounts",
+    );
+  });
+});
+
+// ── Settings page loads archived accounts for broker connection cards ─────────
+
+describe("Settings page — full account inventory for broker connections", () => {
+  test("settings page query includes archived accounts with brokerConnectionId", () => {
+    const pageSrc = readFileSync(resolve(import.meta.dirname, "../page.tsx"), "utf8");
+    assert.ok(
+      pageSrc.includes('"archived"') && pageSrc.includes("OR"),
+      "settings page connectedAccounts query must include archived accounts via OR clause",
+    );
+  });
+
+  test("settings page sidebar still excludes archived accounts (protected/monitor_only only)", () => {
+    const pageSrc = readFileSync(resolve(import.meta.dirname, "../page.tsx"), "utf8");
+    assert.ok(
+      pageSrc.includes("sidebarAccounts") &&
+        pageSrc.includes('"protected"') &&
+        pageSrc.includes('"monitor_only"'),
+      "settings sidebar must still filter to protected/monitor_only only",
+    );
+  });
+});
