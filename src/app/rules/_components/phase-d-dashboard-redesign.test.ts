@@ -106,34 +106,39 @@ describe("RulesOverviewScreen — Phase D premium card anatomy", () => {
 
 // ── ScopeSelector — Phase D app-shell enhancements ───────────────────────────
 
-describe("ScopeSelector — Phase D connection status dot", () => {
+describe("ScopeSelector — per-account rows (redesigned sidebar)", () => {
   const SRC = read("scope-selector.tsx");
 
-  it("has a connectionDotCls helper for status dots", () => {
+  it("renders one clickable account row per account via AccountRow", () => {
+    assert.ok(SRC.includes("AccountRow"), "sidebar must render a single AccountRow per account");
     assert.ok(
-      SRC.includes("connectionDotCls"),
-      "scope selector must use a connectionDotCls helper for group header status dots",
+      SRC.includes("/rules?scope=account&id="),
+      "each account row must link to its account scope",
     );
   });
 
-  it("live connection maps to emerald dot", () => {
+  it("derives a per-account status badge (Active plan / Needs rules / Reconnect)", () => {
     assert.ok(
-      SRC.includes("bg-emerald-400"),
-      "connected_live status must show an emerald dot in the group header",
+      SRC.includes("deriveScopeAccountBadge"),
+      "each account row must show a derived status badge",
     );
   });
 
-  it("selected account still uses amber border (regression guard)", () => {
+  it("renders a metadata line (Live/Demo · firm · type) per account", () => {
+    assert.ok(SRC.includes("accountMetaLine"), "account rows must show a metadata line");
+  });
+
+  it("selected account uses the copper border (warm design)", () => {
+    assert.ok(
+      SRC.includes("var(--gr-copper-bd)"),
+      "selected account row must use the copper border token",
+    );
+  });
+
+  it("starter/defaults item keeps an amber selected state (regression guard)", () => {
     assert.ok(
       SRC.includes("border-amber"),
-      "selected account item must still use an amber border (warm design regression guard)",
-    );
-  });
-
-  it("selected starter badge still uses amber-600 (regression guard)", () => {
-    assert.ok(
-      SRC.includes("bg-amber-600"),
-      "selected starter badge must still use amber-600 (warm design regression guard)",
+      "the starter/defaults item must keep an amber selected border",
     );
   });
 

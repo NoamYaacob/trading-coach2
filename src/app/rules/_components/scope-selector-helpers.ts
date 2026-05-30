@@ -85,15 +85,21 @@ export function deriveAccountSubtitleSuffix(
  * Derives the per-account badge shown inside a group's account list.
  * Always returns a badge — never null.
  *
- * Priority: inactive > action required > active plan > no plan yet.
+ * Priority: inactive > reconnect > action required > active plan > needs rules.
  */
 export function deriveScopeAccountBadge(input: {
   isUnavailable: boolean;
   requiresAutomatedActionsConsent: boolean;
   hasAccountRules: boolean;
+  /** Broker connection status — drives a "Reconnect" badge when the OAuth
+   *  grant is dead. Optional so existing callers/tests stay valid. */
+  connectionStatus?: string;
 }): ScopeBadge {
   if (input.isUnavailable) {
     return { label: "Inactive", cls: "bg-amber-100 text-amber-700" };
+  }
+  if (input.connectionStatus && DISCONNECTED_STATUSES.has(input.connectionStatus)) {
+    return { label: "Reconnect", cls: "bg-orange-100 text-orange-700" };
   }
   if (input.requiresAutomatedActionsConsent) {
     return { label: "Action required", cls: "bg-amber-100 text-amber-800" };
@@ -101,5 +107,5 @@ export function deriveScopeAccountBadge(input: {
   if (input.hasAccountRules) {
     return { label: "Active plan", cls: "bg-emerald-100 text-emerald-700" };
   }
-  return { label: "No plan yet", cls: "bg-stone-100 text-stone-500" };
+  return { label: "Needs rules", cls: "bg-stone-100 text-stone-500" };
 }

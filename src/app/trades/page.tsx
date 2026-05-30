@@ -225,16 +225,11 @@ export default async function TradesPage({
           <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
             Closed round-trips · last {rangeDays}d
           </span>
-          <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.15, color: "var(--gr-ink)", margin: "6px 0 0" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>
             {!hasAccounts ? (
               <>No accounts connected yet.</>
             ) : selectedAccount ? (
-              <>
-                Trades for{" "}
-                <span style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}>
-                  {selectedAccount.label}
-                </span>
-              </>
+              <>{selectedAccount.label}</>
             ) : (
               <>No active accounts.</>
             )}

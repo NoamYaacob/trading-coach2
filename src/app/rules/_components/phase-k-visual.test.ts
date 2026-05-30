@@ -41,24 +41,23 @@ describe("ScopeSelector — Phase K copper selected account", () => {
     );
   });
 
-  it("group header firm label uses --gr-ink (not stone-800)", () => {
+  it("account name uses --gr-ink (strong legible hierarchy)", () => {
     assert.ok(
       SRC.includes("var(--gr-ink)"),
-      "group header firm label must use --gr-ink for strong legible hierarchy",
+      "selected account name must use --gr-ink for strong legible hierarchy",
     );
   });
 
-  it("group header sub-text uses --gr-text-mute (not stone-400)", () => {
+  it("account metadata sub-text uses --gr-text-mute (not stone-400)", () => {
     assert.ok(
       SRC.includes("var(--gr-text-mute)"),
-      "group header sub-text must use --gr-text-mute (GR token, not hardcoded stone-400)",
+      "account metadata sub-text must use --gr-text-mute (GR token, not hardcoded stone-400)",
     );
   });
 
-  it("prior amber regression guards still pass (connectionDotCls, bg-emerald-400, bg-amber-600)", () => {
-    assert.ok(SRC.includes("connectionDotCls"), "connectionDotCls helper must still be present");
-    assert.ok(SRC.includes("bg-emerald-400"), "live connection dot must still be emerald");
-    assert.ok(SRC.includes("bg-amber-600"), "starter badge must still use amber-600");
+  it("warm-design regression guards still pass (copper selected, amber starter)", () => {
+    assert.ok(SRC.includes("var(--gr-copper-bd)"), "selected account must use the copper border token");
+    assert.ok(SRC.includes("var(--gr-copper-bg)"), "selected account must use the copper fill token");
     assert.ok(SRC.includes("border-amber"), "starter item must keep amber border (regression guard)");
   });
 });

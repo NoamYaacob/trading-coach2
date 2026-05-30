@@ -11,7 +11,7 @@
  *   Edit button is suppressed entirely — the card still looks premium, not
  *   greyed-out.
  */
-import { useState, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { RuleStatusBadge, type RuleStatusVariant } from "../rule-status-badge";
 
 export function RuleCardGroup({
@@ -37,6 +37,7 @@ export function RuleCard({
   displayValue,
   emptyText = "Not set",
   helper,
+  helpDetail,
   pendingNote,
   disabled = false,
   children,
@@ -48,6 +49,8 @@ export function RuleCard({
   /** Text shown when displayValue is empty (default "Not set"). */
   emptyText?: string;
   helper: string;
+  /** Optional detailed explanation shown when the user clicks the ? button. */
+  helpDetail?: string;
   pendingNote?: string | null;
   /** When true, suppresses the Edit button and locks the card in read mode. */
   disabled?: boolean;
@@ -55,6 +58,8 @@ export function RuleCard({
   children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const helpBtnRef = useRef<HTMLButtonElement>(null);
   const isEmpty = displayValue.trim() === "";
   const canEdit = !disabled && !!children;
 
@@ -69,9 +74,27 @@ export function RuleCard({
       {/* Label + badge + edit toggle */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-stone-400">
-            {label}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-stone-400">
+              {label}
+            </span>
+            {helpDetail && (
+              <button
+                ref={helpBtnRef}
+                type="button"
+                onClick={() => setShowHelp((v) => !v)}
+                aria-label={`Help for ${label}`}
+                aria-expanded={showHelp}
+                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border text-[8px] font-bold transition ${
+                  showHelp
+                    ? "border-amber-400 bg-amber-50 text-amber-700"
+                    : "border-stone-300 bg-white text-stone-400 hover:border-stone-400 hover:text-stone-600"
+                }`}
+              >
+                ?
+              </button>
+            )}
+          </div>
           <RuleStatusBadge variant={status} compact />
         </div>
         {canEdit && !editing && (
@@ -113,6 +136,12 @@ export function RuleCard({
 
       {/* Helper */}
       <p className="mt-2.5 text-[11px] leading-snug text-stone-400">{helper}</p>
+
+      {helpDetail && showHelp && (
+        <p className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
+          {helpDetail}
+        </p>
+      )}
 
       {pendingNote && (
         <p className="mt-1 text-xs font-medium text-amber-600">{pendingNote}</p>

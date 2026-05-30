@@ -131,6 +131,7 @@ export function CoreRulesSection({
           displayValue={displayMoney(values.maxDailyLoss)}
           emptyText="Not set"
           helper="Locks when P&L crosses this loss"
+          helpDetail="Guardrail locks the account the moment today's P&L crosses this threshold. On supported Tradovate connections with full access, this limit is also written to Tradovate's own risk settings so the broker enforces it independently."
           pendingNote={pendingNotes?.maxDailyLoss ?? null}
           disabled={disabled}
         >
@@ -147,6 +148,7 @@ export function CoreRulesSection({
           displayValue={displayMoney(values.riskPerTrade)}
           emptyText="Not set"
           helper="Warning only — no lock"
+          helpDetail="Guardrail flags when a single trade's risk exceeds this amount but does not lock the account. Useful as a personal reminder, not a hard stop."
           pendingNote={pendingNotes?.riskPerTrade ?? null}
           disabled={disabled}
         >
@@ -166,6 +168,7 @@ export function CoreRulesSection({
           displayValue={displayCount(values.maxTradesPerDay)}
           emptyText="Not set"
           helper="Locks after allowance is exceeded"
+          helpDetail="Guardrail locks the account after this many completed round-trips in one trading day. The lock fires inside the app; no broker orders are cancelled. Resets at the next trading session."
           pendingNote={pendingNotes?.maxTradesPerDay ?? null}
           disabled={disabled}
         >
@@ -182,6 +185,7 @@ export function CoreRulesSection({
           displayValue={displayCount(values.stopAfterLosses)}
           emptyText="Not set"
           helper="Stops trading after this many consecutive losses"
+          helpDetail="Locks the account when you hit this many losses in a row. A winning trade resets the streak to zero. Designed to protect against revenge trading — resets at the next session."
           pendingNote={pendingNotes?.stopAfterLosses ?? null}
           disabled={disabled}
         >
@@ -201,6 +205,7 @@ export function CoreRulesSection({
           displayValue={displayCount(values.maxContracts)}
           emptyText="Not set"
           helper={MAX_POSITION_SIZE_COPY.hint}
+          helpDetail="Guardrail locks the account if an open position exceeds this contract count. Measured in standard-equivalent contracts — 1 MES counts as 0.1 of 1 ES. See 'View contract sizing' below for the full table."
           pendingNote={pendingNotes?.maxContracts ?? null}
           disabled={disabled}
         >

@@ -128,9 +128,15 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "source_not_found" }, { status: 404 });
   }
 
-  const sourceRules = await prisma.accountRiskRules.findUnique({
-    where: { accountId: sourceAccountId },
-  });
+  const [sourceRules, existingTargetRules] = await Promise.all([
+    prisma.accountRiskRules.findUnique({
+      where: { accountId: sourceAccountId },
+    }),
+    prisma.accountRiskRules.findUnique({
+      where: { accountId: id },
+      select: { accountId: true },
+    }),
+  ]);
   if (!sourceRules) {
     return NextResponse.json({ error: "source_has_no_rules" }, { status: 422 });
   }
@@ -138,8 +144,13 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
   const userAgent = req.headers.get("user-agent") ?? null;
 
-  // Session lock check — all 3 signals, no first-time-setup exemption.
-  // Copying rules after trading has started could change active monitoring.
+  // Session lock check — all 3 signals (tradesCount, lastTradeAt,
+  // NormalizedTradeEvent). Copying into an account that ALREADY has rules can
+  // weaken active monitoring, so it is blocked after trading starts. Copying
+  // into an account with no existing rules is first-time setup — it only adds
+  // protection where there was none, so it stays allowed (mirrors the PATCH
+  // create exemption).
+  const isFirstTimeSetup = !existingTargetRules;
   const tradingDayKey = deriveCmeTradingDayKey(new Date());
   const sessionStart = getCmeSessionStartForKey(tradingDayKey);
 
@@ -157,7 +168,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       deriveCmeTradingDayKey(liveState.lastTradeAt) === tradingDayKey);
   const hasTradeEventToday = accountsWithTrades.has(id);
 
-  if (liveStateHasTraded || hasTradeEventToday) {
+  if (!isFirstTimeSetup && (liveStateHasTraded || hasTradeEventToday)) {
     await writeRuleChangeAudit({
       userId: currentUser.id,
       accountId: id,
@@ -174,7 +185,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       {
         error: "session_already_traded",
         message:
-          "Rules are locked for this session — this account has already traded. Changes can be made after the session resets.",
+          "You already started trading this account today. To protect your rules, changes will be available next trading day.",
       },
       { status: 423 },
     );

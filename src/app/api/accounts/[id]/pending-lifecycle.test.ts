@@ -316,14 +316,14 @@ test("rules route uses deriveCmeTradingDayKey to anchor the session day check", 
   );
 });
 
-test("account route 423 message for session_already_traded references the session", () => {
+test("account route 423 message for session_already_traded references the trading day", () => {
   assert.ok(
-    /already traded/.test(accountRouteSrc),
-    "account route 423 message must say 'already traded'",
+    /already.*trading.*today|started trading.*today/.test(accountRouteSrc),
+    "account route 423 message must reference trading today",
   );
   assert.ok(
-    /session resets/.test(accountRouteSrc),
-    "account route 423 message must say 'session resets'",
+    /next trading day|trading day/.test(accountRouteSrc),
+    "account route 423 message must reference the next trading day",
   );
 });
 
