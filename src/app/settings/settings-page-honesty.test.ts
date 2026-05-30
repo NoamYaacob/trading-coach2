@@ -201,4 +201,11 @@ describe("Settings page — sidebar account filtering", () => {
       "settings page must compute sidebarAccounts separately from connectedAccounts",
     );
   });
+
+  it("excludes accounts on an expired or errored broker connection", () => {
+    assert.ok(
+      PAGE_SRC.includes('"expired"') && PAGE_SRC.includes('"connection_error"'),
+      "settings sidebar must exclude expired / connection_error connections",
+    );
+  });
 });

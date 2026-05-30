@@ -132,12 +132,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const googleConnected = Boolean(googleConnection);
 
   // ── Sidebar: compact account list (same style as dashboard) ──────────────
-  // Only show selectable accounts: active protection status, broker still returning them.
-  const sidebarAccounts = connectedAccounts.filter(
-    (acc) =>
+  // Only show selectable accounts: active protection status, broker still
+  // returning them, and a live (non-expired) connection. The BrokerConnection
+  // status is authoritative — it is updated immediately on expiry while the
+  // account-level status can lag (same rule the dashboard applies).
+  const sidebarAccounts = connectedAccounts.filter((acc) => {
+    const effectiveStatus =
+      acc.brokerConnection?.connectionStatus ?? acc.connectionStatus;
+    return (
       (acc.protectionStatus === "protected" || acc.protectionStatus === "monitor_only") &&
-      acc.missingFromBrokerSince == null,
-  );
+      acc.missingFromBrokerSince == null &&
+      effectiveStatus !== "expired" &&
+      effectiveStatus !== "connection_error"
+    );
+  });
   const SidebarAccountList = sidebarAccounts.length > 0 ? (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {sidebarAccounts.slice(0, 5).map((acc) => {

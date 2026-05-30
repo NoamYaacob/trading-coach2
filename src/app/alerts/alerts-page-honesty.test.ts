@@ -223,4 +223,12 @@ describe("/alerts page — sidebar account filtering", () => {
       "alerts sidebar must filter missingFromBrokerSince: null to exclude unavailable accounts",
     );
   });
+
+  it("excludes accounts on an expired or errored broker connection", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('"expired"') &&
+        ALERTS_PAGE_SRC.includes('"connection_error"'),
+      "alerts sidebar must exclude expired / connection_error connections",
+    );
+  });
 });
