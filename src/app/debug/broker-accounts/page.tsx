@@ -129,6 +129,63 @@ export default async function BrokerAccountsDiagnosticsPage() {
           </p>
         </div>
 
+        {/* Verdict */}
+        {(() => {
+          const verdicts: string[] = [];
+          for (const conn of connections) {
+            if (conn.connectionStatus === "expired" || conn.connectionStatus === "connection_error") {
+              const linked = accountsByConn.get(conn.id) ?? [];
+              const liveLinked = linked.filter((a) => a.missingFromBrokerSince == null);
+              if (liveLinked.length > 0) {
+                const names = liveLinked.map((a) => a.label).join(", ");
+                verdicts.push(
+                  `Reconnect expired ${conn.platform === "tradovate" ? "Tradovate" : conn.platform} ${conn.env === "live" ? "Live" : conn.env === "demo" ? "Demo" : ""} connection — has ${liveLinked.length} linked account(s): ${names}`,
+                );
+              }
+            }
+          }
+          for (const conn of connections) {
+            if (conn.connectionStatus === "connected_readonly" || conn.connectionStatus === "connected_live") {
+              const linked = accountsByConn.get(conn.id) ?? [];
+              if (linked.length === 0) {
+                verdicts.push(
+                  `Active ${conn.env === "live" ? "Live" : "Demo"} connection (${conn.id.slice(0, 8)}…) has no linked accounts — run sync or check Tradovate user`,
+                );
+              }
+              const externalIds = linked.map((a) => a.externalAccountId).filter(Boolean).join(", ");
+              if (externalIds) {
+                verdicts.push(
+                  `Active ${conn.env === "live" ? "Live" : "Demo"} connection contains: ${externalIds}${conn.brokerUserId ? ` (Tradovate user ${conn.brokerUserId})` : " (Tradovate user unknown)"}`,
+                );
+              }
+            }
+          }
+          const pendingCount = accounts.filter((a) => a.protectionStatus === "pending_decision").length;
+          if (pendingCount === 0) {
+            verdicts.push("No pending_decision accounts — new account not yet discovered by any active connection");
+          } else {
+            verdicts.push(`${pendingCount} pending_decision account(s) found — should appear in dashboard 'New account detected' panel`);
+          }
+          return (
+            <SectionCard title="Verdict">
+              {verdicts.length === 0 ? (
+                <p className="text-xs text-stone-500">No issues detected.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {verdicts.map((v, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-xs text-stone-700"
+                    >
+                      {v}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          );
+        })()}
+
         {/* Quick summary */}
         <SectionCard title="Quick summary">
           <div className="grid gap-1">

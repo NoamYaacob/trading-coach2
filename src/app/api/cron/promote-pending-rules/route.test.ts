@@ -160,3 +160,40 @@ test("cron route delegates promotion entirely to the promoter library", () => {
     "route must not contain inline Prisma writes — those belong in the promoter library",
   );
 });
+
+// ── Connected-account protection promotion ────────────────────────────────────
+
+test("cron route also calls promotePendingConnectedAccountProtection", () => {
+  assert.ok(
+    /promotePendingConnectedAccountProtection/.test(src()),
+    "route must call promotePendingConnectedAccountProtection to apply deferred archives",
+  );
+});
+
+test("cron route imports from pending-connected-account-promoter", () => {
+  assert.ok(
+    /pending-connected-account-promoter/.test(src()),
+    "route must import from pending-connected-account-promoter",
+  );
+});
+
+test("cron route includes promotedAccountProtectionCount in success response", () => {
+  assert.ok(
+    /promotedAccountProtectionCount/.test(src()),
+    "route success response must include promotedAccountProtectionCount",
+  );
+});
+
+test("pending-connected-account-promoter source does not import Tradovate", () => {
+  const promoterSrc = readFileSync(
+    join(REPO_ROOT, "src", "lib", "pending-connected-account-promoter.ts"),
+    "utf8",
+  );
+  const stripped = promoterSrc
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(
+    !/from\s+["']@\/lib\/brokers\//.test(stripped),
+    "pending-connected-account-promoter must not import from @/lib/brokers",
+  );
+});

@@ -95,6 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         missingFromBrokerSince: true,
         lastSyncAt: true,
         brokerConnectionId: true,
+        pendingProtectionStatus: true,
         brokerConnection: {
           select: {
             id: true,
@@ -115,6 +116,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         connectionStatus: true,
         permissionLevel: true,
         createdAt: true,
+        brokerUserId: true,
+        tokenExpiresAt: true,
+        lastReconciliationAt: true,
+        lastReconciliationStatus: true,
+        lastReconciledAccountCount: true,
       },
       orderBy: { createdAt: "asc" },
     }),

@@ -9,6 +9,7 @@ import {
   getProtectionLockState,
   type ProtectionStatus,
 } from "@/lib/account-protection";
+import { checkAccountRemovalEligibility } from "@/lib/account-removal-guard";
 
 const VALID_STATUSES: ProtectionStatus[] = [
   "protected",
@@ -80,11 +81,47 @@ export async function POST(
     return NextResponse.json({ ok: true, applied: true, status: currentStatus });
   }
 
-  // Archiving always applies immediately regardless of the protection lock.
-  // The lock exists to prevent accidental protection downgrade on live accounts
-  // during trading hours. Archiving is explicit cleanup for unavailable accounts
-  // and is reversible (restore by changing status back to protected/monitor_only).
+  // Archive path: check the rule-breach / lock guard before applying.
+  //
+  // The CME disconnect-window check (account-protection) is bypassed for
+  // archiving (existing intentional design — users can clean up unavailable
+  // accounts at any time). But we CANNOT bypass a rule lockout or session
+  // stop: that would let a user escape Guardrail consequences by archiving
+  // the account right after a breach.
+  //
+  // Unavailable accounts (missingFromBrokerSince set) always bypass the
+  // guard — no active trades or enforcement is happening on them.
   if (newStatus === "archived") {
+    const eligibility = await checkAccountRemovalEligibility(account.id, user.id);
+
+    if (!eligibility.canRemoveNow) {
+      // Defer archive to next trading day via the existing pending mechanism.
+      await prisma.connectedAccount.update({
+        where: { id: account.id },
+        data: {
+          pendingProtectionStatus: "archived",
+          pendingProtectionEffectiveDate: eligibility.nextTradingDay,
+        },
+      });
+      console.info("[account-protection] archive deferred (rule lock)", {
+        accountId: account.id,
+        userId: user.id,
+        previousStatus: currentStatus,
+        lockReason: eligibility.lockReason,
+        nextTradingDay: eligibility.nextTradingDay,
+      });
+      return NextResponse.json({
+        ok: true,
+        applied: false,
+        reason: "rule_breach_or_lock",
+        status: currentStatus,
+        pendingStatus: "archived",
+        effectiveDate: eligibility.nextTradingDay,
+        message:
+          "This account is locked or has rule activity today. To prevent bypassing Guardrail, removal will take effect at the next trading session reset.",
+      });
+    }
+
     await prisma.connectedAccount.update({
       where: { id: account.id },
       data: {

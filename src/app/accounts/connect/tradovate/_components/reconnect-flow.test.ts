@@ -219,31 +219,30 @@ describe("broker-connections-section — orphaned connection remove button", () 
     assert.ok(brokerConnectionsSection.includes("RemoveBrokerConnectionButton"));
   });
 
-  test("renders RemoveBrokerConnectionButton in OrphanedConnectionRow", () => {
-    const orphanedFnStart = brokerConnectionsSection.indexOf(
-      "function OrphanedConnectionRow",
-    );
-    const orphanedFnEnd = brokerConnectionsSection.indexOf("\nfunction ", orphanedFnStart + 1);
-    const orphanedFn = brokerConnectionsSection.slice(orphanedFnStart, orphanedFnEnd);
+  test("renders RemoveBrokerConnectionButton in BrokerConnectionCard for zero-account expired connections", () => {
+    const cardFnStart = brokerConnectionsSection.indexOf("function BrokerConnectionCard");
+    const cardFnEnd = brokerConnectionsSection.indexOf("\nfunction ", cardFnStart + 1);
+    const cardFn = brokerConnectionsSection.slice(cardFnStart, cardFnEnd);
     assert.ok(
-      orphanedFn.includes("RemoveBrokerConnectionButton"),
-      "OrphanedConnectionRow must render RemoveBrokerConnectionButton",
+      cardFn.includes("RemoveBrokerConnectionButton"),
+      "BrokerConnectionCard must render RemoveBrokerConnectionButton for orphaned expired connections",
     );
   });
 
-  test("orphaned row passes connectionId={bc.id} to RemoveBrokerConnectionButton", () => {
-    assert.ok(brokerConnectionsSection.includes("connectionId={bc.id}"));
+  test("BrokerConnectionCard passes connectionId={conn.id} to RemoveBrokerConnectionButton", () => {
+    assert.ok(
+      brokerConnectionsSection.includes("connectionId={conn.id}"),
+      "must pass conn.id as connectionId to RemoveBrokerConnectionButton",
+    );
   });
 
-  test("ExpiredConnectionGroupCard (linked accounts) has no RemoveBrokerConnectionButton", () => {
-    const groupCardStart = brokerConnectionsSection.indexOf(
-      "function ExpiredConnectionGroupCard",
-    );
-    const groupCardEnd = brokerConnectionsSection.indexOf("\nfunction ", groupCardStart + 1);
-    const groupCard = brokerConnectionsSection.slice(groupCardStart, groupCardEnd);
+  test("Remove button only appears when expired and no linked accounts", () => {
+    const cardFnStart = brokerConnectionsSection.indexOf("function BrokerConnectionCard");
+    const cardFnEnd = brokerConnectionsSection.indexOf("\nfunction ", cardFnStart + 1);
+    const cardFn = brokerConnectionsSection.slice(cardFnStart, cardFnEnd);
     assert.ok(
-      !groupCard.includes("RemoveBrokerConnectionButton"),
-      "grouped expired card (with accounts) must not have a remove button",
+      cardFn.includes("linkedAccounts.length === 0"),
+      "remove button must be gated on linkedAccounts.length === 0",
     );
   });
 });
