@@ -6,12 +6,20 @@ import { AccountDiscoveryHelper } from "./account-discovery-helper";
 import { DisconnectConnectionButton } from "./disconnect-connection-button";
 import Link from "next/link";
 import { type DisconnectWindowState } from "@/lib/broker-disconnect-window";
+import {
+  deriveAccountDisplayLabel,
+  deriveConnectionIdentity,
+} from "@/lib/account-display";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type BrokerAccountRow = {
   id: string;
   label: string;
+  displayName: string | null;
+  externalAccountId: string | null;
+  propFirm: string | null;
+  accountType: string | null;
   platform: string;
   connectionStatus: string;
   connectedAt: Date | null;
@@ -63,6 +71,66 @@ function isExpiredStatus(status: string): boolean {
 
 function reconnectUrlForConnection(bc: { id: string; env: string }): string {
   return `/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`;
+}
+
+const ACCOUNT_TYPE_DISPLAY: Record<string, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  personal: "Personal",
+  demo: "Demo",
+};
+
+/**
+ * Short "firm · type" descriptor under an account's friendly name, e.g.
+ * "MyFundedFutures · Evaluation". Returns null when neither is known.
+ */
+function accountTypeDescriptor(acct: {
+  propFirm: string | null;
+  accountType: string | null;
+}): string | null {
+  const parts: string[] = [];
+  const firm = acct.propFirm?.trim();
+  if (firm) parts.push(firm);
+  if (acct.accountType) parts.push(ACCOUNT_TYPE_DISPLAY[acct.accountType] ?? acct.accountType);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+const ACTION_PILL =
+  "inline-flex items-center rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950";
+
+/**
+ * One row inside a connection's expanded "Show accounts" list. Shows the
+ * user-friendly name, firm/type descriptor, an Active status pill, and the
+ * account-level actions (Manage rules, View trades, Remove from Guardrail).
+ * Remove reuses the guarded archive flow via RemoveAccountButton.
+ */
+function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
+  const descriptor = accountTypeDescriptor(acct);
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-stone-100 bg-white px-3 py-2.5">
+      <div className="grid min-w-0 gap-1 text-sm">
+        <p className="truncate font-medium text-stone-800">{deriveAccountDisplayLabel(acct)}</p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+          {descriptor && <span>{descriptor}</span>}
+          <StatusPill label="Active" color="emerald" />
+        </div>
+        {acct.pendingProtectionStatus === "archived" && (
+          <p className="text-xs text-amber-700">
+            Removal scheduled — takes effect at the next trading session reset
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <Link href={`/rules?scope=account&id=${acct.id}`} className={ACTION_PILL}>
+          Manage rules
+        </Link>
+        <Link href={`/trades?accountId=${acct.id}`} className={ACTION_PILL}>
+          View trades
+        </Link>
+        <RemoveAccountButton accountId={acct.id} redirectTo="/settings" />
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -144,6 +212,14 @@ function BrokerConnectionCard({
   const archivedAccounts = linkedAccounts.filter((a) => a.protectionStatus === "archived");
   // Active accounts = everything the disconnect endpoint will act on.
   const activeAccounts = linkedAccounts.filter((a) => a.protectionStatus !== "archived");
+  // Real trading accounts under this connection — what we name and list.
+  // (Pending-setup and missing-from-broker accounts keep their own dedicated
+  // sections below, so they are not duplicated inside this list.)
+  const tradingAccounts = activeAccounts.filter(
+    (a) =>
+      a.missingFromBrokerSince == null &&
+      a.protectionStatus !== "pending_decision",
+  );
 
   // The DELETE route succeeds only when every linked account is already
   // archived (it unlinks them, preserving history, then deletes the
@@ -152,13 +228,20 @@ function BrokerConnectionCard({
 
   const reconnectUrl = reconnectUrlForConnection(conn);
 
+  // Friendly identity, e.g. "Tradovate Demo · MyFundedFutures" / "· 3 accounts".
+  const identity = deriveConnectionIdentity(
+    platformLabel(conn.platform),
+    envLabel(conn.env),
+    tradingAccounts,
+  );
+
   return (
     <div
       className={`rounded-xl border px-4 py-4 ${expired ? "border-amber-200 bg-amber-50/40" : "border-stone-100 bg-white"}`}
     >
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="grid gap-1.5">
+        <div className="grid min-w-0 gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${
@@ -172,36 +255,8 @@ function BrokerConnectionCard({
             <StatusPill label={status.label} color={status.color} />
           </div>
 
-          {/* Provider */}
-          <p className="text-sm font-medium text-stone-800">{platformLabel(conn.platform)}</p>
-
-          {/* Linked account summary — user-friendly. One account shows its label
-              inline; multiple accounts collapse into an expandable label list.
-              Archived accounts are summarized separately below. */}
-          {activeAccounts.length === 0 ? (
-            <p className="text-xs text-stone-400">No linked accounts</p>
-          ) : activeAccounts.length === 1 ? (
-            <p className="text-xs text-stone-500">
-              1 linked account ·{" "}
-              <span className="font-medium text-stone-700">{activeAccounts[0].label}</span>
-            </p>
-          ) : (
-            <details className="text-xs text-stone-500">
-              <summary className="cursor-pointer list-none">
-                <span className="underline-offset-2 hover:underline">
-                  {activeAccounts.length} linked accounts
-                </span>
-              </summary>
-              <ul className="mt-1.5 grid gap-1 pl-0.5">
-                {activeAccounts.map((acct) => (
-                  <li key={acct.id} className="flex items-center gap-1.5">
-                    <span aria-hidden className="text-stone-300">·</span>
-                    <span className="font-medium text-stone-700">{acct.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          {/* Friendly connection identity — provider + env + firm/type summary */}
+          <p className="text-sm font-medium text-stone-800">{identity}</p>
 
           {/* Scheduled-removal note — surfaced at connection level so a deferred
               archive (locked / rule-active account) stays visible without
@@ -241,6 +296,22 @@ function BrokerConnectionCard({
         </div>
       </div>
 
+      {/* Trading accounts — collapsed by default ("Show accounts" / "Hide accounts") */}
+      {tradingAccounts.length > 0 && (
+        <details className="group mt-3 border-t border-stone-100 pt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-stone-600">
+            <span className="text-stone-400 transition-transform group-open:rotate-90">▸</span>
+            <span className="group-open:hidden">Show accounts ({tradingAccounts.length})</span>
+            <span className="hidden group-open:inline">Hide accounts</span>
+          </summary>
+          <div className="mt-2 grid gap-1.5">
+            {tradingAccounts.map((acct) => (
+              <LinkedAccountRow key={acct.id} acct={acct} />
+            ))}
+          </div>
+        </details>
+      )}
+
       {/* Archived accounts — collapsed secondary list */}
       {archivedAccounts.length > 0 && (
         <details className="mt-3 border-t border-stone-100 pt-3">
@@ -254,7 +325,7 @@ function BrokerConnectionCard({
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-100 bg-stone-50 px-3 py-2"
               >
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="font-medium text-stone-500">{acct.label}</span>
+                  <span className="font-medium text-stone-500">{deriveAccountDisplayLabel(acct)}</span>
                   <StatusPill label="Archived" color="stone" />
                 </div>
                 <span className="text-[11px] text-stone-400">
@@ -282,7 +353,7 @@ function PendingAccountCard({ acct }: { acct: BrokerAccountRow }) {
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1 text-sm">
-          <p className="font-medium text-stone-950">{acct.label}</p>
+          <p className="font-medium text-stone-950">{deriveAccountDisplayLabel(acct)}</p>
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
             <span>{subtitle}</span>
             <StatusPill label="Setup needed" color="amber" />
@@ -417,7 +488,7 @@ export function BrokerConnectionsSection({
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="grid gap-1 text-sm">
-                      <p className="font-medium text-stone-700">{acct.label}</p>
+                      <p className="font-medium text-stone-700">{deriveAccountDisplayLabel(acct)}</p>
                       <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-400">
                         <span>{subtitle}</span>
                         <StatusPill label="Inactive" color="stone" />

@@ -468,6 +468,11 @@ model ConnectedAccount {
   id                String           @id @default(cuid())
   userId            String
   label             String
+  // Optional user-facing name. When set, this is shown everywhere a human
+  // reads the account (sidebar, dashboard cards, settings, rules/trades
+  // selectors) in preference to `label`/externalAccountId. `label` and
+  // `externalAccountId` are kept for internal/broker identity and never replaced.
+  displayName       String?
   externalAccountId String?
   platform          TradingPlatform  @default(manual)
   propFirm          String?

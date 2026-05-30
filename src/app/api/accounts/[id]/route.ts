@@ -52,6 +52,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
   const body = (await req.json()) as {
     label?: string;
+    /** Optional user-facing name. Trimmed; empty string clears it back to null
+     *  so the friendly fallback label applies again. */
+    displayName?: string | null;
     platform?: string;
     propFirm?: string | null;
     accountType?: string;
@@ -119,6 +122,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     where: { id },
     data: {
       ...(body.label !== undefined && { label: body.label }),
+      ...(body.displayName !== undefined && {
+        displayName: body.displayName?.trim() || null,
+      }),
       ...(platform !== undefined && { platform }),
       ...(body.propFirm !== undefined && { propFirm: body.propFirm }),
       ...(accountType !== undefined && { accountType }),

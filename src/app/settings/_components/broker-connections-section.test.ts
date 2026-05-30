@@ -63,34 +63,38 @@ describe("BrokerConnectionCard — user-facing content only", () => {
     );
   });
 
-  test("card shows a user-friendly linked-account summary (label inline for one)", () => {
+  test("card shows a friendly connection identity (provider + env + firm/type)", () => {
     const card = cardSource();
-    assert.ok(card.includes("linked account"), "card must show a linked-account summary");
-    // Single account → show its label inline ("1 linked account · <label>").
     assert.ok(
-      card.includes("1 linked account") && card.includes("activeAccounts[0].label"),
-      "a single linked account must show its label inline",
+      card.includes("deriveConnectionIdentity("),
+      "card must derive a friendly identity, not just 'Tradovate'",
+    );
+    assert.ok(card.includes("{identity}"), "card must render the derived identity");
+  });
+
+  test("linked accounts are collapsed by default with Show/Hide toggle", () => {
+    const card = cardSource();
+    assert.ok(card.includes("<details"), "accounts must be in a collapsed <details>");
+    assert.ok(card.includes("Show accounts"), "must offer 'Show accounts'");
+    assert.ok(card.includes("Hide accounts"), "must offer 'Hide accounts' when open");
+  });
+
+  test("expanded list renders friendly per-account rows", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(src.includes("LinkedAccountRow"), "must render LinkedAccountRow components");
+    assert.ok(
+      /tradingAccounts\.map\(\(acct\)[\s\S]*?LinkedAccountRow/.test(src),
+      "must map the connection's trading accounts to rows",
     );
   });
 
-  test("multiple linked accounts collapse into an expandable label list", () => {
+  test("identity and account list are based on trading (non-archived, present) accounts", () => {
     const card = cardSource();
+    assert.ok(card.includes("tradingAccounts"), "card must compute a tradingAccounts list");
     assert.ok(
-      card.includes("{activeAccounts.length} linked accounts"),
-      "multiple accounts must show a count summary",
-    );
-    assert.ok(
-      /activeAccounts\.map\(\(acct\)[\s\S]*?acct\.label/.test(card),
-      "multiple accounts must render an expandable list of account labels",
-    );
-  });
-
-  test("linked-account summary is based on active (non-archived) accounts", () => {
-    const card = cardSource();
-    assert.ok(
-      card.includes("activeAccounts.length === 0") &&
-        card.includes("activeAccounts.length === 1"),
-      "summary must branch on the active (non-archived) account count",
+      card.includes('a.protectionStatus !== "pending_decision"') &&
+        card.includes("a.missingFromBrokerSince == null"),
+      "trading accounts must exclude pending-setup and missing accounts",
     );
   });
 });
@@ -213,9 +217,9 @@ describe("BrokerConnectionCard — archived accounts list", () => {
     );
   });
 
-  test("archived accounts show label, Archived badge, and unlink note", () => {
+  test("archived accounts show friendly label, Archived badge, and unlink note", () => {
     const card = cardSource();
-    assert.ok(card.includes("acct.label"), "must show account label");
+    assert.ok(card.includes("deriveAccountDisplayLabel(acct)"), "must show the friendly account label");
     assert.ok(card.includes('label="Archived"'), "must show an Archived badge");
     assert.ok(
       card.includes("Will be unlinked when this connection is removed"),

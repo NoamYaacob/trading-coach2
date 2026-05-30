@@ -268,26 +268,52 @@ describe("F. Product status is hidden from the main Settings flow", () => {
   });
 });
 
-// ── G. Broker card: user-friendly linked-account summary ──────────────────────
+// ── G. Broker card: friendly identity + collapsed accounts ────────────────────
 
-describe("G. Broker card linked-account summary", () => {
+describe("G. Broker card friendly identity and account list", () => {
   const SECTION = read("./_components/broker-connections-section.tsx");
 
-  test("single linked account shows its label inline", () => {
+  test("connection card shows a friendly identity, not just 'Tradovate'", () => {
     assert.ok(
-      SECTION.includes("1 linked account") && SECTION.includes("activeAccounts[0].label"),
-      "one account → '1 linked account · <label>'",
+      SECTION.includes("deriveConnectionIdentity(") && SECTION.includes("{identity}"),
+      "card must render a derived friendly identity (provider + env + firm/type)",
     );
   });
 
-  test("multiple linked accounts expand into a label list", () => {
+  test("linked accounts are collapsed by default behind Show/Hide accounts", () => {
+    assert.ok(SECTION.includes("Show accounts"), "must offer 'Show accounts'");
+    assert.ok(SECTION.includes("Hide accounts"), "must offer 'Hide accounts'");
+    // Native <details> => collapsed by default (no `open` on the accounts list).
+    assert.ok(SECTION.includes("<details"), "accounts must live in a <details>");
+  });
+
+  test("each account row shows a friendly label and account-level actions", () => {
+    assert.ok(SECTION.includes("LinkedAccountRow"), "must render per-account rows");
+    assert.ok(SECTION.includes("deriveAccountDisplayLabel(acct)"), "rows must use the friendly label");
+    assert.ok(SECTION.includes("Manage rules"), "row must offer Manage rules");
+    assert.ok(SECTION.includes("View trades"), "row must offer View trades");
+    assert.ok(SECTION.includes("RemoveAccountButton"), "row must offer Remove via the guarded flow");
+  });
+
+  test("per-account Remove uses the guarded archive flow (no DELETE)", () => {
+    // RemoveAccountButton POSTs protectionStatus=archived to the protection
+    // endpoint; it must never issue a DELETE for account removal.
+    const removeBtn = read("./_components/remove-account-button.tsx");
+    assert.ok(removeBtn.includes("/api/accounts/") && removeBtn.includes("protection"), "must hit protection endpoint");
+    assert.ok(removeBtn.includes('"archived"'), "must send protectionStatus archived");
     assert.ok(
-      SECTION.includes("{activeAccounts.length} linked accounts"),
-      "many accounts → 'N linked accounts' summary",
+      !/method:\s*["']DELETE["']/.test(removeBtn),
+      "account removal must not use DELETE",
     );
+  });
+
+  test("friendly label is used (does not surface a raw label-only fallback for firm accounts)", () => {
+    const SECTION_NO_COMMENTS = readNoComments("./_components/broker-connections-section.tsx");
+    // The card must route account naming through the shared helper, not print
+    // acct.label directly in the trading-account rows.
     assert.ok(
-      /activeAccounts\.map\(\(acct\)[\s\S]*?acct\.label/.test(SECTION),
-      "many accounts → expandable list of labels",
+      SECTION_NO_COMMENTS.includes("deriveAccountDisplayLabel"),
+      "card must use deriveAccountDisplayLabel for account naming",
     );
   });
 
@@ -295,6 +321,51 @@ describe("G. Broker card linked-account summary", () => {
     assert.ok(
       SECTION.includes("archived account(s) under this connection"),
       "archived accounts must remain in a separate collapsed list",
+    );
+  });
+});
+
+// ── H. Friendly account labels across surfaces + schema ───────────────────────
+
+describe("H. displayName field + friendly labels", () => {
+  const REPO = resolve(import.meta.dirname, "..", "..", "..");
+
+  test("ConnectedAccount schema has a displayName field", () => {
+    const schema = readFileSync(resolve(REPO, "prisma", "schema.prisma"), "utf8");
+    const model = schema.slice(
+      schema.indexOf("model ConnectedAccount"),
+      schema.indexOf("}", schema.indexOf("model ConnectedAccount")),
+    );
+    assert.ok(/displayName\s+String\?/.test(model), "ConnectedAccount must declare displayName String?");
+  });
+
+  test("a migration adds the displayName column", () => {
+    const dir = resolve(REPO, "prisma", "migrations", "20260530000000_add_display_name_to_connected_account");
+    const sql = readFileSync(resolve(dir, "migration.sql"), "utf8");
+    assert.ok(
+      /ALTER TABLE "ConnectedAccount" ADD COLUMN "displayName"/.test(sql),
+      "migration must add the displayName column",
+    );
+  });
+
+  test("PATCH /api/accounts/[id] accepts displayName and clears blank to null", () => {
+    const route = readFileSync(resolve(REPO, "src", "app", "api", "accounts", "[id]", "route.ts"), "utf8");
+    assert.ok(route.includes("displayName"), "PATCH must accept displayName");
+    assert.ok(route.includes("displayName?.trim() || null"), "blank displayName must clear to null");
+  });
+
+  test("settings query selects displayName / propFirm / accountType for friendly labels", () => {
+    const page = readFileSync(resolve(REPO, "src", "app", "settings", "page.tsx"), "utf8");
+    assert.ok(page.includes("displayName: true"), "settings must select displayName");
+    assert.ok(page.includes("propFirm: true"), "settings must select propFirm");
+    assert.ok(page.includes("accountType: true"), "settings must select accountType");
+  });
+
+  test("settings sidebar uses the friendly label, not the raw broker label", () => {
+    const page = readFileSync(resolve(REPO, "src", "app", "settings", "page.tsx"), "utf8");
+    assert.ok(
+      page.includes("deriveAccountDisplayLabel(acc)"),
+      "sidebar must render the friendly label",
     );
   });
 });

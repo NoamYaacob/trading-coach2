@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 
 import { getBrokerDisconnectWindow } from "@/lib/broker-disconnect-window";
 import { getCurrentUser } from "@/lib/auth";
+import { deriveAccountDisplayLabel } from "@/lib/account-display";
 
 function normalizeDisplay(raw: string | null | undefined, canonical: readonly string[]): string | null {
   if (!raw) return null;
@@ -102,6 +103,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       select: {
         id: true,
         label: true,
+        displayName: true,
+        externalAccountId: true,
+        propFirm: true,
+        accountType: true,
         platform: true,
         connectionStatus: true,
         connectedAt: true,
@@ -169,7 +174,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div key={acc.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
             <span style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {acc.label}
+              {deriveAccountDisplayLabel(acc)}
             </span>
           </div>
         );
