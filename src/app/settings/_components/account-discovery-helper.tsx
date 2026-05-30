@@ -50,32 +50,26 @@ export function AccountDiscoveryHelper() {
         <div className="mt-3 grid gap-3">
           <ol className="grid gap-2 pl-4 text-stone-600" style={{ listStyleType: "decimal" }}>
             <li>
-              <span className="font-medium text-stone-700">Wrong Tradovate user connected.</span>{" "}
-              The live connection above shows a Tradovate user ID. If your new account belongs to a
-              different Tradovate user, you&apos;ll need to reconnect with that user&apos;s
-              credentials.
+              <span className="font-medium text-stone-700">Wrong Tradovate login.</span>{" "}
+              The account may belong to a different Tradovate login than the one connected above.
             </li>
             <li>
-              <span className="font-medium text-stone-700">Connected Demo but new account is Live (or vice versa).</span>{" "}
-              A demo connection can only discover demo accounts. If your new funded account is a
-              live account, make sure you have an active <strong>live</strong> connection above.
+              <span className="font-medium text-stone-700">Live vs Demo mismatch.</span>{" "}
+              A Demo connection only finds demo accounts. If your new account is Live, connect a Live
+              connection (and vice-versa).
             </li>
             <li>
-              <span className="font-medium text-stone-700">OAuth token expired — reconnect needed.</span>{" "}
-              If the connection shows &quot;Expired&quot; above, Guardrail cannot sync accounts
-              until you reconnect. Use the &quot;Reconnect&quot; button on the expired connection.
+              <span className="font-medium text-stone-700">Connection needs reconnecting.</span>{" "}
+              If a connection above shows &quot;Reconnect required&quot;, reconnect it so Guardrail can sync.
             </li>
             <li>
-              <span className="font-medium text-stone-700">Prop firm hasn&apos;t activated the new account yet.</span>{" "}
-              Even if the account appears in your Tradovate dashboard, the prop firm may have
-              set <code>active=false</code>. Guardrail will pick it up automatically once the
-              firm activates it.
+              <span className="font-medium text-stone-700">Prop firm hasn&apos;t activated it yet.</span>{" "}
+              New funded accounts can take a little while to activate. Guardrail picks them up automatically.
             </li>
             <li>
-              <span className="font-medium text-stone-700">Account exists but is pending setup.</span>{" "}
-              If Guardrail already found the account, it appears in the{" "}
-              <em>New — needs setup</em> section above with a &quot;Set rules&quot; button.
-              Check there first.
+              <span className="font-medium text-stone-700">Already found?</span>{" "}
+              If detected, it shows up above as <em>New account needs setup</em> with a
+              &quot;Set rules&quot; button.
             </li>
           </ol>
 
