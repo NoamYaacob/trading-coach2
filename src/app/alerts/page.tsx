@@ -51,19 +51,37 @@ export default async function AlertsPage() {
       },
     }),
     prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
-      select: { id: true, label: true, connectionStatus: true },
+      where: {
+        userId: user.id,
+        isActive: true,
+        protectionStatus: { in: ["protected", "monitor_only"] },
+        missingFromBrokerSince: null,
+      },
+      select: {
+        id: true,
+        label: true,
+        connectionStatus: true,
+        brokerConnection: { select: { connectionStatus: true } },
+      },
       orderBy: { createdAt: "asc" },
-      take: 5,
     }),
   ]);
 
   const telegramReady = Boolean(telegramConnection?.telegramChatId);
 
   // ── Sidebar account list (matches dashboard sidebar) ──────────────────────
-  const SidebarAccountList = sidebarAccounts.length > 0 ? (
+  // Exclude accounts on an expired / errored connection (BrokerConnection
+  // status is authoritative), then cap at 5 — same rule the dashboard applies.
+  const selectableAccounts = sidebarAccounts
+    .filter((acc) => {
+      const effectiveStatus =
+        acc.brokerConnection?.connectionStatus ?? acc.connectionStatus;
+      return effectiveStatus !== "expired" && effectiveStatus !== "connection_error";
+    })
+    .slice(0, 5);
+  const SidebarAccountList = selectableAccounts.length > 0 ? (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {sidebarAccounts.map((acc) => (
+      {selectableAccounts.map((acc) => (
         <div
           key={acc.id}
           style={{
