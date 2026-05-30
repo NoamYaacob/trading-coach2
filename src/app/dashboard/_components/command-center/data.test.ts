@@ -13,6 +13,7 @@ import {
   formatFreshnessLabel,
   deriveOpenHref,
   deriveRulesHref,
+  deriveTradesHref,
   deriveConnectionStatusLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
@@ -1731,6 +1732,24 @@ describe("deriveRulesHref", () => {
 
   it("different accounts produce different URLs", () => {
     assert.notEqual(deriveRulesHref("acc-a"), deriveRulesHref("acc-b"));
+  });
+});
+
+// ── deriveTradesHref ──────────────────────────────────────────────────────────
+
+describe("deriveTradesHref", () => {
+  it("routes to the Trades page deep-linked to the account", () => {
+    const href = deriveTradesHref("acc-123");
+    assert.equal(href, "/trades?accountId=acc-123");
+  });
+
+  it("uses the accountId query param the Trades page reads", () => {
+    const href = deriveTradesHref("acc-xyz");
+    assert.ok(href.startsWith("/trades?accountId="), "must deep-link via ?accountId=");
+  });
+
+  it("different accounts produce different URLs", () => {
+    assert.notEqual(deriveTradesHref("acc-a"), deriveTradesHref("acc-b"));
   });
 });
 
