@@ -35,7 +35,6 @@ import {
   derivePerAccountStateLabel,
   deriveProtectionStatusPanel,
   deriveRowStatusLabel,
-  deriveRulesHref,
   deriveTradingPermissionStatus,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
@@ -1227,17 +1226,12 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
           ))}
         </div>
 
-        {/* Action buttons row: quick Rules access, Manage menu, optional Reconnect */}
+        {/* Action buttons row: Manage menu + optional Reconnect */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <Link
-            href={deriveRulesHref(account.id)}
-            className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
-          >
-            Rules
-          </Link>
           <AccountManageMenu
             accountId={account.id}
             accountLabel={account.label}
+            align="left"
             buttonClassName="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           />
           {reconnectNeeded && (
@@ -1460,13 +1454,11 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Link href={deriveRulesHref(account.id)} className={PILL_ROW_SECONDARY}>
-        Rules
-      </Link>
       <AccountManageMenu
         accountId={account.id}
         accountLabel={account.label}
         buttonClassName={PILL_ROW_SECONDARY}
+        align="right"
       />
       {reconnectNeeded ? (
         <Link href="/accounts/connect/tradovate" className={PILL_ROW_PRIMARY}>

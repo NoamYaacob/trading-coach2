@@ -69,10 +69,33 @@ describe("Dashboard account menu exposes account-level actions", () => {
     assert.ok(count >= 2, `AccountManageMenu must render in both row and card (found ${count})`);
   });
 
-  test("active account cards still expose Manage rules quick link", () => {
+  test("each rendered menu passes the account id so every active account gets actions", () => {
+    // The Manage menu is the single entry point for account-level actions
+    // (the duplicate inline "Rules" link was removed). Every usage must pass
+    // the per-account id so the menu links resolve to that account.
     assert.ok(
-      COMMAND_CENTER.includes("deriveRulesHref(account.id)"),
-      "cards must keep a Manage rules entry point for each active account",
+      COMMAND_CENTER.includes("accountId={account.id}"),
+      "AccountManageMenu must receive each account's id",
+    );
+  });
+
+  test("inline Rules quick link was removed — no duplicate of the menu's Manage rules", () => {
+    // QA decision: the inline <Link>Rules</Link> duplicated the menu's
+    // "Manage rules" item, so it was removed in favor of the single Manage menu.
+    assert.ok(
+      !/>\s*Rules\s*</.test(COMMAND_CENTER),
+      "command center must not render a standalone inline 'Rules' link",
+    );
+  });
+
+  test("menu alignment is overflow-safe (left on mobile card, right on desktop row)", () => {
+    // The command-center section is overflow-x-hidden; the dropdown must expand
+    // into the card, never past it.
+    assert.ok(COMMAND_CENTER.includes('align="left"'), "mobile card must anchor the menu left");
+    assert.ok(COMMAND_CENTER.includes('align="right"'), "desktop row must anchor the menu right");
+    assert.ok(
+      MENU.includes('align === "left" ? "left-0" : "right-0"'),
+      "menu must switch anchor edge based on align",
     );
   });
 });

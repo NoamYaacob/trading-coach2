@@ -26,12 +26,20 @@ export function AccountManageMenu({
   accountLabel,
   canRemove = true,
   buttonClassName,
+  align = "right",
 }: {
   accountId: string;
   accountLabel?: string;
   /** When false, the "Remove from Guardrail" item is hidden. */
   canRemove?: boolean;
   buttonClassName?: string;
+  /**
+   * Which edge the dropdown anchors to. The enclosing command-center section is
+   * `overflow-x-hidden`, so the menu must expand *into* the card, never past it:
+   *   - "right" (desktop, right-aligned actions cell) → expands leftward
+   *   - "left"  (mobile card, left-aligned action row) → expands rightward
+   */
+  align?: "left" | "right";
 }) {
   const router = useRouter();
   const menuId = useId();
@@ -127,7 +135,7 @@ export function AccountManageMenu({
           id={menuId}
           role="menu"
           aria-label="Account actions"
-          className="absolute right-0 z-30 mt-1.5 w-52 overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-[0_12px_32px_-8px_rgba(28,25,23,0.25)]"
+          className={`absolute ${align === "left" ? "left-0" : "right-0"} z-30 mt-1.5 w-52 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-[0_12px_32px_-8px_rgba(28,25,23,0.25)]`}
         >
           <Link role="menuitem" href={deriveRulesHref(accountId)} className={itemClass}>
             Manage rules
