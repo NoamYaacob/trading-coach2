@@ -75,7 +75,11 @@ function triggerSeverity(t: string): "warn" | "bad" | "ok" {
 function triggerViewHref(t: string, accountId: string | null): string {
   const cat = triggerCategory(t);
   if (cat === "rule") return accountId ? `/rules?scope=account&id=${accountId}` : "/rules";
+  // Broker-connection events have no intervention source yet; the helper is
+  // kept for when one exists, but no Broker filter chip is exposed today.
   if (cat === "broker") return "/settings#broker-connections";
+  // System/session events (e.g. outside_session_hours) are trading-activity
+  // events, so they route to the Dashboard — never to Settings.
   return accountId ? `/dashboard?accountId=${accountId}` : "/dashboard";
 }
 
@@ -111,11 +115,13 @@ function SeverityIcon({ severity }: { severity: "warn" | "bad" | "ok" }) {
   );
 }
 
+// Note: no "Broker" chip — there is no broker-connection event source yet, so a
+// Broker filter would only ever show an empty state. The chip stays hidden until
+// a real broker-event source exists.
 const FILTER_CHIPS = [
   { key: "all",    label: "All" },
   { key: "rule",   label: "Rule alerts" },
   { key: "system", label: "System" },
-  { key: "broker", label: "Broker" },
 ] as const;
 
 export default async function AlertsPage({

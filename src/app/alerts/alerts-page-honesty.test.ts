@@ -93,6 +93,15 @@ describe("/alerts page — feed layout", () => {
     );
   });
 
+  it("scopes the feed query by userId: user.id (no cross-user leakage)", () => {
+    const feedIdx = ALERTS_PAGE_SRC.indexOf("guardianIntervention.findMany");
+    const whereBlock = ALERTS_PAGE_SRC.slice(feedIdx, feedIdx + 200);
+    assert.ok(
+      whereBlock.includes("userId: user.id"),
+      "the feed query must scope by userId: user.id",
+    );
+  });
+
   it("shows 'Notification settings' link to /settings#alerts-telegram", () => {
     assert.ok(
       ALERTS_PAGE_SRC.includes("/settings#alerts-telegram") &&
@@ -131,10 +140,18 @@ describe("/alerts page — feed layout", () => {
     );
   });
 
-  it("broker alerts route to /settings#broker-connections", () => {
+  it("system/session alerts route to /dashboard?accountId=<id> (not Settings)", () => {
+    // outside_session_hours is a trading-activity event, so its View link must
+    // go to the Dashboard scoped to the account — never to a settings page.
     assert.ok(
-      ALERTS_PAGE_SRC.includes("/settings#broker-connections"),
-      "broker alerts must link to /settings#broker-connections",
+      ALERTS_PAGE_SRC.includes("/dashboard?accountId="),
+      "system/session alerts must link to /dashboard?accountId=<id>",
+    );
+    // Guard: the system route must not be pointed at Settings.
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("/settings#session") &&
+        !ALERTS_PAGE_SRC.includes("outside_session_hours.*settings"),
+      "system/session alerts must not route to Settings",
     );
   });
 });
@@ -162,10 +179,16 @@ describe("/alerts page — filter chips", () => {
     );
   });
 
-  it("has Broker filter chip", () => {
+  it("does NOT expose a dead Broker filter chip (no broker events exist yet)", () => {
+    // GuardianIntervention stores no broker-connection events, so a Broker chip
+    // would only ever show an empty state. It must stay out of FILTER_CHIPS
+    // until a real broker-event source exists.
+    const chipsStart = ALERTS_PAGE_SRC.indexOf("const FILTER_CHIPS");
+    const chipsEnd = ALERTS_PAGE_SRC.indexOf("] as const", chipsStart);
+    const chipsBlock = ALERTS_PAGE_SRC.slice(chipsStart, chipsEnd);
     assert.ok(
-      ALERTS_PAGE_SRC.includes('"broker"') && ALERTS_PAGE_SRC.includes("Broker"),
-      "must have a Broker filter chip",
+      !chipsBlock.includes("Broker") && !chipsBlock.includes('"broker"'),
+      "FILTER_CHIPS must not include a Broker chip while no broker events exist",
     );
   });
 
