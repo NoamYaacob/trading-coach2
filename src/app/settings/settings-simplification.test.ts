@@ -241,30 +241,27 @@ describe("F. Product status is hidden from the main Settings flow", () => {
     );
   });
 
-  test("Product status lives inside a collapsed Advanced <details> (hidden by default)", () => {
-    // Anchor on the unique ProductStatusPanel render (the literal word
-    // "Advanced" also appears as a humanizeExperience return value).
-    const panelIdx = PAGE.indexOf("<ProductStatusPanel");
-    assert.ok(panelIdx !== -1, "must still render ProductStatusPanel");
-    const detailsBefore = PAGE.lastIndexOf("<details", panelIdx);
-    assert.ok(detailsBefore !== -1, "ProductStatusPanel must be inside a <details>");
-    // The enclosing <details> opening tag must NOT have `open` → collapsed by default.
-    const openTag = PAGE.slice(detailsBefore, PAGE.indexOf(">", detailsBefore));
-    assert.ok(!/\bopen\b/.test(openTag), "Advanced <details> must not be open by default");
-    // The "Advanced" summary label must sit between that <details> and the panel.
-    const advancedSummary = PAGE.indexOf("Advanced", detailsBefore);
+  test("ProductStatusPanel is absent from normal Settings entirely", () => {
+    // Advanced panel was removed — product status is not shown to normal users.
     assert.ok(
-      advancedSummary !== -1 && advancedSummary < panelIdx,
-      "the Advanced summary must precede the product status content",
+      !PAGE.includes("<ProductStatusPanel"),
+      "ProductStatusPanel must not be rendered in normal Settings",
+    );
+    assert.ok(
+      !PAGE.includes("ProductStatusPanel"),
+      "ProductStatusPanel import must be removed from normal Settings",
     );
   });
 
-  test("Advanced/Product status sits near the bottom — after Security, before Danger zone", () => {
-    const security = PAGE.indexOf('title="Security"');
-    const panel = PAGE.indexOf("<ProductStatusPanel");
+  test("Danger zone is the final section (nothing after it)", () => {
     const danger = PAGE.indexOf("Danger zone");
-    assert.ok(security < panel, "Product status panel must come after Security");
-    assert.ok(panel < danger, "Product status panel must come before Danger zone");
+    assert.ok(danger !== -1, "Danger zone section must be present");
+    // Nothing meaningful after Danger zone except closing tags.
+    const afterDanger = PAGE.slice(danger);
+    assert.ok(
+      !afterDanger.includes('<details') && !afterDanger.includes('SectionCard'),
+      "no section must follow Danger zone",
+    );
   });
 });
 

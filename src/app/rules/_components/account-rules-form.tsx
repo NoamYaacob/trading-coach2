@@ -261,6 +261,17 @@ export function AccountRulesForm({
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
+  // When the server delivers fresh props with rules (e.g. after a successful
+  // copy-rules followed by router.refresh()), sync local form state to show
+  // the form immediately with the copied values.
+  useEffect(() => {
+    if (hasExistingRules && !showForm) {
+      setValues(initial);
+      setShowForm(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasExistingRules]);
+
   function update<K extends keyof AccountRulesValues>(key: K, value: AccountRulesValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setIsDirty(true);

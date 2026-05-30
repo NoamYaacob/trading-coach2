@@ -241,7 +241,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         {
           error: "session_already_traded",
           message:
-            "Rules are locked for this session — this account has already traded. Changes can be made after the session resets.",
+            "You already started trading this account today. To protect your rules, changes will be available next trading day.",
         },
         { status: 423 },
       );

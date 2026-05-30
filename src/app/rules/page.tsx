@@ -483,7 +483,7 @@ export default async function RulesPage({
                       isHardLocked={hasAlreadyTradedToday}
                       lockMessage={
                         hasAlreadyTradedToday
-                          ? "Rules are locked for this session — this account has already traded. Changes can be made after the session resets."
+                          ? "You already started trading this account today. To protect your rules, changes will be available next trading day."
                           : accountIsLockedForPending
                           ? "Rules are locked — protection is active on this account. Changes are blocked until the lock clears."
                           : accountRuleLockMessage

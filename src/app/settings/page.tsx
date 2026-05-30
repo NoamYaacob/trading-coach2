@@ -32,7 +32,6 @@ function humanizeExperience(raw: string | null | undefined): string | null {
 import { prisma } from "@/lib/db";
 import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
 import { SectionCard } from "@/components/ui/section-card";
-import { ProductStatusPanel } from "@/components/ui/product-status-panel";
 
 import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
@@ -369,23 +368,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 googleEmail={googleConnection?.email ?? null}
               />
             </SectionCard>
-
-            {/* Advanced — collapsed, near the bottom. Holds the product/roadmap
-                status panel, which is internal/roadmap context rather than a
-                user setting, so it is hidden by default. */}
-            <details
-              className="group rounded-[14px] border p-6"
-              style={{ borderColor: "var(--gr-border)", background: "var(--gr-surface)" }}
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-xl font-semibold tracking-[-0.03em]" style={{ color: "var(--gr-ink)" }}>
-                Advanced
-                <span className="text-xs font-normal transition-transform group-open:rotate-45" style={{ color: "var(--gr-text-mute)" }}>+</span>
-              </summary>
-              <div className="mt-5">
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "var(--gr-text-mute)" }}>Product status</p>
-                <ProductStatusPanel variant="compact" />
-              </div>
-            </details>
 
             {/* Danger zone */}
             <section className="rounded-[14px] border border-red-200 p-6" style={{ background: "var(--gr-surface)" }}>

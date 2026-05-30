@@ -614,9 +614,16 @@ export default async function DashboardPage({
                       {/* Account name + ref */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 12 }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)" }}>{acc.label}</span>
-                        {acc.connectionStatus && (
-                          <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mute)" }}>
-                            {acc.connectionStatus}
+                        {acc.connectionStatus && acc.connectionStatus !== "connected_live" && (
+                          <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                            {({
+                              connected_readonly: "Read-only",
+                              pending_webhook: "Connecting…",
+                              oauth_pending_storage: "Connecting…",
+                              expired: "Needs reconnect",
+                              connection_error: "Connection error",
+                              not_connected: "Not connected",
+                            } as Record<string, string>)[acc.connectionStatus] ?? null}
                           </span>
                         )}
                       </div>
