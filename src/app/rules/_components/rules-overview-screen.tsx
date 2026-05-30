@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { GrEnforcementChip } from "@/components/ui/gr/gr-enforcement-chip";
 import { GrChip } from "@/components/ui/gr/gr-chip";
+import { CmeHourSelect } from "./cme-hour-select";
 import {
   RULE_GROUPS,
   rulesInGroup,
@@ -41,24 +42,28 @@ type Props = {
   disabled?: boolean;
   pendingNotes?: Partial<Record<RuleId, string | null>>;
   /** Persists a single core-rule value inline. When provided, the five core
-   *  rules (daily loss, risk per trade, max trades, tilt, max contracts) edit
-   *  in place on the card instead of opening the detail pane. */
+   *  rules (daily loss, risk per trade, max trades, tilt, max contracts) and
+   *  session-cutoff edit in place on the card instead of opening the detail pane. */
   onSaveInline?: (key: string, rawValue: string) => Promise<InlineSaveResult>;
   /** Message shown on a locked card when trading already started today. */
   inlineLockMessage?: string | null;
+  /** True when the user has a connected Telegram account. */
+  telegramConnected?: boolean;
+  /** Per-account Telegram alert preference: null = default (send), false = opted out, true = explicit on. */
+  telegramAlertsEnabled?: boolean | null;
+  /** Persists a per-account Telegram alert preference change inline. */
+  onSaveTelegramAlerts?: (enabled: boolean | null) => Promise<InlineSaveResult>;
 };
 
 /**
- * The five core rules that edit inline on their overview card. Maps each rule
- * id to its AccountRulesValues key, input kind, and a plain-language help line.
- * Other rules (per-symbol, session cutoff, notifications, advanced) still open
- * the detail pane.
+ * Rules that edit inline on their overview card. Maps each rule id to its
+ * AccountRulesValues key, input kind, and a plain-language help line.
  */
 const INLINE_RULES: Record<
   string,
   {
-    valueKey: "maxDailyLoss" | "riskPerTrade" | "maxTradesPerDay" | "stopAfterLosses" | "maxContracts";
-    kind: "money" | "count";
+    valueKey: "maxDailyLoss" | "riskPerTrade" | "maxTradesPerDay" | "stopAfterLosses" | "maxContracts" | "allowedEndHour";
+    kind: "money" | "count" | "hour";
     help: string;
   }
 > = {
@@ -87,6 +92,11 @@ const INLINE_RULES: Record<
     kind: "count",
     help: "Guardrail locks the account if an open position exceeds this contract count, measured in standard-equivalent contracts.",
   },
+  "session-cutoff": {
+    valueKey: "allowedEndHour",
+    kind: "hour",
+    help: "Sets when Guardrail considers the trading session over. Monitoring-only today — automatic cutoff enforcement is not yet active.",
+  },
 };
 
 function rawValueForRule(id: RuleId, values: OverviewValues): string {
@@ -98,6 +108,7 @@ function rawValueForRule(id: RuleId, values: OverviewValues): string {
     case "maxTradesPerDay": return values.maxTradesPerDay;
     case "stopAfterLosses": return values.stopAfterLosses;
     case "maxContracts": return values.maxContracts;
+    case "allowedEndHour": return values.allowedEndHour;
   }
 }
 
@@ -120,7 +131,7 @@ function InlineRuleCard({
   rule: RuleMeta;
   display: string;
   rawValue: string;
-  kind: "money" | "count";
+  kind: "money" | "count" | "hour";
   help: string;
   disabled?: boolean;
   lockMessage?: string | null;
@@ -189,7 +200,7 @@ function InlineRuleCard({
             className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold transition ${
               showHelp
                 ? "border-amber-400 bg-amber-50 text-amber-700"
-                : "border-stone-300 bg-white text-stone-400 hover:border-stone-400 hover:text-stone-600"
+                : "border-transparent bg-transparent text-stone-400 hover:border-stone-300 hover:bg-white hover:text-stone-600"
             }`}
           >
             ?
@@ -218,23 +229,33 @@ function InlineRuleCard({
         {editing ? (
           <div className="grid gap-2">
             <div className="flex items-center gap-1.5">
-              {kind === "money" && (
-                <span className="text-base font-semibold text-[color:var(--gr-text-mid)]">$</span>
+              {kind === "hour" ? (
+                <CmeHourSelect
+                  value={draft}
+                  onChange={setDraft}
+                  ariaLabel={`Session cutoff for ${rule.label}`}
+                />
+              ) : (
+                <>
+                  {kind === "money" && (
+                    <span className="text-base font-semibold text-[color:var(--gr-text-mid)]">$</span>
+                  )}
+                  <input
+                    type="number"
+                    inputMode={kind === "money" ? "decimal" : "numeric"}
+                    step={kind === "money" ? "any" : 1}
+                    min={kind === "count" ? 1 : undefined}
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void save(); }
+                      if (e.key === "Escape") { e.preventDefault(); cancel(); }
+                    }}
+                    className="w-full min-w-0 rounded-lg border border-[color:var(--gr-copper)] bg-white px-2.5 py-1.5 text-lg font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--gr-copper-bg)]"
+                  />
+                </>
               )}
-              <input
-                type="number"
-                inputMode={kind === "money" ? "decimal" : "numeric"}
-                step={kind === "money" ? "any" : 1}
-                min={kind === "count" ? 1 : undefined}
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); void save(); }
-                  if (e.key === "Escape") { e.preventDefault(); cancel(); }
-                }}
-                className="w-full min-w-0 rounded-lg border border-[color:var(--gr-copper)] bg-white px-2.5 py-1.5 text-lg font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--gr-copper-bg)]"
-              />
             </div>
             <div className="flex items-center gap-1.5">
               <button
@@ -476,6 +497,188 @@ function RuleCard({
   );
 }
 
+/** Static informational card — no edit affordance, no navigation. Used for
+ *  rules whose UI is "coming soon" (per-symbol evaluator) or fully planned. */
+function StaticInfoCard({
+  rule,
+  tagline,
+  detail,
+}: {
+  rule: RuleMeta;
+  tagline: string;
+  detail: string;
+}) {
+  return (
+    <div
+      data-rule-id={rule.id}
+      className="relative flex flex-col rounded-[14px] border border-[color:var(--gr-border-hi)] bg-[color:var(--gr-surface-warm)] p-5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
+          {rule.group}
+        </span>
+        <GrEnforcementChip variant={rule.status} />
+      </div>
+      <h3 className="mt-2.5 text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
+        {rule.label}
+      </h3>
+      <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
+        {rule.helper}
+      </p>
+      <div className="mt-4 flex-1">
+        <span className="text-sm italic text-[color:var(--gr-text-mute)]/60">{tagline}</span>
+        <p className="mt-1.5 text-[11px] leading-snug text-[color:var(--gr-text-mute)]">{detail}</p>
+      </div>
+      <div className="mt-4 flex items-center gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
+        {rule.status === "planned-broker" || rule.status === "not-active" ? (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-plan)]">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-dashed border-stone-400" aria-hidden />
+            Planned
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-text-mid)]">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" aria-hidden />
+            Saved
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Per-account Telegram notifications card. When Telegram is not connected,
+ *  shows a needs-setup prompt with a real link to Settings → Alerts & Telegram
+ *  (/settings#alerts-telegram). When connected, shows a Yes/No toggle for
+ *  per-account alert delivery. */
+function NotificationsTelegramCard({
+  rule,
+  telegramConnected,
+  telegramAlertsEnabled,
+  onSave,
+  disabled,
+}: {
+  rule: RuleMeta;
+  telegramConnected: boolean;
+  telegramAlertsEnabled: boolean | null;
+  onSave: ((enabled: boolean | null) => Promise<InlineSaveResult>) | null;
+  disabled?: boolean;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
+  // null and true both mean "alerts on" (null = inherits default = send)
+  const alertsOn = telegramAlertsEnabled !== false;
+
+  async function toggle(next: boolean) {
+    if (!onSave || disabled) return;
+    setSaving(true);
+    setFeedback(null);
+    const res = await onSave(next ? null : false);
+    setSaving(false);
+    if (res.ok) {
+      setFeedback({ kind: "ok", text: "Saved." });
+      setTimeout(() => setFeedback(null), 2000);
+    } else {
+      setFeedback({ kind: "error", text: res.message ?? "Could not save. Please try again." });
+    }
+  }
+
+  return (
+    <div
+      data-rule-id={rule.id}
+      className="relative flex flex-col rounded-[14px] border border-[color:var(--gr-border-hi)] bg-[color:var(--gr-surface-warm)] p-5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
+          {rule.group}
+        </span>
+        <GrEnforcementChip variant={rule.status} />
+      </div>
+      <h3 className="mt-2.5 text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
+        {rule.label}
+      </h3>
+      <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
+        {rule.helper}
+      </p>
+
+      <div className="mt-4 flex-1 grid gap-2">
+        <p className="text-[12px] text-[color:var(--gr-text-mid)]">
+          In-app alerts are always active.
+        </p>
+        {!telegramConnected ? (
+          <div className="grid gap-1.5">
+            <p className="text-[11.5px] text-[color:var(--gr-text-mute)]">
+              Telegram optional — connect it in Settings to enable per-account alert controls.
+            </p>
+            {/* Real deep-link to Settings → Alerts & Telegram. A full route
+                change (not the rule detail pane); it never marks the form
+                dirty, so the bottom page Save stays hidden. */}
+            <a
+              href="/settings#alerts-telegram"
+              className="inline-flex w-fit items-center gap-1 text-[11.5px] font-semibold text-[color:var(--gr-copper)] underline-offset-2 hover:underline focus:outline-none focus-visible:underline"
+            >
+              Connect Telegram in Settings
+              <span aria-hidden>→</span>
+            </a>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-medium text-[color:var(--gr-text-mid)]">Telegram alerts:</span>
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => void toggle(true)}
+                disabled={saving || disabled}
+                aria-pressed={alertsOn}
+                className={`rounded-l-full border px-2.5 py-0.5 text-[11px] font-medium transition disabled:opacity-60 ${
+                  alertsOn
+                    ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                    : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
+                }`}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggle(false)}
+                disabled={saving || disabled}
+                aria-pressed={!alertsOn}
+                className={`rounded-r-full border-y border-r px-2.5 py-0.5 text-[11px] font-medium transition disabled:opacity-60 ${
+                  !alertsOn
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
+                }`}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
+        <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-text-mid)]">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]" aria-hidden />
+          In-app active
+        </span>
+        {telegramConnected && (
+          <span className={`inline-flex items-center gap-1 text-[10.5px] ${alertsOn ? "text-emerald-700" : "text-amber-700"}`}>
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${alertsOn ? "bg-emerald-400" : "bg-amber-400"}`} aria-hidden />
+            Telegram {alertsOn ? "on" : "off"}
+          </span>
+        )}
+      </div>
+
+      {feedback && (
+        <p className={`mt-2 border-t pt-2 text-[10.5px] font-medium ${
+          feedback.kind === "error" ? "border-red-100 text-red-600" : "border-sky-100 text-sky-700"
+        }`}>
+          {feedback.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function RulesOverviewScreen({
   values,
   onSelectRule,
@@ -483,12 +686,52 @@ export function RulesOverviewScreen({
   pendingNotes,
   onSaveInline,
   inlineLockMessage,
+  telegramConnected,
+  telegramAlertsEnabled,
+  onSaveTelegramAlerts,
 }: Props) {
   const configured = countSetRules(values);
 
-  /** Renders the inline-editable card for the 5 core rules, else the
-   *  navigate-to-detail card. */
+  /** Renders the appropriate card for a rule. Core rules + session-cutoff edit
+   *  inline. Notifications shows a Telegram toggle. Per-symbol and advanced
+   *  broker actions show static info cards (no navigation). All other rules
+   *  fall back to the navigate-to-detail card (for deep-link QA). */
   function renderRuleCard(r: RuleMeta) {
+    // Static info cards — no navigation, no inline editor
+    if (r.id === "per-symbol-limits") {
+      return (
+        <StaticInfoCard
+          key={r.id}
+          rule={r}
+          tagline="Evaluator coming soon"
+          detail="Symbol-specific limits are saved and will be enforced once the position evaluator ships."
+        />
+      );
+    }
+    if (r.id === "advanced-broker-actions") {
+      return (
+        <StaticInfoCard
+          key={r.id}
+          rule={r}
+          tagline="Planned · not active"
+          detail="Full broker enforcement features require a live API connection with full permissions. Planned for a future release."
+        />
+      );
+    }
+    // Per-account Telegram toggle card
+    if (r.id === "notifications") {
+      return (
+        <NotificationsTelegramCard
+          key={r.id}
+          rule={r}
+          telegramConnected={telegramConnected ?? false}
+          telegramAlertsEnabled={telegramAlertsEnabled ?? null}
+          onSave={onSaveTelegramAlerts ?? null}
+          disabled={disabled}
+        />
+      );
+    }
+    // Inline-editable rules (core 5 + session-cutoff)
     const inlineCfg = INLINE_RULES[r.id];
     if (inlineCfg && onSaveInline) {
       return (
@@ -506,6 +749,7 @@ export function RulesOverviewScreen({
         />
       );
     }
+    // Fallback: navigate-to-detail card (e.g. when onSaveInline is not provided)
     return (
       <RuleCard
         key={r.id}

@@ -317,7 +317,9 @@ export async function POST(request: Request) {
   // already persisted and the state has been updated. Tradovate retrying the webhook
   // would re-process the event with the wrong state.
   const chatId = account.user.telegramConnection?.telegramChatId;
-  if (chatId) {
+  // null = not yet explicitly set → keep existing behavior (send). false = user opted out.
+  const telegramAllowed = account.riskRules?.telegramAlertsEnabled !== false;
+  if (chatId && telegramAllowed) {
     try {
       const language = account.user.coachingPreferences?.preferredLanguage ?? "he";
       const locale = getLocale(language);
