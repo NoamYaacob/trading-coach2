@@ -46,17 +46,17 @@ describe("expired connections show reconnect CTA", () => {
   });
 });
 
-// ── Active connections show linked account count ──────────────────────────────
+// ── Active connections show a friendly identity + collapsed accounts ──────────
 
-describe("active connections show linked account count", () => {
-  test("BrokerConnectionCard shows linked account count", () => {
+describe("active connections show a friendly identity and account list", () => {
+  test("BrokerConnectionCard shows a friendly identity and a Show-accounts toggle", () => {
     const src = read("./_components/broker-connections-section.tsx");
     const cardStart = src.indexOf("function BrokerConnectionCard");
     const cardEnd = src.indexOf("\nfunction ", cardStart + 1);
     const cardSrc = src.slice(cardStart, cardEnd);
     assert.ok(
-      cardSrc.includes("linked account"),
-      "BrokerConnectionCard must display linked account count",
+      cardSrc.includes("{identity}") && cardSrc.includes("Show accounts"),
+      "BrokerConnectionCard must show a friendly identity and a Show accounts toggle",
     );
   });
 

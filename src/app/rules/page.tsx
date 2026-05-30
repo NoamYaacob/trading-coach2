@@ -22,6 +22,7 @@ import { ScopeSelector } from "./_components/scope-selector";
 import { AccountRulesForm, type AccountRulesValues, type DefaultRuleValues } from "./_components/account-rules-form";
 import { mapDefaultRulesToAccountForm } from "./_components/account-rules-form-logic";
 import { buildRuleScopes, buildAccountRulesUrl } from "./_components/rule-scope-utils";
+import { deriveAccountDisplayLabel } from "@/lib/account-display";
 import { ApplyPendingButton } from "./_components/apply-pending-button";
 import { computeEnforcementMode, type EnforcementModeInfo } from "./_components/enforcement-mode";
 import { deriveAccountSubtitleSuffix, deriveScopeAccountBadge } from "./_components/scope-selector-helpers";
@@ -76,6 +77,9 @@ export default async function RulesPage({
       select: {
         id: true,
         label: true,
+        displayName: true,
+        externalAccountId: true,
+        accountType: true,
         platform: true,
         propFirm: true,
         connectionStatus: true,
@@ -183,6 +187,8 @@ export default async function RulesPage({
       a.brokerConnection?.permissionLevel === "full_access" && !consentGate.allowed;
     return {
       ...a,
+      // User-facing name (displayName > firm/type > broker label). Never the DB id.
+      label: deriveAccountDisplayLabel(a),
       hasAccountRules: a.riskRules !== null,
       requiresAutomatedActionsConsent,
       brokerConnection: a.brokerConnection
@@ -205,7 +211,7 @@ export default async function RulesPage({
         .filter((a) => a.id !== selectedAccount.id && a.riskRules !== null)
         .map((a) => ({
           id: a.id,
-          label: a.label,
+          label: deriveAccountDisplayLabel(a),
           env: a.brokerConnection?.env ?? null,
         }))
     : [];
@@ -336,7 +342,7 @@ export default async function RulesPage({
   // Derive breadcrumb from current scope/account for GrShell header.
   const breadcrumb: string[] =
     scope === "account" && selectedAccount
-      ? ["Trading Plan", selectedAccount.label]
+      ? ["Trading Plan", deriveAccountDisplayLabel(selectedAccount)]
       : showAccountsOverview
       ? ["Trading Plan", "Accounts"]
       : ["Trading Plan", "Starter settings"];

@@ -63,11 +63,38 @@ describe("BrokerConnectionCard — user-facing content only", () => {
     );
   });
 
-  test("card shows linked account count using the true total", () => {
+  test("card shows a friendly connection identity (provider + env + firm/type)", () => {
+    const card = cardSource();
     assert.ok(
-      cardSource().includes("linkedAccounts.length") &&
-        cardSource().includes("linked account"),
-      "card must display the true total linked account count",
+      card.includes("deriveConnectionIdentity("),
+      "card must derive a friendly identity, not just 'Tradovate'",
+    );
+    assert.ok(card.includes("{identity}"), "card must render the derived identity");
+  });
+
+  test("linked accounts are collapsed by default with Show/Hide toggle", () => {
+    const card = cardSource();
+    assert.ok(card.includes("<details"), "accounts must be in a collapsed <details>");
+    assert.ok(card.includes("Show accounts"), "must offer 'Show accounts'");
+    assert.ok(card.includes("Hide accounts"), "must offer 'Hide accounts' when open");
+  });
+
+  test("expanded list renders friendly per-account rows", () => {
+    const src = read(SECTION_FILE);
+    assert.ok(src.includes("LinkedAccountRow"), "must render LinkedAccountRow components");
+    assert.ok(
+      /tradingAccounts\.map\(\(acct\)[\s\S]*?LinkedAccountRow/.test(src),
+      "must map the connection's trading accounts to rows",
+    );
+  });
+
+  test("identity and account list are based on trading (non-archived, present) accounts", () => {
+    const card = cardSource();
+    assert.ok(card.includes("tradingAccounts"), "card must compute a tradingAccounts list");
+    assert.ok(
+      card.includes('a.protectionStatus !== "pending_decision"') &&
+        card.includes("a.missingFromBrokerSince == null"),
+      "trading accounts must exclude pending-setup and missing accounts",
     );
   });
 });
@@ -190,9 +217,9 @@ describe("BrokerConnectionCard — archived accounts list", () => {
     );
   });
 
-  test("archived accounts show label, Archived badge, and unlink note", () => {
+  test("archived accounts show friendly label, Archived badge, and unlink note", () => {
     const card = cardSource();
-    assert.ok(card.includes("acct.label"), "must show account label");
+    assert.ok(card.includes("deriveAccountDisplayLabel(acct)"), "must show the friendly account label");
     assert.ok(card.includes('label="Archived"'), "must show an Archived badge");
     assert.ok(
       card.includes("Will be unlinked when this connection is removed"),

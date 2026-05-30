@@ -7,6 +7,7 @@ import {
 } from "@/lib/brokers/automated-actions-consent";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
+import { deriveAccountDisplayLabel } from "@/lib/account-display";
 import { inferAccountClassification } from "@/lib/brokers/account-classification";
 import { inferConnectionClassification } from "@/lib/brokers/connection-classification";
 import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
@@ -400,7 +401,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
 
     return {
       id: account.id,
-      label: account.label,
+      label: deriveAccountDisplayLabel(account),
       platform: account.platform,
       platformLabel,
       propFirm: account.propFirm,
