@@ -9,6 +9,8 @@
  *  - telegramAlertsEnabled is included in the PATCH payload
  *  - handleSaveTelegramAlerts wired in AccountRulesForm
  *  - ? help button is subtler (border-transparent default state)
+ *  - webhook suppresses Telegram (only) when telegramAlertsEnabled === false,
+ *    in-app intervention is persisted independently of the gate
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -16,13 +18,19 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname);
+const REPO_ROOT = resolve(ROOT, "../../../..");
 
 function read(rel: string) {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
+function readRepo(rel: string) {
+  return readFileSync(resolve(REPO_ROOT, rel), "utf8");
+}
+
 const OVERVIEW = read("rules-overview-screen.tsx");
 const FORM = read("account-rules-form.tsx");
+const WEBHOOK = readRepo("src/app/api/tradovate/webhook/route.ts");
 
 // ── Session cutoff — inline hour editor ──────────────────────────────────────
 
@@ -198,6 +206,51 @@ describe("InlineRuleCard — ? help button subtler default state", () => {
     assert.ok(
       OVERVIEW.includes("border-amber-400 bg-amber-50 text-amber-700"),
       "? help button must still use amber styling when showHelp is true",
+    );
+  });
+});
+
+// ── Webhook — per-account Telegram suppression ───────────────────────────────
+
+describe("webhook — Telegram delivery gated on telegramAlertsEnabled", () => {
+  it("Telegram send is gated on telegramAlertsEnabled !== false", () => {
+    assert.ok(
+      WEBHOOK.includes("telegramAlertsEnabled !== false"),
+      "webhook must gate Telegram delivery on account.riskRules?.telegramAlertsEnabled !== false",
+    );
+  });
+
+  it("the gate is applied to the Telegram send branch (chatId && telegramAllowed)", () => {
+    assert.ok(
+      /if \(chatId && telegramAllowed\)/.test(WEBHOOK),
+      "the Telegram send must require both a chatId and telegramAllowed (the opt-out gate)",
+    );
+  });
+
+  it("null / true (not opted out) still send — false is the only suppressing value", () => {
+    // The gate uses `!== false`, so null (unset) and true both evaluate truthy
+    // and preserve the existing send-when-connected behavior. Only an explicit
+    // false suppresses. This is the documented backward-compatible default.
+    const telegramAllowedIdx = WEBHOOK.indexOf("const telegramAllowed =");
+    assert.ok(telegramAllowedIdx !== -1, "webhook must compute telegramAllowed");
+    const line = WEBHOOK.slice(telegramAllowedIdx, telegramAllowedIdx + 120);
+    assert.ok(
+      line.includes("!== false"),
+      "telegramAllowed must use `!== false` so null/true keep sending and only false opts out",
+    );
+  });
+
+  it("in-app intervention is persisted before (independent of) the Telegram gate", () => {
+    // The guardianIntervention.create (the in-app record / alert source) must
+    // happen BEFORE the Telegram opt-out gate, so opting out of Telegram never
+    // suppresses the in-app alert or the DB state change.
+    const interventionIdx = WEBHOOK.indexOf("prisma.guardianIntervention.create");
+    const gateIdx = WEBHOOK.indexOf("const telegramAllowed =");
+    assert.ok(interventionIdx !== -1, "webhook must create a guardianIntervention record");
+    assert.ok(gateIdx !== -1, "webhook must compute the telegramAllowed gate");
+    assert.ok(
+      interventionIdx < gateIdx,
+      "the in-app intervention record must be created before the Telegram opt-out gate",
     );
   });
 });
