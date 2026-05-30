@@ -345,17 +345,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </div>
             </SectionCard>
 
-            {/* 4 ── Alerts & Telegram */}
-            <SectionCard
-              title="Alerts & Telegram"
-              description="Where Guardrail sends your alerts."
-            >
-              <TelegramConnection
-                connected={Boolean(telegramConnection)}
-                username={telegramConnection?.telegramUsername ?? null}
-                botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
-              />
-            </SectionCard>
+            {/* 4 ── Alerts & Telegram.
+                id="alerts-telegram" is a stable deep-link anchor — the Trading
+                Plan Notifications card links here (/settings#alerts-telegram)
+                when Telegram is not yet connected. scroll-mt offsets the anchor
+                so it isn't hidden under the page's top padding when jumped to. */}
+            <div id="alerts-telegram" className="scroll-mt-24">
+              <SectionCard
+                title="Alerts & Telegram"
+                description="Where Guardrail sends your alerts."
+              >
+                <TelegramConnection
+                  connected={Boolean(telegramConnection)}
+                  username={telegramConnection?.telegramUsername ?? null}
+                  botConfigured={!!(process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)}
+                />
+              </SectionCard>
+            </div>
 
             {/* 5 ── Security: sign-in methods */}
             <SectionCard

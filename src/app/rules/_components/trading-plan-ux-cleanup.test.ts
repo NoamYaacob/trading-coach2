@@ -96,10 +96,41 @@ describe("notifications card — Telegram toggle", () => {
     );
   });
 
-  it("notifications card shows 'connect in Settings' when Telegram not connected", () => {
+  it("notifications card shows a needs-setup prompt when Telegram not connected", () => {
     assert.ok(
-      OVERVIEW.includes("connect in Settings"),
+      OVERVIEW.includes("connect it in Settings"),
       "NotificationsTelegramCard must prompt connection in Settings when Telegram not connected",
+    );
+  });
+
+  it("not-connected state renders a real link to Settings → Alerts & Telegram", () => {
+    assert.ok(
+      OVERVIEW.includes('href="/settings#alerts-telegram"'),
+      "not-connected state must render a real <a> link to /settings#alerts-telegram",
+    );
+    assert.ok(
+      OVERVIEW.includes("Connect Telegram in Settings"),
+      "the link text must read 'Connect Telegram in Settings'",
+    );
+  });
+
+  it("the Settings page exposes the alerts-telegram anchor the card links to", () => {
+    const settings = readRepo("src/app/settings/page.tsx");
+    assert.ok(
+      settings.includes('id="alerts-telegram"'),
+      "Settings must expose a stable id=\"alerts-telegram\" anchor for the deep link",
+    );
+  });
+
+  it("the not-connected link is a route anchor, not the rule detail pane", () => {
+    // The link must navigate to /settings (a real route), never call onSelectRule
+    // or set form state. A plain <a href> guarantees a full route change.
+    const cardStart = OVERVIEW.indexOf("function NotificationsTelegramCard");
+    const cardEnd = OVERVIEW.indexOf("export function RulesOverviewScreen");
+    const cardSrc = OVERVIEW.slice(cardStart, cardEnd);
+    assert.ok(
+      !cardSrc.includes("onSelectRule"),
+      "NotificationsTelegramCard must not call onSelectRule (no detail-pane navigation)",
     );
   });
 

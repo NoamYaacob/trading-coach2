@@ -547,8 +547,9 @@ function StaticInfoCard({
 }
 
 /** Per-account Telegram notifications card. When Telegram is not connected,
- *  shows a "connect in Settings" prompt. When connected, shows a Yes/No toggle
- *  for per-account alert delivery. */
+ *  shows a needs-setup prompt with a real link to Settings → Alerts & Telegram
+ *  (/settings#alerts-telegram). When connected, shows a Yes/No toggle for
+ *  per-account alert delivery. */
 function NotificationsTelegramCard({
   rule,
   telegramConnected,
@@ -604,9 +605,21 @@ function NotificationsTelegramCard({
           In-app alerts are always active.
         </p>
         {!telegramConnected ? (
-          <p className="text-[11.5px] text-[color:var(--gr-text-mute)]">
-            Telegram optional — connect in Settings to enable per-account alert controls.
-          </p>
+          <div className="grid gap-1.5">
+            <p className="text-[11.5px] text-[color:var(--gr-text-mute)]">
+              Telegram optional — connect it in Settings to enable per-account alert controls.
+            </p>
+            {/* Real deep-link to Settings → Alerts & Telegram. A full route
+                change (not the rule detail pane); it never marks the form
+                dirty, so the bottom page Save stays hidden. */}
+            <a
+              href="/settings#alerts-telegram"
+              className="inline-flex w-fit items-center gap-1 text-[11.5px] font-semibold text-[color:var(--gr-copper)] underline-offset-2 hover:underline focus:outline-none focus-visible:underline"
+            >
+              Connect Telegram in Settings
+              <span aria-hidden>→</span>
+            </a>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-medium text-[color:var(--gr-text-mid)]">Telegram alerts:</span>
