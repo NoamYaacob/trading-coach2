@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { deriveAccountDisplayLabel } from "@/lib/account-display";
 
 export const metadata: Metadata = {
   title: "Alerts — Guardrail",
@@ -29,7 +30,7 @@ function connStatusColor(s: string | null | undefined): string {
 
 // Trigger taxonomy. RULE covers rule/risk breaches; SYSTEM covers
 // session/activity events. Broker-connection events have no persisted source
-// yet, so there is no Broker filter chip (see FILTER_CHIPS below).
+// yet, so there is no Broker filter chip.
 const RULE_TRIGGER_TYPES = new Set([
   "near_daily_loss_limit",
   "daily_loss_limit",
@@ -72,23 +73,24 @@ function triggerLabel(t: string): string {
   }
 }
 
-// A concise, human one-liner per trigger type, used when the stored message is
-// technical/noisy (raw broker endpoints, test-mode notes, snake_case tokens).
+// Rich, human one-liner per trigger type: what happened, what Guardrail did,
+// and what (if anything) the user should expect next. Used in place of any
+// technical/log-flavoured stored message.
 const TRIGGER_SUMMARY: Record<string, string> = {
-  near_daily_loss_limit:      "You're approaching your daily loss limit.",
-  daily_loss_limit:           "Your daily loss limit was reached.",
-  exceeded_trade_count:       "You exceeded your max trades for the day.",
-  trade_limit:                "You reached your max trades for the day.",
-  max_loss_streak:            "You hit your loss-streak limit.",
-  consecutive_losses_warning: "You're approaching your loss-streak limit.",
-  position_size_limit:        "A position went over your size limit.",
-  max_position_size:          "A position went over your size limit.",
-  outside_session_hours:      "Activity outside your trading hours.",
+  daily_loss_limit:           "Daily loss limit reached. Guardrail stopped this account for the session.",
+  near_daily_loss_limit:      "You're approaching your daily loss limit. Guardrail is watching closely.",
+  exceeded_trade_count:       "Trade limit reached. New trades are blocked for the rest of the session.",
+  trade_limit:                "Trade limit reached. New trades are blocked for the rest of the session.",
+  max_loss_streak:            "Loss-streak limit reached. Guardrail stopped this account for the session.",
+  consecutive_losses_warning: "You're close to your loss-streak limit. One more loss may stop the account.",
+  position_size_limit:        "Position size limit exceeded. Guardrail flagged the account and kept monitoring.",
+  max_position_size:          "Position size limit exceeded. Guardrail flagged the account and kept monitoring.",
+  outside_session_hours:      "Trade activity detected outside your selected session.",
 };
 
 // Markers that indicate a stored message is technical/log-flavoured rather than
-// a clean human sentence. Such messages are softened to a friendly summary so
-// the feed reads like an alert center, not a debug log.
+// a clean human sentence (raw broker endpoints, test-mode notes, snake_case
+// tokens). Such messages are never shown — a friendly summary is used instead.
 const TECHNICAL_MARKERS =
   /(no applicable|Tradovate broker API|Test mode|simulated|AutoLiq|userAccount|connected_readonly|dry[_ ]?run|brokerEndpoint|liquidatepositions|\/update|\/cancel|broker-side lockout)/i;
 
@@ -97,21 +99,27 @@ function isTechnicalMessage(message: string | null): boolean {
   return message.length > 140 || TECHNICAL_MARKERS.test(message);
 }
 
-/** The short, human message shown in a feed row (never raw technical detail). */
+/**
+ * The short, human message shown in a feed row. Known trigger types always use
+ * their curated summary (what happened + what Guardrail did). For unknown
+ * types we fall back to a clean stored message, then a generic line — but never
+ * a raw technical/log string.
+ */
 function rowSummary(triggerType: string, message: string | null): string {
+  const canned = TRIGGER_SUMMARY[triggerType];
+  if (canned) return canned;
   if (message && !isTechnicalMessage(message)) return message;
-  return TRIGGER_SUMMARY[triggerType] ?? "Guardrail recorded this event.";
+  return "Guardrail recorded this event.";
 }
 
 type Severity = "critical" | "warning" | "system" | "info";
 
 /**
  * Visual severity for a row. Stop/lock breaches read strongest; approaching-
- * limit warnings are amber; session events are neutral; technical no-ops
- * (e.g. "no applicable broker API") are quiet info.
+ * limit warnings are amber; session events are neutral; anything unrecognised
+ * is quiet info.
  */
-function rowSeverity(triggerType: string, message: string | null): Severity {
-  if (isTechnicalMessage(message)) return "info";
+function rowSeverity(triggerType: string): Severity {
   switch (triggerType) {
     case "daily_loss_limit":
     case "exceeded_trade_count":
@@ -134,11 +142,20 @@ function triggerViewHref(t: string, accountId: string | null): string {
   const cat = triggerCategory(t);
   if (cat === "rule") return accountId ? `/rules?scope=account&id=${accountId}` : "/rules";
   // Broker-connection events have no intervention source yet; the helper is
-  // kept for when one exists, but no Broker filter chip is exposed today.
+  // kept for when one exists.
   if (cat === "broker") return "/settings#broker-connections";
-  // System/session events (e.g. outside_session_hours) are trading-activity
-  // events, so they route to the Dashboard — never to Settings.
+  // System/session events are trading-activity events, so they route to the
+  // Dashboard — never to Settings.
   return accountId ? `/dashboard?accountId=${accountId}` : "/dashboard";
+}
+
+/** Action-link label by category: rule → View rules, system → View dashboard,
+ *  broker/settings → Open settings. */
+function triggerActionLabel(t: string): string {
+  const cat = triggerCategory(t);
+  if (cat === "rule") return "View rules";
+  if (cat === "broker") return "Open settings";
+  return "View dashboard";
 }
 
 function formatRelative(date: Date): string {
@@ -167,9 +184,9 @@ function SeverityIcon({ severity }: { severity: Severity }) {
   return (
     <span
       style={{
-        width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12.5, fontWeight: 700,
+        fontSize: 13, fontWeight: 700,
         background: s.bg, color: s.fg,
       }}
     >
@@ -177,15 +194,6 @@ function SeverityIcon({ severity }: { severity: Severity }) {
     </span>
   );
 }
-
-// No "Broker" chip — there is no broker-connection event source yet, so a
-// Broker filter would only ever show an empty state. The chip stays hidden
-// until a real broker-event source exists.
-const FILTER_CHIPS = [
-  { key: "all",    label: "All" },
-  { key: "rule",   label: "Rule alerts" },
-  { key: "system", label: "System" },
-] as const;
 
 export default async function AlertsPage({
   searchParams,
@@ -216,7 +224,7 @@ export default async function AlertsPage({
     triggerTypeFilter = [];
   }
 
-  const [feedEvents, switcherAccounts] = await Promise.all([
+  const [feedEvents, switcherAccounts, systemAlertCount] = await Promise.all([
     triggerTypeFilter?.length === 0
       ? Promise.resolve(
           [] as Array<{
@@ -252,15 +260,24 @@ export default async function AlertsPage({
       select: {
         id: true,
         label: true,
+        displayName: true,
+        propFirm: true,
+        accountType: true,
+        externalAccountId: true,
         connectionStatus: true,
         brokerConnection: { select: { connectionStatus: true } },
       },
       orderBy: { createdAt: "asc" },
     }),
+    // Whether this user has *any* system alert at all — gates the System chip so
+    // it isn't a dead filter. Manual ?filter=system still works regardless.
+    prisma.guardianIntervention.count({
+      where: { userId: user.id, triggerType: { in: [...SYSTEM_TRIGGER_TYPES] } },
+    }),
   ]);
 
-  // Resolve labels for any account that appears in the feed but is not in the
-  // active switcher list (e.g. archived accounts with historical alerts).
+  // Resolve friendly labels for any account in the feed not in the active
+  // switcher list (e.g. archived accounts with historical alerts).
   const accountIdsInFeed = [
     ...new Set(feedEvents.map((e) => e.accountId).filter(Boolean)),
   ].filter((id) => !switcherAccounts.find((a) => a.id === id));
@@ -269,18 +286,31 @@ export default async function AlertsPage({
     accountIdsInFeed.length > 0
       ? await prisma.connectedAccount.findMany({
           where: { id: { in: accountIdsInFeed }, userId: user.id },
-          select: { id: true, label: true },
+          select: {
+            id: true, label: true, displayName: true,
+            propFirm: true, accountType: true, externalAccountId: true,
+          },
         })
       : [];
 
-  const accountLabelMap = new Map<string, string>();
-  for (const a of switcherAccounts) accountLabelMap.set(a.id, a.label);
-  for (const a of extraAccounts) accountLabelMap.set(a.id, a.label);
+  // id → { name: friendly label, brokerId: broker account number for title }
+  const accountMeta = new Map<string, { name: string; brokerId: string | null }>();
+  const addMeta = (a: {
+    id: string; label: string | null; displayName?: string | null;
+    propFirm?: string | null; accountType?: string | null; externalAccountId?: string | null;
+  }) => {
+    const name = deriveAccountDisplayLabel(a);
+    // Secondary broker identifier (account number), shown only as a title/tooltip
+    // and never as primary text. Suppress it when it equals the friendly name.
+    const rawId = a.externalAccountId ?? a.label ?? null;
+    const brokerId = rawId && rawId !== name ? rawId : null;
+    accountMeta.set(a.id, { name, brokerId });
+  };
+  for (const a of switcherAccounts) addMeta(a);
+  for (const a of extraAccounts) addMeta(a);
 
-  // Is the requested account one of the user's known accounts? (Query is already
-  // scoped by userId, so this only affects pill highlight + empty-state copy.)
-  const selectedAccountLabel = requestedAccountId
-    ? accountLabelMap.get(requestedAccountId) ?? null
+  const selectedAccountName = requestedAccountId
+    ? accountMeta.get(requestedAccountId)?.name ?? null
     : null;
 
   // ── Group consecutive repeated alerts (same type + account + day) ─────────
@@ -315,12 +345,11 @@ export default async function AlertsPage({
   }
 
   // ── Account switcher (top of page) ────────────────────────────────────────
-  const selectableAccounts = switcherAccounts
-    .filter((acc) => {
-      const effectiveStatus =
-        acc.brokerConnection?.connectionStatus ?? acc.connectionStatus;
-      return effectiveStatus !== "expired" && effectiveStatus !== "connection_error";
-    });
+  const selectableAccounts = switcherAccounts.filter((acc) => {
+    const effectiveStatus =
+      acc.brokerConnection?.connectionStatus ?? acc.connectionStatus;
+    return effectiveStatus !== "expired" && effectiveStatus !== "connection_error";
+  });
 
   const buildHref = (overrides: {
     accountId?: string | null;
@@ -338,16 +367,28 @@ export default async function AlertsPage({
     return q ? `/alerts?${q}` : "/alerts";
   };
 
+  // System chip is shown only when the user has at least one system alert, or
+  // when they have manually navigated to ?filter=system (so the active chip is
+  // still visible). This keeps a usually-empty filter from looking dead.
+  const showSystemChip = systemAlertCount > 0 || activeFilter === "system";
+  const filterChips: Array<{ key: string; label: string }> = [
+    { key: "all",  label: "All" },
+    { key: "rule", label: "Rule alerts" },
+    ...(showSystemChip ? [{ key: "system", label: "System" }] : []),
+  ];
+
   // ── Sidebar account list (mirrors the top switcher) ───────────────────────
   const SidebarAccountList =
     selectableAccounts.length > 0 ? (
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {selectableAccounts.slice(0, 5).map((acc) => {
           const isSelected = acc.id === requestedAccountId;
+          const meta = accountMeta.get(acc.id);
           return (
             <Link
               key={acc.id}
               href={buildHref({ accountId: acc.id })}
+              title={meta?.brokerId ?? undefined}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "7px 8px", borderRadius: 8,
@@ -368,7 +409,7 @@ export default async function AlertsPage({
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}
               >
-                {acc.label}
+                {meta?.name ?? deriveAccountDisplayLabel(acc)}
               </span>
             </Link>
           );
@@ -383,22 +424,37 @@ export default async function AlertsPage({
       </Link>
     );
 
-  // ── Empty-state copy varies by what the user is filtering on ──────────────
+  // ── Empty-state copy + optional action, varying by what's filtered ────────
   const alertCount = feedEvents.length;
-  const emptyState = (() => {
+  type EmptyState = { title: string; body: string; action?: { href: string; label: string } };
+  const emptyState: EmptyState = (() => {
     if (todayOnly) {
-      return { title: "No alerts today", body: "Nothing has triggered today. New alerts will appear here as they happen." };
+      return {
+        title: "No alerts today",
+        body: "You're clear so far. New rule breaches and session events will appear here.",
+      };
     }
     if (activeFilter === "rule") {
-      return { title: "No rule alerts yet", body: "Rule breaches like daily loss or trade limits will show up here." };
+      return {
+        title: "No rule alerts yet",
+        body: "Rule breaches like daily loss or trade limits will show up here.",
+        action: { href: "/rules", label: "View trading plan" },
+      };
     }
     if (activeFilter === "system") {
-      return { title: "No system alerts yet", body: "Session and activity events will show up here." };
-    }
-    if (selectedAccountLabel) {
       return {
-        title: "No alerts for this account yet",
-        body: "Guardrail will show rule breaches, session events, and broker sync events here.",
+        title: "No system alerts yet",
+        body: "Session and activity events will show up here.",
+      };
+    }
+    if (requestedAccountId && selectedAccountName) {
+      return {
+        title: "No alerts for this account",
+        body: "Guardrail has not detected any rule breaches or session issues for this account yet.",
+        action: {
+          href: `/rules?scope=account&id=${requestedAccountId}`,
+          label: "View trading plan",
+        },
       };
     }
     return {
@@ -417,10 +473,10 @@ export default async function AlertsPage({
       hideApiStatus
     >
       <div style={{ overflowY: "auto", height: "100%" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
 
           {/* ── Header ──────────────────────────────────────────────────── */}
-          <section style={{ padding: "28px 36px 14px" }}>
+          <section style={{ padding: "28px 32px 14px" }}>
             <span
               style={{
                 fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em",
@@ -477,7 +533,7 @@ export default async function AlertsPage({
           {/* ── Account switcher ────────────────────────────────────────── */}
           {selectableAccounts.length > 0 && (
             <section
-              style={{ padding: "0 36px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}
+              style={{ padding: "0 32px 12px", display: "flex", gap: 8, flexWrap: "wrap" }}
             >
               <Link
                 href={buildHref({ accountId: null })}
@@ -494,10 +550,12 @@ export default async function AlertsPage({
               </Link>
               {selectableAccounts.map((acc) => {
                 const isSelected = acc.id === requestedAccountId;
+                const meta = accountMeta.get(acc.id);
                 return (
                   <Link
                     key={acc.id}
                     href={buildHref({ accountId: acc.id })}
+                    title={meta?.brokerId ?? undefined}
                     style={{
                       padding: "6px 13px", borderRadius: 9, fontSize: 12.5,
                       background: isSelected ? "var(--gr-copper-bg)" : "var(--gr-surface)",
@@ -505,9 +563,11 @@ export default async function AlertsPage({
                       color: isSelected ? "var(--gr-copper)" : "var(--gr-text-mid)",
                       fontWeight: isSelected ? 600 : 500,
                       textDecoration: "none",
+                      maxWidth: 220, overflow: "hidden",
+                      textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}
                   >
-                    {acc.label}
+                    {meta?.name ?? deriveAccountDisplayLabel(acc)}
                   </Link>
                 );
               })}
@@ -517,12 +577,11 @@ export default async function AlertsPage({
           {/* ── Filter chips ────────────────────────────────────────────── */}
           <section
             style={{
-              padding: "0 36px 16px", display: "flex", gap: 8, flexWrap: "wrap",
+              padding: "0 32px 14px", display: "flex", gap: 8, flexWrap: "wrap",
               alignItems: "center",
-              borderBottom: "1px solid var(--gr-border-sub)", marginBottom: 4,
             }}
           >
-            {FILTER_CHIPS.map((chip) => {
+            {filterChips.map((chip) => {
               const isActive = activeFilter === chip.key;
               return (
                 <Link
@@ -558,30 +617,71 @@ export default async function AlertsPage({
           </section>
 
           {/* ── Alert feed ──────────────────────────────────────────────── */}
-          <section style={{ padding: "0 36px 36px" }}>
+          <section style={{ padding: "0 32px 36px" }}>
             {rows.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "56px 24px", color: "var(--gr-text-mute)" }}>
-                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-text-mid)", margin: "0 0 6px" }}>
+              <div
+                style={{
+                  border: "1px solid var(--gr-border)",
+                  background: "var(--gr-surface)",
+                  borderRadius: 14,
+                  padding: "48px 28px",
+                  textAlign: "center",
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    width: 40, height: 40, borderRadius: 11, marginBottom: 14,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
+                    fontSize: 18,
+                  }}
+                >
+                  ✓
+                </span>
+                <p style={{ fontSize: 15.5, fontWeight: 600, color: "var(--gr-ink)", margin: "0 0 6px" }}>
                   {emptyState.title}
                 </p>
-                <p style={{ fontSize: 13, margin: 0, lineHeight: 1.5, maxWidth: 380, marginInline: "auto" }}>
+                <p style={{ fontSize: 13, color: "var(--gr-text-mute)", margin: 0, lineHeight: 1.5, maxWidth: 360 }}>
                   {emptyState.body}
                 </p>
+                {emptyState.action && (
+                  <Link
+                    href={emptyState.action.href}
+                    style={{
+                      marginTop: 16, fontSize: 12.5, fontWeight: 500,
+                      color: "var(--gr-copper)", textDecoration: "none",
+                      padding: "7px 14px", borderRadius: 9,
+                      border: "1px solid var(--gr-border)", background: "var(--gr-bg-elev)",
+                    }}
+                  >
+                    {emptyState.action.label} →
+                  </Link>
+                )}
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column" }}>
+              <div
+                style={{
+                  border: "1px solid var(--gr-border)",
+                  background: "var(--gr-surface)",
+                  borderRadius: 14,
+                  padding: "4px 18px",
+                }}
+              >
                 {rows.map((row, i) => {
-                  const severity = rowSeverity(row.triggerType, row.message);
+                  const severity = rowSeverity(row.triggerType);
                   const label = triggerLabel(row.triggerType);
                   const summary = rowSummary(row.triggerType, row.message);
-                  const accountLabel = accountLabelMap.get(row.accountId) ?? null;
+                  const meta = accountMeta.get(row.accountId);
+                  const accountName = meta?.name ?? null;
                   const viewHref = triggerViewHref(row.triggerType, row.accountId);
+                  const actionLabel = triggerActionLabel(row.triggerType);
                   return (
                     <div
                       key={row.key}
                       style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "11px 0",
+                        display: "flex", alignItems: "center", gap: 13,
+                        padding: "13px 0",
                         borderTop: i > 0 ? "1px solid var(--gr-border-sub)" : undefined,
                       }}
                     >
@@ -596,17 +696,18 @@ export default async function AlertsPage({
                           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>
                             {label}
                           </span>
-                          {accountLabel && (
+                          {accountName && (
                             <span
+                              title={meta?.brokerId ?? undefined}
                               style={{
                                 fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
                                 background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
                                 border: "1px solid var(--gr-border-sub)",
-                                maxWidth: 160, overflow: "hidden",
+                                maxWidth: 180, overflow: "hidden",
                                 textOverflow: "ellipsis", whiteSpace: "nowrap",
                               }}
                             >
-                              {accountLabel}
+                              {accountName}
                             </span>
                           )}
                           {row.count > 1 && (
@@ -624,7 +725,7 @@ export default async function AlertsPage({
                         <div
                           style={{
                             display: "flex", alignItems: "baseline", gap: 8,
-                            marginTop: 2, minWidth: 0,
+                            marginTop: 3, minWidth: 0,
                           }}
                         >
                           <span
@@ -644,11 +745,12 @@ export default async function AlertsPage({
                       <Link
                         href={viewHref}
                         style={{
-                          flexShrink: 0, fontSize: 12.5, fontWeight: 500,
+                          flexShrink: 0, fontSize: 12, fontWeight: 500,
                           color: "var(--gr-copper)", textDecoration: "none",
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        View →
+                        {actionLabel} →
                       </Link>
                     </div>
                   );

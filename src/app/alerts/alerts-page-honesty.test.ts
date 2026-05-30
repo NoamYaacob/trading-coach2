@@ -126,10 +126,10 @@ describe("/alerts page — feed layout", () => {
     );
   });
 
-  it("feed rows include a 'View →' action link", () => {
+  it("feed rows include a clear action link with an arrow", () => {
     assert.ok(
-      ALERTS_PAGE_SRC.includes("View →"),
-      "feed rows must include a 'View →' action link",
+      ALERTS_PAGE_SRC.includes("{actionLabel} →"),
+      "feed rows must include an action link (e.g. 'View rules →')",
     );
   });
 
@@ -172,23 +172,47 @@ describe("/alerts page — filter chips", () => {
     );
   });
 
-  it("has System filter chip", () => {
+  it("has a System filter chip definition (shown conditionally)", () => {
     assert.ok(
       ALERTS_PAGE_SRC.includes('"system"') && ALERTS_PAGE_SRC.includes("System"),
-      "must have a System filter chip",
+      "must define a System filter chip",
     );
   });
 
-  it("does NOT expose a dead Broker filter chip (no broker events exist yet)", () => {
-    // GuardianIntervention stores no broker-connection events, so a Broker chip
-    // would only ever show an empty state. It must stay out of FILTER_CHIPS
-    // until a real broker-event source exists.
-    const chipsStart = ALERTS_PAGE_SRC.indexOf("const FILTER_CHIPS");
-    const chipsEnd = ALERTS_PAGE_SRC.indexOf("] as const", chipsStart);
-    const chipsBlock = ALERTS_PAGE_SRC.slice(chipsStart, chipsEnd);
+  it("System chip is hidden when the user has no system alerts", () => {
+    // The System chip must be gated on whether any system alert exists for this
+    // user (or the user manually navigated to ?filter=system) — never a dead
+    // filter that usually shows empty.
     assert.ok(
-      !chipsBlock.includes("Broker") && !chipsBlock.includes('"broker"'),
-      "FILTER_CHIPS must not include a Broker chip while no broker events exist",
+      ALERTS_PAGE_SRC.includes("systemAlertCount") &&
+        ALERTS_PAGE_SRC.includes("showSystemChip"),
+      "the System chip must be gated on a system-alert count",
+    );
+    assert.ok(
+      /showSystemChip\s*=\s*systemAlertCount > 0 \|\| activeFilter === "system"/.test(ALERTS_PAGE_SRC),
+      "showSystemChip must be true only when a system alert exists or ?filter=system is active",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("showSystemChip ? [{ key: \"system\""),
+      "the System chip must be conditionally appended to the chip list",
+    );
+  });
+
+  it("counts system alerts with a userId-scoped query", () => {
+    const countIdx = ALERTS_PAGE_SRC.indexOf("guardianIntervention.count");
+    assert.ok(countIdx !== -1, "must count system alerts via guardianIntervention.count");
+    const block = ALERTS_PAGE_SRC.slice(countIdx, countIdx + 160);
+    assert.ok(
+      block.includes("userId: user.id"),
+      "the system-alert count must be scoped by userId",
+    );
+  });
+
+  it("does NOT expose a Broker filter chip (no broker events exist yet)", () => {
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes('{ key: "broker"') &&
+        !ALERTS_PAGE_SRC.includes('label: "Broker"'),
+      "the chip list must not include a Broker chip while no broker events exist",
     );
   });
 
@@ -242,20 +266,131 @@ describe("/alerts page — account switcher", () => {
     );
   });
 
-  it("switcher pills render friendly account labels, not raw ids", () => {
-    // Pills map over switcher accounts and render acc.label (the friendly
-    // broker label). acc.id may only appear as a React key / comparison, never
-    // as a rendered JSX text child (e.g. `>{acc.id}<`).
+  it("switcher pills render friendly derived labels, not raw ids", () => {
+    // Pills render the friendly name from accountMeta / deriveAccountDisplayLabel.
+    // Neither acc.id nor acc.label (a raw broker number) is rendered as the
+    // primary visible JSX text child.
     const switcherIdx = ALERTS_PAGE_SRC.indexOf("Account switcher");
     const filterIdx = ALERTS_PAGE_SRC.indexOf("Filter chips");
     const block = ALERTS_PAGE_SRC.slice(switcherIdx, filterIdx);
     assert.ok(
-      block.includes("{acc.label}"),
-      "account switcher pills must show acc.label",
+      block.includes("meta?.name"),
+      "account switcher pills must render the derived friendly name (meta.name)",
     );
     assert.ok(
-      !/>\s*\{acc\.id\}\s*</.test(block),
-      "account switcher pills must not render raw acc.id as visible text",
+      !/>\s*\{acc\.id\}\s*</.test(block) && !/>\s*\{acc\.label\}\s*</.test(block),
+      "switcher pills must not render raw acc.id / acc.label as primary visible text",
+    );
+  });
+});
+
+// ── Friendly account naming (no long broker ids as primary labels) ────────────
+
+describe("/alerts page — friendly account naming", () => {
+  it("uses the shared deriveAccountDisplayLabel helper", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("deriveAccountDisplayLabel") &&
+        ALERTS_PAGE_SRC.includes('from "@/lib/account-display"'),
+      "the page must derive friendly account names via deriveAccountDisplayLabel",
+    );
+  });
+
+  it("selects displayName / propFirm / accountType for friendly naming", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("displayName: true") &&
+        ALERTS_PAGE_SRC.includes("propFirm: true") &&
+        ALERTS_PAGE_SRC.includes("accountType: true"),
+      "the account query must select the fields needed for a friendly label",
+    );
+  });
+
+  it("exposes the broker id only as a title attribute, never primary text", () => {
+    // The raw broker account number lives on meta.brokerId and is only passed to
+    // a `title=` attribute (tooltip) — never rendered as a visible text node.
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("title={meta?.brokerId"),
+      "broker ids must be surfaced only via a title attribute",
+    );
+    assert.ok(
+      !/>\s*\{meta\?\.brokerId\}\s*</.test(ALERTS_PAGE_SRC) &&
+        !/>\s*\{meta\.brokerId\}\s*</.test(ALERTS_PAGE_SRC),
+      "broker ids must not be rendered as visible text",
+    );
+  });
+});
+
+// ── Rich, human alert summaries ───────────────────────────────────────────────
+
+describe("/alerts page — humanized summaries", () => {
+  it("daily loss summary says what happened and what Guardrail did", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes(
+        "Daily loss limit reached. Guardrail stopped this account for the session.",
+      ),
+      "daily_loss_limit must have a rich human summary",
+    );
+  });
+
+  it("trade limit summary explains new trades are blocked", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes(
+        "Trade limit reached. New trades are blocked for the rest of the session.",
+      ),
+      "trade_limit must explain that new trades are blocked",
+    );
+  });
+
+  it("position size summary explains the flag + monitoring", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes(
+        "Position size limit exceeded. Guardrail flagged the account and kept monitoring.",
+      ),
+      "max_position_size must explain Guardrail flagged + monitored",
+    );
+  });
+
+  it("outside-session summary is human", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("Trade activity detected outside your selected session."),
+      "outside_session_hours must have a human summary",
+    );
+  });
+
+  it("known trigger types always use the curated summary (never raw message)", () => {
+    // rowSummary returns the canned TRIGGER_SUMMARY first, so a noisy stored
+    // message for a known trigger is never shown.
+    assert.ok(
+      /const canned = TRIGGER_SUMMARY\[triggerType\];[\s\S]*?if \(canned\) return canned;/.test(
+        ALERTS_PAGE_SRC,
+      ),
+      "rowSummary must prefer the curated summary for known trigger types",
+    );
+  });
+});
+
+// ── Action links per category ─────────────────────────────────────────────────
+
+describe("/alerts page — row action links", () => {
+  it("rule alerts link to View rules → /rules", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('return "View rules"') &&
+        ALERTS_PAGE_SRC.includes("/rules?scope=account"),
+      "rule alerts must show 'View rules' and link to /rules",
+    );
+  });
+
+  it("system/session alerts link to View dashboard → /dashboard", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('return "View dashboard"') &&
+        ALERTS_PAGE_SRC.includes("/dashboard?accountId="),
+      "system alerts must show 'View dashboard' and link to /dashboard",
+    );
+  });
+
+  it("settings/broker alerts link to Open settings", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('return "Open settings"'),
+      "broker/settings alerts must show 'Open settings'",
     );
   });
 });
@@ -352,10 +487,35 @@ describe("/alerts page — empty states", () => {
     );
   });
 
-  it("has a 'No alerts for this account yet' empty state for a selected account", () => {
+  it("has a useful per-account empty state with a trading-plan action link", () => {
     assert.ok(
-      ALERTS_PAGE_SRC.includes("No alerts for this account yet"),
-      "an account-scoped view with no results must show a per-account empty state",
+      ALERTS_PAGE_SRC.includes("No alerts for this account") &&
+        ALERTS_PAGE_SRC.includes(
+          "Guardrail has not detected any rule breaches or session issues for this account yet.",
+        ),
+      "an account-scoped view with no results must show a useful per-account empty state",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes('label: "View trading plan"'),
+      "the per-account empty state must offer a 'View trading plan' action",
+    );
+  });
+
+  it("Today-only empty state reassures the user they're clear", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes(
+        "You're clear so far. New rule breaches and session events will appear here.",
+      ),
+      "the Today-only empty state must have the reassuring subtitle",
+    );
+  });
+
+  it("empty states can render an action link", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("emptyState.action") &&
+        ALERTS_PAGE_SRC.includes("emptyState.action.href") &&
+        ALERTS_PAGE_SRC.includes("emptyState.action.label"),
+      "the empty-state panel must render an optional action link",
     );
   });
 });
