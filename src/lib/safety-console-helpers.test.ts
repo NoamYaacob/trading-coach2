@@ -2061,21 +2061,33 @@ describe("source-scan: account rules form hides advanced block by default", () =
   });
 });
 
-describe("source-scan: rules forms can show 'No changes to save.'", () => {
+describe("source-scan: rules forms save-hint copy", () => {
   const ACCOUNT_FORM_SRC = readAccountFormAndSections();
   const DEFAULT_FORM_SRC = readFileSync(
     resolve3(__dirname, "../app/rules/_components/rules-form.tsx"),
     "utf8",
   );
 
-  it("account form includes 'No changes to save.' helper text", () => {
+  it("account form no longer shows a disabled 'No changes to save.' hint", () => {
+    // The account-specific Trading Plan saves the five core rules inline on
+    // their own cards. Showing a disabled bottom save with "No changes to
+    // save." made users think both the card Save and the bottom Save were
+    // required, so the hint (and the always-on bottom button) were removed.
     assert.ok(
-      ACCOUNT_FORM_SRC.includes("No changes to save."),
-      "account form must include 'No changes to save.' helper text",
+      !ACCOUNT_FORM_SRC.includes("No changes to save."),
+      "account form must not show the disabled 'No changes to save.' hint (inline cards save independently)",
     );
   });
 
-  it("default form includes 'No changes to save.' helper text", () => {
+  it("account form gates the bottom save button on page-level changes", () => {
+    assert.ok(
+      ACCOUNT_FORM_SRC.includes("hasPageLevelSave"),
+      "account form must gate the bottom Save button on page-level changes (hasPageLevelSave)",
+    );
+  });
+
+  it("default (Starter) form still includes 'No changes to save.' helper text", () => {
+    // The default-template form still uses the full-form save model.
     assert.ok(
       DEFAULT_FORM_SRC.includes("No changes to save."),
       "default form must include 'No changes to save.' helper text",

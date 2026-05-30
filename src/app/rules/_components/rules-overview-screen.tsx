@@ -172,33 +172,35 @@ function InlineRuleCard({
       data-inline-editable="true"
       className="group relative flex flex-col rounded-[14px] border border-[color:var(--gr-border-hi)] bg-[color:var(--gr-surface-warm)] p-5 text-left"
     >
-      {/* Group eyebrow + enforcement chip */}
+      {/* Header row — group eyebrow (left), enforcement chip + help (right).
+          The "?" help button lives here in the top-right, next to the status
+          pill, so it never floats in the middle of the card. */}
       <div className="flex items-start justify-between gap-2">
         <span className="text-[10px] font-medium uppercase tracking-[0.10em] text-[color:var(--gr-text-mute)]">
           {rule.group}
         </span>
-        <GrEnforcementChip variant={rule.status} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <GrEnforcementChip variant={rule.status} />
+          <button
+            type="button"
+            onClick={() => setShowHelp((v) => !v)}
+            aria-label={`Help for ${rule.label}`}
+            aria-expanded={showHelp}
+            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold transition ${
+              showHelp
+                ? "border-amber-400 bg-amber-50 text-amber-700"
+                : "border-stone-300 bg-white text-stone-400 hover:border-stone-400 hover:text-stone-600"
+            }`}
+          >
+            ?
+          </button>
+        </div>
       </div>
 
-      {/* Rule title + help */}
-      <div className="mt-2.5 flex items-start gap-1.5">
-        <h3 className="text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
-          {rule.label}
-        </h3>
-        <button
-          type="button"
-          onClick={() => setShowHelp((v) => !v)}
-          aria-label={`Help for ${rule.label}`}
-          aria-expanded={showHelp}
-          className={`mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold transition ${
-            showHelp
-              ? "border-amber-400 bg-amber-50 text-amber-700"
-              : "border-stone-300 bg-white text-stone-400 hover:border-stone-400 hover:text-stone-600"
-          }`}
-        >
-          ?
-        </button>
-      </div>
+      {/* Rule title */}
+      <h3 className="mt-2.5 text-[14px] font-semibold leading-snug tracking-[-0.005em] text-[color:var(--gr-ink)]">
+        {rule.label}
+      </h3>
       <p className="mt-0.5 text-[11.5px] leading-[1.4] text-[color:var(--gr-text-mute)]">
         {rule.helper}
       </p>
@@ -208,29 +210,53 @@ function InlineRuleCard({
         </p>
       )}
 
-      {/* Value or inline editor */}
+      {/* Value / inline editor — the value itself is the edit affordance.
+          In view mode the whole value row is a button (value + pencil); a
+          click anywhere on it enters edit mode. No separate bottom Edit
+          button. While editing, Save / Cancel sit directly under the input. */}
       <div className="mt-4 flex-1">
         {editing ? (
-          <div className="flex items-center gap-1.5">
-            {kind === "money" && (
-              <span className="text-base font-semibold text-[color:var(--gr-text-mid)]">$</span>
-            )}
-            <input
-              type="number"
-              inputMode={kind === "money" ? "decimal" : "numeric"}
-              step={kind === "money" ? "any" : 1}
-              min={kind === "count" ? 1 : undefined}
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); void save(); }
-                if (e.key === "Escape") { e.preventDefault(); cancel(); }
-              }}
-              className="w-full min-w-0 rounded-lg border border-[color:var(--gr-copper)] bg-white px-2.5 py-1.5 text-lg font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--gr-copper-bg)]"
-            />
+          <div className="grid gap-2">
+            <div className="flex items-center gap-1.5">
+              {kind === "money" && (
+                <span className="text-base font-semibold text-[color:var(--gr-text-mid)]">$</span>
+              )}
+              <input
+                type="number"
+                inputMode={kind === "money" ? "decimal" : "numeric"}
+                step={kind === "money" ? "any" : 1}
+                min={kind === "count" ? 1 : undefined}
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); void save(); }
+                  if (e.key === "Escape") { e.preventDefault(); cancel(); }
+                }}
+                className="w-full min-w-0 rounded-lg border border-[color:var(--gr-copper)] bg-white px-2.5 py-1.5 text-lg font-semibold tabular-nums text-[color:var(--gr-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--gr-copper-bg)]"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saving}
+                className="rounded-lg bg-[color:var(--gr-copper)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[color:var(--gr-copper-hi)] disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={cancel}
+                disabled={saving}
+                className="rounded-lg border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition hover:border-stone-400 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        ) : (
+        ) : disabled ? (
+          /* Locked — value is read-only, no edit affordance. */
           <span
             className={
               isEmpty
@@ -240,11 +266,49 @@ function InlineRuleCard({
           >
             {isEmpty ? "Not set" : display}
           </span>
+        ) : (
+          /* The value row is the click target. Clicking the number or the
+             pencil enters edit mode. Hover reveals a light border/background
+             to signal editability. */
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label={`Edit ${rule.label}`}
+            className="-mx-2 flex w-full items-center justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition hover:border-[color:var(--gr-border-hi)] hover:bg-[color:var(--gr-bg-elev)] focus:outline-none focus-visible:border-[color:var(--gr-copper)] focus-visible:ring-2 focus-visible:ring-[color:var(--gr-copper-bg)]"
+          >
+            <span
+              className={
+                isEmpty
+                  ? "text-sm italic text-[color:var(--gr-text-mute)]/60"
+                  : "text-2xl font-semibold tabular-nums leading-none tracking-[-0.015em] text-[color:var(--gr-ink)]"
+              }
+            >
+              {isEmpty ? "Set value" : display}
+            </span>
+            <span
+              aria-hidden
+              title="Edit"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 opacity-60 transition group-hover:opacity-100 group-hover:text-[color:var(--gr-copper)] group-hover:border-[color:var(--gr-copper-bd)]"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11.5 2.5a1.4 1.4 0 0 1 2 2L5 13l-3 .8.8-3 8.7-8.3Z" />
+              </svg>
+            </span>
+          </button>
         )}
       </div>
 
-      {/* Footer — Edit, or Save/Cancel, or Locked */}
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
+      {/* Footer — status indicator only (no Edit button). */}
+      <div className="mt-4 flex items-center gap-2 border-t border-[color:var(--gr-border-sub)] pt-2.5">
         {disabled ? (
           <span
             title={lockMessage ?? undefined}
@@ -252,35 +316,9 @@ function InlineRuleCard({
           >
             Locked
           </span>
-        ) : editing ? (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              className="rounded-lg bg-[color:var(--gr-copper)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[color:var(--gr-copper-hi)] disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              onClick={cancel}
-              disabled={saving}
-              className="rounded-lg border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition hover:border-stone-400 disabled:opacity-60"
-            >
-              Cancel
-            </button>
-          </div>
+        ) : isEmpty ? (
+          <span className="text-[10.5px] text-[color:var(--gr-text-mute)]">Not configured</span>
         ) : (
-          <button
-            type="button"
-            onClick={startEdit}
-            className="rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-50"
-          >
-            {isEmpty ? "Set value" : "Edit"}
-          </button>
-        )}
-        {!editing && !disabled && !isEmpty && (
           <span className="inline-flex items-center gap-1 text-[10.5px] text-[color:var(--gr-text-mid)]">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--gr-copper)]" aria-hidden />
             Configured
