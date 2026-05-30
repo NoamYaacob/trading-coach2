@@ -84,7 +84,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       },
     }),
     prisma.connectedAccount.findMany({
-      where: { userId: user.id, isActive: true, protectionStatus: { not: "archived" } },
+      where: {
+        userId: user.id,
+        isActive: true,
+        // Load all non-archived accounts plus archived accounts that still
+        // reference a broker connection so BrokerConnectionCard can show the
+        // true linked-account inventory (including archived rows) and allow
+        // the user to clean up expired connections completely.
+        // The sidebar filter below (sidebarAccounts) still excludes
+        // archived and expired accounts from the navigation list.
+        OR: [
+          { protectionStatus: { not: "archived" } },
+          { protectionStatus: "archived", brokerConnectionId: { not: null } },
+        ],
+      },
       select: {
         id: true,
         label: true,

@@ -236,13 +236,16 @@ describe("broker-connections-section — orphaned connection remove button", () 
     );
   });
 
-  test("Remove button only appears when expired and no linked accounts", () => {
+  test("Remove button only appears when all linked accounts are archived (or none exist)", () => {
     const cardFnStart = brokerConnectionsSection.indexOf("function BrokerConnectionCard");
     const cardFnEnd = brokerConnectionsSection.indexOf("\nfunction ", cardFnStart + 1);
     const cardFn = brokerConnectionsSection.slice(cardFnStart, cardFnEnd);
+    // The condition allows removal when all linked accounts are archived so the
+    // backend can unlink them. Checking .length === 0 would wrongly block when
+    // there are archived-but-not-yet-unlinked accounts.
     assert.ok(
-      cardFn.includes("linkedAccounts.length === 0"),
-      "remove button must be gated on linkedAccounts.length === 0",
+      cardFn.includes("canRemoveConnection"),
+      "remove button must be gated on canRemoveConnection (all linked accounts archived)",
     );
   });
 });
