@@ -112,6 +112,7 @@ export default async function RulesPage({
             maxContracts: true,
             maxContractsBySymbolJson: true,
             rawBrokerHardLimitEnabled: true,
+            telegramAlertsEnabled: true,
             automatedActionsConsentAt: true,
             automatedActionsConsentVersion: true,
           },
@@ -134,6 +135,13 @@ export default async function RulesPage({
         })
       : Promise.resolve(null),
   ]);
+
+  // Load telegram connection status for per-account notification toggle.
+  const telegramConn = await prisma.telegramConnection.findUnique({
+    where: { userId: user.id },
+    select: { telegramChatId: true },
+  });
+  const hasTelegramConnected = Boolean(telegramConn?.telegramChatId);
 
   const protectionLock = getProtectionLockState({
     sessionStartHour: riskRules?.sessionStartHour ?? null,
@@ -296,6 +304,7 @@ export default async function RulesPage({
     ruleEditLockBufferMinutes: intStr(selectedAccount?.riskRules?.ruleEditLockBufferMinutes),
     maxContracts: intStr(selectedAccount?.riskRules?.maxContracts),
     rawBrokerHardLimitEnabled: selectedAccount?.riskRules?.rawBrokerHardLimitEnabled ?? false,
+    telegramAlertsEnabled: selectedAccount?.riskRules?.telegramAlertsEnabled ?? null,
     symbolLimits: parseSymbolLimits(selectedAccount?.riskRules?.maxContractsBySymbolJson ?? null).map(
       (l) => ({ symbol: l.symbol, maxContracts: String(l.maxContracts) }),
     ),
@@ -497,6 +506,7 @@ export default async function RulesPage({
                       defaultValues={accountDefaultValues}
                       defaultPendingPayload={(riskRules?.pendingPayloadJson ?? null) as Record<string, unknown> | null}
                       copySourceAccounts={copySourceAccounts}
+                      hasTelegramConnected={hasTelegramConnected}
                     />
                   </div>
                 ) : (

@@ -26,6 +26,8 @@ export type RiskRulesBody = {
   // with max=1, 2 MNQ (0.2 NQ-equivalent) will be rejected.
   // Default (false/absent): standard-equivalent detection-response enforcement only.
   rawBrokerHardLimitEnabled?: boolean;
+  // Per-account Telegram alert preference. null = inherit global behavior (= send if connected).
+  telegramAlertsEnabled?: boolean | null;
   // TODO: Move propFirm fields to Account setup / details page — not Trading Plan rules.
   propFirmAccountSize?: number | null;
   propFirmPhase?: string | null;
@@ -56,6 +58,7 @@ export function riskRulesData(r: RiskRulesBody) {
     maxContracts: r.maxContracts ?? null,
     maxContractsBySymbolJson: r.maxContractsBySymbolJson ?? null,
     ...(r.rawBrokerHardLimitEnabled !== undefined && { rawBrokerHardLimitEnabled: r.rawBrokerHardLimitEnabled ?? false }),
+    ...(r.telegramAlertsEnabled !== undefined && { telegramAlertsEnabled: r.telegramAlertsEnabled ?? null }),
     // propFirm fields: only written when explicitly present in the payload so
     // that saves from the Trading Plan (which omit them) preserve existing values.
     ...(r.propFirmAccountSize !== undefined && { propFirmAccountSize: r.propFirmAccountSize != null ? String(r.propFirmAccountSize) : null }),

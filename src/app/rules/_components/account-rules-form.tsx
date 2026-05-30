@@ -54,6 +54,9 @@ export type AccountRulesValues = {
   /** When true, Guardrail writes a global raw contract cap to Tradovate.
    *  WARNING: counts all contracts equally (2 MNQ blocked with max=1). Default: false. */
   rawBrokerHardLimitEnabled: boolean;
+  /** Per-account Telegram alert preference. null = not yet set (inherits global = send).
+   *  false = user opted this account out. true = explicitly opted in. */
+  telegramAlertsEnabled: boolean | null;
   /** Symbol-specific max-contract limits. Saved with the Trading Plan;
    *  guardian-evaluator wiring is a later rollout. */
   symbolLimits: SymbolLimitRow[];
@@ -105,6 +108,9 @@ type Props = {
   /** Other accounts owned by this user that have a Trading Plan.
    *  When non-empty, the "Copy from another account" button is enabled. */
   copySourceAccounts?: CopySourceAccount[];
+  /** True when the user has a connected Telegram account. Drives the
+   *  per-account Telegram alerts toggle in the Notifications card. */
+  hasTelegramConnected?: boolean;
 };
 
 function num(v: string): number | null {
@@ -206,6 +212,7 @@ export function AccountRulesForm({
   canApplyPendingNow,
   pendingBlockReason,
   copySourceAccounts,
+  hasTelegramConnected = false,
 }: Props) {
   const router = useRouter();
   // Read ?rule=daily-loss etc. from the URL so the editor can be deep-linked
@@ -323,6 +330,7 @@ export function AccountRulesForm({
       maxContracts: int(values.maxContracts),
       rawBrokerHardLimitEnabled: values.rawBrokerHardLimitEnabled,
       maxContractsBySymbolJson: serializeSymbolLimits(values.symbolLimits),
+      telegramAlertsEnabled: values.telegramAlertsEnabled,
     };
   }
 
@@ -400,6 +408,12 @@ export function AccountRulesForm({
    *  inline string-valued fields (daily loss, risk, trades, tilt, contracts). */
   async function handleSaveInline(key: string, rawValue: string): Promise<PersistResult> {
     const next = { ...values, [key]: rawValue } as AccountRulesValues;
+    setValues(next);
+    return persist(next);
+  }
+
+  async function handleSaveTelegramAlerts(enabled: boolean | null): Promise<PersistResult> {
+    const next = { ...values, telegramAlertsEnabled: enabled };
     setValues(next);
     return persist(next);
   }
@@ -642,6 +656,9 @@ export function AccountRulesForm({
           onSaveInline={handleSaveInline}
           inlineLockMessage={isHardLocked ? lockMessage ?? null : null}
           disabled={fieldsDisabled}
+          telegramConnected={hasTelegramConnected}
+          telegramAlertsEnabled={values.telegramAlertsEnabled}
+          onSaveTelegramAlerts={handleSaveTelegramAlerts}
           pendingNotes={{
             "daily-loss": defaultPendingNote(
               defaultPendingPayload,

@@ -589,6 +589,10 @@ model AccountRiskRules {
   // Internal lock (Guardrail STOPPED state) does not require this consent.
   automatedActionsConsentAt      DateTime?
   automatedActionsConsentVersion String?
+  // Per-account Telegram alert opt-out. null = not yet explicitly set (inherits
+  // the current global behavior: send if Telegram is connected). false = user
+  // has opted this account out. true = explicitly opted in (same as null today).
+  telegramAlertsEnabled Boolean?
   // Pending rule changes saved after the cutoff — applied when the next
   // trading day starts. JSON mirrors the editable fields above.
   pendingPayloadJson    Json?
