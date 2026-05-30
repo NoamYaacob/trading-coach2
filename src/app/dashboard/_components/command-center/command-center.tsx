@@ -7,6 +7,7 @@ import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { BrokerListenerStatus } from "@/app/dashboard/_components/broker-listener-status";
 import { formatPropFirmDescriptor } from "@/app/accounts/_components/account-rule-helpers";
 import { ArchiveAccountButton } from "./archive-account-button";
+import { AccountManageMenu } from "./account-manage-menu";
 import {
   COLLAPSED_GROUPS_STORAGE_KEY,
   parseCollapsedPayload,
@@ -31,11 +32,9 @@ import {
   formatFreshnessLabel,
   deriveFooterCopy,
   deriveGroupStateSuffix,
-  deriveOpenHref,
   derivePerAccountStateLabel,
   deriveProtectionStatusPanel,
   deriveRowStatusLabel,
-  deriveRulesHref,
   deriveTradingPermissionStatus,
   ESTIMATED_TRADE_COUNT_HINT,
   ESTIMATED_TRADE_COUNT_SHORT,
@@ -1227,20 +1226,14 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
           ))}
         </div>
 
-        {/* Action buttons row: Open, Rules, and optionally Reconnect */}
+        {/* Action buttons row: Manage menu + optional Reconnect */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <Link
-            href={deriveOpenHref(account.id)}
-            className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
-          >
-            Details
-          </Link>
-          <Link
-            href={deriveRulesHref(account.id)}
-            className="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
-          >
-            Rules
-          </Link>
+          <AccountManageMenu
+            accountId={account.id}
+            accountLabel={account.label}
+            align="left"
+            buttonClassName="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+          />
           {reconnectNeeded && (
             <Link
               href="/accounts/connect/tradovate"
@@ -1461,12 +1454,12 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Link href={deriveOpenHref(account.id)} className={PILL_ROW_SECONDARY}>
-        Details
-      </Link>
-      <Link href={deriveRulesHref(account.id)} className={PILL_ROW_SECONDARY}>
-        Rules
-      </Link>
+      <AccountManageMenu
+        accountId={account.id}
+        accountLabel={account.label}
+        buttonClassName={PILL_ROW_SECONDARY}
+        align="right"
+      />
       {reconnectNeeded ? (
         <Link href="/accounts/connect/tradovate" className={PILL_ROW_PRIMARY}>
           Reconnect

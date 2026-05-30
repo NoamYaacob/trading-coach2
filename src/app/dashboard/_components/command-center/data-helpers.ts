@@ -748,6 +748,14 @@ export function deriveRulesHref(accountId: string): string {
   return `/rules?scope=account&id=${accountId}`;
 }
 
+/**
+ * Href for the "View trades" action on a Dashboard account row.
+ * Opens the Trades page deep-linked to this exact account.
+ */
+export function deriveTradesHref(accountId: string): string {
+  return `/trades?accountId=${accountId}`;
+}
+
 // ── deriveProtectionStatusPanel ───────────────────────────────────────────────
 
 export type ProtectionStatusPanelData = {
