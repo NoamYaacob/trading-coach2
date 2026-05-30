@@ -37,6 +37,7 @@ import { DeleteAccount } from "./_components/delete-account";
 import { SignInMethods } from "./_components/sign-in-methods";
 import { BrokerConnectionsSection } from "./_components/broker-connections-section";
 import { TelegramConnection } from "./_components/telegram-connection";
+import { PlanBilling } from "./_components/plan-billing";
 
 export const metadata: Metadata = {
   title: "Settings — Guardrail",
@@ -122,18 +123,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     }),
     prisma.brokerConnection.findMany({
       where: { userId: user.id },
+      // Normal Settings shows only user-facing fields. Technical diagnostics
+      // (brokerUserId, tokenExpiresAt, lastReconciliation*, permissionLevel)
+      // are intentionally NOT selected here — they live on /debug/broker-accounts.
       select: {
         id: true,
         platform: true,
         env: true,
         connectionStatus: true,
-        permissionLevel: true,
         createdAt: true,
-        brokerUserId: true,
-        tokenExpiresAt: true,
-        lastReconciliationAt: true,
-        lastReconciliationStatus: true,
-        lastReconciledAccountCount: true,
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -298,15 +296,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     })}
                   </dd>
                 </div>
-                <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--gr-border-sub)", background: "var(--gr-bg-elev)" }}>
-                  <dt className="font-medium" style={{ color: "var(--gr-text-mute)" }}>Plan</dt>
-                  <dd style={{ color: "var(--gr-ink)" }}>
-                    {user.subscriptionStatus === "TRIALING"
-                      ? "Trial active"
-                      : user.subscriptionStatus.charAt(0).toUpperCase() + user.subscriptionStatus.slice(1).toLowerCase()}
-                  </dd>
-                </div>
               </dl>
+            </SectionCard>
+
+            {/* Plan & Billing */}
+            <SectionCard
+              title="Plan & Billing"
+              description="Your current Guardrail plan."
+            >
+              <PlanBilling
+                subscriptionStatus={user.subscriptionStatus}
+                trialEndsAt={user.trialEndsAt ?? null}
+              />
             </SectionCard>
 
             {/* Security: sign-in methods */}

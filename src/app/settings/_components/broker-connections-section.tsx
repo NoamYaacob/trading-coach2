@@ -1,12 +1,11 @@
 import React from "react";
-import Link from "next/link";
 
-import { DisconnectButton } from "@/app/accounts/_components/disconnect-button";
-import { computeAccountDisconnectState, type DisconnectWindowState } from "@/lib/broker-disconnect-window";
 import { RemoveAccountButton } from "./remove-account-button";
 import { RemoveBrokerConnectionButton } from "./remove-broker-connection-button";
 import { AccountDiscoveryHelper } from "./account-discovery-helper";
 import { DisconnectConnectionButton } from "./disconnect-connection-button";
+import Link from "next/link";
+import { type DisconnectWindowState } from "@/lib/broker-disconnect-window";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,18 +28,18 @@ export type BrokerAccountRow = {
   } | null;
 };
 
+/**
+ * User-facing broker connection. Technical/diagnostic fields (brokerUserId,
+ * tokenExpiresAt, lastReconciliation*, permissionLevel) are intentionally NOT
+ * part of this type — normal Settings never shows them. They remain available
+ * on the admin-only /debug/broker-accounts page.
+ */
 export type BrokerConnectionRow = {
   id: string;
   platform: string;
   env: string;
   connectionStatus: string;
-  permissionLevel: string | null;
   createdAt: Date;
-  brokerUserId: string | null;
-  tokenExpiresAt: Date | null;
-  lastReconciliationAt: Date | null;
-  lastReconciliationStatus: string | null;
-  lastReconciledAccountCount: number | null;
 };
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
@@ -67,96 +66,42 @@ function reconnectUrlForConnection(bc: { id: string; env: string }): string {
 }
 
 /**
- * Per-account display properties derived exclusively from permissionLevel.
- *
- * permissionLevel is the authoritative source for write-access capability:
- *   full_access   — probe confirmed Account Risk Settings access
- *   read_only     — probe confirmed 401/403; broker writes will fail
- *   unknown/null  — probe inconclusive or not yet run
- *
- * connectionStatus is NOT used to determine the badge or copy here.
- * It only drives the "since <date>" annotation (connected_live = first webhook).
+ * Maps the raw connectionStatus enum to a single user-facing status. Internal
+ * OAuth detail (token refresh / expiry timing) is never surfaced — users expect
+ * a connection to stay connected until they disconnect it.
  */
-type PermDisplay = {
-  pill: React.ReactElement;
-  copy: string;
-  /** Show "Reconnect with full access" upgrade link. */
-  showReconnect: boolean;
-};
-
-function permDisplay(perm: string | null | undefined): PermDisplay {
-  if (perm === "full_access") {
-    return {
-      pill: <StatusPill label="Risk settings" color="emerald" />,
-      copy: "Connected with risk settings access. Guardrail can monitor this account and sync supported broker-side risk settings.",
-      showReconnect: false,
-    };
-  }
-  if (perm === "read_only") {
-    return {
-      pill: <StatusPill label="Read-only" color="sky" />,
-      copy: "Connected with read-only access. Guardrail can monitor this account, but cannot apply broker-side risk settings.",
-      showReconnect: true,
-    };
-  }
-  // null or "unknown" — probe not yet run or returned an inconclusive result.
-  // Show reconnect when "unknown" (probe ran but failed) so the user can trigger
-  // a fresh probe; omit when null (probe has never run — it will run on next sync).
-  return {
-    pill: <StatusPill label="Checking" color="amber" />,
-    copy: "Permission check pending. Guardrail can monitor only until access is confirmed.",
-    showReconnect: perm === "unknown",
-  };
+function userFacingStatus(status: string): { label: string; color: "emerald" | "sky" | "amber" | "orange" } {
+  if (status === "connected_live") return { label: "Connected", color: "emerald" };
+  if (status === "connected_readonly") return { label: "Connected", color: "sky" };
+  if (status === "expired") return { label: "Reconnect required", color: "amber" };
+  if (status === "connection_error") return { label: "Needs reconnect", color: "orange" };
+  return { label: "Connected", color: "sky" };
 }
 
 // ── Classification ────────────────────────────────────────────────────────────
 
 /**
- * Classifies accounts into four mutually-exclusive buckets.
+ * Classifies accounts into the standalone buckets rendered outside the
+ * connection cards. Archived accounts are excluded here — they appear only
+ * inside their connection card's collapsed "archived" list.
  *
- * Precedence:
- *   1. inactive  — missing from broker (missingFromBrokerSince set)
- *   2. pending   — pending_decision (new account, not yet set up)
- *   3. needsAttention — OAuth token expired but account still exists in broker
- *   4. connected — everything else
- *
- * Archived accounts (protectionStatus === "archived") are excluded from all
- * standalone sections. They only appear inside BrokerConnectionCard via the
- * per-connection accountsByConn grouping. This avoids double-rendering and
- * prevents showing "Remove from Guardrail" for accounts that are already
- * archived.
- *
- * Inactive takes highest precedence among the non-archived accounts so an
- * account that is both "missing from broker" and "in an expired connection"
- * ends up in the inactive section (where Remove from Guardrail is offered).
+ *   - pending  — pending_decision (new account, not yet set up)
+ *   - inactive — missing from broker (missingFromBrokerSince set), not archived
  */
 function classifyAccounts(accounts: BrokerAccountRow[]) {
-  // Archived accounts are shown inside their connection card — exclude them
-  // from all standalone buckets.
   const nonArchived = accounts.filter((a) => a.protectionStatus !== "archived");
 
   const inactive = nonArchived.filter((a) => a.missingFromBrokerSince != null);
   const inactiveIds = new Set(inactive.map((a) => a.id));
 
   const pending = nonArchived.filter(
-    (a) => a.protectionStatus === "pending_decision" && a.missingFromBrokerSince == null,
-  );
-  const pendingIds = new Set(pending.map((a) => a.id));
-
-  const needsAttention = nonArchived.filter(
     (a) =>
-      !inactiveIds.has(a.id) &&
-      !pendingIds.has(a.id) &&
-      (isExpiredStatus(a.connectionStatus) ||
-        (a.brokerConnection != null && isExpiredStatus(a.brokerConnection.connectionStatus))),
-  );
-  const needsAttentionIds = new Set(needsAttention.map((a) => a.id));
-
-  const connected = nonArchived.filter(
-    (a) => !inactiveIds.has(a.id) && !needsAttentionIds.has(a.id) && !pendingIds.has(a.id),
+      a.protectionStatus === "pending_decision" &&
+      a.missingFromBrokerSince == null &&
+      !inactiveIds.has(a.id),
   );
 
-  return { pending, needsAttention, inactive, connected };
+  return { pending, inactive };
 }
 
 // ── Status pill ───────────────────────────────────────────────────────────────
@@ -184,41 +129,25 @@ function StatusPill({
   );
 }
 
-function ConnectionStatusPill({ status }: { status: string }) {
-  if (status === "connected_live") return <StatusPill label="Live" color="emerald" />;
-  if (status === "connected_readonly") return <StatusPill label="Connected" color="sky" />;
-  if (status === "expired") return <StatusPill label="Expired" color="amber" />;
-  if (status === "connection_error") return <StatusPill label="Error" color="orange" />;
-  return <StatusPill label={status} color="stone" />;
-}
-
 // ── BrokerConnectionCard ──────────────────────────────────────────────────────
 
 function BrokerConnectionCard({
   conn,
   linkedAccounts,
-  disconnectWindow,
-  userTz,
 }: {
   conn: BrokerConnectionRow;
   linkedAccounts: BrokerAccountRow[];
-  disconnectWindow: DisconnectWindowState;
-  userTz: string | null;
 }) {
   const expired = isExpiredStatus(conn.connectionStatus);
-  const now = new Date();
-  const tokenExpired = conn.tokenExpiresAt != null && conn.tokenExpiresAt < now;
-  const tokenSoon =
-    !tokenExpired &&
-    conn.tokenExpiresAt != null &&
-    conn.tokenExpiresAt.getTime() - now.getTime() < 30 * 60 * 1000;
+  const status = userFacingStatus(conn.connectionStatus);
 
-  const canDiscover = !expired;
-  // Non-archived, present-in-broker accounts: what the disconnect endpoint acts on.
-  const connectedAccts = linkedAccounts.filter(
-    (a) => a.missingFromBrokerSince == null && a.protectionStatus !== "archived",
-  );
-  // True when the backend will allow DELETE (all linked accounts are already archived).
+  const archivedAccounts = linkedAccounts.filter((a) => a.protectionStatus === "archived");
+  // Active accounts = everything the disconnect endpoint will act on.
+  const activeAccounts = linkedAccounts.filter((a) => a.protectionStatus !== "archived");
+
+  // The DELETE route succeeds only when every linked account is already
+  // archived (it unlinks them, preserving history, then deletes the
+  // connection). Mirror that here so the button never errors.
   const canRemoveConnection = linkedAccounts.every((a) => a.protectionStatus === "archived");
 
   const reconnectUrl = reconnectUrlForConnection(conn);
@@ -240,89 +169,28 @@ function BrokerConnectionCard({
             >
               {envLabel(conn.env)}
             </span>
-            <ConnectionStatusPill status={conn.connectionStatus} />
-            <span className="text-xs text-stone-400">
-              {platformLabel(conn.platform)}
-            </span>
+            <StatusPill label={status.label} color={status.color} />
           </div>
 
-          {/* Tradovate user ID */}
-          <p className="text-xs text-stone-500">
-            Tradovate user:{" "}
-            {conn.brokerUserId ? (
-              <span className="font-mono text-stone-700">{conn.brokerUserId}</span>
-            ) : (
-              <span className="italic text-stone-400">
-                {canDiscover ? "(not yet populated)" : "(unknown)"}
-              </span>
-            )}
-          </p>
+          {/* Provider */}
+          <p className="text-sm font-medium text-stone-800">{platformLabel(conn.platform)}</p>
 
-          {/* Token expiry */}
-          {conn.tokenExpiresAt && (
-            <p className="text-xs text-stone-500">
-              Token expires:{" "}
-              <span
-                className={
-                  tokenExpired
-                    ? "font-medium text-red-600"
-                    : tokenSoon
-                      ? "font-medium text-amber-600"
-                      : "text-stone-700"
-                }
-              >
-                {conn.tokenExpiresAt.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-                {tokenExpired ? " — expired" : tokenSoon ? " — expires soon" : ""}
-              </span>
-            </p>
-          )}
-
-          {/* Last sync */}
-          {conn.lastReconciliationAt ? (
-            <p className="text-xs text-stone-500">
-              Last sync:{" "}
-              <span className="text-stone-700">
-                {conn.lastReconciliationAt.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-              {conn.lastReconciliationStatus && (
-                <span className="ml-1 text-stone-400">
-                  · {conn.lastReconciliationStatus}
-                </span>
-              )}
-              {conn.lastReconciledAccountCount != null && (
-                <span className="ml-1 text-stone-400">
-                  · {conn.lastReconciledAccountCount} account(s)
-                </span>
-              )}
-            </p>
-          ) : (
-            <p className="text-xs text-stone-400">Not yet synced</p>
-          )}
-
-          {/* Account discovery capability */}
-          <p className="text-xs">
-            {canDiscover ? (
-              <span className="text-emerald-700">Can discover new accounts</span>
-            ) : (
-              <span className="text-amber-700">Cannot discover accounts — reconnect required</span>
-            )}
-          </p>
-
-          {/* Linked account count — true total including archived accounts */}
+          {/* Linked account count — true total (active + archived) */}
           <p className="text-xs text-stone-500">
             {linkedAccounts.length} linked account(s)
           </p>
+
+          {/* Scheduled-removal note — surfaced at connection level so a deferred
+              archive (locked / rule-active account) stays visible without
+              listing every account row. */}
+          {activeAccounts.some((a) => a.pendingProtectionStatus === "archived") && (
+            <p className="text-xs text-amber-700">
+              Removal scheduled — takes effect at the next trading session reset
+            </p>
+          )}
         </div>
 
-        {/* Right: reconnect CTA (expired) or disconnect CTA (active) */}
+        {/* Right: actions */}
         <div className="flex shrink-0 flex-col items-end gap-2">
           {expired ? (
             <>
@@ -335,114 +203,44 @@ function BrokerConnectionCard({
               {canRemoveConnection ? (
                 <RemoveBrokerConnectionButton connectionId={conn.id} />
               ) : (
-                <p className="text-right text-xs text-stone-400">
-                  Remove linked accounts first, then remove this connection.
-                </p>
+                <DisconnectConnectionButton
+                  connectionId={conn.id}
+                  linkedAccountCount={activeAccounts.length}
+                />
               )}
             </>
           ) : (
             <DisconnectConnectionButton
               connectionId={conn.id}
-              linkedAccountCount={connectedAccts.length}
+              linkedAccountCount={activeAccounts.length}
             />
           )}
         </div>
       </div>
 
-      {/* Linked accounts list */}
-      {linkedAccounts.length > 0 && (
-        <div className="mt-3 grid gap-2 border-t border-stone-100 pt-3">
-          {linkedAccounts.map((acct) => {
-            const isArchived = acct.protectionStatus === "archived";
-            const isMissing = acct.missingFromBrokerSince != null;
-            const { pill, copy, showReconnect } = permDisplay(
-              acct.brokerConnection?.permissionLevel,
-            );
-            const isLive = acct.connectionStatus === "connected_live";
-            const disconnectState = computeAccountDisconnectState(acct, disconnectWindow);
-            const dimmed = isArchived || isMissing;
-
-            return (
+      {/* Archived accounts — collapsed secondary list */}
+      {archivedAccounts.length > 0 && (
+        <details className="mt-3 border-t border-stone-100 pt-3">
+          <summary className="cursor-pointer list-none text-xs font-medium text-stone-500">
+            {archivedAccounts.length} archived account(s) under this connection
+          </summary>
+          <div className="mt-2 grid gap-1.5">
+            {archivedAccounts.map((acct) => (
               <div
                 key={acct.id}
-                className={`rounded-lg border px-3 py-2.5 ${dimmed ? "border-stone-100 bg-stone-50" : "border-stone-100 bg-white"}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-100 bg-stone-50 px-3 py-2"
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="grid gap-1 text-sm">
-                    <p className={`font-medium ${dimmed ? "text-stone-400" : "text-stone-950"}`}>
-                      {acct.label}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
-                      {isArchived ? (
-                        <StatusPill label="Archived" color="stone" />
-                      ) : isMissing ? (
-                        <StatusPill label="Inactive" color="stone" />
-                      ) : (
-                        <>
-                          {pill}
-                          {isLive && acct.connectedAt && (
-                            <span className="text-stone-400">
-                              · since{" "}
-                              {acct.connectedAt.toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    {isArchived && (
-                      <p className="text-xs text-stone-400">
-                        Already archived. Will be unlinked when this connection is removed.
-                      </p>
-                    )}
-                    {!isArchived && isMissing && (
-                      <p className="text-xs text-stone-400">
-                        No longer active in Tradovate. You can remove it from Guardrail.
-                      </p>
-                    )}
-                    {!isArchived && !isMissing && (
-                      <p className="text-xs text-stone-500">{copy}</p>
-                    )}
-                    {acct.protectionStatus === "pending_decision" && (
-                      <p className="text-xs text-amber-700">Setup needed before trading</p>
-                    )}
-                    {acct.pendingProtectionStatus === "archived" && (
-                      <p className="text-xs text-amber-700">
-                        Removal scheduled — will take effect at the next trading session reset
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    {!isArchived && !isMissing && showReconnect && acct.brokerConnection && (
-                      <Link
-                        href={`/accounts/connect/tradovate?env=${acct.brokerConnection.env}&reconnect=${acct.brokerConnection.id}`}
-                        className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:border-stone-400"
-                      >
-                        Reconnect with full access
-                      </Link>
-                    )}
-                    {isArchived ? null : isMissing ? (
-                      <RemoveAccountButton accountId={acct.id} redirectTo="/settings" />
-                    ) : (
-                      <DisconnectButton
-                        accountId={acct.id}
-                        providerLabel={platformLabel(acct.platform)}
-                        redirectTo="/settings"
-                        {...disconnectState}
-                        windowStartMs={disconnectWindow.nextWindowStart.getTime()}
-                        windowEndMs={disconnectWindow.nextWindowEnd.getTime()}
-                        userTz={userTz}
-                      />
-                    )}
-                  </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="font-medium text-stone-500">{acct.label}</span>
+                  <StatusPill label="Archived" color="stone" />
                 </div>
+                <span className="text-[11px] text-stone-400">
+                  Will be unlinked when this connection is removed
+                </span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -452,7 +250,6 @@ function BrokerConnectionCard({
 
 /**
  * One card per pending_decision account (new account not yet set up).
- * Rendered at the top of the section with an amber treatment to draw attention.
  */
 function PendingAccountCard({ acct }: { acct: BrokerAccountRow }) {
   const platform = platformLabel(acct.platform);
@@ -487,17 +284,17 @@ function PendingAccountCard({ acct }: { acct: BrokerAccountRow }) {
 export function BrokerConnectionsSection({
   accounts,
   brokerConnections,
-  disconnectWindow,
-  userTz,
 }: {
   accounts: BrokerAccountRow[];
   brokerConnections: BrokerConnectionRow[];
-  disconnectWindow: DisconnectWindowState;
-  userTz: string | null;
+  // Accepted for API compatibility with the settings page; the simplified
+  // card no longer renders per-account disconnect windows.
+  disconnectWindow?: DisconnectWindowState;
+  userTz?: string | null;
 }) {
   const { pending, inactive } = classifyAccounts(accounts);
 
-  // Group accounts by brokerConnectionId for per-connection display
+  // Group accounts by brokerConnectionId for per-connection display.
   const accountsByConn = new Map<string, BrokerAccountRow[]>();
   for (const acct of accounts) {
     const key = acct.brokerConnectionId ?? "__unlinked__";
@@ -541,8 +338,6 @@ export function BrokerConnectionsSection({
                 key={conn.id}
                 conn={conn}
                 linkedAccounts={accountsByConn.get(conn.id) ?? []}
-                disconnectWindow={disconnectWindow}
-                userTz={userTz}
               />
             ))}
           </div>
@@ -561,8 +356,6 @@ export function BrokerConnectionsSection({
                 key={conn.id}
                 conn={conn}
                 linkedAccounts={accountsByConn.get(conn.id) ?? []}
-                disconnectWindow={disconnectWindow}
-                userTz={userTz}
               />
             ))}
           </div>

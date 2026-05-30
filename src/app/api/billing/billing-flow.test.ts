@@ -21,6 +21,7 @@ function read(rel: string): string {
 const CHECKOUT = read("./checkout/route.ts");
 const WEBHOOK = read("./webhook/route.ts");
 const SETTINGS = read("../../settings/page.tsx");
+const PLAN_BILLING = read("../../settings/_components/plan-billing.tsx");
 
 // ── Checkout route ────────────────────────────────────────────────────────────
 
@@ -120,18 +121,29 @@ describe("billing webhook route", () => {
 // ── Settings plan display ─────────────────────────────────────────────────────
 
 describe("settings page — plan display", () => {
-  it("shows the user's subscription status as a Plan row", () => {
-    assert.ok(SETTINGS.includes(">Plan<"), "settings must render a Plan row");
+  it("renders a Plan & Billing section wired to the user's subscription status", () => {
     assert.ok(
-      SETTINGS.includes("user.subscriptionStatus"),
-      "the Plan row must reflect the user's subscriptionStatus",
+      SETTINGS.includes("Plan & Billing"),
+      "settings must render a 'Plan & Billing' section",
+    );
+    assert.ok(
+      SETTINGS.includes("PlanBilling") &&
+        SETTINGS.includes("subscriptionStatus={user.subscriptionStatus}"),
+      "the Plan & Billing section must reflect the user's subscriptionStatus",
     );
   });
 
   it("renders an active trial as a friendly label, not a raw enum", () => {
     assert.ok(
-      SETTINGS.includes('"Trial active"'),
+      PLAN_BILLING.includes('"Trial active"') || PLAN_BILLING.includes("Trial active"),
       "a TRIALING user must see 'Trial active', not the raw TRIALING enum",
+    );
+  });
+
+  it("offers an honest billing CTA (View plans → /pricing), not a fake portal", () => {
+    assert.ok(
+      PLAN_BILLING.includes("View plans") && PLAN_BILLING.includes("/pricing"),
+      "the billing CTA must route to /pricing and be honestly labelled",
     );
   });
 });
