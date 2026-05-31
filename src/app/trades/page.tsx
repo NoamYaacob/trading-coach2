@@ -129,6 +129,8 @@ export default async function TradesPage({
   const selectedAccountIsExpired =
     selectedAccount != null && !isAccountActive(selectedAccount);
 
+  const tz = "America/Chicago";
+
   // Load real trades for the selected account.
   // When a date deep-link is active, load 31 days so any calendar date is covered;
   // then filter to just that day client-side (tz-safe).
@@ -152,8 +154,6 @@ export default async function TradesPage({
   // Stats are computed across the date-filtered range (unfiltered by win/lose)
   // so users see the true picture for that context.
   const stats = computeTradeStats(dateFilteredTrades);
-
-  const tz = "America/Chicago";
 
   // Group trades by date for the header rows in the table
   const groupedByDate = new Map<string, typeof filteredTrades>();
@@ -461,7 +461,7 @@ export default async function TradesPage({
             {/* ── Filter & range bar (hidden in date-filter mode) ──────── */}
             {dateFilter ? (
               <section style={{ padding: "0 36px 16px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 12.5, color: "var(--gr-ink)", fontWeight: 500 }}>
                     {fmtDateFromKey(dateFilter)}
                   </span>
