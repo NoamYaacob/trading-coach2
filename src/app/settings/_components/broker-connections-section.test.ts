@@ -18,6 +18,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const SECTION_FILE = resolve(import.meta.dirname, "broker-connections-section.tsx");
+// LinkedAccountRow is a client component in its own file so the rename editor
+// can hold state and open inline below the row (not cramped in the "More" menu).
+const ROW_FILE = resolve(import.meta.dirname, "linked-account-row.tsx");
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -38,12 +41,9 @@ function cardSource(): string {
   return src.slice(cardStart, cardEnd);
 }
 
-/** Source of just the LinkedAccountRow function (the per-account action row). */
+/** Source of the LinkedAccountRow component (the per-account action row). */
 function rowSource(): string {
-  const src = read(SECTION_FILE);
-  const start = src.indexOf("function LinkedAccountRow");
-  const end = src.indexOf("\nfunction ", start + 1);
-  return src.slice(start, end === -1 ? undefined : end);
+  return read(ROW_FILE);
 }
 
 // ── User-facing card content ──────────────────────────────────────────────────
@@ -159,34 +159,80 @@ describe("LinkedAccountRow — action pattern", () => {
         row.includes('title="More account actions"'),
       "the More trigger must expose an accessible label and a hover title",
     );
-    // The summary keeps a visible border (a clear circular affordance) and
-    // gains a hover + keyboard-focus state so it doesn't read as static text.
+    // The summary is a clear bordered pill that gains a hover + keyboard-focus
+    // state so it doesn't read as static text.
     const summaryStart = row.indexOf("<summary");
     const summaryEnd = row.indexOf(">", summaryStart);
     const summary = row.slice(summaryStart, summaryEnd);
     assert.ok(summary.includes("rounded-full") && summary.includes("border"),
-      "the More trigger must remain a clear circular bordered button");
+      "the More trigger must be a clear bordered pill button");
     assert.ok(summary.includes("hover:"), "the More trigger must have a hover state");
     assert.ok(summary.includes("focus-visible:"), "the More trigger must have a keyboard-focus state");
   });
 
-  test("Rename, View trades, and Remove all remain accessible inside the menu", () => {
+  test("the More trigger is a text trigger ('More'), not an icon-only kebab", () => {
     const row = rowSource();
-    assert.ok(row.includes("EditAccountNameButton"), "Rename (EditAccountNameButton) must be present");
-    assert.ok(row.includes('variant="menuItem"'), "menu actions must use the menuItem variant");
+    const open = row.indexOf("<summary");
+    const gt = row.indexOf(">", open);
+    const close = row.indexOf("</summary>", gt);
+    const inner = row.slice(gt + 1, close);
+    // Visible text label inside the summary…
+    assert.ok(inner.includes("More"), "the trigger must show a visible 'More' text label");
+    // …and NOT the old three-dot kebab SVG.
+    assert.ok(!inner.includes("<circle"), "the trigger must not be an icon-only kebab (no SVG dots)");
+    assert.ok(!inner.includes("<svg"), "the trigger must not rely on an icon glyph as its only content");
+  });
+
+  test("the More trigger stays secondary — only Manage rules is filled", () => {
+    const row = rowSource();
+    const summaryStart = row.indexOf("<summary");
+    const summaryEnd = row.indexOf(">", summaryStart);
+    const summary = row.slice(summaryStart, summaryEnd);
+    // The primary Manage rules button is filled (bg-stone-900); the More trigger
+    // must NOT be a filled solid button (no bg-stone-900/950 fill).
+    assert.ok(!summary.includes("bg-stone-900"), "More trigger must not be a filled primary button");
+    assert.ok(!summary.includes("bg-stone-950"), "More trigger must not be a filled primary button");
+  });
+
+  test("rename opens a clean inline editor below the row, not a cramped menu form", () => {
+    const row = rowSource();
+    // The editor (EditAccountNameForm) is rendered at row level, gated by editing
+    // state — NOT inside the narrow w-44 "More" popover.
+    assert.ok(row.includes("EditAccountNameForm"), "row must render the dedicated inline editor");
+    assert.ok(
+      /\{editing\s*&&[\s\S]*?EditAccountNameForm/.test(row),
+      "the editor must render only when editing, below the row",
+    );
+    // The popover menu (w-44) must NOT contain the editor or a raw input — that
+    // was the overflow bug. The editor lives after the </details> block.
+    const menuStart = row.indexOf("w-44");
+    const menuEnd = row.indexOf("</details>", menuStart);
+    const menu = row.slice(menuStart, menuEnd);
+    assert.ok(!menu.includes("EditAccountNameForm"), "the editor must not live inside the compact menu popover");
+    assert.ok(!menu.includes("<input"), "the menu popover must not contain a raw text input (overflow bug)");
+  });
+
+  test("Edit account name, View trades, and Remove all remain accessible inside the menu", () => {
+    const row = rowSource();
+    assert.ok(row.includes("Edit account name"), "Edit account name action must be present in the menu");
     assert.ok(row.includes("View trades"), "View trades must remain accessible");
     assert.ok(
       row.includes("/trades?accountId=${acct.id}"),
       "View trades must link to the account trades view",
     );
     assert.ok(row.includes("RemoveAccountButton"), "Remove from Guardrail must remain accessible");
+    assert.ok(
+      row.includes('variant="menuItem"'),
+      "Remove must render in the de-emphasised menuItem variant",
+    );
   });
 
   test("Remove is visually separated and de-emphasised (not a big scary row button)", () => {
     const row = rowSource();
-    // A divider precedes the destructive action inside the menu.
+    // A divider precedes the destructive action inside the menu. (lastIndexOf so
+    // we match the JSX usage, not the top-of-file import.)
     const dividerIdx = row.indexOf("border-t border-stone-100");
-    const removeIdx = row.indexOf("RemoveAccountButton");
+    const removeIdx = row.lastIndexOf("RemoveAccountButton");
     assert.ok(dividerIdx !== -1, "a divider must separate the destructive action");
     assert.ok(
       dividerIdx < removeIdx,
@@ -206,29 +252,29 @@ describe("LinkedAccountRow — action pattern", () => {
     );
   });
 
-  test("shows a 'you can rename it' hint only when no custom displayName is set", () => {
+  test("shows a 'you can rename it' helper line only when no custom displayName is set", () => {
     const row = rowSource();
-    // The hint text itself.
+    // The helper text itself.
     assert.ok(
-      row.includes("Broker account label · you can rename it"),
+      row.includes("Broker label from Tradovate · you can rename it"),
       "must hint that the broker label can be renamed",
     );
     // It is gated on the absence of a custom display name…
     assert.ok(
       /hasCustomName\s*=\s*\(acct\.displayName/.test(row),
-      "the hint must derive from the account's displayName presence",
+      "the helper line must derive from the account's displayName presence",
     );
     // …and rendered only when !hasCustomName.
     assert.ok(
-      /\{!hasCustomName\s*&&[\s\S]*?Broker account label · you can rename it/.test(row),
-      "the rename hint must render only when there is no custom displayName",
+      /\{!hasCustomName\s*&&[\s\S]*?Broker label from Tradovate · you can rename it/.test(row),
+      "the helper line must render only when there is no custom displayName",
     );
   });
 });
 
 // ── Rename safety: displayName-only write via the existing endpoint ────────────
 
-describe("EditAccountNameButton — rename safety", () => {
+describe("EditAccountNameForm — rename safety", () => {
   const EDIT_FILE = resolve(import.meta.dirname, "edit-account-name-button.tsx");
 
   test("sends ONLY { displayName } to the existing user-scoped PATCH endpoint", () => {
@@ -262,26 +308,64 @@ describe("EditAccountNameButton — rename safety", () => {
   });
 
   test("the menu trigger copy reads 'Edit account name' (clearer than 'Rename account')", () => {
-    const src = read(EDIT_FILE);
+    const row = rowSource();
     assert.ok(
-      src.includes('"Edit account name"'),
-      "the menuItem trigger label must read 'Edit account name'",
+      row.includes("Edit account name"),
+      "the More-menu trigger label must read 'Edit account name'",
     );
     assert.ok(
-      !src.includes('"Rename account"'),
+      !row.includes("Rename account"),
       "the old 'Rename account' copy must be replaced",
     );
   });
 
-  test("the menuItem variant changes styling only, not the request", () => {
+  test("is a self-contained inline editor (onClose), with no styling-variant prop", () => {
     const src = read(EDIT_FILE);
-    // The variant prop only switches the trigger label/class; the PATCH body is
-    // computed independently of variant.
-    assert.ok(src.includes('variant?: "pill" | "menuItem"'), "must offer a variant prop");
+    // The editor is a single, dedicated form — it closes via an onClose callback
+    // rather than juggling a menu/pill 'variant'. The PATCH body is fixed.
+    assert.ok(src.includes("onClose"), "the editor must expose an onClose callback");
+    assert.ok(!src.includes('"pill" | "menuItem"'), "the editor must not carry a styling-variant prop");
     assert.ok(
-      !/variant[\s\S]{0,200}body:/.test(src.slice(src.indexOf("handleSave"))),
-      "variant must not influence the request body",
+      !/(variant)[\s\S]{0,200}body:/.test(src.slice(src.indexOf("handleSave"))),
+      "no styling prop may influence the request body",
     );
+  });
+
+  test("the input is width-bounded and the Cancel / Save controls wrap cleanly", () => {
+    const src = read(EDIT_FILE);
+    // Fixes the overflow bug: the input is full-width-but-capped and the button
+    // row wraps instead of pushing outside the card.
+    assert.ok(
+      src.includes("w-full") && src.includes("max-w-xs"),
+      "the rename input must be full-width but capped (w-full max-w-xs), not a fixed wide w-48",
+    );
+    assert.ok(!src.includes("w-48"), "the old fixed-width w-48 input (which overflowed the menu) must be gone");
+    assert.ok(src.includes("flex flex-wrap gap-2"), "the Cancel / Save controls must wrap cleanly on narrow widths");
+  });
+});
+
+// ── Remove stays behind its existing guarded confirmation/archive flow ─────────
+
+describe("RemoveAccountButton — confirmation/archive flow unchanged", () => {
+  const REMOVE_FILE = resolve(import.meta.dirname, "remove-account-button.tsx");
+
+  test("requires an explicit confirm step before removing", () => {
+    const src = read(REMOVE_FILE);
+    assert.ok(src.includes("setConfirming(true)"), "first click must enter a confirm step, not remove immediately");
+    assert.ok(src.includes("Remove this account from Guardrail?"), "must show a confirmation prompt");
+  });
+
+  test("removal still uses the guarded archive endpoint (protectionStatus=archived)", () => {
+    const src = read(REMOVE_FILE);
+    assert.ok(
+      src.includes("`/api/accounts/${accountId}/protection`"),
+      "must POST to the guarded protection endpoint",
+    );
+    assert.ok(
+      src.includes('JSON.stringify({ protectionStatus: "archived" })'),
+      "must archive (soft-delete), preserving history — unchanged behaviour",
+    );
+    assert.ok(!src.includes("deleteMany") && !src.includes(".delete("), "must not hard-delete any data");
   });
 });
 

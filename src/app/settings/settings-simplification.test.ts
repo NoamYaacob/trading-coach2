@@ -285,11 +285,14 @@ describe("G. Broker card friendly identity and account list", () => {
   });
 
   test("each account row shows a friendly label and account-level actions", () => {
+    // LinkedAccountRow is now its own client component (so the rename editor can
+    // open inline below the row); the section still renders it per account.
     assert.ok(SECTION.includes("LinkedAccountRow"), "must render per-account rows");
-    assert.ok(SECTION.includes("deriveAccountDisplayLabel(acct)"), "rows must use the friendly label");
-    assert.ok(SECTION.includes("Manage rules"), "row must offer Manage rules");
-    assert.ok(SECTION.includes("View trades"), "row must offer View trades");
-    assert.ok(SECTION.includes("RemoveAccountButton"), "row must offer Remove via the guarded flow");
+    const ROW = read("./_components/linked-account-row.tsx");
+    assert.ok(ROW.includes("deriveAccountDisplayLabel(acct)"), "rows must use the friendly label");
+    assert.ok(ROW.includes("Manage rules"), "row must offer Manage rules");
+    assert.ok(ROW.includes("View trades"), "row must offer View trades");
+    assert.ok(ROW.includes("RemoveAccountButton"), "row must offer Remove via the guarded flow");
   });
 
   test("per-account Remove uses the guarded archive flow (no DELETE)", () => {

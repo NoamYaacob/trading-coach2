@@ -4,12 +4,11 @@ import { RemoveAccountButton } from "./remove-account-button";
 import { RemoveBrokerConnectionButton } from "./remove-broker-connection-button";
 import { AccountDiscoveryHelper } from "./account-discovery-helper";
 import { DisconnectConnectionButton } from "./disconnect-connection-button";
-import { EditAccountNameButton } from "./edit-account-name-button";
+import { LinkedAccountRow } from "./linked-account-row";
 import Link from "next/link";
 import { type DisconnectWindowState } from "@/lib/broker-disconnect-window";
 import {
   deriveAccountDisplayLabel,
-  deriveAccountPrimaryLabel,
   deriveConnectionIdentity,
 } from "@/lib/account-display";
 
@@ -73,109 +72,6 @@ function isExpiredStatus(status: string): boolean {
 
 function reconnectUrlForConnection(bc: { id: string; env: string }): string {
   return `/accounts/connect/tradovate?env=${bc.env}&reconnect=${bc.id}`;
-}
-
-const ACCOUNT_TYPE_DISPLAY: Record<string, string> = {
-  evaluation: "Evaluation",
-  funded: "Funded",
-  personal: "Personal",
-  demo: "Demo",
-};
-
-/**
- * Short "firm · type" descriptor under an account's friendly name, e.g.
- * "MyFundedFutures · Evaluation". Returns null when neither is known.
- */
-function accountTypeDescriptor(acct: {
-  propFirm: string | null;
-  accountType: string | null;
-}): string | null {
-  const parts: string[] = [];
-  const firm = acct.propFirm?.trim();
-  if (firm) parts.push(firm);
-  if (acct.accountType) parts.push(ACCOUNT_TYPE_DISPLAY[acct.accountType] ?? acct.accountType);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-// Subtle, left-aligned row used for links inside the "More" actions menu.
-const MENU_ITEM_LINK =
-  "flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-stone-700 transition hover:bg-stone-50";
-
-/**
- * One row inside a connection's expanded "Show accounts" list. Shows the best
- * user-facing name (custom displayName or exact broker label), firm/type
- * descriptor, and an Active status pill.
- *
- * Actions are intentionally NOT a row of equal pill buttons. "Manage rules" is
- * the single prominent primary action; the rest (Rename, View trades, and the
- * destructive Remove from Guardrail) live in a compact "More" menu so the row
- * reads cleanly and the destructive action is de-emphasised but still
- * reachable. Remove reuses the guarded archive flow via RemoveAccountButton;
- * Rename only updates displayName — no behavior changes here, UI only.
- */
-function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
-  const descriptor = accountTypeDescriptor(acct);
-  const primaryName = deriveAccountPrimaryLabel(acct);
-  // When the user hasn't set a personal name, the primary label is the raw
-  // broker-provided account label (e.g. "MFFUEVRPD133936251"). Hint that it can
-  // be renamed via the "More" menu so it doesn't read as a fixed, cryptic id.
-  const hasCustomName = (acct.displayName?.trim().length ?? 0) > 0;
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-stone-100 bg-white px-3 py-2.5">
-      <div className="grid min-w-0 gap-1 text-sm">
-        <p className="truncate font-medium text-stone-800" title={primaryName}>{primaryName}</p>
-        {!hasCustomName && (
-          <p className="text-[11px] text-stone-400">Broker account label · you can rename it</p>
-        )}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
-          {descriptor && <span>{descriptor}</span>}
-          <StatusPill label="Active" color="emerald" />
-        </div>
-        {acct.pendingProtectionStatus === "archived" && (
-          <p className="text-xs text-amber-700">
-            Removal scheduled — takes effect at the next trading session reset
-          </p>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {/* Primary action — the most visible thing on the row. */}
-        <Link
-          href={`/rules?scope=account&id=${acct.id}`}
-          className="inline-flex items-center rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-stone-700"
-        >
-          Manage rules
-        </Link>
-        {/* Secondary actions — compact "More" menu (native details: no JS, SSR-safe). */}
-        <details className="group/more relative">
-          <summary
-            className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-stone-300 bg-white text-stone-600 transition hover:border-stone-400 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 group-open/more:border-stone-400 group-open/more:bg-stone-100"
-            aria-label="More account actions"
-            title="More account actions"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <circle cx="12" cy="5" r="1.7" />
-              <circle cx="12" cy="12" r="1.7" />
-              <circle cx="12" cy="19" r="1.7" />
-            </svg>
-          </summary>
-          <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-stone-200 bg-white p-1 shadow-lg">
-            <EditAccountNameButton
-              accountId={acct.id}
-              currentName={acct.displayName}
-              placeholder={deriveAccountDisplayLabel(acct)}
-              variant="menuItem"
-            />
-            <Link href={`/trades?accountId=${acct.id}`} className={MENU_ITEM_LINK}>
-              View trades
-            </Link>
-            {/* Destructive action — visually separated and styled red inside the menu. */}
-            <div className="my-1 border-t border-stone-100" />
-            <RemoveAccountButton accountId={acct.id} redirectTo="/settings" variant="menuItem" />
-          </div>
-        </details>
-      </div>
-    </div>
-  );
 }
 
 /**
