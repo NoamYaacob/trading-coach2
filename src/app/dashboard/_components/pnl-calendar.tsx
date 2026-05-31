@@ -159,7 +159,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 10,
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
@@ -204,7 +204,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           alignItems: "center",
           justifyContent: "center",
           gap: 12,
-          marginBottom: 10,
+          marginBottom: 8,
         }}
       >
         <button
@@ -303,8 +303,8 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         <div
           style={{
             display: "flex",
-            gap: 20,
-            marginBottom: 10,
+            gap: 16,
+            marginBottom: 8,
             flexWrap: "wrap",
           }}
         >
