@@ -364,23 +364,55 @@ describe("/dashboard: equity curve visual polish", () => {
     );
   });
 
-  it("chart main line is thicker for visual clarity (strokeWidth >= 2 on the main path)", () => {
-    // The main line path has the largest strokeWidth in the chart.
-    // We find the maximum strokeWidth across all elements to verify the main line is thick.
+  it("chart line is visible but refined (strokeWidth 1.5 – 2.2 range)", () => {
+    // Main line must be clearly readable but not overly chunky.
     const allMatches = [...equity.matchAll(/strokeWidth="([\d.]+)"/g)];
-    const maxSw = Math.max(...allMatches.map((m) => parseFloat(m[1] ?? "0")), 0);
+    const mainSw = Math.max(...allMatches.map((m) => parseFloat(m[1] ?? "0")), 0);
     assert.ok(
-      maxSw >= 2,
-      `equity curve main line strokeWidth must be >= 2; found max ${maxSw}`,
+      mainSw >= 1.5 && mainSw <= 2.5,
+      `equity curve main line strokeWidth must be 1.5–2.5 (visible but not heavy); found ${mainSw}`,
     );
   });
 
-  it("chart SVG is taller for more visual presence (height >= 120)", () => {
+  it("uses smooth cubic-bezier path (smoothPath helper) instead of jagged lines", () => {
+    assert.ok(
+      equity.includes("smoothPath"),
+      "equity curve must use a smoothPath helper for bezier interpolation",
+    );
+    assert.ok(
+      equity.includes("` C") || equity.includes("\" C") || equity.includes("cpx") || equity.includes("bezier") || equity.includes("C${"),
+      "smoothPath must generate cubic bezier (C) segments for smooth curve",
+    );
+  });
+
+  it("area fill is present but subtle (stopOpacity <= 0.2)", () => {
+    const opacities = [...equity.matchAll(/stopOpacity="([\d.]+)"/g)].map(
+      (m) => parseFloat(m[1] ?? "0"),
+    );
+    const topOpacity = Math.max(...opacities, 0);
+    assert.ok(
+      topOpacity > 0,
+      "equity curve must have a gradient fill (stopOpacity > 0)",
+    );
+    assert.ok(
+      topOpacity <= 0.2,
+      `equity curve fill must be subtle (top stopOpacity <= 0.2); found ${topOpacity}`,
+    );
+  });
+
+  it("endpoint dot is present and refined (r <= 2.5)", () => {
+    const dotMatch = equity.match(/<circle[^/]*r="([\d.]+)"/);
+    const r = dotMatch ? parseFloat(dotMatch[1] ?? "0") : 0;
+    assert.ok(r > 0, "equity curve must render an endpoint <circle> dot");
+    assert.ok(r <= 2.5, `endpoint dot radius must be refined (<= 2.5); found ${r}`);
+  });
+
+  it("chart SVG height is in the readable range (110 – 140)", () => {
     const match = equity.match(/height:\s*(\d+)/);
     const h = match ? parseInt(match[1] ?? "0", 10) : 0;
     assert.ok(
-      h >= 120,
-      `equity curve SVG height must be >= 120 for visual presence; found ${h}`,
+      h >= 110 && h <= 140,
+      `equity curve SVG height must be 110–140px; found ${h}`,
     );
   });
 
@@ -397,6 +429,36 @@ describe("/dashboard: equity curve visual polish", () => {
     assert.ok(
       largest >= 24,
       `equity curve headline must use fontSize >= 24 for prominence; found largest ${largest}`,
+    );
+  });
+});
+
+describe("/dashboard: P&L calendar active-day cell quality", () => {
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("active day P&L value is rendered in monospace, colored by sign", () => {
+    assert.ok(
+      calendar.includes("var(--font-ibm-plex-mono") &&
+        calendar.includes("var(--gr-ok)") &&
+        calendar.includes("var(--gr-bad)"),
+      "P&L value must use monospace font and design tokens for green/red coloring",
+    );
+  });
+
+  it("trade count uses var(--gr-text-mute) color for legibility", () => {
+    assert.ok(
+      calendar.includes("var(--gr-text-mute)"),
+      "calendar trade count must use --gr-text-mute (not faint) for clear legibility",
+    );
+  });
+
+  it("bottom section has breathing room (gap >= 2)", () => {
+    // Checks the gap inside the hasTrades bottom flex column.
+    const gapMatch = calendar.match(/gap:\s*(\d+)/g);
+    const gaps = (gapMatch ?? []).map((s) => parseInt(s.replace(/\D/g, ""), 10));
+    assert.ok(
+      gaps.some((g) => g >= 2),
+      "calendar active-day bottom section must have gap >= 2 for breathing room",
     );
   });
 });

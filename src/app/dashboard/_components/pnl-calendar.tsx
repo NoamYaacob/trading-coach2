@@ -406,8 +406,8 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    gap: 1,
-                    paddingBottom: 2,
+                    gap: 2,
+                    paddingBottom: 3,
                   }}
                 >
                   <div
@@ -424,9 +424,10 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
                   <div
                     style={{
                       fontSize: 9,
-                      color: "var(--gr-text-faint)",
-                      fontWeight: 500,
+                      color: "var(--gr-text-mute)",
+                      fontWeight: 600,
                       lineHeight: 1,
+                      letterSpacing: "0.02em",
                     }}
                   >
                     {data!.count}T

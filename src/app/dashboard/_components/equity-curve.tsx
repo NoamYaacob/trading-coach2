@@ -225,9 +225,28 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
   const H = 40;
   const sx = (x: number) => x * W;
   const sy = (y: number) => H - ((y - cumMin) / yRange) * H;
-  const pathPoints = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`)
-    .join(" ");
+
+  // Smooth cubic-bezier path through points.  Each segment uses horizontal
+  // control points (same Y as its anchor) so the curve levels off cleanly at
+  // each data point instead of cutting straight between them — the same
+  // technique used by polished financial chart libraries.
+  const smoothPath = (
+    pts: typeof points,
+  ): string => {
+    const c = pts.map((p) => ({ x: sx(p.x), y: sy(p.y) }));
+    if (c.length === 0) return "";
+    let d = `M${c[0]!.x.toFixed(1)},${c[0]!.y.toFixed(1)}`;
+    for (let i = 1; i < c.length; i++) {
+      const prev = c[i - 1]!;
+      const curr = c[i]!;
+      const cpx = ((prev.x + curr.x) / 2).toFixed(1);
+      d += ` C${cpx},${prev.y.toFixed(1)} ${cpx},${curr.y.toFixed(1)} ${curr.x.toFixed(1)},${curr.y.toFixed(1)}`;
+    }
+    return d;
+  };
+
+  const linePath = smoothPath(points);
+  const fillPath = `${linePath} L${sx(points[points.length - 1]!.x).toFixed(1)},${H} L${sx(points[0]!.x).toFixed(1)},${H} Z`;
   const finalY = points[points.length - 1]!.y;
   const lineColor = finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
 
@@ -235,7 +254,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
     <div
       style={{
         flex: 1,
-        minHeight: 120,
+        minHeight: 110,
         display: "flex",
         flexDirection: "column",
         gap: 10,
@@ -251,7 +270,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         <span
           style={{
             fontSize: 26,
-            fontWeight: 700,
+            fontWeight: 600,
             fontFamily: "var(--font-ibm-plex-mono, monospace)",
             color: finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)",
             letterSpacing: "-0.02em",
@@ -266,24 +285,24 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        style={{ width: "100%", height: 130 }}
+        style={{ width: "100%", height: 120 }}
         aria-hidden="true"
       >
         <defs>
           <linearGradient id="equityGradFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.25" />
+            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.15" />
             <stop offset="100%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* Faint horizontal grid lines */}
+        {/* Very faint horizontal guide lines */}
         {[0.25, 0.5, 0.75].map((frac) => (
           <line
             key={frac}
             x1={0} x2={W}
             y1={frac * H} y2={frac * H}
             stroke="var(--gr-border)"
-            strokeWidth="0.5"
-            strokeDasharray="2 4"
+            strokeWidth="0.3"
+            strokeDasharray="2 5"
           />
         ))}
         {/* Zero baseline when curve crosses zero */}
@@ -292,32 +311,29 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             x1={0} x2={W}
             y1={sy(0)} y2={sy(0)}
             stroke="var(--gr-border)"
-            strokeWidth="0.9"
+            strokeWidth="0.6"
             strokeDasharray="3 2"
           />
         )}
-        {/* Fill under the line */}
+        {/* Soft fill under the smooth curve */}
+        <path d={fillPath} fill="url(#equityGradFill)" />
+        {/* Smooth main line */}
         <path
-          d={`${pathPoints} L${sx(points[points.length - 1]!.x).toFixed(2)},${H} L${sx(points[0]!.x).toFixed(2)},${H} Z`}
-          fill="url(#equityGradFill)"
-        />
-        {/* Main line */}
-        <path
-          d={pathPoints}
+          d={linePath}
           stroke={lineColor}
-          strokeWidth="2.5"
+          strokeWidth="1.8"
           fill="none"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
-        {/* Endpoint dot */}
+        {/* Refined endpoint dot */}
         <circle
           cx={sx(points[points.length - 1]!.x)}
           cy={sy(points[points.length - 1]!.y)}
-          r="2.5"
+          r="2"
           fill={lineColor}
           stroke="var(--gr-surface)"
-          strokeWidth="1.5"
+          strokeWidth="1"
         />
       </svg>
     </div>
