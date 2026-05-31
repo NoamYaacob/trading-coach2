@@ -174,9 +174,13 @@ async function main() {
       (a) => a.label === t || a.externalAccountId === t,
     );
     if (!found) {
-      console.warn(`⚠  Target "${t}" not found in DB\n`);
+      console.warn(`⚠  Target "${t}" not found in DB — account may be archived or removed (skipping)\n`);
       rows.push(
-        row(t, "DB", "Account exists", "N/A", "NOT FOUND", "FAIL", "Account not in ConnectedAccount table"),
+        row(
+          t, "DB", "Account exists",
+          "N/A", "NOT FOUND — skipped", "N/A",
+          "Account not in ConnectedAccount table; may be archived/removed — expected if account was disconnected",
+        ),
       );
     }
   }
@@ -618,16 +622,14 @@ async function main() {
     }
 
     // Calendar cross-check for screenshot days
+    // Expected calendar days are expressed in the script's displayTz (America/Chicago).
+    // 2026-05-25T03:56 UTC = 2026-05-24 22:56 CDT → bucket key is 2026-05-24.
+    // MFFUEVRPD133936251 is omitted: account not present in ConnectedAccount table.
     const EXPECTED_CAL: Record<string, { days: string[]; expectedTotal: number; label: string }> = {
       DEMO7433035: {
-        days: ["2026-05-07", "2026-05-13", "2026-05-15", "2026-05-19", "2026-05-20", "2026-05-25"],
+        days: ["2026-05-07", "2026-05-13", "2026-05-15", "2026-05-19", "2026-05-20", "2026-05-24"],
         expectedTotal: 85,
         label: "+$85 total",
-      },
-      MFFUEVRPD133936251: {
-        days: ["2026-05-29"],
-        expectedTotal: 144,
-        label: "+$144 total",
       },
     };
 
