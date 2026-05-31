@@ -790,7 +790,7 @@ export default async function DashboardPage({
             )}
 
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
-            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <section className="dash-section dash-row-2col" style={{ padding: "0 36px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
               {/* Active rules panel */}
               <div style={{ background: "var(--gr-surface)", border: "1px solid var(--gr-border)", borderRadius: 14, padding: "18px 20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>

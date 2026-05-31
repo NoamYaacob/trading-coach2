@@ -672,3 +672,103 @@ describe("/dashboard: equity curve has a designed empty state", () => {
     );
   });
 });
+
+describe("/dashboard: Active rules + Equity curve are not height-coupled", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  // Anchor on the Row 1 comment — the bare className also appears in a
+  // <style> media query, so we locate the actual <section> that follows it.
+  const rowIdx = page.indexOf("Row 1: Active rules + Equity curve");
+
+  it("the 2-column row opts out of grid stretch (alignItems: start)", () => {
+    assert.ok(rowIdx !== -1, "must have the Row 1 (Active rules + Equity curve) section");
+    const section = page.slice(rowIdx, rowIdx + 400);
+    assert.ok(
+      section.includes('alignItems: "start"'),
+      "the Active-rules/Equity-curve row must use alignItems: 'start' so the rules card is content-height and not stretched to match the equity curve",
+    );
+  });
+
+  it("preserves the 2-column desktop layout", () => {
+    const section = page.slice(rowIdx, rowIdx + 400);
+    assert.ok(
+      section.includes('gridTemplateColumns: "1fr 1fr"'),
+      "the row must remain a 2-column grid on desktop",
+    );
+  });
+
+  it("does not force equal height via height:100% on the row's cards", () => {
+    const section = page.slice(rowIdx, rowIdx + 1400);
+    assert.ok(
+      !/height:\s*"100%"/.test(section),
+      "cards in the 2-col row must not use height: 100% to force equal height",
+    );
+  });
+});
+
+describe("/dashboard: equity curve fills its card naturally", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("uses tight price-scale margins so the curve isn't stranded in empty space", () => {
+    const m = equity.match(/scaleMargins:\s*\{\s*top:\s*([\d.]+),\s*bottom:\s*([\d.]+)/);
+    assert.ok(m, "must set scaleMargins on the (hidden) price scale");
+    const top = parseFloat(m![1] ?? "1");
+    const bottom = parseFloat(m![2] ?? "1");
+    assert.ok(
+      top <= 0.14 && bottom <= 0.14,
+      `scale margins must be tight so the line fills the card (<= 0.14); found top ${top}, bottom ${bottom}`,
+    );
+  });
+
+  it("still uses lightweight-charts with both built-in axes hidden", () => {
+    assert.ok(/from\s+["']lightweight-charts["']/.test(equity), "must keep lightweight-charts");
+    assert.ok(
+      /rightPriceScale:\s*\{[^}]*visible:\s*false/.test(equity),
+      "right price scale must stay hidden",
+    );
+    assert.ok(
+      /timeScale:\s*\{[^}]*visible:\s*false/.test(equity),
+      "native time axis must stay hidden",
+    );
+  });
+});
+
+describe("/dashboard: P&L calendar vertical spacing is tightened", () => {
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("keeps the grid constrained and centered (~720)", () => {
+    const m = calendar.match(/maxWidth:\s*(\d+)/);
+    const w = m ? parseInt(m[1] ?? "0", 10) : 0;
+    assert.ok(w >= 600 && w <= 820, `calendar inner column must stay narrow; found maxWidth ${w}`);
+    assert.ok(calendar.includes('margin: "0 auto"'), "inner column must stay centered");
+  });
+
+  it("reduces the stacked-row vertical gaps (header / nav / summary)", () => {
+    const bottoms = [...calendar.matchAll(/marginBottom:\s*(\d+)/g)].map((m) =>
+      parseInt(m[1] ?? "0", 10),
+    );
+    // The only remaining 12px gap is the conditional past-data caveat banner;
+    // header/nav/summary must all be tightened to <= 10.
+    const nonCaveat = bottoms.filter((b) => b !== 12);
+    assert.ok(
+      nonCaveat.length > 0 && nonCaveat.every((b) => b <= 10),
+      `stacked-row margins must be <= 10 after tightening; found ${bottoms.join(", ")}`,
+    );
+    assert.ok(
+      bottoms.filter((b) => b <= 8).length >= 2,
+      "the month-nav and summary rows must be tightened to <= 8px",
+    );
+  });
+
+  it("still shows trade count and links traded days to /trades?accountId=&date=", () => {
+    assert.ok(calendar.includes("data!.count}T"), "trade count must stay in traded cells");
+    assert.ok(
+      calendar.includes("/trades?accountId=") && calendar.includes("&date="),
+      "traded days must still deep-link to /trades with accountId and date",
+    );
+    assert.ok(
+      calendar.includes("hasTrades && accountId &&"),
+      "only days with trades may be clickable",
+    );
+  });
+});

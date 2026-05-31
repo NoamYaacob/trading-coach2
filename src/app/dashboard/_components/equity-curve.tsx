@@ -344,7 +344,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         minHeight: 110,
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 8,
       }}
     >
       <div
@@ -378,7 +378,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             display: "flex",
             justifyContent: axisLabels.length === 1 ? "center" : "space-between",
             padding: "0 2px",
-            marginTop: -2,
+            marginTop: -6,
           }}
         >
           {axisLabels.map((label, i) => (
@@ -442,7 +442,9 @@ function LightweightEquityChart({
       rightPriceScale: {
         visible: false,
         borderVisible: false,
-        scaleMargins: { top: 0.16, bottom: 0.16 },
+        // Tighter margins so the curve fills the card naturally and sits
+        // visually centred — not stranded in a sparse, empty plot area.
+        scaleMargins: { top: 0.12, bottom: 0.1 },
       },
       leftPriceScale: { visible: false },
       // Hide the built-in time axis (it repeats ugly same-day day-numbers).
