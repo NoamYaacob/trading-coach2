@@ -165,3 +165,28 @@ describe("/trades page: KPI strip is responsive", () => {
     );
   });
 });
+
+describe("/trades page: heading hierarchy", () => {
+  const page = read("app/trades/page.tsx");
+
+  it("h1 is 'Trades', not the selected account name", () => {
+    assert.ok(
+      page.includes(">Trades</h1>") ||
+        /h1[^>]*>[^<]*Trades[^<]*<\/h1>/.test(page) ||
+        page.includes("Trades\n          </h1>"),
+      "h1 must be the stable page title 'Trades'",
+    );
+    assert.ok(
+      !/<h1[^>]*>\s*\{selectedAccount/.test(page),
+      "h1 must not render the dynamic account label — that belongs in the eyebrow",
+    );
+  });
+
+  it("eyebrow/subtitle includes the selected account label for context", () => {
+    assert.ok(
+      page.includes("selectedAccount.label") &&
+        page.includes("Closed round-trips"),
+      "eyebrow must include both the account label and 'Closed round-trips' context",
+    );
+  });
+});

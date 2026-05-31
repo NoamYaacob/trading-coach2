@@ -411,11 +411,11 @@ export function BrokerConnectionsSection({
         </div>
       )}
 
-      {/* ── Archived / inactive ──────────────────────────────────────────── */}
+      {/* ── No longer found at broker ────────────────────────────────────── */}
       {hasInactive && (
         <div className="grid gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
-            Archived / inactive
+            No longer found at broker
           </p>
           <div className="grid gap-2">
             {inactive.map((acct) => {

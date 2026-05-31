@@ -113,7 +113,7 @@ function statusColor(status: string): string {
 function pnlColor(v: number | null): string {
   if (v == null) return "var(--gr-text-mute)";
   if (v > 0) return "var(--gr-ok)";
-  if (v < 0) return "var(--gr-warn)";
+  if (v < 0) return "var(--gr-bad)";
   return "var(--gr-text-mute)";
 }
 

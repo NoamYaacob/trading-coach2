@@ -508,14 +508,6 @@ export default async function AlertsPage({
 
           {/* ── Header ──────────────────────────────────────────────────── */}
           <section style={{ padding: "14px 32px 12px" }}>
-            <span
-              style={{
-                fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em",
-                textTransform: "uppercase", color: "var(--gr-text-mute)",
-              }}
-            >
-              ALERTS
-            </span>
             <div
               style={{
                 display: "flex", alignItems: "flex-end",

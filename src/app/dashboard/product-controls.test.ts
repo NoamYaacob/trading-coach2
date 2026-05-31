@@ -219,3 +219,18 @@ describe("/dashboard: hero sync button is the real sync action", () => {
     );
   });
 });
+
+describe("/dashboard: pnlColor uses red for negative values", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  it("pnlColor returns var(--gr-bad) for negative P&L, not var(--gr-warn)", () => {
+    assert.ok(
+      page.includes('if (v < 0) return "var(--gr-bad)"'),
+      "negative P&L must use --gr-bad (red), not --gr-warn (amber)",
+    );
+    assert.ok(
+      !page.includes('if (v < 0) return "var(--gr-warn)"'),
+      "pnlColor must not return --gr-warn for negative values",
+    );
+  });
+});

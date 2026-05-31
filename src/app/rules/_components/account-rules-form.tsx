@@ -448,7 +448,7 @@ export function AccountRulesForm({
           <p className="mt-1.5 text-sm text-stone-600">
             Create account-specific rules before Guardrail can monitor this account.
             {hasDefaultRules
-              ? " Starter settings are a starting point — save rules here to enable session monitoring for this account."
+              ? " Default rules are a starting point — save rules here to enable session monitoring for this account."
               : ""}
           </p>
         </div>

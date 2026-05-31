@@ -241,3 +241,30 @@ describe("Settings page — deep-link anchors", () => {
     );
   });
 });
+
+// ── Copy polish ───────────────────────────────────────────────────────────────
+
+describe("Settings page — copy polish", () => {
+  it("broker connections section description says 'broker connections', not 'broker accounts'", () => {
+    assert.ok(
+      PAGE_SRC.includes("broker connections"),
+      "Settings page must describe the section as 'broker connections'",
+    );
+    assert.ok(
+      !PAGE_SRC.includes("broker accounts"),
+      "Settings page must not say 'broker accounts' in the section description",
+    );
+  });
+
+  it("inactive accounts section says 'No longer found at broker', not 'Archived / inactive'", () => {
+    const src = readFileSync(join(__dirname, "_components/broker-connections-section.tsx"), "utf8");
+    assert.ok(
+      src.includes("No longer found at broker"),
+      "inactive section header must say 'No longer found at broker'",
+    );
+    assert.ok(
+      !src.includes("Archived / inactive"),
+      "old 'Archived / inactive' label must be removed",
+    );
+  });
+});

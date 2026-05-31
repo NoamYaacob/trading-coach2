@@ -150,7 +150,7 @@ export function ScopeSelector({ groups, currentScope, currentAccountId }: Props)
           }`}
         >
           <p className={`truncate text-[13px] ${isStarterSelected ? "font-semibold text-[color:var(--gr-ink)]" : "font-medium"}`}>
-            Starter settings
+            Default rules
           </p>
           <p className={`mt-0.5 truncate text-[10.5px] ${isStarterSelected ? "text-[color:var(--gr-text-mid)]" : "text-[color:var(--gr-text-mute)]"}`}>
             Session defaults applied to new accounts

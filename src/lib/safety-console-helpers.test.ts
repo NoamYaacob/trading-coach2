@@ -1360,10 +1360,10 @@ describe("source-scan: Trading Plan page does not expose internal terms", () => 
     );
   });
 
-  it("sidebar calls starter settings 'Starter settings' not 'Default template'", () => {
+  it("sidebar calls the starter scope 'Default rules' not 'Default template'", () => {
     assert.ok(
-      RULES_PAGE_SRC.includes("Starter settings"),
-      "sidebar must label the starter settings item 'Starter settings'",
+      RULES_PAGE_SRC.includes("Default rules"),
+      "sidebar must label the starter settings scope as 'Default rules'",
     );
     assert.ok(
       !RULES_PAGE_SRC.includes('"Default template"'),
