@@ -152,14 +152,14 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
-        padding: 16,
+        padding: 14,
       }}
     >
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 16,
+          marginBottom: 12,
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
@@ -199,7 +199,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           alignItems: "center",
           justifyContent: "center",
           gap: 12,
-          marginBottom: 12,
+          marginBottom: 10,
         }}
       >
         <button
@@ -299,7 +299,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           style={{
             display: "flex",
             gap: 20,
-            marginBottom: 14,
+            marginBottom: 10,
             flexWrap: "wrap",
           }}
         >
@@ -329,7 +329,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
       )}
 
       {/* Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
         {DOW_LABELS.map((d) => (
           <div
             key={d}
@@ -337,7 +337,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
               fontSize: 10,
               color: "var(--gr-text-faint)",
               textAlign: "center",
-              padding: "4px 0 6px",
+              padding: "2px 0 4px",
               fontWeight: 600,
               letterSpacing: "0.06em",
               textTransform: "uppercase",
@@ -373,10 +373,10 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
               key={i}
               title={title}
               style={{
-                padding: "4px 3px 4px",
+                padding: "3px 3px 3px",
                 borderRadius: 7,
                 textAlign: "left",
-                minHeight: 44,
+                minHeight: 40,
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
@@ -451,7 +451,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
       {tradedCells.length === 0 && (
         <div
           style={{
-            padding: "16px 0",
+            padding: "14px 0",
             textAlign: "center",
             fontSize: 12.5,
             color: "var(--gr-text-mute)",

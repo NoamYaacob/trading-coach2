@@ -167,39 +167,54 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       <div
         style={{
           flex: 1,
-          minHeight: 80,
-          borderRadius: 8,
+          minHeight: 150,
+          borderRadius: 10,
           border: "1px dashed var(--gr-border)",
-          background: "var(--gr-surface)",
+          background: "var(--gr-bg-elev)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 6,
-          padding: "16px 24px",
+          gap: 12,
+          padding: "28px 24px",
         }}
       >
-        <svg width="64" height="28" viewBox="0 0 64 28" fill="none" aria-hidden="true">
-          <polyline
-            points="0,22 10,18 20,20 30,12 38,14 50,6 64,10"
-            stroke="var(--gr-border)"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
+        <div
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--gr-surface)",
+            border: "1px solid var(--gr-border)",
+          }}
+        >
+          <svg width="22" height="14" viewBox="0 0 22 14" fill="none" aria-hidden="true">
+            <polyline
+              points="1,11 6,7 11,9 16,3 21,5"
+              stroke="var(--gr-text-faint)"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              fill="none"
+            />
+          </svg>
+        </div>
         <p
           style={{
             fontSize: 12.5,
             color: "var(--gr-text-mute)",
             textAlign: "center",
-            lineHeight: 1.5,
+            lineHeight: 1.55,
             margin: 0,
+            maxWidth: 240,
           }}
         >
           {trades.length === 0
-            ? "No closed round-trips in this window for this account."
-            : "Curve appears once at least 2 round-trips have closed in the window."}
+            ? "No closed round-trips in this window for this account yet."
+            : "Curve appears once at least 2 round-trips have closed in this window."}
         </p>
       </div>
     );
@@ -226,29 +241,83 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
   const sx = (x: number) => x * W;
   const sy = (y: number) => H - ((y - cumMin) / yRange) * H;
 
-  // Smooth cubic-bezier path through points.  Each segment uses horizontal
-  // control points (same Y as its anchor) so the curve levels off cleanly at
-  // each data point instead of cutting straight between them — the same
-  // technique used by polished financial chart libraries.
-  const smoothPath = (
-    pts: typeof points,
-  ): string => {
+  // Monotone cubic interpolation (Fritsch–Carlson).  Unlike a naive bezier
+  // smoothing, this guarantees the curve never overshoots the data: between
+  // any two real points the line stays within their value range, so it can
+  // never imply a P&L direction the trades didn't actually take.  Where the
+  // slope reverses (a peak or trough) the tangent is flattened, and for two
+  // points or a flat run it degrades to a clean straight segment.  No
+  // intermediate values are invented — the curve only passes through the real
+  // cumulative-P&L points computed above.
+  const monotonePath = (pts: typeof points): string => {
     const c = pts.map((p) => ({ x: sx(p.x), y: sy(p.y) }));
-    if (c.length === 0) return "";
+    const n = c.length;
+    if (n === 0) return "";
+    if (n === 1) return `M${c[0]!.x.toFixed(1)},${c[0]!.y.toFixed(1)}`;
+
+    // Secant slopes between consecutive points (in screen space).
+    const dxs: number[] = [];
+    const slope: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+      const ddx = c[i + 1]!.x - c[i]!.x;
+      const ddy = c[i + 1]!.y - c[i]!.y;
+      dxs.push(ddx);
+      slope.push(ddx === 0 ? 0 : ddy / ddx);
+    }
+
+    // Tangents per point: average of neighbouring slopes, flattened to zero
+    // wherever the direction reverses so the curve cannot bulge past a peak.
+    const m: number[] = new Array(n).fill(0);
+    m[0] = slope[0]!;
+    m[n - 1] = slope[n - 2]!;
+    for (let i = 1; i < n - 1; i++) {
+      const s0 = slope[i - 1]!;
+      const s1 = slope[i]!;
+      m[i] = s0 * s1 <= 0 ? 0 : (s0 + s1) / 2;
+    }
+
+    // Fritsch–Carlson clamp: keep each segment monotone (no overshoot).
+    for (let i = 0; i < n - 1; i++) {
+      if (slope[i] === 0) {
+        m[i] = 0;
+        m[i + 1] = 0;
+        continue;
+      }
+      const a = m[i]! / slope[i]!;
+      const b = m[i + 1]! / slope[i]!;
+      const h = a * a + b * b;
+      if (h > 9) {
+        const t = 3 / Math.sqrt(h);
+        m[i] = t * a * slope[i]!;
+        m[i + 1] = t * b * slope[i]!;
+      }
+    }
+
+    // Emit cubic bezier segments from the Hermite tangents.
     let d = `M${c[0]!.x.toFixed(1)},${c[0]!.y.toFixed(1)}`;
-    for (let i = 1; i < c.length; i++) {
-      const prev = c[i - 1]!;
-      const curr = c[i]!;
-      const cpx = ((prev.x + curr.x) / 2).toFixed(1);
-      d += ` C${cpx},${prev.y.toFixed(1)} ${cpx},${curr.y.toFixed(1)} ${curr.x.toFixed(1)},${curr.y.toFixed(1)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const cp1x = c[i]!.x + dxs[i]! / 3;
+      const cp1y = c[i]!.y + (m[i]! * dxs[i]!) / 3;
+      const cp2x = c[i + 1]!.x - dxs[i]! / 3;
+      const cp2y = c[i + 1]!.y - (m[i + 1]! * dxs[i]!) / 3;
+      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${c[i + 1]!.x.toFixed(1)},${c[i + 1]!.y.toFixed(1)}`;
     }
     return d;
   };
 
-  const linePath = smoothPath(points);
+  const linePath = monotonePath(points);
   const fillPath = `${linePath} L${sx(points[points.length - 1]!.x).toFixed(1)},${H} L${sx(points[0]!.x).toFixed(1)},${H} Z`;
   const finalY = points[points.length - 1]!.y;
   const lineColor = finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+
+  // Honest date-axis labels derived from the real first/last trade timestamps
+  // in this window (axis ticks, not invented data points).  Collapses to a
+  // single centred label when every trade closed on the same calendar day.
+  const fmtAxisDate = (ts: number) =>
+    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const axisTicks = Array.from(
+    new Set([fmtAxisDate(tMin), fmtAxisDate((tMin + tMax) / 2), fmtAxisDate(tMax)]),
+  );
 
   return (
     <div
@@ -290,7 +359,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       >
         <defs>
           <linearGradient id="equityGradFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.15" />
+            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.12" />
             <stop offset="100%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -317,25 +386,40 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         )}
         {/* Soft fill under the smooth curve */}
         <path d={fillPath} fill="url(#equityGradFill)" />
-        {/* Smooth main line */}
+        {/* Smooth main line — thin and calm */}
         <path
           d={linePath}
           stroke={lineColor}
-          strokeWidth="1.8"
+          strokeWidth="1.5"
           fill="none"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
-        {/* Refined endpoint dot */}
+        {/* Subtle endpoint dot */}
         <circle
           cx={sx(points[points.length - 1]!.x)}
           cy={sy(points[points.length - 1]!.y)}
-          r="2"
+          r="1.8"
           fill={lineColor}
           stroke="var(--gr-surface)"
-          strokeWidth="1"
+          strokeWidth="1.2"
         />
       </svg>
+      {/* Honest date axis from the real trade timestamps in this window. */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: axisTicks.length === 1 ? "center" : "space-between",
+          fontSize: 10,
+          color: "var(--gr-text-faint)",
+          letterSpacing: "0.02em",
+          marginTop: -2,
+        }}
+      >
+        {axisTicks.map((label, i) => (
+          <span key={`${label}-${i}`}>{label}</span>
+        ))}
+      </div>
     </div>
   );
 }
