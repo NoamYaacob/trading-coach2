@@ -1150,6 +1150,7 @@ export default async function DashboardPage({
                   timezone={displayTimeZone}
                   accountLabel={deriveAccountDisplayLabel(selectedAccount)}
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
+                  accountId={selectedAccount.id}
                 />
               </section>
             )}

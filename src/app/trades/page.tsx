@@ -85,10 +85,20 @@ function isoDateKey(d: Date, tz: string): string {
   return d.toLocaleDateString("en-CA", { timeZone: tz });
 }
 
+function fmtDateFromKey(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default async function TradesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ accountId?: string; filter?: string; range?: string }>;
+  searchParams: Promise<{ accountId?: string; filter?: string; range?: string; date?: string }>;
 }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect("/login");
@@ -97,6 +107,9 @@ export default async function TradesPage({
   const filter: FilterKey =
     params.filter === "winning" || params.filter === "losing" ? params.filter : "all";
   const rangeDays = params.range === "30" ? 30 : params.range === "7" ? 7 : 14;
+  // date deep-link from calendar: YYYY-MM-DD in the display timezone
+  const dateFilter: string | null =
+    params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const userInitials = currentUser.email ? currentUser.email.slice(0, 2).toUpperCase() : "??";
 
   const commandCenter = await loadCommandCenterData(currentUser.id, currentUser.email);
@@ -116,21 +129,29 @@ export default async function TradesPage({
   const selectedAccountIsExpired =
     selectedAccount != null && !isAccountActive(selectedAccount);
 
-  // Load real trades for the selected account
-  const since = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
+  // Load real trades for the selected account.
+  // When a date deep-link is active, load 31 days so any calendar date is covered;
+  // then filter to just that day client-side (tz-safe).
+  const effectiveRangeDays = dateFilter ? 31 : rangeDays;
+  const since = new Date(Date.now() - effectiveRangeDays * 24 * 60 * 60 * 1000);
   const allTrades = selectedAccount
     ? await loadAccountTrades(selectedAccount.id, { since })
     : [];
 
-  const filteredTrades = allTrades.filter((t) => {
+  // When a date filter is active, narrow to exactly that calendar day.
+  const dateFilteredTrades = dateFilter
+    ? allTrades.filter((t) => isoDateKey(t.closedAt, tz) === dateFilter)
+    : allTrades;
+
+  const filteredTrades = dateFilteredTrades.filter((t) => {
     if (filter === "winning") return t.pnl > 0;
     if (filter === "losing") return t.pnl < 0;
     return true;
   });
 
-  // Stats are computed across the full range (unfiltered) so users see the
-  // true picture of their trading, not just the filtered subset.
-  const stats = computeTradeStats(allTrades);
+  // Stats are computed across the date-filtered range (unfiltered by win/lose)
+  // so users see the true picture for that context.
+  const stats = computeTradeStats(dateFilteredTrades);
 
   const tz = "America/Chicago";
 
@@ -231,12 +252,14 @@ export default async function TradesPage({
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <section style={{ padding: "28px 36px 16px" }}>
           <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-            {selectedAccount
+            {dateFilter
+              ? `${selectedAccount ? selectedAccount.label + " · " : ""}Closed round-trips`
+              : selectedAccount
               ? `${selectedAccount.label} · Closed round-trips · last ${rangeDays}d`
               : `Closed round-trips · last ${rangeDays}d`}
           </span>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>
-            Trades
+            {dateFilter ? `Trades · ${fmtDateFromKey(dateFilter)}` : "Trades"}
           </h1>
         </section>
 
@@ -435,19 +458,38 @@ export default async function TradesPage({
               </div>
             </section>
 
-            {/* ── Filter & range bar ───────────────────────────────────── */}
-            <TradeFilters
-              currentFilter={filter}
-              currentRange={rangeDays}
-              buildHref={{
-                all: buildHref({ filter: "all" }),
-                winning: buildHref({ filter: "winning" }),
-                losing: buildHref({ filter: "losing" }),
-                r7: buildHref({ range: "7" }),
-                r14: buildHref({ range: "14" }),
-                r30: buildHref({ range: "30" }),
-              }}
-            />
+            {/* ── Filter & range bar (hidden in date-filter mode) ──────── */}
+            {dateFilter ? (
+              <section style={{ padding: "0 36px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "var(--gr-bg-elev)", border: "1px solid var(--gr-border)" }}>
+                  <span style={{ fontSize: 12.5, color: "var(--gr-ink)", fontWeight: 500 }}>
+                    {fmtDateFromKey(dateFilter)}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
+                    · {filteredTrades.length} trade{filteredTrades.length !== 1 ? "s" : ""}
+                  </span>
+                  <Link
+                    href={buildHref({})}
+                    style={{ marginLeft: "auto", fontSize: 12, color: "var(--gr-copper)", textDecoration: "none", flexShrink: 0 }}
+                  >
+                    ← All trades
+                  </Link>
+                </div>
+              </section>
+            ) : (
+              <TradeFilters
+                currentFilter={filter}
+                currentRange={rangeDays}
+                buildHref={{
+                  all: buildHref({ filter: "all" }),
+                  winning: buildHref({ filter: "winning" }),
+                  losing: buildHref({ filter: "losing" }),
+                  r7: buildHref({ range: "7" }),
+                  r14: buildHref({ range: "14" }),
+                  r30: buildHref({ range: "30" }),
+                }}
+              />
+            )}
 
             {/* ── Trades table ─────────────────────────────────────────── */}
             <section style={{ padding: "0 36px 36px" }}>
@@ -456,7 +498,9 @@ export default async function TradesPage({
                   <div style={{ padding: "48px 24px", textAlign: "center" }}>
                     <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>—</div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>
-                      {allTrades.length === 0
+                      {dateFilter
+                        ? `No closed round-trips on ${fmtDateFromKey(dateFilter)}.`
+                        : allTrades.length === 0
                         ? "No closed round-trips for this account yet."
                         : `No ${filter} trades in the last ${rangeDays}d.`}
                     </p>

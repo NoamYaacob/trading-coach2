@@ -32,6 +32,8 @@ type Props = {
   accountLabel: string;
   /** Destination for the "View trades →" link in the panel header. */
   tradesHref: string;
+  /** Account ID used to build day-click deep links to /trades?accountId=…&date=… */
+  accountId: string;
 };
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -94,7 +96,7 @@ function buildMonthGrid(
   return cells;
 }
 
-export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Props) {
+export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accountId }: Props) {
   const [monthOffset, setMonthOffset] = React.useState(0);
 
   const now = new Date();
@@ -377,58 +379,68 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
                 minHeight: 44,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "stretch",
                 justifyContent: "space-between",
-                gap: 2,
+                gap: 1,
                 background: cellBg,
                 border: cellBorder,
                 boxShadow: isToday ? "0 0 0 2px var(--gr-copper-bg)" : "none",
                 opacity: !cell.inMonth ? 0.3 : 1,
                 position: "relative",
+                cursor: hasTrades && accountId ? "pointer" : "default",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 2px" }}>
-                <span
+              <span
+                style={{
+                  fontSize: 11,
+                  color: isToday ? "var(--gr-copper)" : "var(--gr-text-mid)",
+                  fontWeight: isToday ? 700 : 500,
+                  lineHeight: 1,
+                  padding: "0 2px",
+                }}
+              >
+                {cell.dayNum}
+              </span>
+              {hasTrades ? (
+                <div
                   style={{
-                    fontSize: 11,
-                    color: isToday ? "var(--gr-copper)" : "var(--gr-text-mid)",
-                    fontWeight: isToday ? 700 : 500,
-                    lineHeight: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1,
+                    paddingBottom: 2,
                   }}
                 >
-                  {cell.dayNum}
-                </span>
-                {hasTrades && (
-                  <span
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                      color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
+                  </div>
+                  <div
                     style={{
                       fontSize: 9,
                       color: "var(--gr-text-faint)",
                       fontWeight: 500,
-                      letterSpacing: "0.04em",
+                      lineHeight: 1,
                     }}
                   >
                     {data!.count}T
-                  </span>
-                )}
-              </div>
-              {hasTrades ? (
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                    color: pnl > 0 ? "var(--gr-ok)" : "var(--gr-bad)",
-                    fontWeight: 700,
-                    lineHeight: 1.1,
-                    textAlign: "center",
-                    paddingBottom: 2,
-                  }}
-                >
-                  {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
+                  </div>
                 </div>
               ) : (
-                cell.inMonth && (
-                  <div style={{ height: 12 }} />
-                )
+                cell.inMonth && <div style={{ height: 12 }} />
+              )}
+              {hasTrades && accountId && (
+                <Link
+                  href={`/trades?accountId=${accountId}&date=${cell.key}`}
+                  aria-label={`View trades for ${cell.key}`}
+                  style={{ position: "absolute", inset: 0, borderRadius: 7 }}
+                />
               )}
             </div>
           );
