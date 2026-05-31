@@ -266,20 +266,47 @@ describe("/alerts page — account switcher", () => {
     );
   });
 
-  it("switcher pills render friendly derived labels, not raw ids", () => {
-    // Pills render the friendly name from accountMeta / deriveAccountDisplayLabel.
-    // Neither acc.id nor acc.label (a raw broker number) is rendered as the
-    // primary visible JSX text child.
+  it("switcher uses broker account label as primary text", () => {
+    // The switcher renders the actual Tradovate broker account label (e.g.
+    // "MFFUEVRPD133936251") as the primary visible text. Multiple accounts at the
+    // same firm (e.g. two MyFundedFutures evaluations) are only distinguishable by
+    // their broker account number, not by a friendly derived label.
     const switcherIdx = ALERTS_PAGE_SRC.indexOf("Account switcher");
     const filterIdx = ALERTS_PAGE_SRC.indexOf("Filter chips");
     const block = ALERTS_PAGE_SRC.slice(switcherIdx, filterIdx);
     assert.ok(
-      block.includes("meta?.name"),
-      "account switcher pills must render the derived friendly name (meta.name)",
+      block.includes("meta?.brokerLabel"),
+      "account switcher must render brokerLabel (the Tradovate account number) as primary text",
     );
     assert.ok(
       !/>\s*\{acc\.id\}\s*</.test(block) && !/>\s*\{acc\.label\}\s*</.test(block),
-      "switcher pills must not render raw acc.id / acc.label as primary visible text",
+      "switcher must not render raw acc.id / acc.label as primary visible text",
+    );
+  });
+
+  it("compact dropdown is used when there are more than 4 selectable accounts", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("selectableAccounts.length <= 4") ||
+        ALERTS_PAGE_SRC.includes("selectableAccounts.length > 4"),
+      "switcher must switch layout at 4 accounts (pills ≤4, dropdown >4)",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("<details") && ALERTS_PAGE_SRC.includes("<summary"),
+      "the >4 compact selector must use a native details/summary element (SSR-compatible, no JS)",
+    );
+  });
+
+  it("compact dropdown options show broker label primary and firm meta secondary", () => {
+    const detailsIdx = ALERTS_PAGE_SRC.indexOf("<details");
+    assert.ok(detailsIdx !== -1, "must have a details element for the compact selector");
+    const block = ALERTS_PAGE_SRC.slice(detailsIdx, detailsIdx + 2800);
+    assert.ok(
+      block.includes("brokerLabel"),
+      "compact dropdown options must show brokerLabel as primary text",
+    );
+    assert.ok(
+      block.includes("firmMeta"),
+      "compact dropdown options must show firmMeta as secondary text",
     );
   });
 });
@@ -304,17 +331,23 @@ describe("/alerts page — friendly account naming", () => {
     );
   });
 
-  it("exposes the broker id only as a title attribute, never primary text", () => {
-    // The raw broker account number lives on meta.brokerId and is only passed to
-    // a `title=` attribute (tooltip) — never rendered as a visible text node.
+  it("feed row account chips use friendly name; internal DB ids are guarded", () => {
+    // Feed row chips (the small badge next to the alert title) show the
+    // human-readable friendly name so the alert is easy to read in context.
+    // The switcher uses the broker label for disambiguation across accounts.
+    // Internal DB ids (cuid/uuid) must never appear as primary labels anywhere.
     assert.ok(
-      ALERTS_PAGE_SRC.includes("title={meta?.brokerId"),
-      "broker ids must be surfaced only via a title attribute",
+      ALERTS_PAGE_SRC.includes("meta?.friendlyName"),
+      "feed row account chips must use the friendly name (meta.friendlyName)",
+    );
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("looksLikeInternalId"),
+      "page must guard against internal DB ids (cuid/uuid) becoming primary account labels",
     );
     assert.ok(
       !/>\s*\{meta\?\.brokerId\}\s*</.test(ALERTS_PAGE_SRC) &&
         !/>\s*\{meta\.brokerId\}\s*</.test(ALERTS_PAGE_SRC),
-      "broker ids must not be rendered as visible text",
+      "old brokerId field must not be rendered as visible text",
     );
   });
 });
