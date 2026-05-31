@@ -266,17 +266,17 @@ describe("/alerts page — account switcher", () => {
     );
   });
 
-  it("switcher uses broker account label as primary text", () => {
-    // The switcher renders the actual Tradovate broker account label (e.g.
-    // "MFFUEVRPD133936251") as the primary visible text. Multiple accounts at the
-    // same firm (e.g. two MyFundedFutures evaluations) are only distinguishable by
-    // their broker account number, not by a friendly derived label.
+  it("switcher uses the best user-facing primary label, not raw ids", () => {
+    // The switcher renders meta.primary — displayName, else the exact Tradovate
+    // broker label, else externalAccountId, else firm/type. Multiple accounts at
+    // the same firm stay distinguishable. Raw acc.id / acc.label are never the
+    // primary visible text node.
     const switcherIdx = ALERTS_PAGE_SRC.indexOf("Account switcher");
     const filterIdx = ALERTS_PAGE_SRC.indexOf("Filter chips");
     const block = ALERTS_PAGE_SRC.slice(switcherIdx, filterIdx);
     assert.ok(
-      block.includes("meta?.brokerLabel"),
-      "account switcher must render brokerLabel (the Tradovate account number) as primary text",
+      block.includes("meta?.primary"),
+      "account switcher must render meta.primary (best user-facing label) as primary text",
     );
     assert.ok(
       !/>\s*\{acc\.id\}\s*</.test(block) && !/>\s*\{acc\.label\}\s*</.test(block),
@@ -296,58 +296,62 @@ describe("/alerts page — account switcher", () => {
     );
   });
 
-  it("compact dropdown options show broker label primary and firm meta secondary", () => {
+  it("compact dropdown options show full primary label and secondary metadata", () => {
     const detailsIdx = ALERTS_PAGE_SRC.indexOf("<details");
     assert.ok(detailsIdx !== -1, "must have a details element for the compact selector");
     const block = ALERTS_PAGE_SRC.slice(detailsIdx, detailsIdx + 2800);
     assert.ok(
-      block.includes("brokerLabel"),
-      "compact dropdown options must show brokerLabel as primary text",
+      block.includes("meta?.primary"),
+      "compact dropdown options must show meta.primary as the primary line",
     );
     assert.ok(
-      block.includes("firmMeta"),
-      "compact dropdown options must show firmMeta as secondary text",
+      block.includes("meta.secondary") || block.includes("meta?.secondary"),
+      "compact dropdown options must show meta.secondary (firm/type) as the secondary line",
+    );
+  });
+
+  it("truncated pills keep the full label available via a title attribute", () => {
+    // Pills/labels are visually truncated (maxWidth + ellipsis) but the full
+    // label must remain reachable on hover via title — built from fullTitle().
+    assert.ok(
+      ALERTS_PAGE_SRC.includes("const fullTitle") &&
+        ALERTS_PAGE_SRC.includes("title={fullTitle(meta)}"),
+      "truncated account labels must expose the full label via a title attribute",
     );
   });
 });
 
-// ── Friendly account naming (no long broker ids as primary labels) ────────────
+// ── Best user-facing account naming (broker label over generic firm/type) ─────
 
-describe("/alerts page — friendly account naming", () => {
-  it("uses the shared deriveAccountDisplayLabel helper", () => {
+describe("/alerts page — account naming", () => {
+  it("uses the shared deriveAccountPrimaryLabel + deriveAccountSecondaryMeta helpers", () => {
     assert.ok(
-      ALERTS_PAGE_SRC.includes("deriveAccountDisplayLabel") &&
+      ALERTS_PAGE_SRC.includes("deriveAccountPrimaryLabel") &&
+        ALERTS_PAGE_SRC.includes("deriveAccountSecondaryMeta") &&
         ALERTS_PAGE_SRC.includes('from "@/lib/account-display"'),
-      "the page must derive friendly account names via deriveAccountDisplayLabel",
+      "the page must derive labels via the shared deriveAccountPrimaryLabel/SecondaryMeta helpers",
     );
   });
 
-  it("selects displayName / propFirm / accountType for friendly naming", () => {
+  it("selects displayName / label / propFirm / accountType for the primary label", () => {
     assert.ok(
       ALERTS_PAGE_SRC.includes("displayName: true") &&
+        ALERTS_PAGE_SRC.includes("label: true") &&
         ALERTS_PAGE_SRC.includes("propFirm: true") &&
         ALERTS_PAGE_SRC.includes("accountType: true"),
-      "the account query must select the fields needed for a friendly label",
+      "the account query must select displayName, label, propFirm and accountType",
     );
   });
 
-  it("feed row account chips use friendly name; internal DB ids are guarded", () => {
-    // Feed row chips (the small badge next to the alert title) show the
-    // human-readable friendly name so the alert is easy to read in context.
-    // The switcher uses the broker label for disambiguation across accounts.
-    // Internal DB ids (cuid/uuid) must never appear as primary labels anywhere.
+  it("feed row account chips use the primary label, full label via title", () => {
     assert.ok(
-      ALERTS_PAGE_SRC.includes("meta?.friendlyName"),
-      "feed row account chips must use the friendly name (meta.friendlyName)",
-    );
-    assert.ok(
-      ALERTS_PAGE_SRC.includes("looksLikeInternalId"),
-      "page must guard against internal DB ids (cuid/uuid) becoming primary account labels",
+      ALERTS_PAGE_SRC.includes("meta?.primary"),
+      "feed row account chips must use meta.primary (best user-facing label)",
     );
     assert.ok(
       !/>\s*\{meta\?\.brokerId\}\s*</.test(ALERTS_PAGE_SRC) &&
         !/>\s*\{meta\.brokerId\}\s*</.test(ALERTS_PAGE_SRC),
-      "old brokerId field must not be rendered as visible text",
+      "the old brokerId field must not be rendered as visible text",
     );
   });
 });

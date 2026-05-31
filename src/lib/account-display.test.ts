@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   deriveAccountDisplayLabel,
   deriveAccountFirmTag,
+  deriveAccountPrimaryLabel,
+  deriveAccountSecondaryMeta,
   deriveConnectionIdentity,
   suggestAccountDisplayName,
 } from "./account-display.ts";
@@ -148,5 +150,106 @@ describe("suggestAccountDisplayName", () => {
       suggestAccountDisplayName({ propFirm: "Topstep", accountType: "evaluation", label: "X" }),
       "Topstep Evaluation",
     );
+  });
+});
+
+describe("deriveAccountPrimaryLabel", () => {
+  test("user-set displayName wins over everything", () => {
+    assert.equal(
+      deriveAccountPrimaryLabel({
+        displayName: "Apex eval #2",
+        propFirm: "Apex",
+        accountType: "evaluation",
+        label: "APEX7788991",
+        externalAccountId: "7788991",
+      }),
+      "Apex eval #2",
+    );
+  });
+
+  test("exact broker label wins over generic firm/type", () => {
+    // Two MyFundedFutures evaluations must not both collapse to the same
+    // "MyFundedFutures Evaluation" — the broker label distinguishes them.
+    assert.equal(
+      deriveAccountPrimaryLabel({
+        propFirm: "MyFundedFutures",
+        accountType: "evaluation",
+        label: "MFFUEVRPD133936251",
+      }),
+      "MFFUEVRPD133936251",
+    );
+  });
+
+  test("generic firm/type is NOT used as primary when a broker label exists", () => {
+    const primary = deriveAccountPrimaryLabel({
+      propFirm: "MyFundedFutures",
+      accountType: "evaluation",
+      label: "MFFUEVRPD133936251",
+    });
+    assert.notEqual(primary, "MyFundedFutures Evaluation");
+  });
+
+  test("falls back to externalAccountId when label missing", () => {
+    assert.equal(
+      deriveAccountPrimaryLabel({
+        propFirm: "Topstep",
+        accountType: "funded",
+        externalAccountId: "DEMO7433035",
+      }),
+      "DEMO7433035",
+    );
+  });
+
+  test("uses firm/type only as a last resort when no broker identifier exists", () => {
+    assert.equal(
+      deriveAccountPrimaryLabel({ propFirm: "MyFundedFutures", accountType: "evaluation" }),
+      "MyFundedFutures Evaluation",
+    );
+  });
+
+  test("never surfaces an internal cuid as the primary label", () => {
+    assert.equal(
+      deriveAccountPrimaryLabel({ label: "clx0123456789abcdefghij", propFirm: "Apex" }),
+      "Apex",
+    );
+  });
+
+  test("never surfaces an internal uuid as the primary label", () => {
+    assert.equal(
+      deriveAccountPrimaryLabel({
+        externalAccountId: "550e8400-e29b-41d4-a716-446655440000",
+        accountType: "personal",
+      }),
+      "Personal account",
+    );
+  });
+
+  test("final fallback is 'Account'", () => {
+    assert.equal(deriveAccountPrimaryLabel({}), "Account");
+  });
+});
+
+describe("deriveAccountSecondaryMeta", () => {
+  test("combines firm and type with a separator", () => {
+    assert.equal(
+      deriveAccountSecondaryMeta({ propFirm: "MyFundedFutures", accountType: "evaluation" }),
+      "MyFundedFutures · Evaluation",
+    );
+  });
+
+  test("firm alone when type missing", () => {
+    assert.equal(deriveAccountSecondaryMeta({ propFirm: "Apex" }), "Apex");
+  });
+
+  test("does not append type for a personal prop-firm account", () => {
+    assert.equal(deriveAccountSecondaryMeta({ propFirm: "Apex", accountType: "personal" }), "Apex");
+  });
+
+  test("Personal for a personal account with no firm", () => {
+    assert.equal(deriveAccountSecondaryMeta({ accountType: "personal" }), "Personal");
+  });
+
+  test("returns null when neither firm nor type is known", () => {
+    assert.equal(deriveAccountSecondaryMeta({ label: "X123" }), null);
   });
 });
