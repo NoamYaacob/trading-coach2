@@ -38,6 +38,14 @@ function cardSource(): string {
   return src.slice(cardStart, cardEnd);
 }
 
+/** Source of just the LinkedAccountRow function (the per-account action row). */
+function rowSource(): string {
+  const src = read(SECTION_FILE);
+  const start = src.indexOf("function LinkedAccountRow");
+  const end = src.indexOf("\nfunction ", start + 1);
+  return src.slice(start, end === -1 ? undefined : end);
+}
+
 // ── User-facing card content ──────────────────────────────────────────────────
 
 describe("BrokerConnectionCard — user-facing content only", () => {
@@ -95,6 +103,134 @@ describe("BrokerConnectionCard — user-facing content only", () => {
       card.includes('a.protectionStatus !== "pending_decision"') &&
         card.includes("a.missingFromBrokerSince == null"),
       "trading accounts must exclude pending-setup and missing accounts",
+    );
+  });
+});
+
+// ── Account-row action pattern (clean primary + compact "More" menu) ──────────
+
+describe("LinkedAccountRow — action pattern", () => {
+  test("Manage rules is the prominent primary action (filled, outside the menu)", () => {
+    const row = rowSource();
+    const idx = row.indexOf("Manage rules");
+    assert.ok(idx !== -1, "row must keep a 'Manage rules' action");
+    // The primary action links to the account's rules and is a filled button
+    // (bg-stone-900), not one of four equal bordered pills.
+    assert.ok(
+      row.includes("/rules?scope=account&id=${acct.id}"),
+      "Manage rules must link to the account rules view",
+    );
+    assert.ok(
+      /Manage rules/.test(row) && row.includes("bg-stone-900"),
+      "Manage rules must be visually prominent (filled button)",
+    );
+  });
+
+  test("does not render four equal bulky sibling pill buttons", () => {
+    const row = rowSource();
+    // The old layout used a shared ACTION_PILL class on multiple sibling Links.
+    assert.ok(
+      !row.includes("ACTION_PILL"),
+      "row must not use the old bulky equal-pill action layout",
+    );
+    // Only one of the secondary actions (View trades) is a direct Link; Rename
+    // and Remove are components rendered inside the menu.
+    const linkCount = (row.match(/<Link\b/g) ?? []).length;
+    assert.ok(
+      linkCount <= 2,
+      `row should have at most two <Link> actions (Manage rules + View trades), found ${linkCount}`,
+    );
+  });
+
+  test("secondary actions live in a compact 'More' menu (native details, no JS)", () => {
+    const row = rowSource();
+    assert.ok(row.includes("<details"), "secondary actions must collapse into a <details> menu");
+    assert.ok(
+      row.includes('aria-label="More account actions"'),
+      "the menu trigger must be labelled for accessibility",
+    );
+  });
+
+  test("Rename, View trades, and Remove all remain accessible inside the menu", () => {
+    const row = rowSource();
+    assert.ok(row.includes("EditAccountNameButton"), "Rename (EditAccountNameButton) must be present");
+    assert.ok(row.includes('variant="menuItem"'), "menu actions must use the menuItem variant");
+    assert.ok(row.includes("View trades"), "View trades must remain accessible");
+    assert.ok(
+      row.includes("/trades?accountId=${acct.id}"),
+      "View trades must link to the account trades view",
+    );
+    assert.ok(row.includes("RemoveAccountButton"), "Remove from Guardrail must remain accessible");
+  });
+
+  test("Remove is visually separated and de-emphasised (not a big scary row button)", () => {
+    const row = rowSource();
+    // A divider precedes the destructive action inside the menu.
+    const dividerIdx = row.indexOf("border-t border-stone-100");
+    const removeIdx = row.indexOf("RemoveAccountButton");
+    assert.ok(dividerIdx !== -1, "a divider must separate the destructive action");
+    assert.ok(
+      dividerIdx < removeIdx,
+      "the divider must come before RemoveAccountButton (visually separated)",
+    );
+    assert.ok(
+      row.includes('variant="menuItem"'),
+      "Remove must render in the de-emphasised menuItem variant, not a bulky pill",
+    );
+  });
+
+  test("long account labels truncate with a title tooltip", () => {
+    const row = rowSource();
+    assert.ok(
+      row.includes("truncate") && row.includes("title={primaryName}"),
+      "the primary label must truncate and expose the full value via title",
+    );
+  });
+});
+
+// ── Rename safety: displayName-only write via the existing endpoint ────────────
+
+describe("EditAccountNameButton — rename safety", () => {
+  const EDIT_FILE = resolve(import.meta.dirname, "edit-account-name-button.tsx");
+
+  test("sends ONLY { displayName } to the existing user-scoped PATCH endpoint", () => {
+    const src = read(EDIT_FILE);
+    assert.ok(src.includes('method: "PATCH"'), "must use PATCH");
+    assert.ok(
+      src.includes("`/api/accounts/${accountId}`"),
+      "must call the existing /api/accounts/[id] endpoint",
+    );
+    assert.ok(
+      src.includes("JSON.stringify({ displayName: value.trim() || null })"),
+      "must send only displayName (empty → null), never broker identifiers or rules",
+    );
+  });
+
+  test("never sends broker identifiers, rules, protection, or removal fields", () => {
+    // Comments are stripped: the component documents what it does NOT send, so
+    // those field names legitimately appear in comments — only code matters.
+    const src = readNoComments(EDIT_FILE);
+    for (const forbidden of [
+      "externalAccountId",
+      "label:",
+      "riskRules",
+      "protectionStatus",
+      "isActive",
+      "deleteMany",
+      ".delete(",
+    ]) {
+      assert.ok(!src.includes(forbidden), `rename must not reference ${forbidden} in code`);
+    }
+  });
+
+  test("the menuItem variant changes styling only, not the request", () => {
+    const src = read(EDIT_FILE);
+    // The variant prop only switches the trigger label/class; the PATCH body is
+    // computed independently of variant.
+    assert.ok(src.includes('variant?: "pill" | "menuItem"'), "must offer a variant prop");
+    assert.ok(
+      !/variant[\s\S]{0,200}body:/.test(src.slice(src.indexOf("handleSave"))),
+      "variant must not influence the request body",
     );
   });
 });

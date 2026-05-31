@@ -97,15 +97,21 @@ function accountTypeDescriptor(acct: {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-const ACTION_PILL =
-  "inline-flex items-center rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950";
+// Subtle, left-aligned row used for links inside the "More" actions menu.
+const MENU_ITEM_LINK =
+  "flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-stone-700 transition hover:bg-stone-50";
 
 /**
  * One row inside a connection's expanded "Show accounts" list. Shows the best
  * user-facing name (custom displayName or exact broker label), firm/type
- * descriptor, an Active status pill, and the account-level actions (Edit name,
- * Manage rules, View trades, Remove from Guardrail). Remove reuses the guarded
- * archive flow via RemoveAccountButton; Edit name only updates displayName.
+ * descriptor, and an Active status pill.
+ *
+ * Actions are intentionally NOT a row of equal pill buttons. "Manage rules" is
+ * the single prominent primary action; the rest (Rename, View trades, and the
+ * destructive Remove from Guardrail) live in a compact "More" menu so the row
+ * reads cleanly and the destructive action is de-emphasised but still
+ * reachable. Remove reuses the guarded archive flow via RemoveAccountButton;
+ * Rename only updates displayName — no behavior changes here, UI only.
  */
 function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
   const descriptor = accountTypeDescriptor(acct);
@@ -124,19 +130,41 @@ function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
           </p>
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-        <EditAccountNameButton
-          accountId={acct.id}
-          currentName={acct.displayName}
-          placeholder={deriveAccountDisplayLabel(acct)}
-        />
-        <Link href={`/rules?scope=account&id=${acct.id}`} className={ACTION_PILL}>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* Primary action — the most visible thing on the row. */}
+        <Link
+          href={`/rules?scope=account&id=${acct.id}`}
+          className="inline-flex items-center rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-stone-700"
+        >
           Manage rules
         </Link>
-        <Link href={`/trades?accountId=${acct.id}`} className={ACTION_PILL}>
-          View trades
-        </Link>
-        <RemoveAccountButton accountId={acct.id} redirectTo="/settings" />
+        {/* Secondary actions — compact "More" menu (native details: no JS, SSR-safe). */}
+        <details className="relative">
+          <summary
+            className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-stone-200 text-stone-500 transition hover:bg-stone-50 hover:text-stone-900"
+            aria-label="More account actions"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="5" r="1.7" />
+              <circle cx="12" cy="12" r="1.7" />
+              <circle cx="12" cy="19" r="1.7" />
+            </svg>
+          </summary>
+          <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-stone-200 bg-white p-1 shadow-lg">
+            <EditAccountNameButton
+              accountId={acct.id}
+              currentName={acct.displayName}
+              placeholder={deriveAccountDisplayLabel(acct)}
+              variant="menuItem"
+            />
+            <Link href={`/trades?accountId=${acct.id}`} className={MENU_ITEM_LINK}>
+              View trades
+            </Link>
+            {/* Destructive action — visually separated and styled red inside the menu. */}
+            <div className="my-1 border-t border-stone-100" />
+            <RemoveAccountButton accountId={acct.id} redirectTo="/settings" variant="menuItem" />
+          </div>
+        </details>
       </div>
     </div>
   );
