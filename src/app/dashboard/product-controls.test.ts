@@ -312,12 +312,12 @@ describe("/dashboard: P&L calendar is compact", () => {
 describe("/dashboard: P&L calendar grid is constrained, not stretched", () => {
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
 
-  it("wraps the grid in a centered max-width inner column", () => {
+  it("wraps the grid in a centered, narrow max-width inner column", () => {
     const match = calendar.match(/maxWidth:\s*(\d+)/);
     const maxW = match ? parseInt(match[1] ?? "0", 10) : 0;
     assert.ok(
-      maxW >= 900 && maxW <= 1100,
-      `calendar grid must sit in a constrained inner column (~980–1040px); found maxWidth ${maxW}`,
+      maxW >= 600 && maxW <= 820,
+      `calendar grid must sit in a narrow, intentionally centered column (~680–760px); found maxWidth ${maxW}`,
     );
     assert.ok(
       calendar.includes('margin: "0 auto"'),
@@ -446,18 +446,50 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
     assert.ok(top > 0 && top <= 0.3, `gradient fill must stay subtle (alpha <= 0.3); found ${top}`);
   });
 
-  it("keeps the grid light — no heavy vertical lines", () => {
+  it("removes all grid lines for a clean, premium look", () => {
     assert.ok(
-      equity.includes("vertLines") && equity.includes("visible: false"),
-      "vertical grid lines must be hidden to keep the chart clean",
+      /vertLines:\s*\{\s*visible:\s*false\s*\}/.test(equity),
+      "vertical grid lines must be hidden",
+    );
+    assert.ok(
+      /horzLines:\s*\{\s*visible:\s*false\s*\}/.test(equity),
+      "horizontal grid lines must be hidden to reduce chart noise",
     );
   });
 
-  it("softens the price and time scale borders", () => {
-    const borderFalse = (equity.match(/borderVisible:\s*false/g) ?? []).length;
+  it("hides the technical right-side price scale labels", () => {
     assert.ok(
-      borderFalse >= 2,
-      `both price-scale and time-scale borders must be hidden (borderVisible: false); found ${borderFalse}`,
+      /rightPriceScale:\s*\{[^}]*visible:\s*false/.test(equity),
+      "the right-side price scale must be hidden (visible: false) so the card doesn't feel like a terminal",
+    );
+  });
+
+  it("hides the default time axis (custom date labels are rendered instead)", () => {
+    assert.ok(
+      /timeScale:\s*\{[^}]*visible:\s*false/.test(equity),
+      "the built-in time axis must be hidden — it repeats ugly same-day day-numbers",
+    );
+    assert.ok(
+      equity.includes("buildAxisLabels"),
+      "the component must render its own clean date labels via buildAxisLabels",
+    );
+  });
+
+  it("deduplicates date labels so same-day data never repeats (no '29 / 29 / 29')", () => {
+    assert.ok(
+      equity.includes("if (first === last) return [first]"),
+      "same-day windows must collapse to a single centered label",
+    );
+    assert.ok(
+      equity.includes("if (mid === first || mid === last) return [first, last]"),
+      "a middle label equal to an endpoint must be dropped (no repeated labels)",
+    );
+  });
+
+  it("uses a soft, premium curved line", () => {
+    assert.ok(
+      equity.includes("lineType: LineType.Curved"),
+      "the line must use LineType.Curved for a soft, premium feel",
     );
   });
 

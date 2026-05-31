@@ -195,7 +195,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
       {/* Constrained inner column — keeps the calendar from stretching flat
         * across the full dashboard width on wide viewports.  The outer card
         * stays full-width; nav, summary, and grid share this centered column. */}
-      <div style={{ maxWidth: 1040, margin: "0 auto", width: "100%" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", width: "100%" }}>
 
       {/* Month nav + heading */}
       <div
@@ -381,7 +381,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
                 padding: "3px 3px 3px",
                 borderRadius: 7,
                 textAlign: "left",
-                minHeight: 48,
+                minHeight: 52,
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
