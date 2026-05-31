@@ -30,6 +30,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  LineType,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
@@ -238,6 +239,27 @@ function fmtTooltipDate(ts: number): string {
   });
 }
 
+function fmtAxisDate(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Builds the clean custom X-axis labels from the real series.  Returns 1–3
+// deduplicated date labels (first / middle / last).  When every point falls on
+// the same calendar day the window collapses to a single centered label, so we
+// never render the ugly "29 / 29 / 29" repetition the default axis produces.
+function buildAxisLabels(data: ChartPoint[]): string[] {
+  if (data.length === 0) return [];
+  const first = fmtAxisDate(data[0]!.t);
+  const last = fmtAxisDate(data[data.length - 1]!.t);
+  if (first === last) return [first];
+  const mid = fmtAxisDate(data[Math.floor((data.length - 1) / 2)]!.t);
+  if (mid === first || mid === last) return [first, last];
+  return [first, mid, last];
+}
+
 function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
   const { colors, mounted } = useTokenColors();
 
@@ -313,6 +335,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
 
   const finalY = data[data.length - 1]!.pnl;
   const positive = finalY >= 0;
+  const axisLabels = buildAxisLabels(data);
 
   return (
     <div
@@ -347,6 +370,27 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         </span>
       </div>
       <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />
+      {/* Clean, deduplicated date labels — one centered for same-day windows,
+        * otherwise first / (middle) / last spread across the axis. */}
+      {axisLabels.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: axisLabels.length === 1 ? "center" : "space-between",
+            padding: "0 2px",
+            marginTop: -2,
+          }}
+        >
+          {axisLabels.map((label, i) => (
+            <span
+              key={`${label}-${i}`}
+              style={{ fontSize: 10.5, color: "var(--gr-text-faint)", letterSpacing: "0.02em" }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -386,25 +430,32 @@ function LightweightEquityChart({
           "var(--font-inter, system-ui, -apple-system, sans-serif)",
         attributionLogo: false,
       },
-      // Soft horizontal grid only — no vertical clutter.
+      // No grid lines at all — a designed product component, not a terminal.
+      // Vertical breathing room comes from the price-scale margins below.
       grid: {
-        horzLines: { color: colors.border, style: LineStyle.Dotted, visible: true },
+        horzLines: { visible: false },
         vertLines: { visible: false },
       },
+      // Hide the technical right-side price labels entirely.  The series still
+      // scales against this (now-invisible) price scale; the margins give the
+      // curve room so it never touches the card edges.
       rightPriceScale: {
+        visible: false,
         borderVisible: false,
-        scaleMargins: { top: 0.18, bottom: 0.12 },
+        scaleMargins: { top: 0.16, bottom: 0.16 },
       },
       leftPriceScale: { visible: false },
+      // Hide the built-in time axis (it repeats ugly same-day day-numbers).
+      // We render our own clean, deduplicated first/middle/last labels below.
       timeScale: {
+        visible: false,
         borderVisible: false,
-        timeVisible: false,
-        secondsVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
       },
       crosshair: {
         mode: CrosshairMode.Magnet,
+        // Soft vertical guide only; no horizontal line / axis labels.
         vertLine: {
           color: colors.border,
           width: 1,
@@ -412,9 +463,7 @@ function LightweightEquityChart({
           labelVisible: false,
         },
         horzLine: {
-          color: colors.border,
-          width: 1,
-          style: LineStyle.Dashed,
+          visible: false,
           labelVisible: false,
         },
       },
@@ -424,13 +473,18 @@ function LightweightEquityChart({
 
     const series: ISeriesApi<"Area"> = chart.addSeries(AreaSeries, {
       lineColor,
-      topColor: rgba(lineColor, 0.18),
+      // Very subtle gradient fill, fading the line hue to transparent.
+      topColor: rgba(lineColor, 0.14),
       bottomColor: rgba(lineColor, 0),
       lineWidth: 2,
+      // Soft, premium curve through the real points (visual interpolation only —
+      // the plotted vertices are unchanged real cumulative values).
+      lineType: LineType.Curved,
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerRadius: 3,
-      crosshairMarkerBorderWidth: 0,
+      crosshairMarkerRadius: 4,
+      crosshairMarkerBorderWidth: 2,
+      crosshairMarkerBorderColor: colors.surface,
       crosshairMarkerBackgroundColor: lineColor,
     });
 
