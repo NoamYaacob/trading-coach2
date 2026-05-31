@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
+import { deriveAccountDisplayLabel } from "@/lib/account-display";
 
 import { GrShell, type GrNavItem, type GrRecentAlert } from "@/components/ui/gr-shell";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
@@ -242,8 +243,6 @@ export default async function DashboardPage({
   });
 
   // ── Derived display values ─────────────────────────────────────────────────
-  const emailName = currentUser.email?.split("@")[0] ?? "";
-  const displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
   const userInitials = currentUser.email
     ? currentUser.email.slice(0, 2).toUpperCase()
     : "??";
@@ -336,7 +335,7 @@ export default async function DashboardPage({
             }}
           />
           <span title={acc.label} style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {acc.label}
+            {deriveAccountDisplayLabel(acc)}
           </span>
           {acc.dailyPnl != null && (
             <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl), flexShrink: 0 }}>
@@ -392,7 +391,7 @@ export default async function DashboardPage({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 620 }}>
               <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-                {timeGreeting()}, {displayName}
+                {timeGreeting()}
               </span>
               <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.15, color: "var(--gr-ink)", margin: 0 }}>
                 {!hasBrokerAccount ? (
@@ -601,7 +600,7 @@ export default async function DashboardPage({
 
                       {/* Account name + ref */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 12 }}>
-                        <span title={acc.label} style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acc.label}</span>
+                        <span title={acc.label} style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deriveAccountDisplayLabel(acc)}</span>
                         {acc.connectionStatus && acc.connectionStatus !== "connected_live" && (
                           <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
                             {({
@@ -697,8 +696,8 @@ export default async function DashboardPage({
                     <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
                       Now viewing
                     </span>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
-                      {selectedAccount.label}
+                    <span title={selectedAccount.label} style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
+                      {deriveAccountDisplayLabel(selectedAccount)}
                     </span>
                     {selectedAccount.status === "warning" && selectedAccount.dailyLossUsedPct != null && (
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--gr-warn-bg)", color: "var(--gr-warn)", fontWeight: 600 }}>
@@ -798,8 +797,8 @@ export default async function DashboardPage({
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Active rules</span>
                     {selectedAccount && (
-                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        {selectedAccount.label}
+                      <div title={selectedAccount.label} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        {deriveAccountDisplayLabel(selectedAccount)}
                       </div>
                     )}
                   </div>
@@ -988,8 +987,8 @@ export default async function DashboardPage({
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
                     {selectedAccount && (
-                      <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        {selectedAccount.label}
+                      <div title={selectedAccount.label} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        {deriveAccountDisplayLabel(selectedAccount)}
                       </div>
                     )}
                   </div>
@@ -1149,7 +1148,7 @@ export default async function DashboardPage({
                 <PnlCalendar
                   trades={recentTrades}
                   timezone={displayTimeZone}
-                  accountLabel={selectedAccount.label}
+                  accountLabel={deriveAccountDisplayLabel(selectedAccount)}
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
                 />
               </section>
@@ -1208,7 +1207,7 @@ export default async function DashboardPage({
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{acc.label}</span>
+                              <span title={acc.label} style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{deriveAccountDisplayLabel(acc)}</span>
                               <span style={{
                                 marginLeft: 8, fontSize: 10, padding: "1px 6px", borderRadius: 999,
                                 background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",

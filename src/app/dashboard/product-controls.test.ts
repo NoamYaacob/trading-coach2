@@ -234,3 +234,77 @@ describe("/dashboard: pnlColor uses red for negative values", () => {
     );
   });
 });
+
+describe("/dashboard: account display helpers", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  it("imports deriveAccountDisplayLabel from the shared account-display helper", () => {
+    assert.ok(
+      page.includes('deriveAccountDisplayLabel') && page.includes('@/lib/account-display'),
+      "dashboard must import deriveAccountDisplayLabel from @/lib/account-display",
+    );
+  });
+
+  it("uses deriveAccountDisplayLabel for all label render sites", () => {
+    const callCount = (page.match(/deriveAccountDisplayLabel\(/g) ?? []).length;
+    assert.ok(
+      callCount >= 6,
+      `dashboard must call deriveAccountDisplayLabel at least 6 times (sidebar, cards, now-viewing, active-rules, today-trades, pnl-calendar, expired); found ${callCount}`,
+    );
+  });
+
+  it("long broker labels are truncated with title tooltip", () => {
+    assert.ok(
+      page.includes('title={acc.label}'),
+      "account display must keep title={acc.label} for tooltip on full broker name",
+    );
+    assert.ok(
+      page.includes('title={selectedAccount.label}'),
+      "selected account label sites must keep title={selectedAccount.label} for tooltip",
+    );
+  });
+});
+
+describe("/dashboard: hero greeting does not expose email-derived username", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  it("greeting is just timeGreeting() with no appended username", () => {
+    assert.ok(
+      !page.includes('{timeGreeting()}, {displayName}'),
+      "hero must not render '{timeGreeting()}, {displayName}' — no email-derived username",
+    );
+    assert.ok(
+      !page.includes('const displayName = emailName'),
+      "dashboard must not construct displayName from the email prefix",
+    );
+  });
+
+  it("emailName is not constructed from user email for display", () => {
+    assert.ok(
+      !page.includes('emailName.charAt(0).toUpperCase()'),
+      "dashboard must not uppercase an email prefix for display",
+    );
+  });
+});
+
+describe("/dashboard: P&L calendar is compact", () => {
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("calendar cell minHeight is reduced for compact display", () => {
+    const match = calendar.match(/minHeight:\s*(\d+)/);
+    const minH = match ? parseInt(match[1] ?? "0", 10) : 0;
+    assert.ok(
+      minH < 55,
+      `P&L calendar cell minHeight must be < 55px for compact display; found ${minH}`,
+    );
+  });
+
+  it("calendar outer padding is reduced", () => {
+    const match = calendar.match(/padding:\s*(\d+)/);
+    const pad = match ? parseInt(match[1] ?? "0", 10) : 0;
+    assert.ok(
+      pad < 22,
+      `P&L calendar outer padding must be < 22 for compact display; found ${pad}`,
+    );
+  });
+});
