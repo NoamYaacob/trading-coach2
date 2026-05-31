@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "./confirm-dialog";
 
 /**
- * Inline "Remove from Guardrail" button with a simple confirm step.
- * Used for expired and inactive accounts in the broker connections section.
+ * "Remove from Guardrail" trigger + centered confirmation modal.
+ * Used for expired and inactive accounts in the broker connections section, and
+ * inside the per-account "More" menu (variant="menuItem").
  *
  * Calls POST /api/accounts/:id/protection with protectionStatus="archived"
  * (soft-delete — preserves all historical trade data, rules, and audit logs).
@@ -13,6 +15,9 @@ import { useRouter } from "next/navigation";
  * The archive endpoint applies a rule-breach / session-lock guard:
  *   - Clean accounts are archived immediately.
  *   - Accounts locked today have removal scheduled for the next session reset.
+ *
+ * Only the confirmation surface changed (inline expansion → centered modal);
+ * the guarded request, payload, and scheduled/immediate handling are unchanged.
  */
 export function RemoveAccountButton({
   accountId,
@@ -27,9 +32,9 @@ export function RemoveAccountButton({
   variant?: "pill" | "menuItem";
 }) {
   const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [message, setMessage] = useState<{ text: string; kind: "ok" | "scheduled" | "error" } | null>(null);
+  const [message, setMessage] = useState<{ text: string; kind: "scheduled" | "error" } | null>(null);
 
   async function handleConfirm() {
     setRemoving(true);
@@ -48,6 +53,7 @@ export function RemoveAccountButton({
         effectiveDate?: string;
       };
       if (!res.ok || !data.ok) {
+        // Keep the modal open and surface the error inside it.
         setMessage({ text: data.message ?? data.error ?? "Failed to remove.", kind: "error" });
         setRemoving(false);
         return;
@@ -58,7 +64,7 @@ export function RemoveAccountButton({
           kind: "scheduled",
         });
         setRemoving(false);
-        setConfirming(false);
+        setOpen(false);
         router.refresh();
         return;
       }
@@ -71,37 +77,7 @@ export function RemoveAccountButton({
   }
 
   if (message?.kind === "scheduled") {
-    return (
-      <p className="text-xs text-amber-700">{message.text}</p>
-    );
-  }
-
-  if (confirming) {
-    return (
-      <div className="flex flex-col items-end gap-1.5">
-        {message?.kind === "error" && <p className="text-xs text-red-700">{message.text}</p>}
-        <p className="text-xs text-stone-500">Remove this account from Guardrail?</p>
-        <p className="text-xs text-stone-400">Historical data is preserved.</p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setConfirming(false)}
-            disabled={removing}
-            className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={removing}
-            className="inline-flex items-center rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-stone-800 disabled:opacity-70"
-          >
-            {removing ? "Removing…" : "Remove from Guardrail"}
-          </button>
-        </div>
-      </div>
-    );
+    return <p className="text-xs text-amber-700">{message.text}</p>;
   }
 
   const triggerClass =
@@ -110,12 +86,37 @@ export function RemoveAccountButton({
       : "inline-flex items-center justify-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 transition hover:border-red-300 hover:text-red-700";
 
   return (
-    <button
-      type="button"
-      onClick={() => setConfirming(true)}
-      className={triggerClass}
-    >
-      Remove from Guardrail
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          // Close the surrounding "More" menu (if any) before opening the modal.
+          e.currentTarget.closest("details")?.removeAttribute("open");
+          setMessage(null);
+          setOpen(true);
+        }}
+        className={triggerClass}
+      >
+        Remove from Guardrail
+      </button>
+      {open && (
+        <ConfirmDialog
+          title="Remove this account from Guardrail?"
+          body="Guardrail will stop monitoring this account. Historical trades, rules, and alerts are preserved."
+          note="If this account is locked or has rule activity today, removal may take effect after the next trading session reset."
+          confirmLabel="Remove from Guardrail"
+          busyLabel="Removing…"
+          busy={removing}
+          error={message?.kind === "error" ? message.text : null}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            if (!removing) {
+              setOpen(false);
+              setMessage(null);
+            }
+          }}
+        />
+      )}
+    </>
   );
 }

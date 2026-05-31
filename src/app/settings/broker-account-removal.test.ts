@@ -396,6 +396,30 @@ describe("DisconnectConnectionButton safety copy", () => {
       "button must POST to the /disconnect endpoint",
     );
   });
+
+  test("confirmation is a centered modal, not an inline red warning box that can overflow", () => {
+    const src = read("./_components/disconnect-connection-button.tsx");
+    // Confirmation now uses the shared centered ConfirmDialog…
+    assert.ok(src.includes("ConfirmDialog"), "disconnect must confirm via the shared ConfirmDialog modal");
+    assert.ok(src.includes('title="Disconnect this connection?"'), "modal must carry the disconnect title");
+    // …and must NOT expand the old inline red warning container.
+    assert.ok(
+      !src.includes("border-red-100") && !src.includes("bg-red-50/60"),
+      "the old inline red warning box must be gone",
+    );
+  });
+
+  test("disconnect modal copy matches the agreed wording", () => {
+    const src = read("./_components/disconnect-connection-button.tsx");
+    assert.ok(
+      src.includes("All linked accounts under this connection will be removed from Guardrail monitoring."),
+      "modal body must use the agreed copy",
+    );
+    assert.ok(
+      src.includes("at the next trading session reset to prevent bypassing your own rules"),
+      "modal note must keep the rule-bypass-prevention warning",
+    );
+  });
 });
 
 // ── RemoveAccountButton uses archive (soft-delete) ───────────────────────────

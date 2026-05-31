@@ -349,10 +349,23 @@ describe("EditAccountNameForm — rename safety", () => {
 describe("RemoveAccountButton — confirmation/archive flow unchanged", () => {
   const REMOVE_FILE = resolve(import.meta.dirname, "remove-account-button.tsx");
 
-  test("requires an explicit confirm step before removing", () => {
+  test("confirms via a centered modal, not an inline expansion in the More menu", () => {
     const src = read(REMOVE_FILE);
-    assert.ok(src.includes("setConfirming(true)"), "first click must enter a confirm step, not remove immediately");
-    assert.ok(src.includes("Remove this account from Guardrail?"), "must show a confirmation prompt");
+    // The destructive confirmation is now the shared centered ConfirmDialog…
+    assert.ok(src.includes("ConfirmDialog"), "Remove must confirm via the shared ConfirmDialog modal");
+    assert.ok(src.includes("setOpen(true)"), "first click must open the confirmation modal, not remove immediately");
+    assert.ok(
+      src.includes('title="Remove this account from Guardrail?"') ||
+        src.includes("Remove this account from Guardrail?"),
+      "modal must carry the confirmation title",
+    );
+    // …and it must NOT use the old inline confirm step rendered inside the row/menu.
+    assert.ok(!src.includes("setConfirming"), "must not use the old inline confirm-step state");
+    // Opening the modal closes the surrounding More menu (native <details>).
+    assert.ok(
+      src.includes('closest("details")') && src.includes('removeAttribute("open")'),
+      "opening the modal must close the surrounding More menu",
+    );
   });
 
   test("removal still uses the guarded archive endpoint (protectionStatus=archived)", () => {
@@ -366,6 +379,48 @@ describe("RemoveAccountButton — confirmation/archive flow unchanged", () => {
       "must archive (soft-delete), preserving history — unchanged behaviour",
     );
     assert.ok(!src.includes("deleteMany") && !src.includes(".delete("), "must not hard-delete any data");
+  });
+
+  test("still surfaces the scheduled (deferred) removal outcome", () => {
+    const src = read(REMOVE_FILE);
+    // The guarded-defer path (applied === false → scheduled) is preserved.
+    assert.ok(src.includes("data.applied === false"), "must keep the deferred-archive branch");
+    assert.ok(src.includes('kind: "scheduled"'), "must keep the scheduled outcome state");
+  });
+});
+
+// ── Shared confirmation modal (ConfirmDialog) ─────────────────────────────────
+
+describe("ConfirmDialog — centered modal for destructive actions", () => {
+  const DIALOG_FILE = resolve(import.meta.dirname, "confirm-dialog.tsx");
+
+  test("is an accessible, centered, portalled modal (not an inline box)", () => {
+    const src = read(DIALOG_FILE);
+    assert.ok(src.includes('role="dialog"') && src.includes('aria-modal="true"'), "must be an ARIA dialog");
+    assert.ok(src.includes("createPortal"), "must render via a portal so it isn't clipped by menus/cards");
+    assert.ok(
+      src.includes("fixed inset-0") && src.includes("items-center") && src.includes("justify-center"),
+      "must be a full-screen centered overlay",
+    );
+  });
+
+  test("uses the Guardrail dialog language and a constrained width", () => {
+    const src = read(DIALOG_FILE);
+    assert.ok(src.includes("rounded-2xl") && src.includes("bg-white") && src.includes("shadow"), "soft white rounded card");
+    assert.ok(/bg-stone-950\/\d+/.test(src) || src.includes("bg-stone-950/50"), "warm dark overlay");
+    assert.ok(/max-w-\[\d+px\]/.test(src), "card width is constrained (≈420–520px)");
+  });
+
+  test("Escape and overlay click cancel (when not busy)", () => {
+    const src = read(DIALOG_FILE);
+    assert.ok(src.includes('e.key === "Escape"'), "Escape must cancel the dialog");
+    assert.ok(/onClick=\{busy \? undefined : onCancel\}/.test(src), "overlay click cancels when not busy");
+  });
+
+  test("never performs the request itself (callers keep their guarded flow)", () => {
+    const src = read(DIALOG_FILE);
+    assert.ok(!src.includes("fetch("), "the modal must not issue any request");
+    assert.ok(!src.includes("/api/"), "the modal must not reference any endpoint");
   });
 });
 
