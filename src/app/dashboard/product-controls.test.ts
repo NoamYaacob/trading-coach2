@@ -350,87 +350,152 @@ describe("/dashboard: P&L calendar day cells show trade count and link to trades
   });
 });
 
-describe("/dashboard: equity curve visual polish", () => {
+describe("/dashboard: equity curve is a Recharts area chart", () => {
   const equity = read("app/dashboard/_components/equity-curve.tsx");
 
-  it("uses real trade data, no fake curve points", () => {
+  it("imports from the recharts library", () => {
+    assert.ok(
+      /from\s+["']recharts["']/.test(equity),
+      "equity curve must import its chart primitives from 'recharts'",
+    );
+  });
+
+  it("renders the chart inside a ResponsiveContainer", () => {
+    assert.ok(
+      equity.includes("ResponsiveContainer"),
+      "chart must use a ResponsiveContainer so it sizes to the card",
+    );
+  });
+
+  it("uses an AreaChart with an <Area> (filled curve)", () => {
+    assert.ok(equity.includes("AreaChart"), "must use Recharts AreaChart");
+    assert.ok(equity.includes("<Area"), "must render an <Area> series (filled line)");
+  });
+
+  it("uses a smooth, non-overshooting monotone curve", () => {
+    assert.ok(
+      equity.includes('type="monotone"'),
+      "the Area must use type=\"monotone\" for a smooth curve that never overshoots the data",
+    );
+  });
+
+  it("has a subtle gradient fill under the line (top opacity <= 0.3)", () => {
+    assert.ok(
+      equity.includes("linearGradient") && equity.includes("stopOpacity"),
+      "must define a linear gradient fill via stopOpacity stops",
+    );
+    const opacities = [...equity.matchAll(/stopOpacity=\{?([\d.]+)\}?/g)].map((m) =>
+      parseFloat(m[1] ?? "0"),
+    );
+    const top = Math.max(...opacities, 0);
+    assert.ok(top > 0, "gradient fill must be present (top opacity > 0)");
+    assert.ok(top <= 0.3, `gradient fill must stay subtle (top opacity <= 0.3); found ${top}`);
+  });
+
+  it("renders light horizontal grid lines without vertical clutter", () => {
+    assert.ok(equity.includes("CartesianGrid"), "must render a CartesianGrid");
+    assert.ok(
+      equity.includes("vertical={false}"),
+      "grid must hide vertical lines to keep the chart clean",
+    );
+  });
+
+  it("formats minimal X-axis date ticks", () => {
+    assert.ok(equity.includes("XAxis"), "must render an XAxis");
+    assert.ok(
+      equity.includes("tickFormatter"),
+      "X axis must format ticks into readable date labels",
+    );
+  });
+
+  it("hides Y-axis clutter while keeping the chart readable", () => {
+    assert.ok(
+      /<YAxis\b[^>]*\bhide\b/.test(equity),
+      "YAxis must be hidden (hide) to reduce visual clutter",
+    );
+  });
+
+  it("has a tooltip that labels the value as cumulative realized P&L", () => {
+    assert.ok(equity.includes("<Tooltip"), "must render a Recharts <Tooltip>");
+    assert.ok(
+      equity.includes("Cumulative realized P&amp;L") ||
+        equity.includes("Cumulative realized P&L"),
+      "tooltip must label the value as cumulative realized P&L",
+    );
+    assert.ok(
+      equity.includes("fmtTooltipDate") || equity.includes("toLocaleDateString"),
+      "tooltip must show a formatted date/time",
+    );
+  });
+
+  it("uses a thin, professional line stroke (strokeWidth <= 2.5)", () => {
+    const sw = [...equity.matchAll(/strokeWidth=\{?([\d.]+)\}?/g)].map((m) =>
+      parseFloat(m[1] ?? "0"),
+    );
+    assert.ok(
+      sw.some((w) => w > 0 && w <= 2.5),
+      "the Area line must use a thin/professional stroke weight (<= 2.5)",
+    );
+  });
+
+  it("builds the series from real trade pnl only — no fake/demo/sample data", () => {
     assert.ok(
       equity.includes("trades: RoundTripTrade[]"),
       "equity curve must accept real round-trip trades",
     );
     assert.ok(
-      !equity.includes("const fakeTrades") && !equity.includes("const demoTrades"),
-      "equity curve must not use fake or demo data",
+      equity.includes("cum += t.pnl"),
+      "cumulative series must be accumulated from real trade pnl",
+    );
+    assert.ok(
+      !equity.includes("Math.random") &&
+        !equity.includes("fakeTrades") &&
+        !equity.includes("demoTrades") &&
+        !equity.includes("sampleData") &&
+        !equity.includes("samplePoints"),
+      "equity curve must not fabricate, randomize, or sample data",
     );
   });
 
-  it("chart line is visible but refined (strokeWidth 1.5 – 2.2 range)", () => {
-    // Main line must be clearly readable but not overly chunky.
-    const allMatches = [...equity.matchAll(/strokeWidth="([\d.]+)"/g)];
-    const mainSw = Math.max(...allMatches.map((m) => parseFloat(m[1] ?? "0")), 0);
+  it("keeps all four timeframe controls (7D / 14D / 30D / All)", () => {
     assert.ok(
-      mainSw >= 1.5 && mainSw <= 2.5,
-      `equity curve main line strokeWidth must be 1.5–2.5 (visible but not heavy); found ${mainSw}`,
+      equity.includes('"7d"') &&
+        equity.includes('"14d"') &&
+        equity.includes('"30d"') &&
+        equity.includes('"all"'),
+      "must keep the 7d/14d/30d/all timeframe states",
+    );
+    assert.ok(
+      equity.includes('"7D"') &&
+        equity.includes('"14D"') &&
+        equity.includes('"30D"') &&
+        equity.includes('"All"'),
+      "must keep the visible 7D/14D/30D/All toggle labels",
     );
   });
 
-  it("uses safe monotone cubic curve (monotonePath helper) instead of jagged lines", () => {
+  it("preserves the segmented-control range track", () => {
     assert.ok(
-      equity.includes("monotonePath"),
-      "equity curve must use a monotonePath helper for safe non-overshooting interpolation",
-    );
-    assert.ok(
-      equity.includes("C${") || equity.includes("cp1x") || equity.includes("bezier"),
-      "monotonePath must generate cubic bezier (C) segments for the smooth curve",
+      equity.includes('background: "var(--gr-bg-elev)"') ||
+        equity.includes("background: 'var(--gr-bg-elev)'"),
+      "range pill group must keep a background track for the segmented-control look",
     );
   });
 
-  it("area fill is present but subtle (stopOpacity <= 0.2)", () => {
-    const opacities = [...equity.matchAll(/stopOpacity="([\d.]+)"/g)].map(
-      (m) => parseFloat(m[1] ?? "0"),
-    );
-    const topOpacity = Math.max(...opacities, 0);
+  it("preserves the 'Open →' link to the trades page", () => {
     assert.ok(
-      topOpacity > 0,
-      "equity curve must have a gradient fill (stopOpacity > 0)",
-    );
-    assert.ok(
-      topOpacity <= 0.2,
-      `equity curve fill must be subtle (top stopOpacity <= 0.2); found ${topOpacity}`,
+      equity.includes("Open →") && equity.includes("tradesHref"),
+      "header must keep the 'Open →' link wired to tradesHref",
     );
   });
 
-  it("endpoint dot is present and refined (r <= 2.5)", () => {
-    const dotMatch = equity.match(/<circle[^/]*r="([\d.]+)"/);
-    const r = dotMatch ? parseFloat(dotMatch[1] ?? "0") : 0;
-    assert.ok(r > 0, "equity curve must render an endpoint <circle> dot");
-    assert.ok(r <= 2.5, `endpoint dot radius must be refined (<= 2.5); found ${r}`);
-  });
-
-  it("chart SVG height is in the readable range (110 – 140)", () => {
-    // Target the rendered SVG element height specifically (the empty-state
-    // glyph tile also has a height, so match on the SVG's width+height style).
-    const match = equity.match(/width:\s*"100%",\s*height:\s*(\d+)/);
-    const h = match ? parseInt(match[1] ?? "0", 10) : 0;
-    assert.ok(
-      h >= 110 && h <= 140,
-      `equity curve SVG height must be 110–140px; found ${h}`,
+  it("keeps a large, prominent headline P&L value (fontSize >= 24)", () => {
+    const matches = [...equity.matchAll(/fontSize:\s*(\d+)/g)].map((m) =>
+      parseInt(m[1] ?? "0", 10),
     );
-  });
-
-  it("range pills use a segmented-control style background track", () => {
     assert.ok(
-      equity.includes("background: \"var(--gr-bg-elev)\"") || equity.includes("background: 'var(--gr-bg-elev)'"),
-      "range pill group must have a background track for segmented-control appearance",
-    );
-  });
-
-  it("headline value is large and prominent (fontSize >= 24)", () => {
-    const matches = [...equity.matchAll(/fontSize:\s*(\d+)/g)].map(m => parseInt(m[1] ?? "0", 10));
-    const largest = Math.max(...matches, 0);
-    assert.ok(
-      largest >= 24,
-      `equity curve headline must use fontSize >= 24 for prominence; found largest ${largest}`,
+      Math.max(...matches, 0) >= 24,
+      "equity curve headline must stay >= 24px for prominence",
     );
   });
 });
@@ -461,75 +526,6 @@ describe("/dashboard: P&L calendar active-day cell quality", () => {
     assert.ok(
       gaps.some((g) => g >= 2),
       "calendar active-day bottom section must have gap >= 2 for breathing room",
-    );
-  });
-});
-
-describe("/dashboard: equity curve uses safe (non-overshooting) smoothing", () => {
-  const equity = read("app/dashboard/_components/equity-curve.tsx");
-
-  it("uses monotone (Fritsch–Carlson) cubic interpolation, not naive smoothing", () => {
-    assert.ok(
-      equity.includes("monotonePath"),
-      "equity curve must use a monotonePath helper",
-    );
-    // Monotone cubic computes secant slopes + Hermite tangents and emits
-    // bezier control points at the one-third marks — these are its fingerprints.
-    assert.ok(
-      equity.includes("slope") && equity.includes("/ 3"),
-      "monotonePath must compute slopes/tangents (not horizontal control points)",
-    );
-    assert.ok(
-      equity.includes("Math.sqrt"),
-      "monotonePath must apply the Fritsch–Carlson monotonicity clamp (Math.sqrt)",
-    );
-  });
-
-  it("flattens the tangent on a direction change so the curve cannot overshoot", () => {
-    assert.ok(
-      equity.includes("s0 * s1 <= 0"),
-      "monotonePath must zero the tangent when adjacent slopes reverse sign (peak/trough)",
-    );
-  });
-
-  it("degrades cleanly for sparse data (handles the 1-point case explicitly)", () => {
-    assert.ok(
-      equity.includes("if (n === 1)") || equity.includes("n === 1"),
-      "monotonePath must handle the single-point case without distortion",
-    );
-  });
-
-  it("invents no intermediate values — curve is built only from real trade pnl", () => {
-    assert.ok(
-      equity.includes("cum += t.pnl"),
-      "cumulative points must come from real trade pnl",
-    );
-    assert.ok(
-      !equity.includes("Math.random") &&
-        !equity.includes("fakeTrades") &&
-        !equity.includes("demoTrades") &&
-        !equity.includes("samplePoints"),
-      "equity curve must not fabricate or randomize any data points",
-    );
-  });
-
-  it("main curve line is thin and calm (strokeWidth <= 2)", () => {
-    const mainMatch = equity.match(/d=\{linePath\}[\s\S]*?strokeWidth="([\d.]+)"/);
-    const sw = mainMatch ? parseFloat(mainMatch[1] ?? "0") : 0;
-    assert.ok(
-      sw > 0 && sw <= 2,
-      `main curve strokeWidth must be <= 2 for a calm, readable line; found ${sw}`,
-    );
-  });
-
-  it("renders honest date-axis labels derived from real trade timestamps", () => {
-    assert.ok(
-      equity.includes("axisTicks") && equity.includes("toLocaleDateString"),
-      "chart must show date axis labels computed from real tMin/tMax timestamps",
-    );
-    assert.ok(
-      equity.includes("tMin") && equity.includes("tMax"),
-      "axis labels must be derived from the window's first and last trade times",
     );
   });
 });

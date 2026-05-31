@@ -3,26 +3,36 @@
 /**
  * Equity-curve client island.
  *
- * Renders cumulative realized P&L over a user-selected timeframe (7D / 30D /
- * All).  The component is intentionally client-only because the timeframe
- * toggle is local UI state that must not round-trip to the server (and must
- * not invalidate the dashboard's data).  The dashboard already loads the
- * last 30 days of round-trips for the selected account; this component just
- * filters that array down further per the toggle.
+ * Renders cumulative realized P&L over a user-selected timeframe (7D / 14D /
+ * 30D / All) as a Recharts area chart.  The component is intentionally
+ * client-only because the timeframe toggle is local UI state that must not
+ * round-trip to the server (and must not invalidate the dashboard's data).
+ * The dashboard already loads the last 30 days of round-trips for the selected
+ * account; this component just filters that array down further per the toggle.
  *
  * Honest empty-state behaviour:
- *   - fewer than 2 trades in the selected window → faint baseline + message
+ *   - fewer than 2 trades in the selected window → designed empty state
  *   - no trades at all → "No closed round-trips" copy
- * No fake or generated curves are ever drawn.
+ * No fake, demo, or generated curves are ever drawn — every point on the chart
+ * is a real closed round-trip's running cumulative P&L.
  *
- * Visual conventions match the previous inline equity panel exactly:
+ * Colour conventions match the Guardrail design tokens:
  *   - var(--gr-ok) when ending cumulative ≥ 0
  *   - var(--gr-bad) when ending cumulative < 0
- *   - dashed zero baseline when the curve crosses zero
  */
 
 import * as React from "react";
 import Link from "next/link";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+} from "recharts";
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
@@ -54,6 +64,47 @@ function filterByTimeframe(
   const days = tf === "7d" ? 7 : tf === "14d" ? 14 : 30;
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   return trades.filter((t) => t.closedAt.getTime() >= cutoff);
+}
+
+// Guardrail design tokens resolved to concrete colours for Recharts.  CSS
+// var() is not honoured inside SVG presentation attributes (stroke / fill on
+// the rendered chart elements), so we read the computed values from :root on
+// mount, with the globals.css hex values as the first-paint / SSR fallback.
+const TOKEN_FALLBACKS = {
+  ok: "#3f7c2a",
+  bad: "#a72d1f",
+  border: "#dcd0b7",
+  surface: "#ffffff",
+  ink: "#1b1812",
+  textMute: "#8b8270",
+  textFaint: "#b6ab94",
+};
+type TokenColors = typeof TOKEN_FALLBACKS;
+
+// Resolves design-token colours and signals when the component has mounted on
+// the client.  Recharts' ResponsiveContainer measures its parent at runtime, so
+// the chart is only rendered after mount — this avoids the SSR "width(-1)"
+// warning and any hydration mismatch, while a same-height placeholder keeps the
+// card layout stable (no content shift).
+function useTokenColors(): { colors: TokenColors; mounted: boolean } {
+  const [colors, setColors] = React.useState<TokenColors>(TOKEN_FALLBACKS);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const read = (name: string, fallback: string) =>
+      cs.getPropertyValue(name).trim() || fallback;
+    setColors({
+      ok: read("--gr-ok", TOKEN_FALLBACKS.ok),
+      bad: read("--gr-bad", TOKEN_FALLBACKS.bad),
+      border: read("--gr-border", TOKEN_FALLBACKS.border),
+      surface: read("--gr-surface", TOKEN_FALLBACKS.surface),
+      ink: read("--gr-ink", TOKEN_FALLBACKS.ink),
+      textMute: read("--gr-text-mute", TOKEN_FALLBACKS.textMute),
+      textFaint: read("--gr-text-faint", TOKEN_FALLBACKS.textFaint),
+    });
+    setMounted(true);
+  }, []);
+  return { colors, mounted };
 }
 
 export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
@@ -161,7 +212,63 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
   );
 }
 
+type ChartPoint = { t: number; pnl: number };
+
+function fmtTooltipDate(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function EquityTooltip({
+  active,
+  payload,
+  colors,
+}: {
+  active?: boolean;
+  payload?: Array<{ value?: number; payload?: ChartPoint }>;
+  colors: TokenColors;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0]?.payload;
+  const pnl = payload[0]?.value;
+  if (point == null || pnl == null) return null;
+  return (
+    <div
+      style={{
+        background: colors.surface,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 8,
+        padding: "8px 10px",
+        boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
+        fontSize: 12,
+        lineHeight: 1.4,
+      }}
+    >
+      <div style={{ color: colors.textMute, marginBottom: 3 }}>
+        {fmtTooltipDate(point.t)}
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-ibm-plex-mono, monospace)",
+          fontWeight: 600,
+          color: pnl >= 0 ? colors.ok : colors.bad,
+        }}
+      >
+        {fmt$(pnl)}
+      </div>
+      <div style={{ color: colors.textFaint, fontSize: 10.5, marginTop: 2 }}>
+        Cumulative realized P&amp;L
+      </div>
+    </div>
+  );
+}
+
 function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
+  const { colors, mounted } = useTokenColors();
+
   if (trades.length < 2) {
     return (
       <div
@@ -220,104 +327,37 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
     );
   }
 
-  // Sort chronologically (the source array is newest-first).
+  // Build the cumulative realized-P&L series from real trades only.  The
+  // source array is newest-first, so sort chronologically and accumulate.
+  // Every chart point is a real closed round-trip — no values are invented.
   const chrono = [...trades].sort(
     (a, b) => a.closedAt.getTime() - b.closedAt.getTime(),
   );
   let cum = 0;
-  const points: { x: number; y: number }[] = [];
-  const tMin = chrono[0]!.closedAt.getTime();
-  const tMax = chrono[chrono.length - 1]!.closedAt.getTime();
-  const tRange = Math.max(1, tMax - tMin);
-  for (const t of chrono) {
+  const data: ChartPoint[] = chrono.map((t) => {
     cum += t.pnl;
-    points.push({ x: (t.closedAt.getTime() - tMin) / tRange, y: cum });
-  }
-  const cumMin = Math.min(0, ...points.map((p) => p.y));
-  const cumMax = Math.max(0, ...points.map((p) => p.y));
-  const yRange = Math.max(1, cumMax - cumMin);
-  const W = 100;
-  const H = 40;
-  const sx = (x: number) => x * W;
-  const sy = (y: number) => H - ((y - cumMin) / yRange) * H;
+    return { t: t.closedAt.getTime(), pnl: Number(cum.toFixed(2)) };
+  });
 
-  // Monotone cubic interpolation (Fritsch–Carlson).  Unlike a naive bezier
-  // smoothing, this guarantees the curve never overshoots the data: between
-  // any two real points the line stays within their value range, so it can
-  // never imply a P&L direction the trades didn't actually take.  Where the
-  // slope reverses (a peak or trough) the tangent is flattened, and for two
-  // points or a flat run it degrades to a clean straight segment.  No
-  // intermediate values are invented — the curve only passes through the real
-  // cumulative-P&L points computed above.
-  const monotonePath = (pts: typeof points): string => {
-    const c = pts.map((p) => ({ x: sx(p.x), y: sy(p.y) }));
-    const n = c.length;
-    if (n === 0) return "";
-    if (n === 1) return `M${c[0]!.x.toFixed(1)},${c[0]!.y.toFixed(1)}`;
+  const finalY = data[data.length - 1]!.pnl;
+  const positive = finalY >= 0;
+  const lineColor = positive ? colors.ok : colors.bad;
 
-    // Secant slopes between consecutive points (in screen space).
-    const dxs: number[] = [];
-    const slope: number[] = [];
-    for (let i = 0; i < n - 1; i++) {
-      const ddx = c[i + 1]!.x - c[i]!.x;
-      const ddy = c[i + 1]!.y - c[i]!.y;
-      dxs.push(ddx);
-      slope.push(ddx === 0 ? 0 : ddy / ddx);
-    }
-
-    // Tangents per point: average of neighbouring slopes, flattened to zero
-    // wherever the direction reverses so the curve cannot bulge past a peak.
-    const m: number[] = new Array(n).fill(0);
-    m[0] = slope[0]!;
-    m[n - 1] = slope[n - 2]!;
-    for (let i = 1; i < n - 1; i++) {
-      const s0 = slope[i - 1]!;
-      const s1 = slope[i]!;
-      m[i] = s0 * s1 <= 0 ? 0 : (s0 + s1) / 2;
-    }
-
-    // Fritsch–Carlson clamp: keep each segment monotone (no overshoot).
-    for (let i = 0; i < n - 1; i++) {
-      if (slope[i] === 0) {
-        m[i] = 0;
-        m[i + 1] = 0;
-        continue;
-      }
-      const a = m[i]! / slope[i]!;
-      const b = m[i + 1]! / slope[i]!;
-      const h = a * a + b * b;
-      if (h > 9) {
-        const t = 3 / Math.sqrt(h);
-        m[i] = t * a * slope[i]!;
-        m[i + 1] = t * b * slope[i]!;
-      }
-    }
-
-    // Emit cubic bezier segments from the Hermite tangents.
-    let d = `M${c[0]!.x.toFixed(1)},${c[0]!.y.toFixed(1)}`;
-    for (let i = 0; i < n - 1; i++) {
-      const cp1x = c[i]!.x + dxs[i]! / 3;
-      const cp1y = c[i]!.y + (m[i]! * dxs[i]!) / 3;
-      const cp2x = c[i + 1]!.x - dxs[i]! / 3;
-      const cp2y = c[i + 1]!.y - (m[i + 1]! * dxs[i]!) / 3;
-      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${c[i + 1]!.x.toFixed(1)},${c[i + 1]!.y.toFixed(1)}`;
-    }
-    return d;
-  };
-
-  const linePath = monotonePath(points);
-  const fillPath = `${linePath} L${sx(points[points.length - 1]!.x).toFixed(1)},${H} L${sx(points[0]!.x).toFixed(1)},${H} Z`;
-  const finalY = points[points.length - 1]!.y;
-  const lineColor = finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
-
-  // Honest date-axis labels derived from the real first/last trade timestamps
-  // in this window (axis ticks, not invented data points).  Collapses to a
-  // single centred label when every trade closed on the same calendar day.
-  const fmtAxisDate = (ts: number) =>
-    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const axisTicks = Array.from(
-    new Set([fmtAxisDate(tMin), fmtAxisDate((tMin + tMax) / 2), fmtAxisDate(tMax)]),
+  // Minimal date ticks: first / middle / last (deduped when the window spans a
+  // single day).  These are axis labels derived from real trade timestamps.
+  const tickVals = Array.from(
+    new Set([
+      data[0]!.t,
+      data[Math.floor((data.length - 1) / 2)]!.t,
+      data[data.length - 1]!.t,
+    ]),
   );
+  const fmtTick = (ts: number) =>
+    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const minPnl = Math.min(...data.map((d) => d.pnl));
+  const maxPnl = Math.max(...data.map((d) => d.pnl));
+  const crossesZero = minPnl < 0 && maxPnl > 0;
 
   return (
     <div
@@ -341,7 +381,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             fontSize: 26,
             fontWeight: 600,
             fontFamily: "var(--font-ibm-plex-mono, monospace)",
-            color: finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+            color: positive ? "var(--gr-ok)" : "var(--gr-bad)",
             letterSpacing: "-0.02em",
           }}
         >
@@ -351,74 +391,55 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
           {trades.length} trade{trades.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        style={{ width: "100%", height: 120 }}
-        aria-hidden="true"
-      >
-        <defs>
-          <linearGradient id="equityGradFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.12" />
-            <stop offset="100%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* Very faint horizontal guide lines */}
-        {[0.25, 0.5, 0.75].map((frac) => (
-          <line
-            key={frac}
-            x1={0} x2={W}
-            y1={frac * H} y2={frac * H}
-            stroke="var(--gr-border)"
-            strokeWidth="0.3"
-            strokeDasharray="2 5"
-          />
-        ))}
-        {/* Zero baseline when curve crosses zero */}
-        {cumMin < 0 && cumMax > 0 && (
-          <line
-            x1={0} x2={W}
-            y1={sy(0)} y2={sy(0)}
-            stroke="var(--gr-border)"
-            strokeWidth="0.6"
-            strokeDasharray="3 2"
-          />
+      <div style={{ width: "100%", height: 140 }}>
+        {mounted && (
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
+            <defs>
+              <linearGradient id="equityAreaFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={lineColor} stopOpacity={0.18} />
+                <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              vertical={false}
+              stroke={colors.border}
+              strokeOpacity={0.5}
+              strokeDasharray="2 5"
+            />
+            <XAxis
+              dataKey="t"
+              type="number"
+              scale="time"
+              domain={["dataMin", "dataMax"]}
+              ticks={tickVals}
+              tickFormatter={fmtTick}
+              tick={{ fontSize: 10, fill: colors.textFaint }}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={20}
+            />
+            <YAxis hide domain={["auto", "auto"]} />
+            {crossesZero && (
+              <ReferenceLine y={0} stroke={colors.border} strokeDasharray="3 2" />
+            )}
+            <Tooltip
+              content={<EquityTooltip colors={colors} />}
+              cursor={{ stroke: colors.border, strokeWidth: 1 }}
+            />
+            <Area
+              type="monotone"
+              dataKey="pnl"
+              stroke={lineColor}
+              strokeWidth={2}
+              fill="url(#equityAreaFill)"
+              dot={false}
+              activeDot={{ r: 3, strokeWidth: 0, fill: lineColor }}
+              isAnimationActive={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
         )}
-        {/* Soft fill under the smooth curve */}
-        <path d={fillPath} fill="url(#equityGradFill)" />
-        {/* Smooth main line — thin and calm */}
-        <path
-          d={linePath}
-          stroke={lineColor}
-          strokeWidth="1.5"
-          fill="none"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {/* Subtle endpoint dot */}
-        <circle
-          cx={sx(points[points.length - 1]!.x)}
-          cy={sy(points[points.length - 1]!.y)}
-          r="1.8"
-          fill={lineColor}
-          stroke="var(--gr-surface)"
-          strokeWidth="1.2"
-        />
-      </svg>
-      {/* Honest date axis from the real trade timestamps in this window. */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: axisTicks.length === 1 ? "center" : "space-between",
-          fontSize: 10,
-          color: "var(--gr-text-faint)",
-          letterSpacing: "0.02em",
-          marginTop: -2,
-        }}
-      >
-        {axisTicks.map((label, i) => (
-          <span key={`${label}-${i}`}>{label}</span>
-        ))}
       </div>
     </div>
   );
