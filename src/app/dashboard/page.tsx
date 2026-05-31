@@ -8,6 +8,7 @@ import { CommandCenter } from "@/app/dashboard/_components/command-center/comman
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
+import { SyncAllButton } from "@/app/dashboard/_components/command-center/sync-all-button";
 import { DashboardAutoRefresh } from "@/app/dashboard/_components/dashboard-auto-refresh";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -409,20 +410,7 @@ export default async function DashboardPage({
               </h1>
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              {hasBrokerAccount && (
-                <Link
-                  href="/dashboard"
-                  className="btn-compact"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "7px 14px", borderRadius: 9, fontSize: 13,
-                    border: "1px solid var(--gr-border)", background: "var(--gr-surface)",
-                    color: "var(--gr-text-mid)", textDecoration: "none",
-                  }}
-                >
-                  ↻ Sync all
-                </Link>
-              )}
+              {hasBrokerAccount && <SyncAllButton />}
               <Link
                 href="/accounts/connect/tradovate"
                 className="btn-compact"

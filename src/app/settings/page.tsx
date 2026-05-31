@@ -314,7 +314,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               />
             </SectionCard>
 
-            {/* 3 ── Broker connections */}
+            {/* 3 ── Broker connections. Anchor for /settings#broker-connections deep link. */}
+            <div id="broker-connections" className="scroll-mt-24">
             <SectionCard
               title="Broker connections"
               description="Connect, disconnect, and reconnect your broker accounts."
@@ -344,6 +345,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </Link>
               </div>
             </SectionCard>
+            </div>
 
             {/* 4 ── Alerts & Telegram.
                 id="alerts-telegram" is a stable deep-link anchor — the Trading

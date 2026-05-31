@@ -209,3 +209,35 @@ describe("Settings page — sidebar account filtering", () => {
     );
   });
 });
+
+// ── Deep-link anchors ─────────────────────────────────────────────────────────
+
+describe("Settings page — deep-link anchors", () => {
+  it("has id='broker-connections' so the Alerts page deep link works", () => {
+    // The Alerts page links to /settings#broker-connections for broker-category
+    // events. Without this anchor the hash is silently dropped and the page
+    // opens at the top instead of scrolling to the broker section.
+    assert.ok(
+      PAGE_SRC.includes('id="broker-connections"'),
+      "settings page must have id='broker-connections' for the /alerts deep link",
+    );
+  });
+
+  it("broker-connections anchor has scroll-mt so it is not hidden under the page header", () => {
+    const idx = PAGE_SRC.indexOf('id="broker-connections"');
+    assert.ok(idx !== -1, "broker-connections anchor must exist");
+    const surrounding = PAGE_SRC.slice(Math.max(0, idx - 20), idx + 120);
+    assert.ok(
+      surrounding.includes("scroll-mt"),
+      "the broker-connections anchor element must include a scroll-mt-* class",
+    );
+  });
+
+  it("has id='alerts-telegram' for the Trading Plan Notifications deep link", () => {
+    // Existing anchor — guard it stays present.
+    assert.ok(
+      PAGE_SRC.includes('id="alerts-telegram"'),
+      "settings page must preserve the alerts-telegram deep-link anchor",
+    );
+  });
+});

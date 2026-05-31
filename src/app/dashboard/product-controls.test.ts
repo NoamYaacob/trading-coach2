@@ -194,3 +194,28 @@ describe("/dashboard: layout and CTA hygiene", () => {
     );
   });
 });
+
+describe("/dashboard: hero sync button is the real sync action", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  it("imports SyncAllButton from the command-center module", () => {
+    assert.ok(
+      page.includes("SyncAllButton"),
+      "dashboard must import SyncAllButton",
+    );
+  });
+
+  it("does not use a plain <Link href='/dashboard'> as the sync control", () => {
+    assert.ok(
+      !page.includes('href="/dashboard"'),
+      "the sync control must not be a plain /dashboard reload link — it must use SyncAllButton",
+    );
+  });
+
+  it("renders <SyncAllButton /> in the hero area when a broker account is connected", () => {
+    assert.ok(
+      page.includes("<SyncAllButton"),
+      "dashboard must render <SyncAllButton /> so sync actually fires",
+    );
+  });
+});
