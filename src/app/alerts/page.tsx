@@ -195,6 +195,49 @@ function SeverityIcon({ severity }: { severity: Severity }) {
   );
 }
 
+// ── Broker-label helpers ──────────────────────────────────────────────────────
+// looksLikeInternalId: guard against surfacing internal DB ids (cuid/uuid).
+function looksLikeInternalId(v: string): boolean {
+  if (/^c[a-z0-9]{20,}$/.test(v)) return true; // cuid
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true; // uuid
+  return false;
+}
+
+const ACCOUNT_TYPE_SHORT: Record<string, string> = {
+  evaluation: "Evaluation",
+  funded: "Funded",
+  personal: "Personal",
+  demo: "Demo",
+};
+
+/** The actual Tradovate account label (e.g. "MFFUEVRPD133936251", "DEMO7433035").
+ *  Returns null when only internal DB ids are available. */
+function deriveBrokerLabel(a: {
+  label?: string | null;
+  externalAccountId?: string | null;
+}): string | null {
+  const label = a.label?.trim() ?? null;
+  if (label && !looksLikeInternalId(label)) return label;
+  const ext = a.externalAccountId?.trim() ?? null;
+  if (ext && !looksLikeInternalId(ext)) return ext;
+  return null;
+}
+
+/** Short firm + type tag for secondary display, e.g. "MyFundedFutures · Evaluation". */
+function deriveFirmMeta(a: {
+  propFirm?: string | null;
+  accountType?: string | null;
+}): string | null {
+  const firm = a.propFirm?.trim() ?? null;
+  const type = a.accountType?.trim() ?? null;
+  const typeLabel = type ? (ACCOUNT_TYPE_SHORT[type] ?? null) : null;
+  if (firm && typeLabel && type !== "personal") return `${firm} · ${typeLabel}`;
+  if (firm) return firm;
+  if (type === "personal") return "Personal";
+  if (typeLabel) return typeLabel;
+  return null;
+}
+
 export default async function AlertsPage({
   searchParams,
 }: {
@@ -293,24 +336,24 @@ export default async function AlertsPage({
         })
       : [];
 
-  // id → { name: friendly label, brokerId: broker account number for title }
-  const accountMeta = new Map<string, { name: string; brokerId: string | null }>();
+  // id → { friendlyName: human label, brokerLabel: Tradovate account number, firmMeta: firm/type tag }
+  const accountMeta = new Map<string, { friendlyName: string; brokerLabel: string; firmMeta: string | null }>();
   const addMeta = (a: {
     id: string; label: string | null; displayName?: string | null;
     propFirm?: string | null; accountType?: string | null; externalAccountId?: string | null;
   }) => {
-    const name = deriveAccountDisplayLabel(a);
-    // Secondary broker identifier (account number), shown only as a title/tooltip
-    // and never as primary text. Suppress it when it equals the friendly name.
-    const rawId = a.externalAccountId ?? a.label ?? null;
-    const brokerId = rawId && rawId !== name ? rawId : null;
-    accountMeta.set(a.id, { name, brokerId });
+    const friendlyName = deriveAccountDisplayLabel(a);
+    const rawBrokerLabel = deriveBrokerLabel(a);
+    // Fall back to the friendly name when no broker label is available (no label/externalAccountId).
+    const brokerLabel = rawBrokerLabel ?? friendlyName;
+    const firmMeta = deriveFirmMeta(a);
+    accountMeta.set(a.id, { friendlyName, brokerLabel, firmMeta });
   };
   for (const a of switcherAccounts) addMeta(a);
   for (const a of extraAccounts) addMeta(a);
 
   const selectedAccountName = requestedAccountId
-    ? accountMeta.get(requestedAccountId)?.name ?? null
+    ? accountMeta.get(requestedAccountId)?.friendlyName ?? null
     : null;
 
   // ── Group consecutive repeated alerts (same type + account + day) ─────────
@@ -407,7 +450,7 @@ export default async function AlertsPage({
             <Link
               key={acc.id}
               href={buildHref({ accountId: acc.id })}
-              title={meta?.brokerId ?? undefined}
+              title={meta?.brokerLabel ?? undefined}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "7px 8px", borderRadius: 8,
@@ -428,7 +471,7 @@ export default async function AlertsPage({
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}
               >
-                {meta?.name ?? deriveAccountDisplayLabel(acc)}
+                {meta?.friendlyName ?? deriveAccountDisplayLabel(acc)}
               </span>
             </Link>
           );
@@ -567,7 +610,7 @@ export default async function AlertsPage({
           {/* ── Account switcher ────────────────────────────────────────── */}
           {selectableAccounts.length > 0 && (
             <section
-              style={{ padding: "0 32px 12px", display: "flex", gap: 8, flexWrap: "wrap" }}
+              style={{ padding: "0 32px 12px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
             >
               <Link
                 href={buildHref({ accountId: null })}
@@ -582,29 +625,87 @@ export default async function AlertsPage({
               >
                 All accounts
               </Link>
-              {selectableAccounts.map((acc) => {
-                const isSelected = acc.id === requestedAccountId;
-                const meta = accountMeta.get(acc.id);
-                return (
-                  <Link
-                    key={acc.id}
-                    href={buildHref({ accountId: acc.id })}
-                    title={meta?.brokerId ?? undefined}
+              {selectableAccounts.length <= 4 ? (
+                selectableAccounts.map((acc) => {
+                  const isSelected = acc.id === requestedAccountId;
+                  const meta = accountMeta.get(acc.id);
+                  return (
+                    <Link
+                      key={acc.id}
+                      href={buildHref({ accountId: acc.id })}
+                      title={meta?.firmMeta ?? undefined}
+                      style={{
+                        padding: "6px 13px", borderRadius: 9, fontSize: 12.5,
+                        background: isSelected ? "var(--gr-copper-bg)" : "var(--gr-surface)",
+                        border: isSelected ? "1px solid var(--gr-copper-bd)" : "1px solid var(--gr-border)",
+                        color: isSelected ? "var(--gr-copper)" : "var(--gr-text-mid)",
+                        fontWeight: isSelected ? 600 : 500,
+                        textDecoration: "none",
+                        maxWidth: 220, overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {meta?.brokerLabel ?? deriveAccountDisplayLabel(acc)}
+                    </Link>
+                  );
+                })
+              ) : (
+                <details style={{ position: "relative" }}>
+                  <summary
                     style={{
                       padding: "6px 13px", borderRadius: 9, fontSize: 12.5,
-                      background: isSelected ? "var(--gr-copper-bg)" : "var(--gr-surface)",
-                      border: isSelected ? "1px solid var(--gr-copper-bd)" : "1px solid var(--gr-border)",
-                      color: isSelected ? "var(--gr-copper)" : "var(--gr-text-mid)",
-                      fontWeight: isSelected ? 600 : 500,
-                      textDecoration: "none",
-                      maxWidth: 220, overflow: "hidden",
-                      textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      background: requestedAccountId ? "var(--gr-copper-bg)" : "var(--gr-surface)",
+                      border: requestedAccountId ? "1px solid var(--gr-copper-bd)" : "1px solid var(--gr-border)",
+                      color: requestedAccountId ? "var(--gr-copper)" : "var(--gr-text-mid)",
+                      fontWeight: requestedAccountId ? 600 : 500,
+                      cursor: "pointer", listStyle: "none", userSelect: "none",
                     }}
                   >
-                    {meta?.name ?? deriveAccountDisplayLabel(acc)}
-                  </Link>
-                );
-              })}
+                    {requestedAccountId
+                      ? (accountMeta.get(requestedAccountId)?.brokerLabel ?? "Account")
+                      : "Select account"}{" ▾"}
+                  </summary>
+                  <div
+                    style={{
+                      position: "absolute", top: "calc(100% + 4px)", left: 0,
+                      minWidth: 240, zIndex: 10,
+                      background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
+                      borderRadius: 10, padding: "4px 0",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    {selectableAccounts.map((acc) => {
+                      const isSelected = acc.id === requestedAccountId;
+                      const meta = accountMeta.get(acc.id);
+                      return (
+                        <Link
+                          key={acc.id}
+                          href={buildHref({ accountId: acc.id })}
+                          style={{
+                            display: "block", padding: "8px 14px",
+                            background: isSelected ? "var(--gr-copper-bg)" : "transparent",
+                            textDecoration: "none",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12.5, fontWeight: isSelected ? 600 : 500,
+                              color: isSelected ? "var(--gr-copper)" : "var(--gr-ink)",
+                            }}
+                          >
+                            {meta?.brokerLabel ?? deriveAccountDisplayLabel(acc)}
+                          </div>
+                          {meta?.firmMeta && (
+                            <div style={{ fontSize: 11, color: "var(--gr-text-mute)", marginTop: 1 }}>
+                              {meta.firmMeta}
+                            </div>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
             </section>
           )}
 
@@ -721,7 +822,7 @@ export default async function AlertsPage({
                         const label = triggerLabel(row.triggerType);
                         const summary = rowSummary(row.triggerType, row.message);
                         const meta = accountMeta.get(row.accountId);
-                        const accountName = meta?.name ?? null;
+                        const accountName = meta?.friendlyName ?? null;
                         const viewHref = triggerViewHref(row.triggerType, row.accountId);
                         const actionLabel = triggerActionLabel(row.triggerType);
                         return (
@@ -746,7 +847,7 @@ export default async function AlertsPage({
                                 </span>
                                 {accountName && (
                                   <span
-                                    title={meta?.brokerId ?? undefined}
+                                    title={meta?.brokerLabel ?? undefined}
                                     style={{
                                       fontSize: 10.5, padding: "1px 7px", borderRadius: 999,
                                       background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
