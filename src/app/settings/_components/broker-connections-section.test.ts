@@ -619,11 +619,11 @@ describe("inactive account rows", () => {
     assert.ok(src.includes("RemoveAccountButton"), "inactive section must use RemoveAccountButton");
   });
 
-  test("RemoveAccountButton appears after the Archived / inactive header", () => {
+  test("RemoveAccountButton appears after the section header", () => {
     const src = read(SECTION_FILE);
-    const header = src.indexOf("Archived / inactive");
+    const header = src.indexOf("No longer found at broker");
     const removeButton = src.lastIndexOf("RemoveAccountButton");
-    assert.ok(header !== -1 && removeButton > header, "remove button must follow the header");
+    assert.ok(header !== -1 && removeButton > header, "remove button must follow the 'No longer found at broker' header");
   });
 
   test("classifyAccounts excludes archived accounts from standalone buckets", () => {

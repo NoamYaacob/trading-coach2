@@ -490,3 +490,51 @@ describe("gr-shell.tsx: Phase 2 props", () => {
     );
   });
 });
+
+// ── User-facing copy: "Default rules" replaces "Starter settings" ─────────────
+
+describe("Trading Plan: 'Default rules' copy", () => {
+  const page = read("app/rules/page.tsx");
+  const selector = read("app/rules/_components/scope-selector.tsx");
+  const form = read("app/rules/_components/account-rules-form.tsx");
+
+  it("breadcrumb says 'Default rules', not 'Starter settings'", () => {
+    assert.ok(
+      page.includes('"Default rules"'),
+      "breadcrumb must use 'Default rules'",
+    );
+    assert.ok(
+      !page.includes('"Starter settings"'),
+      "breadcrumb must not use the old 'Starter settings' label",
+    );
+  });
+
+  it("scope-selector sidebar item says 'Default rules'", () => {
+    assert.ok(
+      selector.includes("Default rules"),
+      "scope-selector must label the starter scope as 'Default rules'",
+    );
+    assert.ok(
+      !selector.includes("Starter settings"),
+      "scope-selector must not use the old 'Starter settings' label",
+    );
+  });
+
+  it("internal scope param stays 'starter' (no route change)", () => {
+    assert.ok(
+      page.includes("scope=starter") && page.includes('scope === "starter"'),
+      "the internal scope param must remain 'starter' — no route change",
+    );
+  });
+
+  it("account-rules-form fallback copy says 'Default rules'", () => {
+    assert.ok(
+      form.includes("Default rules are a starting point"),
+      "account-rules-form must use the new 'Default rules' copy",
+    );
+    assert.ok(
+      !form.includes("Starter settings are a starting point"),
+      "old 'Starter settings' fallback copy must be gone",
+    );
+  });
+});

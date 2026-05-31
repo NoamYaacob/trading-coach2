@@ -354,7 +354,7 @@ export default async function RulesPage({
       ? ["Trading Plan", deriveAccountDisplayLabel(selectedAccount)]
       : showAccountsOverview
       ? ["Trading Plan", "Accounts"]
-      : ["Trading Plan", "Starter settings"];
+      : ["Trading Plan", "Default rules"];
 
   // Derive user initials from email (first 2 chars before @, uppercase).
   const emailPart = user.email.split("@")[0] ?? "";
@@ -515,7 +515,7 @@ export default async function RulesPage({
                     <p className="mt-1 text-sm text-stone-600">
                       The selected account was not found.{" "}
                       <Link href="/rules?scope=starter" className="font-medium underline-offset-2 hover:underline">
-                        Back to starter settings
+                        Back to default rules
                       </Link>
                     </p>
                   </div>
@@ -547,7 +547,7 @@ export default async function RulesPage({
                 <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4 text-sm text-stone-600">
                   <p className="font-medium text-stone-950">No broker accounts connected.</p>
                   <p className="mt-1">
-                    Connect a trading account to create a Trading Plan. Starter settings above are a starting point — each account needs its own rules for Guardrail to monitor it.
+                    Connect a trading account to create a Trading Plan. Default rules above are a starting point — each account needs its own rules for Guardrail to monitor it.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
@@ -623,9 +623,9 @@ function WorkspaceHeader({
       <div className={stripCls}>
         <span className={crumbCls}>Trading Plan</span>
         <span className={sepCls}>/</span>
-        <span className={titleCls}>Starter settings</span>
+        <span className={titleCls}>Default rules</span>
         <span className="rounded-full bg-stone-100 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-stone-600">
-          Starter
+          Defaults
         </span>
         <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-semibold ${enforcementInfo.cls}`}>
           {enforcementInfo.label}
@@ -737,7 +737,7 @@ function AccountsOverviewPanel({
               href="/rules?scope=starter"
               className="inline-flex items-center justify-center rounded-full border border-stone-200 px-4 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-400"
             >
-              View starter settings
+              View default rules
             </Link>
           </div>
         </div>
@@ -776,7 +776,7 @@ function AccountsOverviewPanel({
       <p className="text-xs text-stone-400">
         Use{" "}
         <Link href="/rules?scope=starter" className="underline-offset-2 hover:underline">
-          Starter settings
+          Default rules
         </Link>{" "}
         to configure session defaults. Connected accounts still need their own Trading Plan.
       </p>

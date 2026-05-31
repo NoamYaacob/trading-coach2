@@ -772,3 +772,24 @@ describe("/alerts page — sidebar account filtering", () => {
     );
   });
 });
+
+// ── Page-level copy polish ────────────────────────────────────────────────────
+
+describe("/alerts page — copy polish", () => {
+  it("does not show a redundant 'ALERTS' eyebrow above the page title", () => {
+    assert.ok(
+      !/>\s*ALERTS\s*<\/span>/.test(ALERTS_PAGE_SRC) &&
+        !ALERTS_PAGE_SRC.includes(">ALERTS<"),
+      "the redundant ALERTS eyebrow must be removed — the page title is sufficient",
+    );
+  });
+
+  it("page h1 still says 'Alerts'", () => {
+    assert.ok(
+      ALERTS_PAGE_SRC.includes(">Alerts<") ||
+        />\s*Alerts\s*<\/h1>/.test(ALERTS_PAGE_SRC) ||
+        ALERTS_PAGE_SRC.includes("Alerts\n"),
+      "the page h1 must still read 'Alerts'",
+    );
+  });
+});

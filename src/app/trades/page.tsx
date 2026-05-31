@@ -231,16 +231,12 @@ export default async function TradesPage({
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <section style={{ padding: "28px 36px 16px" }}>
           <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
-            Closed round-trips · last {rangeDays}d
+            {selectedAccount
+              ? `${selectedAccount.label} · Closed round-trips · last ${rangeDays}d`
+              : `Closed round-trips · last ${rangeDays}d`}
           </span>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>
-            {!hasAccounts ? (
-              <>No accounts connected yet.</>
-            ) : selectedAccount ? (
-              <>{selectedAccount.label}</>
-            ) : (
-              <>No active accounts.</>
-            )}
+            Trades
           </h1>
         </section>
 

@@ -318,7 +318,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div id="broker-connections" className="scroll-mt-24">
             <SectionCard
               title="Broker connections"
-              description="Connect, disconnect, and reconnect your broker accounts."
+              description="Connect, disconnect, and reconnect your broker connections."
             >
               <BrokerConnectionsSection
                 accounts={connectedAccounts}
