@@ -218,6 +218,14 @@ export default async function TradesPage({
       userInitials={userInitials}
       hideApiStatus
     >
+      <style>{`
+        @media (max-width: 700px) {
+          .trades-kpi-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
+        @media (max-width: 460px) {
+          .trades-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+      `}</style>
       <div style={{ overflowY: "auto", height: "100%" }}>
         <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* ── Hero ─────────────────────────────────────────────────────── */}
@@ -368,7 +376,7 @@ export default async function TradesPage({
 
             {/* ── KPI strip ────────────────────────────────────────────── */}
             <section style={{ padding: "0 36px 18px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+              <div className="trades-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
                 {[
                   {
                     label: "Net P&L",

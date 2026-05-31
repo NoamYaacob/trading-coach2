@@ -454,7 +454,9 @@ export default async function AlertsPage({
   // The title badge reflects the *currently filtered* result set (selected
   // account + filter + today), never a global total — feedEvents already has
   // those constraints applied in the query above.
-  const alertCount = feedEvents.length;
+  // Use the post-deduplication row count so the badge matches what the user
+  // actually sees. feedEvents may contain many repeats collapsed into one row.
+  const alertCount = rows.length;
   type EmptyState = { title: string; body: string; action?: { href: string; label: string } };
   const emptyState: EmptyState = (() => {
     if (todayOnly) {

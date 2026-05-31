@@ -133,3 +133,35 @@ describe("dashboard: today's trades + equity curve use real data", () => {
     );
   });
 });
+
+describe("/trades page: KPI strip is responsive", () => {
+  const page = read("app/trades/page.tsx");
+
+  it("KPI grid uses the trades-kpi-grid class for responsive overrides", () => {
+    assert.ok(
+      page.includes("trades-kpi-grid"),
+      "KPI grid div must have className='trades-kpi-grid' so media queries can target it",
+    );
+  });
+
+  it("includes @media breakpoints so the grid reflows on small screens", () => {
+    assert.ok(
+      page.includes("@media"),
+      "trades page must include @media rules to prevent 5-column overflow on mobile",
+    );
+  });
+
+  it("breaks to at most 3 columns at 700 px viewport width", () => {
+    assert.ok(
+      page.includes("max-width: 700px") && page.includes("repeat(3, 1fr)"),
+      "at ≤700px the KPI grid must reflow to 3 columns",
+    );
+  });
+
+  it("breaks to 2 columns at 460 px viewport width for very small screens", () => {
+    assert.ok(
+      page.includes("max-width: 460px") && page.includes("repeat(2, 1fr)"),
+      "at ≤460px the KPI grid must reflow to 2 columns",
+    );
+  });
+});

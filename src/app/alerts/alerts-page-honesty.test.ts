@@ -626,10 +626,17 @@ describe("/alerts page — sticky filter bar", () => {
 // ── Filtered alert count (not a global total) ─────────────────────────────────
 
 describe("/alerts page — filtered alert count", () => {
-  it("the title badge count derives from the filtered feedEvents, not a global query", () => {
+  it("the title badge count uses the grouped row count, not raw pre-dedup feedEvents", () => {
+    // rows.length matches the visible row count after consecutive same-type/account/day
+    // deduplication, so the badge never lies ("10" when only 1 grouped row is visible).
     assert.ok(
-      ALERTS_PAGE_SRC.includes("const alertCount = feedEvents.length"),
-      "alertCount must come from feedEvents (which already applies account/filter/today)",
+      ALERTS_PAGE_SRC.includes("const alertCount = rows.length"),
+      "alertCount must use rows.length (post-grouping) so the badge matches the visible rows",
+    );
+    // Explicitly must NOT use the raw feedEvents length (which is pre-deduplication).
+    assert.ok(
+      !ALERTS_PAGE_SRC.includes("const alertCount = feedEvents.length"),
+      "alertCount must not use feedEvents.length — that count is pre-deduplication",
     );
     // It must NOT be wired to the global system-alert count used for chip gating.
     assert.ok(
