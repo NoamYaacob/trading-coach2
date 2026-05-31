@@ -309,6 +309,30 @@ describe("/dashboard: P&L calendar is compact", () => {
   });
 });
 
+describe("/dashboard: P&L calendar grid is constrained, not stretched", () => {
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("wraps the grid in a centered max-width inner column", () => {
+    const match = calendar.match(/maxWidth:\s*(\d+)/);
+    const maxW = match ? parseInt(match[1] ?? "0", 10) : 0;
+    assert.ok(
+      maxW >= 900 && maxW <= 1100,
+      `calendar grid must sit in a constrained inner column (~980–1040px); found maxWidth ${maxW}`,
+    );
+    assert.ok(
+      calendar.includes('margin: "0 auto"'),
+      "the constrained inner column must be centered (margin: 0 auto)",
+    );
+  });
+
+  it("still uses a 7-column grid with readable gaps", () => {
+    assert.ok(
+      calendar.includes('gridTemplateColumns: "repeat(7, 1fr)"'),
+      "calendar must keep a 7-column week grid",
+    );
+  });
+});
+
 describe("/dashboard: P&L calendar day cells show trade count and link to trades", () => {
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
   const page = read("app/dashboard/page.tsx");
@@ -350,73 +374,107 @@ describe("/dashboard: P&L calendar day cells show trade count and link to trades
   });
 });
 
-describe("/dashboard: equity curve is a Recharts area chart", () => {
+describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
   const equity = read("app/dashboard/_components/equity-curve.tsx");
 
-  it("imports from the recharts library", () => {
+  it("imports from the lightweight-charts library", () => {
     assert.ok(
-      /from\s+["']recharts["']/.test(equity),
-      "equity curve must import its chart primitives from 'recharts'",
+      /from\s+["']lightweight-charts["']/.test(equity),
+      "equity curve must import its chart primitives from 'lightweight-charts'",
     );
   });
 
-  it("renders the chart inside a ResponsiveContainer", () => {
+  it("no longer uses Recharts", () => {
     assert.ok(
-      equity.includes("ResponsiveContainer"),
-      "chart must use a ResponsiveContainer so it sizes to the card",
+      !/from\s+["']recharts["']/.test(equity),
+      "equity curve must not import from 'recharts' anymore",
     );
-  });
-
-  it("uses an AreaChart with an <Area> (filled curve)", () => {
-    assert.ok(equity.includes("AreaChart"), "must use Recharts AreaChart");
-    assert.ok(equity.includes("<Area"), "must render an <Area> series (filled line)");
-  });
-
-  it("uses a smooth, non-overshooting monotone curve", () => {
     assert.ok(
-      equity.includes('type="monotone"'),
-      "the Area must use type=\"monotone\" for a smooth curve that never overshoots the data",
+      !equity.includes("ResponsiveContainer") &&
+        !equity.includes("AreaChart") &&
+        !equity.includes("CartesianGrid"),
+      "equity curve must not reference Recharts components (ResponsiveContainer/AreaChart/CartesianGrid)",
     );
   });
 
-  it("has a subtle gradient fill under the line (top opacity <= 0.3)", () => {
+  it("creates the chart via createChart against a ref'd container", () => {
+    assert.ok(equity.includes("createChart("), "must call createChart()");
     assert.ok(
-      equity.includes("linearGradient") && equity.includes("stopOpacity"),
-      "must define a linear gradient fill via stopOpacity stops",
+      equity.includes("useRef") && equity.includes("containerRef"),
+      "chart must be created against a useRef'd container element",
     );
-    const opacities = [...equity.matchAll(/stopOpacity=\{?([\d.]+)\}?/g)].map((m) =>
-      parseFloat(m[1] ?? "0"),
-    );
-    const top = Math.max(...opacities, 0);
-    assert.ok(top > 0, "gradient fill must be present (top opacity > 0)");
-    assert.ok(top <= 0.3, `gradient fill must stay subtle (top opacity <= 0.3); found ${top}`);
   });
 
-  it("renders light horizontal grid lines without vertical clutter", () => {
-    assert.ok(equity.includes("CartesianGrid"), "must render a CartesianGrid");
+  it("uses an Area series (not candlesticks)", () => {
     assert.ok(
-      equity.includes("vertical={false}"),
-      "grid must hide vertical lines to keep the chart clean",
+      equity.includes("addSeries(AreaSeries"),
+      "must add an Area series via addSeries(AreaSeries, ...)",
     );
-  });
-
-  it("formats minimal X-axis date ticks", () => {
-    assert.ok(equity.includes("XAxis"), "must render an XAxis");
     assert.ok(
-      equity.includes("tickFormatter"),
-      "X axis must format ticks into readable date labels",
+      !equity.includes("CandlestickSeries"),
+      "must not use a candlestick series",
     );
   });
 
-  it("hides Y-axis clutter while keeping the chart readable", () => {
+  it("is client-only and never SSR-renders the canvas (created in useEffect)", () => {
     assert.ok(
-      /<YAxis\b[^>]*\bhide\b/.test(equity),
-      "YAxis must be hidden (hide) to reduce visual clutter",
+      equity.includes('"use client"'),
+      "equity curve must be a client component",
+    );
+    assert.ok(
+      equity.includes("React.useEffect") || equity.includes("useEffect"),
+      "chart must be created inside an effect so it never runs during SSR",
     );
   });
 
-  it("has a tooltip that labels the value as cumulative realized P&L", () => {
-    assert.ok(equity.includes("<Tooltip"), "must render a Recharts <Tooltip>");
+  it("handles responsive width via ResizeObserver", () => {
+    assert.ok(
+      equity.includes("ResizeObserver"),
+      "chart width must respond to container resize via ResizeObserver",
+    );
+  });
+
+  it("has a subtle green gradient area fill (low alpha top color)", () => {
+    assert.ok(
+      equity.includes("topColor") && equity.includes("bottomColor"),
+      "Area series must define topColor/bottomColor for the gradient fill",
+    );
+    const alphas = [...equity.matchAll(/rgba\(lineColor,\s*([\d.]+)\)/g)].map((m) =>
+      parseFloat(m[1] ?? "1"),
+    );
+    const top = Math.max(...alphas, 0);
+    assert.ok(top > 0 && top <= 0.3, `gradient fill must stay subtle (alpha <= 0.3); found ${top}`);
+  });
+
+  it("keeps the grid light — no heavy vertical lines", () => {
+    assert.ok(
+      equity.includes("vertLines") && equity.includes("visible: false"),
+      "vertical grid lines must be hidden to keep the chart clean",
+    );
+  });
+
+  it("softens the price and time scale borders", () => {
+    const borderFalse = (equity.match(/borderVisible:\s*false/g) ?? []).length;
+    assert.ok(
+      borderFalse >= 2,
+      `both price-scale and time-scale borders must be hidden (borderVisible: false); found ${borderFalse}`,
+    );
+  });
+
+  it("uses a compact dashboard height (~220–260px)", () => {
+    const match = equity.match(/CHART_HEIGHT\s*=\s*(\d+)/);
+    const h = match ? parseInt(match[1] ?? "0", 10) : 0;
+    assert.ok(
+      h >= 220 && h <= 260,
+      `chart height must be compact (220–260px); found ${h}`,
+    );
+  });
+
+  it("has a minimal crosshair tooltip labelled cumulative realized P&L", () => {
+    assert.ok(
+      equity.includes("subscribeCrosshairMove"),
+      "must wire a crosshair tooltip via subscribeCrosshairMove",
+    );
     assert.ok(
       equity.includes("Cumulative realized P&amp;L") ||
         equity.includes("Cumulative realized P&L"),
@@ -424,17 +482,35 @@ describe("/dashboard: equity curve is a Recharts area chart", () => {
     );
     assert.ok(
       equity.includes("fmtTooltipDate") || equity.includes("toLocaleDateString"),
-      "tooltip must show a formatted date/time",
+      "tooltip must show a formatted date",
     );
   });
 
-  it("uses a thin, professional line stroke (strokeWidth <= 2.5)", () => {
-    const sw = [...equity.matchAll(/strokeWidth=\{?([\d.]+)\}?/g)].map((m) =>
+  it("uses a thin, professional line stroke (lineWidth <= 2)", () => {
+    const lw = [...equity.matchAll(/lineWidth:\s*([\d.]+)/g)].map((m) =>
       parseFloat(m[1] ?? "0"),
     );
     assert.ok(
-      sw.some((w) => w > 0 && w <= 2.5),
-      "the Area line must use a thin/professional stroke weight (<= 2.5)",
+      lw.some((w) => w > 0 && w <= 2),
+      "the Area line must use a thin/professional line weight (<= 2)",
+    );
+  });
+
+  it("converts trade close times to a valid Lightweight Charts time", () => {
+    assert.ok(
+      equity.includes("UTCTimestamp"),
+      "trade times must be converted to a UTCTimestamp for the area data",
+    );
+    assert.ok(
+      equity.includes("Math.floor(p.t / 1000)"),
+      "ms timestamps must be converted to whole seconds for the time scale",
+    );
+  });
+
+  it("avoids duplicate times when trades share a second/day", () => {
+    assert.ok(
+      equity.includes("bySecond") && equity.includes("Map"),
+      "must collapse same-second trades so chart times stay unique and ascending",
     );
   });
 

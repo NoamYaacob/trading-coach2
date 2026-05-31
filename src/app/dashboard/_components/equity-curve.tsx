@@ -4,11 +4,12 @@
  * Equity-curve client island.
  *
  * Renders cumulative realized P&L over a user-selected timeframe (7D / 14D /
- * 30D / All) as a Recharts area chart.  The component is intentionally
- * client-only because the timeframe toggle is local UI state that must not
- * round-trip to the server (and must not invalidate the dashboard's data).
- * The dashboard already loads the last 30 days of round-trips for the selected
- * account; this component just filters that array down further per the toggle.
+ * 30D / All) as a TradingView Lightweight Charts area series.  The component is
+ * intentionally client-only: the chart needs the DOM (canvas + measured width)
+ * and the timeframe toggle is local UI state that must not round-trip to the
+ * server (and must not invalidate the dashboard's data).  The dashboard already
+ * loads the last 30 days of round-trips for the selected account; this component
+ * just filters that array down further per the toggle.
  *
  * Honest empty-state behaviour:
  *   - fewer than 2 trades in the selected window → designed empty state
@@ -24,15 +25,16 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-} from "recharts";
+  createChart,
+  AreaSeries,
+  ColorType,
+  CrosshairMode,
+  LineStyle,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+  type AreaData,
+} from "lightweight-charts";
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
@@ -66,10 +68,10 @@ function filterByTimeframe(
   return trades.filter((t) => t.closedAt.getTime() >= cutoff);
 }
 
-// Guardrail design tokens resolved to concrete colours for Recharts.  CSS
-// var() is not honoured inside SVG presentation attributes (stroke / fill on
-// the rendered chart elements), so we read the computed values from :root on
-// mount, with the globals.css hex values as the first-paint / SSR fallback.
+// Guardrail design tokens resolved to concrete colours for the chart canvas.
+// CSS var() is not honoured inside the chart's canvas drawing, so we read the
+// computed values from :root on mount, with the globals.css hex values as the
+// first-paint / SSR fallback.
 const TOKEN_FALLBACKS = {
   ok: "#3f7c2a",
   bad: "#a72d1f",
@@ -82,10 +84,10 @@ const TOKEN_FALLBACKS = {
 type TokenColors = typeof TOKEN_FALLBACKS;
 
 // Resolves design-token colours and signals when the component has mounted on
-// the client.  Recharts' ResponsiveContainer measures its parent at runtime, so
-// the chart is only rendered after mount — this avoids the SSR "width(-1)"
-// warning and any hydration mismatch, while a same-height placeholder keeps the
-// card layout stable (no content shift).
+// the client.  Lightweight Charts measures its container at runtime and draws to
+// a canvas, so the chart is only created after mount — this guarantees we never
+// SSR-render the canvas, while a same-height placeholder keeps the card layout
+// stable (no content shift).
 function useTokenColors(): { colors: TokenColors; mounted: boolean } {
   const [colors, setColors] = React.useState<TokenColors>(TOKEN_FALLBACKS);
   const [mounted, setMounted] = React.useState(false);
@@ -105,6 +107,20 @@ function useTokenColors(): { colors: TokenColors; mounted: boolean } {
     setMounted(true);
   }, []);
   return { colors, mounted };
+}
+
+// Converts a #rrggbb token to an rgba() string at the requested alpha so the
+// area gradient can fade the same hue as the line.
+function rgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full =
+    h.length === 3
+      ? h.split("").map((c) => c + c).join("")
+      : h.padEnd(6, "0").slice(0, 6);
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
@@ -222,50 +238,6 @@ function fmtTooltipDate(ts: number): string {
   });
 }
 
-function EquityTooltip({
-  active,
-  payload,
-  colors,
-}: {
-  active?: boolean;
-  payload?: Array<{ value?: number; payload?: ChartPoint }>;
-  colors: TokenColors;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const point = payload[0]?.payload;
-  const pnl = payload[0]?.value;
-  if (point == null || pnl == null) return null;
-  return (
-    <div
-      style={{
-        background: colors.surface,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 8,
-        padding: "8px 10px",
-        boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
-        fontSize: 12,
-        lineHeight: 1.4,
-      }}
-    >
-      <div style={{ color: colors.textMute, marginBottom: 3 }}>
-        {fmtTooltipDate(point.t)}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-ibm-plex-mono, monospace)",
-          fontWeight: 600,
-          color: pnl >= 0 ? colors.ok : colors.bad,
-        }}
-      >
-        {fmt$(pnl)}
-      </div>
-      <div style={{ color: colors.textFaint, fontSize: 10.5, marginTop: 2 }}>
-        Cumulative realized P&amp;L
-      </div>
-    </div>
-  );
-}
-
 function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
   const { colors, mounted } = useTokenColors();
 
@@ -341,23 +313,6 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
 
   const finalY = data[data.length - 1]!.pnl;
   const positive = finalY >= 0;
-  const lineColor = positive ? colors.ok : colors.bad;
-
-  // Minimal date ticks: first / middle / last (deduped when the window spans a
-  // single day).  These are axis labels derived from real trade timestamps.
-  const tickVals = Array.from(
-    new Set([
-      data[0]!.t,
-      data[Math.floor((data.length - 1) / 2)]!.t,
-      data[data.length - 1]!.t,
-    ]),
-  );
-  const fmtTick = (ts: number) =>
-    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-  const minPnl = Math.min(...data.map((d) => d.pnl));
-  const maxPnl = Math.max(...data.map((d) => d.pnl));
-  const crossesZero = minPnl < 0 && maxPnl > 0;
 
   return (
     <div
@@ -391,56 +346,188 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
           {trades.length} trade{trades.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div style={{ width: "100%", height: 140 }}>
-        {mounted && (
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-            <defs>
-              <linearGradient id="equityAreaFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={lineColor} stopOpacity={0.18} />
-                <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid
-              vertical={false}
-              stroke={colors.border}
-              strokeOpacity={0.5}
-              strokeDasharray="2 5"
-            />
-            <XAxis
-              dataKey="t"
-              type="number"
-              scale="time"
-              domain={["dataMin", "dataMax"]}
-              ticks={tickVals}
-              tickFormatter={fmtTick}
-              tick={{ fontSize: 10, fill: colors.textFaint }}
-              tickLine={false}
-              axisLine={false}
-              minTickGap={20}
-            />
-            <YAxis hide domain={["auto", "auto"]} />
-            {crossesZero && (
-              <ReferenceLine y={0} stroke={colors.border} strokeDasharray="3 2" />
-            )}
-            <Tooltip
-              content={<EquityTooltip colors={colors} />}
-              cursor={{ stroke: colors.border, strokeWidth: 1 }}
-            />
-            <Area
-              type="monotone"
-              dataKey="pnl"
-              stroke={lineColor}
-              strokeWidth={2}
-              fill="url(#equityAreaFill)"
-              dot={false}
-              activeDot={{ r: 3, strokeWidth: 0, fill: lineColor }}
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-        )}
-      </div>
+      <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />
+    </div>
+  );
+}
+
+// Renders the cumulative-P&L series with TradingView Lightweight Charts.  The
+// chart is created inside useEffect (client only — never SSR) against a ref'd
+// container, sized via ResizeObserver, and torn down on unmount / data change.
+function LightweightEquityChart({
+  data,
+  colors,
+  positive,
+  mounted,
+}: {
+  data: ChartPoint[];
+  colors: TokenColors;
+  positive: boolean;
+  mounted: boolean;
+}) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const tooltipRef = React.useRef<HTMLDivElement | null>(null);
+  const CHART_HEIGHT = 230;
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    const tooltipEl = tooltipRef.current;
+    if (!container || !mounted) return;
+
+    const lineColor = positive ? colors.ok : colors.bad;
+
+    const chart: IChartApi = createChart(container, {
+      width: container.clientWidth,
+      height: CHART_HEIGHT,
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: colors.textMute,
+        fontFamily:
+          "var(--font-inter, system-ui, -apple-system, sans-serif)",
+        attributionLogo: false,
+      },
+      // Soft horizontal grid only — no vertical clutter.
+      grid: {
+        horzLines: { color: colors.border, style: LineStyle.Dotted, visible: true },
+        vertLines: { visible: false },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.18, bottom: 0.12 },
+      },
+      leftPriceScale: { visible: false },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: false,
+        secondsVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      },
+      crosshair: {
+        mode: CrosshairMode.Magnet,
+        vertLine: {
+          color: colors.border,
+          width: 1,
+          style: LineStyle.Solid,
+          labelVisible: false,
+        },
+        horzLine: {
+          color: colors.border,
+          width: 1,
+          style: LineStyle.Dashed,
+          labelVisible: false,
+        },
+      },
+      handleScroll: false,
+      handleScale: false,
+    });
+
+    const series: ISeriesApi<"Area"> = chart.addSeries(AreaSeries, {
+      lineColor,
+      topColor: rgba(lineColor, 0.18),
+      bottomColor: rgba(lineColor, 0),
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerRadius: 3,
+      crosshairMarkerBorderWidth: 0,
+      crosshairMarkerBackgroundColor: lineColor,
+    });
+
+    // Convert to Lightweight Charts area data.  Times must be unique and
+    // strictly ascending: collapse any trades that close within the same second
+    // to that second's final cumulative value (last write wins, chronological).
+    const bySecond = new Map<number, number>();
+    for (const p of data) {
+      bySecond.set(Math.floor(p.t / 1000), p.pnl);
+    }
+    const chartData: AreaData<UTCTimestamp>[] = [...bySecond.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([sec, value]) => ({ time: sec as UTCTimestamp, value }));
+
+    series.setData(chartData);
+    chart.timeScale().fitContent();
+
+    // Minimal crosshair tooltip: date + cumulative realized P&L.
+    const fmtTip = (v: number) =>
+      `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    chart.subscribeCrosshairMove((param) => {
+      if (!tooltipEl) return;
+      const point = param.point;
+      if (
+        !point ||
+        param.time === undefined ||
+        point.x < 0 ||
+        point.x > container.clientWidth ||
+        point.y < 0 ||
+        point.y > CHART_HEIGHT
+      ) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+      const priceData = param.seriesData.get(series) as
+        | { value?: number }
+        | undefined;
+      const value = priceData?.value;
+      if (value === undefined) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+      const ts = (param.time as number) * 1000;
+      tooltipEl.innerHTML = `<div style="color:${colors.textMute};margin-bottom:3px">${fmtTooltipDate(
+        ts,
+      )}</div><div style="font-family:var(--font-ibm-plex-mono, monospace);font-weight:600;color:${
+        value >= 0 ? colors.ok : colors.bad
+      }">${fmtTip(value)}</div><div style="color:${colors.textFaint};font-size:10.5px;margin-top:2px">Cumulative realized P&amp;L</div>`;
+      tooltipEl.style.opacity = "1";
+      // Keep the tooltip inside the container horizontally.
+      const tipW = 150;
+      let left = point.x + 14;
+      if (left + tipW > container.clientWidth) left = point.x - tipW - 14;
+      if (left < 0) left = 4;
+      tooltipEl.style.left = `${left}px`;
+      tooltipEl.style.top = `8px`;
+    });
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) {
+        chart.applyOptions({ width: Math.floor(w) });
+        chart.timeScale().fitContent();
+      }
+    });
+    ro.observe(container);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+    };
+  }, [data, colors, positive, mounted]);
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: CHART_HEIGHT }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        ref={tooltipRef}
+        style={{
+          position: "absolute",
+          opacity: 0,
+          pointerEvents: "none",
+          background: colors.surface,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 8,
+          padding: "8px 10px",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
+          fontSize: 12,
+          lineHeight: 1.4,
+          transition: "opacity 0.08s",
+          zIndex: 3,
+          whiteSpace: "nowrap",
+        }}
+      />
     </div>
   );
 }

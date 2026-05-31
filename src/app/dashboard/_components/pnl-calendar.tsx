@@ -192,6 +192,11 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         </Link>
       </div>
 
+      {/* Constrained inner column — keeps the calendar from stretching flat
+        * across the full dashboard width on wide viewports.  The outer card
+        * stays full-width; nav, summary, and grid share this centered column. */}
+      <div style={{ maxWidth: 1040, margin: "0 auto", width: "100%" }}>
+
       {/* Month nav + heading */}
       <div
         style={{
@@ -329,7 +334,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
       )}
 
       {/* Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
         {DOW_LABELS.map((d) => (
           <div
             key={d}
@@ -376,7 +381,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
                 padding: "3px 3px 3px",
                 borderRadius: 7,
                 textAlign: "left",
-                minHeight: 40,
+                minHeight: 48,
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
@@ -460,6 +465,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           No closed trades in the last 30 days. Calendar fills as trades close.
         </div>
       )}
+      </div>
     </div>
   );
 }
