@@ -150,7 +150,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
         background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
-        padding: 22,
+        padding: 16,
       }}
     >
       <div
@@ -371,10 +371,10 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref }: Prop
               key={i}
               title={title}
               style={{
-                padding: "6px 4px 5px",
-                borderRadius: 8,
+                padding: "4px 3px 4px",
+                borderRadius: 7,
                 textAlign: "left",
-                minHeight: 58,
+                minHeight: 44,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "stretch",
