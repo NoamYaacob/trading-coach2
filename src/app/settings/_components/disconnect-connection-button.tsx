@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "./confirm-dialog";
 
 type AccountResult = {
   id: string;
@@ -23,11 +24,20 @@ type DisconnectResponse = {
 
 type Props = {
   connectionId: string;
-  /** Number of linked active accounts — shown in the confirmation copy. */
-  linkedAccountCount: number;
+  /** Number of linked active accounts. Accepted for API compatibility with the
+   *  connection card; the confirmation copy no longer interpolates it. */
+  linkedAccountCount?: number;
 };
 
-export function DisconnectConnectionButton({ connectionId, linkedAccountCount }: Props) {
+/**
+ * "Disconnect connection" trigger + centered confirmation modal.
+ *
+ * The destructive confirmation moved from an inline red warning box (which could
+ * overflow horizontally inside a narrow connection card) to the shared centered
+ * ConfirmDialog. The disconnect request, response handling, and the per-account
+ * result summary are unchanged.
+ */
+export function DisconnectConnectionButton({ connectionId }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<"idle" | "confirming" | "working" | "result">("idle");
   const [result, setResult] = useState<DisconnectResponse | null>(null);
@@ -53,18 +63,6 @@ export function DisconnectConnectionButton({ connectionId, linkedAccountCount }:
       setError("Network error. Please try again.");
       setStep("confirming");
     }
-  }
-
-  if (step === "idle") {
-    return (
-      <button
-        type="button"
-        onClick={() => setStep("confirming")}
-        className="inline-flex items-center justify-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 transition hover:border-red-300 hover:text-red-700"
-      >
-        Disconnect connection
-      </button>
-    );
   }
 
   if (step === "result" && result) {
@@ -99,38 +97,32 @@ export function DisconnectConnectionButton({ connectionId, linkedAccountCount }:
   }
 
   return (
-    <div className="flex flex-col items-end gap-2 rounded-xl border border-red-100 bg-red-50/60 px-4 py-3">
-      <p className="text-xs font-semibold text-stone-700">Disconnect this connection?</p>
-      <p className="text-xs leading-relaxed text-stone-600">
-        {linkedAccountCount > 0
-          ? `All ${linkedAccountCount} linked account(s) will be removed from Guardrail monitoring. `
-          : "This connection has no linked accounts. "}
-        Historical trades and rules are preserved.
-        {" "}
-        <span className="text-amber-700">
-          If any account is locked or has rule activity today, removal will take effect at the next
-          trading session reset — to prevent bypassing your own rules.
-        </span>
-      </p>
-      {error && <p className="text-xs text-red-700">{error}</p>}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => { setStep("idle"); setError(null); }}
-          disabled={step === "working"}
-          className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={step === "working"}
-          className="inline-flex items-center rounded-full bg-stone-950 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-stone-800 disabled:opacity-70"
-        >
-          {step === "working" ? "Disconnecting…" : "Disconnect connection"}
-        </button>
-      </div>
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => { setError(null); setStep("confirming"); }}
+        className="inline-flex items-center justify-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 transition hover:border-red-300 hover:text-red-700"
+      >
+        Disconnect connection
+      </button>
+      {(step === "confirming" || step === "working") && (
+        <ConfirmDialog
+          title="Disconnect this connection?"
+          body="All linked accounts under this connection will be removed from Guardrail monitoring. Historical trades and rules are preserved."
+          note="If any account is locked or has rule activity today, removal will take effect at the next trading session reset to prevent bypassing your own rules."
+          confirmLabel="Disconnect connection"
+          busyLabel="Disconnecting…"
+          busy={step === "working"}
+          error={error}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            if (step !== "working") {
+              setStep("idle");
+              setError(null);
+            }
+          }}
+        />
+      )}
+    </>
   );
 }
