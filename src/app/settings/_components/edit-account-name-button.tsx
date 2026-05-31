@@ -75,7 +75,7 @@ export function EditAccountNameButton({
         }}
         className={triggerClass}
       >
-        {variant === "menuItem" ? "Rename account" : "Edit name"}
+        {variant === "menuItem" ? "Edit account name" : "Edit name"}
       </button>
     );
   }
