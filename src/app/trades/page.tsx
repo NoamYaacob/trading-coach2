@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { GrShell, type GrNavItem } from "@/components/ui/gr-shell";
 import { getCurrentUser } from "@/lib/auth";
@@ -13,6 +14,8 @@ import {
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradeFilters } from "./_components/trade-filters";
+import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
+import { prisma } from "@/lib/db";
 
 export const metadata: Metadata = {
   title: "Trades — Guardrail",
@@ -112,7 +115,14 @@ export default async function TradesPage({
     params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const userInitials = currentUser.email ? currentUser.email.slice(0, 2).toUpperCase() : "??";
 
-  const commandCenter = await loadCommandCenterData(currentUser.id, currentUser.email);
+  const cookieStore = await cookies();
+  const [commandCenter, userProfile] = await Promise.all([
+    loadCommandCenterData(currentUser.id, currentUser.email),
+    prisma.user.findUnique({
+      where: { id: currentUser.id },
+      select: { traderProfile: { select: { timezone: true } } },
+    }),
+  ]);
   const accounts = commandCenter.accounts;
   const { active: activeAccounts } = partitionAccountsByActive(accounts);
   const hasAccounts = accounts.length > 0;
@@ -129,7 +139,12 @@ export default async function TradesPage({
   const selectedAccountIsExpired =
     selectedAccount != null && !isAccountActive(selectedAccount);
 
-  const tz = "America/Chicago";
+  // Display timezone — must match the dashboard's calendar bucketing so that
+  // clicking a calendar day deep-link shows exactly the trades in that cell.
+  const tz = resolveDisplayTimeZone({
+    onboardingTimeZone: userProfile?.traderProfile?.timezone,
+    browserTimeZone: cookieStore.get(DISPLAY_TIME_ZONE_COOKIE)?.value,
+  });
 
   // Load real trades for the selected account.
   // When a date deep-link is active, load 31 days so any calendar date is covered;
@@ -253,9 +268,9 @@ export default async function TradesPage({
         <section style={{ padding: "28px 36px 16px" }}>
           <span style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
             {dateFilter
-              ? `${selectedAccount ? selectedAccount.label + " · " : ""}Closed round-trips`
+              ? `${selectedAccount ? selectedAccount.primaryLabel + " · " : ""}Closed round-trips`
               : selectedAccount
-              ? `${selectedAccount.label} · Closed round-trips · last ${rangeDays}d`
+              ? `${selectedAccount.primaryLabel} · Closed round-trips · last ${rangeDays}d`
               : `Closed round-trips · last ${rangeDays}d`}
           </span>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>

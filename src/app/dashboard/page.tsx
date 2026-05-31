@@ -286,13 +286,16 @@ export default async function DashboardPage({
   // Real trade history for the selected account — used by Today's trades and
   // Equity curve panels. Loaded only when we have a selection; empty array
   // otherwise drives the honest empty state.
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const recentTrades = selectedAccount
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
-  const todayTrades = recentTrades.filter((t) => t.closedAt >= todayStart);
+  // Use the same timezone-aware day key as TraderInsights and the P&L calendar
+  // so "Today's trades" is always consistent with what the calendar shows.
+  const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+  const todayTrades = recentTrades.filter(
+    (t) => t.closedAt.toLocaleDateString("en-CA", { timeZone: displayTimeZone }) === todayKey,
+  );
 
   // Win rate and profit factor for KPI strip (honest 30d stats)
   const wins30d = recentTrades.filter((t) => t.pnl > 0).length;
@@ -1056,7 +1059,7 @@ export default async function DashboardPage({
                         return (
                           <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                             <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>
-                              {t.closedAt.toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit", hour12: true })}
+                              {t.closedAt.toLocaleTimeString("en-US", { timeZone: displayTimeZone, hour: "numeric", minute: "2-digit", hour12: true })}
                             </td>
                             <td style={{ padding: "10px 4px", fontSize: 13, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 500, color: "var(--gr-ink)" }}>{t.symbol}</td>
                             <td style={{ padding: "10px 4px" }}>

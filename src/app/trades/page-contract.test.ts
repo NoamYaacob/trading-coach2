@@ -185,11 +185,15 @@ describe("/trades page: heading hierarchy", () => {
     );
   });
 
-  it("eyebrow/subtitle includes the selected account label for context", () => {
+  it("eyebrow/subtitle uses primaryLabel (real broker ref) and 'Closed round-trips' context", () => {
     assert.ok(
-      page.includes("selectedAccount.label") &&
+      page.includes("selectedAccount.primaryLabel") &&
         page.includes("Closed round-trips"),
-      "eyebrow must include both the account label and 'Closed round-trips' context",
+      "eyebrow must use primaryLabel (real broker ref) and include 'Closed round-trips' context",
+    );
+    assert.ok(
+      !page.includes("selectedAccount.label + \" · \""),
+      "eyebrow must not use the friendly label — it must use primaryLabel",
     );
   });
 });
@@ -236,6 +240,70 @@ describe("/trades page: date deep-link from calendar", () => {
     assert.ok(
       page.includes("dateFilter ? 31 :"),
       "when date filter is active, must load at least 31 days to cover any calendar date",
+    );
+  });
+});
+
+describe("/trades page: timezone — calendar ↔ trades date consistency", () => {
+  const page = read("app/trades/page.tsx");
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("trades page must NOT hardcode 'America/Chicago' as its display timezone", () => {
+    // The calendar uses the user's displayTimeZone; the trades page must do
+    // the same so clicking a calendar day always shows the trades in that cell.
+    assert.ok(
+      !page.includes("const tz = \"America/Chicago\""),
+      "trades page must not hardcode tz = 'America/Chicago'; it must resolve displayTimeZone",
+    );
+  });
+
+  it("trades page must resolve displayTimeZone from cookie/profile (same as dashboard)", () => {
+    assert.ok(
+      page.includes("resolveDisplayTimeZone"),
+      "trades page must call resolveDisplayTimeZone to match the dashboard's timezone",
+    );
+    assert.ok(
+      page.includes("DISPLAY_TIME_ZONE_COOKIE"),
+      "trades page must read the browser timezone cookie (same as dashboard)",
+    );
+  });
+
+  it("both calendar and trades page bucket trades by the same isoDateKey pattern", () => {
+    // Both must use toLocaleDateString('en-CA', { timeZone: tz }) for day bucketing
+    // so a trade at 2026-05-31T00:30:00Z shows up in the same calendar-day on both.
+    assert.ok(
+      calendar.includes("toLocaleDateString(\"en-CA\", { timeZone: timezone })"),
+      "calendar must bucket trades with en-CA toLocaleDateString in the user's timezone",
+    );
+    assert.ok(
+      page.includes("isoDateKey(t.closedAt, tz) === dateFilter"),
+      "trades page must use the same key function to filter to a specific day",
+    );
+  });
+});
+
+describe("/trades page: account isolation", () => {
+  const load = read("lib/trades/load.ts");
+
+  it("loadAccountTrades always passes accountId to the DB query — no cross-account leakage", () => {
+    assert.ok(
+      load.includes("accountId,"),
+      "loadAccountTrades must pass accountId in the WHERE clause to prevent cross-account data",
+    );
+    assert.ok(
+      !load.includes("userId"),
+      "loadAccountTrades must not use userId (which would aggregate all user accounts)",
+    );
+  });
+
+  it("loadAccountTrades only queries fills with non-null side, quantity, price", () => {
+    assert.ok(
+      load.includes("side: { not: null }"),
+      "must filter out non-fill events (events with null side)",
+    );
+    assert.ok(
+      load.includes("quantity: { not: null }"),
+      "must filter out events with null quantity",
     );
   });
 });
