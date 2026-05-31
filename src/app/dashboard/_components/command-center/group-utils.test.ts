@@ -10,6 +10,9 @@ function stubAccount(overrides: Partial<CommandCenterAccount>): CommandCenterAcc
   return {
     id: "stub",
     label: "Stub Account",
+    primaryLabel: "Stub Account",
+    secondaryMeta: null,
+    rawLabel: "Stub Account",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: null,

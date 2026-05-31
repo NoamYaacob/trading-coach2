@@ -411,7 +411,7 @@ function LightweightEquityChart({
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const tooltipRef = React.useRef<HTMLDivElement | null>(null);
-  const CHART_HEIGHT = 180;
+  const CHART_HEIGHT = 196;
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -442,9 +442,9 @@ function LightweightEquityChart({
       rightPriceScale: {
         visible: false,
         borderVisible: false,
-        // Tighter margins so the curve fills the card naturally and sits
-        // visually centred — not stranded in a sparse, empty plot area.
-        scaleMargins: { top: 0.12, bottom: 0.1 },
+        // Tight margins so the curve spans most of the card height and reads as
+        // a full, deliberate widget — not a thin line stranded in empty space.
+        scaleMargins: { top: 0.08, bottom: 0.06 },
       },
       leftPriceScale: { visible: false },
       // Hide the built-in time axis (it repeats ugly same-day day-numbers).
@@ -475,9 +475,11 @@ function LightweightEquityChart({
 
     const series: ISeriesApi<"Area"> = chart.addSeries(AreaSeries, {
       lineColor,
-      // Very subtle gradient fill, fading the line hue to transparent.
-      topColor: rgba(lineColor, 0.14),
-      bottomColor: rgba(lineColor, 0),
+      // Richer-but-still-restrained gradient: a defined wash of the line hue at
+      // the top fading to transparent at the baseline. Gives the curve a
+      // premium, filled presence instead of a pale, empty-looking plot.
+      topColor: rgba(lineColor, 0.22),
+      bottomColor: rgba(lineColor, 0.02),
       lineWidth: 2,
       // Simple line type gives the clean, precise look of a financial data
       // chart — Curved felt decorative/cartoonish at this compact scale.

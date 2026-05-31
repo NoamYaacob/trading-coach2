@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { deriveAccountDisplayLabel } from "@/lib/account-display";
 
 import { GrShell, type GrNavItem, type GrRecentAlert } from "@/components/ui/gr-shell";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
@@ -334,8 +333,8 @@ export default async function DashboardPage({
               flexShrink: 0,
             }}
           />
-          <span title={acc.label} style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {deriveAccountDisplayLabel(acc)}
+          <span title={acc.rawLabel ?? acc.primaryLabel} style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {acc.primaryLabel}
           </span>
           {acc.dailyPnl != null && (
             <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl), flexShrink: 0 }}>
@@ -600,7 +599,10 @@ export default async function DashboardPage({
 
                       {/* Account name + ref */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 12 }}>
-                        <span title={acc.label} style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deriveAccountDisplayLabel(acc)}</span>
+                        {acc.secondaryMeta && (
+                          <span style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>{acc.secondaryMeta}</span>
+                        )}
+                        <span title={acc.rawLabel ?? acc.primaryLabel} style={{ fontSize: 14, fontWeight: 600, color: "var(--gr-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acc.primaryLabel}</span>
                         {acc.connectionStatus && acc.connectionStatus !== "connected_live" && (
                           <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
                             {({
@@ -696,9 +698,14 @@ export default async function DashboardPage({
                     <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
                       Now viewing
                     </span>
-                    <span title={selectedAccount.label} style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
-                      {deriveAccountDisplayLabel(selectedAccount)}
+                    <span title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel} style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gr-ink)" }}>
+                      {selectedAccount.primaryLabel}
                     </span>
+                    {selectedAccount.secondaryMeta && (
+                      <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+                        {selectedAccount.secondaryMeta}
+                      </span>
+                    )}
                     {selectedAccount.status === "warning" && selectedAccount.dailyLossUsedPct != null && (
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--gr-warn-bg)", color: "var(--gr-warn)", fontWeight: 600 }}>
                         Daily loss at {Math.round(selectedAccount.dailyLossUsedPct * 100)}%
@@ -797,8 +804,8 @@ export default async function DashboardPage({
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Active rules</span>
                     {selectedAccount && (
-                      <div title={selectedAccount.label} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        {deriveAccountDisplayLabel(selectedAccount)}
+                      <div title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        {selectedAccount.primaryLabel}
                       </div>
                     )}
                   </div>
@@ -987,8 +994,8 @@ export default async function DashboardPage({
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
                     {selectedAccount && (
-                      <div title={selectedAccount.label} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-                        {deriveAccountDisplayLabel(selectedAccount)}
+                      <div title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
+                        {selectedAccount.primaryLabel}
                       </div>
                     )}
                   </div>
@@ -1148,7 +1155,7 @@ export default async function DashboardPage({
                 <PnlCalendar
                   trades={recentTrades}
                   timezone={displayTimeZone}
-                  accountLabel={deriveAccountDisplayLabel(selectedAccount)}
+                  accountLabel={selectedAccount.primaryLabel}
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
                   accountId={selectedAccount.id}
                 />
@@ -1208,7 +1215,7 @@ export default async function DashboardPage({
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <span title={acc.label} style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{deriveAccountDisplayLabel(acc)}</span>
+                              <span title={acc.rawLabel ?? acc.primaryLabel} style={{ fontSize: 13, fontWeight: 600, color: "var(--gr-ink)" }}>{acc.primaryLabel}</span>
                               <span style={{
                                 marginLeft: 8, fontSize: 10, padding: "1px 6px", borderRadius: 999,
                                 background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)",
