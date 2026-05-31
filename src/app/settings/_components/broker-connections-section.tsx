@@ -4,10 +4,12 @@ import { RemoveAccountButton } from "./remove-account-button";
 import { RemoveBrokerConnectionButton } from "./remove-broker-connection-button";
 import { AccountDiscoveryHelper } from "./account-discovery-helper";
 import { DisconnectConnectionButton } from "./disconnect-connection-button";
+import { EditAccountNameButton } from "./edit-account-name-button";
 import Link from "next/link";
 import { type DisconnectWindowState } from "@/lib/broker-disconnect-window";
 import {
   deriveAccountDisplayLabel,
+  deriveAccountPrimaryLabel,
   deriveConnectionIdentity,
 } from "@/lib/account-display";
 
@@ -99,17 +101,19 @@ const ACTION_PILL =
   "inline-flex items-center rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950";
 
 /**
- * One row inside a connection's expanded "Show accounts" list. Shows the
- * user-friendly name, firm/type descriptor, an Active status pill, and the
- * account-level actions (Manage rules, View trades, Remove from Guardrail).
- * Remove reuses the guarded archive flow via RemoveAccountButton.
+ * One row inside a connection's expanded "Show accounts" list. Shows the best
+ * user-facing name (custom displayName or exact broker label), firm/type
+ * descriptor, an Active status pill, and the account-level actions (Edit name,
+ * Manage rules, View trades, Remove from Guardrail). Remove reuses the guarded
+ * archive flow via RemoveAccountButton; Edit name only updates displayName.
  */
 function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
   const descriptor = accountTypeDescriptor(acct);
+  const primaryName = deriveAccountPrimaryLabel(acct);
   return (
     <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-stone-100 bg-white px-3 py-2.5">
       <div className="grid min-w-0 gap-1 text-sm">
-        <p className="truncate font-medium text-stone-800">{deriveAccountDisplayLabel(acct)}</p>
+        <p className="truncate font-medium text-stone-800" title={primaryName}>{primaryName}</p>
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
           {descriptor && <span>{descriptor}</span>}
           <StatusPill label="Active" color="emerald" />
@@ -121,6 +125,11 @@ function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
         )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <EditAccountNameButton
+          accountId={acct.id}
+          currentName={acct.displayName}
+          placeholder={deriveAccountDisplayLabel(acct)}
+        />
         <Link href={`/rules?scope=account&id=${acct.id}`} className={ACTION_PILL}>
           Manage rules
         </Link>

@@ -75,6 +75,61 @@ export function deriveAccountDisplayLabel(account: DisplayableAccount): string {
 }
 
 /**
+ * The PRIMARY user-facing account identity for selectors where the user must
+ * tell apart many accounts at the same firm (e.g. several MyFundedFutures
+ * evaluations). Unlike deriveAccountDisplayLabel, the exact broker account
+ * label wins over generic firm/type metadata — "MyFundedFutures Evaluation" is
+ * identical across many accounts and hides which one this actually is.
+ *
+ * Priority:
+ *   1. user-set `displayName` (always wins)
+ *   2. broker `label` (the exact Tradovate account name/number, e.g. "DEMO7433035")
+ *   3. `externalAccountId` (broker account id)
+ *   4. prop firm + type (e.g. "MyFundedFutures Evaluation") — last resort only
+ *   5. "Account"
+ *
+ * Never returns a raw internal cuid/uuid DB id.
+ */
+export function deriveAccountPrimaryLabel(account: DisplayableAccount): string {
+  const displayName = clean(account.displayName);
+  if (displayName) return displayName;
+
+  const label = clean(account.label);
+  if (label && !looksLikeInternalId(label)) return label;
+
+  const external = clean(account.externalAccountId);
+  if (external && !looksLikeInternalId(external)) return external;
+
+  // Last resort: generic firm/type metadata, which does not distinguish
+  // multiple accounts at the same firm.
+  const propFirm = clean(account.propFirm);
+  const accountType = clean(account.accountType);
+  if (propFirm) {
+    const typeLabel = accountType ? ACCOUNT_TYPE_LABEL[accountType] : null;
+    return typeLabel && accountType !== "personal" ? `${propFirm} ${typeLabel}` : propFirm;
+  }
+  if (accountType === "personal") return "Personal account";
+
+  return "Account";
+}
+
+/**
+ * Secondary metadata line for an account selector — "firm · type", e.g.
+ * "MyFundedFutures · Evaluation". Shown beneath the primary label so two
+ * accounts at the same firm stay legible. Returns null when neither is known.
+ */
+export function deriveAccountSecondaryMeta(account: DisplayableAccount): string | null {
+  const propFirm = clean(account.propFirm);
+  const accountType = clean(account.accountType);
+  const typeLabel = accountType ? (ACCOUNT_TYPE_LABEL[accountType] ?? accountType) : null;
+  if (propFirm && typeLabel && accountType !== "personal") return `${propFirm} · ${typeLabel}`;
+  if (propFirm) return propFirm;
+  if (accountType === "personal") return "Personal";
+  if (typeLabel) return typeLabel;
+  return null;
+}
+
+/**
  * A short tag for the firm / type of a single account, used in the broker
  * connection identity line. e.g. "MyFundedFutures", "Personal", "Demo".
  */
