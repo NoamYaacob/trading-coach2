@@ -63,6 +63,12 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
     [trades, timeframe],
   );
 
+  const rangeLabel =
+    timeframe === "7d" ? "last 7 days"
+    : timeframe === "14d" ? "last 14 days"
+    : timeframe === "30d" ? "last 30 days"
+    : "all time";
+
   const toggleButton = (tf: Timeframe, label: string) => {
     const active = tf === timeframe;
     return (
@@ -72,17 +78,17 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         onClick={() => setTimeframe(tf)}
         aria-pressed={active}
         style={{
-          padding: "3px 10px",
-          borderRadius: 6,
-          fontSize: 10.5,
-          fontWeight: 600,
-          border: `1px solid ${active ? "var(--gr-copper)" : "transparent"}`,
-          background: active ? "var(--gr-copper-bg)" : "var(--gr-surface)",
-          color: active ? "var(--gr-copper)" : "var(--gr-text-mute)",
+          padding: "4px 11px",
+          borderRadius: 7,
+          fontSize: 11,
+          fontWeight: active ? 700 : 500,
+          border: active ? "1px solid var(--gr-border)" : "1px solid transparent",
+          background: active ? "var(--gr-surface)" : "transparent",
+          color: active ? "var(--gr-ink)" : "var(--gr-text-mute)",
           cursor: "pointer",
-          letterSpacing: "0.05em",
-          textTransform: "uppercase",
-          transition: "background 0.12s, color 0.12s, border-color 0.12s",
+          letterSpacing: "0.04em",
+          transition: "background 0.1s, color 0.1s",
+          boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
         }}
       >
         {label}
@@ -93,7 +99,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
   return (
     <div
       style={{
-        background: "var(--gr-bg-elev)",
+        background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
         padding: "18px 20px",
@@ -105,31 +111,27 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 10,
-          alignItems: "center",
+          marginBottom: 12,
+          alignItems: "flex-start",
           gap: 8,
           flexWrap: "wrap",
         }}
       >
         <div>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>
-            Equity curve{" "}
-            <span style={{ fontSize: 12, fontWeight: 400, color: "var(--gr-text-mute)" }}>
-              · {timeframe === "7d" ? "last 7 days" : timeframe === "14d" ? "last 14 days" : timeframe === "30d" ? "last 30 days" : "all time"}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>
+              Equity curve
             </span>
-          </span>
-          <div
-            style={{
-              fontSize: 11.5,
-              color: "var(--gr-text-mute)",
-              marginTop: 2,
-            }}
-          >
+            <span style={{ fontSize: 12, color: "var(--gr-text-mute)" }}>
+              · {rangeLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
             Cumulative realized P&amp;L · {dataSourceLabel}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 1, background: "var(--gr-bg-elev)", borderRadius: 9, padding: 3 }}>
             {toggleButton("7d", "7D")}
             {toggleButton("14d", "14D")}
             {toggleButton("30d", "30D")}
@@ -146,7 +148,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
               background: "transparent",
               color: "var(--gr-copper)",
               textDecoration: "none",
-              marginLeft: 4,
+              marginLeft: 2,
             }}
           >
             Open →
@@ -233,10 +235,10 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
     <div
       style={{
         flex: 1,
-        minHeight: 100,
+        minHeight: 120,
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 10,
       }}
     >
       <div
@@ -248,39 +250,40 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
       >
         <span
           style={{
-            fontSize: 22,
-            fontWeight: 600,
+            fontSize: 26,
+            fontWeight: 700,
             fontFamily: "var(--font-ibm-plex-mono, monospace)",
             color: finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+            letterSpacing: "-0.02em",
           }}
         >
           {fmt$(finalY)}
         </span>
-        <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
+        <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
           {trades.length} trade{trades.length !== 1 ? "s" : ""}
         </span>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        style={{ width: "100%", height: 100 }}
+        style={{ width: "100%", height: 130 }}
         aria-hidden="true"
       >
         <defs>
           <linearGradient id="equityGradFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.18" />
+            <stop offset="0%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0.25" />
             <stop offset="100%" stopColor={finalY >= 0 ? "var(--gr-ok)" : "var(--gr-bad)"} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* Dashed grid lines */}
+        {/* Faint horizontal grid lines */}
         {[0.25, 0.5, 0.75].map((frac) => (
           <line
             key={frac}
             x1={0} x2={W}
             y1={frac * H} y2={frac * H}
             stroke="var(--gr-border)"
-            strokeWidth="0.4"
-            strokeDasharray="2 3"
+            strokeWidth="0.5"
+            strokeDasharray="2 4"
           />
         ))}
         {/* Zero baseline when curve crosses zero */}
@@ -289,7 +292,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             x1={0} x2={W}
             y1={sy(0)} y2={sy(0)}
             stroke="var(--gr-border)"
-            strokeWidth="0.7"
+            strokeWidth="0.9"
             strokeDasharray="3 2"
           />
         )}
@@ -302,7 +305,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         <path
           d={pathPoints}
           stroke={lineColor}
-          strokeWidth="1.5"
+          strokeWidth="2.5"
           fill="none"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -311,10 +314,10 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
         <circle
           cx={sx(points[points.length - 1]!.x)}
           cy={sy(points[points.length - 1]!.y)}
-          r="2"
+          r="2.5"
           fill={lineColor}
           stroke="var(--gr-surface)"
-          strokeWidth="1"
+          strokeWidth="1.5"
         />
       </svg>
     </div>

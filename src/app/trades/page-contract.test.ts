@@ -169,12 +169,15 @@ describe("/trades page: KPI strip is responsive", () => {
 describe("/trades page: heading hierarchy", () => {
   const page = read("app/trades/page.tsx");
 
-  it("h1 is 'Trades', not the selected account name", () => {
+  it("h1 is 'Trades' or 'Trades · <date>' in date-filter mode", () => {
     assert.ok(
       page.includes(">Trades</h1>") ||
         /h1[^>]*>[^<]*Trades[^<]*<\/h1>/.test(page) ||
-        page.includes("Trades\n          </h1>"),
-      "h1 must be the stable page title 'Trades'",
+        page.includes("Trades\n          </h1>") ||
+        page.includes('"Trades"') ||
+        page.includes("`Trades · `") ||
+        page.includes('"Trades · "'),
+      "h1 must render the page title 'Trades' (optionally with date context)",
     );
     assert.ok(
       !/<h1[^>]*>\s*\{selectedAccount/.test(page),
@@ -187,6 +190,52 @@ describe("/trades page: heading hierarchy", () => {
       page.includes("selectedAccount.label") &&
         page.includes("Closed round-trips"),
       "eyebrow must include both the account label and 'Closed round-trips' context",
+    );
+  });
+});
+
+describe("/trades page: date deep-link from calendar", () => {
+  const page = read("app/trades/page.tsx");
+
+  it("accepts a date searchParam", () => {
+    assert.ok(
+      page.includes("date?:"),
+      "searchParams type must include date?: string",
+    );
+  });
+
+  it("validates the date param format before using it", () => {
+    assert.ok(
+      page.includes("/^\\d{4}-\\d{2}-\\d{2}$/") || page.includes('/^\\d{4}-\\d{2}-\\d{2}$/.test'),
+      "date param must be validated as YYYY-MM-DD before use",
+    );
+  });
+
+  it("filters trades to the specific day when date is present", () => {
+    assert.ok(
+      page.includes("isoDateKey(t.closedAt, tz) === dateFilter"),
+      "when date filter is active, trades must be filtered to that exact calendar day",
+    );
+  });
+
+  it("shows the date as a human-readable heading", () => {
+    assert.ok(
+      page.includes("fmtDateFromKey"),
+      "page must format the date key into a human-readable label for the heading/banner",
+    );
+  });
+
+  it("shows an '← All trades' back link in date mode", () => {
+    assert.ok(
+      page.includes("All trades"),
+      "date-filter mode must show a back link to clear the date filter",
+    );
+  });
+
+  it("date filter loads enough history to cover any calendar day (31 days)", () => {
+    assert.ok(
+      page.includes("dateFilter ? 31 :"),
+      "when date filter is active, must load at least 31 days to cover any calendar date",
     );
   });
 });

@@ -308,3 +308,95 @@ describe("/dashboard: P&L calendar is compact", () => {
     );
   });
 });
+
+describe("/dashboard: P&L calendar day cells show trade count and link to trades", () => {
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+  const page = read("app/dashboard/page.tsx");
+
+  it("calendar cell renders trade count when day has trades", () => {
+    assert.ok(
+      calendar.includes("data!.count") && calendar.includes("}T"),
+      "calendar must render the trade count (e.g. '4T') inside each day cell with trades",
+    );
+  });
+
+  it("calendar accepts accountId prop for day-click deep links", () => {
+    assert.ok(
+      calendar.includes("accountId: string"),
+      "PnlCalendar Props must include accountId: string",
+    );
+    assert.ok(
+      calendar.includes("accountId"),
+      "PnlCalendar must use accountId",
+    );
+  });
+
+  it("calendar day cells with trades link to /trades with accountId and date", () => {
+    assert.ok(
+      calendar.includes("/trades?accountId="),
+      "calendar day cells must link to /trades?accountId=...",
+    );
+    assert.ok(
+      calendar.includes("&date="),
+      "calendar day links must include &date= for the specific day",
+    );
+  });
+
+  it("dashboard passes accountId to PnlCalendar", () => {
+    assert.ok(
+      page.includes("accountId={selectedAccount.id}"),
+      "dashboard must pass accountId={selectedAccount.id} to <PnlCalendar>",
+    );
+  });
+});
+
+describe("/dashboard: equity curve visual polish", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("uses real trade data, no fake curve points", () => {
+    assert.ok(
+      equity.includes("trades: RoundTripTrade[]"),
+      "equity curve must accept real round-trip trades",
+    );
+    assert.ok(
+      !equity.includes("const fakeTrades") && !equity.includes("const demoTrades"),
+      "equity curve must not use fake or demo data",
+    );
+  });
+
+  it("chart main line is thicker for visual clarity (strokeWidth >= 2 on the main path)", () => {
+    // The main line path has the largest strokeWidth in the chart.
+    // We find the maximum strokeWidth across all elements to verify the main line is thick.
+    const allMatches = [...equity.matchAll(/strokeWidth="([\d.]+)"/g)];
+    const maxSw = Math.max(...allMatches.map((m) => parseFloat(m[1] ?? "0")), 0);
+    assert.ok(
+      maxSw >= 2,
+      `equity curve main line strokeWidth must be >= 2; found max ${maxSw}`,
+    );
+  });
+
+  it("chart SVG is taller for more visual presence (height >= 120)", () => {
+    const match = equity.match(/height:\s*(\d+)/);
+    const h = match ? parseInt(match[1] ?? "0", 10) : 0;
+    assert.ok(
+      h >= 120,
+      `equity curve SVG height must be >= 120 for visual presence; found ${h}`,
+    );
+  });
+
+  it("range pills use a segmented-control style background track", () => {
+    assert.ok(
+      equity.includes("background: \"var(--gr-bg-elev)\"") || equity.includes("background: 'var(--gr-bg-elev)'"),
+      "range pill group must have a background track for segmented-control appearance",
+    );
+  });
+
+  it("headline value is large and prominent (fontSize >= 24)", () => {
+    const matches = [...equity.matchAll(/fontSize:\s*(\d+)/g)].map(m => parseInt(m[1] ?? "0", 10));
+    const largest = Math.max(...matches, 0);
+    assert.ok(
+      largest >= 24,
+      `equity curve headline must use fontSize >= 24 for prominence; found largest ${largest}`,
+    );
+  });
+});
