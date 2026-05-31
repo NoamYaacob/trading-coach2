@@ -24,6 +24,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-mff-1",
     label: "MFF-E150-772341",
+    primaryLabel: "MFF-E150-772341",
+    secondaryMeta: "MyFundedFutures · Evaluation",
+    rawLabel: "MFF-E150-772341",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -85,6 +88,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-mff-2",
     label: "MFF-E50-891203",
+    primaryLabel: "MFF-E50-891203",
+    secondaryMeta: "MyFundedFutures · Evaluation",
+    rawLabel: "MFF-E50-891203",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -147,6 +153,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-mff-3",
     label: "MFF-F150-334521",
+    primaryLabel: "MFF-F150-334521",
+    secondaryMeta: "MyFundedFutures · Funded",
+    rawLabel: "MFF-F150-334521",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -208,6 +217,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-mff-4",
     label: "MFF-F100-445632",
+    primaryLabel: "MFF-F100-445632",
+    secondaryMeta: "MyFundedFutures · Funded",
+    rawLabel: "MFF-F100-445632",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -274,6 +286,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     // Demo: locked, read-only connection — broker enforcement skipped.
     id: "demo-mff-4b",
     label: "MFF-F50-667890",
+    primaryLabel: "MFF-F50-667890",
+    secondaryMeta: "MyFundedFutures · Funded",
+    rawLabel: "MFF-F50-667890",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -339,6 +354,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
     // Demo: locked, permission missing for Account Risk Settings.
     id: "demo-mff-4c",
     label: "MFF-F75-778901",
+    primaryLabel: "MFF-F75-778901",
+    secondaryMeta: "MyFundedFutures · Funded",
+    rawLabel: "MFF-F75-778901",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -403,6 +421,9 @@ const MFF_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-mff-5",
     label: "MFF-E25-556743",
+    primaryLabel: "MFF-E25-556743",
+    secondaryMeta: "MyFundedFutures · Evaluation",
+    rawLabel: "MFF-E25-556743",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: MFF_FIRM_LABEL,
@@ -469,6 +490,9 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-lucid-1",
     label: "LT-F100-112233",
+    primaryLabel: "LT-F100-112233",
+    secondaryMeta: "Lucid Trading · Funded",
+    rawLabel: "LT-F100-112233",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: LUCID_FIRM_LABEL,
@@ -530,6 +554,9 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-lucid-2",
     label: "LT-F100-223344",
+    primaryLabel: "LT-F100-223344",
+    secondaryMeta: "Lucid Trading · Funded",
+    rawLabel: "LT-F100-223344",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: LUCID_FIRM_LABEL,
@@ -591,6 +618,9 @@ const LUCID_ACCOUNTS: CommandCenterAccount[] = [
   {
     id: "demo-lucid-3",
     label: "LT-E50-334455",
+    primaryLabel: "LT-E50-334455",
+    secondaryMeta: "Lucid Trading · Evaluation",
+    rawLabel: "LT-E50-334455",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: LUCID_FIRM_LABEL,

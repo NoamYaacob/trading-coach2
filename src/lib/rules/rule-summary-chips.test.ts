@@ -11,6 +11,9 @@ function makeAccount(
   return {
     id: "acct_test",
     label: "Test Account",
+    primaryLabel: "Test Account",
+    secondaryMeta: null,
+    rawLabel: "Test Account",
     platform: "tradovate",
     platformLabel: "Tradovate",
     propFirm: null,

@@ -235,32 +235,64 @@ describe("/dashboard: pnlColor uses red for negative values", () => {
   });
 });
 
-describe("/dashboard: account display helpers", () => {
+describe("/dashboard: account display hierarchy — real broker ref is primary", () => {
   const page = read("app/dashboard/page.tsx");
+  const data = read("app/dashboard/_components/command-center/data.ts");
 
-  it("imports deriveAccountDisplayLabel from the shared account-display helper", () => {
+  it("does NOT use deriveAccountDisplayLabel as the primary account label", () => {
+    // The friendly firm/type name (e.g. "MyFundedFutures Evaluation") hides which
+    // of several same-firm evaluations the trader is viewing. It must not be the
+    // primary visible identity on the dashboard.
     assert.ok(
-      page.includes('deriveAccountDisplayLabel') && page.includes('@/lib/account-display'),
-      "dashboard must import deriveAccountDisplayLabel from @/lib/account-display",
+      !/deriveAccountDisplayLabel\(\s*(acc|selectedAccount)\s*\)/.test(page),
+      "dashboard must not render deriveAccountDisplayLabel(acc/selectedAccount) as the primary account label",
     );
   });
 
-  it("uses deriveAccountDisplayLabel for all label render sites", () => {
-    const callCount = (page.match(/deriveAccountDisplayLabel\(/g) ?? []).length;
+  it("renders the real broker ref (primaryLabel) at every account label site", () => {
+    // sidebar, account card, now-viewing, active-rules, today-trades, expired row
+    const accPrimary = (page.match(/\bacc\.primaryLabel\b/g) ?? []).length;
+    const selPrimary = (page.match(/\bselectedAccount\.primaryLabel\b/g) ?? []).length;
     assert.ok(
-      callCount >= 6,
-      `dashboard must call deriveAccountDisplayLabel at least 6 times (sidebar, cards, now-viewing, active-rules, today-trades, pnl-calendar, expired); found ${callCount}`,
+      accPrimary >= 3,
+      `dashboard must render acc.primaryLabel for account-list/card/expired rows; found ${accPrimary}`,
+    );
+    assert.ok(
+      selPrimary >= 3,
+      `dashboard must render selectedAccount.primaryLabel for now-viewing/active-rules/today-trades/calendar; found ${selPrimary}`,
     );
   });
 
-  it("long broker labels are truncated with title tooltip", () => {
+  it("data layer derives primaryLabel from the real broker ref (deriveAccountPrimaryLabel)", () => {
     assert.ok(
-      page.includes('title={acc.label}'),
-      "account display must keep title={acc.label} for tooltip on full broker name",
+      /primaryLabel:\s*deriveAccountPrimaryLabel\(account\)/.test(data),
+      "data.ts must set primaryLabel via deriveAccountPrimaryLabel(account) — real broker ref preferred",
+    );
+  });
+
+  it("friendly firm/type label is allowed only as secondary metadata", () => {
+    // secondaryMeta (e.g. "MyFundedFutures · Evaluation") is derived separately
+    // and rendered as small context copy, never as the main identifier.
+    assert.ok(
+      /secondaryMeta:\s*deriveAccountSecondaryMeta\(account\)/.test(data),
+      "data.ts must expose secondaryMeta via deriveAccountSecondaryMeta(account)",
     );
     assert.ok(
-      page.includes('title={selectedAccount.label}'),
-      "selected account label sites must keep title={selectedAccount.label} for tooltip",
+      page.includes(".secondaryMeta"),
+      "dashboard must render secondaryMeta as secondary/context copy",
+    );
+  });
+
+  it("long broker labels are truncated with the full raw ref in the title tooltip", () => {
+    // When the visible label is truncated, the raw broker label/ref must remain
+    // available via the title attribute.
+    assert.ok(
+      /title=\{acc\.rawLabel\s*\?\?\s*acc\.primaryLabel\}/.test(page),
+      "account-list/card/expired rows must keep title={acc.rawLabel ?? acc.primaryLabel}",
+    );
+    assert.ok(
+      /title=\{selectedAccount\.rawLabel\s*\?\?\s*selectedAccount\.primaryLabel\}/.test(page),
+      "selected-account label sites must keep title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel}",
     );
   });
 });

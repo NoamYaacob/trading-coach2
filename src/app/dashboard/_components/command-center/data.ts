@@ -7,7 +7,11 @@ import {
 } from "@/lib/brokers/automated-actions-consent";
 import type { EnforcementTrigger, FlattenStatus } from "@/lib/brokers/enforcement";
 import { deriveRulesLabel } from "@/app/accounts/_components/account-rule-helpers";
-import { deriveAccountDisplayLabel } from "@/lib/account-display";
+import {
+  deriveAccountDisplayLabel,
+  deriveAccountPrimaryLabel,
+  deriveAccountSecondaryMeta,
+} from "@/lib/account-display";
 import { inferAccountClassification } from "@/lib/brokers/account-classification";
 import { inferConnectionClassification } from "@/lib/brokers/connection-classification";
 import { buildCommandCenterGroups, emptyBreakdown, emptyCounts } from "./group-utils";
@@ -401,7 +405,18 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
 
     return {
       id: account.id,
+      // Friendly label (e.g. "MyFundedFutures Evaluation"). Kept for grouping /
+      // summary contexts where firm/type framing reads better.
       label: deriveAccountDisplayLabel(account),
+      // PRIMARY user-facing identity: the real broker account ref (e.g.
+      // "MFFUEVRPD133936251" / "DEMO7433035") so prop-firm traders can tell
+      // apart multiple evaluations under the same firm. Falls back to firm/type.
+      primaryLabel: deriveAccountPrimaryLabel(account),
+      // Secondary context line (e.g. "MyFundedFutures · Evaluation"), shown as
+      // small metadata beside/under the primary broker ref. Null when unknown.
+      secondaryMeta: deriveAccountSecondaryMeta(account),
+      // Raw broker account label/ref for the title tooltip when truncated.
+      rawLabel: account.label ?? account.externalAccountId ?? null,
       platform: account.platform,
       platformLabel,
       propFirm: account.propFirm,

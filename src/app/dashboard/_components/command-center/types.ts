@@ -29,7 +29,19 @@ export type ProtectionStatus =
 
 export type CommandCenterAccount = {
   id: string;
+  /** Friendly label (e.g. "MyFundedFutures Evaluation"). Kept for grouping /
+   *  summary contexts; NOT the primary visible identity on the dashboard. */
   label: string;
+  /** Primary user-facing identity — the real broker account ref (e.g.
+   *  "MFFUEVRPD133936251" / "DEMO7433035"), or a user displayName when set.
+   *  This is what the dashboard shows as the main account label. */
+  primaryLabel: string;
+  /** Secondary context metadata (e.g. "MyFundedFutures · Evaluation"), shown as
+   *  small copy beside/under the primary broker ref. Null when unknown. */
+  secondaryMeta: string | null;
+  /** Raw broker account label/ref, surfaced in the title tooltip when the
+   *  visible label is truncated. Null when the broker provided neither. */
+  rawLabel: string | null;
   platform: string;
   platformLabel: string;
   propFirm: string | null;
