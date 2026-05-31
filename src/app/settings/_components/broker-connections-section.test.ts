@@ -151,6 +151,25 @@ describe("LinkedAccountRow — action pattern", () => {
     );
   });
 
+  test("the More trigger is discoverable: accessible name, hover and focus states", () => {
+    const row = rowSource();
+    // Labelled for screen readers AND hover-titled for mouse users.
+    assert.ok(
+      row.includes('aria-label="More account actions"') &&
+        row.includes('title="More account actions"'),
+      "the More trigger must expose an accessible label and a hover title",
+    );
+    // The summary keeps a visible border (a clear circular affordance) and
+    // gains a hover + keyboard-focus state so it doesn't read as static text.
+    const summaryStart = row.indexOf("<summary");
+    const summaryEnd = row.indexOf(">", summaryStart);
+    const summary = row.slice(summaryStart, summaryEnd);
+    assert.ok(summary.includes("rounded-full") && summary.includes("border"),
+      "the More trigger must remain a clear circular bordered button");
+    assert.ok(summary.includes("hover:"), "the More trigger must have a hover state");
+    assert.ok(summary.includes("focus-visible:"), "the More trigger must have a keyboard-focus state");
+  });
+
   test("Rename, View trades, and Remove all remain accessible inside the menu", () => {
     const row = rowSource();
     assert.ok(row.includes("EditAccountNameButton"), "Rename (EditAccountNameButton) must be present");
@@ -184,6 +203,25 @@ describe("LinkedAccountRow — action pattern", () => {
     assert.ok(
       row.includes("truncate") && row.includes("title={primaryName}"),
       "the primary label must truncate and expose the full value via title",
+    );
+  });
+
+  test("shows a 'you can rename it' hint only when no custom displayName is set", () => {
+    const row = rowSource();
+    // The hint text itself.
+    assert.ok(
+      row.includes("Broker account label · you can rename it"),
+      "must hint that the broker label can be renamed",
+    );
+    // It is gated on the absence of a custom display name…
+    assert.ok(
+      /hasCustomName\s*=\s*\(acct\.displayName/.test(row),
+      "the hint must derive from the account's displayName presence",
+    );
+    // …and rendered only when !hasCustomName.
+    assert.ok(
+      /\{!hasCustomName\s*&&[\s\S]*?Broker account label · you can rename it/.test(row),
+      "the rename hint must render only when there is no custom displayName",
     );
   });
 });
@@ -221,6 +259,18 @@ describe("EditAccountNameButton — rename safety", () => {
     ]) {
       assert.ok(!src.includes(forbidden), `rename must not reference ${forbidden} in code`);
     }
+  });
+
+  test("the menu trigger copy reads 'Edit account name' (clearer than 'Rename account')", () => {
+    const src = read(EDIT_FILE);
+    assert.ok(
+      src.includes('"Edit account name"'),
+      "the menuItem trigger label must read 'Edit account name'",
+    );
+    assert.ok(
+      !src.includes('"Rename account"'),
+      "the old 'Rename account' copy must be replaced",
+    );
   });
 
   test("the menuItem variant changes styling only, not the request", () => {

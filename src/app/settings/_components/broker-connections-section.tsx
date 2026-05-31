@@ -116,10 +116,17 @@ const MENU_ITEM_LINK =
 function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
   const descriptor = accountTypeDescriptor(acct);
   const primaryName = deriveAccountPrimaryLabel(acct);
+  // When the user hasn't set a personal name, the primary label is the raw
+  // broker-provided account label (e.g. "MFFUEVRPD133936251"). Hint that it can
+  // be renamed via the "More" menu so it doesn't read as a fixed, cryptic id.
+  const hasCustomName = (acct.displayName?.trim().length ?? 0) > 0;
   return (
     <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-stone-100 bg-white px-3 py-2.5">
       <div className="grid min-w-0 gap-1 text-sm">
         <p className="truncate font-medium text-stone-800" title={primaryName}>{primaryName}</p>
+        {!hasCustomName && (
+          <p className="text-[11px] text-stone-400">Broker account label · you can rename it</p>
+        )}
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
           {descriptor && <span>{descriptor}</span>}
           <StatusPill label="Active" color="emerald" />
@@ -139,10 +146,11 @@ function LinkedAccountRow({ acct }: { acct: BrokerAccountRow }) {
           Manage rules
         </Link>
         {/* Secondary actions — compact "More" menu (native details: no JS, SSR-safe). */}
-        <details className="relative">
+        <details className="group/more relative">
           <summary
-            className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-stone-200 text-stone-500 transition hover:bg-stone-50 hover:text-stone-900"
+            className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-stone-300 bg-white text-stone-600 transition hover:border-stone-400 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 group-open/more:border-stone-400 group-open/more:bg-stone-100"
             aria-label="More account actions"
+            title="More account actions"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <circle cx="12" cy="5" r="1.7" />
