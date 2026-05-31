@@ -486,19 +486,19 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
     );
   });
 
-  it("uses a soft, premium curved line", () => {
+  it("uses a clean, financial-style line type (Simple — not cartoonishly curved)", () => {
     assert.ok(
-      equity.includes("lineType: LineType.Curved"),
-      "the line must use LineType.Curved for a soft, premium feel",
+      equity.includes("lineType: LineType.Simple"),
+      "the line must use LineType.Simple for a clean financial-chart look",
     );
   });
 
-  it("uses a compact dashboard height (~220–260px)", () => {
+  it("uses a compact dashboard height (160–210px)", () => {
     const match = equity.match(/CHART_HEIGHT\s*=\s*(\d+)/);
     const h = match ? parseInt(match[1] ?? "0", 10) : 0;
     assert.ok(
-      h >= 220 && h <= 260,
-      `chart height must be compact (220–260px); found ${h}`,
+      h >= 160 && h <= 210,
+      `chart height must be compact (160–210px); found ${h}`,
     );
   });
 
@@ -769,6 +769,58 @@ describe("/dashboard: P&L calendar vertical spacing is tightened", () => {
     assert.ok(
       calendar.includes("hasTrades && accountId &&"),
       "only days with trades may be clickable",
+    );
+  });
+
+  it("outer card padding is tight (<=12) for a compact card feel", () => {
+    const m = calendar.match(/borderRadius: 14,\s*padding: (\d+)/);
+    const pad = m ? parseInt(m[1] ?? "0", 10) : null;
+    assert.ok(
+      pad !== null && pad <= 12,
+      `calendar outer padding must be <= 12 for a compact card; found ${pad}`,
+    );
+  });
+});
+
+describe("/dashboard: equity curve tooltip is compact and non-dominant", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("tooltip padding is small so it doesn't cover the chart", () => {
+    const m = equity.match(/padding:\s*["'](\d+)px\s+(\d+)px["']/);
+    const vPad = m ? parseInt(m[1] ?? "0", 10) : null;
+    assert.ok(
+      vPad !== null && vPad <= 6,
+      `tooltip vertical padding must be <= 6px; found ${vPad}`,
+    );
+  });
+
+  it("tooltip shadow is soft and minimal", () => {
+    assert.ok(
+      equity.includes("rgba(0,0,0,0.07)") || equity.includes("rgba(0,0,0,0.08)"),
+      "tooltip box-shadow must use a very low alpha (≤ 0.08) to stay non-dominant",
+    );
+  });
+
+  it("date label row sits close to the chart (marginTop < -5)", () => {
+    const m = equity.match(/marginTop:\s*(-\d+)/);
+    const mt = m ? parseInt(m[1] ?? "0", 10) : 0;
+    assert.ok(
+      mt < -5,
+      `date label row marginTop must be < -5 to sit tight against the chart; found ${mt}`,
+    );
+  });
+});
+
+describe("/dashboard: equity curve card padding is compact", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("outer card uses tighter padding (<=18px)", () => {
+    const m = equity.match(/padding:\s*["'](\d+)px\s+(\d+)px["']/);
+    const vPad = m ? parseInt(m[1] ?? "0", 10) : null;
+    // This regex captures the card padding "14px 16px" first match.
+    assert.ok(
+      vPad !== null && vPad <= 18,
+      `card outer vertical padding must be <= 18px for a compact card; found ${vPad}`,
     );
   });
 });

@@ -152,7 +152,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
-        padding: 14,
+        padding: 12,
       }}
     >
       <div

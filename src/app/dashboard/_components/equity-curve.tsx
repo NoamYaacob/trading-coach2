@@ -170,7 +170,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         background: "var(--gr-surface)",
         border: "1px solid var(--gr-border)",
         borderRadius: 14,
-        padding: "18px 20px",
+        padding: "14px 16px",
         display: "flex",
         flexDirection: "column",
       }}
@@ -179,7 +179,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 8,
           alignItems: "flex-start",
           gap: 8,
           flexWrap: "wrap",
@@ -341,10 +341,10 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
     <div
       style={{
         flex: 1,
-        minHeight: 110,
+        minHeight: 100,
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 6,
       }}
     >
       <div
@@ -378,7 +378,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             display: "flex",
             justifyContent: axisLabels.length === 1 ? "center" : "space-between",
             padding: "0 2px",
-            marginTop: -6,
+            marginTop: -10,
           }}
         >
           {axisLabels.map((label, i) => (
@@ -411,7 +411,7 @@ function LightweightEquityChart({
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const tooltipRef = React.useRef<HTMLDivElement | null>(null);
-  const CHART_HEIGHT = 230;
+  const CHART_HEIGHT = 180;
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -479,9 +479,9 @@ function LightweightEquityChart({
       topColor: rgba(lineColor, 0.14),
       bottomColor: rgba(lineColor, 0),
       lineWidth: 2,
-      // Soft, premium curve through the real points (visual interpolation only —
-      // the plotted vertices are unchanged real cumulative values).
-      lineType: LineType.Curved,
+      // Simple line type gives the clean, precise look of a financial data
+      // chart — Curved felt decorative/cartoonish at this compact scale.
+      lineType: LineType.Simple,
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerRadius: 4,
@@ -533,11 +533,11 @@ function LightweightEquityChart({
         return;
       }
       const ts = (param.time as number) * 1000;
-      tooltipEl.innerHTML = `<div style="color:${colors.textMute};margin-bottom:3px">${fmtTooltipDate(
+      tooltipEl.innerHTML = `<div style="color:${colors.textMute};margin-bottom:2px;font-size:10.5px">${fmtTooltipDate(
         ts,
       )}</div><div style="font-family:var(--font-ibm-plex-mono, monospace);font-weight:600;color:${
         value >= 0 ? colors.ok : colors.bad
-      }">${fmtTip(value)}</div><div style="color:${colors.textFaint};font-size:10.5px;margin-top:2px">Cumulative realized P&amp;L</div>`;
+      };font-size:11px">${fmtTip(value)}</div><div style="color:${colors.textFaint};font-size:10px;margin-top:1px">Cumulative P&amp;L</div>`;
       tooltipEl.style.opacity = "1";
       // Keep the tooltip inside the container horizontally.
       const tipW = 150;
@@ -574,11 +574,11 @@ function LightweightEquityChart({
           pointerEvents: "none",
           background: colors.surface,
           border: `1px solid ${colors.border}`,
-          borderRadius: 8,
-          padding: "8px 10px",
-          boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
-          fontSize: 12,
-          lineHeight: 1.4,
+          borderRadius: 6,
+          padding: "5px 8px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
+          fontSize: 11,
+          lineHeight: 1.35,
           transition: "opacity 0.08s",
           zIndex: 3,
           whiteSpace: "nowrap",
