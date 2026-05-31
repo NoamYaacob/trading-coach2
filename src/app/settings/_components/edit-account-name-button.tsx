@@ -4,33 +4,33 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Inline "Edit name" affordance for a broker account. Lets the user set a
- * personal display name so accounts at the same prop firm stay distinguishable
- * (e.g. "Apex eval #2" instead of two identical "Apex Evaluation" rows).
+ * Inline editor for a broker account's personal display name. Rendered BELOW
+ * the account row (not inside the cramped "More" menu popover) so the input and
+ * its Cancel / Save controls always stay within the card bounds and wrap
+ * cleanly on narrow widths. Lets the user set a personal name so accounts at the
+ * same prop firm stay distinguishable (e.g. "Apex eval #2" instead of two
+ * identical broker labels).
  *
  * Calls PATCH /api/accounts/:id with ONLY { displayName }. The endpoint trims
  * the value and clears it back to null when empty, so the friendly fallback
- * label applies again. No broker identifiers, protection status, rules, or
- * any safety data are touched — this is a pure label edit.
+ * label applies again. No broker identifiers, protection status, rules, or any
+ * safety data are touched — this is a pure label edit.
  */
-export function EditAccountNameButton({
+export function EditAccountNameForm({
   accountId,
   currentName,
   placeholder,
-  variant = "pill",
+  onClose,
 }: {
   accountId: string;
   /** The account's existing displayName (null when never set). */
   currentName: string | null;
   /** The derived fallback label, shown as the input placeholder. */
   placeholder?: string;
-  /** Visual style of the trigger only — "pill" (standalone) or "menuItem"
-   *  (left-aligned row inside a dropdown menu). Does NOT affect the PATCH
-   *  payload or behavior. */
-  variant?: "pill" | "menuItem";
+  /** Called when the editor should close (Cancel, Escape, or a successful save). */
+  onClose: () => void;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(currentName ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +51,8 @@ export function EditAccountNameButton({
         setSaving(false);
         return;
       }
-      setEditing(false);
       setSaving(false);
+      onClose();
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
@@ -60,42 +60,27 @@ export function EditAccountNameButton({
     }
   }
 
-  if (!editing) {
-    const triggerClass =
-      variant === "menuItem"
-        ? "flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-stone-700 transition hover:bg-stone-50"
-        : "inline-flex items-center justify-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950";
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setValue(currentName ?? "");
-          setError(null);
-          setEditing(true);
-        }}
-        className={triggerClass}
-      >
-        {variant === "menuItem" ? "Edit account name" : "Edit name"}
-      </button>
-    );
-  }
-
   return (
-    <div className={`flex flex-col gap-1.5 ${variant === "menuItem" ? "items-stretch px-1 py-0.5" : "items-end"}`}>
+    <div className="grid gap-2">
       {error && <p className="text-xs text-red-700">{error}</p>}
       <input
         type="text"
+        autoFocus
         value={value}
         maxLength={80}
         placeholder={placeholder ?? "Account name"}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !saving) handleSave();
+          else if (e.key === "Escape") onClose();
+        }}
         disabled={saving}
-        className="w-48 rounded-md border border-stone-300 px-2.5 py-1.5 text-sm text-stone-900 outline-none focus:border-stone-500 disabled:opacity-50"
+        className="w-full max-w-xs rounded-md border border-stone-300 px-2.5 py-1.5 text-sm text-stone-900 outline-none focus:border-stone-500 disabled:opacity-50"
       />
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setEditing(false)}
+          onClick={onClose}
           disabled={saving}
           className="inline-flex items-center rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
         >
