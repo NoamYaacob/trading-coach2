@@ -374,14 +374,14 @@ describe("/dashboard: equity curve visual polish", () => {
     );
   });
 
-  it("uses smooth cubic-bezier path (smoothPath helper) instead of jagged lines", () => {
+  it("uses safe monotone cubic curve (monotonePath helper) instead of jagged lines", () => {
     assert.ok(
-      equity.includes("smoothPath"),
-      "equity curve must use a smoothPath helper for bezier interpolation",
+      equity.includes("monotonePath"),
+      "equity curve must use a monotonePath helper for safe non-overshooting interpolation",
     );
     assert.ok(
-      equity.includes("` C") || equity.includes("\" C") || equity.includes("cpx") || equity.includes("bezier") || equity.includes("C${"),
-      "smoothPath must generate cubic bezier (C) segments for smooth curve",
+      equity.includes("C${") || equity.includes("cp1x") || equity.includes("bezier"),
+      "monotonePath must generate cubic bezier (C) segments for the smooth curve",
     );
   });
 
@@ -408,7 +408,9 @@ describe("/dashboard: equity curve visual polish", () => {
   });
 
   it("chart SVG height is in the readable range (110 – 140)", () => {
-    const match = equity.match(/height:\s*(\d+)/);
+    // Target the rendered SVG element height specifically (the empty-state
+    // glyph tile also has a height, so match on the SVG's width+height style).
+    const match = equity.match(/width:\s*"100%",\s*height:\s*(\d+)/);
     const h = match ? parseInt(match[1] ?? "0", 10) : 0;
     assert.ok(
       h >= 110 && h <= 140,
@@ -459,6 +461,110 @@ describe("/dashboard: P&L calendar active-day cell quality", () => {
     assert.ok(
       gaps.some((g) => g >= 2),
       "calendar active-day bottom section must have gap >= 2 for breathing room",
+    );
+  });
+});
+
+describe("/dashboard: equity curve uses safe (non-overshooting) smoothing", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("uses monotone (Fritsch–Carlson) cubic interpolation, not naive smoothing", () => {
+    assert.ok(
+      equity.includes("monotonePath"),
+      "equity curve must use a monotonePath helper",
+    );
+    // Monotone cubic computes secant slopes + Hermite tangents and emits
+    // bezier control points at the one-third marks — these are its fingerprints.
+    assert.ok(
+      equity.includes("slope") && equity.includes("/ 3"),
+      "monotonePath must compute slopes/tangents (not horizontal control points)",
+    );
+    assert.ok(
+      equity.includes("Math.sqrt"),
+      "monotonePath must apply the Fritsch–Carlson monotonicity clamp (Math.sqrt)",
+    );
+  });
+
+  it("flattens the tangent on a direction change so the curve cannot overshoot", () => {
+    assert.ok(
+      equity.includes("s0 * s1 <= 0"),
+      "monotonePath must zero the tangent when adjacent slopes reverse sign (peak/trough)",
+    );
+  });
+
+  it("degrades cleanly for sparse data (handles the 1-point case explicitly)", () => {
+    assert.ok(
+      equity.includes("if (n === 1)") || equity.includes("n === 1"),
+      "monotonePath must handle the single-point case without distortion",
+    );
+  });
+
+  it("invents no intermediate values — curve is built only from real trade pnl", () => {
+    assert.ok(
+      equity.includes("cum += t.pnl"),
+      "cumulative points must come from real trade pnl",
+    );
+    assert.ok(
+      !equity.includes("Math.random") &&
+        !equity.includes("fakeTrades") &&
+        !equity.includes("demoTrades") &&
+        !equity.includes("samplePoints"),
+      "equity curve must not fabricate or randomize any data points",
+    );
+  });
+
+  it("main curve line is thin and calm (strokeWidth <= 2)", () => {
+    const mainMatch = equity.match(/d=\{linePath\}[\s\S]*?strokeWidth="([\d.]+)"/);
+    const sw = mainMatch ? parseFloat(mainMatch[1] ?? "0") : 0;
+    assert.ok(
+      sw > 0 && sw <= 2,
+      `main curve strokeWidth must be <= 2 for a calm, readable line; found ${sw}`,
+    );
+  });
+
+  it("renders honest date-axis labels derived from real trade timestamps", () => {
+    assert.ok(
+      equity.includes("axisTicks") && equity.includes("toLocaleDateString"),
+      "chart must show date axis labels computed from real tMin/tMax timestamps",
+    );
+    assert.ok(
+      equity.includes("tMin") && equity.includes("tMax"),
+      "axis labels must be derived from the window's first and last trade times",
+    );
+  });
+});
+
+describe("/dashboard: equity curve has a designed empty state", () => {
+  const equity = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("shows the honest empty-state sentence for < 2 round-trips", () => {
+    assert.ok(
+      equity.includes(
+        "Curve appears once at least 2 round-trips have closed in this window",
+      ),
+      "empty state must use the honest 'appears once at least 2 round-trips' copy",
+    );
+  });
+
+  it("triggers the empty state when fewer than 2 trades exist in the window", () => {
+    assert.ok(
+      equity.includes("trades.length < 2"),
+      "empty state must render whenever the window has fewer than 2 round-trips",
+    );
+  });
+
+  it("distinguishes the zero-trade case with its own honest copy", () => {
+    assert.ok(
+      equity.includes("No closed round-trips in this window for this account"),
+      "zero-trade case must show its own honest message",
+    );
+  });
+
+  it("is an intentionally designed state, not a bare line (has a framed icon)", () => {
+    // The designed empty state wraps a small chart glyph in a bordered tile.
+    assert.ok(
+      equity.includes("borderRadius: 11") || equity.includes("border: \"1px dashed var(--gr-border)\""),
+      "empty state must be a designed block (framed icon / dashed container), not a raw chart",
     );
   });
 });
