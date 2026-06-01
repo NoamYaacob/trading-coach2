@@ -437,14 +437,14 @@ describe("data-truth: CME session vs calendar day — explicit labels and bounda
   const dashboard = read("app/dashboard/page.tsx");
   const calendar  = read("app/dashboard/_components/pnl-calendar.tsx");
 
-  it("KPI card uses 'Broker session P&L' (not vague 'session')", () => {
+  it("KPI card uses 'Broker session P&L snapshot' (not vague 'session')", () => {
     assert.ok(
-      dashboard.includes('"Broker session P&L"'),
-      "KPI card must say 'Broker session P&L' to distinguish from calendar-day P&L",
+      dashboard.includes('"Broker session P&L snapshot"'),
+      "KPI card must say 'Broker session P&L snapshot' to distinguish from closed round-trip P&L",
     );
     assert.ok(
       !dashboard.includes('"Today P&L · session"'),
-      "old vague label 'Today P&L · session' must be replaced with 'Broker session P&L'",
+      "old vague label 'Today P&L · session' must be replaced with 'Broker session P&L snapshot'",
     );
   });
 

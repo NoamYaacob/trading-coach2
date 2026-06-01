@@ -646,7 +646,7 @@ export default async function DashboardPage({
                                 : acc.status === "locked"
                                 ? "Session locked"
                                 : acc.tradesCount != null
-                                ? `${acc.tradesCount} trade${acc.tradesCount !== 1 ? "s" : ""} this session`
+                                ? `${acc.tradesCount} broker-session trade${acc.tradesCount !== 1 ? "s" : ""}`
                                 : "Monitoring"}
                             </span>
                           </div>
@@ -749,9 +749,9 @@ export default async function DashboardPage({
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
-                      label: "Broker session P&L",
+                      label: "Broker session P&L snapshot",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade${selectedAccount.tradesCount !== 1 ? "s" : ""}` : "CME session · since 17:00 CT",
+                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade count` : "CME session · since 17:00 CT",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },
@@ -802,6 +802,18 @@ export default async function DashboardPage({
                   ))}
                 </div>
               </section>
+            )}
+
+            {/* ── P&L source explanation ─────────────────────────────────── */}
+            {selectedAccount && (
+              <div style={{ padding: "0 36px 12px" }}>
+                <p style={{ margin: 0, fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.6 }}>
+                  <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
+                  {" "}is Tradovate&rsquo;s running total for the CME session (17:00&thinsp;CT reset), accumulated from fill events with commission adjustments.{" "}
+                  <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
+                  {" "}is FIFO-reconstructed from trade history — each lot closure is one round-trip, and fills without broker P&L are price-computed (no commissions). The two can differ when some fills carry no broker P&L or when partial exits split a single position cycle.
+                </p>
+              </div>
             )}
 
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}
