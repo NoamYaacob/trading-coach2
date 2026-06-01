@@ -254,9 +254,12 @@ async function main(): Promise<void> {
   //   2. protectionStatus ignored/archived     → canRemoveNow=true  (bypass)
   //   3. sessionDate==today & riskState=STOPPED → defer "session_stopped"
   //   4. sessionDate==today & cooldownActive    → defer "cooldown_active"
-  //   5. active InternalLockEvent (today)       → defer "internal_lock:<ruleType>"
+  //   5. ANY active InternalLockEvent (clearedAt=null) → defer "internal_lock:<ruleType>"
+  // Note: the active-lock query is intentionally NOT restricted by tradingDay —
+  // clearedAt=null is the authoritative active signal across the CME-session /
+  // CT-calendar day boundary (matches the hardened guard).
   const removalLock = await prisma.internalLockEvent.findFirst({
-    where: { accountId: account.id, tradingDay: removalDayKey, clearedAt: null },
+    where: { accountId: account.id, clearedAt: null },
     select: { ruleType: true },
   });
 
