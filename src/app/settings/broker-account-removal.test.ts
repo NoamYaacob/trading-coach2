@@ -9,6 +9,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  decideRemovalEligibility,
+  type RemovalDecisionInput,
+} from "../../lib/account-removal-eligibility.ts";
+
 function read(rel: string): string {
   return readFileSync(resolve(import.meta.dirname, rel), "utf8");
 }
@@ -24,31 +29,38 @@ function readApi(rel: string): string {
 // ── account-removal-guard.ts ──────────────────────────────────────────────────
 
 describe("account-removal-guard checks all lock sources", () => {
+  // The lock-decision logic lives in account-removal-eligibility.ts (pure,
+  // prisma-free), while the DB reads live in account-removal-guard.ts. Content
+  // checks that assert decision logic read both files; DB-query-structure
+  // checks read only the guard.
+  const combined = () =>
+    readLib("account-removal-guard.ts") + "\n" + readLib("account-removal-eligibility.ts");
+
   test("guard checks LiveSessionState.riskState === STOPPED for today", () => {
-    const src = readLib("account-removal-guard.ts");
+    const src = combined();
     assert.ok(
       src.includes("STOPPED"),
-      "guard must check LiveSessionState.riskState === STOPPED",
+      "decision must check LiveSessionState.riskState === STOPPED",
     );
     assert.ok(
       src.includes("riskState"),
-      "guard must read riskState from LiveSessionState",
+      "decision/guard must read riskState from LiveSessionState",
     );
   });
 
   test("guard checks LiveSessionState.cooldownActive", () => {
-    const src = readLib("account-removal-guard.ts");
+    const src = combined();
     assert.ok(
       src.includes("cooldownActive"),
-      "guard must check cooldownActive flag on session state",
+      "decision must check cooldownActive flag on session state",
     );
   });
 
   test("guard only uses today's session state (sessionDate check)", () => {
-    const src = readLib("account-removal-guard.ts");
+    const src = combined();
     assert.ok(
       src.includes("sessionDate") && src.includes("todayKey"),
-      "guard must compare sessionDate to todayKey so stale session state is ignored",
+      "decision must compare sessionDate to todayKey so stale session state is ignored",
     );
   });
 
@@ -64,11 +76,23 @@ describe("account-removal-guard checks all lock sources", () => {
     );
   });
 
-  test("guard queries internalLockEvent by tradingDay key", () => {
+  test("guard does NOT restrict the active-lock query by tradingDay", () => {
     const src = readLib("account-removal-guard.ts");
+    // The active InternalLockEvent query must match on clearedAt IS NULL alone,
+    // not tradingDay — otherwise an uncleared lock stops blocking removal once
+    // the CT calendar day rolls past the lock's CME session day.
+    const lockQueryMatch = src.match(
+      /internalLockEvent\.findFirst\(\{\s*where:\s*\{([^}]*)\}/,
+    );
+    assert.ok(lockQueryMatch, "guard must call internalLockEvent.findFirst with a where clause");
+    const whereClause = lockQueryMatch![1];
     assert.ok(
-      src.includes("tradingDay") && src.includes("todayKey"),
-      "guard must filter InternalLockEvent by today's trading day key",
+      whereClause.includes("clearedAt: null"),
+      "active-lock query must filter on clearedAt: null",
+    );
+    assert.ok(
+      !whereClause.includes("tradingDay"),
+      "active-lock query must NOT filter by tradingDay — clearedAt: null is the authoritative active signal",
     );
   });
 
@@ -93,26 +117,26 @@ describe("account-removal-guard checks all lock sources", () => {
   });
 
   test("guard bypasses all checks for unavailable accounts (missingFromBrokerSince set)", () => {
-    const src = readLib("account-removal-guard.ts");
+    const src = combined();
     assert.ok(
       src.includes("missingFromBrokerSince"),
-      "guard must check missingFromBrokerSince as a bypass condition",
+      "decision must check missingFromBrokerSince as a bypass condition",
     );
     assert.ok(
       src.includes("canRemoveNow: true") && src.includes("missingFromBrokerSince"),
-      "guard must return canRemoveNow: true for accounts missing from broker",
+      "decision must return canRemoveNow: true for accounts missing from broker",
     );
     assert.ok(
       src.includes("missingFromBrokerSince != null"),
-      "guard must check missingFromBrokerSince != null for the bypass",
+      "decision must check missingFromBrokerSince != null for the bypass",
     );
   });
 
   test("guard bypasses all checks for ignored/archived accounts", () => {
-    const src = readLib("account-removal-guard.ts");
+    const src = combined();
     assert.ok(
       src.includes('"ignored"') && src.includes('"archived"'),
-      "guard must bypass checks for ignored and archived accounts",
+      "decision must bypass checks for ignored and archived accounts",
     );
   });
 
@@ -125,10 +149,125 @@ describe("account-removal-guard checks all lock sources", () => {
   });
 
   test("guard returns canRemoveNow, lockReason, nextTradingDay shape", () => {
-    const src = readLib("account-removal-guard.ts");
-    assert.ok(src.includes("canRemoveNow"), "guard must return canRemoveNow");
-    assert.ok(src.includes("lockReason"), "guard must return lockReason");
-    assert.ok(src.includes("nextTradingDay"), "guard must return nextTradingDay");
+    const src = combined();
+    assert.ok(src.includes("canRemoveNow"), "decision must return canRemoveNow");
+    assert.ok(src.includes("lockReason"), "decision must return lockReason");
+    assert.ok(src.includes("nextTradingDay"), "decision must return nextTradingDay");
+  });
+});
+
+// ── decideRemovalEligibility — pure behavioral matrix ─────────────────────────
+//
+// Behavioral tests for the pure decision function (no DB). These exercise the
+// real branch logic, including the CME-session / CT-calendar day-boundary fix:
+// an active InternalLockEvent (clearedAt IS NULL) must defer removal even when
+// its tradingDay no longer matches today's CT calendar key.
+
+describe("decideRemovalEligibility — active internal lock across day boundary", () => {
+  // Base input: a clean, present account with no session lock and no active lock.
+  // The day-boundary scenario from production: CT calendar day = 2026-06-01,
+  // CME session lock belongs to tradingDay 2026-05-31.
+  function baseInput(): RemovalDecisionInput {
+    return {
+      accountFound: true,
+      missingFromBrokerSince: null,
+      protectionStatus: "protected",
+      sessionDate: "2026-05-31", // stale relative to todayKey → session check skipped
+      todayKey: "2026-06-01",
+      riskState: "STOPPED",
+      cooldownActive: false,
+      activeInternalLock: null,
+      nextTradingDay: "2026-06-02",
+    };
+  }
+
+  test("active InternalLockEvent (clearedAt null) blocks removal even when tradingDay != CT calendar day", () => {
+    const input = baseInput();
+    // The active lock is present (the DB query no longer filters by tradingDay,
+    // so this represents the 2026-05-31 lock surfacing on the 2026-06-01 CT day).
+    input.activeInternalLock = { ruleType: "daily_loss_limit" };
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, false, "must defer removal while an active lock exists");
+    assert.equal(result.lockReason, "internal_lock:daily_loss_limit");
+    assert.equal(result.nextTradingDay, "2026-06-02");
+  });
+
+  test("cleared InternalLockEvent (passed as null active lock) does not block", () => {
+    const input = baseInput();
+    // A cleared lock is excluded by the clearedAt: null query, so the decision
+    // function receives activeInternalLock = null.
+    input.activeInternalLock = null;
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, true, "cleared lock must not block removal");
+    assert.equal(result.lockReason, null);
+  });
+
+  test("STOPPED same-day session still blocks (session_stopped) regardless of lock", () => {
+    const input = baseInput();
+    input.sessionDate = "2026-06-01"; // matches todayKey → session check active
+    input.riskState = "STOPPED";
+    input.activeInternalLock = null;
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, false);
+    assert.equal(result.lockReason, "session_stopped");
+  });
+
+  test("cooldown same-day session still blocks (cooldown_active)", () => {
+    const input = baseInput();
+    input.sessionDate = "2026-06-01";
+    input.riskState = "NORMAL";
+    input.cooldownActive = true;
+    input.activeInternalLock = null;
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, false);
+    assert.equal(result.lockReason, "cooldown_active");
+  });
+
+  test("clean account with no locks can be removed now", () => {
+    const input = baseInput();
+    input.sessionDate = "2026-06-01";
+    input.riskState = "NORMAL";
+    input.cooldownActive = false;
+    input.activeInternalLock = null;
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, true);
+    assert.equal(result.lockReason, null);
+  });
+
+  test("bypass: missingFromBrokerSince set → removable even with an active lock", () => {
+    const input = baseInput();
+    input.missingFromBrokerSince = new Date("2026-05-30T00:00:00Z");
+    input.activeInternalLock = { ruleType: "daily_loss_limit" };
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, true, "missing-from-broker bypass takes precedence");
+    assert.equal(result.lockReason, null);
+  });
+
+  test("bypass: protectionStatus archived/ignored → removable even with an active lock", () => {
+    for (const status of ["archived", "ignored"]) {
+      const input = baseInput();
+      input.protectionStatus = status;
+      input.activeInternalLock = { ruleType: "daily_loss_limit" };
+      const result = decideRemovalEligibility(input);
+      assert.equal(result.canRemoveNow, true, `${status} bypass must allow removal`);
+      assert.equal(result.lockReason, null);
+    }
+  });
+
+  test("account not found → not removable (account_not_found)", () => {
+    const input = baseInput();
+    input.accountFound = false;
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, false);
+    assert.equal(result.lockReason, "account_not_found");
+  });
+
+  test("non-daily-loss active lock also blocks with its ruleType", () => {
+    const input = baseInput();
+    input.activeInternalLock = { ruleType: "max_position_size" };
+    const result = decideRemovalEligibility(input);
+    assert.equal(result.canRemoveNow, false);
+    assert.equal(result.lockReason, "internal_lock:max_position_size");
   });
 });
 

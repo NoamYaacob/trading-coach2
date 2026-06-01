@@ -9,8 +9,17 @@
  * Three independent lock signals are checked (all per-account or per-user):
  *   1. LiveSessionState.riskState === "STOPPED" today — session risk engine stopped
  *   2. LiveSessionState.cooldownActive today — post-loss-streak cooldown active
- *   3. InternalLockEvent with clearedAt IS NULL and tradingDay === today —
- *      an active internal lock (daily_loss_limit, trade_limit, max_loss_streak)
+ *   3. InternalLockEvent with clearedAt IS NULL — an active internal lock
+ *      (daily_loss_limit, trade_limit, max_loss_streak)
+ *
+ * On the InternalLockEvent day boundary: the lock's `tradingDay` uses the CME
+ * session key (changes at 17:00 CT), while this guard's `todayKey` is the CT
+ * calendar day (changes at midnight CT). These diverge in the 17:00→midnight
+ * window. `clearedAt IS NULL` is the authoritative "still locked" signal — a
+ * lock is only cleared on manual reset or session end — so an active lock must
+ * defer removal regardless of which `tradingDay` key it carries. Restricting
+ * the query to `tradingDay === todayKey` previously let removal through once
+ * the CT calendar day rolled forward while the lock was still active.
  *
  * Note on GuardianStatus: the GuardianStatus model is per-user (userId @unique),
  * not per-account. It reflects aggregate stats across all user accounts. We do
@@ -26,19 +35,10 @@
 import { prisma } from "./db";
 import { dateKeyInTimezone } from "./account-protection";
 import { SESSION_WINDOW_TIMEZONE } from "./trading-day";
+import { decideRemovalEligibility, type RemovalEligibility } from "./account-removal-eligibility";
 
-export type RemovalEligibility = {
-  /** true when the account can be archived immediately. */
-  canRemoveNow: boolean;
-  /**
-   * Machine-readable reason why removal is deferred. null when canRemoveNow.
-   * Format: "session_stopped" | "cooldown_active"
-   *         | "internal_lock:<ruleType>" | "account_not_found"
-   */
-  lockReason: string | null;
-  /** YYYY-MM-DD trading day key for the next session reset (when deferred removal applies). */
-  nextTradingDay: string;
-};
+export type { RemovalEligibility, RemovalDecisionInput } from "./account-removal-eligibility";
+export { decideRemovalEligibility } from "./account-removal-eligibility";
 
 /**
  * Check whether the given account can be removed from Guardrail right now.
@@ -61,49 +61,43 @@ export async function checkAccountRemovalEligibility(
     select: { missingFromBrokerSince: true, protectionStatus: true },
   });
 
+  // Short-circuit: account not found needs no further reads.
   if (!account) {
-    return { canRemoveNow: false, lockReason: "account_not_found", nextTradingDay };
+    return decideRemovalEligibility({
+      accountFound: false,
+      missingFromBrokerSince: null,
+      protectionStatus: null,
+      sessionDate: null,
+      todayKey,
+      riskState: null,
+      cooldownActive: false,
+      activeInternalLock: null,
+      nextTradingDay,
+    });
   }
 
-  // Unavailable from broker — no active trades or enforcement happening.
-  if (account.missingFromBrokerSince != null) {
-    return { canRemoveNow: true, lockReason: null, nextTradingDay };
-  }
-
-  // Already in an inactive protection state — removal is safe.
-  if (account.protectionStatus === "ignored" || account.protectionStatus === "archived") {
-    return { canRemoveNow: true, lockReason: null, nextTradingDay };
-  }
-
-  // ── 1 & 2. LiveSessionState — session risk stopped or cooldown ───────────
-  // LiveSessionState is @unique on accountId (one row per account, updated
-  // in place). We only treat the state as "current" when sessionDate matches
-  // today's CME trading day key. A stale row from yesterday poses no lock.
+  // LiveSessionState is @unique on accountId (one row per account).
   const sessionState = await prisma.liveSessionState.findUnique({
     where: { accountId },
     select: { sessionDate: true, riskState: true, cooldownActive: true },
   });
-  if (sessionState?.sessionDate === todayKey) {
-    if (sessionState.riskState === "STOPPED") {
-      return { canRemoveNow: false, lockReason: "session_stopped", nextTradingDay };
-    }
-    if (sessionState.cooldownActive === true) {
-      return { canRemoveNow: false, lockReason: "cooldown_active", nextTradingDay };
-    }
-  }
 
-  // ── 3. InternalLockEvent — active internal breach today ──────────────────
+  // Any active internal lock for this account — clearedAt IS NULL is the
+  // authoritative active-lock signal; intentionally NOT filtered by tradingDay.
   const activeLock = await prisma.internalLockEvent.findFirst({
-    where: { accountId, tradingDay: todayKey, clearedAt: null },
+    where: { accountId, clearedAt: null },
     select: { ruleType: true },
   });
-  if (activeLock) {
-    return {
-      canRemoveNow: false,
-      lockReason: `internal_lock:${activeLock.ruleType}`,
-      nextTradingDay,
-    };
-  }
 
-  return { canRemoveNow: true, lockReason: null, nextTradingDay };
+  return decideRemovalEligibility({
+    accountFound: true,
+    missingFromBrokerSince: account.missingFromBrokerSince,
+    protectionStatus: account.protectionStatus,
+    sessionDate: sessionState?.sessionDate ?? null,
+    todayKey,
+    riskState: sessionState?.riskState ?? null,
+    cooldownActive: sessionState?.cooldownActive ?? false,
+    activeInternalLock: activeLock,
+    nextTradingDay,
+  });
 }
