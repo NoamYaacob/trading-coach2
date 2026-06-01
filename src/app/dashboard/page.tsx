@@ -68,7 +68,7 @@ const RULE_LABELS: Record<string, string> = {
   stop_after_consecutive_losses: "Tilt protection",
   trading_day_disabled:         "Trading day disabled",
   no_trade_before_major_news:   "Pre-news blackout",
-  session_not_started:          "Session not started",
+  session_not_started:          "Guardian session not started",
   session_closed:               "Session closed",
   guardian_disabled:            "Guardian disabled",
   manual_rule_breach:           "Manual rule breach",
@@ -403,10 +403,10 @@ export default async function DashboardPage({
                     <span style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic", color: "var(--gr-ink)" }}>
                       {liveAccounts}
                     </span>
-                    {" "}live account{liveAccounts !== 1 ? "s" : ""}.
+                    {" "}connected account{liveAccounts !== 1 ? "s" : ""}.
                   </>
                 ) : (
-                  <>No live accounts — all connected accounts are expired or unavailable.</>
+                  <>No active accounts — all connected accounts are expired or unavailable.</>
                 )}
               </h1>
             </div>
@@ -646,7 +646,7 @@ export default async function DashboardPage({
                                 : acc.status === "locked"
                                 ? "Session locked"
                                 : acc.tradesCount != null
-                                ? `${acc.tradesCount} trade${acc.tradesCount !== 1 ? "s" : ""} today`
+                                ? `${acc.tradesCount} broker-session trade${acc.tradesCount !== 1 ? "s" : ""}`
                                 : "Monitoring"}
                             </span>
                           </div>
@@ -719,6 +719,11 @@ export default async function DashboardPage({
                         Locked
                       </span>
                     )}
+                    {(selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected") && (
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)", fontWeight: 500, border: "1px solid var(--gr-border)" }}>
+                        Historical · unavailable
+                      </span>
+                    )}
                   </div>
                   <div style={{ flex: 1 }} />
                   <Link
@@ -740,13 +745,21 @@ export default async function DashboardPage({
                     {
                       label: "Balance",
                       value: selectedAccount.balance != null ? `$${selectedAccount.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—",
-                      sub: selectedAccount.dailyPnl != null ? `${fmt$(selectedAccount.dailyPnl)} today` : "No sync yet",
+                      sub: selectedAccount.dailyPnl != null
+                        ? `${fmt$(selectedAccount.dailyPnl)} broker session`
+                        : (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected")
+                          ? "Account unavailable"
+                          : "No sync yet",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
-                      label: "Today P&L",
+                      label: "Broker session P&L snapshot",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} trade${selectedAccount.tradesCount !== 1 ? "s" : ""}` : "No data",
+                      sub: selectedAccount.tradesCount != null
+                        ? `${selectedAccount.tradesCount} broker-session trade count`
+                        : (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected")
+                          ? "Account unavailable · no current data"
+                          : "CME session · since 17:00 CT",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },
@@ -797,6 +810,18 @@ export default async function DashboardPage({
                   ))}
                 </div>
               </section>
+            )}
+
+            {/* ── P&L source explanation ─────────────────────────────────── */}
+            {selectedAccount && (
+              <div style={{ padding: "0 36px 12px" }}>
+                <p style={{ margin: 0, fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.6 }}>
+                  <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
+                  {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
+                  <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
+                  {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
+                </p>
+              </div>
             )}
 
             {/* ── Row 1: Active rules + Equity curve ────────────────────── */}

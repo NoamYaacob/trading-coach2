@@ -48,7 +48,7 @@ export function getDefaultTypeChoice(
 ): AccountTypeChoice {
   const t = inheritedAccountType ?? suggestedAccountType;
   if (t === "evaluation" || t === "funded" || t === "personal" || t === "demo") return t;
-  return "evaluation";
+  return "personal";
 }
 
 const TYPE_LABEL: Record<string, string> = {

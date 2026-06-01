@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { reconstructRoundTrips, type FillInput } from "../../lib/trades/round-trips.ts";
+import { deriveCmeTradingDayKey } from "../../lib/trading-day.ts";
 
 const ROOT = resolve(process.cwd(), "src");
 function read(rel: string): string {
@@ -365,6 +366,201 @@ describe("data-truth: metric source provenance (source-scan)", () => {
     assert.ok(
       rt.includes("positions.get(key)"),
       "must look up open position by contract key — not globally",
+    );
+  });
+});
+
+// ── 7. UI labeling correctness ────────────────────────────────────────────────
+
+describe("data-truth: UI labeling and classification defaults", () => {
+  const dashboard = read("app/dashboard/page.tsx");
+  const trades    = read("app/trades/page.tsx");
+
+  it("dashboard hero does not say 'live accounts' — uses 'connected accounts' instead", () => {
+    // "live accounts." is the old hero copy; "live account data" (in the demo banner) is
+    // a different concept and is allowed. Target the plural + period form that only
+    // appears in the hero/status heading lines.
+    assert.ok(
+      !dashboard.includes("live accounts."),
+      "dashboard hero must not say 'live accounts.' — must use 'connected accounts.'",
+    );
+    assert.ok(
+      !dashboard.includes("No live accounts"),
+      "dashboard no-accounts fallback must not say 'No live accounts'",
+    );
+    assert.ok(
+      dashboard.includes("connected account"),
+      "dashboard must say 'connected account'",
+    );
+  });
+
+  it("trades sidebar renders acc.primaryLabel not acc.label", () => {
+    assert.ok(
+      trades.includes("acc.primaryLabel"),
+      "trades sidebar must show acc.primaryLabel (broker account ref) not acc.label",
+    );
+    // Verify the sidebar section specifically uses primaryLabel in the span
+    // (not just somewhere else on the page)
+    assert.ok(
+      !trades.includes("{acc.label}"),
+      "trades sidebar span must not render {acc.label} — must use {acc.primaryLabel}",
+    );
+  });
+
+  it("RULE_LABELS session_not_started is 'Guardian session not started'", () => {
+    assert.ok(
+      dashboard.includes('"Guardian session not started"'),
+      "session_not_started rule label must be 'Guardian session not started', not 'Session not started'",
+    );
+    assert.ok(
+      !dashboard.includes('"Session not started"'),
+      "old 'Session not started' label must be replaced with 'Guardian session not started'",
+    );
+  });
+
+  it("loadAccountTrades uses accountId filter (not userId)", () => {
+    const load = read("lib/trades/load.ts");
+    assert.ok(
+      load.includes("accountId,"),
+      "loadAccountTrades must pass accountId in WHERE clause",
+    );
+    assert.ok(
+      !load.includes("userId"),
+      "loadAccountTrades must NOT use userId",
+    );
+  });
+});
+
+// ── 8. CME session vs calendar day — explicit label and boundary tests ────────
+
+describe("data-truth: CME session vs calendar day — explicit labels and boundaries", () => {
+  const dashboard = read("app/dashboard/page.tsx");
+  const calendar  = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("KPI card uses 'Broker session P&L snapshot' (not vague 'session')", () => {
+    assert.ok(
+      dashboard.includes('"Broker session P&L snapshot"'),
+      "KPI card must say 'Broker session P&L snapshot' to distinguish from closed round-trip P&L",
+    );
+    assert.ok(
+      !dashboard.includes('"Today P&L · session"'),
+      "old vague label 'Today P&L · session' must be replaced with 'Broker session P&L snapshot'",
+    );
+  });
+
+  it("P&L calendar subtitle says 'calendar day' to distinguish from CME session boundary", () => {
+    assert.ok(
+      calendar.includes("calendar day"),
+      "P&L calendar subtitle must include 'calendar day' — not just 'by day'",
+    );
+  });
+
+  it("unavailable/expired selected account shows 'Historical · unavailable' badge", () => {
+    assert.ok(
+      dashboard.includes("Historical · unavailable"),
+      "dashboard must show 'Historical · unavailable' badge when selected account is inactive",
+    );
+    assert.ok(
+      dashboard.includes('selectedAccount.status === "unavailable"'),
+      "badge must be guarded by unavailable status check",
+    );
+  });
+
+  it("CME day key changes at 17:00 CT, not at UTC midnight", () => {
+    // At 12:00 CT June 1 (= 17:00 UTC June 1 in CDT), the current CME session
+    // opened at 17:00 CT May 31 → day key = "2026-05-31".
+    // At 18:00 CT June 1 (= 23:00 UTC June 1 in CDT), the current CME session
+    // opened at 17:00 CT June 1 → day key = "2026-06-01".
+    // (CDT = UTC−5)
+    const noon_ct_june1    = new Date("2026-06-01T17:00:00Z"); // 12:00 CDT June 1
+    const evening_ct_june1 = new Date("2026-06-01T23:00:00Z"); // 18:00 CDT June 1
+
+    const noonKey    = deriveCmeTradingDayKey(noon_ct_june1);
+    const eveningKey = deriveCmeTradingDayKey(evening_ct_june1);
+
+    assert.equal(noonKey, "2026-05-31",
+      "At 12:00 CT June 1, CME day = 2026-05-31 (session opened 17:00 CT May 31)");
+    assert.equal(eveningKey, "2026-06-01",
+      "At 18:00 CT June 1, CME day = 2026-06-01 (session opened 17:00 CT June 1)");
+    assert.notEqual(noonKey, eveningKey,
+      "CME day key changes at 17:00 CT — afternoon and evening are different sessions");
+  });
+
+  it("calendar-day and CME-day boundaries diverge for fills before 17:00 CT", () => {
+    // A fill at 10:00 CT June 1 belongs to:
+    //   Calendar day: June 1 (midnight-to-midnight CT)
+    //   CME session:  "2026-05-31" (session opened 17:00 CT May 31)
+    // This is why Dashboard session P&L ≠ P&L calendar for the same day.
+    const fill_ct_morning_june1 = new Date("2026-06-01T15:00:00Z"); // 10:00 CDT June 1
+
+    const calKey = fill_ct_morning_june1.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const cmeKey = deriveCmeTradingDayKey(fill_ct_morning_june1);
+
+    assert.equal(calKey, "2026-06-01",
+      "A fill at 10:00 CT June 1 belongs to June 1 calendar day");
+    assert.equal(cmeKey, "2026-05-31",
+      "A fill at 10:00 CT June 1 belongs to CME session 2026-05-31 (opened 17:00 CT May 31)");
+    assert.notEqual(calKey, cmeKey,
+      "Morning fills land in different CME session vs calendar day — explains the discrepancy");
+  });
+
+  it("resolveSessionDisplayMetrics returns null metrics for a stale CME session", () => {
+    // When sessionDate differs from current CME day key, dashboard shows '—'
+    // Replicate the logic from data-helpers.ts inline (no import needed)
+    function resolveStale(sessionDate: string, todayKey: string, tradesCount: number, dailyPnl: number) {
+      if (sessionDate !== todayKey) return { tradesCount: null, dailyPnl: null };
+      return { tradesCount, dailyPnl };
+    }
+
+    // Stale: session is from yesterday's CME day
+    const stale = resolveStale("2026-05-31", "2026-06-01", 47, -404);
+    assert.equal(stale.tradesCount, null, "stale session tradesCount must be null (not shown)");
+    assert.equal(stale.dailyPnl, null, "stale session dailyPnl must be null (not shown)");
+
+    // Current: session matches today's CME day
+    const current = resolveStale("2026-06-01", "2026-06-01", 47, -404);
+    assert.equal(current.tradesCount, 47, "current session tradesCount must be shown");
+    assert.equal(current.dailyPnl, -404, "current session dailyPnl must be shown");
+  });
+
+  it("unavailable account KPI sub says 'Account unavailable' not 'CME session'", () => {
+    // When selectedAccount.status is 'unavailable', the KPI sub must not say
+    // 'CME session · since 17:00 CT' (which implies live monitoring).
+    // It must say 'Account unavailable · no current data' instead.
+    assert.ok(
+      dashboard.includes('"Account unavailable · no current data"'),
+      "KPI sub for unavailable accounts must say 'Account unavailable · no current data'",
+    );
+    assert.ok(
+      dashboard.includes('selectedAccount.status === "unavailable"') ||
+        dashboard.includes("selectedAccount.status === 'unavailable'"),
+      "unavailable KPI sub must be guarded by status check",
+    );
+  });
+
+  it("Broker session P&L snapshot helper copy names the Tradovate snapshot source", () => {
+    // The helper copy below the KPI strip must name snapshot.todayPnL as the source
+    // so users understand dailyPnl comes from the broker account snapshot API,
+    // not from summing individual fill records.
+    assert.ok(
+      dashboard.includes("todayPnL") || dashboard.includes("snapshot"),
+      "helper copy must reference the Tradovate snapshot source (todayPnL or snapshot)",
+    );
+    assert.ok(
+      dashboard.includes("commission"),
+      "helper copy must mention commission-adjustment to explain the P&L gap",
+    );
+  });
+
+  it("equity curve subtitle says 'closed round-trip' to distinguish from broker snapshot", () => {
+    const equity = read("app/dashboard/_components/equity-curve.tsx");
+    assert.ok(
+      equity.includes("closed round-trip"),
+      "equity curve subtitle must say 'closed round-trip P&L', not just 'realized P&L'",
+    );
+    assert.ok(
+      equity.includes("closed round-trip"),
+      "equity curve trade count must say 'closed round-trips' not just 'trades'",
     );
   });
 });

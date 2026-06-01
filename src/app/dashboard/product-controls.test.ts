@@ -534,15 +534,15 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
     );
   });
 
-  it("has a minimal crosshair tooltip labelled cumulative realized P&L", () => {
+  it("has a minimal crosshair tooltip labelled cumulative closed round-trip P&L", () => {
     assert.ok(
       equity.includes("subscribeCrosshairMove"),
       "must wire a crosshair tooltip via subscribeCrosshairMove",
     );
     assert.ok(
-      equity.includes("Cumulative realized P&amp;L") ||
-        equity.includes("Cumulative realized P&L"),
-      "tooltip must label the value as cumulative realized P&L",
+      equity.includes("Cumulative closed round-trip P&amp;L") ||
+        equity.includes("Cumulative closed round-trip P&L"),
+      "tooltip must label the value as cumulative closed round-trip P&L",
     );
     assert.ok(
       equity.includes("fmtTooltipDate") || equity.includes("toLocaleDateString"),

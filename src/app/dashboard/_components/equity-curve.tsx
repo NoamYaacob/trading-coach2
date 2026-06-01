@@ -195,7 +195,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            Cumulative realized P&amp;L · {dataSourceLabel}
+            Cumulative closed round-trip P&amp;L · {dataSourceLabel}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -366,7 +366,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
           {fmt$(finalY)}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
-          {trades.length} trade{trades.length !== 1 ? "s" : ""}
+          {trades.length} closed round-trip{trades.length !== 1 ? "s" : ""}
         </span>
       </div>
       <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />

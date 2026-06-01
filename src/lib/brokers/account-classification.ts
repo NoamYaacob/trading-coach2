@@ -39,7 +39,19 @@ type Pattern = {
 };
 
 const PATTERNS: Pattern[] = [
-  // MyFundedFutures — labels start with MFFU, MFFUEV, MFFUEVBLDR, etc.
+  // MyFundedFutures Sim Funded / PA accounts — label contains "SFR"
+  {
+    test: (l) => /^mffu/i.test(l) && /sfr/i.test(l),
+    propFirm: "MyFundedFutures",
+    accountType: "funded",
+  },
+  // MyFundedFutures Evaluation accounts — label contains "EV"
+  {
+    test: (l) => /^mffu/i.test(l) && /ev/i.test(l),
+    propFirm: "MyFundedFutures",
+    accountType: "evaluation",
+  },
+  // MyFundedFutures — other MFFU accounts (ambiguous sub-type; user can change)
   {
     test: (l) => /^mffu/i.test(l),
     propFirm: "MyFundedFutures",
