@@ -763,6 +763,23 @@ export async function syncTradovateAccount(
       });
     }
 
+    // ── Session-rollover internal-lock cleanup ─────────────────────────────
+    // When the CME session rolls over (isStale: the stored sessionDate is from
+    // a prior session), the LiveSessionState reset above clears riskState/
+    // dailyPnl/pendingSessionEndLock — but active InternalLockEvent rows from
+    // the prior session would otherwise survive with clearedAt=null. That left
+    // the account-removal guard, dashboard lock banner, and broker-enforcement
+    // chain treating a finished session's lock as still active until a manual
+    // reset. Clear them on the same boundary, mirroring the manual-reset route:
+    // activeDedupKey=null frees the slot so the lock can re-fire in the new
+    // session. Internal DB write only — no Tradovate calls, no flatten/cancel.
+    if (isStale) {
+      await prisma.internalLockEvent.updateMany({
+        where: { accountId, clearedAt: null },
+        data: { clearedAt: now, clearedBy: "session_end", updatedAt: now, activeDedupKey: null },
+      });
+    }
+
     // ── Trigger enforcement on STOPPED transition ──────────────────────────
     const violationCreated = enforcementTrigger != null && prevRiskState !== "STOPPED" && newRiskState === "STOPPED";
     if (violationCreated) {

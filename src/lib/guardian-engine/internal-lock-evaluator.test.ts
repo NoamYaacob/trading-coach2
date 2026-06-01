@@ -474,10 +474,11 @@ describe("syncTradovateAccount — own rule evaluator creates GuardianInterventi
     );
   });
 
-  it("sync delegates InternalLockEvent creation to dedicated lock helpers — not via direct prisma.internalLockEvent calls", () => {
+  it("sync delegates InternalLockEvent creation to dedicated lock helpers — not via direct create/upsert", () => {
+    const code = codeOnlySync();
     assert.ok(
-      !codeOnlySync().includes("internalLockEvent"),
-      "sync must not reference prisma.internalLockEvent directly — delegates to applyInternalLockForDailyLossLimit / applyInternalLockForMaxPositionSize",
+      !code.includes("internalLockEvent.create") && !code.includes("internalLockEvent.upsert"),
+      "sync must not create/upsert InternalLockEvent directly — delegates to applyInternalLockForDailyLossLimit / applyInternalLockForMaxPositionSize",
     );
   });
 
@@ -575,6 +576,108 @@ describe("applyInternalLockForDailyLossLimit — sync-path InternalLockEvent for
       assert.ok(
         !tail.slice(0, tail.indexOf("\nexport ", 100)).includes(banned),
         `applyInternalLockForDailyLossLimit must not call ${banned}`,
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: session-rollover internal-lock cleanup (C4 gap fix)
+//
+// Root cause: syncTradovateAccount's isStale branch resets LiveSessionState
+// (riskState→NORMAL, dailyPnl→0, sessionDate→new CME key) when the CME session
+// rolls over, but previously left active InternalLockEvent rows untouched
+// (clearedAt=null), so a finished session's lock kept blocking account removal,
+// the dashboard banner, and broker enforcement until a manual reset.
+//
+// Fix: in the isStale branch, clear active locks via updateMany — mirroring the
+// manual-reset route — with clearedBy="session_end" and activeDedupKey=null.
+// ---------------------------------------------------------------------------
+
+describe("syncTradovateAccount — session rollover clears active InternalLockEvent (C4)", () => {
+  const syncSrc = readSrc("src/lib/brokers/tradovate-sync.ts");
+
+  function codeOnly(): string {
+    let s = syncSrc;
+    s = s.replace(/\/\*[\s\S]*?\*\//g, "");
+    s = s.replace(/(^|[^:])\/\/.*$/gm, "$1");
+    return s;
+  }
+
+  // Narrow the scan to the cleanup statement so assertions about its fields
+  // can't accidentally match unrelated code elsewhere in the sync file.
+  function cleanupBlock(): string {
+    const code = codeOnly();
+    const idx = code.indexOf("internalLockEvent.updateMany");
+    assert.ok(idx > -1, "sync must contain an internalLockEvent.updateMany cleanup call");
+    return code.slice(idx, idx + 400);
+  }
+
+  it("1. isStale rollover clears active InternalLockEvent via updateMany", () => {
+    const code = codeOnly();
+    const isStaleIdx = code.indexOf("if (isStale)");
+    const updateManyIdx = code.indexOf("internalLockEvent.updateMany");
+    assert.ok(isStaleIdx > -1, "sync must have an `if (isStale)` cleanup guard");
+    assert.ok(updateManyIdx > -1, "sync must call internalLockEvent.updateMany");
+    assert.ok(
+      updateManyIdx > isStaleIdx && updateManyIdx - isStaleIdx < 300,
+      "the updateMany cleanup must live inside the isStale rollover branch",
+    );
+  });
+
+  it("1b. cleanup targets only this account's active locks (accountId + clearedAt: null)", () => {
+    const block = cleanupBlock();
+    assert.ok(block.includes("accountId"), "cleanup must filter where accountId matches");
+    assert.ok(block.includes("clearedAt: null"), "cleanup must only touch active locks (clearedAt IS NULL)");
+  });
+
+  it("2. cleanup sets clearedBy = \"session_end\"", () => {
+    assert.ok(
+      cleanupBlock().includes('clearedBy: "session_end"'),
+      'rollover cleanup must stamp clearedBy="session_end" to distinguish it from manual_reset',
+    );
+  });
+
+  it("2b. cleanup stamps clearedAt so the lock is no longer active", () => {
+    assert.ok(
+      cleanupBlock().includes("clearedAt: now"),
+      "rollover cleanup must set clearedAt=now so the lock reads as cleared",
+    );
+  });
+
+  it("3. cleanup nulls activeDedupKey so the slot can be reused next session", () => {
+    assert.ok(
+      cleanupBlock().includes("activeDedupKey: null"),
+      "rollover cleanup must set activeDedupKey=null to free the dedup slot",
+    );
+  });
+
+  it("4. cleanup does not clear already-cleared locks (no overwrite of clearedAt non-null)", () => {
+    const block = cleanupBlock();
+    // The where-clause guards on clearedAt: null, so rows already cleared are
+    // excluded. Assert the filter is present and the call is updateMany (not a
+    // blanket update that would re-stamp every row).
+    assert.ok(block.includes("clearedAt: null"), "cleanup must scope to active locks only");
+    assert.ok(
+      block.includes("updateMany"),
+      "cleanup must use updateMany with the clearedAt: null filter, never a per-id update that ignores cleared state",
+    );
+  });
+
+  it("5. cleanup adds no broker writes — no flatten/cancel/order/risk API in the isStale branch", () => {
+    const block = cleanupBlock();
+    for (const banned of [
+      "applyFlatten",
+      "flattenOpenPositions",
+      "cancelOrder",
+      "placeOrder",
+      "userAccountAutoLiq",
+      "applyBrokerDayLockout",
+      "triggerEnforcement",
+    ]) {
+      assert.ok(
+        !block.includes(banned),
+        `session-rollover cleanup must not perform broker side-effects (${banned} found)`,
       );
     }
   });
