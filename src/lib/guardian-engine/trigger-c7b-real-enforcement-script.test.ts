@@ -90,6 +90,14 @@ describe("trigger-c7b script — uses the service method, not direct Tradovate c
     );
   });
 
+  it("requires the account env to be demo (fails closed otherwise)", () => {
+    const code = codeOnly(src);
+    assert.ok(
+      /env\s*!==\s*["']demo["']/.test(code),
+      "must fail closed when account env is not 'demo'",
+    );
+  });
+
   it("requires the exact expected account id (cmottd1z200020do1knjxq582)", () => {
     const code = codeOnly(src);
     assert.ok(
