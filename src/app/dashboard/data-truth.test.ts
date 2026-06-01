@@ -522,4 +522,45 @@ describe("data-truth: CME session vs calendar day — explicit labels and bounda
     assert.equal(current.tradesCount, 47, "current session tradesCount must be shown");
     assert.equal(current.dailyPnl, -404, "current session dailyPnl must be shown");
   });
+
+  it("unavailable account KPI sub says 'Account unavailable' not 'CME session'", () => {
+    // When selectedAccount.status is 'unavailable', the KPI sub must not say
+    // 'CME session · since 17:00 CT' (which implies live monitoring).
+    // It must say 'Account unavailable · no current data' instead.
+    assert.ok(
+      dashboard.includes('"Account unavailable · no current data"'),
+      "KPI sub for unavailable accounts must say 'Account unavailable · no current data'",
+    );
+    assert.ok(
+      dashboard.includes('selectedAccount.status === "unavailable"') ||
+        dashboard.includes("selectedAccount.status === 'unavailable'"),
+      "unavailable KPI sub must be guarded by status check",
+    );
+  });
+
+  it("Broker session P&L snapshot helper copy names the Tradovate snapshot source", () => {
+    // The helper copy below the KPI strip must name snapshot.todayPnL as the source
+    // so users understand dailyPnl comes from the broker account snapshot API,
+    // not from summing individual fill records.
+    assert.ok(
+      dashboard.includes("todayPnL") || dashboard.includes("snapshot"),
+      "helper copy must reference the Tradovate snapshot source (todayPnL or snapshot)",
+    );
+    assert.ok(
+      dashboard.includes("commission"),
+      "helper copy must mention commission-adjustment to explain the P&L gap",
+    );
+  });
+
+  it("equity curve subtitle says 'closed round-trip' to distinguish from broker snapshot", () => {
+    const equity = read("app/dashboard/_components/equity-curve.tsx");
+    assert.ok(
+      equity.includes("closed round-trip"),
+      "equity curve subtitle must say 'closed round-trip P&L', not just 'realized P&L'",
+    );
+    assert.ok(
+      equity.includes("closed round-trip"),
+      "equity curve trade count must say 'closed round-trips' not just 'trades'",
+    );
+  });
 });

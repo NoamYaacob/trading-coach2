@@ -745,13 +745,21 @@ export default async function DashboardPage({
                     {
                       label: "Balance",
                       value: selectedAccount.balance != null ? `$${selectedAccount.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—",
-                      sub: selectedAccount.dailyPnl != null ? `${fmt$(selectedAccount.dailyPnl)} broker session` : "No sync yet",
+                      sub: selectedAccount.dailyPnl != null
+                        ? `${fmt$(selectedAccount.dailyPnl)} broker session`
+                        : (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected")
+                          ? "Account unavailable"
+                          : "No sync yet",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
                       label: "Broker session P&L snapshot",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade count` : "CME session · since 17:00 CT",
+                      sub: selectedAccount.tradesCount != null
+                        ? `${selectedAccount.tradesCount} broker-session trade count`
+                        : (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected")
+                          ? "Account unavailable · no current data"
+                          : "CME session · since 17:00 CT",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },
@@ -809,9 +817,9 @@ export default async function DashboardPage({
               <div style={{ padding: "0 36px 12px" }}>
                 <p style={{ margin: 0, fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.6 }}>
                   <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
-                  {" "}is Tradovate&rsquo;s running total for the CME session (17:00&thinsp;CT reset), accumulated from fill events with commission adjustments.{" "}
+                  {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
                   <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
-                  {" "}is FIFO-reconstructed from trade history — each lot closure is one round-trip, and fills without broker P&L are price-computed (no commissions). The two can differ when some fills carry no broker P&L or when partial exits split a single position cycle.
+                  {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
                 </p>
               </div>
             )}
