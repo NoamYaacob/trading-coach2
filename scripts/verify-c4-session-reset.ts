@@ -2,28 +2,30 @@
 /**
  * C4 Session-Reset Behavior Verification — READ ONLY, zero writes.
  *
- * Verifies what happens to InternalLockEvent rows when the CME trading session
- * rolls over (17:00 CT) and a subsequent sync marks LiveSessionState as "stale"
- * (sessionDate < new tradingDayKey) and resets riskState to NORMAL.
+ * Verifies the FIXED session-reset behavior: when the CME trading session rolls
+ * over (17:00 CT) and a subsequent sync marks LiveSessionState as "stale"
+ * (sessionDate !== new tradingDayKey), the isStale branch in tradovate-sync.ts
+ * must clear active InternalLockEvent rows (clearedBy="session_end") alongside
+ * the riskState/dailyPnl reset — so a finished session's lock no longer blocks
+ * account removal, the dashboard banner, or broker enforcement.
  *
- * The question: does the session rollover also clear active InternalLockEvent
- * rows (set clearedAt), or do they remain active (clearedAt = null) even after
- * the session that created them has ended?
- *
- * IMPORTANT: This script is read-only. It uses findFirst / findMany / $disconnect
- * only. No update / upsert / delete / create. No broker calls. No state changes.
+ * IMPORTANT: This script is read-only. It uses findFirst / findMany / count /
+ * $disconnect only. No update / upsert / delete / create. No broker calls.
  *
  * Checks:
  *   A.  Find DEMO7433035 account (or any account with active InternalLockEvent)
  *   B.  Retrieve LiveSessionState: sessionDate vs current CME day key
  *   C.  Retrieve ALL InternalLockEvent rows for the account (active + cleared)
- *   D.  GAP CHECK: any InternalLockEvent with clearedAt=null AND tradingDay < current
- *       CME session key? This means the lock survived a session rollover uncleaned.
+ *   D.  REGRESSION CHECK: a lock with clearedAt=null AND tradingDay < current CME
+ *       key is a failure only when the session has ALREADY rolled (sessionDate =
+ *       current key) — meaning the isStale cleanup ran but left the lock active.
+ *       When the session itself is still stale, the lock is a transient that the
+ *       next rollover sync will clear.
  *   E.  Removal guard simulation: what would decideRemovalEligibility return?
  *       (mirrors account-removal-guard.ts logic, read-only)
- *   F.  Code-scan confirmation: verify no code path in the isStale branch clears
- *       InternalLockEvent — confirm the gap is structural, not a runtime miss
- *   G.  Report whether clearedBy="session_end" is ever written in production data
+ *   F.  Code-scan: confirm the isStale branch clears InternalLockEvent via
+ *       updateMany {clearedAt:null} → clearedBy="session_end", activeDedupKey=null
+ *   G.  Report counts of clearedBy="session_end" vs "manual_reset" in DB
  */
 
 import * as fs from "fs";
@@ -202,20 +204,29 @@ async function run(): Promise<void> {
   const staleActiveLocks = activeLocks.filter((l) => l.tradingDay < cmeTradingDayKey);
   const hasGap = staleActiveLocks.length > 0;
 
+  // Post-fix semantics: a stale active lock is only a genuine regression when
+  // the session has ALREADY rolled (sessionDate = current CME key) yet the lock
+  // survived — the isStale cleanup should have cleared it on that sync. When the
+  // session itself is still stale, no sync has run since rollover; the next sync
+  // will clear both together, so a transient stale lock is expected, not a bug.
+  const sessionAlreadyRolled = sessionState?.sessionDate === cmeTradingDayKey;
+  const regressionLeak = hasGap && sessionAlreadyRolled;
+
   results.push({
-    label: "D. GAP: active locks from prior CME sessions",
-    pass: !hasGap, // PASS = no stale locks (gap not triggered); FAIL = gap confirmed
-    detail: hasGap
-      ? `STALE ACTIVE LOCKS FOUND: ${staleActiveLocks.map((l) => `[${l.id}] ruleType=${l.ruleType} tradingDay=${l.tradingDay}`).join("; ")}. These were never cleared by session rollover.`
-      : activeLocks.length === 0
-        ? "No active locks — gap not observable (no locks exist yet)"
-        : `All ${activeLocks.length} active lock(s) have tradingDay=${activeLocks[0].tradingDay} matching current CME key=${cmeTradingDayKey}`,
+    label: "D. Stale active locks survived a completed rollover",
+    pass: !regressionLeak, // FAIL only when session rolled but a prior-session lock remains active
+    detail: regressionLeak
+      ? `REGRESSION: session already rolled to ${cmeTradingDayKey} but active lock(s) from a prior session survived: ${staleActiveLocks.map((l) => `[${l.id}] ruleType=${l.ruleType} tradingDay=${l.tradingDay}`).join("; ")}. The isStale cleanup did not fire.`
+      : hasGap
+        ? `Transient: stale active lock(s) exist (${staleActiveLocks.map((l) => l.tradingDay).join(",")}) but the session is also stale (sessionDate=${sessionState?.sessionDate}). The next sync's isStale cleanup will clear them.`
+        : activeLocks.length === 0
+          ? "No active locks — nothing to clear"
+          : `All ${activeLocks.length} active lock(s) carry tradingDay=${activeLocks[0].tradingDay} matching current CME key=${cmeTradingDayKey}`,
   });
 
-  if (hasGap) {
-    console.log("  !! STRUCTURAL GAP CONFIRMED: active InternalLockEvent rows survived session rollover");
-    console.log(`     tradovate-sync.ts isStale branch resets LiveSessionState but does NOT clear InternalLockEvent`);
-    console.log(`     clearedBy="session_end" is referenced in schema but NEVER written by any code path`);
+  if (regressionLeak) {
+    console.log("  !! REGRESSION: active InternalLockEvent rows survived a COMPLETED session rollover");
+    console.log("     The isStale cleanup in tradovate-sync.ts should have cleared these.");
     console.log();
   }
 
@@ -262,39 +273,37 @@ async function run(): Promise<void> {
     detail: `canRemoveNow=${canRemoveNow} lockReason=${lockReason ?? "null"} nextTradingDay=${nextTradingDay} — ${removalGuardExpected}`,
   });
 
-  // ── F. Code-scan: isStale branch clears InternalLockEvent? ───────────────
+  // ── F. Code-scan: isStale branch clears InternalLockEvent (FIX VERIFY) ───
+  // After the C4 fix, the isStale rollover branch in tradovate-sync.ts MUST
+  // clear active locks via updateMany with clearedBy="session_end". This check
+  // PASSES when the fix is present and FAILS if it has regressed.
   const syncPath = path.resolve(process.cwd(), "src/lib/brokers/tradovate-sync.ts");
   const syncSource = fs.readFileSync(syncPath, "utf-8");
 
-  // Find the isStale block and check for any InternalLockEvent mutation near it
-  const isStaleIdx = syncSource.indexOf("isStale ? false : nextPendingSessionEndLock");
-  const isStaleWindow = isStaleIdx >= 0 ? syncSource.slice(Math.max(0, isStaleIdx - 100), isStaleIdx + 500) : "";
-  const isStaleWindowHasClear = isStaleWindow.includes("internalLockEvent") && isStaleWindow.includes("clearedAt");
+  // Strip comments so we assert on real code, not the explanatory comment.
+  const syncCode = syncSource
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-  // Confirm there is no session_end clearedBy write anywhere in production code
-  const hasSessionEndClear = syncSource.includes('clearedBy: "session_end"') || syncSource.includes("clearedBy: 'session_end'");
-  const hasAnySessionEndClear = (() => {
-    const allSrcFiles = [
-      "src/lib/brokers/tradovate-sync.ts",
-      "src/lib/guardian-engine/internal-lock-evaluator-db.ts",
-      "src/lib/pending-rule-promoter.ts",
-    ];
-    return allSrcFiles.some((f) => {
-      try {
-        const src = fs.readFileSync(path.resolve(process.cwd(), f), "utf-8");
-        return src.includes('clearedBy: "session_end"') || src.includes("clearedBy: 'session_end'");
-      } catch {
-        return false;
-      }
-    });
-  })();
+  const isStaleGuardIdx = syncCode.indexOf("if (isStale)");
+  const updateManyIdx = syncCode.indexOf("internalLockEvent.updateMany");
+  const cleanupBlock =
+    updateManyIdx >= 0 ? syncCode.slice(updateManyIdx, updateManyIdx + 400) : "";
+
+  const fixPresent =
+    isStaleGuardIdx >= 0 &&
+    updateManyIdx > isStaleGuardIdx &&
+    updateManyIdx - isStaleGuardIdx < 300 &&
+    cleanupBlock.includes("clearedAt: null") &&
+    cleanupBlock.includes('clearedBy: "session_end"') &&
+    cleanupBlock.includes("activeDedupKey: null");
 
   results.push({
-    label: "F. Code scan: isStale branch clears InternalLockEvent",
-    pass: false, // always false — this is the gap
-    detail: isStaleWindowHasClear
-      ? "UNEXPECTED: isStale branch appears to reference internalLockEvent clearedAt — re-check manually"
-      : `isStale branch does NOT clear InternalLockEvent. clearedBy="session_end" written by any production file: ${hasAnySessionEndClear}. Gap is structural.`,
+    label: "F. Code scan: isStale branch clears InternalLockEvent (C4 fix)",
+    pass: fixPresent,
+    detail: fixPresent
+      ? 'isStale branch clears active locks via internalLockEvent.updateMany {clearedAt:null} → clearedBy="session_end", activeDedupKey=null. Fix present.'
+      : "REGRESSION: isStale branch does not clear InternalLockEvent with the expected fields. The C4 fix is missing.",
   });
 
   // ── G. Any session_end clears in DB? ─────────────────────────────────────
@@ -307,8 +316,8 @@ async function run(): Promise<void> {
 
   results.push({
     label: "G. DB: InternalLockEvent rows cleared by session_end",
-    pass: sessionEndClearedCount >= 0, // informational
-    detail: `clearedBy="session_end": ${sessionEndClearedCount}, clearedBy="manual_reset": ${manualResetClearedCount} — "session_end" path has never fired for this account`,
+    pass: null, // informational
+    detail: `clearedBy="session_end": ${sessionEndClearedCount}, clearedBy="manual_reset": ${manualResetClearedCount}${sessionEndClearedCount > 0 ? " — session_end cleanup has fired (fix observed in production data)" : " — no session_end clears yet (cleanup fires on the next rollover sync)"}`,
   });
 
   // ── Summary ───────────────────────────────────────────────────────────────
@@ -329,43 +338,46 @@ async function run(): Promise<void> {
   console.log(`  PASS: ${pass}  FAIL: ${fail}`);
   console.log();
 
-  if (hasGap && staleActiveLocks.length > 0) {
-    console.log("── C4 GAP CONFIRMED ──────────────────────────────────────────────────");
+  // Overall verdict reflects the FIXED behavior. The C4 fix is correct when:
+  //   - the code scan (F) shows the isStale cleanup is present, AND
+  //   - no lock survived a completed rollover (D regression not triggered).
+  const fixOk = fixPresent && !regressionLeak;
+
+  if (regressionLeak) {
+    console.log("── C4 REGRESSION ─────────────────────────────────────────────────────");
     console.log();
-    console.log("  The tradovate-sync.ts isStale branch resets LiveSessionState on session");
-    console.log("  rollover (riskState→NORMAL, dailyPnl→0, sessionDate→newKey) but does");
-    console.log("  NOT clear InternalLockEvent rows. clearedBy='session_end' is defined");
-    console.log("  in the schema but no code path ever writes it.");
+    console.log("  The session has rolled over but an active InternalLockEvent from a");
+    console.log("  prior session survived. The isStale cleanup in tradovate-sync.ts did");
+    console.log("  not clear it. Investigate whether the cleanup branch ran on the");
+    console.log("  rollover sync (check Railway logs and the lock's clearedBy/clearedAt).");
     console.log();
-    console.log("  Impact:");
-    console.log("    - Removal guard: blocks account removal after session reset (correct");
-    console.log("      protection intent, but stuck without manual reset)");
-    console.log("    - Dashboard: 'Guardrail internal lock active' banner persists past session");
-    console.log("    - Broker enforcement: stale lock still eligible for enforcement action");
+    console.log("  Overall: C4 FAIL (regression — stale lock survived a completed rollover)");
+  } else if (!fixPresent) {
+    console.log("── C4 FIX MISSING ────────────────────────────────────────────────────");
     console.log();
-    console.log("  Fix scope (not applied here — read-only):");
-    console.log("    File: src/lib/brokers/tradovate-sync.ts");
-    console.log("    In the isStale branch (after liveSessionState.update), add:");
-    console.log("      prisma.internalLockEvent.updateMany({");
-    console.log("        where: { accountId, clearedAt: null },");
-    console.log("        data: { clearedAt: now, clearedBy: 'session_end',");
-    console.log("                updatedAt: now, activeDedupKey: null },");
-    console.log("      })");
-    console.log("    This mirrors the manual-reset route pattern exactly.");
-    console.log("    Timing: same CME 17:00 CT boundary that resets riskState.");
+    console.log("  The isStale branch in tradovate-sync.ts does not clear active");
+    console.log("  InternalLockEvent rows with the expected fields (clearedAt: null →");
+    console.log('   clearedBy="session_end", activeDedupKey=null). The C4 fix has');
+    console.log("  regressed or was reverted.");
     console.log();
-    console.log("  Overall: C4 FAIL (gap confirmed, fix required)");
-  } else if (activeLocks.length === 0) {
-    console.log("  Note: No active InternalLockEvent rows exist for this account.");
-    console.log("  The C4 gap cannot be observed from current DB state.");
-    console.log("  Code-scan (Check F) confirms the gap is structural regardless.");
+    console.log("  Overall: C4 FAIL (fix not present in source)");
+  } else if (hasGap) {
+    console.log("── C4 FIX PRESENT — transient stale lock pending next sync ────────────");
     console.log();
-    console.log("  Overall: C4 STRUCTURAL GAP (confirmed by code scan, not yet triggered)");
+    console.log("  The isStale cleanup is present in source. A stale active lock exists");
+    console.log("  but the session itself has not yet rolled in the DB (no sync since");
+    console.log("  17:00 CT). The next sync's isStale branch will clear it together with");
+    console.log("  the LiveSessionState reset.");
+    console.log();
+    console.log("  Overall: C4 PASS (fix in place; transient lock clears on next sync)");
   } else {
-    console.log("  Active locks exist but all match the current CME session key.");
-    console.log("  Code-scan (Check F) confirms the gap is structural.");
+    console.log("── C4 FIX VERIFIED ───────────────────────────────────────────────────");
     console.log();
-    console.log("  Overall: C4 STRUCTURAL GAP (confirmed by code scan, gap not yet triggered)");
+    console.log("  The isStale branch clears active InternalLockEvent rows on session");
+    console.log('  rollover (clearedBy="session_end", activeDedupKey=null), mirroring the');
+    console.log("  manual-reset route. No active lock survived a completed rollover.");
+    console.log();
+    console.log(`  Overall: C4 ${fixOk ? "PASS" : "FAIL"} (session-reset cleanup working)`);
   }
   console.log("═".repeat(70));
 
