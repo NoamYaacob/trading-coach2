@@ -36,7 +36,17 @@ import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "../src/
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
-const TARGET_ACCOUNT_EXTERNAL_ID = "DEMO7433035";
+// The DEMO7433035 demo account. In production:
+//   ConnectedAccount.label             = "DEMO7433035"  (human display name)
+//   ConnectedAccount.externalAccountId = "47669364"     (Tradovate tvAccountId)
+//   ConnectedAccount.id                = "cmottd1z200020do1knjxq582"
+// We resolve robustly by label OR displayName OR externalAccountId so the script
+// works whether the broker stores the friendly name or the numeric tvAccountId.
+const TARGET_ACCOUNT_LABEL = "DEMO7433035";
+const TARGET_EXTERNAL_ACCOUNT_ID = "47669364";
+
+// What we print as the target (the human-readable account name).
+const TARGET_DISPLAY = TARGET_ACCOUNT_LABEL;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,19 +87,31 @@ async function main(): Promise<void> {
   const sessionStart = deriveCmeTradingDaySessionStart(now);
 
   console.log(`\n=== C1 Internal-Lock Verification ===`);
-  console.log(`Target account : ${TARGET_ACCOUNT_EXTERNAL_ID}`);
+  console.log(`Target account : ${TARGET_DISPLAY}`);
+  console.log(`Resolving by   : label="${TARGET_ACCOUNT_LABEL}" OR externalAccountId="${TARGET_EXTERNAL_ACCOUNT_ID}"`);
   console.log(`CME trading day: ${todayKey}`);
   console.log(`Session start  : ${sessionStart.toISOString()}`);
   console.log(`Now            : ${now.toISOString()}`);
   console.log(`────────────────────────────────────\n`);
 
   // ── A. Find account ────────────────────────────────────────────────────────
-
+  //
+  // Resolve robustly: the broker may store the friendly name ("DEMO7433035")
+  // as label/displayName, or the numeric Tradovate tvAccountId ("47669364") as
+  // externalAccountId. Match any of them.
   const account = await prisma.connectedAccount.findFirst({
-    where: { externalAccountId: TARGET_ACCOUNT_EXTERNAL_ID },
+    where: {
+      OR: [
+        { label: TARGET_ACCOUNT_LABEL },
+        { displayName: TARGET_ACCOUNT_LABEL },
+        { externalAccountId: TARGET_EXTERNAL_ACCOUNT_ID },
+        { externalAccountId: TARGET_ACCOUNT_LABEL },
+      ],
+    },
     select: {
       id: true,
       label: true,
+      displayName: true,
       externalAccountId: true,
       isActive: true,
       protectionStatus: true,
@@ -115,9 +137,9 @@ async function main(): Promise<void> {
     record(
       "A. Account exists",
       "FAIL",
-      TARGET_ACCOUNT_EXTERNAL_ID,
+      `label="${TARGET_ACCOUNT_LABEL}" or externalAccountId="${TARGET_EXTERNAL_ACCOUNT_ID}"`,
       "NOT FOUND",
-      "No ConnectedAccount row with this externalAccountId — cannot verify anything further.",
+      "No ConnectedAccount row matched by label/displayName/externalAccountId — cannot verify anything further.",
     );
     printReport();
     return;
@@ -126,9 +148,11 @@ async function main(): Promise<void> {
   record(
     "A. Account exists",
     "PASS",
-    `externalAccountId = ${TARGET_ACCOUNT_EXTERNAL_ID}`,
-    `id = ${account.id}, label = ${account.label}`,
-    `isActive = ${account.isActive}, protectionStatus = ${account.protectionStatus}`,
+    `label="${TARGET_ACCOUNT_LABEL}" / externalAccountId="${TARGET_EXTERNAL_ACCOUNT_ID}"`,
+    `id = ${account.id}, label = ${account.label}, externalAccountId = ${account.externalAccountId ?? "null"}`,
+    `matched externalAccountId=${account.externalAccountId ?? "null"}; ` +
+      `displayName=${account.displayName ?? "null"}, isActive=${account.isActive}, ` +
+      `protectionStatus=${account.protectionStatus}`,
   );
 
   if (!account.isActive) {
