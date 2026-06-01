@@ -646,7 +646,7 @@ export default async function DashboardPage({
                                 : acc.status === "locked"
                                 ? "Session locked"
                                 : acc.tradesCount != null
-                                ? `${acc.tradesCount} trade${acc.tradesCount !== 1 ? "s" : ""} today`
+                                ? `${acc.tradesCount} trade${acc.tradesCount !== 1 ? "s" : ""} this session`
                                 : "Monitoring"}
                             </span>
                           </div>
@@ -745,7 +745,7 @@ export default async function DashboardPage({
                     {
                       label: "Balance",
                       value: selectedAccount.balance != null ? `$${selectedAccount.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—",
-                      sub: selectedAccount.dailyPnl != null ? `${fmt$(selectedAccount.dailyPnl)} today` : "No sync yet",
+                      sub: selectedAccount.dailyPnl != null ? `${fmt$(selectedAccount.dailyPnl)} broker session` : "No sync yet",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
