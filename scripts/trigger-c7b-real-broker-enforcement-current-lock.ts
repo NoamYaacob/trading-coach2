@@ -30,7 +30,12 @@
  *   8. ruleType = daily_loss_limit
  *   9. Existing dedup-key GuardianIntervention has brokerLockStatus = dry_run
  *  10. No dedup-key GuardianIntervention with brokerLockStatus = broker_locked
- *  11. No real (outcome=success) BrokerRiskSettingsSyncAudit for this account/rule
+ *
+ * Note: BrokerRiskSettingsSyncAudit outcome=success rows are written by the
+ * rule-save path (applyDailyLossRiskSettingToTradovate), NOT by the listener
+ * enforcement path. At-most-once enforcement is guaranteed by preconditions 9–10
+ * (the broker_locked tri-state check). Historical success audits from rule-saves
+ * must not block same-day real enforcement.
  */
 
 import { resolve } from "path";
@@ -246,20 +251,8 @@ async function run(): Promise<void> {
     );
   }
 
-  // ── Precondition 11: no real success audit already for this account/rule ─────
-  const realSuccessAudits = await prisma.brokerRiskSettingsSyncAudit.count({
-    where: { accountId: account.id, ruleType: "daily_loss_limit", outcome: "success" },
-  });
-  if (realSuccessAudits > 0) {
-    await failClosed(
-      `${realSuccessAudits} BrokerRiskSettingsSyncAudit row(s) with outcome=success already exist ` +
-        "for this account/rule. Real enforcement may have already completed. " +
-        "Inspect the audit table before proceeding.",
-    );
-  }
-
   console.log(`  Prior dry-run intervention: id=${existingIntervention.id} brokerLockStatus=dry_run ✓`);
-  console.log("  No broker_locked intervention ✓   No real success audit ✓");
+  console.log("  No broker_locked intervention ✓");
   console.log();
 
   // ── Before snapshot ─────────────────────────────────────────────────────────
