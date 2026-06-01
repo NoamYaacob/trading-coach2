@@ -345,3 +345,109 @@ export async function applyInternalLockForConnection(connectionId: string): Prom
 
   return results;
 }
+
+// ── Sync-path InternalLockEvent creation — daily_loss_limit ──────────────────
+
+export type DailyLossLimitLockInput = {
+  accountId: string;
+  userId: string;
+  /** "demo" | "live" — only demo accounts get an InternalLockEvent from the sync path. */
+  env: string;
+  /** YYYY-MM-DD trading day key (CME session date in CT). */
+  tradingDay: string;
+  /** Effective daily-loss limit that was breached (null if unconfigured). */
+  thresholdAmount: number | null;
+  /** Observed loss amount (abs of dailyPnl) at the moment of breach. */
+  observedAmount: number | null;
+};
+
+export type DailyLossLimitLockResult = {
+  internalLockEventId: string | null;
+  skipReason: string | null;
+  createdOrUpdated: boolean;
+};
+
+/**
+ * Upsert an InternalLockEvent for a daily_loss_limit breach detected by the
+ * sync path. Demo-only and feature-flagged.
+ *
+ * Background:
+ *   syncTradovateAccount evaluates daily_loss_limit independently (via lossPct)
+ *   and sets riskState=STOPPED + creates a GuardianIntervention audit record.
+ *   It did not create an InternalLockEvent, relying on the listener's
+ *   onPropsEvent → applyInternalLockForConnection to do so. When the sync fires
+ *   but no subsequent WebSocket props event arrives (listener not connected, or
+ *   GUARDRAIL_INTERNAL_LOCK_ENABLED off in the listener process), no
+ *   InternalLockEvent is ever written — breaking the C1 test and the broker
+ *   enforcement chain. This function fills that gap from the sync path, using
+ *   the same pattern as applyInternalLockForMaxPositionSize.
+ *
+ * Writes:
+ *   - InternalLockEvent row (ruleType="daily_loss_limit", internalOnly=true,
+ *     brokerActionTaken=false)
+ *
+ * Never writes:
+ *   - LiveSessionState.riskState (the sync path sets STOPPED separately)
+ *   - GuardianIntervention (the sync path creates the audit record)
+ *   - Broker risk settings, orders, flatten requests, or any Tradovate API call
+ */
+export async function applyInternalLockForDailyLossLimit(
+  input: DailyLossLimitLockInput,
+): Promise<DailyLossLimitLockResult> {
+  if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED !== "true") {
+    return {
+      internalLockEventId: null,
+      skipReason: "GUARDRAIL_INTERNAL_LOCK_ENABLED is not 'true'",
+      createdOrUpdated: false,
+    };
+  }
+  if (input.env !== "demo") {
+    return {
+      internalLockEventId: null,
+      skipReason: `env="${input.env}" (must be demo)`,
+      createdOrUpdated: false,
+    };
+  }
+
+  const activeDedupKey = buildInternalLockDedupKey(
+    input.accountId,
+    "daily_loss_limit",
+    input.tradingDay,
+  );
+
+  console.info("[guardian] applying daily_loss_limit internal lock via sync path — demo only, no broker action", {
+    accountId: input.accountId,
+    tradingDay: input.tradingDay,
+    activeDedupKey,
+    thresholdAmount: input.thresholdAmount,
+    observedAmount: input.observedAmount,
+  });
+
+  const lockEvent = await prisma.internalLockEvent.upsert({
+    where: { activeDedupKey },
+    create: {
+      accountId: input.accountId,
+      userId: input.userId,
+      ruleType: "daily_loss_limit",
+      tradingDay: input.tradingDay,
+      thresholdAmount: input.thresholdAmount,
+      thresholdCount: null,
+      observedAmount: input.observedAmount,
+      observedCount: null,
+      internalOnly: true,
+      brokerActionTaken: false,
+      activeDedupKey,
+      updatedAt: new Date(),
+    },
+    update: {
+      observedAmount: input.observedAmount,
+      updatedAt: new Date(),
+    },
+  });
+
+  return {
+    internalLockEventId: lockEvent.id,
+    skipReason: null,
+    createdOrUpdated: true,
+  };
+}
