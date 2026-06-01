@@ -125,6 +125,20 @@ describe("trigger-c7b script — uses the service method, not direct Tradovate c
     assert.ok(src2.includes("brokerActionTaken"), "must snapshot brokerActionTaken");
   });
 
+  it("does NOT fail-closed on historical BrokerRiskSettingsSyncAudit outcome=success rows", () => {
+    // outcome=success is written by the rule-save path, not the listener/C7B enforcement
+    // path. At-most-once enforcement is guaranteed by the broker_locked tri-state check
+    // (preconditions 9-10). A broad success-audit block trips on unrelated historical rows.
+    const code = codeOnly(src);
+    // The fail-closed check on realSuccessAudits must not be present.
+    assert.ok(
+      !code.includes("realSuccessAudits > 0"),
+      "must not fail-closed on any success audit count — historical rule-save rows must not block",
+    );
+    // The informational snapshot query for realSuccessAudits may remain (for display only).
+    // The broker_locked tri-state is the correct at-most-once gate (already tested above).
+  });
+
   it("never sets any env flag — only reads them", () => {
     const code = codeOnly(src);
     assert.ok(
