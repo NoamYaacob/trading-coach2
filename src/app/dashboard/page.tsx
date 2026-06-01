@@ -744,9 +744,9 @@ export default async function DashboardPage({
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
-                      label: "Today P&L",
+                      label: "Today P&L · session",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} trade${selectedAccount.tradesCount !== 1 ? "s" : ""} · session` : "Broker session",
+                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade${selectedAccount.tradesCount !== 1 ? "s" : ""}` : "Broker session P&L",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },

@@ -490,11 +490,11 @@ export function evaluateRules(input: RuleEngineInput): RuleResult[] {
       ruleId: "session_not_started",
       ruleType: "session_not_started",
       status: "warning",
-      reason: "Trading session has not been started for today.",
-      message: "The daily session has not been started.",
+      reason: "Guardian protection session has not been started for today.",
+      message: "The Guardian protection session has not been started. This does not affect broker trading — start the session to enable Guardrail monitoring.",
       severity: "low",
       timestamp: now,
-      recommendedAction: "Start the session before trading.",
+      recommendedAction: "Start the Guardian session to enable rule monitoring.",
     });
   } else {
     results.push({
