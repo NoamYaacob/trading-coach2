@@ -29,56 +29,27 @@
  */
 
 import * as fs from "fs";
-import * as path from "path";
+import { resolve } from "path";
 
 import { config } from "dotenv";
-import { PrismaClient } from "@prisma/client";
+config({ path: resolve(process.cwd(), ".env.local") });
 
-config({ path: path.resolve(process.cwd(), ".env.local") });
-
-const prisma = new PrismaClient({ log: ["error"] });
+// Use the project's configured Prisma client (Prisma v7 + adapter in db.ts) and
+// the canonical trading-day helpers — matching verify-c1 / verify-c2c3. A bare
+// `new PrismaClient()` fails under Prisma v7 ("requires adapter or accelerateUrl").
+import { prisma } from "../src/lib/db.ts";
+import { deriveCmeTradingDayKey, SESSION_WINDOW_TIMEZONE } from "../src/lib/trading-day.ts";
+import { dateKeyInTimezone } from "../src/lib/account-protection.ts";
 
 const TARGET_LABEL = "DEMO7433035";
 const TARGET_EXTERNAL_ID = "47669364";
-
-// ── CME trading day key (rolls at 17:00 CT) ──────────────────────────────────
-// Mirrors src/lib/trading-day.ts deriveCmeTradingDayKey logic.
-function deriveCmeTradingDayKeySimple(now: Date): string {
-  // Convert to America/Chicago and check if hour >= 17
-  const ctStr = now.toLocaleString("en-US", { timeZone: "America/Chicago", hour12: false });
-  const ctDate = new Date(ctStr + " UTC");
-  // Extract hour from Chicago time
-  const chicagoHour = parseInt(
-    now.toLocaleString("en-US", {
-      timeZone: "America/Chicago",
-      hour: "2-digit",
-      hour12: false,
-    }),
-    10,
-  );
-
-  // If hour >= 17, the CME session key is for today's CT date (the new session started)
-  // If hour < 17, the CME session key is for yesterday's CT date (still in previous session)
-  const ctDateStr = now.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-  if (chicagoHour >= 17) {
-    return ctDateStr;
-  }
-  // Before 17:00 CT: subtract 1 day
-  const d = new Date(ctStr);
-  d.setDate(d.getDate() - 1);
-  return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-}
-
-function ctCalendarKey(now: Date): string {
-  return now.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-}
 
 type CheckResult = { label: string; pass: boolean | null; detail: string };
 
 async function run(): Promise<void> {
   const now = new Date();
-  const cmeTradingDayKey = deriveCmeTradingDayKeySimple(now);
-  const todayCtKey = ctCalendarKey(now);
+  const cmeTradingDayKey = deriveCmeTradingDayKey(now);
+  const todayCtKey = dateKeyInTimezone(now, SESSION_WINDOW_TIMEZONE);
   const results: CheckResult[] = [];
 
   console.log("=".repeat(70));
@@ -233,7 +204,7 @@ async function run(): Promise<void> {
   // ── E. Removal guard simulation ───────────────────────────────────────────
   // Mirror decideRemovalEligibility logic from account-removal-eligibility.ts
   const tomorrowApprox = new Date(now.getTime() + 24 * 60 * 60_000);
-  const nextTradingDay = tomorrowApprox.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const nextTradingDay = dateKeyInTimezone(tomorrowApprox, SESSION_WINDOW_TIMEZONE);
 
   const activeLock = activeLocks[0] ?? null;
   let lockReason: string | null = null;
@@ -277,7 +248,7 @@ async function run(): Promise<void> {
   // After the C4 fix, the isStale rollover branch in tradovate-sync.ts MUST
   // clear active locks via updateMany with clearedBy="session_end". This check
   // PASSES when the fix is present and FAILS if it has regressed.
-  const syncPath = path.resolve(process.cwd(), "src/lib/brokers/tradovate-sync.ts");
+  const syncPath = resolve(process.cwd(), "src/lib/brokers/tradovate-sync.ts");
   const syncSource = fs.readFileSync(syncPath, "utf-8");
 
   // Strip comments so we assert on real code, not the explanatory comment.
