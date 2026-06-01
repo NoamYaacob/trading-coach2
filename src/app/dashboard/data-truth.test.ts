@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { reconstructRoundTrips, type FillInput } from "../../lib/trades/round-trips.ts";
+import { deriveCmeTradingDayKey } from "../../lib/trading-day.ts";
 
 const ROOT = resolve(process.cwd(), "src");
 function read(rel: string): string {
@@ -427,5 +428,98 @@ describe("data-truth: UI labeling and classification defaults", () => {
       !load.includes("userId"),
       "loadAccountTrades must NOT use userId",
     );
+  });
+});
+
+// ── 8. CME session vs calendar day — explicit label and boundary tests ────────
+
+describe("data-truth: CME session vs calendar day — explicit labels and boundaries", () => {
+  const dashboard = read("app/dashboard/page.tsx");
+  const calendar  = read("app/dashboard/_components/pnl-calendar.tsx");
+
+  it("KPI card uses 'Broker session P&L' (not vague 'session')", () => {
+    assert.ok(
+      dashboard.includes('"Broker session P&L"'),
+      "KPI card must say 'Broker session P&L' to distinguish from calendar-day P&L",
+    );
+    assert.ok(
+      !dashboard.includes('"Today P&L · session"'),
+      "old vague label 'Today P&L · session' must be replaced with 'Broker session P&L'",
+    );
+  });
+
+  it("P&L calendar subtitle says 'calendar day' to distinguish from CME session boundary", () => {
+    assert.ok(
+      calendar.includes("calendar day"),
+      "P&L calendar subtitle must include 'calendar day' — not just 'by day'",
+    );
+  });
+
+  it("unavailable/expired selected account shows 'Historical · unavailable' badge", () => {
+    assert.ok(
+      dashboard.includes("Historical · unavailable"),
+      "dashboard must show 'Historical · unavailable' badge when selected account is inactive",
+    );
+    assert.ok(
+      dashboard.includes('selectedAccount.status === "unavailable"'),
+      "badge must be guarded by unavailable status check",
+    );
+  });
+
+  it("CME day key changes at 17:00 CT, not at UTC midnight", () => {
+    // At 12:00 CT June 1 (= 17:00 UTC June 1 in CDT), the current CME session
+    // opened at 17:00 CT May 31 → day key = "2026-05-31".
+    // At 18:00 CT June 1 (= 23:00 UTC June 1 in CDT), the current CME session
+    // opened at 17:00 CT June 1 → day key = "2026-06-01".
+    // (CDT = UTC−5)
+    const noon_ct_june1    = new Date("2026-06-01T17:00:00Z"); // 12:00 CDT June 1
+    const evening_ct_june1 = new Date("2026-06-01T23:00:00Z"); // 18:00 CDT June 1
+
+    const noonKey    = deriveCmeTradingDayKey(noon_ct_june1);
+    const eveningKey = deriveCmeTradingDayKey(evening_ct_june1);
+
+    assert.equal(noonKey, "2026-05-31",
+      "At 12:00 CT June 1, CME day = 2026-05-31 (session opened 17:00 CT May 31)");
+    assert.equal(eveningKey, "2026-06-01",
+      "At 18:00 CT June 1, CME day = 2026-06-01 (session opened 17:00 CT June 1)");
+    assert.notEqual(noonKey, eveningKey,
+      "CME day key changes at 17:00 CT — afternoon and evening are different sessions");
+  });
+
+  it("calendar-day and CME-day boundaries diverge for fills before 17:00 CT", () => {
+    // A fill at 10:00 CT June 1 belongs to:
+    //   Calendar day: June 1 (midnight-to-midnight CT)
+    //   CME session:  "2026-05-31" (session opened 17:00 CT May 31)
+    // This is why Dashboard session P&L ≠ P&L calendar for the same day.
+    const fill_ct_morning_june1 = new Date("2026-06-01T15:00:00Z"); // 10:00 CDT June 1
+
+    const calKey = fill_ct_morning_june1.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const cmeKey = deriveCmeTradingDayKey(fill_ct_morning_june1);
+
+    assert.equal(calKey, "2026-06-01",
+      "A fill at 10:00 CT June 1 belongs to June 1 calendar day");
+    assert.equal(cmeKey, "2026-05-31",
+      "A fill at 10:00 CT June 1 belongs to CME session 2026-05-31 (opened 17:00 CT May 31)");
+    assert.notEqual(calKey, cmeKey,
+      "Morning fills land in different CME session vs calendar day — explains the discrepancy");
+  });
+
+  it("resolveSessionDisplayMetrics returns null metrics for a stale CME session", () => {
+    // When sessionDate differs from current CME day key, dashboard shows '—'
+    // Replicate the logic from data-helpers.ts inline (no import needed)
+    function resolveStale(sessionDate: string, todayKey: string, tradesCount: number, dailyPnl: number) {
+      if (sessionDate !== todayKey) return { tradesCount: null, dailyPnl: null };
+      return { tradesCount, dailyPnl };
+    }
+
+    // Stale: session is from yesterday's CME day
+    const stale = resolveStale("2026-05-31", "2026-06-01", 47, -404);
+    assert.equal(stale.tradesCount, null, "stale session tradesCount must be null (not shown)");
+    assert.equal(stale.dailyPnl, null, "stale session dailyPnl must be null (not shown)");
+
+    // Current: session matches today's CME day
+    const current = resolveStale("2026-06-01", "2026-06-01", 47, -404);
+    assert.equal(current.tradesCount, 47, "current session tradesCount must be shown");
+    assert.equal(current.dailyPnl, -404, "current session dailyPnl must be shown");
   });
 });

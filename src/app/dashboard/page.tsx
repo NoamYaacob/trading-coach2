@@ -719,6 +719,11 @@ export default async function DashboardPage({
                         Locked
                       </span>
                     )}
+                    {(selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected") && (
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)", fontWeight: 500, border: "1px solid var(--gr-border)" }}>
+                        Historical · unavailable
+                      </span>
+                    )}
                   </div>
                   <div style={{ flex: 1 }} />
                   <Link
@@ -744,9 +749,9 @@ export default async function DashboardPage({
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                     },
                     {
-                      label: "Today P&L · session",
+                      label: "Broker session P&L",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade${selectedAccount.tradesCount !== 1 ? "s" : ""}` : "Broker session P&L",
+                      sub: selectedAccount.tradesCount != null ? `${selectedAccount.tradesCount} broker-session trade${selectedAccount.tradesCount !== 1 ? "s" : ""}` : "CME session · since 17:00 CT",
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },

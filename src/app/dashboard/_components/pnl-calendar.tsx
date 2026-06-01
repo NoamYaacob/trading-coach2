@@ -172,7 +172,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            Closed round-trip P&amp;L by day · {accountLabel}
+            Closed round-trip P&amp;L · calendar day · {accountLabel}
           </div>
         </div>
         <Link
