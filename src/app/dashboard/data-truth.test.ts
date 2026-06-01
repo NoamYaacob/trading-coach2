@@ -368,3 +368,64 @@ describe("data-truth: metric source provenance (source-scan)", () => {
     );
   });
 });
+
+// ── 7. UI labeling correctness ────────────────────────────────────────────────
+
+describe("data-truth: UI labeling and classification defaults", () => {
+  const dashboard = read("app/dashboard/page.tsx");
+  const trades    = read("app/trades/page.tsx");
+
+  it("dashboard hero does not say 'live accounts' — uses 'connected accounts' instead", () => {
+    // "live accounts." is the old hero copy; "live account data" (in the demo banner) is
+    // a different concept and is allowed. Target the plural + period form that only
+    // appears in the hero/status heading lines.
+    assert.ok(
+      !dashboard.includes("live accounts."),
+      "dashboard hero must not say 'live accounts.' — must use 'connected accounts.'",
+    );
+    assert.ok(
+      !dashboard.includes("No live accounts"),
+      "dashboard no-accounts fallback must not say 'No live accounts'",
+    );
+    assert.ok(
+      dashboard.includes("connected account"),
+      "dashboard must say 'connected account'",
+    );
+  });
+
+  it("trades sidebar renders acc.primaryLabel not acc.label", () => {
+    assert.ok(
+      trades.includes("acc.primaryLabel"),
+      "trades sidebar must show acc.primaryLabel (broker account ref) not acc.label",
+    );
+    // Verify the sidebar section specifically uses primaryLabel in the span
+    // (not just somewhere else on the page)
+    assert.ok(
+      !trades.includes("{acc.label}"),
+      "trades sidebar span must not render {acc.label} — must use {acc.primaryLabel}",
+    );
+  });
+
+  it("RULE_LABELS session_not_started is 'Guardian session not started'", () => {
+    assert.ok(
+      dashboard.includes('"Guardian session not started"'),
+      "session_not_started rule label must be 'Guardian session not started', not 'Session not started'",
+    );
+    assert.ok(
+      !dashboard.includes('"Session not started"'),
+      "old 'Session not started' label must be replaced with 'Guardian session not started'",
+    );
+  });
+
+  it("loadAccountTrades uses accountId filter (not userId)", () => {
+    const load = read("lib/trades/load.ts");
+    assert.ok(
+      load.includes("accountId,"),
+      "loadAccountTrades must pass accountId in WHERE clause",
+    );
+    assert.ok(
+      !load.includes("userId"),
+      "loadAccountTrades must NOT use userId",
+    );
+  });
+});

@@ -682,11 +682,11 @@ describe("getDefaultTypeChoice", () => {
     assert.equal(getDefaultTypeChoice("demo", null), "demo");
   });
 
-  // Test 8: falls back to "evaluation" for unknown or missing types
-  it("falls back to 'evaluation' for null, undefined, or unrecognised type values", () => {
-    assert.equal(getDefaultTypeChoice(null, null), "evaluation");
-    assert.equal(getDefaultTypeChoice(undefined, undefined), "evaluation");
-    assert.equal(getDefaultTypeChoice(null, "monitor"), "evaluation"); // unrecognised
+  // Test 8: falls back to "personal" for unknown or missing types (not "evaluation")
+  it("falls back to 'personal' for null, undefined, or unrecognised type values", () => {
+    assert.equal(getDefaultTypeChoice(null, null), "personal");
+    assert.equal(getDefaultTypeChoice(undefined, undefined), "personal");
+    assert.equal(getDefaultTypeChoice(null, "monitor"), "personal"); // unrecognised
   });
 
   it("falls back to suggestedAccountType when inheritedAccountType is null", () => {

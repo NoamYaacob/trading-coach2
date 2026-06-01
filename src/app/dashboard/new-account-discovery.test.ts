@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import { decideReconciliation } from "../../lib/brokers/discovery-decision.ts";
+import { getDefaultTypeChoice } from "./_components/command-center/new-accounts-panel-logic.ts";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -215,5 +216,34 @@ describe("Pending account surfacing — dashboard and settings (test 4)", () => 
       settingsSrc.includes("/rules?scope=account"),
       "PendingAccountCard must route to /rules?scope=account",
     );
+  });
+});
+
+// ── Test 5: Account type defaults ─────────────────────────────────────────────
+
+describe("account type defaults", () => {
+  it("getDefaultTypeChoice with no inherited/suggested type returns 'personal', not 'evaluation'", () => {
+    const result = getDefaultTypeChoice(null, null);
+    assert.equal(result, "personal", "unclassified account must default to 'personal', not 'evaluation'");
+  });
+
+  it("getDefaultTypeChoice with undefined inherited/suggested type returns 'personal'", () => {
+    const result = getDefaultTypeChoice(undefined, undefined);
+    assert.equal(result, "personal");
+  });
+
+  it("getDefaultTypeChoice with suggestedAccountType='evaluation' returns 'evaluation'", () => {
+    const result = getDefaultTypeChoice(null, "evaluation");
+    assert.equal(result, "evaluation");
+  });
+
+  it("getDefaultTypeChoice with suggestedAccountType='funded' returns 'funded'", () => {
+    const result = getDefaultTypeChoice(null, "funded");
+    assert.equal(result, "funded");
+  });
+
+  it("getDefaultTypeChoice with inheritedAccountType takes precedence over suggested", () => {
+    const result = getDefaultTypeChoice("funded", "evaluation");
+    assert.equal(result, "funded");
   });
 });

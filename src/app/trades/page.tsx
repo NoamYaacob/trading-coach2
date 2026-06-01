@@ -221,7 +221,7 @@ export default async function TradesPage({
             }}
           />
           <span style={{ fontSize: 12.5, color: "var(--gr-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {acc.label}
+            {acc.primaryLabel}
           </span>
           {acc.dailyPnl != null && (
             <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl), flexShrink: 0 }}>
@@ -352,7 +352,7 @@ export default async function TradesPage({
                           textDecoration: "none",
                         }}
                       >
-                        {acc.label}
+                        {acc.primaryLabel}
                       </Link>
                     );
                   })}

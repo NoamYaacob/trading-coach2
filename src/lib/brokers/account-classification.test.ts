@@ -128,3 +128,47 @@ describe("inferAccountClassification — account isolation", () => {
     assert.equal(personal.confidence, "low");
   });
 });
+
+// ── MFFU sub-type refinement ──────────────────────────────────────────────────
+
+describe("inferAccountClassification — MFFU sub-type refinement", () => {
+  it("MFFUSFRPD133936252 → MyFundedFutures funded (SFR = Sim Funded / PA)", () => {
+    const r = inferAccountClassification("MFFUSFRPD133936252");
+    assert.equal(r.propFirm, "MyFundedFutures");
+    assert.equal(r.accountType, "funded");
+    assert.equal(r.confidence, "high");
+  });
+
+  it("MFFUEVRPD133936251 → MyFundedFutures evaluation (EV = Evaluation)", () => {
+    const r = inferAccountClassification("MFFUEVRPD133936251");
+    assert.equal(r.propFirm, "MyFundedFutures");
+    assert.equal(r.accountType, "evaluation");
+    assert.equal(r.confidence, "high");
+  });
+
+  it("MFFU12345 (no SFR/EV sub-code) → MyFundedFutures evaluation (fallback)", () => {
+    const r = inferAccountClassification("MFFU12345");
+    assert.equal(r.propFirm, "MyFundedFutures");
+    assert.equal(r.accountType, "evaluation");
+    assert.equal(r.confidence, "high");
+  });
+
+  it("DEMO7433035 → no match (propFirm=null, accountType=personal, confidence=low)", () => {
+    const r = inferAccountClassification("DEMO7433035");
+    assert.equal(r.propFirm, null);
+    assert.equal(r.accountType, "personal");
+    assert.equal(r.confidence, "low");
+  });
+
+  it("SFR pattern is case-insensitive (mffusfr123 → funded)", () => {
+    const r = inferAccountClassification("mffusfr123");
+    assert.equal(r.propFirm, "MyFundedFutures");
+    assert.equal(r.accountType, "funded");
+  });
+
+  it("EV pattern is case-insensitive (mffuev123 → evaluation)", () => {
+    const r = inferAccountClassification("mffuev123");
+    assert.equal(r.propFirm, "MyFundedFutures");
+    assert.equal(r.accountType, "evaluation");
+  });
+});
