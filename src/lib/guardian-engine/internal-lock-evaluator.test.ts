@@ -426,6 +426,22 @@ describe("applyInternalLockForConnection — backfill when sync-path STOPPED wit
 // explicit and regressions are caught.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// syncTradovateAccount — InternalLockEvent creation for daily_loss_limit
+//
+// The sync path creates InternalLockEvent rows via dedicated helper functions
+// (not via direct prisma.internalLockEvent calls and not via
+// applyInternalLockForConnection which is the listener-only path):
+//
+//   - daily_loss_limit  → applyInternalLockForDailyLossLimit  (this PR)
+//   - max_position_size → applyInternalLockForMaxPositionSize  (existing)
+//
+// The listener path (applyInternalLockForConnection via onPropsEvent) handles
+// the WebSocket-triggered case and its backfill. These two paths are
+// complementary: the sync ensures a lock row exists even when the listener has
+// not yet received a props event; the listener backfill covers reconnects.
+// ---------------------------------------------------------------------------
+
 describe("syncTradovateAccount — own rule evaluator creates GuardianIntervention, not InternalLockEvent", () => {
   const syncSrc = readSrc("src/lib/brokers/tradovate-sync.ts");
 
@@ -458,10 +474,10 @@ describe("syncTradovateAccount — own rule evaluator creates GuardianInterventi
     );
   });
 
-  it("sync does NOT create InternalLockEvent rows — listener path only", () => {
+  it("sync delegates InternalLockEvent creation to dedicated lock helpers — not via direct prisma.internalLockEvent calls", () => {
     assert.ok(
       !codeOnlySync().includes("internalLockEvent"),
-      "sync must not create InternalLockEvent — that is the listener path's responsibility (applyInternalLockForConnection)",
+      "sync must not reference prisma.internalLockEvent directly — delegates to applyInternalLockForDailyLossLimit / applyInternalLockForMaxPositionSize",
     );
   });
 
@@ -470,6 +486,97 @@ describe("syncTradovateAccount — own rule evaluator creates GuardianInterventi
       !syncSrc.includes("applyInternalLockForConnection"),
       "sync must not import or call applyInternalLockForConnection — the listener triggers it via WebSocket props events",
     );
+  });
+
+  it("sync imports applyInternalLockForDailyLossLimit for the daily_loss_limit case", () => {
+    assert.ok(
+      syncSrc.includes("applyInternalLockForDailyLossLimit"),
+      "sync must import and call applyInternalLockForDailyLossLimit so the InternalLockEvent is created even when no props event arrives",
+    );
+  });
+
+  it("sync guards applyInternalLockForDailyLossLimit behind violationCreated", () => {
+    const dailyLockIdx = codeOnlySync().indexOf("applyInternalLockForDailyLossLimit");
+    const violationCreatedIdx = codeOnlySync().indexOf("violationCreated", dailyLockIdx - 200);
+    assert.ok(
+      dailyLockIdx > -1 && violationCreatedIdx > -1,
+      "applyInternalLockForDailyLossLimit must be guarded by violationCreated so it only fires on the NORMAL→STOPPED transition",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-scan: applyInternalLockForDailyLossLimit — sync-path InternalLockEvent
+//
+// Mirrors applyInternalLockForMaxPositionSize: demo-only, feature-flagged,
+// upsert-idempotent, no broker side-effects.
+// ---------------------------------------------------------------------------
+
+describe("applyInternalLockForDailyLossLimit — sync-path InternalLockEvent for daily_loss_limit", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+
+  it("function exists in internal-lock-evaluator-db.ts", () => {
+    assert.ok(
+      dbSrc.includes("applyInternalLockForDailyLossLimit"),
+      "applyInternalLockForDailyLossLimit must be exported from internal-lock-evaluator-db.ts",
+    );
+  });
+
+  it("gated by GUARDRAIL_INTERNAL_LOCK_ENABLED — returns early when flag is off", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const flagCheckIdx = dbSrc.indexOf("GUARDRAIL_INTERNAL_LOCK_ENABLED", fnIdx);
+    assert.ok(
+      fnIdx > -1 && flagCheckIdx > -1,
+      "applyInternalLockForDailyLossLimit must check GUARDRAIL_INTERNAL_LOCK_ENABLED and return early when false",
+    );
+  });
+
+  it("demo-only — skips live accounts", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const demoCheckIdx = dbSrc.indexOf('env !== "demo"', fnIdx);
+    assert.ok(
+      fnIdx > -1 && demoCheckIdx > -1,
+      "applyInternalLockForDailyLossLimit must return early for env !== 'demo'",
+    );
+  });
+
+  it("uses upsert with activeDedupKey — idempotent under repeated sync cycles", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const upsertIdx = dbSrc.indexOf("internalLockEvent.upsert", fnIdx);
+    assert.ok(
+      fnIdx > -1 && upsertIdx > -1,
+      "applyInternalLockForDailyLossLimit must use upsert (not bare create) for idempotency",
+    );
+  });
+
+  it("sets ruleType = daily_loss_limit", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const ruleTypeIdx = dbSrc.indexOf('"daily_loss_limit"', fnIdx);
+    assert.ok(
+      fnIdx > -1 && ruleTypeIdx > -1,
+      "applyInternalLockForDailyLossLimit must write ruleType = 'daily_loss_limit'",
+    );
+  });
+
+  it("sets internalOnly=true and brokerActionTaken=false — no broker side-effects", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const internalOnlyIdx = dbSrc.indexOf("internalOnly: true", fnIdx);
+    const brokerFalseIdx = dbSrc.indexOf("brokerActionTaken: false", fnIdx);
+    assert.ok(
+      internalOnlyIdx > -1 && brokerFalseIdx > -1,
+      "applyInternalLockForDailyLossLimit must set internalOnly=true and brokerActionTaken=false",
+    );
+  });
+
+  it("does not call any broker API or triggerEnforcement", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyLossLimit");
+    const tail = dbSrc.slice(fnIdx);
+    for (const banned of ["triggerEnforcement", "applyBrokerDayLockout", "userAccountAutoLiq"]) {
+      assert.ok(
+        !tail.slice(0, tail.indexOf("\nexport ", 100)).includes(banned),
+        `applyInternalLockForDailyLossLimit must not call ${banned}`,
+      );
+    }
   });
 });
 

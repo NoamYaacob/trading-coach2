@@ -41,6 +41,7 @@ import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
 import { loadLivePositions } from "./tradovate/load-live-positions";
 import { parseSymbolLimits } from "../futures/symbol-limits";
 import { applyInternalLockForMaxPositionSize } from "../guardian-engine/max-position-size-internal-lock-db";
+import { applyInternalLockForDailyLossLimit } from "../guardian-engine/internal-lock-evaluator-db";
 
 /**
  * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
@@ -814,6 +815,31 @@ export async function syncTradovateAccount(
         currentMiniEquivalentExposure: maxPositionSizeDecision.totalMiniEquivalent,
       }).catch((err) => {
         console.error("[guardian] max_position_size internal lock upsert failed", {
+          accountId,
+          error: err,
+        });
+      });
+    }
+
+    // ── daily_loss_limit internal lock (sync-path gap fix) ─────────────────
+    // The listener creates InternalLockEvent rows for daily_loss_limit via
+    // onPropsEvent, but that requires a live WebSocket props event to arrive
+    // AFTER the breach. When the sync path detects the NORMAL → STOPPED
+    // transition first, no InternalLockEvent is written — breaking the verify
+    // script and broker enforcement chain. This block mirrors the
+    // max_position_size pattern: the helper is demo-only and gated by
+    // GUARDRAIL_INTERNAL_LOCK_ENABLED internally.
+    if (enforcementTrigger === "daily_loss_limit" && violationCreated) {
+      const env = accountConnInfo?.brokerConnection?.env ?? "live";
+      applyInternalLockForDailyLossLimit({
+        accountId,
+        userId,
+        env,
+        tradingDay: tradingDayKey,
+        thresholdAmount: effectiveMaxDailyLoss,
+        observedAmount: lossUsed,
+      }).catch((err) => {
+        console.error("[guardian] daily_loss_limit internal lock upsert failed", {
           accountId,
           error: err,
         });
