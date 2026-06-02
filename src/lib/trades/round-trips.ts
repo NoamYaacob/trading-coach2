@@ -113,16 +113,33 @@ function rawPayloadSymbol(fill: FillInput): string | undefined {
  *
  *  Critical: the DB `contractId` column is null for fills ingested by paths that
  *  stored the broker payload verbatim without copying the id into the column.
- *  Those payloads still carry the numeric id (TradovateOrderFill.contractId /
- *  contract.id), so we fall back to reading it out of rawPayload. This is what
- *  lets the hardcoded + discovered maps resolve fills whose DB column is null. */
+ *  Those payloads still carry the numeric id, but in several different shapes:
+ *    - TradovateOrderFill.contractId / contract.id (webhook path)
+ *    - rawPayload.symbol holding the *numeric id* as a string, e.g.
+ *      {"symbol":"4327110","orderId":"…"} (sync path where ex.symbol was the
+ *      contract id rather than a real futures symbol)
+ *  So we scan every id-bearing and symbol-bearing field and accept the first
+ *  numeric-only value. A numeric-only "symbol" is an id, never a real symbol. */
 export function resolveEffectiveContractId(fill: FillInput): number | null {
   if (fill.contractId != null) return fill.contractId;
   const p = fill.rawPayload as
-    | { contractId?: unknown; contract?: { id?: unknown } }
+    | {
+        contractId?: unknown;
+        contract?: { id?: unknown; name?: unknown; symbol?: unknown };
+        symbol?: unknown;
+        contractName?: unknown;
+      }
     | null
     | undefined;
-  for (const candidate of [p?.contractId, p?.contract?.id]) {
+  const candidates = [
+    p?.contractId,
+    p?.contract?.id,
+    p?.symbol,
+    p?.contract?.name,
+    p?.contract?.symbol,
+    p?.contractName,
+  ];
+  for (const candidate of candidates) {
     if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
     if (typeof candidate === "string" && /^\d+$/.test(candidate)) return Number(candidate);
   }
