@@ -21,6 +21,35 @@ import { deriveCmeTradingDayKey } from "../../../../../lib/trading-day.ts";
  */
 export const MANUAL_LOCK_RULE_TYPE = "manual_lock";
 
+/** User-facing broker-lock status surfaced in the API response and the UI. */
+export type ManualBrokerLockUiStatus = "active" | "failed" | "unavailable";
+
+/**
+ * Map the internal broker-lock status (and the brokerActionTaken flag for the
+ * idempotent "already_recorded" case) to the three user-facing states the
+ * dashboard renders. Pure — no I/O — so it is unit-testable.
+ *
+ *   active      → Tradovate confirmed the lock (broker_locked, or a prior
+ *                 confirmed attempt)
+ *   failed      → a broker write was attempted but did not succeed
+ *   unavailable → the broker lock could not be attempted (no permission,
+ *                 read-only / non-live connection, test/dry-run mode, etc.)
+ *
+ * In every non-"active" case the internal Guardrail lock still applies; only
+ * the broker half is reflected here.
+ */
+export function mapManualBrokerLockStatus(
+  status: string,
+  brokerActionTaken: boolean,
+): ManualBrokerLockUiStatus {
+  if (status === "broker_locked") return "active";
+  if (status === "already_recorded") return brokerActionTaken ? "active" : "unavailable";
+  if (status === "broker_lock_failed") return "failed";
+  // unavailable_permission | unavailable_read_only | unavailable_consent_missing
+  // | monitoring_only | dry_run | not_requested | pending → all "unavailable"
+  return "unavailable";
+}
+
 export type ManualLockoutPlan = {
   /** CME trading-day key (America/Chicago, rolls at 17:00 CT). */
   tradingDay: string;

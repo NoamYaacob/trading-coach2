@@ -69,7 +69,14 @@ export function AccountManageMenu({
 
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   // Shared lockout action — same POST + modal as the card's direct Lockout button.
-  const { busy: lockBusy, error: lockError, setError: setLockError, lock } = useLockout(accountId);
+  const {
+    busy: lockBusy,
+    error: lockError,
+    setError: setLockError,
+    brokerLock,
+    lock,
+    reset: resetLock,
+  } = useLockout(accountId);
 
   // Anchor the portalled dropdown to the trigger via fixed coordinates.
   // Recomputed on open and on scroll/resize so it tracks the trigger. The
@@ -161,9 +168,10 @@ export function AccountManageMenu({
     }
   }
 
-  async function handleLock() {
-    const ok = await lock();
-    if (ok) setShowLockConfirm(false);
+  function handleLock() {
+    // Keep the modal open on success so it can switch to the broker-lock result
+    // view; the internal-lock error path surfaces inline instead.
+    void lock();
   }
 
   const itemClass =
@@ -204,7 +212,7 @@ export function AccountManageMenu({
                   onClick={() => {
                     setOpen(false);
                     setShowLockConfirm(true);
-                    setLockError(null);
+                    resetLock();
                   }}
                   className="flex w-full items-center px-3 py-2 text-left text-xs font-medium text-orange-700 transition hover:bg-orange-50"
                 >
@@ -291,13 +299,18 @@ export function AccountManageMenu({
           accountLabel={accountLabel}
           busy={lockBusy}
           error={lockError}
+          brokerLock={brokerLock}
           onCancel={() => {
             if (!lockBusy) {
               setShowLockConfirm(false);
-              setLockError(null);
+              resetLock();
             }
           }}
           onConfirm={handleLock}
+          onDone={() => {
+            setShowLockConfirm(false);
+            resetLock();
+          }}
         />
       )}
     </div>

@@ -4,7 +4,12 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { buildManualLockoutPlan } from "./lockout-helpers";
+import { maybeAttemptBrokerLockForManualLock } from "@/lib/guardian-engine/manual-broker-lock-service";
+import {
+  buildManualLockoutPlan,
+  mapManualBrokerLockStatus,
+  type ManualBrokerLockUiStatus,
+} from "./lockout-helpers";
 
 export async function POST(
   _request: NextRequest,
@@ -37,7 +42,9 @@ export async function POST(
 
   const plan = buildManualLockoutPlan({ accountId: id, userId: user.id });
 
-  await prisma.$transaction([
+  // Step 1 — the internal Guardrail lock is committed FIRST and is the source
+  // of truth. It must survive even if the broker write below fails.
+  const [, lockEvent] = await prisma.$transaction([
     prisma.liveSessionState.upsert({
       where: { accountId: id },
       create: plan.liveSessionState.create,
@@ -50,11 +57,43 @@ export async function POST(
     }),
   ]);
 
-  console.info("[account-lockout] manual lock applied", {
+  console.info("[account-lockout] manual internal lock applied", {
     accountId: id,
     userId: user.id,
     tradingDay: plan.tradingDay,
   });
 
-  return NextResponse.json({ ok: true, accountId: id, tradingDay: plan.tradingDay, status: "locked" });
+  // Step 2 — attempt the broker-level lock (delegated to the shared service,
+  // which reuses the broker risk-setting write; no order placement /
+  // cancellation / flatten). A failure here NEVER rolls back the internal lock
+  // — it is caught and surfaced as a broker status the UI can display.
+  let brokerLock: { status: ManualBrokerLockUiStatus; message: string } = {
+    status: "unavailable",
+    message: "Broker lock was not attempted.",
+  };
+  try {
+    const svc = await maybeAttemptBrokerLockForManualLock(lockEvent.id);
+    brokerLock = {
+      status: mapManualBrokerLockStatus(svc.status, svc.brokerActionTaken),
+      message: svc.message,
+    };
+  } catch (err) {
+    console.error("[account-lockout] broker lock attempt errored — internal lock preserved", {
+      accountId: id,
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    brokerLock = {
+      status: "failed",
+      message: "Broker lock attempt errored. The Guardrail lock is still active.",
+    };
+  }
+
+  return NextResponse.json({
+    ok: true,
+    accountId: id,
+    tradingDay: plan.tradingDay,
+    status: "locked",
+    brokerLock,
+  });
 }

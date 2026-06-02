@@ -13,8 +13,38 @@ import assert from "node:assert/strict";
 import {
   buildManualLockoutPlan,
   MANUAL_LOCK_RULE_TYPE,
+  mapManualBrokerLockStatus,
 } from "./lockout-helpers.ts";
 import { deriveCmeTradingDayKey } from "../../../../../lib/trading-day.ts";
+
+describe("mapManualBrokerLockStatus — broker status → UI state", () => {
+  it("broker_locked → active", () => {
+    assert.equal(mapManualBrokerLockStatus("broker_locked", true), "active");
+  });
+
+  it("already_recorded reflects the prior brokerActionTaken flag", () => {
+    assert.equal(mapManualBrokerLockStatus("already_recorded", true), "active");
+    assert.equal(mapManualBrokerLockStatus("already_recorded", false), "unavailable");
+  });
+
+  it("broker_lock_failed → failed", () => {
+    assert.equal(mapManualBrokerLockStatus("broker_lock_failed", false), "failed");
+  });
+
+  it("permission / read-only / dry-run / monitoring → unavailable", () => {
+    for (const s of [
+      "unavailable_permission",
+      "unavailable_read_only",
+      "unavailable_consent_missing",
+      "monitoring_only",
+      "dry_run",
+      "not_requested",
+      "pending",
+    ]) {
+      assert.equal(mapManualBrokerLockStatus(s, false), "unavailable", `${s} must map to unavailable`);
+    }
+  });
+});
 
 describe("buildManualLockoutPlan — dedup / idempotency", () => {
   it("repeated calls for the same account+session produce the SAME dedup key", () => {
