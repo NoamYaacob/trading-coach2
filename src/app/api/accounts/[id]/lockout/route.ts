@@ -34,7 +34,11 @@ export async function POST(
       isActive: true,
       protectionStatus: { in: ["protected", "monitor_only"] },
     },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      brokerConnection: { select: { connectionStatus: true, permissionLevel: true } },
+    },
   });
   if (!account) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -57,10 +61,14 @@ export async function POST(
     }),
   ]);
 
+  const connStatus = account.brokerConnection?.connectionStatus ?? null;
+  const permLevel = account.brokerConnection?.permissionLevel ?? null;
   console.info("[account-lockout] manual internal lock applied", {
     accountId: id,
     userId: user.id,
     tradingDay: plan.tradingDay,
+    connectionStatus: connStatus,
+    permissionLevel: permLevel,
   });
 
   // Step 2 — attempt the broker-level lock (delegated to the shared service,
@@ -73,14 +81,27 @@ export async function POST(
   };
   try {
     const svc = await maybeAttemptBrokerLockForManualLock(lockEvent.id);
+    const uiStatus = mapManualBrokerLockStatus(svc.status, svc.brokerActionTaken);
+    console.info("[account-lockout] broker lock attempted", {
+      accountId: id,
+      userId: user.id,
+      brokerStatus: svc.status,
+      brokerActionTaken: svc.brokerActionTaken,
+      uiStatus,
+      connectionStatus: connStatus,
+      permissionLevel: permLevel,
+      dedupKey: svc.dedupKey,
+    });
     brokerLock = {
-      status: mapManualBrokerLockStatus(svc.status, svc.brokerActionTaken),
+      status: uiStatus,
       message: svc.message,
     };
   } catch (err) {
     console.error("[account-lockout] broker lock attempt errored — internal lock preserved", {
       accountId: id,
       userId: user.id,
+      connectionStatus: connStatus,
+      permissionLevel: permLevel,
       error: err instanceof Error ? err.message : String(err),
     });
     brokerLock = {

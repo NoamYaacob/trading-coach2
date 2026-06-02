@@ -215,3 +215,42 @@ describe("lockout-helpers — sourced from canonical helpers", () => {
     assert.ok(helper.includes("brokerActionTaken: false"), "must set brokerActionTaken false");
   });
 });
+
+describe("POST /api/accounts/[id]/lockout — connection-status diagnostics", () => {
+  it("fetches connectionStatus + permissionLevel from the broker connection for diagnostics", () => {
+    assert.ok(
+      route.includes("connectionStatus: true") || route.includes("connectionStatus"),
+      "route must select the broker connection's connectionStatus for logging",
+    );
+    assert.ok(
+      route.includes("permissionLevel"),
+      "route must select permissionLevel from the broker connection for logging",
+    );
+    assert.ok(
+      route.includes("brokerConnection"),
+      "route must join the brokerConnection to get connection details",
+    );
+  });
+
+  it("logs connectionStatus and permissionLevel with the broker lock outcome", () => {
+    assert.ok(
+      route.includes("connectionStatus: connStatus"),
+      "route must log connectionStatus alongside the broker lock outcome",
+    );
+    assert.ok(
+      route.includes("permissionLevel: permLevel"),
+      "route must log permissionLevel alongside the broker lock outcome",
+    );
+  });
+
+  it("logs brokerStatus and brokerActionTaken after the broker lock attempt", () => {
+    assert.ok(
+      route.includes("brokerStatus: svc.status"),
+      "route must log the broker status to aid diagnosis",
+    );
+    assert.ok(
+      route.includes("brokerActionTaken: svc.brokerActionTaken"),
+      "route must log brokerActionTaken to confirm whether the write was applied",
+    );
+  });
+});

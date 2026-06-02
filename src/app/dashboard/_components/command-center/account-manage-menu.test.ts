@@ -305,18 +305,22 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
 
   test("direct button renders a visible 'Lockout' label (not hover-only / hidden / sr-only)", () => {
     assert.ok(/Lockout/.test(LOCKOUT), "button must render the text 'Lockout'");
-    // Default button style must be always-visible.
-    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-10[\s\S]*?\}/)?.[0] ?? LOCKOUT;
+    // Default button style must be always-visible (check the whole file — no hidden/invisible class).
+    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-8[\s\S]*?\}/)?.[0] ?? LOCKOUT;
     for (const banned of ["hidden", "opacity-0", "group-hover", "sr-only", "invisible"]) {
       assert.ok(!cls.includes(banned), `Lockout button must be always-visible — found '${banned}'`);
     }
   });
 
-  test("direct button is danger-styled (solid red pill, white text, press effect)", () => {
-    assert.ok(/text-white/.test(LOCKOUT), "Lockout button must use white text (solid red style)");
-    assert.ok(/bg-red-[56]00/.test(LOCKOUT), "Lockout button must use solid red background (bg-red-500 or bg-red-600)");
+  test("direct button is muted-red danger pill (softer style, press effect)", () => {
+    // Softer style: bg-red-50, border-red-200, text-red-700 — not solid red.
+    assert.ok(/bg-red-50/.test(LOCKOUT), "Lockout button must use soft red background (bg-red-50)");
+    assert.ok(/border-red-200/.test(LOCKOUT), "Lockout button must have a muted red border");
+    assert.ok(/text-red-7\d\d/.test(LOCKOUT), "Lockout button must use red text (text-red-700)");
     assert.ok(/rounded-full/.test(LOCKOUT), "Lockout button must be pill-shaped (rounded-full)");
     assert.ok(/active:scale-\[0\.97\]/.test(LOCKOUT), "Lockout button must have subtle active press scale effect");
+    // Smaller height: h-8 (32px) not h-10 (40px).
+    assert.ok(/\bh-8\b/.test(LOCKOUT), "Lockout button must be compact (h-8 ≈ 32px)");
   });
 
   test("direct button includes a lock icon (SVG)", () => {
@@ -385,6 +389,101 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
   });
 });
 
+// ── 4d. Read-only broker pre-warning safety ───────────────────────────────────
+//
+// Regression guard for the QA finding: account 1868411 (connected_readonly)
+// appeared fully "locked" on the dashboard but broker trading was still possible
+// because the broker write was skipped. The fix surfaces this gap to the user
+// before and after they confirm the lock.
+
+describe("Read-only broker pre-warning — Guardrail-only lock safety", () => {
+  const PAGE = readFileSync(join(REPO_ROOT, "src", "app", "dashboard", "page.tsx"), "utf8");
+
+  test("LockoutConfirmModal accepts an isReadOnly prop for the pre-warning", () => {
+    assert.ok(
+      LOCKOUT.includes("isReadOnly"),
+      "LockoutConfirmModal must accept an isReadOnly prop",
+    );
+  });
+
+  test("confirm view shows a read-only warning banner when isReadOnly is true", () => {
+    assert.ok(
+      LOCKOUT.includes("data-readonly-broker-warning"),
+      "confirm view must render a data-readonly-broker-warning element when read-only",
+    );
+    assert.ok(
+      LOCKOUT.includes("Read-only connection"),
+      "confirm view must say 'Read-only connection' so user understands broker lock is skipped",
+    );
+  });
+
+  test("result view warns 'may still be able to place trades' when broker lock is unavailable", () => {
+    assert.ok(
+      LOCKOUT.includes("may still be able to place trades"),
+      "result view must warn the user they may still be able to trade in Tradovate when broker lock is unavailable",
+    );
+    assert.ok(
+      LOCKOUT.includes("data-broker-unavailable-trading-warning"),
+      "result view must have a data-broker-unavailable-trading-warning attribute",
+    );
+  });
+
+  test("broker lock active vs unavailable results are visually distinct", () => {
+    assert.ok(LOCKOUT.includes("Broker lock active"), "success result must say 'Broker lock active'");
+    assert.ok(
+      LOCKOUT.includes("Broker lock failed") && LOCKOUT.includes("Broker lock unavailable"),
+      "failure/unavailable results must be distinct from success",
+    );
+    assert.ok(
+      LOCKOUT.includes("text-emerald-700") && LOCKOUT.includes("text-amber-700"),
+      "active (emerald) and unavailable/failed (amber) must use different colours",
+    );
+  });
+
+  test("card status shows 'Guardrail locked · broker may allow trading' for read-only locked accounts", () => {
+    assert.ok(
+      PAGE.includes("Guardrail locked · broker may allow trading"),
+      "card status pulse must distinguish Guardrail-only lock from full lock for read-only accounts",
+    );
+    assert.ok(
+      PAGE.includes("connected_readonly") || PAGE.includes("permissionLevel"),
+      "card must check connectionStatus/permissionLevel to determine the lock label",
+    );
+  });
+
+  test("AccountLockoutButton passes connectionStatus and permissionLevel from page", () => {
+    assert.ok(
+      PAGE.includes("connectionStatus={acc.connectionStatus}"),
+      "page must pass connectionStatus to AccountLockoutButton",
+    );
+    assert.ok(
+      PAGE.includes("permissionLevel={acc.permissionLevel}"),
+      "page must pass permissionLevel to AccountLockoutButton",
+    );
+  });
+
+  test("AccountManageMenu receives isReadOnly from page for the lock modal pre-warning", () => {
+    assert.ok(
+      PAGE.includes("isReadOnly={acc.connectionStatus"),
+      "page must compute and pass isReadOnly to AccountManageMenu",
+    );
+  });
+
+  test("Lockout button never references order or flatten paths", () => {
+    const src = stripComments(LOCKOUT);
+    for (const banned of [
+      "placeOrder",
+      "cancelOrder",
+      "flattenPositions",
+      "liquidatepositions",
+      "applyBrokerDayLockout",
+      "userAccountAutoLiq",
+    ]) {
+      assert.ok(!src.includes(banned), `Lockout button must not reference '${banned}'`);
+    }
+  });
+});
+
 // ── 5. Dashboard sidebar remains active accounts only ─────────────────────────
 
 describe("Dashboard sidebar stays active-only", () => {
@@ -431,7 +530,7 @@ describe("Dashboard account cards (page.tsx) render the manage menu", () => {
 
   test("card menu uses a visible three-dot trigger (not hover-only / not hidden)", () => {
     const menuIdx = PAGE.indexOf("<AccountManageMenu");
-    const block = PAGE.slice(menuIdx, menuIdx + 600);
+    const block = PAGE.slice(menuIdx, menuIdx + 900);
     // The trigger must show the ⋯ glyph.
     assert.ok(block.includes('triggerLabel="⋯"'), "card menu must use a ⋯ three-dot trigger");
     // The trigger className must not hide it or gate it behind hover.
@@ -445,7 +544,7 @@ describe("Dashboard account cards (page.tsx) render the manage menu", () => {
 
   test("lock item is gated on a manageable, non-locked status", () => {
     const menuIdx = PAGE.indexOf("<AccountManageMenu");
-    const block = PAGE.slice(menuIdx, menuIdx + 600);
+    const block = PAGE.slice(menuIdx, menuIdx + 900);
     assert.ok(
       block.includes('canLock={acc.status === "allowed" || acc.status === "warning"}'),
       "card menu canLock must be true only for allowed/warning (manageable, not locked) accounts",
@@ -456,7 +555,7 @@ describe("Dashboard account cards (page.tsx) render the manage menu", () => {
     // The card has a full-card <Link> overlay (absolute inset:0) for selection.
     // The menu wrapper must sit above it so the trigger is clickable.
     assert.ok(
-      /zIndex:\s*5[\s\S]{0,2500}<AccountManageMenu/.test(PAGE),
+      /zIndex:\s*5[\s\S]{0,3000}<AccountManageMenu/.test(PAGE),
       "the menu wrapper must use a raised zIndex so it is clickable above the selection overlay",
     );
   });

@@ -22,6 +22,14 @@ export type BrokerLockOutcome = {
   message: string;
 };
 
+/** True when the connection is read-only and the broker write will be skipped. */
+function isReadOnlyConnection(
+  connectionStatus?: string | null,
+  permissionLevel?: string | null,
+): boolean {
+  return permissionLevel === "read_only" || connectionStatus === "connected_readonly";
+}
+
 /** Owns the lock request state. The only caller of the lockout API. */
 export function useLockout(accountId: string) {
   const router = useRouter();
@@ -76,6 +84,7 @@ export function LockoutConfirmModal({
   busy,
   error,
   brokerLock,
+  isReadOnly,
   onConfirm,
   onCancel,
   onDone,
@@ -85,6 +94,12 @@ export function LockoutConfirmModal({
   error: string | null;
   /** When set, the lock succeeded — the modal switches to the result view. */
   brokerLock?: BrokerLockOutcome | null;
+  /**
+   * When true the connection is read-only; the broker write will be skipped.
+   * Shows a pre-warning in the confirm view so the user understands the
+   * Guardrail lock will not prevent trading in Tradovate.
+   */
+  isReadOnly?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   /** Closes the result view. Defaults to onCancel when omitted. */
@@ -142,6 +157,12 @@ export function LockoutConfirmModal({
               </span>
             </p>
           )}
+          {/* When broker lock did not apply, surface an explicit trading-still-possible warning. */}
+          {!brokerActive && (
+            <p className="mt-2 text-sm font-medium text-amber-800" data-broker-unavailable-trading-warning>
+              You may still be able to place trades in Tradovate.
+            </p>
+          )}
           <p className="mt-2 text-xs text-stone-500">{brokerLock.message}</p>
           <div className="mt-5 flex justify-end">
             <button
@@ -184,6 +205,17 @@ export function LockoutConfirmModal({
           (Tradovate) so no new opening orders can be placed for the rest of this CME
           session. Existing positions are not closed.
         </p>
+        {/* Read-only pre-warning — shown before the user confirms when the
+            broker write will definitely be skipped. The Guardrail lock still
+            applies, but the user must know they can still trade in Tradovate. */}
+        {isReadOnly && (
+          <div
+            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            data-readonly-broker-warning
+          >
+            <strong>Read-only connection.</strong> Guardrail will lock the dashboard, but cannot write to Tradovate — you may still be able to place trades there.
+          </div>
+        )}
         <p className="mt-2 text-sm text-stone-500">
           The manual lock clears automatically when the CME session resets at 17:00&nbsp;CT.
         </p>
@@ -222,14 +254,21 @@ export function LockoutConfirmModal({
 export function AccountLockoutButton({
   accountId,
   accountLabel,
+  connectionStatus,
+  permissionLevel,
   className,
 }: {
   accountId: string;
   accountLabel?: string;
+  /** Used to derive the pre-warning when the connection is read-only. */
+  connectionStatus?: string | null;
+  /** Used to derive the pre-warning when the permission level is read_only. */
+  permissionLevel?: string | null;
   className?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
   const { busy, error, setError, brokerLock, lock, reset } = useLockout(accountId);
+  const readOnly = isReadOnlyConnection(connectionStatus, permissionLevel);
 
   return (
     <>
@@ -242,7 +281,7 @@ export function AccountLockoutButton({
         }}
         className={
           className ??
-          "inline-flex h-10 items-center gap-2 rounded-full bg-red-500 px-4 text-sm font-semibold text-white shadow-sm transition active:scale-[0.97] hover:bg-red-600 active:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
+          "inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-700 transition active:scale-[0.97] active:bg-red-100 hover:border-red-300 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
         }
       >
         <svg
@@ -250,7 +289,7 @@ export function AccountLockoutButton({
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 16 16"
           fill="currentColor"
-          className="h-4 w-4 shrink-0"
+          className="h-3 w-3 shrink-0"
         >
           <path
             fillRule="evenodd"
@@ -266,6 +305,7 @@ export function AccountLockoutButton({
           busy={busy}
           error={error}
           brokerLock={brokerLock}
+          isReadOnly={readOnly}
           onCancel={() => {
             if (!busy) {
               setConfirming(false);

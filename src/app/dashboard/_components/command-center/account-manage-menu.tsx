@@ -35,6 +35,7 @@ export function AccountManageMenu({
   accountLabel,
   canRemove = true,
   canLock = true,
+  isReadOnly,
   buttonClassName,
   triggerLabel = "Manage",
   align = "right",
@@ -45,6 +46,12 @@ export function AccountManageMenu({
   canRemove?: boolean;
   /** When false, the "Lock for this CME session" item is hidden (e.g. already locked). */
   canLock?: boolean;
+  /**
+   * When true, the connection is read-only. The lock confirm modal shows a
+   * pre-warning that the broker write will be skipped and trading may still
+   * be possible in Tradovate.
+   */
+  isReadOnly?: boolean;
   buttonClassName?: string;
   /** Trigger button content. Defaults to "Manage"; pass "⋯" for a compact icon. */
   triggerLabel?: React.ReactNode;
@@ -300,6 +307,7 @@ export function AccountManageMenu({
           busy={lockBusy}
           error={lockError}
           brokerLock={brokerLock}
+          isReadOnly={isReadOnly}
           onCancel={() => {
             if (!lockBusy) {
               setShowLockConfirm(false);

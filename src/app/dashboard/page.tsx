@@ -611,12 +611,18 @@ export default async function DashboardPage({
                             * shown when the account is manageable and not already
                             * locked. */}
                           {(acc.status === "allowed" || acc.status === "warning") && (
-                            <AccountLockoutButton accountId={acc.id} accountLabel={acc.label} />
+                            <AccountLockoutButton
+                              accountId={acc.id}
+                              accountLabel={acc.label}
+                              connectionStatus={acc.connectionStatus}
+                              permissionLevel={acc.permissionLevel}
+                            />
                           )}
                           <AccountManageMenu
                             accountId={acc.id}
                             accountLabel={acc.label}
                             canLock={acc.status === "allowed" || acc.status === "warning"}
+                            isReadOnly={acc.connectionStatus === "connected_readonly" || acc.permissionLevel === "read_only"}
                             triggerLabel="⋯"
                             align="right"
                             buttonClassName="inline-flex h-7 w-7 items-center justify-center rounded-md text-base leading-none text-stone-400 transition hover:bg-black/5 hover:text-stone-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"
@@ -668,7 +674,9 @@ export default async function DashboardPage({
                               {acc.status === "warning" && acc.dailyLossUsedPct != null
                                 ? `Daily loss at ${Math.round(acc.dailyLossUsedPct * 100)}%`
                                 : acc.status === "locked"
-                                ? "Session locked"
+                                ? (acc.connectionStatus === "connected_readonly" || acc.permissionLevel === "read_only")
+                                  ? "Guardrail locked · broker may allow trading"
+                                  : "Session locked"
                                 : acc.tradesCount != null
                                 ? `${acc.tradesCount} broker-session trade${acc.tradesCount !== 1 ? "s" : ""}`
                                 : "Monitoring"}
