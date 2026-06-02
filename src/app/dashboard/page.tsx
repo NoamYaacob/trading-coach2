@@ -631,7 +631,7 @@ export default async function DashboardPage({
                               </span>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "right" }}>
-                              <span style={{ fontSize: 10.5, color: "var(--gr-text-mute)" }}>Today</span>
+                              <span style={{ fontSize: 10.5, color: "var(--gr-text-mute)" }}>Session</span>
                               <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl) }}>
                                 {acc.dailyPnl != null ? fmt$(acc.dailyPnl) : "—"}
                               </span>
@@ -1026,7 +1026,7 @@ export default async function DashboardPage({
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
                   <div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Session trades</span>
                     {selectedAccount && (
                       <div title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
                         {selectedAccount.primaryLabel}
