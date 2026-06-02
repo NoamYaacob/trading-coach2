@@ -20,6 +20,7 @@ const REPO_ROOT = resolve(HERE, "..", "..", "..", "..", "..");
 const MENU = readFileSync(join(HERE, "account-manage-menu.tsx"), "utf8");
 const COMMAND_CENTER = readFileSync(join(HERE, "command-center.tsx"), "utf8");
 const DATA_HELPERS = readFileSync(join(HERE, "data-helpers.ts"), "utf8");
+const LOCKOUT = readFileSync(join(HERE, "account-lockout.tsx"), "utf8");
 
 function stripComments(s: string): string {
   return s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -210,38 +211,50 @@ describe("Lock for this CME session", () => {
     );
   });
 
-  test("lock action calls POST /api/accounts/:id/lockout (not a broker endpoint)", () => {
+  test("lock action calls POST /api/accounts/:id/lockout (single shared impl, not a broker endpoint)", () => {
+    // The fetch lives once, in the shared account-lockout module.
     assert.ok(
-      MENU.includes("/api/accounts/${accountId}/lockout"),
-      "lock must POST to /api/accounts/:id/lockout",
+      LOCKOUT.includes("/api/accounts/${accountId}/lockout"),
+      "shared lockout must POST to /api/accounts/:id/lockout",
+    );
+    assert.ok(LOCKOUT.includes('method: "POST"'), "lock must use POST");
+    // The menu must NOT contain its own fetch — it delegates to useLockout.
+    assert.ok(
+      !MENU.includes("/api/accounts/${accountId}/lockout"),
+      "menu must not re-implement the lockout fetch — it must reuse the shared action",
     );
     assert.ok(
-      MENU.includes('method: "POST"'),
-      "lock must use POST",
-    );
-    assert.ok(
-      !MENU.includes("/api/broker-connections"),
+      !LOCKOUT.includes("/api/broker-connections"),
       "lock must not call broker-connection endpoints",
     );
   });
 
-  test("lock action has a confirmation dialog with danger badge", () => {
-    assert.ok(MENU.includes("showLockConfirm"), "must gate on showLockConfirm state");
-    assert.ok(MENU.includes("data-lock-confirm"), "dialog must have data-lock-confirm attribute for testing");
-    assert.ok(MENU.includes("Danger"), "dialog must show a Danger badge");
-    assert.ok(MENU.includes("Yes, lock this account"), "confirm button must say 'Yes, lock this account'");
-    assert.ok(MENU.includes("lockBusy ? \"Locking…\""), "confirm button must show loading state");
+  test("only one POST implementation of the lockout exists (no duplication)", () => {
+    const occurrences = (
+      (MENU + COMMAND_CENTER + LOCKOUT).match(/\/api\/accounts\/\$\{accountId\}\/lockout/g) ?? []
+    ).length;
+    assert.equal(occurrences, 1, "the lockout POST must be implemented exactly once (shared module)");
   });
 
-  test("lock modal shows the session-reset caveat copy", () => {
+  test("menu reuses the shared useLockout + LockoutConfirmModal", () => {
+    assert.ok(MENU.includes("useLockout"), "menu must call the shared useLockout hook");
+    assert.ok(MENU.includes("LockoutConfirmModal"), "menu must render the shared LockoutConfirmModal");
+  });
+
+  test("shared confirmation dialog has danger badge + confirm/loading", () => {
+    assert.ok(MENU.includes("showLockConfirm"), "menu must gate the modal on showLockConfirm state");
+    assert.ok(LOCKOUT.includes("data-lock-confirm"), "dialog must have data-lock-confirm attribute for testing");
+    assert.ok(LOCKOUT.includes("Danger"), "dialog must show a Danger badge");
+    assert.ok(LOCKOUT.includes("Yes, lock this account"), "confirm button must say 'Yes, lock this account'");
+    assert.ok(LOCKOUT.includes('busy ? "Locking…"'), "confirm button must show loading state");
+  });
+
+  test("shared lock modal shows the session-reset caveat copy", () => {
     assert.ok(
-      MENU.includes("This account is locked or has rule activity today"),
+      LOCKOUT.includes("This account is locked or has rule activity today"),
       "dialog must include the session-lock caveat",
     );
-    assert.ok(
-      MENU.includes("17:00"),
-      "dialog must mention 17:00 CT session reset time",
-    );
+    assert.ok(LOCKOUT.includes("17:00"), "dialog must mention 17:00 CT session reset time");
   });
 
   test("canLock prop hides the lock item when account is already locked", () => {
@@ -252,7 +265,7 @@ describe("Lock for this CME session", () => {
   });
 
   test("lock does not delete or reference historical data tables", () => {
-    const src = stripComments(MENU);
+    const src = stripComments(MENU) + stripComments(LOCKOUT);
     for (const table of [
       "normalizedTradeEvent",
       "accountRiskRules",
@@ -261,7 +274,7 @@ describe("Lock for this CME session", () => {
       "brokerOrderActionLog",
       "ruleChangeAudit",
     ]) {
-      assert.ok(!src.includes(table), `menu lock must not reference table ${table}`);
+      assert.ok(!src.includes(table), `lock must not reference table ${table}`);
     }
   });
 
@@ -270,6 +283,73 @@ describe("Lock for this CME session", () => {
       COMMAND_CENTER.includes("canLock={account.status !== \"locked\"}"),
       "command-center must pass canLock=false when account is already locked",
     );
+  });
+});
+
+// ── 4c. Direct, always-visible Lockout button on dashboard cards ──────────────
+
+describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", () => {
+  const PAGE = readFileSync(join(REPO_ROOT, "src", "app", "dashboard", "page.tsx"), "utf8");
+
+  test("page imports + renders AccountLockoutButton inside the active-account card map", () => {
+    assert.ok(PAGE.includes("import { AccountLockoutButton }"), "page must import AccountLockoutButton");
+    const mapIdx = PAGE.indexOf("activeAccounts.map");
+    const btnIdx = PAGE.indexOf("<AccountLockoutButton", mapIdx);
+    assert.ok(mapIdx > -1 && btnIdx > -1, "AccountLockoutButton must render inside activeAccounts.map");
+    assert.ok(PAGE.includes("accountId={acc.id}"), "button must receive the account id");
+  });
+
+  test("direct button renders a visible 'Lockout' label (not hover-only / hidden / sr-only)", () => {
+    assert.ok(LOCKOUT.includes(">\n        Lockout\n      </button>") || /Lockout\s*<\/button>/.test(LOCKOUT), "button must render the text 'Lockout'");
+    // Default pill style must be always-visible.
+    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-7[\s\S]*?\}/)?.[0] ?? LOCKOUT;
+    for (const banned of ["hidden", "opacity-0", "group-hover", "sr-only", "invisible"]) {
+      assert.ok(!cls.includes(banned), `Lockout pill must be always-visible — found '${banned}'`);
+    }
+  });
+
+  test("direct button is danger-styled (red)", () => {
+    assert.ok(/text-red-700/.test(LOCKOUT) && /bg-red-50/.test(LOCKOUT), "Lockout pill must use red danger styling");
+  });
+
+  test("direct button is rendered above the full-card selection overlay (zIndex group)", () => {
+    assert.ok(
+      /zIndex:\s*5[\s\S]{0,2500}<AccountLockoutButton/.test(PAGE),
+      "the Lockout button must live inside the raised zIndex group so it is clickable above the overlay",
+    );
+  });
+
+  test("direct button is shown only for allowed/warning (manageable, not locked) accounts", () => {
+    assert.ok(
+      /\(acc\.status === "allowed" \|\| acc\.status === "warning"\) && \(\s*<AccountLockoutButton/.test(PAGE),
+      "Lockout button must be gated on allowed/warning status",
+    );
+  });
+
+  test("locked accounts do not render the direct Lockout button", () => {
+    // The only gate is allowed/warning, which excludes 'locked' by construction.
+    const gate = PAGE.match(/\(acc\.status === "allowed" \|\| acc\.status === "warning"\) && \(\s*<AccountLockoutButton/);
+    assert.ok(gate, "gate must exist");
+    assert.ok(!gate![0].includes('"locked"'), "the Lockout gate must never include the locked status");
+  });
+
+  test("existing ⋯ menu lock item still exists alongside the direct button", () => {
+    assert.ok(MENU.includes("Lock for this CME session"), "the ⋯ menu lock item must remain");
+    assert.ok(PAGE.includes("<AccountManageMenu"), "the ⋯ menu must still render on cards");
+  });
+
+  test("both the direct button and the menu reuse the same shared action", () => {
+    assert.ok(LOCKOUT.includes("export function AccountLockoutButton"), "shared button exported");
+    assert.ok(LOCKOUT.includes("export function useLockout"), "shared hook exported");
+    assert.ok(LOCKOUT.includes("export function LockoutConfirmModal"), "shared modal exported");
+    assert.ok(MENU.includes("useLockout") && MENU.includes("LockoutConfirmModal"), "menu uses the shared action");
+  });
+
+  test("shared lockout introduces no broker / Tradovate write endpoints", () => {
+    const src = stripComments(LOCKOUT);
+    for (const banned of ["/api/broker", "tradovate", "cancelOrder", "flattenPositions", "userAccountAutoLiq", "placeOrder"]) {
+      assert.ok(!src.includes(banned), `shared lockout must not reference '${banned}'`);
+    }
   });
 });
 
