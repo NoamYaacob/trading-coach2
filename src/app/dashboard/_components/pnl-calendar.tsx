@@ -184,7 +184,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            Gross round-trip P&amp;L (before fees) · calendar day · {accountLabel}
+            P&amp;L calendar · calendar day · before fees · {accountLabel}
             {earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}

@@ -305,18 +305,28 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
 
   test("direct button renders a visible 'Lockout' label (not hover-only / hidden / sr-only)", () => {
     assert.ok(/Lockout/.test(LOCKOUT), "button must render the text 'Lockout'");
-    // Default button style must be always-visible.
-    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-10[\s\S]*?\}/)?.[0] ?? LOCKOUT;
-    for (const banned of ["hidden", "opacity-0", "group-hover", "sr-only", "invisible"]) {
-      assert.ok(!cls.includes(banned), `Lockout button must be always-visible — found '${banned}'`);
+    // Extract just the AccountLockoutButton's default className string.
+    const cls = LOCKOUT.match(/className=\{[^}]*inline-flex[^}]*\}/)?.[0] ?? "";
+    for (const banned of ["group-hover", "sr-only", "invisible"]) {
+      assert.ok(!cls.includes(banned), `Lockout button className must be always-visible — found '${banned}'`);
     }
   });
 
-  test("direct button is danger-styled (solid red pill, white text, press effect)", () => {
-    assert.ok(/text-white/.test(LOCKOUT), "Lockout button must use white text (solid red style)");
-    assert.ok(/bg-red-[56]00/.test(LOCKOUT), "Lockout button must use solid red background (bg-red-500 or bg-red-600)");
+  test("direct button is soft danger-styled (muted red pill, compact)", () => {
+    // Button uses soft/muted red — not bright bg-red-500 which is too dominant.
+    assert.ok(
+      /bg-red-50|bg-\[#fff1ee\]|bg-red-100/.test(LOCKOUT),
+      "Lockout button must use a soft red background (bg-red-50 / bg-[#fff1ee] / bg-red-100)",
+    );
+    assert.ok(
+      /text-red-700|text-\[#9f321f\]/.test(LOCKOUT),
+      "Lockout button must use muted danger text (text-red-700 or text-[#9f321f])",
+    );
     assert.ok(/rounded-full/.test(LOCKOUT), "Lockout button must be pill-shaped (rounded-full)");
-    assert.ok(/active:scale-\[0\.97\]/.test(LOCKOUT), "Lockout button must have subtle active press scale effect");
+    assert.ok(
+      /h-7|h-8/.test(LOCKOUT),
+      "Lockout button must be compact (h-7 or h-8) — not the large h-10",
+    );
   });
 
   test("direct button includes a lock icon (SVG)", () => {

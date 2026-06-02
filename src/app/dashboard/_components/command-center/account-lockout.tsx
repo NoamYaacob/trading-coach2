@@ -242,7 +242,7 @@ export function AccountLockoutButton({
         }}
         className={
           className ??
-          "inline-flex h-10 items-center gap-2 rounded-full bg-red-500 px-4 text-sm font-semibold text-white shadow-sm transition active:scale-[0.97] hover:bg-red-600 active:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
+          "inline-flex h-7 items-center gap-1.5 rounded-full border border-[#efc7bd] bg-[#fff1ee] px-3 text-xs font-medium text-[#9f321f] transition hover:bg-red-100 active:bg-red-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-1"
         }
       >
         <svg
@@ -250,7 +250,7 @@ export function AccountLockoutButton({
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 16 16"
           fill="currentColor"
-          className="h-4 w-4 shrink-0"
+          className="h-3 w-3 shrink-0"
         >
           <path
             fillRule="evenodd"
