@@ -6,6 +6,7 @@ import Link from "next/link";
 import { GrShell, type GrNavItem, type GrRecentAlert } from "@/components/ui/gr-shell";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
 import { AccountManageMenu } from "@/app/dashboard/_components/command-center/account-manage-menu";
+import { AccountLockoutButton } from "@/app/dashboard/_components/command-center/account-lockout";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
@@ -604,6 +605,13 @@ export default async function DashboardPage({
                               width: 7, height: 7, borderRadius: "50%",
                               background: "var(--gr-ok)", display: "inline-block",
                             }} />
+                          )}
+                          {/* Always-visible direct Lockout button — same shared
+                            * confirmation modal + POST as the ⋯ menu item. Only
+                            * shown when the account is manageable and not already
+                            * locked. */}
+                          {(acc.status === "allowed" || acc.status === "warning") && (
+                            <AccountLockoutButton accountId={acc.id} accountLabel={acc.label} />
                           )}
                           <AccountManageMenu
                             accountId={acc.id}

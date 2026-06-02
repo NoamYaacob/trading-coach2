@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { deriveOpenHref, deriveRulesHref, deriveTradesHref } from "./data-helpers";
 import { buildArchiveRequest, parseArchiveResponse } from "./archive-account-helpers";
+import { useLockout, LockoutConfirmModal } from "./account-lockout";
 
 /**
  * AccountManageMenu — a compact per-account actions dropdown for the Dashboard.
@@ -67,8 +68,8 @@ export function AccountManageMenu({
   const [error, setError] = useState<string | null>(null);
 
   const [showLockConfirm, setShowLockConfirm] = useState(false);
-  const [lockBusy, setLockBusy] = useState(false);
-  const [lockError, setLockError] = useState<string | null>(null);
+  // Shared lockout action — same POST + modal as the card's direct Lockout button.
+  const { busy: lockBusy, error: lockError, setError: setLockError, lock } = useLockout(accountId);
 
   // Anchor the portalled dropdown to the trigger via fixed coordinates.
   // Recomputed on open and on scroll/resize so it tracks the trigger. The
@@ -161,25 +162,8 @@ export function AccountManageMenu({
   }
 
   async function handleLock() {
-    setLockBusy(true);
-    setLockError(null);
-    try {
-      const res = await fetch(`/api/accounts/${accountId}/lockout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        setLockError(data.error ?? "Failed to lock account. Please try again.");
-        return;
-      }
-      setShowLockConfirm(false);
-      router.refresh();
-    } catch {
-      setLockError("Network error. Please try again.");
-    } finally {
-      setLockBusy(false);
-    }
+    const ok = await lock();
+    if (ok) setShowLockConfirm(false);
   }
 
   const itemClass =
@@ -302,72 +286,20 @@ export function AccountManageMenu({
 
       {dropdown}
 
-      {showLockConfirm &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
-            data-lock-confirm
-            onClick={(e) => {
-              if (e.target === e.currentTarget && !lockBusy) {
-                setShowLockConfirm(false);
-                setLockError(null);
-              }
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="lock-dialog-title"
-              className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
-            >
-              <div className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-700">
-                Danger
-              </div>
-              <h2
-                id="lock-dialog-title"
-                className="mt-3 text-base font-semibold text-stone-900"
-              >
-                Lock {accountLabel ?? "this account"} for the rest of this CME session?
-              </h2>
-              <p className="mt-2 text-sm text-stone-600">
-                This account is locked or has rule activity today. To prevent bypassing
-                Guardrail, removal will take effect at the next trading session reset.
-              </p>
-              <p className="mt-2 text-sm text-stone-500">
-                The manual lock clears automatically when the CME session resets at
-                17:00&nbsp;CT.
-              </p>
-              {lockError && (
-                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {lockError}
-                </p>
-              )}
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLockConfirm(false);
-                    setLockError(null);
-                  }}
-                  disabled={lockBusy}
-                  className="inline-flex h-9 items-center rounded-full border border-stone-200 px-4 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLock}
-                  disabled={lockBusy}
-                  className="inline-flex h-9 items-center rounded-full bg-red-700 px-4 text-sm font-medium text-white transition hover:bg-red-800 disabled:opacity-70"
-                >
-                  {lockBusy ? "Locking…" : "Yes, lock this account"}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {showLockConfirm && (
+        <LockoutConfirmModal
+          accountLabel={accountLabel}
+          busy={lockBusy}
+          error={lockError}
+          onCancel={() => {
+            if (!lockBusy) {
+              setShowLockConfirm(false);
+              setLockError(null);
+            }
+          }}
+          onConfirm={handleLock}
+        />
+      )}
     </div>
   );
 }
