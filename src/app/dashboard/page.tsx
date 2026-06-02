@@ -1055,7 +1055,7 @@ export default async function DashboardPage({
                       fontSize: 13, flexShrink: 0,
                     }}>—</span>
                     <span style={{ fontSize: 12, color: "var(--gr-text-mute)", lineHeight: 1.5 }}>
-                      <span style={{ color: "var(--gr-text-mid)", fontWeight: 500 }}>No closed round-trips yet today.</span>
+                      <span style={{ color: "var(--gr-text-mid)", fontWeight: 500 }}>No closed round-trips this session.</span>
                       {" "}Round-trips appear as your broker reports fills — Guardrail does not invent activity.
                     </span>
                   </div>

@@ -378,7 +378,8 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     });
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
-    const accountTypeLabel = account.externalAccountId?.startsWith("DEMO")
+    const isDemoAccount = account.label?.startsWith("DEMO") || account.externalAccountId?.startsWith("DEMO");
+    const accountTypeLabel = isDemoAccount
       ? "Demo account"
       : ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
     const connectionStatusLabel = deriveConnectionStatusLabel(effectiveConnectionStatus);
@@ -416,7 +417,7 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
       primaryLabel: deriveAccountPrimaryLabel(account),
       // Secondary context line (e.g. "MyFundedFutures · Evaluation"), shown as
       // small metadata beside/under the primary broker ref. Null when unknown.
-      secondaryMeta: deriveAccountSecondaryMeta(account),
+      secondaryMeta: isDemoAccount ? "Demo account" : deriveAccountSecondaryMeta(account),
       // Raw broker account label/ref for the title tooltip when truncated.
       rawLabel: account.label ?? account.externalAccountId ?? null,
       platform: account.platform,

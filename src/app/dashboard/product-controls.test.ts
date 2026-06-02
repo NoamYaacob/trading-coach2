@@ -273,8 +273,9 @@ describe("/dashboard: account display hierarchy — real broker ref is primary",
   it("friendly firm/type label is allowed only as secondary metadata", () => {
     // secondaryMeta (e.g. "MyFundedFutures · Evaluation") is derived separately
     // and rendered as small context copy, never as the main identifier.
+    // DEMO accounts show "Demo account" as secondaryMeta instead.
     assert.ok(
-      /secondaryMeta:\s*deriveAccountSecondaryMeta\(account\)/.test(data),
+      data.includes("deriveAccountSecondaryMeta(account)"),
       "data.ts must expose secondaryMeta via deriveAccountSecondaryMeta(account)",
     );
     assert.ok(
