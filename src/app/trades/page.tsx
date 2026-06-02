@@ -170,6 +170,16 @@ export default async function TradesPage({
   // so users see the true picture for that context.
   const stats = computeTradeStats(dateFilteredTrades);
 
+  // Coverage window + data-trust signals. earliestTradeDate is the oldest
+  // imported round-trip so the header can say "imported history only" rather
+  // than implying complete all-time performance. lowConfidence is true when any
+  // trade's contract symbol could not be resolved (point value defaulted to
+  // $1/pt → its P&L is approximate, not trusted).
+  const earliestTradeDate = allTrades.length > 0
+    ? new Date(Math.min(...allTrades.map((t) => t.closedAt.getTime())))
+    : null;
+  const lowConfidence = allTrades.some((t) => t.symbolResolved === false);
+
   // Group trades by date for the header rows in the table
   const groupedByDate = new Map<string, typeof filteredTrades>();
   for (const t of filteredTrades) {
@@ -276,6 +286,16 @@ export default async function TradesPage({
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>
             {dateFilter ? `Trades · ${fmtDateFromKey(dateFilter)}` : "Trades"}
           </h1>
+          {!dateFilter && earliestTradeDate != null && (
+            <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 6 }}>
+              Imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </div>
+          )}
+          {lowConfidence && (
+            <div style={{ fontSize: 11.5, color: "var(--gr-warn, #b45309)", marginTop: 4 }}>
+              ⚠ Some trades have an unrecognized contract — their P&amp;L is approximate (point value defaulted to $1/pt).
+            </div>
+          )}
         </section>
 
         {!hasAccounts ? (

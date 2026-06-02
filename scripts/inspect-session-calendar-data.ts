@@ -74,7 +74,7 @@ config({ path: resolve(process.cwd(), ".env.local") });
 
 import { prisma } from "../src/lib/db.ts";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "../src/lib/trading-day.ts";
-import { reconstructRoundTrips, type FillInput } from "../src/lib/trades/round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, type FillInput } from "../src/lib/trades/round-trips.ts";
 
 const TARGET = process.argv[2] ?? "MFFUSFRPD133936252";
 const DISPLAY_TZ = "America/Chicago";
@@ -311,7 +311,11 @@ async function run(): Promise<void> {
     rawPayload: f.rawPayload,
   }));
 
-  const roundTrips = reconstructRoundTrips(fillInput).sort(
+  // Build contractId → symbol map (shared with the app loader); resolution also
+  // recovers the contract id from rawPayload when the DB column is null.
+  const contractIdMap = buildContractIdMap(fillInput);
+
+  const roundTrips = reconstructRoundTrips(fillInput, contractIdMap).sort(
     (a, b) => a.closedAt.getTime() - b.closedAt.getTime(),
   );
 

@@ -133,6 +133,18 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
     [viewYear, viewMonth, timezone],
   );
 
+  // Earliest imported trade date + whether any trade has an unresolved contract
+  // symbol (point-value defaulted to $1/pt → P&L is low confidence). Surfaced in
+  // the subtitle so this is never mistaken for complete, trusted all-time history.
+  const earliestTradeDate = React.useMemo(() => {
+    if (trades.length === 0) return null;
+    return new Date(Math.min(...trades.map((t) => t.closedAt.getTime())));
+  }, [trades]);
+  const hasLowConfidence = React.useMemo(
+    () => trades.some((t) => t.symbolResolved === false),
+    [trades],
+  );
+
   // Month totals + win/loss counts for cells that are in-month and have data.
   const inMonthCells = cells.filter((c) => c.inMonth);
   const tradedCells = inMonthCells
@@ -173,7 +185,17 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
             Closed round-trip P&amp;L · calendar day · {accountLabel}
+            {earliestTradeDate != null && (
+              <span style={{ marginLeft: 4, opacity: 0.75 }}>
+                · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
           </div>
+          {hasLowConfidence && (
+            <div style={{ fontSize: 11, color: "var(--gr-warn, #b45309)", marginTop: 2 }}>
+              ⚠ Some trades have an unrecognized contract — their P&amp;L is approximate.
+            </div>
+          )}
         </div>
         <Link
           href={tradesHref}

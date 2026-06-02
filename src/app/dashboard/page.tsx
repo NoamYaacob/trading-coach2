@@ -631,7 +631,7 @@ export default async function DashboardPage({
                               </span>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "right" }}>
-                              <span style={{ fontSize: 10.5, color: "var(--gr-text-mute)" }}>Today</span>
+                              <span style={{ fontSize: 10.5, color: "var(--gr-text-mute)" }}>Session</span>
                               <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlColor(acc.dailyPnl) }}>
                                 {acc.dailyPnl != null ? fmt$(acc.dailyPnl) : "—"}
                               </span>
@@ -814,13 +814,19 @@ export default async function DashboardPage({
 
             {/* ── P&L source explanation ─────────────────────────────────── */}
             {selectedAccount && (
-              <div style={{ padding: "0 36px 12px" }}>
-                <p style={{ margin: 0, fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.6 }}>
-                  <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
-                  {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
-                  <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
-                  {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
-                </p>
+              <div style={{ padding: "0 36px 8px" }}>
+                <details style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
+                  <summary style={{ cursor: "pointer", userSelect: "none", color: "var(--gr-text-mid)", listStyle: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, opacity: 0.7 }}>▶</span>
+                    Why can these P&amp;L figures differ?
+                  </summary>
+                  <p style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
+                    {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
+                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
+                  </p>
+                </details>
               </div>
             )}
 
@@ -1020,7 +1026,7 @@ export default async function DashboardPage({
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
                   <div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Today&apos;s trades</span>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--gr-ink)" }}>Session trades</span>
                     {selectedAccount && (
                       <div title={selectedAccount.rawLabel ?? selectedAccount.primaryLabel} style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
                         {selectedAccount.primaryLabel}

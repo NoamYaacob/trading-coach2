@@ -131,6 +131,14 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
     [trades, timeframe],
   );
 
+  // Earliest fill date across all loaded trades — shown in the "All" subtitle
+  // so users see the coverage window, not an implied "complete history" claim.
+  const earliestTradeDate = React.useMemo(() => {
+    if (trades.length === 0) return null;
+    const ms = Math.min(...trades.map((t) => t.openedAt.getTime()));
+    return new Date(ms);
+  }, [trades]);
+
   const rangeLabel =
     timeframe === "7d" ? "last 7 days"
     : timeframe === "14d" ? "last 14 days"
@@ -196,6 +204,11 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
             Cumulative closed round-trip P&amp;L · {dataSourceLabel}
+            {timeframe === "all" && earliestTradeDate != null && (
+              <span style={{ marginLeft: 4, opacity: 0.75 }}>
+                · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>

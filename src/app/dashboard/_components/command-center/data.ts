@@ -378,7 +378,9 @@ export async function loadCommandCenterData(userId: string, userEmail?: string |
     });
 
     const platformLabel = PLATFORM_LABEL[account.platform] ?? account.platform;
-    const accountTypeLabel = ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
+    const accountTypeLabel = account.externalAccountId?.startsWith("DEMO")
+      ? "Demo account"
+      : ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType;
     const connectionStatusLabel = deriveConnectionStatusLabel(effectiveConnectionStatus);
 
     const hasOpenIntervention = Boolean(

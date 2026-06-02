@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-import { reconstructRoundTrips, type FillInput, type RoundTripTrade } from "./round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, type FillInput, type RoundTripTrade } from "./round-trips.ts";
 
 type LoadOptions = {
   /** Inclusive lower bound on occurredAt — typically the start of the lookback window. */
@@ -58,7 +58,12 @@ export async function loadAccountTrades(
     rawPayload: f.rawPayload,
   }));
 
-  const trades = reconstructRoundTrips(input);
+  // Build the contractId → symbol map (valid futures symbols only) so fills
+  // whose own payload lacks a symbol still resolve via a sibling fill's symbol
+  // or the hardcoded known-contract map.
+  const contractIdMap = buildContractIdMap(input);
+
+  const trades = reconstructRoundTrips(input, contractIdMap);
   // Newest first for display.
   return trades.sort((a, b) => b.closedAt.getTime() - a.closedAt.getTime());
 }

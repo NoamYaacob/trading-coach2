@@ -1011,7 +1011,7 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
             {formatSignedCurrency(account.dailyPnl)}
           </p>
         ) : account.lastSyncAt != null ? (
-          <p className="text-xs text-stone-400">No trades today</p>
+          <p className="text-xs text-stone-400">No trades this session</p>
         ) : (
           <p className="font-mono text-sm text-stone-300">—</p>
         )}
@@ -1170,7 +1170,7 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
               {formatSignedCurrency(account.dailyPnl)}
             </p>
           ) : account.lastSyncAt != null ? (
-            <p className="text-[11px] text-stone-400">No trades today</p>
+            <p className="text-[11px] text-stone-400">No trades this session</p>
           ) : (
             <p className="font-mono text-sm text-stone-300">—</p>
           )}

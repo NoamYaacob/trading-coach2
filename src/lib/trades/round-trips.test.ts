@@ -1,19 +1,19 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { reconstructRoundTrips, type FillInput } from "./round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, resolveSymbol, type FillInput } from "./round-trips.ts";
 
 function fill(over: Partial<FillInput> & Pick<FillInput, "occurredAt">): FillInput {
   return {
     id: over.id ?? `f-${Math.random()}`,
     externalTradeId: over.externalTradeId ?? null,
-    contractId: over.contractId ?? 1,
+    contractId: "contractId" in over ? over.contractId : 1,
     side: over.side ?? "BUY",
     quantity: over.quantity ?? "1",
     price: over.price ?? "100",
     pnl: over.pnl ?? null,
     occurredAt: over.occurredAt,
-    rawPayload: "rawPayload" in over ? over.rawPayload : { contract: { name: "ESH5" } },
+    rawPayload: "rawPayload" in over ? over.rawPayload : { contract: { name: "TSTH5" } },
   };
 }
 
@@ -217,5 +217,270 @@ describe("reconstructRoundTrips: edge cases", () => {
       fill({ id: "2", side: "SELL", price: "105", occurredAt: new Date("2026-01-01T14:15:00Z") }),
     ]);
     assert.equal(trades[0]!.holdMs, 15 * 60 * 1000);
+  });
+});
+
+describe("reconstructRoundTrips: pointValue multiplier", () => {
+  it("MNQ contract applies pointValue=2 to computed P&L", () => {
+    // 1 MNQ long, entry 20000, exit 20001 → (1 pt) * 2 = $2
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20001", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "computed");
+    assert.equal(trades[0]!.pnl, 2); // (20001-20000)*1*1*2
+  });
+
+  it("ES contract applies pointValue=50 to computed P&L", () => {
+    // 1 ES long, entry 5000, exit 5001 → (1 pt) * 50 = $50
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "5000", rawPayload: { contract: { name: "ESH5" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "5001", rawPayload: { contract: { name: "ESH5" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "computed");
+    assert.equal(trades[0]!.pnl, 50); // (5001-5000)*1*1*50
+  });
+
+  it("broker pnl is used as-is (no multiplier) when present", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20010", pnl: "17.50", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "broker");
+    assert.equal(trades[0]!.pnl, 17.5); // broker value used directly
+  });
+
+  it("unknown symbol falls back to pointValue=1", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", rawPayload: { contract: { name: "XYZQ6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "102", rawPayload: { contract: { name: "XYZQ6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnl, 2); // (102-100)*1*1*1
+  });
+});
+
+describe("reconstructRoundTrips: contractId resolution", () => {
+  it("numeric-only payload symbol is rejected, uses hardcoded mapping instead", () => {
+    // rawPayload has "4327110" (numeric), which should be rejected as invalid symbol
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: { contract: { name: "4327110" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4702", contractId: 4327110, rawPayload: { contract: { name: "4327110" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    // Should resolve to MNQM6 (pointValue=$2) via hardcoded mapping, not use numeric contract ID
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 4); // (4702-4700)*1*1*2
+  });
+
+  it("4327110 resolves to MNQM6 with pointValue=$2/pt via hardcoded mapping", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 2); // (4701-4700)*1*1*2 with pointValue=$2
+  });
+
+  it("4214191 resolves to NQM6 with pointValue=$20/pt via hardcoded mapping", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", contractId: 4214191, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20005", contractId: 4214191, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "NQM6");
+    assert.equal(trades[0]!.pnl, 100); // (20005-20000)*1*1*20 with pointValue=$20
+  });
+
+  it("valid symbol in payload takes precedence over hardcoded mapping", () => {
+    // rawPayload has valid "MNQH6" which should be used instead of hardcoded "MNQM6"
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: { contract: { name: "MNQH6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: { contract: { name: "MNQH6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQH6");
+    assert.equal(trades[0]!.pnl, 2); // Still pointValue=$2 for MNQ
+  });
+
+  it("contractIdMap with valid symbol overrides hardcoded mapping", () => {
+    const map = new Map<number, string>();
+    map.set(4327110, "MNQH6");
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ], map);
+    assert.equal(trades[0]!.symbol, "MNQH6");
+  });
+
+  it("numeric-only contractIdMap entry is rejected (uses hardcoded instead)", () => {
+    const map = new Map<number, string>();
+    map.set(4327110, "4327110"); // Numeric-only, should be rejected
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ], map);
+    // Should fall back to hardcoded MNQM6, not the invalid map entry
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 2);
+  });
+
+  it("recovers contractId from rawPayload when the DB column is null (webhook-path fills)", () => {
+    // Webhook path stores the full fill object as rawPayload — contractId lives
+    // there as a numeric field — but the DB contractId column may be null.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: null, rawPayload: { contractId: 4327110, id: 1 }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: null, rawPayload: { contractId: 4327110, id: 2 }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.symbolResolved, true);
+    assert.equal(trades[0]!.pnl, 2); // (4701-4700)*1*1*2 — $2/pt, NOT $1/pt
+  });
+
+  it("recovers contractId from rawPayload contract.id shape", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", contractId: null, rawPayload: { contract: { id: 4214191 } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20005", contractId: null, rawPayload: { contract: { id: 4214191 } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "NQM6");
+    assert.equal(trades[0]!.pnl, 100); // $20/pt
+  });
+
+  it("marks symbolResolved=false and uses $1/pt for genuinely unresolvable fills", () => {
+    // No DB contractId, no payload symbol, no payload contractId → cannot resolve.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", contractId: null, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "102", contractId: null, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbolResolved, false);
+    assert.equal(trades[0]!.symbol, "—");
+    assert.equal(trades[0]!.pnl, 2); // (102-100)*1*1*1 — low confidence
+  });
+
+  it("treats numeric-only rawPayload.symbol as a contract id, not a symbol", () => {
+    // Production shape: {"symbol":"4327110","orderId":"…"}, DB contractId null.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: null, rawPayload: { symbol: "4327110", orderId: "475261340013" }, occurredAt: new Date("2026-05-04T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: null, rawPayload: { symbol: "4327110", orderId: "475261340024" }, occurredAt: new Date("2026-05-04T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.symbolResolved, true);
+    assert.equal(trades[0]!.pnl, 2); // $2/pt, NOT $1/pt
+  });
+
+  it("numeric rawPayload.symbol 4214191 resolves to NQM6 at $20/pt", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", contractId: null, rawPayload: { symbol: "4214191", orderId: "x" }, occurredAt: new Date("2026-05-04T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20005", contractId: null, rawPayload: { symbol: "4214191", orderId: "y" }, occurredAt: new Date("2026-05-04T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "NQM6");
+    assert.equal(trades[0]!.pnl, 100); // $20/pt
+  });
+
+  it("valid futures symbol in rawPayload.symbol still wins over id resolution", () => {
+    const r = resolveSymbol(fill({ id: "1", contractId: null, rawPayload: { symbol: "MNQM6", orderId: "z" }, occurredAt: new Date() }));
+    assert.equal(r.symbol, "MNQM6");
+    assert.equal(r.source, "payload");
+    assert.equal(r.resolved, true);
+  });
+
+  it("unknown numeric rawPayload.symbol is low-confidence, exposing the recovered id", () => {
+    const r = resolveSymbol(fill({ id: "1", contractId: null, rawPayload: { symbol: "9999999", orderId: "z" }, occurredAt: new Date() }));
+    assert.equal(r.resolved, false);
+    assert.equal(r.symbol, "#9999999");
+    assert.equal(r.rawContractId, 9999999);
+    assert.equal(r.pointValue, 1);
+  });
+
+  it("1868411-style subset (numeric symbol, null DB contractId) reconstructs at $2/pt", () => {
+    // 3 round-trips that sum to +$21.75 at $1/pt must become +$43.50 at $2/pt.
+    const mk = (id: number, side: string, price: string, ms: number): FillInput =>
+      fill({ id: `f${id}`, externalTradeId: String(id), side, quantity: "1", price, contractId: null, rawPayload: { symbol: "4327110", orderId: `o${id}` }, occurredAt: new Date(Date.parse("2026-05-04T13:00:00Z") + ms) });
+    const trades = reconstructRoundTrips([
+      mk(1, "BUY", "4700", 0), mk(2, "SELL", "4705", 60_000),
+      mk(3, "BUY", "4710", 120_000), mk(4, "SELL", "4715", 180_000),
+      mk(5, "SELL", "4720", 240_000), mk(6, "BUY", "4708.25", 300_000),
+    ]);
+    assert.equal(trades.length, 3);
+    assert.ok(trades.every((tr) => tr.symbol === "MNQM6" && tr.symbolResolved));
+    const gross = trades.reduce((s, tr) => s + tr.pnl, 0);
+    assert.equal(gross, (5 + 5 + 11.75) * 2); // 43.50 at $2/pt
+  });
+});
+
+describe("buildContractIdMap", () => {
+  it("only stores valid futures symbols, rejecting numeric-only values", () => {
+    const map = buildContractIdMap([
+      fill({ id: "1", contractId: 4327110, rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", contractId: 4214191, rawPayload: { contract: { name: "4214191" } }, occurredAt: new Date("2026-01-01T14:01:00Z") }),
+    ]);
+    assert.equal(map.get(4327110), "MNQM6");
+    assert.equal(map.has(4214191), false); // numeric-only rejected
+  });
+
+  it("keys by the contractId recovered from rawPayload when DB column is null", () => {
+    const map = buildContractIdMap([
+      fill({ id: "1", contractId: null, rawPayload: { contractId: 4327110, symbol: "MNQM6" }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+    ]);
+    assert.equal(map.get(4327110), "MNQM6");
+  });
+});
+
+describe("resolveSymbol provenance", () => {
+  it("reports rawContractId and source for each resolution path", () => {
+    // payload symbol
+    const p = resolveSymbol(fill({ id: "1", contractId: 4327110, rawPayload: { symbol: "MNQM6" }, occurredAt: new Date() }));
+    assert.equal(p.source, "payload");
+    assert.equal(p.symbol, "MNQM6");
+    assert.equal(p.pointValue, 2);
+    assert.equal(p.resolved, true);
+
+    // hardcoded known map (payload has no symbol)
+    const k = resolveSymbol(fill({ id: "2", contractId: 4327110, rawPayload: {}, occurredAt: new Date() }));
+    assert.equal(k.source, "known_map");
+    assert.equal(k.symbol, "MNQM6");
+    assert.equal(k.rawContractId, 4327110);
+
+    // unresolved
+    const u = resolveSymbol(fill({ id: "3", contractId: null, rawPayload: {}, occurredAt: new Date() }));
+    assert.equal(u.source, "unresolved");
+    assert.equal(u.resolved, false);
+    assert.equal(u.pointValue, 1);
+    assert.equal(u.rawContractId, null);
+  });
+});
+
+describe("reconstructRoundTrips: DEMO/1868411 sample scenarios (pointValue regression)", () => {
+  it("first DEMO sample (5 MNQ round-trips, contractId 4327110) reconstructs at $2/pt", () => {
+    // Five 1-lot MNQM6 round-trips, each +1.0 point → +$2.00 at $2/pt (not +$1 at $1/pt).
+    // Sum = +$10.00 ($2/pt) vs +$5.00 ($1/pt). Mirrors the +$184 vs +$92 production gap shape.
+    const fills: FillInput[] = [];
+    let t = new Date("2026-05-04T14:00:00Z").getTime();
+    for (let i = 0; i < 5; i++) {
+      fills.push(fill({ id: `b${i}`, externalTradeId: String(i * 2), side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: { contractId: 4327110, id: i * 2 }, occurredAt: new Date(t) }));
+      t += 60_000;
+      fills.push(fill({ id: `s${i}`, externalTradeId: String(i * 2 + 1), side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: { contractId: 4327110, id: i * 2 + 1 }, occurredAt: new Date(t) }));
+      t += 60_000;
+    }
+    const trades = reconstructRoundTrips(fills);
+    assert.equal(trades.length, 5);
+    assert.ok(trades.every((tr) => tr.symbol === "MNQM6" && tr.symbolResolved));
+    const gross = trades.reduce((s, tr) => s + tr.pnl, 0);
+    assert.equal(gross, 10); // 5 × $2.00 — would be $5.00 at the buggy $1/pt
+  });
+
+  it("1868411 May-4 imported subset resolves to MNQM6 at $2/pt even with null DB contractId", () => {
+    // Account whose fills carry contractId only inside rawPayload (DB column null).
+    // 3 round-trips that sum to +$21.50 at $1/pt must become +$43.00 at $2/pt.
+    const mk = (id: number, side: string, price: string, ms: number): FillInput =>
+      fill({ id: `f${id}`, externalTradeId: String(id), side, quantity: "1", price, contractId: null, rawPayload: { contractId: 4327110, id }, occurredAt: new Date(Date.parse("2026-05-04T13:00:00Z") + ms) });
+    const trades = reconstructRoundTrips([
+      mk(1, "BUY", "4700", 0), mk(2, "SELL", "4705", 60_000),     // +5 pts
+      mk(3, "BUY", "4710", 120_000), mk(4, "SELL", "4715", 180_000), // +5 pts
+      mk(5, "SELL", "4720", 240_000), mk(6, "BUY", "4708.25", 300_000), // +11.75 pts short
+    ]);
+    assert.equal(trades.length, 3);
+    assert.ok(trades.every((tr) => tr.symbol === "MNQM6" && tr.symbolResolved));
+    const grossAt1 = (5 + 5 + 11.75) * 1; // = 21.75 at $1/pt
+    const grossAt2 = (5 + 5 + 11.75) * 2; // = 43.50 at $2/pt
+    const gross = trades.reduce((s, tr) => s + tr.pnl, 0);
+    assert.equal(gross, grossAt2);
+    assert.notEqual(gross, grossAt1);
   });
 });

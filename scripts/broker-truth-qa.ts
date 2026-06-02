@@ -18,7 +18,7 @@ config({ path: resolve(process.cwd(), ".env.local") });
 
 import { prisma } from "../src/lib/db.ts";
 import { TradovateClient } from "../src/lib/brokers/tradovate-client.ts";
-import { reconstructRoundTrips, type FillInput } from "../src/lib/trades/round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, type FillInput } from "../src/lib/trades/round-trips.ts";
 import { computeTradeStats } from "../src/lib/trades/stats.ts";
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -274,7 +274,11 @@ async function main() {
       rawPayload: f.rawPayload,
     }));
 
-    const roundTrips = reconstructRoundTrips(dbFillInputs);
+    // Build contractId → symbol map (shared with the app loader); resolution also
+    // recovers the contract id from rawPayload when the DB column is null.
+    const contractIdMap = buildContractIdMap(dbFillInputs);
+
+    const roundTrips = reconstructRoundTrips(dbFillInputs, contractIdMap);
     const stats = computeTradeStats(roundTrips);
 
     console.log(`  DB NormalizedTradeEvent (30d):`);
