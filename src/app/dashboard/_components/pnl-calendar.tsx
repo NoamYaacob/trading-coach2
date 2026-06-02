@@ -117,17 +117,22 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
   const viewYear = viewDate.getFullYear();
   const viewMonth = viewDate.getMonth();
 
+  // When every trade in the window carries broker fee data, the cell values are
+  // true net P&L. Otherwise they are fill P&L BEFORE fees — and must be labelled
+  // as such (never called "Net"), since a trade-level net cannot be derived.
+  const feesAvailable = trades.length > 0 && trades.every((t) => t.feesAvailable);
+
   // Aggregate trades by displayed-timezone day (en-CA key).
   const dayMap = React.useMemo(() => {
     const map = new Map<string, { pnl: number; count: number }>();
     for (const t of trades) {
       const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: timezone });
       const cur = map.get(key) ?? { pnl: 0, count: 0 };
-      // Use net P&L (after broker-reported fees) for the calendar cell value.
-      map.set(key, { pnl: cur.pnl + t.netPnl, count: cur.count + 1 });
+      // Net when fees are known for the whole window, else fill P&L before fees.
+      map.set(key, { pnl: cur.pnl + (feesAvailable ? t.netPnl : t.pnl), count: cur.count + 1 });
     }
     return map;
-  }, [trades, timezone]);
+  }, [trades, timezone, feesAvailable]);
 
   const cells = React.useMemo(
     () => buildMonthGrid(viewYear, viewMonth, timezone),
@@ -185,7 +190,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            Net P&amp;L · calendar day · after fees when reported · {accountLabel}
+            {feesAvailable ? "Net P&amp;L" : "Fill P&amp;L (before fees)"} · calendar day · {accountLabel}
             {earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}

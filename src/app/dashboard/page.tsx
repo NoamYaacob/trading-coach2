@@ -298,6 +298,11 @@ export default async function DashboardPage({
   const todayTrades = recentTrades.filter(
     (t) => t.closedAt.toLocaleDateString("en-CA", { timeZone: displayTimeZone }) === todayKey,
   );
+  // Only label the per-trade column "Net P&L" when every shown trade carried
+  // broker fee data; otherwise it is fill P&L before fees and must be labelled
+  // as such. The authoritative session net is the Broker Session P&L card.
+  const sessionTradesNet = todayTrades.length > 0 && todayTrades.every((t) => t.feesAvailable);
+  const sessionTradesPnlLabel = sessionTradesNet ? "Net P&L" : "Trade P&L";
 
   // Win rate and profit factor for KPI strip (honest 30d stats)
   const wins30d = recentTrades.filter((t) => t.netPnl > 0).length;
@@ -847,8 +852,8 @@ export default async function DashboardPage({
                   <p style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
                     <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
                     {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
-                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip Net P&L</strong>
-                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip — and deducts broker-reported commissions per fill when available. When your broker does not return per-fill commissions, no fees are deducted and this value can differ from the broker session snapshot; in that case the snapshot above is the authoritative net figure.
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
+                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. It deducts broker-reported commissions per fill and is shown as <em>Net P&L</em> only when those fees are available; otherwise it is shown as <em>Trade P&L (before fees)</em> with fees marked “Not reported”. In that case this snapshot — the broker’s own commission-adjusted session total — is the authoritative net figure.
                   </p>
                 </details>
               </div>
@@ -1087,11 +1092,11 @@ export default async function DashboardPage({
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Net P&L"].map((h) => (
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", sessionTradesPnlLabel].map((h) => (
                           <th
                             key={h}
                             style={{
-                              textAlign: h === "P&L" ? "right" : "left",
+                              textAlign: h === sessionTradesPnlLabel ? "right" : "left",
                               padding: "8px 4px",
                               borderBottom: "1px solid var(--gr-border)",
                               fontSize: 10.5,
@@ -1109,8 +1114,10 @@ export default async function DashboardPage({
                     <tbody>
                       {todayTrades.slice(0, 6).map((t) => {
                         const sideOk = t.side === "LONG";
-                        const pnlCol = t.netPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
-                        const sign = t.netPnl >= 0 ? "+" : "−";
+                        // Show net only when this trade's fees are known; else fill P&L.
+                        const shownPnl = t.feesAvailable ? t.netPnl : t.pnl;
+                        const pnlCol = shownPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                        const sign = shownPnl >= 0 ? "+" : "−";
                         return (
                           <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                             <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>

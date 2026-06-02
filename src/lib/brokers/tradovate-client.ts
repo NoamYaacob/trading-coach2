@@ -170,6 +170,43 @@ type TvFill = {
   commission?: number | null;
 };
 
+/**
+ * Per-fill fee breakdown from Tradovate's `fillFee/list` endpoint. Each fee
+ * component is a separate field; the total fee for a fill is their sum. Field
+ * names verified against docs/tradovate-openapi.json (FillFee entity).
+ *
+ * `fillId` links a FillFee row back to its Fill (`fill/list` item id).
+ */
+type TvFillFee = {
+  id?: number;
+  fillId?: number;
+  clearingFee?: number | null;
+  exchangeFee?: number | null;
+  nfaFee?: number | null;
+  brokerageFee?: number | null;
+  ipFee?: number | null;
+  commission?: number | null;
+  orderRoutingFee?: number | null;
+};
+
+/** Sum the fee components of a FillFee row into a single total (cost magnitude). */
+function sumFillFee(fee: TvFillFee): number {
+  const parts = [
+    fee.clearingFee,
+    fee.exchangeFee,
+    fee.nfaFee,
+    fee.brokerageFee,
+    fee.ipFee,
+    fee.commission,
+    fee.orderRoutingFee,
+  ];
+  let total = 0;
+  for (const p of parts) {
+    if (typeof p === "number" && Number.isFinite(p)) total += Math.abs(p);
+  }
+  return total;
+}
+
 type TvContract = {
   id: number;
   name: string;
@@ -1117,6 +1154,35 @@ export class TradovateClient {
     return this.#lastFillsScopingVerdict;
   }
 
+  /**
+   * Per-fill commission/fee totals from `fillFee/list`, keyed by fillId.
+   *
+   * Read-only GET — never writes. Used to enrich executions with a `commission`
+   * total so net P&L can be derived. Defensive: any failure (endpoint missing,
+   * 403 scope gap, unexpected shape) resolves to an EMPTY map so fill ingestion
+   * is never blocked — fees simply remain unavailable until the broker supplies
+   * them. No exception escapes to the sync.
+   */
+  async getFillFeesByFillId(): Promise<Map<number, number>> {
+    const out = new Map<number, number>();
+    try {
+      const raw = await this.#request<unknown>("fillFee/list");
+      const items = parseSnapshotItems<TvFillFee>(raw);
+      for (const fee of items) {
+        if (fee.fillId == null) continue;
+        const total = sumFillFee(fee);
+        out.set(fee.fillId, (out.get(fee.fillId) ?? 0) + total);
+      }
+    } catch (err) {
+      console.info("[tradovate/fillfee] fee fetch skipped — fees remain unavailable", {
+        accountId: this.#accountId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return new Map();
+    }
+    return out;
+  }
+
   /** The externalAccountId string from the DB, set during initialize(). null when absent. */
   getExternalAccountId(): string | null {
     return this.#externalAccountId;
@@ -1992,6 +2058,10 @@ export class TradovateClient {
     const fills = await this.getFills(sessionStartMs);
     const ids = [...new Set(fills.map((f) => f.contractId))];
     const contractMap = await this.resolveContracts(ids);
+    // Read-only per-fill fee totals (fillFee/list). Empty map when the broker
+    // does not expose fees — in which case commission stays null and net P&L
+    // is reported as unavailable at the trade level.
+    const feeByFillId = await this.getFillFeesByFillId();
 
     return fills
       .map((f): BrokerExecution | null => {
@@ -2002,6 +2072,11 @@ export class TradovateClient {
         const price = f.price;
         if (price == null) return null;
         const ts = f.timestamp ?? f.time ?? f.tradeTime;
+        // Prefer the detailed fillFee/list total; fall back to the fill's own
+        // commission field. null when neither is available.
+        const feeTotal = feeByFillId.get(f.id);
+        const commission =
+          feeTotal != null ? feeTotal : f.commission != null ? f.commission : null;
         return {
           executionId: String(f.id),
           orderId: String(f.orderId),
@@ -2011,9 +2086,9 @@ export class TradovateClient {
           quantity: qty,
           price,
           pnl: f.profit ?? f.pnl ?? f.realizedPnL ?? f.realizedPnl ?? null,
-          // Captured when Tradovate supplies it; null otherwise. Enables net
-          // P&L without a schema change (the sync stores it in rawPayload).
-          commission: f.commission ?? null,
+          // Enables net P&L without a schema change (the sync stores it in
+          // NormalizedTradeEvent.rawPayload).
+          commission,
           occurredAt: ts ? new Date(ts) : new Date(),
         };
       })

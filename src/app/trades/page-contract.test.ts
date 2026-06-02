@@ -351,59 +351,71 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     );
   });
 
-  it("Trades page headline KPI is 'Net P&L' (uses stats.netPnl) — not gross-first", () => {
-    assert.ok(page.includes('"Net P&L"') || page.includes("Net P&L"), "trades KPI must headline 'Net P&L'");
-    assert.ok(page.includes("stats.netPnl"), "trades KPI value must use stats.netPnl");
+  it("Trades KPI does NOT call fill-only P&L 'Net' when fees are missing", () => {
+    // The KPI must branch on stats.feesAvailable: only headline 'Net P&L' when
+    // fees are known; otherwise 'Trade P&L (before fees)'. It must never label
+    // the gross fill value as Net.
+    assert.ok(page.includes("stats.feesAvailable"), "KPI must branch on stats.feesAvailable");
+    assert.ok(page.includes('label: "Net P&L"'), "KPI headlines 'Net P&L' only in the fees-available branch");
     assert.ok(
-      !page.includes("Trade P&L (before fees)") && !page.includes("Gross P&L (before fees)"),
-      "trades KPI must not headline a 'before fees' / gross label",
+      page.includes('label: "Trade P&L (before fees)"'),
+      "KPI must fall back to 'Trade P&L (before fees)' when fees are not available",
+    );
+    assert.ok(page.includes("stats.netPnl"), "net branch uses stats.netPnl");
+    assert.ok(page.includes("stats.grossPnl"), "before-fees branch uses stats.grossPnl");
+  });
+
+  it("Trades table has Trade P&L, Fees, and Net P&L columns", () => {
+    assert.ok(page.includes('"Trade P&L"'), "must have a 'Trade P&L' (fill/gross) column");
+    assert.ok(page.includes('"Fees"'), "must have a 'Fees' column");
+    assert.ok(page.includes('"Net P&L"'), "must have a 'Net P&L' column");
+  });
+
+  it("Trades table shows 'Not reported' for fees and '—' for Net when feesAvailable is false", () => {
+    assert.ok(
+      page.includes('"Not reported"'),
+      "Fees cell must show 'Not reported' when the broker did not supply commission",
+    );
+    assert.ok(
+      page.includes('t.feesAvailable ? fmt$(t.netPnl) : "—"'),
+      "Net P&L cell must show '—' (not the gross value) when fees are unavailable",
     );
   });
 
-  it("Trades table column is 'Net P&L' with a 'Fees' column; rows render t.netPnl", () => {
-    assert.ok(page.includes('"Net P&L"'), "trades table must have a 'Net P&L' column");
-    assert.ok(page.includes('"Fees"'), "trades table must have a 'Fees' column");
-    assert.ok(page.includes("t.netPnl"), "trades rows must render the net P&L value");
-    assert.ok(!page.includes('"Gross P&L"'), "trades table must not use 'Gross P&L'");
-    assert.ok(!page.includes('"Trade P&L"'), "trades table must not use 'Trade P&L' as the column");
-  });
-
-  it("Trades footer explains net deducts fees and points to broker session snapshot when fees absent", () => {
+  it("Trades footer explains Trade P&L is before fees and Net needs fees", () => {
+    assert.ok(page.includes("before fees"), "footer must explain Trade P&L is before fees");
     assert.ok(page.includes("Net P&L"), "footer must reference Net P&L");
     assert.ok(
-      page.includes("commission") || page.includes("fees"),
-      "footer must explain fee deduction",
-    );
-    assert.ok(
       page.includes("Broker Session P&L snapshot"),
-      "footer must point to the Broker Session P&L snapshot when fees are not reported",
+      "footer must point to the Broker Session P&L snapshot for the authoritative net",
     );
   });
 
-  it("Trades main P&L UI contains no 'gross' / 'before fees' headline wording", () => {
-    // Allowed only in secondary/explanatory context, not as the main KPI/column.
-    assert.ok(!page.includes("Gross P&L"), "no 'Gross P&L' label in trades UI");
-    assert.ok(!page.includes("before fees"), "no 'before fees' label in trades UI");
-    assert.ok(!page.includes("gross ·"), "no '+x gross' day subtotal wording");
-  });
-
-  it("P&L calendar aggregates and labels NET P&L (after fees)", () => {
-    assert.ok(calendar.includes("t.netPnl"), "calendar must aggregate by netPnl, not gross pnl");
+  it("P&L calendar does NOT label fill-only values 'Net' — branches on feesAvailable", () => {
+    assert.ok(calendar.includes("feesAvailable"), "calendar must branch on feesAvailable");
     assert.ok(
-      calendar.includes("Net P&L") || calendar.includes("Net P&amp;L"),
-      "calendar subtitle must indicate Net P&L",
+      calendar.includes("Fill P&amp;L (before fees)") || calendar.includes("Fill P&L (before fees)"),
+      "calendar must label values 'Fill P&L (before fees)' when fees are unavailable",
     );
     assert.ok(
-      !calendar.includes("Gross round-trip") && !calendar.includes("before fees ·"),
-      "calendar must not headline gross / before-fees",
+      !calendar.includes("Gross round-trip"),
+      "calendar must not use 'Gross round-trip' wording",
     );
   });
 
-  it("Dashboard session trades column is 'Net P&L' and renders t.netPnl", () => {
-    assert.ok(dashboard.includes('"Net P&L"'), "dashboard session trades must use 'Net P&L'");
-    assert.ok(dashboard.includes("t.netPnl"), "dashboard session trades rows must render t.netPnl");
-    assert.ok(!dashboard.includes('"Gross P&L"') && !dashboard.includes('"Trade P&L"'),
-      "dashboard must not use a gross/before-fees column header");
+  it("Dashboard session trades column does NOT say 'Net P&L' when fees missing", () => {
+    assert.ok(
+      dashboard.includes("sessionTradesNet") && dashboard.includes("sessionTradesPnlLabel"),
+      "dashboard session trades must branch the column label on fee availability",
+    );
+    assert.ok(
+      dashboard.includes('? "Net P&L" : "Trade P&L"'),
+      "label is 'Net P&L' only when every shown trade has fees; otherwise 'Trade P&L'",
+    );
+    assert.ok(
+      dashboard.includes("t.feesAvailable ? t.netPnl : t.pnl"),
+      "rows must render net only when fees are available, else fill P&L",
+    );
   });
 
   it("Dashboard 'Broker session P&L snapshot' remains the authoritative net session value", () => {
@@ -429,20 +441,29 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     );
   });
 
-  it("DIAGNOSTIC: Tradovate fill/list does not yet populate commission — net falls back to gross", () => {
-    // This documents the known data gap. When the broker DOES report per-fill
-    // commission (captured in rawPayload by the sync), net P&L deducts it; until
-    // then feesAvailable is false and the broker session snapshot is the
-    // authoritative net figure. See extractFillFee + combineFees.
+  it("Fee ingestion: fillFee/list is wrapped read-only and merged into executions", () => {
     const client = read("lib/brokers/tradovate-client.ts");
     assert.ok(
-      client.includes("commission: f.commission ?? null"),
-      "toExecutions must capture commission from the raw fill when present (currently usually null)",
+      client.includes('"fillFee/list"'),
+      "client must wrap the read-only fillFee/list endpoint",
+    );
+    assert.ok(
+      client.includes("getFillFeesByFillId"),
+      "client must expose per-fill fee totals keyed by fillId",
+    );
+    assert.ok(
+      client.includes("commission,"),
+      "toExecutions must attach the merged commission total to each execution",
+    );
+    // Read-only: the fee fetch must NOT introduce any broker write verbs.
+    assert.ok(
+      !/fillFee\/(create|update|delete)/.test(client),
+      "fee ingestion must be read-only — no fillFee writes",
     );
     const sync = read("lib/brokers/tradovate-sync.ts");
     assert.ok(
       sync.includes("commission: ex.commission"),
-      "sync must persist commission into rawPayload (no schema column) so net can be derived later",
+      "sync must persist commission into rawPayload (no schema column)",
     );
   });
 });
