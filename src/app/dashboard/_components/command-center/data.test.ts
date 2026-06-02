@@ -275,7 +275,7 @@ describe("deriveBreachReason", () => {
     });
     assert.ok(result !== null);
     assert.ok(result.headline.includes("2/3"), "warning headline shows count/limit");
-    assert.equal(result.detail, "One trade left today.");
+    assert.equal(result.detail, "One trade left this session.");
   });
 
   it("trade warning (at the cap, allowance fully used) — shows 'next trade will lock' copy", () => {

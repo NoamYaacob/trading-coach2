@@ -283,7 +283,7 @@ export default async function DashboardPage({
       : a.status === "warning" ? "warning" : "ok",
   }));
 
-  // Real trade history for the selected account — used by Today's trades and
+  // Real trade history for the selected account — used by Session trades and
   // Equity curve panels. Loaded only when we have a selection; empty array
   // otherwise drives the honest empty state.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -291,7 +291,7 @@ export default async function DashboardPage({
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
   // Use the same timezone-aware day key as TraderInsights and the P&L calendar
-  // so "Today's trades" is always consistent with what the calendar shows.
+  // so "Session trades" is always consistent with what the calendar shows.
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: displayTimeZone });
   const todayTrades = recentTrades.filter(
     (t) => t.closedAt.toLocaleDateString("en-CA", { timeZone: displayTimeZone }) === todayKey,
@@ -1017,9 +1017,9 @@ export default async function DashboardPage({
               />
             )}
 
-            {/* ── Row 2: Today's trades + Recent alerts ─────────────────── */}
+            {/* ── Row 2: Session trades + Recent alerts ─────────────────── */}
             <section className="dash-section dash-row-2col" style={{ padding: "0 36px 16px", display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
-              {/* Today's trades — real round-trips for the selected account */}
+              {/* Session trades — real round-trips for the selected account */}
               <div style={{
                 background: "var(--gr-surface)", border: "1px solid var(--gr-border)",
                 borderRadius: 14, padding: "18px 20px",

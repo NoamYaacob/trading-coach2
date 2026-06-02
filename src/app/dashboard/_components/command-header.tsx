@@ -122,7 +122,7 @@ function derivePermission(props: CommandHeaderProps): PermissionInfo {
     return {
       label: "Allowed",
       chipClass: "bg-emerald-600 text-white",
-      reason: "Session ended for today. Rules clear.",
+      reason: "Session ended. Rules clear.",
       nextHref: "/rules",
       nextLabel: "Review rules →",
     };

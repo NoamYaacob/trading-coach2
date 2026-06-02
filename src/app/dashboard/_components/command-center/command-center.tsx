@@ -1366,7 +1366,7 @@ function TradesCell({
       {account.tradesMayIncludePreConnection && (
         <p
           className={hintClass}
-          title="Trade count includes broker activity from today before Guardrail was connected to this account."
+          title="Trade count may include broker activity from this session before Guardrail was connected to this account."
         >
           Includes pre-connection activity
         </p>

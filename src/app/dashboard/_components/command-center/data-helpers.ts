@@ -171,7 +171,7 @@ export function deriveBreachReason(input: {
     const detail =
       tradesCount === maxTradesPerDay
         ? "Trade limit reached — the next trade will lock the account."
-        : "One trade left today.";
+        : "One trade left this session.";
     return { headline, detail };
   }
 
