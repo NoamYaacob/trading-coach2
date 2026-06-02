@@ -300,7 +300,7 @@ export default async function DashboardPage({
   );
 
   // Win rate and profit factor for KPI strip (honest 30d stats)
-  const wins30d = recentTrades.filter((t) => t.pnl > 0).length;
+  const wins30d = recentTrades.filter((t) => t.netPnl > 0).length;
   const winRate30d = recentTrades.length > 0 ? wins30d / recentTrades.length : null;
   const pf30d = profitFactor(recentTrades);
 
@@ -799,7 +799,7 @@ export default async function DashboardPage({
                       label: "Profit factor · 30D",
                       value: pf30d != null ? pf30d.toFixed(2) : "—",
                       sub: pf30d != null
-                        ? pf30d >= 1 ? "Gross wins exceed losses" : "Gross losses exceed wins"
+                        ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
                         : recentTrades.length === 0 ? "No round-trips in window" : "No losing trades yet",
                       tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
@@ -847,8 +847,8 @@ export default async function DashboardPage({
                   <p style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
                     <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
                     {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
-                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
-                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip Net P&L</strong>
+                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip — and deducts broker-reported commissions per fill when available. When your broker does not return per-fill commissions, no fees are deducted and this value can differ from the broker session snapshot; in that case the snapshot above is the authoritative net figure.
                   </p>
                 </details>
               </div>
@@ -1087,7 +1087,7 @@ export default async function DashboardPage({
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Trade P&L"].map((h) => (
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Net P&L"].map((h) => (
                           <th
                             key={h}
                             style={{
@@ -1109,8 +1109,8 @@ export default async function DashboardPage({
                     <tbody>
                       {todayTrades.slice(0, 6).map((t) => {
                         const sideOk = t.side === "LONG";
-                        const pnlCol = t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
-                        const sign = t.pnl >= 0 ? "+" : "−";
+                        const pnlCol = t.netPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                        const sign = t.netPnl >= 0 ? "+" : "−";
                         return (
                           <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                             <td style={{ padding: "10px 4px", fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mid)" }}>
@@ -1139,7 +1139,7 @@ export default async function DashboardPage({
                               {t.exitPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                             </td>
                             <td style={{ padding: "10px 4px", textAlign: "right", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: pnlCol }}>
-                              {sign}${Math.abs(t.pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {sign}${Math.abs(t.netPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
                         );

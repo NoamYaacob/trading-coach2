@@ -190,7 +190,7 @@ export function TraderInsights({
         <StatCard
           key="biggest-win"
           label="Biggest win this session"
-          value={fmt$(winner.pnl)}
+          value={fmt$(winner.netPnl)}
           sub={`${winner.symbol} · ${winner.side} · ${winner.qty}`}
           tone="ok"
         />
@@ -214,7 +214,7 @@ export function TraderInsights({
         <StatCard
           key="biggest-loss"
           label="Biggest loss this session"
-          value={fmt$(loser.pnl)}
+          value={fmt$(loser.netPnl)}
           sub={`${loser.symbol} · ${loser.side} · ${loser.qty}`}
           tone="bad"
         />

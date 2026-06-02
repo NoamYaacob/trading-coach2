@@ -279,8 +279,8 @@ describe("data-truth: no fake or sample trade data in authenticated display path
     assert.ok(!equity.includes("fakeData"),    "must not reference fakeData");
     assert.ok(!equity.includes("demoData"),    "must not reference demoData");
     assert.ok(
-      equity.includes("cum += t.pnl"),
-      "equity curve must build series from real round-trip pnl only",
+      equity.includes("cum += t.netPnl"),
+      "equity curve must build series from real round-trip net P&L only",
     );
   });
 

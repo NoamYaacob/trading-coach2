@@ -298,7 +298,13 @@ export async function syncTradovateAccount(
             price: ex.price,
             pnl: ex.pnl,
             occurredAt: ex.occurredAt,
-            rawPayload: { symbol: ex.symbol, orderId: ex.orderId },
+            // commission stored in rawPayload (no schema column) so round-trip
+            // reconstruction can derive net P&L when the broker reports fees.
+            rawPayload: {
+              symbol: ex.symbol,
+              orderId: ex.orderId,
+              ...(ex.commission != null ? { commission: ex.commission } : {}),
+            },
           })),
           skipDuplicates: true,
         });

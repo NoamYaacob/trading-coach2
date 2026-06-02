@@ -30,6 +30,46 @@ export function getContractPointValue(symbol: string): number {
   return 1;
 }
 
+/**
+ * Extract the broker-reported commission/fee for a single fill.
+ *
+ * Tradovate fills carry a `commission` field that the sync ingestion stores in
+ * `NormalizedTradeEvent.rawPayload` (no schema column — see tradovate-sync).
+ * This reads it back as a positive magnitude (a cost).  Returns `null` when no
+ * fee data is present, so callers can distinguish "fees are zero" from "fees
+ * unknown" and never fabricate a net figure.
+ */
+export function extractFillFee(fill: FillInput): number | null {
+  const rp = fill.rawPayload;
+  if (rp != null && typeof rp === "object") {
+    const raw = (rp as Record<string, unknown>).commission;
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      // Commission is a cost; normalise to a positive magnitude regardless of
+      // the sign the broker reports it with.
+      return Math.abs(raw);
+    }
+  }
+  return null;
+}
+
+/**
+ * Combine entry-side and close-side fees for a round trip into a single
+ * `{ fees, feesAvailable }`.
+ *
+ * `feesAvailable` is true when EITHER side carried broker fee data.  When
+ * neither side did, `fees` is `null` (unknown — never fabricated as 0) so the
+ * UI can fall back to the authoritative broker session snapshot for net P&L.
+ */
+function combineFees(
+  anyEntryFee: boolean,
+  entryFeesConsumed: number,
+  closeFee: number | null,
+): { fees: number | null; feesAvailable: boolean } {
+  const feesAvailable = anyEntryFee || closeFee != null;
+  if (!feesAvailable) return { fees: null, feesAvailable: false };
+  return { fees: entryFeesConsumed + (closeFee ?? 0), feesAvailable: true };
+}
+
 export type FillInput = {
   id: string;
   externalTradeId: string | null;
@@ -58,20 +98,40 @@ export type RoundTripTrade = {
   openedAt: Date;
   closedAt: Date;
   holdMs: number;
-  /** Realized P&L.  Sum of broker-provided pnl on closing fills when
-   *  available; otherwise computed as (exit-entry)*qty*sideMultiplier. */
+  /** Realized P&L BEFORE fees/commissions.  Sum of broker-provided pnl on
+   *  closing fills when available; otherwise computed as
+   *  (exit-entry)*qty*sideMultiplier.  Retained for diagnostics / fee math —
+   *  user-facing surfaces should display `netPnl`. */
   pnl: number;
   /** True if at least one closing fill had a non-null broker pnl. */
   pnlSource: "broker" | "computed";
   /**
-   * Whether the pnl value is gross (before fees/commissions) or purely
-   * computed from entry/exit prices.  Fill-based round-trips are always
-   * "broker_gross" (Tradovate fill P&L does not deduct commissions); only
-   * manual-entry trades where net P&L was explicitly supplied would be "net".
-   * Callers that want to display a final net figure must use the broker
-   * session snapshot (LiveSessionState.dailyPnl) instead of summing round-trips.
+   * Whether the gross `pnl` value came from the broker fill P&L or was purely
+   * computed from entry/exit prices.  Fill-based round-trips are
+   * "broker_gross" (Tradovate fill P&L does not deduct commissions).
    */
   pnlType: "broker_gross" | "computed";
+  /**
+   * Total commission/fees attributed to this round trip, summed from the
+   * `commission` carried on its constituent fills (prorated across partially
+   * consumed opening lots + the closing fill).  `null` when NONE of the fills
+   * carried fee data — meaning a true net figure cannot be derived for this
+   * trade from the broker fill stream.
+   *
+   * Fees are a positive magnitude (a cost) subtracted from gross to get net.
+   */
+  fees: number | null;
+  /** True when at least one constituent fill carried broker fee data, so
+   *  `netPnl` reflects fees actually reported by the broker. */
+  feesAvailable: boolean;
+  /**
+   * Net realized P&L AFTER fees: `pnl - (fees ?? 0)`.  This is the
+   * user-facing P&L.  When `feesAvailable` is false it equals `pnl` (the
+   * broker reported no per-fill commission for this trade); the authoritative
+   * net session figure in that case is LiveSessionState.dailyPnl (broker
+   * session snapshot), surfaced as "Broker Session P&L" on the dashboard.
+   */
+  netPnl: number;
   /** True when `symbol` resolved to a real futures contract (valid month code).
    *  False when the symbol could not be resolved (e.g. "#4327110" / "—") and the
    *  point-value multiplier defaulted to $1/pt — such P&L is LOW CONFIDENCE and
@@ -83,6 +143,10 @@ type OpenLot = {
   qty: number;
   price: number;
   openedAt: Date;
+  /** Commission per contract for this lot (total lot fee / original lot qty),
+   *  so a partial close can attribute the correct fraction of the entry fee.
+   *  `null` when the opening fill carried no fee data. */
+  feePerUnit: number | null;
 };
 
 type OpenPosition = {
@@ -289,18 +353,20 @@ export function reconstructRoundTrips(
     const cls = classifyFill(netBefore, side, qty);
     const symbol = extractSymbol(fill, contractIdMap);
     const brokerPnl = fill.pnl != null ? Number(fill.pnl) : null;
+    const fillFee = extractFillFee(fill);
+    const feePerUnit = fillFee != null && qty > 0 ? fillFee / qty : null;
 
     if (cls === "entry") {
       positions.set(key, {
         side: side === "BUY" ? "LONG" : "SHORT",
-        lots: [{ qty, price, openedAt: fill.occurredAt }],
+        lots: [{ qty, price, openedAt: fill.occurredAt, feePerUnit }],
         symbol,
       });
       continue;
     }
 
     if (cls === "scale_in" && open) {
-      open.lots.push({ qty, price, openedAt: fill.occurredAt });
+      open.lots.push({ qty, price, openedAt: fill.occurredAt, feePerUnit });
       continue;
     }
 
@@ -309,12 +375,19 @@ export function reconstructRoundTrips(
       let consumedQty = 0;
       let entryWeighted = 0;
       let earliestOpen: Date | null = null;
+      // Entry-side fees attributed to the lots consumed by this close.
+      let entryFeesConsumed = 0;
+      let anyEntryFee = false;
 
       while (remaining > 0 && open.lots.length > 0) {
         const lot = open.lots[0]!;
         const take = Math.min(remaining, lot.qty);
         consumedQty += take;
         entryWeighted += lot.price * take;
+        if (lot.feePerUnit != null) {
+          entryFeesConsumed += lot.feePerUnit * take;
+          anyEntryFee = true;
+        }
         if (earliestOpen == null || lot.openedAt < earliestOpen) earliestOpen = lot.openedAt;
         lot.qty -= take;
         remaining -= take;
@@ -325,6 +398,8 @@ export function reconstructRoundTrips(
       const entryPriceAvg = consumedQty > 0 ? entryWeighted / consumedQty : 0;
       const pointValue = getContractPointValue(open.symbol);
       const computedPnl = (price - entryPriceAvg) * consumedQty * sideMul * pointValue;
+      const grossPnl = brokerPnl != null ? brokerPnl : computedPnl;
+      const { fees, feesAvailable } = combineFees(anyEntryFee, entryFeesConsumed, fillFee);
 
       trades.push({
         id: `${key}-${fill.id}`,
@@ -336,9 +411,12 @@ export function reconstructRoundTrips(
         openedAt: earliestOpen ?? fill.occurredAt,
         closedAt: fill.occurredAt,
         holdMs: fill.occurredAt.getTime() - (earliestOpen?.getTime() ?? fill.occurredAt.getTime()),
-        pnl: brokerPnl != null ? brokerPnl : computedPnl,
+        pnl: grossPnl,
         pnlSource: brokerPnl != null ? "broker" : "computed",
         pnlType: brokerPnl != null ? "broker_gross" : "computed",
+        fees,
+        feesAvailable,
+        netPnl: grossPnl - (fees ?? 0),
         symbolResolved: isValidFuturesSymbol(open.symbol),
       });
 
@@ -351,9 +429,15 @@ export function reconstructRoundTrips(
       let closeRemaining = openQty;
       let entryWeighted = 0;
       let earliestOpen: Date | null = null;
+      let entryFeesConsumed = 0;
+      let anyEntryFee = false;
 
       for (const lot of open.lots) {
         entryWeighted += lot.price * lot.qty;
+        if (lot.feePerUnit != null) {
+          entryFeesConsumed += lot.feePerUnit * lot.qty;
+          anyEntryFee = true;
+        }
         if (earliestOpen == null || lot.openedAt < earliestOpen) earliestOpen = lot.openedAt;
       }
 
@@ -361,6 +445,12 @@ export function reconstructRoundTrips(
       const entryPriceAvg = openQty > 0 ? entryWeighted / openQty : 0;
       const pointValue = getContractPointValue(open.symbol);
       const computedPnl = (price - entryPriceAvg) * openQty * sideMul * pointValue;
+      const grossPnl = brokerPnl != null ? brokerPnl : computedPnl;
+      // The closing fill's commission covers the whole fill (qty). Attribute
+      // only the closed-portion share to this round trip; the remainder rides
+      // with the newly-opened opposite lot.
+      const closeFeeShare = feePerUnit != null ? feePerUnit * openQty : null;
+      const { fees, feesAvailable } = combineFees(anyEntryFee, entryFeesConsumed, closeFeeShare);
 
       trades.push({
         id: `${key}-${fill.id}-rev`,
@@ -372,17 +462,21 @@ export function reconstructRoundTrips(
         openedAt: earliestOpen ?? fill.occurredAt,
         closedAt: fill.occurredAt,
         holdMs: fill.occurredAt.getTime() - (earliestOpen?.getTime() ?? fill.occurredAt.getTime()),
-        pnl: brokerPnl != null ? brokerPnl : computedPnl,
+        pnl: grossPnl,
         pnlSource: brokerPnl != null ? "broker" : "computed",
         pnlType: brokerPnl != null ? "broker_gross" : "computed",
+        fees,
+        feesAvailable,
+        netPnl: grossPnl - (fees ?? 0),
         symbolResolved: isValidFuturesSymbol(open.symbol),
       });
 
-      // Opened a new opposite-side position with the remaining quantity.
+      // Opened a new opposite-side position with the remaining quantity. The
+      // per-unit fee carries over so a later close attributes the right share.
       closeRemaining = qty - openQty;
       positions.set(key, {
         side: side === "BUY" ? "LONG" : "SHORT",
-        lots: [{ qty: closeRemaining, price, openedAt: fill.occurredAt }],
+        lots: [{ qty: closeRemaining, price, openedAt: fill.occurredAt, feePerUnit }],
         symbol,
       });
       continue;

@@ -525,3 +525,81 @@ describe("reconstructRoundTrips: pnlType — gross vs computed labelling", () =>
     // from LiveSessionState.dailyPnl (broker snapshot), not from the round-trip.
   });
 });
+
+describe("reconstructRoundTrips: net P&L after fees (broker commission)", () => {
+  it("gross +1.50 with 1.90 fees → netPnl -0.40 (the production 1868411 case)", () => {
+    // commission split across the open (0.95) and close (0.95) fills → 1.90 total.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "19000", pnl: null,
+        rawPayload: { contract: { name: "MNQM6" }, commission: 0.95 },
+        occurredAt: new Date("2026-06-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "19000.75", pnl: "1.50",
+        rawPayload: { contract: { name: "MNQM6" }, commission: 0.95 },
+        occurredAt: new Date("2026-06-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.pnl, 1.50, "gross from fill is +1.50");
+    assert.equal(trades[0]!.fees, 1.90, "fees sum to 1.90 (0.95 entry + 0.95 close)");
+    assert.equal(trades[0]!.feesAvailable, true);
+    assert.ok(Math.abs(trades[0]!.netPnl - -0.40) < 1e-9, "netPnl = 1.50 - 1.90 = -0.40");
+  });
+
+  it("commission only on the closing fill is still counted", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", pnl: null,
+        rawPayload: { contract: { name: "ESH5" } },
+        occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "105", pnl: "1.50",
+        rawPayload: { contract: { name: "ESH5" }, commission: 1.90 },
+        occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.fees, 1.90);
+    assert.equal(trades[0]!.feesAvailable, true);
+    assert.ok(Math.abs(trades[0]!.netPnl - -0.40) < 1e-9);
+  });
+
+  it("no commission anywhere → fees=null, feesAvailable=false, netPnl == gross (no fabrication)", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", pnl: null,
+        rawPayload: { contract: { name: "ESH5" } },
+        occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "105", pnl: "1.50",
+        rawPayload: { contract: { name: "ESH5" } },
+        occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.fees, null, "fees must be null when broker reports none — never fabricated as 0");
+    assert.equal(trades[0]!.feesAvailable, false);
+    assert.equal(trades[0]!.netPnl, trades[0]!.pnl, "netPnl falls back to gross when no fee data");
+  });
+
+  it("partial close prorates the entry-lot fee", () => {
+    // Open 2 @ commission 2.00 (1.00/unit), close 1 → entry fee 1.00 + close fee 0.50.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "2", price: "100", pnl: null,
+        rawPayload: { contract: { name: "ESH5" }, commission: 2.00 },
+        occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "110", pnl: "10",
+        rawPayload: { contract: { name: "ESH5" }, commission: 0.50 },
+        occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.fees, 1.50, "entry 1.00 (1 of 2 lots) + close 0.50 = 1.50");
+    assert.ok(Math.abs(trades[0]!.netPnl - 8.50) < 1e-9, "netPnl = 10 - 1.50 = 8.50");
+  });
+
+  it("commission reported negative is normalised to a positive cost", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", pnl: null,
+        rawPayload: { contract: { name: "ESH5" }, commission: -0.95 },
+        occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "105", pnl: "1.50",
+        rawPayload: { contract: { name: "ESH5" }, commission: -0.95 },
+        occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.fees, 1.90, "negative commission is treated as a positive cost magnitude");
+    assert.ok(Math.abs(trades[0]!.netPnl - -0.40) < 1e-9);
+  });
+});

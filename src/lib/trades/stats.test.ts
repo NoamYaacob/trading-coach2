@@ -18,6 +18,9 @@ function trade(over: Partial<RoundTripTrade>): RoundTripTrade {
     pnl: over.pnl ?? 5,
     pnlSource: over.pnlSource ?? "computed",
     pnlType: over.pnlType ?? "computed",
+    fees: over.fees ?? null,
+    feesAvailable: over.feesAvailable ?? false,
+    netPnl: over.netPnl ?? over.pnl ?? 5,
     symbolResolved: over.symbolResolved ?? true,
   };
 }
