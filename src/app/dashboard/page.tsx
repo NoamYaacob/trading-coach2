@@ -1087,7 +1087,7 @@ export default async function DashboardPage({
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "P&L"].map((h) => (
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Gross P&L"].map((h) => (
                           <th
                             key={h}
                             style={{

@@ -22,6 +22,7 @@ import { sumFillPnl, traceEntryTrades } from "./tradovate-client-helpers";
 import { resolveTradeCount, selectPhaseCTradeCount, type TradeCountAdapter } from "./tradovate-trade-count";
 import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser";
 import { countCanonicalEntries } from "../guardian-engine/session-state";
+import { shouldHoldRiskStateStopped } from "../guardian-engine/internal-lock-evaluator";
 import { triggerEnforcement, type EnforcementTrigger } from "./enforcement";
 import {
   computeEffectiveDailyPnl,
@@ -724,6 +725,42 @@ export async function syncTradovateAccount(
       }
     } else if (enforcementTrigger === "max_position_size" && !hasOpenPositions) {
       flattenSuppressedReason = "no_open_positions";
+    }
+
+    // ── Active internal lock protection (Priority 1) ──────────────────────────
+    // A manual lockout (or any rule-engine lock) writes an active
+    // InternalLockEvent (clearedAt=null, activeDedupKey!=null) + riskState=STOPPED.
+    // This sync re-evaluates the rules from scratch above and — finding no live
+    // breach (e.g. ENFORCEMENT_DRY_RUN, or P&L back within limits) — would
+    // otherwise downgrade newRiskState to NORMAL/WARNING, re-showing the Lockout
+    // button after refresh. We query for an active lock and, via the pure
+    // shouldHoldRiskStateStopped() decision, hold riskState at STOPPED.
+    //
+    // Scoped to a single account (accountId filter) so the hold is per-account.
+    // The DB count runs only when it could change the outcome (not stale, not
+    // already STOPPED). The lock is cleared exclusively by the CME session-end
+    // cleanup below (isStale branch) — never by this sync. No GuardianIntervention
+    // is created here: enforcementTrigger is null on this path, so the broker
+    // write chain is untouched.
+    let hasActiveInternalLock = false;
+    if (!isStale && newRiskState !== "STOPPED") {
+      const activeLockCount = await prisma.internalLockEvent.count({
+        where: { accountId, clearedAt: null, activeDedupKey: { not: null } },
+      });
+      hasActiveInternalLock = activeLockCount > 0;
+    }
+    if (
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: newRiskState,
+        isStale,
+        hasActiveInternalLock,
+      })
+    ) {
+      console.info("[tradovate/sync] active InternalLockEvent — riskState held at STOPPED", {
+        accountId,
+        overriddenFrom: newRiskState,
+      });
+      newRiskState = "STOPPED";
     }
 
     // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──

@@ -307,3 +307,116 @@ describe("/trades page: account isolation", () => {
     );
   });
 });
+
+describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
+  const page = read("app/trades/page.tsx");
+  const dashboard = read("app/dashboard/page.tsx");
+  const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+  const stats = read("lib/trades/stats.ts");
+  const roundTrips = read("lib/trades/round-trips.ts");
+
+  it("TradeStats uses grossPnl (not netPnl) — round-trip sum is gross before fees", () => {
+    assert.ok(
+      stats.includes("grossPnl"),
+      "TradeStats must expose grossPnl — the round-trip sum from fills is gross (before fees)",
+    );
+    assert.ok(
+      !stats.includes("netPnl"),
+      "TradeStats must not expose netPnl — fills do not include fee deductions",
+    );
+  });
+
+  it("RoundTripTrade exposes pnlType field to distinguish broker_gross from computed", () => {
+    assert.ok(
+      roundTrips.includes("pnlType"),
+      "RoundTripTrade must include pnlType field",
+    );
+    assert.ok(
+      roundTrips.includes('"broker_gross"'),
+      "pnlType must include 'broker_gross' variant for broker fill P&L",
+    );
+    assert.ok(
+      roundTrips.includes('"computed"'),
+      "pnlType must include 'computed' variant for price-difference P&L",
+    );
+  });
+
+  it("Trades page labels P&L as 'Gross P&L (before fees)' not 'Net P&L'", () => {
+    assert.ok(
+      page.includes("Gross P&L (before fees)"),
+      "trades page KPI strip must label the round-trip sum as 'Gross P&L (before fees)'",
+    );
+    assert.ok(
+      !page.includes('"Net P&L"'),
+      "trades page must not label round-trip P&L as 'Net P&L' — it is gross",
+    );
+  });
+
+  it("Trades page column header is 'Gross P&L' not 'P&L'", () => {
+    assert.ok(
+      page.includes('"Gross P&L"'),
+      "trades page table column header must say 'Gross P&L'",
+    );
+  });
+
+  it("Trades page footer note explains gross vs net distinction", () => {
+    assert.ok(
+      page.includes("gross") && page.includes("fees"),
+      "trades page footer note must explain that P&L shown is gross (before fees/commissions)",
+    );
+    assert.ok(
+      page.includes("Broker Session P&L snapshot"),
+      "trades page footer must point to the Broker Session P&L snapshot for net P&L",
+    );
+  });
+
+  it("P&L calendar subtitle indicates gross P&L (before fees)", () => {
+    assert.ok(
+      calendar.includes("gross") || calendar.includes("Gross"),
+      "P&L calendar subtitle must include 'gross' to distinguish from net P&L",
+    );
+    assert.ok(
+      calendar.includes("before fees") || calendar.includes("fees"),
+      "P&L calendar must indicate that the displayed P&L is before fees",
+    );
+  });
+
+  it("Dashboard session trades column header is 'Gross P&L'", () => {
+    assert.ok(
+      dashboard.includes('"Gross P&L"'),
+      "dashboard session trades table must label the P&L column as 'Gross P&L'",
+    );
+  });
+
+  it("Dashboard 'Broker session P&L snapshot' card is retained as the authoritative net value", () => {
+    assert.ok(
+      dashboard.includes("Broker session P&L snapshot"),
+      "dashboard must still show the broker session P&L snapshot (net, from account snapshot)",
+    );
+    assert.ok(
+      dashboard.includes("dailyPnl"),
+      "broker session P&L must come from account.dailyPnl (broker snapshot) not from round-trip sum",
+    );
+  });
+
+  it("dashboard Broker session P&L uses dailyPnl (broker snapshot) not sum of round-trips", () => {
+    // The broker snapshot dailyPnl is net (incl. fees). The round-trip sum is gross.
+    // The dashboard must show the broker snapshot for the 'Broker session P&L' card.
+    assert.ok(
+      dashboard.includes("selectedAccount.dailyPnl"),
+      "Broker session P&L card must use selectedAccount.dailyPnl (broker snapshot net P&L)",
+    );
+  });
+
+  it("no accounts are combined — loadAccountTrades is account-scoped", () => {
+    const load = read("lib/trades/load.ts");
+    assert.ok(
+      load.includes("accountId,"),
+      "loadAccountTrades must pass accountId so trades are never combined across accounts",
+    );
+    assert.ok(
+      !load.includes("userId"),
+      "loadAccountTrades must not use userId (which would aggregate all accounts)",
+    );
+  });
+});
