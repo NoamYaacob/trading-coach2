@@ -13,7 +13,7 @@ function fill(over: Partial<FillInput> & Pick<FillInput, "occurredAt">): FillInp
     price: over.price ?? "100",
     pnl: over.pnl ?? null,
     occurredAt: over.occurredAt,
-    rawPayload: "rawPayload" in over ? over.rawPayload : { contract: { name: "ESH5" } },
+    rawPayload: "rawPayload" in over ? over.rawPayload : { contract: { name: "TSTH5" } },
   };
 }
 
@@ -217,5 +217,44 @@ describe("reconstructRoundTrips: edge cases", () => {
       fill({ id: "2", side: "SELL", price: "105", occurredAt: new Date("2026-01-01T14:15:00Z") }),
     ]);
     assert.equal(trades[0]!.holdMs, 15 * 60 * 1000);
+  });
+});
+
+describe("reconstructRoundTrips: pointValue multiplier", () => {
+  it("MNQ contract applies pointValue=2 to computed P&L", () => {
+    // 1 MNQ long, entry 20000, exit 20001 → (1 pt) * 2 = $2
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20001", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "computed");
+    assert.equal(trades[0]!.pnl, 2); // (20001-20000)*1*1*2
+  });
+
+  it("ES contract applies pointValue=50 to computed P&L", () => {
+    // 1 ES long, entry 5000, exit 5001 → (1 pt) * 50 = $50
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "5000", rawPayload: { contract: { name: "ESH5" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "5001", rawPayload: { contract: { name: "ESH5" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "computed");
+    assert.equal(trades[0]!.pnl, 50); // (5001-5000)*1*1*50
+  });
+
+  it("broker pnl is used as-is (no multiplier) when present", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20010", pnl: "17.50", rawPayload: { contract: { name: "MNQM6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnlSource, "broker");
+    assert.equal(trades[0]!.pnl, 17.5); // broker value used directly
+  });
+
+  it("unknown symbol falls back to pointValue=1", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", rawPayload: { contract: { name: "XYZQ6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "102", rawPayload: { contract: { name: "XYZQ6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.pnl, 2); // (102-100)*1*1*1
   });
 });

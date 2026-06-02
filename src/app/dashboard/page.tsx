@@ -814,13 +814,19 @@ export default async function DashboardPage({
 
             {/* ── P&L source explanation ─────────────────────────────────── */}
             {selectedAccount && (
-              <div style={{ padding: "0 36px 12px" }}>
-                <p style={{ margin: 0, fontSize: 11.5, color: "var(--gr-text-mute)", lineHeight: 1.6 }}>
-                  <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
-                  {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
-                  <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
-                  {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
-                </p>
+              <div style={{ padding: "0 36px 8px" }}>
+                <details style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
+                  <summary style={{ cursor: "pointer", userSelect: "none", color: "var(--gr-text-mid)", listStyle: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, opacity: 0.7 }}>▶</span>
+                    Why can these P&amp;L figures differ?
+                  </summary>
+                  <p style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Broker session P&L snapshot</strong>
+                    {" "}is the Tradovate account snapshot&rsquo;s <code style={{ fontSize: 10.5 }}>todayPnL</code> field — the broker&rsquo;s own commission-adjusted session total for the current CME day (resets at 17:00&thinsp;CT). It is not derived from individual fill records.{" "}
+                    <strong style={{ color: "var(--gr-text-mid)" }}>Closed round-trip P&L</strong>
+                    {" "}is FIFO-reconstructed from stored fills — each lot closure is one round-trip. When fills carry no broker P&L (some account types do not return per-fill profit), the reconstruction uses entry&thinsp;−&thinsp;exit price differences without deducting commissions. The two can differ significantly in those cases.
+                  </p>
+                </details>
               </div>
             )}
 

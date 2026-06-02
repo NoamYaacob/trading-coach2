@@ -12,6 +12,14 @@
  */
 
 import { classifyFill, normalizeSide } from "../guardian-engine/fill-classifier.ts";
+import { FUTURES_SPECS } from "../instruments.ts";
+
+function getContractPointValue(symbol: string): number {
+  const match = symbol.match(/^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/);
+  const root = match?.[1];
+  if (root && root in FUTURES_SPECS) return FUTURES_SPECS[root]!.pointValue;
+  return 1;
+}
 
 export type FillInput = {
   id: string;
@@ -154,7 +162,8 @@ export function reconstructRoundTrips(fills: FillInput[]): RoundTripTrade[] {
 
       const sideMul = open.side === "LONG" ? 1 : -1;
       const entryPriceAvg = consumedQty > 0 ? entryWeighted / consumedQty : 0;
-      const computedPnl = (price - entryPriceAvg) * consumedQty * sideMul;
+      const pointValue = getContractPointValue(open.symbol);
+      const computedPnl = (price - entryPriceAvg) * consumedQty * sideMul * pointValue;
 
       trades.push({
         id: `${key}-${fill.id}`,
@@ -187,7 +196,8 @@ export function reconstructRoundTrips(fills: FillInput[]): RoundTripTrade[] {
 
       const sideMul = open.side === "LONG" ? 1 : -1;
       const entryPriceAvg = openQty > 0 ? entryWeighted / openQty : 0;
-      const computedPnl = (price - entryPriceAvg) * openQty * sideMul;
+      const pointValue = getContractPointValue(open.symbol);
+      const computedPnl = (price - entryPriceAvg) * openQty * sideMul * pointValue;
 
       trades.push({
         id: `${key}-${fill.id}-rev`,
