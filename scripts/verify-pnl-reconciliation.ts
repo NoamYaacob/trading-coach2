@@ -159,22 +159,26 @@ async function analyzeAccount(searchKey: string) {
     rawPayload: f.rawPayload,
   }));
 
-  // Build contractId → symbol map from fills that have symbols in rawPayload
+  // Build contractId → symbol map from fills with VALID futures symbols in rawPayload
+  // (reject numeric-only values like "4327110")
   const contractIdMap = new Map<number, string>();
+  function isValidFuturesSymbol(sym: string): boolean {
+    return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(sym);
+  }
   for (const f of fillInputs) {
     const payload = f.rawPayload as
       | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
       | null
       | undefined;
     const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
-    if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+    if (symbol && isValidFuturesSymbol(symbol) && f.contractId != null && !contractIdMap.has(f.contractId)) {
       contractIdMap.set(f.contractId, symbol);
     }
   }
 
-  console.log(`\nContract ID → Symbol mapping discovered:`);
+  console.log(`\nContract ID → Symbol mapping discovered (valid futures symbols only):`);
   if (contractIdMap.size === 0) {
-    console.log(`  (no contractIds found with symbols in rawPayload)`);
+    console.log(`  (no contractIds found with valid futures symbols in rawPayload)`);
   } else {
     for (const [cid, sym] of contractIdMap) {
       console.log(`  ${cid} → ${sym}`);

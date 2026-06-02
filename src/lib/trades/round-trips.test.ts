@@ -258,3 +258,66 @@ describe("reconstructRoundTrips: pointValue multiplier", () => {
     assert.equal(trades[0]!.pnl, 2); // (102-100)*1*1*1
   });
 });
+
+describe("reconstructRoundTrips: contractId resolution", () => {
+  it("numeric-only payload symbol is rejected, uses hardcoded mapping instead", () => {
+    // rawPayload has "4327110" (numeric), which should be rejected as invalid symbol
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: { contract: { name: "4327110" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4702", contractId: 4327110, rawPayload: { contract: { name: "4327110" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    // Should resolve to MNQM6 (pointValue=$2) via hardcoded mapping, not use numeric contract ID
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 4); // (4702-4700)*1*1*2
+  });
+
+  it("4327110 resolves to MNQM6 with pointValue=$2/pt via hardcoded mapping", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 2); // (4701-4700)*1*1*2 with pointValue=$2
+  });
+
+  it("4214191 resolves to NQM6 with pointValue=$20/pt via hardcoded mapping", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "20000", contractId: 4214191, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "20005", contractId: 4214191, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "NQM6");
+    assert.equal(trades[0]!.pnl, 100); // (20005-20000)*1*1*20 with pointValue=$20
+  });
+
+  it("valid symbol in payload takes precedence over hardcoded mapping", () => {
+    // rawPayload has valid "MNQH6" which should be used instead of hardcoded "MNQM6"
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: { contract: { name: "MNQH6" } }, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: { contract: { name: "MNQH6" } }, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades[0]!.symbol, "MNQH6");
+    assert.equal(trades[0]!.pnl, 2); // Still pointValue=$2 for MNQ
+  });
+
+  it("contractIdMap with valid symbol overrides hardcoded mapping", () => {
+    const map = new Map<number, string>();
+    map.set(4327110, "MNQH6");
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ], map);
+    assert.equal(trades[0]!.symbol, "MNQH6");
+  });
+
+  it("numeric-only contractIdMap entry is rejected (uses hardcoded instead)", () => {
+    const map = new Map<number, string>();
+    map.set(4327110, "4327110"); // Numeric-only, should be rejected
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "4700", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "4701", contractId: 4327110, rawPayload: {}, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ], map);
+    // Should fall back to hardcoded MNQM6, not the invalid map entry
+    assert.equal(trades[0]!.symbol, "MNQM6");
+    assert.equal(trades[0]!.pnl, 2);
+  });
+});

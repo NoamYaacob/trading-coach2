@@ -311,15 +311,18 @@ async function run(): Promise<void> {
     rawPayload: f.rawPayload,
   }));
 
-  // Build contractId → symbol map from fills that have symbols in rawPayload
+  // Build contractId → symbol map from fills with VALID futures symbols in rawPayload
   const contractIdMap = new Map<number, string>();
+  function isValidFuturesSymbol(sym: string): boolean {
+    return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(sym);
+  }
   for (const f of fillInput) {
     const payload = f.rawPayload as
       | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
       | null
       | undefined;
     const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
-    if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+    if (symbol && isValidFuturesSymbol(symbol) && f.contractId != null && !contractIdMap.has(f.contractId)) {
       contractIdMap.set(f.contractId, symbol);
     }
   }

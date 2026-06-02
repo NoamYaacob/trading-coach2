@@ -14,6 +14,11 @@
 import { classifyFill, normalizeSide } from "../guardian-engine/fill-classifier.ts";
 import { FUTURES_SPECS } from "../instruments.ts";
 
+/** Check if a symbol matches the futures month-code pattern (e.g. "MNQM6"). */
+function isValidFuturesSymbol(symbol: string): boolean {
+  return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(symbol);
+}
+
 /** Exported for diagnostics. Parses a month-coded futures symbol (e.g. "MNQM6")
  *  and returns its dollar-per-point value from FUTURES_SPECS. Returns 1 for
  *  unknown symbols so callers never crash. */
@@ -73,21 +78,46 @@ type OpenPosition = {
   symbol: string;
 };
 
+/** Static mapping of known Tradovate contract IDs to futures symbols.
+ *  Used when rawPayload has no valid symbol and contractIdMap has no entry.
+ *  This is a safe fallback based on verified production data. */
+const KNOWN_CONTRACT_ID_MAP: Record<number, string> = {
+  4327110: "MNQM6", // Micro E-mini Nasdaq-100 Mar 2026
+  4214191: "NQM6",  // E-mini Nasdaq-100 Mar 2026
+};
+
 function extractSymbol(fill: FillInput, contractIdMap?: Map<number, string>): string {
   const payload = fill.rawPayload as
     | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
     | null
     | undefined;
+
+  // Try rawPayload first (preferred source)
   const fromPayload =
     payload?.contract?.name ??
     payload?.contract?.symbol ??
     payload?.symbol ??
     payload?.contractName;
-  if (fromPayload) return fromPayload;
-  // Attempt contractId lookup before numeric fallback
-  if (fill.contractId != null && contractIdMap?.has(fill.contractId)) {
-    return contractIdMap.get(fill.contractId)!;
+
+  // Validate that payload symbol is a real futures symbol, not a numeric contractId
+  if (fromPayload && isValidFuturesSymbol(fromPayload)) {
+    return fromPayload;
   }
+
+  // Try contractIdMap (built from other fills with valid payload symbols)
+  if (fill.contractId != null && contractIdMap?.has(fill.contractId)) {
+    const mapped = contractIdMap.get(fill.contractId)!;
+    if (isValidFuturesSymbol(mapped)) {
+      return mapped;
+    }
+  }
+
+  // Try hardcoded known contract ID mapping
+  if (fill.contractId != null && fill.contractId in KNOWN_CONTRACT_ID_MAP) {
+    return KNOWN_CONTRACT_ID_MAP[fill.contractId];
+  }
+
+  // Final fallback: numeric contractId or unknown
   return fill.contractId != null ? `#${fill.contractId}` : "—";
 }
 
