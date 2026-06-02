@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { GrShell, type GrNavItem, type GrRecentAlert } from "@/components/ui/gr-shell";
 import { CommandCenter } from "@/app/dashboard/_components/command-center/command-center";
+import { AccountManageMenu } from "@/app/dashboard/_components/command-center/account-manage-menu";
 import { loadCommandCenterData } from "@/app/dashboard/_components/command-center/data";
 import { DEMO_COMMAND_CENTER_DATA } from "@/app/dashboard/_components/command-center/sample-data";
 import { AutoSync } from "@/app/dashboard/_components/auto-sync";
@@ -571,33 +572,48 @@ export default async function DashboardPage({
                             {acc.platformLabel ?? acc.propFirm ?? "Broker"}
                           </span>
                         </div>
-                        {/* State indicator */}
-                        {acc.status === "warning" && (
-                          <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-warn-bg)", color: "var(--gr-warn)", fontWeight: 600 }}>
-                            warning
-                          </span>
-                        )}
-                        {acc.status === "locked" && (
-                          <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-bad-bg)", color: "var(--gr-bad)", fontWeight: 600 }}>
-                            locked
-                          </span>
-                        )}
-                        {(acc.status === "not_connected" || acc.status === "unavailable") && (
-                          <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
-                            reconnect
-                          </span>
-                        )}
-                        {acc.status === "allowed" && isSelected && (
-                          <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-copper-bg)", color: "var(--gr-copper)", fontWeight: 600 }}>
-                            viewing
-                          </span>
-                        )}
-                        {acc.status === "allowed" && !isSelected && (
-                          <span style={{
-                            width: 7, height: 7, borderRadius: "50%",
-                            background: "var(--gr-ok)", display: "inline-block",
-                          }} />
-                        )}
+                        {/* State indicator + per-account actions menu.
+                          * zIndex:5 lifts this group above the full-card selection
+                          * overlay Link (rendered last, absolute inset:0) so the
+                          * three-dot menu is clickable. The dropdown itself portals
+                          * to document.body, so the strip's overflowX:auto cannot
+                          * clip it. */}
+                        <div style={{ position: "relative", zIndex: 5, display: "flex", alignItems: "center", gap: 6 }}>
+                          {acc.status === "warning" && (
+                            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-warn-bg)", color: "var(--gr-warn)", fontWeight: 600 }}>
+                              warning
+                            </span>
+                          )}
+                          {acc.status === "locked" && (
+                            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-bad-bg)", color: "var(--gr-bad)", fontWeight: 600 }}>
+                              locked
+                            </span>
+                          )}
+                          {(acc.status === "not_connected" || acc.status === "unavailable") && (
+                            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-bg-elev)", color: "var(--gr-text-mute)", fontWeight: 500 }}>
+                              reconnect
+                            </span>
+                          )}
+                          {acc.status === "allowed" && isSelected && (
+                            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "var(--gr-copper-bg)", color: "var(--gr-copper)", fontWeight: 600 }}>
+                              viewing
+                            </span>
+                          )}
+                          {acc.status === "allowed" && !isSelected && (
+                            <span style={{
+                              width: 7, height: 7, borderRadius: "50%",
+                              background: "var(--gr-ok)", display: "inline-block",
+                            }} />
+                          )}
+                          <AccountManageMenu
+                            accountId={acc.id}
+                            accountLabel={acc.label}
+                            canLock={acc.status === "allowed" || acc.status === "warning"}
+                            triggerLabel="⋯"
+                            align="right"
+                            buttonClassName="inline-flex h-7 w-7 items-center justify-center rounded-md text-base leading-none text-stone-400 transition hover:bg-black/5 hover:text-stone-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"
+                          />
+                        </div>
                       </div>
 
                       {/* Account name + ref */}

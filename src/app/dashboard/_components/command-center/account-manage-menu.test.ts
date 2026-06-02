@@ -88,15 +88,15 @@ describe("Dashboard account menu exposes account-level actions", () => {
     );
   });
 
-  test("menu alignment is overflow-safe (left on mobile card, right on desktop row)", () => {
-    // The command-center section is overflow-x-hidden; the dropdown must expand
-    // into the card, never past it.
+  test("menu dropdown portals out so overflow containers cannot clip it", () => {
+    // The Dashboard account strip is overflowX:auto (which coerces overflow-y to
+    // auto too), so an in-flow absolute dropdown would be clipped. The dropdown
+    // must render through a portal anchored to the trigger's bounding rect.
     assert.ok(COMMAND_CENTER.includes('align="left"'), "mobile card must anchor the menu left");
     assert.ok(COMMAND_CENTER.includes('align="right"'), "desktop row must anchor the menu right");
-    assert.ok(
-      MENU.includes('align === "left" ? "left-0" : "right-0"'),
-      "menu must switch anchor edge based on align",
-    );
+    assert.ok(MENU.includes("createPortal"), "dropdown must portal out so overflow containers can't clip it");
+    assert.ok(MENU.includes("getBoundingClientRect"), "dropdown must anchor to the trigger's bounding rect");
+    assert.ok(MENU.includes('align === "left"'), "menu must switch anchor edge based on align");
   });
 });
 
@@ -281,6 +281,78 @@ describe("Dashboard sidebar stays active-only", () => {
     assert.ok(
       page.includes("partitionAccountsByActive") && page.includes("activeAccounts"),
       "dashboard sidebar must derive from partitionAccountsByActive(active)",
+    );
+  });
+});
+
+// ── 6. Production dashboard account cards expose the manage menu ───────────────
+//
+// Regression guard for the QA finding that the manage menu was only wired into
+// the demo-only <CommandCenter> sample, so production account cards (rendered
+// inline in page.tsx) had no menu trigger — making "Lock for this CME session"
+// unreachable.
+
+describe("Dashboard account cards (page.tsx) render the manage menu", () => {
+  const PAGE = readFileSync(join(REPO_ROOT, "src", "app", "dashboard", "page.tsx"), "utf8");
+
+  test("page imports AccountManageMenu", () => {
+    assert.ok(
+      PAGE.includes('import { AccountManageMenu }'),
+      "page.tsx must import AccountManageMenu so production cards can render it",
+    );
+  });
+
+  test("page renders AccountManageMenu inside the active-accounts card map", () => {
+    const mapIdx = PAGE.indexOf("activeAccounts.map");
+    const menuIdx = PAGE.indexOf("<AccountManageMenu", mapIdx);
+    assert.ok(mapIdx > -1, "page must map over activeAccounts to render cards");
+    assert.ok(
+      menuIdx > -1,
+      "AccountManageMenu must be rendered for every active account card (inside activeAccounts.map)",
+    );
+  });
+
+  test("each card menu receives the per-account id and label", () => {
+    assert.ok(PAGE.includes("accountId={acc.id}"), "card menu must receive the account id");
+    assert.ok(PAGE.includes("accountLabel={acc.label}"), "card menu must receive the account label");
+  });
+
+  test("card menu uses a visible three-dot trigger (not hover-only / not hidden)", () => {
+    const menuIdx = PAGE.indexOf("<AccountManageMenu");
+    const block = PAGE.slice(menuIdx, menuIdx + 600);
+    // The trigger must show the ⋯ glyph.
+    assert.ok(block.includes('triggerLabel="⋯"'), "card menu must use a ⋯ three-dot trigger");
+    // The trigger className must not hide it or gate it behind hover.
+    const classMatch = block.match(/buttonClassName="([^"]*)"/);
+    assert.ok(classMatch, "card menu must set an explicit trigger className");
+    const cls = classMatch![1];
+    for (const banned of ["hidden", "opacity-0", "group-hover", "sr-only", "invisible"]) {
+      assert.ok(!cls.includes(banned), `three-dot trigger must be always-visible — found '${banned}'`);
+    }
+  });
+
+  test("lock item is gated on a manageable, non-locked status", () => {
+    const menuIdx = PAGE.indexOf("<AccountManageMenu");
+    const block = PAGE.slice(menuIdx, menuIdx + 600);
+    assert.ok(
+      block.includes('canLock={acc.status === "allowed" || acc.status === "warning"}'),
+      "card menu canLock must be true only for allowed/warning (manageable, not locked) accounts",
+    );
+  });
+
+  test("menu group is stacked above the full-card selection overlay (zIndex)", () => {
+    // The card has a full-card <Link> overlay (absolute inset:0) for selection.
+    // The menu wrapper must sit above it so the trigger is clickable.
+    assert.ok(
+      /zIndex:\s*5[\s\S]{0,2500}<AccountManageMenu/.test(PAGE),
+      "the menu wrapper must use a raised zIndex so it is clickable above the selection overlay",
+    );
+  });
+
+  test("the lock action text is available in the menu when canLock is true", () => {
+    assert.ok(
+      MENU.includes("Lock for this CME session"),
+      "the menu must render the lock action so it is reachable from the card",
     );
   });
 });
