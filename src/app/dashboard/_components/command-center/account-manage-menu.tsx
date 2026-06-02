@@ -25,6 +25,7 @@ export function AccountManageMenu({
   accountId,
   accountLabel,
   canRemove = true,
+  canLock = true,
   buttonClassName,
   align = "right",
 }: {
@@ -32,6 +33,8 @@ export function AccountManageMenu({
   accountLabel?: string;
   /** When false, the "Remove from Guardrail" item is hidden. */
   canRemove?: boolean;
+  /** When false, the "Lock for this CME session" item is hidden (e.g. already locked). */
+  canLock?: boolean;
   buttonClassName?: string;
   /**
    * Which edge the dropdown anchors to. The enclosing command-center section is
@@ -51,9 +54,13 @@ export function AccountManageMenu({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Close on outside click / Escape.
+  const [showLockConfirm, setShowLockConfirm] = useState(false);
+  const [lockBusy, setLockBusy] = useState(false);
+  const [lockError, setLockError] = useState<string | null>(null);
+
+  // Close dropdown on outside click / Escape. Also handles Escape for lock modal.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !showLockConfirm) return;
     function onDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -61,10 +68,15 @@ export function AccountManageMenu({
       }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) {
-        setOpen(false);
-        setConfirmingRemove(false);
-        requestAnimationFrame(() => triggerRef.current?.focus());
+      if (e.key === "Escape" && !busy && !lockBusy) {
+        if (showLockConfirm) {
+          setShowLockConfirm(false);
+          setLockError(null);
+        } else {
+          setOpen(false);
+          setConfirmingRemove(false);
+          requestAnimationFrame(() => triggerRef.current?.focus());
+        }
       }
     }
     document.addEventListener("mousedown", onDown);
@@ -73,7 +85,7 @@ export function AccountManageMenu({
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, busy]);
+  }, [open, busy, showLockConfirm, lockBusy]);
 
   async function handleRemove() {
     setBusy(true);
@@ -103,6 +115,28 @@ export function AccountManageMenu({
       setError("Network error. Please try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleLock() {
+    setLockBusy(true);
+    setLockError(null);
+    try {
+      const res = await fetch(`/api/accounts/${accountId}/lockout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        setLockError(data.error ?? "Failed to lock account. Please try again.");
+        return;
+      }
+      setShowLockConfirm(false);
+      router.refresh();
+    } catch {
+      setLockError("Network error. Please try again.");
+    } finally {
+      setLockBusy(false);
     }
   }
 
@@ -146,6 +180,23 @@ export function AccountManageMenu({
           <Link role="menuitem" href={deriveOpenHref(accountId)} className={itemClass}>
             Account details
           </Link>
+
+          {canLock && (
+            <div className="mt-1 border-t border-stone-100 pt-1">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  setShowLockConfirm(true);
+                  setLockError(null);
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-xs font-medium text-orange-700 transition hover:bg-orange-50"
+              >
+                Lock for this CME session
+              </button>
+            </div>
+          )}
 
           {canRemove && (
             <div className="mt-1 border-t border-stone-100 pt-1">
@@ -192,6 +243,70 @@ export function AccountManageMenu({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {showLockConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
+          data-lock-confirm
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !lockBusy) {
+              setShowLockConfirm(false);
+              setLockError(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lock-dialog-title"
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <div className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-700">
+              Danger
+            </div>
+            <h2
+              id="lock-dialog-title"
+              className="mt-3 text-base font-semibold text-stone-900"
+            >
+              Lock {accountLabel ?? "this account"} for the rest of this CME session?
+            </h2>
+            <p className="mt-2 text-sm text-stone-600">
+              This account is locked or has rule activity today. To prevent bypassing
+              Guardrail, removal will take effect at the next trading session reset.
+            </p>
+            <p className="mt-2 text-sm text-stone-500">
+              The manual lock clears automatically when the CME session resets at
+              17:00&nbsp;CT.
+            </p>
+            {lockError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                {lockError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLockConfirm(false);
+                  setLockError(null);
+                }}
+                disabled={lockBusy}
+                className="inline-flex h-9 items-center rounded-full border border-stone-200 px-4 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLock}
+                disabled={lockBusy}
+                className="inline-flex h-9 items-center rounded-full bg-red-700 px-4 text-sm font-medium text-white transition hover:bg-red-800 disabled:opacity-70"
+              >
+                {lockBusy ? "Locking…" : "Yes, lock this account"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
