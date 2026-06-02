@@ -155,9 +155,22 @@ export function AccountLockoutButton({
         }}
         className={
           className ??
-          "inline-flex h-7 items-center rounded-full border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+          "inline-flex h-10 items-center gap-2 rounded-xl bg-red-500 px-3.5 text-xs font-bold text-white shadow-sm transition hover:bg-red-600 active:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
         }
       >
+        <svg
+          aria-hidden="true"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className="h-3.5 w-3.5 shrink-0"
+        >
+          <path
+            fillRule="evenodd"
+            d="M8 1a3.5 3.5 0 0 0-3.5 3.5V6H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-.5V4.5A3.5 3.5 0 0 0 8 1Zm2 5V4.5a2 2 0 1 0-4 0V6h4Z"
+            clipRule="evenodd"
+          />
+        </svg>
         Lockout
       </button>
       {confirming && (

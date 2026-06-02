@@ -300,16 +300,21 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
   });
 
   test("direct button renders a visible 'Lockout' label (not hover-only / hidden / sr-only)", () => {
-    assert.ok(LOCKOUT.includes(">\n        Lockout\n      </button>") || /Lockout\s*<\/button>/.test(LOCKOUT), "button must render the text 'Lockout'");
-    // Default pill style must be always-visible.
-    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-7[\s\S]*?\}/)?.[0] ?? LOCKOUT;
+    assert.ok(/Lockout/.test(LOCKOUT), "button must render the text 'Lockout'");
+    // Default button style must be always-visible.
+    const cls = LOCKOUT.match(/className=\{[\s\S]*?inline-flex h-10[\s\S]*?\}/)?.[0] ?? LOCKOUT;
     for (const banned of ["hidden", "opacity-0", "group-hover", "sr-only", "invisible"]) {
-      assert.ok(!cls.includes(banned), `Lockout pill must be always-visible — found '${banned}'`);
+      assert.ok(!cls.includes(banned), `Lockout button must be always-visible — found '${banned}'`);
     }
   });
 
-  test("direct button is danger-styled (red)", () => {
-    assert.ok(/text-red-700/.test(LOCKOUT) && /bg-red-50/.test(LOCKOUT), "Lockout pill must use red danger styling");
+  test("direct button is danger-styled (solid red, white text)", () => {
+    assert.ok(/text-white/.test(LOCKOUT), "Lockout button must use white text (solid red style)");
+    assert.ok(/bg-red-[56]00/.test(LOCKOUT), "Lockout button must use solid red background (bg-red-500 or bg-red-600)");
+  });
+
+  test("direct button includes a lock icon (SVG)", () => {
+    assert.ok(/<svg[\s\S]*?<\/svg>/.test(LOCKOUT), "Lockout button must include an SVG lock icon");
   });
 
   test("direct button is rendered above the full-card selection overlay (zIndex group)", () => {
