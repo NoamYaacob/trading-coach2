@@ -169,3 +169,165 @@ export async function maybeAttemptBrokerLockForManualLock(
     dedupKey,
   };
 }
+
+/**
+ * Statuses that indicate a prior broker attempt did not actually execute a live
+ * broker write — safe to retry now that ENFORCEMENT_DRY_RUN=false.
+ */
+const RETRYABLE_STATUSES = new Set<string>([
+  "dry_run",
+  "broker_lock_failed",
+  "unavailable_permission",
+  "unavailable_read_only",
+  "unavailable_consent_missing",
+  "monitoring_only",
+  "not_requested",
+]);
+
+function isRetryableStatus(status: string): boolean {
+  return RETRYABLE_STATUSES.has(status) || status.startsWith("unavailable_");
+}
+
+export type RetryManualBrokerLockResult = {
+  /** "no_active_lock" | "already_broker_locked" | "no_prior_intervention" | "not_retryable" | "retried" */
+  outcome:
+    | "no_active_lock"
+    | "already_broker_locked"
+    | "no_prior_intervention"
+    | "not_retryable"
+    | "retried";
+  /** The broker write result, present when outcome="retried". */
+  status?: BrokerLockStatus;
+  brokerActionTaken: boolean;
+  message: string;
+  dedupKey: string;
+};
+
+/**
+ * Retry the broker-side lock for a manual InternalLockEvent whose prior
+ * GuardianIntervention recorded a non-live result (dry_run / failed /
+ * unavailable). Safe to call when ENFORCEMENT_DRY_RUN has been flipped to
+ * false and you need the actual broker write to fire.
+ *
+ * Preconditions checked here — the function never writes if:
+ *   - The InternalLockEvent is already cleared (clearedAt != null).
+ *   - No prior GuardianIntervention exists (nothing to retry — use the POST
+ *     /api/accounts/[id]/lockout route instead).
+ *   - The prior intervention already has brokerLockStatus=broker_locked.
+ *   - The prior brokerLockStatus is not a recognised retryable status.
+ *
+ * On a successful retry the existing GuardianIntervention row is updated
+ * in-place (brokerLockStatus, outcome, message, brokerResponseJson) and
+ * InternalLockEvent.brokerActionTaken is flipped to true.
+ *
+ * On failure the existing row is updated with the new failed/unavailable
+ * status but the internal lock is never rolled back.
+ */
+export async function retryManualBrokerLock(
+  internalLockEventId: string,
+): Promise<RetryManualBrokerLockResult> {
+  const lockEvent = await prisma.internalLockEvent.findUnique({
+    where: { id: internalLockEventId },
+    select: {
+      id: true,
+      accountId: true,
+      userId: true,
+      ruleType: true,
+      tradingDay: true,
+      clearedAt: true,
+      brokerActionTaken: true,
+    },
+  });
+
+  if (lockEvent == null || lockEvent.clearedAt != null) {
+    return {
+      outcome: "no_active_lock",
+      brokerActionTaken: false,
+      message:
+        lockEvent == null
+          ? `InternalLockEvent '${internalLockEventId}' not found.`
+          : "Internal lock is already cleared — cannot retry a cleared lock.",
+      dedupKey: "",
+    };
+  }
+
+  const dedupKey = buildListenerBrokerDedupKey(
+    lockEvent.accountId,
+    lockEvent.ruleType,
+    lockEvent.tradingDay,
+  );
+
+  const prior = await prisma.guardianIntervention.findUnique({
+    where: { listenerBrokerDedupKey: dedupKey },
+    select: { id: true, brokerLockStatus: true },
+  });
+
+  if (prior == null) {
+    return {
+      outcome: "no_prior_intervention",
+      brokerActionTaken: false,
+      message:
+        "No prior GuardianIntervention found for this lock — use the lockout route to create one.",
+      dedupKey,
+    };
+  }
+
+  const priorBrokerActionTaken = prior.brokerLockStatus === "broker_locked";
+  if (priorBrokerActionTaken) {
+    return {
+      outcome: "already_broker_locked",
+      brokerActionTaken: true,
+      message: "Broker lock is already confirmed — no retry needed.",
+      dedupKey,
+    };
+  }
+
+  if (!isRetryableStatus(prior.brokerLockStatus ?? "")) {
+    return {
+      outcome: "not_retryable",
+      brokerActionTaken: false,
+      message: `Prior brokerLockStatus '${prior.brokerLockStatus}' is not retryable.`,
+      dedupKey,
+    };
+  }
+
+  // Attempt the live broker write now.
+  const result = await applyManualBrokerLock({
+    accountId: lockEvent.accountId,
+    userId: lockEvent.userId,
+  });
+  const brokerActionTaken = result.status === "broker_locked";
+
+  // Update the existing GuardianIntervention row in-place so the audit trail
+  // shows the current (retried) outcome while keeping the original sentAt.
+  await prisma.guardianIntervention.update({
+    where: { id: prior.id },
+    data: {
+      brokerLockStatus: result.status,
+      outcome: result.status,
+      message: result.message,
+      ...(result.brokerEndpoint != null && { brokerEndpoint: result.brokerEndpoint }),
+      ...(result.brokerPayload != null && {
+        brokerPayloadJson: result.brokerPayload as Prisma.InputJsonValue,
+      }),
+      ...(result.brokerResponse != null && {
+        brokerResponseJson: result.brokerResponse as Prisma.InputJsonValue,
+      }),
+    },
+  });
+
+  if (brokerActionTaken) {
+    await prisma.internalLockEvent.update({
+      where: { id: lockEvent.id },
+      data: { brokerActionTaken: true },
+    });
+  }
+
+  return {
+    outcome: "retried",
+    status: result.status,
+    brokerActionTaken,
+    message: result.message,
+    dedupKey,
+  };
+}
