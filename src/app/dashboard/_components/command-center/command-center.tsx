@@ -1238,6 +1238,7 @@ function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account
           <AccountManageMenu
             accountId={account.id}
             accountLabel={account.label}
+            canLock={account.status !== "locked"}
             align="left"
             buttonClassName="inline-flex h-9 min-w-[80px] items-center justify-center whitespace-nowrap rounded-full border border-stone-200 px-4 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
           />
@@ -1464,6 +1465,7 @@ function AccountActions({ account }: { account: CommandCenterAccount }) {
       <AccountManageMenu
         accountId={account.id}
         accountLabel={account.label}
+        canLock={account.status !== "locked"}
         buttonClassName={PILL_ROW_SECONDARY}
         align="right"
       />

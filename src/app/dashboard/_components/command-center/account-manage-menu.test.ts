@@ -200,6 +200,79 @@ describe("Settings does not regain technical fields", () => {
   }
 });
 
+// ── 4b. Manual session lockout action ─────────────────────────────────────────
+
+describe("Lock for this CME session", () => {
+  test("menu offers 'Lock for this CME session' item", () => {
+    assert.ok(
+      MENU.includes("Lock for this CME session"),
+      "menu must offer 'Lock for this CME session'",
+    );
+  });
+
+  test("lock action calls POST /api/accounts/:id/lockout (not a broker endpoint)", () => {
+    assert.ok(
+      MENU.includes("/api/accounts/${accountId}/lockout"),
+      "lock must POST to /api/accounts/:id/lockout",
+    );
+    assert.ok(
+      MENU.includes('method: "POST"'),
+      "lock must use POST",
+    );
+    assert.ok(
+      !MENU.includes("/api/broker-connections"),
+      "lock must not call broker-connection endpoints",
+    );
+  });
+
+  test("lock action has a confirmation dialog with danger badge", () => {
+    assert.ok(MENU.includes("showLockConfirm"), "must gate on showLockConfirm state");
+    assert.ok(MENU.includes("data-lock-confirm"), "dialog must have data-lock-confirm attribute for testing");
+    assert.ok(MENU.includes("Danger"), "dialog must show a Danger badge");
+    assert.ok(MENU.includes("Yes, lock this account"), "confirm button must say 'Yes, lock this account'");
+    assert.ok(MENU.includes("lockBusy ? \"Locking…\""), "confirm button must show loading state");
+  });
+
+  test("lock modal shows the session-reset caveat copy", () => {
+    assert.ok(
+      MENU.includes("This account is locked or has rule activity today"),
+      "dialog must include the session-lock caveat",
+    );
+    assert.ok(
+      MENU.includes("17:00"),
+      "dialog must mention 17:00 CT session reset time",
+    );
+  });
+
+  test("canLock prop hides the lock item when account is already locked", () => {
+    assert.ok(
+      MENU.includes("canLock"),
+      "menu must support canLock prop to hide the item when already locked",
+    );
+  });
+
+  test("lock does not delete or reference historical data tables", () => {
+    const src = stripComments(MENU);
+    for (const table of [
+      "normalizedTradeEvent",
+      "accountRiskRules",
+      "internalLockEvent",
+      "guardianStatus",
+      "brokerOrderActionLog",
+      "ruleChangeAudit",
+    ]) {
+      assert.ok(!src.includes(table), `menu lock must not reference table ${table}`);
+    }
+  });
+
+  test("command center passes canLock based on account status", () => {
+    assert.ok(
+      COMMAND_CENTER.includes("canLock={account.status !== \"locked\"}"),
+      "command-center must pass canLock=false when account is already locked",
+    );
+  });
+});
+
 // ── 5. Dashboard sidebar remains active accounts only ─────────────────────────
 
 describe("Dashboard sidebar stays active-only", () => {
