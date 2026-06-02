@@ -311,7 +311,20 @@ async function run(): Promise<void> {
     rawPayload: f.rawPayload,
   }));
 
-  const roundTrips = reconstructRoundTrips(fillInput).sort(
+  // Build contractId → symbol map from fills that have symbols in rawPayload
+  const contractIdMap = new Map<number, string>();
+  for (const f of fillInput) {
+    const payload = f.rawPayload as
+      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
+      | null
+      | undefined;
+    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
+    if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+      contractIdMap.set(f.contractId, symbol);
+    }
+  }
+
+  const roundTrips = reconstructRoundTrips(fillInput, contractIdMap).sort(
     (a, b) => a.closedAt.getTime() - b.closedAt.getTime(),
   );
 

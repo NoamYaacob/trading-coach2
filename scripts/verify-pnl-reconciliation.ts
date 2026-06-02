@@ -146,7 +146,7 @@ async function analyzeAccount(searchKey: string) {
     }
   }
 
-  // Convert to FillInput and reconstruct
+  // Convert to FillInput and build contractId → symbol map
   const fillInputs: FillInput[] = validFills.map((f) => ({
     id: f.id,
     externalTradeId: f.externalTradeId,
@@ -159,7 +159,29 @@ async function analyzeAccount(searchKey: string) {
     rawPayload: f.rawPayload,
   }));
 
-  const roundTrips = reconstructRoundTrips(fillInputs);
+  // Build contractId → symbol map from fills that have symbols in rawPayload
+  const contractIdMap = new Map<number, string>();
+  for (const f of fillInputs) {
+    const payload = f.rawPayload as
+      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
+      | null
+      | undefined;
+    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
+    if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+      contractIdMap.set(f.contractId, symbol);
+    }
+  }
+
+  console.log(`\nContract ID → Symbol mapping discovered:`);
+  if (contractIdMap.size === 0) {
+    console.log(`  (no contractIds found with symbols in rawPayload)`);
+  } else {
+    for (const [cid, sym] of contractIdMap) {
+      console.log(`  ${cid} → ${sym}`);
+    }
+  }
+
+  const roundTrips = reconstructRoundTrips(fillInputs, contractIdMap);
 
   // Summary stats
   const grossPnl = roundTrips.reduce((s, t) => s + t.pnl, 0);

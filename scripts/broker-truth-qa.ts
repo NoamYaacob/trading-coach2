@@ -274,7 +274,20 @@ async function main() {
       rawPayload: f.rawPayload,
     }));
 
-    const roundTrips = reconstructRoundTrips(dbFillInputs);
+    // Build contractId → symbol map from fills that have symbols in rawPayload
+    const contractIdMap = new Map<number, string>();
+    for (const f of dbFillInputs) {
+      const payload = f.rawPayload as
+        | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
+        | null
+        | undefined;
+      const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
+      if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+        contractIdMap.set(f.contractId, symbol);
+      }
+    }
+
+    const roundTrips = reconstructRoundTrips(dbFillInputs, contractIdMap);
     const stats = computeTradeStats(roundTrips);
 
     console.log(`  DB NormalizedTradeEvent (30d):`);

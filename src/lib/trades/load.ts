@@ -58,7 +58,20 @@ export async function loadAccountTrades(
     rawPayload: f.rawPayload,
   }));
 
-  const trades = reconstructRoundTrips(input);
+  // Build contractId → symbol map from fills that have symbols in rawPayload
+  const contractIdMap = new Map<number, string>();
+  for (const f of input) {
+    const payload = f.rawPayload as
+      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
+      | null
+      | undefined;
+    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
+    if (symbol && f.contractId != null && !contractIdMap.has(f.contractId)) {
+      contractIdMap.set(f.contractId, symbol);
+    }
+  }
+
+  const trades = reconstructRoundTrips(input, contractIdMap);
   // Newest first for display.
   return trades.sort((a, b) => b.closedAt.getTime() - a.closedAt.getTime());
 }

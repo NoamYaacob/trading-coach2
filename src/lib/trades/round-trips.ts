@@ -73,18 +73,22 @@ type OpenPosition = {
   symbol: string;
 };
 
-function extractSymbol(fill: FillInput): string {
+function extractSymbol(fill: FillInput, contractIdMap?: Map<number, string>): string {
   const payload = fill.rawPayload as
     | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
     | null
     | undefined;
-  return (
+  const fromPayload =
     payload?.contract?.name ??
     payload?.contract?.symbol ??
     payload?.symbol ??
-    payload?.contractName ??
-    (fill.contractId != null ? `#${fill.contractId}` : "—")
-  );
+    payload?.contractName;
+  if (fromPayload) return fromPayload;
+  // Attempt contractId lookup before numeric fallback
+  if (fill.contractId != null && contractIdMap?.has(fill.contractId)) {
+    return contractIdMap.get(fill.contractId)!;
+  }
+  return fill.contractId != null ? `#${fill.contractId}` : "—";
 }
 
 function contractKey(fill: FillInput): string {
@@ -103,8 +107,16 @@ function contractKey(fill: FillInput): string {
  *
  * Reversals (sign flip without touching flat) close the existing position
  * and open a new one in the opposite direction with the remaining quantity.
+ *
+ * @param contractIdMap Optional map of contractId (number) → symbol (string) for
+ *   resolving contractId when rawPayload has no symbol. If provided, fills
+ *   with missing rawPayload symbols will be looked up here before falling back
+ *   to numeric contractId.
  */
-export function reconstructRoundTrips(fills: FillInput[]): RoundTripTrade[] {
+export function reconstructRoundTrips(
+  fills: FillInput[],
+  contractIdMap?: Map<number, string>
+): RoundTripTrade[] {
   const sorted = [...fills].sort((a, b) => {
     const t = a.occurredAt.getTime() - b.occurredAt.getTime();
     if (t !== 0) return t;
@@ -129,7 +141,7 @@ export function reconstructRoundTrips(fills: FillInput[]): RoundTripTrade[] {
       ? open.lots.reduce((s, l) => s + l.qty, 0) * (open.side === "LONG" ? 1 : -1)
       : 0;
     const cls = classifyFill(netBefore, side, qty);
-    const symbol = extractSymbol(fill);
+    const symbol = extractSymbol(fill, contractIdMap);
     const brokerPnl = fill.pnl != null ? Number(fill.pnl) : null;
 
     if (cls === "entry") {
