@@ -314,6 +314,7 @@ describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
   const stats = read("lib/trades/stats.ts");
   const roundTrips = read("lib/trades/round-trips.ts");
+  const lockout = read("app/dashboard/_components/command-center/account-lockout.tsx");
 
   it("TradeStats uses grossPnl (not netPnl) — round-trip sum is gross before fees", () => {
     assert.ok(
@@ -341,28 +342,36 @@ describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
     );
   });
 
-  it("Trades page labels P&L as 'Gross P&L (before fees)' not 'Net P&L'", () => {
+  it("Trades page KPI labels trade fill P&L as 'Trade P&L (before fees)' — not gross-first headline", () => {
     assert.ok(
-      page.includes("Gross P&L (before fees)"),
-      "trades page KPI strip must label the round-trip sum as 'Gross P&L (before fees)'",
+      page.includes("Trade P&L (before fees)"),
+      "trades page KPI strip must label the round-trip sum as 'Trade P&L (before fees)'",
     );
     assert.ok(
       !page.includes('"Net P&L"'),
-      "trades page must not label round-trip P&L as 'Net P&L' — it is gross",
+      "trades page must not label round-trip P&L as 'Net P&L' — per-trade fees are not available",
+    );
+    assert.ok(
+      !page.includes("Gross P&L (before fees)"),
+      "trades page must not use 'Gross P&L (before fees)' as the headline KPI label",
     );
   });
 
-  it("Trades page column header is 'Gross P&L' not 'P&L'", () => {
+  it("Trades page column header is 'Trade P&L' (neutral, not gross-first)", () => {
     assert.ok(
-      page.includes('"Gross P&L"'),
-      "trades page table column header must say 'Gross P&L'",
+      page.includes('"Trade P&L"'),
+      "trades page table column header must say 'Trade P&L'",
+    );
+    assert.ok(
+      !page.includes('"Gross P&L"'),
+      "trades page must not use 'Gross P&L' as the column header",
     );
   });
 
-  it("Trades page footer note explains gross vs net distinction", () => {
+  it("Trades page footer note explains before-fees distinction and points to broker session net P&L", () => {
     assert.ok(
-      page.includes("gross") && page.includes("fees"),
-      "trades page footer note must explain that P&L shown is gross (before fees/commissions)",
+      page.includes("before fees") && page.includes("fees"),
+      "trades page footer must clarify that Trade P&L is before fees/commissions",
     );
     assert.ok(
       page.includes("Broker Session P&L snapshot"),
@@ -370,21 +379,29 @@ describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
     );
   });
 
-  it("P&L calendar subtitle indicates gross P&L (before fees)", () => {
+  it("P&L calendar subtitle is neutral ('P&L calendar') and indicates before-fees context", () => {
     assert.ok(
-      calendar.includes("gross") || calendar.includes("Gross"),
-      "P&L calendar subtitle must include 'gross' to distinguish from net P&L",
+      calendar.includes("P&L calendar") || calendar.includes("P&amp;L calendar"),
+      "P&L calendar subtitle must use neutral 'P&L calendar' framing",
     );
     assert.ok(
       calendar.includes("before fees") || calendar.includes("fees"),
       "P&L calendar must indicate that the displayed P&L is before fees",
     );
+    assert.ok(
+      !calendar.includes("Gross round-trip"),
+      "P&L calendar must not use 'Gross round-trip' as the primary subtitle label",
+    );
   });
 
-  it("Dashboard session trades column header is 'Gross P&L'", () => {
+  it("Dashboard session trades column header is 'Trade P&L' (neutral, before-fees)", () => {
     assert.ok(
-      dashboard.includes('"Gross P&L"'),
-      "dashboard session trades table must label the P&L column as 'Gross P&L'",
+      dashboard.includes('"Trade P&L"'),
+      "dashboard session trades table must use 'Trade P&L' — not 'Gross P&L'",
+    );
+    assert.ok(
+      !dashboard.includes('"Gross P&L"'),
+      "dashboard must not use 'Gross P&L' as the session trades column header",
     );
   });
 
@@ -417,6 +434,79 @@ describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
     assert.ok(
       !load.includes("userId"),
       "loadAccountTrades must not use userId (which would aggregate all accounts)",
+    );
+  });
+
+  it("dashboard P&L source explanation mentions both broker snapshot net and before-fees trade P&L", () => {
+    assert.ok(
+      dashboard.includes("Broker session P&L snapshot"),
+      "dashboard must explain that the broker session P&L snapshot is the authoritative net value",
+    );
+    assert.ok(
+      dashboard.includes("Closed round-trip P&L") || dashboard.includes("Trade P&L") || dashboard.includes("before fees"),
+      "dashboard must explain that closed round-trip / Trade P&L values are before fees",
+    );
+  });
+});
+
+describe("Lockout button — soft danger styling (smaller, muted red)", () => {
+  const lockout = read("app/dashboard/_components/command-center/account-lockout.tsx");
+
+  it("AccountLockoutButton uses h-7 or h-8 — not the large h-10", () => {
+    assert.ok(
+      lockout.includes("h-7") || lockout.includes("h-8"),
+      "Lockout button must be h-7 or h-8 — smaller than the original h-10",
+    );
+    assert.ok(
+      !lockout.includes("h-10"),
+      "Lockout button must not use h-10 (too large for an inline pill next to account cards)",
+    );
+  });
+
+  it("AccountLockoutButton uses soft/muted danger colors — not bright bg-red-500", () => {
+    assert.ok(
+      lockout.includes("bg-red-50") ||
+        lockout.includes("bg-[#fff1ee]") ||
+        lockout.includes("bg-red-100"),
+      "Lockout button background must be a soft/light red (bg-red-50 / bg-[#fff1ee] / bg-red-100)",
+    );
+    assert.ok(
+      !lockout.includes("bg-red-500"),
+      "Lockout button must not use bright bg-red-500 — too visually dominant on the account card",
+    );
+  });
+
+  it("AccountLockoutButton uses muted text color (text-red-700 or darker)", () => {
+    assert.ok(
+      lockout.includes("text-red-700") || lockout.includes("text-[#9f321f]"),
+      "Lockout button text must use a muted danger color (text-red-700 or text-[#9f321f])",
+    );
+    assert.ok(
+      !lockout.includes("text-white") || lockout.includes("bg-red-700"),
+      "If text-white is used it must be paired with a dark red background (modal confirm only)",
+    );
+  });
+
+  it("AccountLockoutButton has a border for visual definition", () => {
+    assert.ok(
+      lockout.includes("border-red-200") ||
+        lockout.includes("border-[#efc7bd]") ||
+        lockout.includes("border-red-300"),
+      "Lockout button must have a border to give it definition against the card background",
+    );
+  });
+
+  it("lock icon is smaller (h-3 or h-3.5) to match the compact button", () => {
+    assert.ok(
+      lockout.includes("h-3") || lockout.includes("h-3.5"),
+      "Lock icon inside the Lockout button must be h-3 or h-3.5 to match the compact size",
+    );
+  });
+
+  it("modal confirm button retains the strong red styling (bg-red-700) — only the pill is softened", () => {
+    assert.ok(
+      lockout.includes("bg-red-700"),
+      "The confirm button inside the modal must retain a strong red (bg-red-700) for the danger action",
     );
   });
 });

@@ -433,7 +433,7 @@ export default async function TradesPage({
               <div className="trades-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
                 {[
                   {
-                    label: "Gross P&L (before fees)",
+                    label: "Trade P&L (before fees)",
                     value: stats.count > 0 ? fmt$(stats.grossPnl) : "—",
                     sub: `last ${rangeDays}d · from fills`,
                     tone: stats.grossPnl >= 0 ? "ok" : "bad",
@@ -549,7 +549,7 @@ export default async function TradesPage({
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Hold", "Gross P&L"].map((h) => (
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Hold", "Trade P&L"].map((h) => (
                           <th
                             key={h}
                             style={{
@@ -582,7 +582,7 @@ export default async function TradesPage({
                                     {fmtDate(rows[0]!.closedAt, tz)}
                                   </span>
                                   <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mute)" }}>
-                                    {fmt$(dayPnl)} gross · {rows.length} trade{rows.length !== 1 ? "s" : ""}
+                                    {fmt$(dayPnl)} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
                                   </span>
                                 </div>
                               </td>
@@ -639,7 +639,7 @@ export default async function TradesPage({
               </div>
               {allTrades.length > 0 && (
                 <p style={{ marginTop: 10, fontSize: 11, color: "var(--gr-text-mute)" }}>
-                  Round-trip trades reconstructed from broker fills (FIFO matching per contract). P&L shown is gross (before fees/commissions) — broker-reported fill values when present, otherwise computed from entry/exit prices. For net P&L including fees, see the Broker Session P&L snapshot on the dashboard.
+                  Round-trip trades reconstructed from broker fills (FIFO matching per contract). Trade P&L shown is before fees/commissions — broker-reported fill values when present, otherwise computed from entry/exit prices. For net P&L including fees and commissions, see the Broker Session P&L snapshot on the dashboard.
                 </p>
               )}
             </section>
