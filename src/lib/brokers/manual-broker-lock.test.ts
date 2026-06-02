@@ -9,7 +9,8 @@
  *   - NEVER places / cancels / flattens orders
  *   - uses the MANUAL authorization policy: no BROKER_ENFORCEMENT_ENABLED,
  *     demo-only, or allowlist gating (the explicit click is the authorization)
- *   - still requires a live connection + full_access (reuses shouldSkipBrokerEnforcement)
+ *   - still requires a live connection + full_access (via shouldSkipManualBrokerLock)
+ *   - connected_readonly + full_access is ALLOWED (not blocked by readonly status)
  *   - honors ENFORCEMENT_DRY_RUN
  */
 
@@ -80,10 +81,14 @@ describe("applyManualBrokerLock — manual authorization gating", () => {
     );
   });
 
-  it("still requires a live connection + permission via shouldSkipBrokerEnforcement", () => {
+  it("uses the manual-specific gate shouldSkipManualBrokerLock (not the shared automatic gate)", () => {
     assert.ok(
-      mod.includes("shouldSkipBrokerEnforcement"),
-      "must reuse the shared connection-live + full_access gate",
+      mod.includes("shouldSkipManualBrokerLock"),
+      "must use the manual-specific gate — never blocks on connected_readonly + full_access",
+    );
+    assert.ok(
+      !mod.includes("shouldSkipBrokerEnforcement"),
+      "must NOT use the shared automatic-enforcement gate (it has the connected_readonly legacy fallback)",
     );
   });
 

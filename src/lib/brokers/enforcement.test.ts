@@ -18,6 +18,7 @@ import {
   computeLossAmountToSet,
   computeProfitAmountToSet,
   shouldSkipBrokerEnforcement,
+  shouldSkipManualBrokerLock,
   classifyEnforcementError,
   isAutoLiqConfirmed,
   isEnforcementDryRun,
@@ -740,6 +741,118 @@ describe("shouldSkipBrokerEnforcement — profit_target trigger", () => {
     });
     assert.equal(result.skip, true);
     if (result.skip) assert.equal(result.lockStatus, "monitoring_only");
+  });
+});
+
+// ── shouldSkipManualBrokerLock ─────────────────────────────────────────────────
+
+describe("shouldSkipManualBrokerLock — connected_readonly + full_access ALLOWS the write", () => {
+  it("connected_readonly + full_access → skip=false (the key production fix)", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "tradovate",
+      connectionStatus: "connected_readonly",
+      permissionLevel: "full_access",
+    });
+    assert.equal(result.skip, false);
+  });
+
+  it("connected + full_access → skip=false", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "tradovate",
+      connectionStatus: "connected",
+      permissionLevel: "full_access",
+    });
+    assert.equal(result.skip, false);
+  });
+});
+
+describe("shouldSkipManualBrokerLock — connected_readonly + read_only BLOCKS the write", () => {
+  it("connected_readonly + read_only → skip=true, unavailable_read_only", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "tradovate",
+      connectionStatus: "connected_readonly",
+      permissionLevel: "read_only",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) {
+      assert.equal(result.lockStatus, "unavailable_read_only");
+    }
+  });
+
+  it("connected + read_only → skip=true, unavailable_read_only", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "tradovate",
+      connectionStatus: "connected",
+      permissionLevel: "read_only",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) {
+      assert.equal(result.lockStatus, "unavailable_read_only");
+    }
+  });
+});
+
+describe("shouldSkipManualBrokerLock — dead connections block the write", () => {
+  for (const connStatus of [
+    "expired",
+    "connection_error",
+    "not_connected",
+    "pending_webhook",
+    "oauth_pending_storage",
+  ]) {
+    it(`${connStatus} + full_access → skip=true, broker_lock_failed`, () => {
+      const result = shouldSkipManualBrokerLock({
+        platform: "tradovate",
+        connectionStatus: connStatus,
+        permissionLevel: "full_access",
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) {
+        assert.equal(result.lockStatus, "broker_lock_failed");
+      }
+    });
+  }
+});
+
+describe("shouldSkipManualBrokerLock — un-probed permissionLevel blocks the write", () => {
+  for (const permLevel of [null, undefined, "unknown"]) {
+    it(`connected + permissionLevel=${permLevel} → skip=true (probe not yet run)`, () => {
+      const result = shouldSkipManualBrokerLock({
+        platform: "tradovate",
+        connectionStatus: "connected",
+        permissionLevel: permLevel,
+      });
+      assert.equal(result.skip, true);
+      if (result.skip) {
+        assert.equal(result.lockStatus, "unavailable_read_only");
+      }
+    });
+  }
+
+  it("connected_readonly + null permissionLevel → skip=true (legacy fallback is gone; explicit probe required)", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "tradovate",
+      connectionStatus: "connected_readonly",
+      permissionLevel: null,
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) {
+      assert.equal(result.lockStatus, "unavailable_read_only");
+    }
+  });
+});
+
+describe("shouldSkipManualBrokerLock — non-tradovate platform is monitoring_only", () => {
+  it("platform=rithmic → skip=true, monitoring_only", () => {
+    const result = shouldSkipManualBrokerLock({
+      platform: "rithmic",
+      connectionStatus: "connected",
+      permissionLevel: "full_access",
+    });
+    assert.equal(result.skip, true);
+    if (result.skip) {
+      assert.equal(result.lockStatus, "monitoring_only");
+    }
   });
 });
 

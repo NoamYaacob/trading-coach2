@@ -318,6 +318,99 @@ export function shouldSkipBrokerEnforcement(opts: {
   return { skip: false };
 }
 
+/**
+ * Gate for the user-initiated manual broker lock (Dashboard "Lockout" button
+ * and retry-manual-broker-lock script).
+ *
+ * This is intentionally SEPARATE from shouldSkipBrokerEnforcement, which gates
+ * the automatic daily-loss / rule-engine enforcement path.  The differences:
+ *
+ *   1. connected_readonly connectionStatus NEVER blocks a manual write.
+ *      `connected_readonly` reflects the WebSocket / data channel state, not
+ *      REST write capability.  The permission probe (permissionLevel) is the
+ *      correct source of truth; if it confirms full_access the REST write
+ *      endpoints are available regardless of the data-channel status label.
+ *
+ *   2. The legacy "permission probe has not yet run" fallback that maps
+ *      connected_readonly → unavailable_read_only is removed entirely.  The
+ *      manual path requires permissionLevel to be explicitly confirmed before
+ *      the lock is attempted; an un-probed account should re-sync first.
+ *
+ *   3. No BROKER_ENFORCEMENT_ENABLED, demo-only, or allowlist gates.  The
+ *      user's explicit click (or --execute flag) is the authorization.
+ *
+ *   4. No trigger check.  Manual locks always write the same risk-setting
+ *      endpoint (userAccountAutoLiq) regardless of rule type.
+ *
+ * Blocks when:
+ *   - platform is not tradovate                                (monitoring_only)
+ *   - connection is truly dead (expired / error / never-connected)
+ *                                                             (broker_lock_failed)
+ *   - permissionLevel is "read_only" or null/unknown          (unavailable_read_only)
+ *
+ * Allows when:
+ *   - platform=tradovate, connection is non-dead, permissionLevel=full_access
+ *     (including when connectionStatus is connected_readonly)
+ */
+export function shouldSkipManualBrokerLock(opts: {
+  platform: string;
+  connectionStatus: string;
+  /**
+   * Probed permission level from BrokerConnection.permissionLevel.
+   * null / undefined means the probe has not yet run; the manual lock requires
+   * an explicit full_access confirmation before writing.
+   */
+  permissionLevel: string | null | undefined;
+}):
+  | { skip: true; lockStatus: BrokerLockStatus; reason: string }
+  | { skip: false } {
+  if (opts.platform !== "tradovate") {
+    return {
+      skip: true,
+      lockStatus: "monitoring_only",
+      reason: `Platform '${opts.platform}' does not support broker-side manual lock.`,
+    };
+  }
+
+  // Block truly dead connections (OAuth expired, transport error, never
+  // connected, mid-OAuth handshake). connected_readonly is NOT in this list —
+  // it does not mean the REST write endpoints are unavailable.
+  const DEAD_CONNECTION_STATUSES = new Set([
+    "expired",
+    "connection_error",
+    "not_connected",
+    "pending_webhook",
+    "oauth_pending_storage",
+  ]);
+  if (DEAD_CONNECTION_STATUSES.has(opts.connectionStatus)) {
+    return {
+      skip: true,
+      lockStatus: "broker_lock_failed",
+      reason:
+        `Manual broker lock skipped: connection status is '${opts.connectionStatus}'. ` +
+        "No broker write is attempted on a non-live connection. " +
+        "Reconnect Tradovate to restore the ability to apply a broker lock.",
+    };
+  }
+
+  // Require explicitly confirmed full_access. read_only means the permission
+  // probe found the token lacks write scope. null/unknown means the probe
+  // has not run; the user should trigger a sync to obtain the permission level
+  // before retrying.
+  if (opts.permissionLevel !== "full_access") {
+    const reason =
+      opts.permissionLevel === "read_only"
+        ? "Manual broker lock skipped: permission level is read_only. " +
+          "Account Risk Settings: Full Access is required for userAccountAutoLiq writes."
+        : "Manual broker lock skipped: permission level has not yet been probed " +
+          `(current value: ${opts.permissionLevel ?? "null"}). ` +
+          "Trigger a Tradovate sync to confirm the permission level, then retry.";
+    return { skip: true, lockStatus: "unavailable_read_only", reason };
+  }
+
+  return { skip: false };
+}
+
 // ── Response confirmation ─────────────────────────────────────────────────────
 
 /**

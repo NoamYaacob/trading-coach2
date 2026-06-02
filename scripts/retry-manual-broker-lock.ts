@@ -191,6 +191,32 @@ async function main() {
     (RETRYABLE.has(prior.brokerLockStatus ?? "") ||
       (prior.brokerLockStatus ?? "").startsWith("unavailable_"));
 
+  // Connection gate note: the manual lock uses shouldSkipManualBrokerLock, which
+  // requires permissionLevel=full_access but does NOT block on connected_readonly
+  // alone. If the connection is connected_readonly + full_access the broker write
+  // WILL proceed — the readonly label reflects the WebSocket data channel, not
+  // REST write capability.
+  const connStatus = account.brokerConnection?.connectionStatus ?? "(unknown)";
+  const permLevel = account.brokerConnection?.permissionLevel ?? null;
+  const DEAD_STATUSES = new Set([
+    "expired", "connection_error", "not_connected", "pending_webhook", "oauth_pending_storage",
+  ]);
+  if (DEAD_STATUSES.has(connStatus)) {
+    console.log(`\n  FAIL  Connection status '${connStatus}' is a dead connection — broker write will be blocked.`);
+    console.log("        Reconnect Tradovate to restore the ability to apply a broker lock.");
+    process.exit(1);
+  }
+  if (connStatus === "connected_readonly" && permLevel === "full_access") {
+    console.log(`\n  NOTE  connectionStatus=connected_readonly but permissionLevel=full_access.`);
+    console.log(`        The manual lock gate (shouldSkipManualBrokerLock) ALLOWS the write —`);
+    console.log(`        connected_readonly reflects the data channel, not REST write capability.`);
+  }
+  if (permLevel !== "full_access") {
+    console.log(`\n  FAIL  permissionLevel='${permLevel ?? "null"}' — full_access is required for the broker write.`);
+    console.log("        Trigger a Tradovate sync to confirm the permission level, then retry.");
+    process.exit(1);
+  }
+
   if (prior.brokerLockStatus === "broker_locked") {
     console.log("  OK    Already broker-locked — no retry needed.");
     process.exit(0);

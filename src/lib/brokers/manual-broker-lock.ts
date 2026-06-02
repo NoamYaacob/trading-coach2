@@ -27,7 +27,7 @@ import { prisma } from "../db";
 import { TradovateClient } from "./tradovate-client";
 import { TradovateClientError } from "./tradovate-client-helpers";
 import {
-  shouldSkipBrokerEnforcement,
+  shouldSkipManualBrokerLock,
   isEnforcementDryRun,
   type BrokerLockStatus,
 } from "./enforcement-helpers";
@@ -99,15 +99,12 @@ export async function applyManualBrokerLock(ctx: {
   const connStatus = account.brokerConnection?.connectionStatus ?? "not_connected";
   const permissionLevel = account.brokerConnection?.permissionLevel ?? null;
 
-  // Reuse the shared connection-liveness + permission gate. trigger is fixed to
-  // "daily_loss_limit" only to satisfy the helper's trigger check — the manual
-  // path intentionally skips the BROKER_ENFORCEMENT_ENABLED / demo-only /
-  // allowlist gates that live in the listener-path gate evaluator, because the
-  // user's explicit confirmation is the authorization. The connection-live and
-  // full_access requirements are kept.
-  const skip = shouldSkipBrokerEnforcement({
+  // Use the manual-specific gate: never blocks on connected_readonly alone when
+  // permissionLevel=full_access. Does not check the automatic-enforcement env
+  // gates (BROKER_ENFORCEMENT_ENABLED / demo-only / allowlist) — the user's
+  // explicit confirmation is the authorization.
+  const skip = shouldSkipManualBrokerLock({
     platform,
-    trigger: "daily_loss_limit",
     connectionStatus: connStatus,
     permissionLevel,
   });
