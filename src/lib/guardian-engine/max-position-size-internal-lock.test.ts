@@ -333,8 +333,9 @@ describe("tradovate-sync wires the max_position_size internal lock", () => {
 
   it("invokes the lock when enforcementTrigger is max_position_size", () => {
     // The call is gated on the enforcement cascade picking max_position_size
-    // as the winning trigger. Look for a conditional that references both.
-    const idx = syncSrc.indexOf("applyInternalLockForMaxPositionSize");
+    // as the winning trigger. Scan around the CALL SITE (not the import) so the
+    // assertion is robust to unrelated import-block edits.
+    const idx = syncSrc.indexOf("applyInternalLockForMaxPositionSize({");
     assert.ok(idx > -1, "sync must call applyInternalLockForMaxPositionSize");
     const surrounding = syncSrc.slice(Math.max(0, idx - 300), idx + 300);
     assert.ok(

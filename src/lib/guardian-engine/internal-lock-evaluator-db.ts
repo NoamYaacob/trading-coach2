@@ -451,3 +451,112 @@ export async function applyInternalLockForDailyLossLimit(
     createdOrUpdated: true,
   };
 }
+
+// ── Sync-path InternalLockEvent creation — daily_profit_target ───────────────
+
+export type DailyProfitTargetLockInput = {
+  accountId: string;
+  userId: string;
+  /** "demo" | "live" — only demo accounts get an InternalLockEvent from the sync path. */
+  env: string;
+  /** YYYY-MM-DD trading day key (CME session date in CT). */
+  tradingDay: string;
+  /** Effective daily-profit target that was reached (null if unconfigured). */
+  thresholdAmount: number | null;
+  /** Observed daily P&L (positive, the profit earned) at the moment the target was reached. */
+  observedAmount: number | null;
+};
+
+export type DailyProfitTargetLockResult = {
+  internalLockEventId: string | null;
+  skipReason: string | null;
+  createdOrUpdated: boolean;
+};
+
+/**
+ * Upsert an InternalLockEvent for a daily_profit_target breach detected by the
+ * sync path. Demo-only and feature-flagged — the exact mirror of
+ * applyInternalLockForDailyLossLimit.
+ *
+ * Background:
+ *   syncTradovateAccount evaluates daily_profit_target independently (dailyPnl
+ *   >= target) and sets riskState=STOPPED + creates a GuardianIntervention audit
+ *   record. Historically it did NOT create an InternalLockEvent, so a
+ *   profit-target lock left no audit/guard row — unlike daily_loss_limit and
+ *   max_position_size. That meant the UI copy ("Trading locked for the rest of
+ *   the session") was only partially backed: the account did stop (riskState),
+ *   but the lock had no InternalLockEvent record feeding the account-removal
+ *   guard and reset/cleanup flows consistently. This function closes that gap
+ *   using the same internal-only pattern as the daily_loss path.
+ *
+ * Writes:
+ *   - InternalLockEvent row (ruleType="daily_profit_target", internalOnly=true,
+ *     brokerActionTaken=false)
+ *
+ * Never writes:
+ *   - LiveSessionState.riskState (the sync path sets STOPPED separately)
+ *   - GuardianIntervention (the sync path creates the audit record)
+ *   - Broker risk settings, orders, flatten requests, or any Tradovate API call.
+ *     daily_profit_target is NOT in BROKER_ELIGIBLE_RULES, so it can never reach
+ *     a broker write even when BROKER_ENFORCEMENT_ENABLED=true.
+ */
+export async function applyInternalLockForDailyProfitTarget(
+  input: DailyProfitTargetLockInput,
+): Promise<DailyProfitTargetLockResult> {
+  if (process.env.GUARDRAIL_INTERNAL_LOCK_ENABLED !== "true") {
+    return {
+      internalLockEventId: null,
+      skipReason: "GUARDRAIL_INTERNAL_LOCK_ENABLED is not 'true'",
+      createdOrUpdated: false,
+    };
+  }
+  if (input.env !== "demo") {
+    return {
+      internalLockEventId: null,
+      skipReason: `env="${input.env}" (must be demo)`,
+      createdOrUpdated: false,
+    };
+  }
+
+  const activeDedupKey = buildInternalLockDedupKey(
+    input.accountId,
+    "daily_profit_target",
+    input.tradingDay,
+  );
+
+  console.info("[guardian] applying daily_profit_target internal lock via sync path — demo only, no broker action", {
+    accountId: input.accountId,
+    tradingDay: input.tradingDay,
+    activeDedupKey,
+    thresholdAmount: input.thresholdAmount,
+    observedAmount: input.observedAmount,
+  });
+
+  const lockEvent = await prisma.internalLockEvent.upsert({
+    where: { activeDedupKey },
+    create: {
+      accountId: input.accountId,
+      userId: input.userId,
+      ruleType: "daily_profit_target",
+      tradingDay: input.tradingDay,
+      thresholdAmount: input.thresholdAmount,
+      thresholdCount: null,
+      observedAmount: input.observedAmount,
+      observedCount: null,
+      internalOnly: true,
+      brokerActionTaken: false,
+      activeDedupKey,
+      updatedAt: new Date(),
+    },
+    update: {
+      observedAmount: input.observedAmount,
+      updatedAt: new Date(),
+    },
+  });
+
+  return {
+    internalLockEventId: lockEvent.id,
+    skipReason: null,
+    createdOrUpdated: true,
+  };
+}

@@ -582,6 +582,165 @@ describe("applyInternalLockForDailyLossLimit — sync-path InternalLockEvent for
 });
 
 // ---------------------------------------------------------------------------
+// daily_profit_target — sync-path InternalLockEvent (Option A: profit target
+// now locks exactly like daily_loss_limit / max_position_size).
+//
+// Closes the audit gap where the sync evaluator set riskState=STOPPED for a
+// profit-target breach but wrote no InternalLockEvent. The new helper mirrors
+// applyInternalLockForDailyLossLimit: demo-only, feature-flagged, upsert-
+// idempotent, internal-only, no broker side-effects.
+// ---------------------------------------------------------------------------
+
+describe("applyInternalLockForDailyProfitTarget — sync-path InternalLockEvent for daily_profit_target", () => {
+  const dbSrc = readSrc("src/lib/guardian-engine/internal-lock-evaluator-db.ts");
+
+  it("function is exported from internal-lock-evaluator-db.ts", () => {
+    assert.ok(
+      dbSrc.includes("export async function applyInternalLockForDailyProfitTarget"),
+      "applyInternalLockForDailyProfitTarget must be exported",
+    );
+  });
+
+  it("gated by GUARDRAIL_INTERNAL_LOCK_ENABLED — returns early when flag is off", () => {
+    const fnIdx = dbSrc.indexOf("applyInternalLockForDailyProfitTarget");
+    const flagCheckIdx = dbSrc.indexOf("GUARDRAIL_INTERNAL_LOCK_ENABLED", fnIdx);
+    assert.ok(
+      fnIdx > -1 && flagCheckIdx > -1,
+      "must check GUARDRAIL_INTERNAL_LOCK_ENABLED and return early when false",
+    );
+  });
+
+  it("demo-only — skips live accounts", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const demoCheckIdx = dbSrc.indexOf('env !== "demo"', fnIdx);
+    assert.ok(
+      fnIdx > -1 && demoCheckIdx > -1,
+      "must return early for env !== 'demo' — exactly like daily_loss_limit",
+    );
+  });
+
+  it("uses upsert with activeDedupKey — idempotent under repeated sync cycles", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const upsertIdx = dbSrc.indexOf("internalLockEvent.upsert", fnIdx);
+    assert.ok(
+      fnIdx > -1 && upsertIdx > -1,
+      "must use upsert (not bare create) so repeated syncs don't duplicate the lock",
+    );
+  });
+
+  it("builds a per-account/day dedup key via buildInternalLockDedupKey(...daily_profit_target...)", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const tail = dbSrc.slice(fnIdx);
+    assert.ok(
+      /buildInternalLockDedupKey\(\s*input\.accountId,\s*"daily_profit_target"/.test(tail),
+      "dedup key must be scoped to the account + daily_profit_target so it never collides with other rules",
+    );
+  });
+
+  it("sets ruleType = daily_profit_target", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const ruleTypeIdx = dbSrc.indexOf('ruleType: "daily_profit_target"', fnIdx);
+    assert.ok(fnIdx > -1 && ruleTypeIdx > -1, "must write ruleType = 'daily_profit_target'");
+  });
+
+  it("sets internalOnly=true and brokerActionTaken=false — no broker side-effects", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const internalOnlyIdx = dbSrc.indexOf("internalOnly: true", fnIdx);
+    const brokerFalseIdx = dbSrc.indexOf("brokerActionTaken: false", fnIdx);
+    assert.ok(
+      internalOnlyIdx > -1 && brokerFalseIdx > -1,
+      "must set internalOnly=true and brokerActionTaken=false",
+    );
+  });
+
+  it("does not call any broker API or triggerEnforcement inside the helper", () => {
+    const fnIdx = dbSrc.indexOf("export async function applyInternalLockForDailyProfitTarget");
+    const tail = dbSrc.slice(fnIdx);
+    for (const banned of [
+      "triggerEnforcement",
+      "applyBrokerDayLockout",
+      "userAccountAutoLiq",
+      "cancelOrder",
+      "flattenPositions",
+      "liquidatepositions",
+    ]) {
+      assert.ok(!tail.includes(banned), `helper must not call ${banned}`);
+    }
+  });
+});
+
+describe("syncTradovateAccount wires daily_profit_target internal lock (Option A)", () => {
+  const syncSrc = readSrc("src/lib/brokers/tradovate-sync.ts");
+
+  function codeOnly(): string {
+    let s = syncSrc;
+    s = s.replace(/\/\*[\s\S]*?\*\//g, "");
+    s = s.replace(/(^|[^:])\/\/.*$/gm, "$1");
+    return s;
+  }
+
+  it("sync still sets riskState=STOPPED + enforcementTrigger='profit_target' when target reached", () => {
+    assert.ok(
+      syncSrc.includes('enforcementTrigger = "profit_target"'),
+      "sync must set enforcementTrigger='profit_target' on the profit-target branch",
+    );
+    assert.ok(
+      /effectiveDailyPnl >= effectiveProfitTarget/.test(syncSrc),
+      "sync must trigger when dailyPnl reaches the target",
+    );
+  });
+
+  it("sync imports and calls applyInternalLockForDailyProfitTarget", () => {
+    assert.ok(
+      syncSrc.includes("applyInternalLockForDailyProfitTarget"),
+      "sync must import + call the profit-target lock helper",
+    );
+  });
+
+  it("profit-target lock is guarded by enforcementTrigger==='profit_target' && violationCreated", () => {
+    const code = codeOnly();
+    const callIdx = code.indexOf("applyInternalLockForDailyProfitTarget({");
+    const guardIdx = code.lastIndexOf('enforcementTrigger === "profit_target" && violationCreated', callIdx);
+    assert.ok(
+      callIdx > -1 && guardIdx > -1 && callIdx - guardIdx < 200,
+      "the helper call must be guarded by the NORMAL→STOPPED profit_target transition",
+    );
+  });
+
+  it("profit-target lock passes the CME trading day key (tradingDayKey)", () => {
+    const code = codeOnly();
+    const callIdx = code.indexOf("applyInternalLockForDailyProfitTarget({");
+    const block = code.slice(callIdx, callIdx + 400);
+    assert.ok(
+      block.includes("tradingDay: tradingDayKey"),
+      "profit-target lock must use the CME trading day key, not UTC/local",
+    );
+  });
+
+  it("profit-target lock passes the per-account id and observed dailyPnl", () => {
+    const code = codeOnly();
+    const callIdx = code.indexOf("applyInternalLockForDailyProfitTarget({");
+    const block = code.slice(callIdx, callIdx + 400);
+    assert.ok(block.includes("accountId,"), "must pass the single target accountId");
+    assert.ok(block.includes("observedAmount: resolvedDailyPnl"), "must record observed profit");
+    assert.ok(block.includes("thresholdAmount: effectiveProfitTarget"), "must record the configured target");
+  });
+});
+
+describe("daily_profit_target stays internal-only (no broker eligibility)", () => {
+  const simSrc = readSrc("src/lib/guardian-engine/broker-enforcement-simulation.ts");
+
+  it("BROKER_ELIGIBLE_RULES does NOT include daily_profit_target", () => {
+    const match = simSrc.match(/BROKER_ELIGIBLE_RULES\s*=\s*new\s+Set\(\[([^\]]*)\]\)/);
+    assert.ok(match, "BROKER_ELIGIBLE_RULES must be defined as a Set literal");
+    assert.ok(
+      !match![1].includes("daily_profit_target"),
+      `daily_profit_target must never be broker-eligible — found: ${match![1]}`,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Source-scan: session-rollover internal-lock cleanup (C4 gap fix)
 //
 // Root cause: syncTradovateAccount's isStale branch resets LiveSessionState

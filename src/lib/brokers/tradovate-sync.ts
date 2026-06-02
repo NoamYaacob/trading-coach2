@@ -41,7 +41,10 @@ import { isTradovateOrderActionsEnabled } from "./order-actions-flag";
 import { loadLivePositions } from "./tradovate/load-live-positions";
 import { parseSymbolLimits } from "../futures/symbol-limits";
 import { applyInternalLockForMaxPositionSize } from "../guardian-engine/max-position-size-internal-lock-db";
-import { applyInternalLockForDailyLossLimit } from "../guardian-engine/internal-lock-evaluator-db";
+import {
+  applyInternalLockForDailyLossLimit,
+  applyInternalLockForDailyProfitTarget,
+} from "../guardian-engine/internal-lock-evaluator-db";
 
 /**
  * Enforcement diagnostics for a single sync cycle, scoped to max_position_size.
@@ -857,6 +860,33 @@ export async function syncTradovateAccount(
         observedAmount: lossUsed,
       }).catch((err) => {
         console.error("[guardian] daily_loss_limit internal lock upsert failed", {
+          accountId,
+          error: err,
+        });
+      });
+    }
+
+    // ── daily_profit_target internal lock (audit-gap fix) ──────────────────
+    // The sync evaluator above already sets riskState=STOPPED + creates a
+    // GuardianIntervention when the profit target is reached, but previously
+    // wrote no InternalLockEvent — leaving the profit-target lock without the
+    // audit/guard row that daily_loss_limit and max_position_size have. This
+    // block mirrors the daily_loss_limit pattern so the UI copy ("Trading
+    // locked for the rest of the session") is fully backed. The helper is
+    // internal-only, demo-only, and gated by GUARDRAIL_INTERNAL_LOCK_ENABLED.
+    // daily_profit_target is NOT in BROKER_ELIGIBLE_RULES, so no broker write
+    // can ever result from it.
+    if (enforcementTrigger === "profit_target" && violationCreated) {
+      const env = accountConnInfo?.brokerConnection?.env ?? "live";
+      applyInternalLockForDailyProfitTarget({
+        accountId,
+        userId,
+        env,
+        tradingDay: tradingDayKey,
+        thresholdAmount: effectiveProfitTarget,
+        observedAmount: resolvedDailyPnl,
+      }).catch((err) => {
+        console.error("[guardian] daily_profit_target internal lock upsert failed", {
           accountId,
           error: err,
         });
