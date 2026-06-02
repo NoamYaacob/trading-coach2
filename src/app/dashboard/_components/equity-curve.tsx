@@ -342,7 +342,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
   );
   let cum = 0;
   const data: ChartPoint[] = chrono.map((t) => {
-    cum += t.pnl;
+    cum += t.netPnl;
     return { t: t.closedAt.getTime(), pnl: Number(cum.toFixed(2)) };
   });
 

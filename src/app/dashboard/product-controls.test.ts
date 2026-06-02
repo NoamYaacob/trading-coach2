@@ -585,8 +585,8 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
       "equity curve must accept real round-trip trades",
     );
     assert.ok(
-      equity.includes("cum += t.pnl"),
-      "cumulative series must be accumulated from real trade pnl",
+      equity.includes("cum += t.netPnl"),
+      "cumulative series must be accumulated from real trade net P&L",
     );
     assert.ok(
       !equity.includes("Math.random") &&

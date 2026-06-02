@@ -131,8 +131,14 @@ export type BrokerExecution = {
   side: BrokerSide;
   quantity: number;
   price: number;
-  /** Realised P&L on this fill, when available from the broker. */
+  /** Realised P&L on this fill, when available from the broker. GROSS — does
+   *  not deduct the commission below. */
   pnl: number | null;
+  /** Commission/fee charged on this fill, when the broker reports it. `null`
+   *  when not provided (Tradovate's fill/list currently omits it for most
+   *  account types). Stored in NormalizedTradeEvent.rawPayload (no schema
+   *  column) so net P&L can be derived when the broker does supply it. */
+  commission?: number | null;
   occurredAt: Date;
 };
 

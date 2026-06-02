@@ -2011,6 +2011,9 @@ export class TradovateClient {
           quantity: qty,
           price,
           pnl: f.profit ?? f.pnl ?? f.realizedPnL ?? f.realizedPnl ?? null,
+          // Captured when Tradovate supplies it; null otherwise. Enables net
+          // P&L without a schema change (the sync stores it in rawPayload).
+          commission: f.commission ?? null,
           occurredAt: ts ? new Date(ts) : new Date(),
         };
       })

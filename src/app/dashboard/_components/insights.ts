@@ -26,7 +26,7 @@ export function maxDrawdown(trades: RoundTripTrade[]): number {
   let cum = 0;
   let dd = 0;
   for (const t of chrono) {
-    cum += t.pnl;
+    cum += t.netPnl;
     if (cum > peak) peak = cum;
     const drop = peak - cum;
     if (drop > dd) dd = drop;
@@ -43,8 +43,8 @@ export function profitFactor(trades: RoundTripTrade[]): number | null {
   let wins = 0;
   let losses = 0;
   for (const t of trades) {
-    if (t.pnl > 0) wins += t.pnl;
-    else if (t.pnl < 0) losses += -t.pnl;
+    if (t.netPnl > 0) wins += t.netPnl;
+    else if (t.netPnl < 0) losses += -t.netPnl;
   }
   if (losses === 0) return null;
   return wins / losses;
@@ -55,7 +55,7 @@ export function profitFactor(trades: RoundTripTrade[]): number | null {
  */
 export function expectancy(trades: RoundTripTrade[]): number | null {
   if (trades.length === 0) return null;
-  return trades.reduce((s, t) => s + t.pnl, 0) / trades.length;
+  return trades.reduce((s, t) => s + t.netPnl, 0) / trades.length;
 }
 
 export type DowStats = {
@@ -88,7 +88,7 @@ export function pnlByDayOfWeek(
     const wd = fmt.format(t.closedAt);
     const idx = labels.indexOf(wd);
     if (idx >= 0) {
-      buckets[idx]!.pnl += t.pnl;
+      buckets[idx]!.pnl += t.netPnl;
       buckets[idx]!.count += 1;
     }
   }
@@ -119,7 +119,7 @@ export function pnlByHourOfDay(
     const hourStr = fmt.format(t.closedAt);
     const h = parseInt(hourStr, 10) % 24;
     if (!Number.isNaN(h) && h >= 0 && h < 24) {
-      buckets[h]!.pnl += t.pnl;
+      buckets[h]!.pnl += t.netPnl;
       buckets[h]!.count += 1;
     }
   }
@@ -134,7 +134,7 @@ export function biggestWin(trades: RoundTripTrade[]): RoundTripTrade | null {
   if (trades.length === 0) return null;
   let best: RoundTripTrade | null = null;
   for (const t of trades) {
-    if (t.pnl > 0 && (best == null || t.pnl > best.pnl)) best = t;
+    if (t.netPnl > 0 && (best == null || t.netPnl > best.netPnl)) best = t;
   }
   return best;
 }
@@ -147,7 +147,7 @@ export function biggestLoss(trades: RoundTripTrade[]): RoundTripTrade | null {
   if (trades.length === 0) return null;
   let worst: RoundTripTrade | null = null;
   for (const t of trades) {
-    if (t.pnl < 0 && (worst == null || t.pnl < worst.pnl)) worst = t;
+    if (t.netPnl < 0 && (worst == null || t.netPnl < worst.netPnl)) worst = t;
   }
   return worst;
 }

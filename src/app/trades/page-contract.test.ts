@@ -308,120 +308,112 @@ describe("/trades page: account isolation", () => {
   });
 });
 
-describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
+describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
   const page = read("app/trades/page.tsx");
   const dashboard = read("app/dashboard/page.tsx");
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
   const stats = read("lib/trades/stats.ts");
   const roundTrips = read("lib/trades/round-trips.ts");
-  const lockout = read("app/dashboard/_components/command-center/account-lockout.tsx");
 
-  it("TradeStats uses grossPnl (not netPnl) — round-trip sum is gross before fees", () => {
+  it("TradeStats exposes netPnl, fees, and feesAvailable", () => {
+    assert.ok(stats.includes("netPnl"), "TradeStats must expose netPnl (after fees)");
+    assert.ok(stats.includes("fees"), "TradeStats must expose total fees");
+    assert.ok(stats.includes("feesAvailable"), "TradeStats must expose feesAvailable flag");
+  });
+
+  it("RoundTripTrade carries netPnl, fees, feesAvailable + retains gross pnl for diagnostics", () => {
+    assert.ok(roundTrips.includes("netPnl"), "RoundTripTrade must include netPnl");
+    assert.ok(roundTrips.includes("fees:"), "RoundTripTrade must include fees");
+    assert.ok(roundTrips.includes("feesAvailable"), "RoundTripTrade must include feesAvailable");
+    assert.ok(roundTrips.includes("pnlType"), "RoundTripTrade must retain pnlType for the gross source");
+  });
+
+  it("net = gross - fees: reconstruction computes netPnl by subtracting fees", () => {
     assert.ok(
-      stats.includes("grossPnl"),
-      "TradeStats must expose grossPnl — the round-trip sum from fills is gross (before fees)",
-    );
-    assert.ok(
-      !stats.includes("netPnl"),
-      "TradeStats must not expose netPnl — fills do not include fee deductions",
+      roundTrips.includes("grossPnl - (fees ?? 0)"),
+      "netPnl must be computed as gross minus fees (no fabrication when fees are null)",
     );
   });
 
-  it("RoundTripTrade exposes pnlType field to distinguish broker_gross from computed", () => {
+  it("fees come ONLY from broker-reported commission — no hardcoded fee/commission constants", () => {
     assert.ok(
-      roundTrips.includes("pnlType"),
-      "RoundTripTrade must include pnlType field",
+      roundTrips.includes("extractFillFee"),
+      "fees must be read from the broker fill commission via extractFillFee",
     );
     assert.ok(
-      roundTrips.includes('"broker_gross"'),
-      "pnlType must include 'broker_gross' variant for broker fill P&L",
+      roundTrips.includes("commission"),
+      "fee extraction must reference the broker commission field",
     );
+    // No hardcoded per-contract fee assumption (e.g. *0.62, +1.25, FEE_PER_CONTRACT).
     assert.ok(
-      roundTrips.includes('"computed"'),
-      "pnlType must include 'computed' variant for price-difference P&L",
-    );
-  });
-
-  it("Trades page KPI labels trade fill P&L as 'Trade P&L (before fees)' — not gross-first headline", () => {
-    assert.ok(
-      page.includes("Trade P&L (before fees)"),
-      "trades page KPI strip must label the round-trip sum as 'Trade P&L (before fees)'",
-    );
-    assert.ok(
-      !page.includes('"Net P&L"'),
-      "trades page must not label round-trip P&L as 'Net P&L' — per-trade fees are not available",
-    );
-    assert.ok(
-      !page.includes("Gross P&L (before fees)"),
-      "trades page must not use 'Gross P&L (before fees)' as the headline KPI label",
+      !/FEE_PER_CONTRACT|COMMISSION_PER|DEFAULT_FEE|\*\s*1\.25|\*\s*0\.6/.test(roundTrips),
+      "must not hardcode a fee/commission assumption",
     );
   });
 
-  it("Trades page column header is 'Trade P&L' (neutral, not gross-first)", () => {
+  it("Trades page headline KPI is 'Net P&L' (uses stats.netPnl) — not gross-first", () => {
+    assert.ok(page.includes('"Net P&L"') || page.includes("Net P&L"), "trades KPI must headline 'Net P&L'");
+    assert.ok(page.includes("stats.netPnl"), "trades KPI value must use stats.netPnl");
     assert.ok(
-      page.includes('"Trade P&L"'),
-      "trades page table column header must say 'Trade P&L'",
-    );
-    assert.ok(
-      !page.includes('"Gross P&L"'),
-      "trades page must not use 'Gross P&L' as the column header",
+      !page.includes("Trade P&L (before fees)") && !page.includes("Gross P&L (before fees)"),
+      "trades KPI must not headline a 'before fees' / gross label",
     );
   });
 
-  it("Trades page footer note explains before-fees distinction and points to broker session net P&L", () => {
+  it("Trades table column is 'Net P&L' with a 'Fees' column; rows render t.netPnl", () => {
+    assert.ok(page.includes('"Net P&L"'), "trades table must have a 'Net P&L' column");
+    assert.ok(page.includes('"Fees"'), "trades table must have a 'Fees' column");
+    assert.ok(page.includes("t.netPnl"), "trades rows must render the net P&L value");
+    assert.ok(!page.includes('"Gross P&L"'), "trades table must not use 'Gross P&L'");
+    assert.ok(!page.includes('"Trade P&L"'), "trades table must not use 'Trade P&L' as the column");
+  });
+
+  it("Trades footer explains net deducts fees and points to broker session snapshot when fees absent", () => {
+    assert.ok(page.includes("Net P&L"), "footer must reference Net P&L");
     assert.ok(
-      page.includes("before fees") && page.includes("fees"),
-      "trades page footer must clarify that Trade P&L is before fees/commissions",
+      page.includes("commission") || page.includes("fees"),
+      "footer must explain fee deduction",
     );
     assert.ok(
       page.includes("Broker Session P&L snapshot"),
-      "trades page footer must point to the Broker Session P&L snapshot for net P&L",
+      "footer must point to the Broker Session P&L snapshot when fees are not reported",
     );
   });
 
-  it("P&L calendar subtitle is neutral ('P&L calendar') and indicates before-fees context", () => {
+  it("Trades main P&L UI contains no 'gross' / 'before fees' headline wording", () => {
+    // Allowed only in secondary/explanatory context, not as the main KPI/column.
+    assert.ok(!page.includes("Gross P&L"), "no 'Gross P&L' label in trades UI");
+    assert.ok(!page.includes("before fees"), "no 'before fees' label in trades UI");
+    assert.ok(!page.includes("gross ·"), "no '+x gross' day subtotal wording");
+  });
+
+  it("P&L calendar aggregates and labels NET P&L (after fees)", () => {
+    assert.ok(calendar.includes("t.netPnl"), "calendar must aggregate by netPnl, not gross pnl");
     assert.ok(
-      calendar.includes("P&L calendar") || calendar.includes("P&amp;L calendar"),
-      "P&L calendar subtitle must use neutral 'P&L calendar' framing",
+      calendar.includes("Net P&L") || calendar.includes("Net P&amp;L"),
+      "calendar subtitle must indicate Net P&L",
     );
     assert.ok(
-      calendar.includes("before fees") || calendar.includes("fees"),
-      "P&L calendar must indicate that the displayed P&L is before fees",
-    );
-    assert.ok(
-      !calendar.includes("Gross round-trip"),
-      "P&L calendar must not use 'Gross round-trip' as the primary subtitle label",
+      !calendar.includes("Gross round-trip") && !calendar.includes("before fees ·"),
+      "calendar must not headline gross / before-fees",
     );
   });
 
-  it("Dashboard session trades column header is 'Trade P&L' (neutral, before-fees)", () => {
-    assert.ok(
-      dashboard.includes('"Trade P&L"'),
-      "dashboard session trades table must use 'Trade P&L' — not 'Gross P&L'",
-    );
-    assert.ok(
-      !dashboard.includes('"Gross P&L"'),
-      "dashboard must not use 'Gross P&L' as the session trades column header",
-    );
+  it("Dashboard session trades column is 'Net P&L' and renders t.netPnl", () => {
+    assert.ok(dashboard.includes('"Net P&L"'), "dashboard session trades must use 'Net P&L'");
+    assert.ok(dashboard.includes("t.netPnl"), "dashboard session trades rows must render t.netPnl");
+    assert.ok(!dashboard.includes('"Gross P&L"') && !dashboard.includes('"Trade P&L"'),
+      "dashboard must not use a gross/before-fees column header");
   });
 
-  it("Dashboard 'Broker session P&L snapshot' card is retained as the authoritative net value", () => {
+  it("Dashboard 'Broker session P&L snapshot' remains the authoritative net session value", () => {
     assert.ok(
       dashboard.includes("Broker session P&L snapshot"),
-      "dashboard must still show the broker session P&L snapshot (net, from account snapshot)",
+      "dashboard must still show the broker session P&L snapshot (authoritative net)",
     );
-    assert.ok(
-      dashboard.includes("dailyPnl"),
-      "broker session P&L must come from account.dailyPnl (broker snapshot) not from round-trip sum",
-    );
-  });
-
-  it("dashboard Broker session P&L uses dailyPnl (broker snapshot) not sum of round-trips", () => {
-    // The broker snapshot dailyPnl is net (incl. fees). The round-trip sum is gross.
-    // The dashboard must show the broker snapshot for the 'Broker session P&L' card.
     assert.ok(
       dashboard.includes("selectedAccount.dailyPnl"),
-      "Broker session P&L card must use selectedAccount.dailyPnl (broker snapshot net P&L)",
+      "Broker session P&L card must use selectedAccount.dailyPnl (broker snapshot)",
     );
   });
 
@@ -437,14 +429,20 @@ describe("Priority 2 — P&L/fees: gross vs net labelling", () => {
     );
   });
 
-  it("dashboard P&L source explanation mentions both broker snapshot net and before-fees trade P&L", () => {
+  it("DIAGNOSTIC: Tradovate fill/list does not yet populate commission — net falls back to gross", () => {
+    // This documents the known data gap. When the broker DOES report per-fill
+    // commission (captured in rawPayload by the sync), net P&L deducts it; until
+    // then feesAvailable is false and the broker session snapshot is the
+    // authoritative net figure. See extractFillFee + combineFees.
+    const client = read("lib/brokers/tradovate-client.ts");
     assert.ok(
-      dashboard.includes("Broker session P&L snapshot"),
-      "dashboard must explain that the broker session P&L snapshot is the authoritative net value",
+      client.includes("commission: f.commission ?? null"),
+      "toExecutions must capture commission from the raw fill when present (currently usually null)",
     );
+    const sync = read("lib/brokers/tradovate-sync.ts");
     assert.ok(
-      dashboard.includes("Closed round-trip P&L") || dashboard.includes("Trade P&L") || dashboard.includes("before fees"),
-      "dashboard must explain that closed round-trip / Trade P&L values are before fees",
+      sync.includes("commission: ex.commission"),
+      "sync must persist commission into rawPayload (no schema column) so net can be derived later",
     );
   });
 });

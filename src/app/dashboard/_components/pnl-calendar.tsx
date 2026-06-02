@@ -123,7 +123,8 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
     for (const t of trades) {
       const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: timezone });
       const cur = map.get(key) ?? { pnl: 0, count: 0 };
-      map.set(key, { pnl: cur.pnl + t.pnl, count: cur.count + 1 });
+      // Use net P&L (after broker-reported fees) for the calendar cell value.
+      map.set(key, { pnl: cur.pnl + t.netPnl, count: cur.count + 1 });
     }
     return map;
   }, [trades, timezone]);
@@ -184,7 +185,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            P&amp;L calendar · calendar day · before fees · {accountLabel}
+            Net P&amp;L · calendar day · after fees when reported · {accountLabel}
             {earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
