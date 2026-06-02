@@ -308,9 +308,11 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
     }
   });
 
-  test("direct button is danger-styled (solid red, white text)", () => {
+  test("direct button is danger-styled (solid red pill, white text, press effect)", () => {
     assert.ok(/text-white/.test(LOCKOUT), "Lockout button must use white text (solid red style)");
     assert.ok(/bg-red-[56]00/.test(LOCKOUT), "Lockout button must use solid red background (bg-red-500 or bg-red-600)");
+    assert.ok(/rounded-full/.test(LOCKOUT), "Lockout button must be pill-shaped (rounded-full)");
+    assert.ok(/active:scale-\[0\.97\]/.test(LOCKOUT), "Lockout button must have subtle active press scale effect");
   });
 
   test("direct button includes a lock icon (SVG)", () => {
