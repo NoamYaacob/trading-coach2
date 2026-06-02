@@ -206,7 +206,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
             Cumulative closed round-trip P&amp;L · {dataSourceLabel}
             {timeframe === "all" && earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
             )}
           </div>

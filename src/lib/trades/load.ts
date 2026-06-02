@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-import { reconstructRoundTrips, type FillInput, type RoundTripTrade } from "./round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, type FillInput, type RoundTripTrade } from "./round-trips.ts";
 
 type LoadOptions = {
   /** Inclusive lower bound on occurredAt — typically the start of the lookback window. */
@@ -58,21 +58,10 @@ export async function loadAccountTrades(
     rawPayload: f.rawPayload,
   }));
 
-  // Build contractId → symbol map from fills with VALID futures symbols in rawPayload
-  const contractIdMap = new Map<number, string>();
-  function isValidFuturesSymbol(sym: string): boolean {
-    return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(sym);
-  }
-  for (const f of input) {
-    const payload = f.rawPayload as
-      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
-      | null
-      | undefined;
-    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
-    if (symbol && isValidFuturesSymbol(symbol) && f.contractId != null && !contractIdMap.has(f.contractId)) {
-      contractIdMap.set(f.contractId, symbol);
-    }
-  }
+  // Build the contractId → symbol map (valid futures symbols only) so fills
+  // whose own payload lacks a symbol still resolve via a sibling fill's symbol
+  // or the hardcoded known-contract map.
+  const contractIdMap = buildContractIdMap(input);
 
   const trades = reconstructRoundTrips(input, contractIdMap);
   // Newest first for display.

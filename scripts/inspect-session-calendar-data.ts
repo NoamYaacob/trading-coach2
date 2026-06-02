@@ -74,7 +74,7 @@ config({ path: resolve(process.cwd(), ".env.local") });
 
 import { prisma } from "../src/lib/db.ts";
 import { deriveCmeTradingDayKey, deriveCmeTradingDaySessionStart } from "../src/lib/trading-day.ts";
-import { reconstructRoundTrips, type FillInput } from "../src/lib/trades/round-trips.ts";
+import { reconstructRoundTrips, buildContractIdMap, type FillInput } from "../src/lib/trades/round-trips.ts";
 
 const TARGET = process.argv[2] ?? "MFFUSFRPD133936252";
 const DISPLAY_TZ = "America/Chicago";
@@ -311,21 +311,9 @@ async function run(): Promise<void> {
     rawPayload: f.rawPayload,
   }));
 
-  // Build contractId → symbol map from fills with VALID futures symbols in rawPayload
-  const contractIdMap = new Map<number, string>();
-  function isValidFuturesSymbol(sym: string): boolean {
-    return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(sym);
-  }
-  for (const f of fillInput) {
-    const payload = f.rawPayload as
-      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
-      | null
-      | undefined;
-    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
-    if (symbol && isValidFuturesSymbol(symbol) && f.contractId != null && !contractIdMap.has(f.contractId)) {
-      contractIdMap.set(f.contractId, symbol);
-    }
-  }
+  // Build contractId → symbol map (shared with the app loader); resolution also
+  // recovers the contract id from rawPayload when the DB column is null.
+  const contractIdMap = buildContractIdMap(fillInput);
 
   const roundTrips = reconstructRoundTrips(fillInput, contractIdMap).sort(
     (a, b) => a.closedAt.getTime() - b.closedAt.getTime(),

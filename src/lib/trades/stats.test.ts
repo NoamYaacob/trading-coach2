@@ -17,6 +17,7 @@ function trade(over: Partial<RoundTripTrade>): RoundTripTrade {
     holdMs: over.holdMs ?? 30 * 60 * 1000,
     pnl: over.pnl ?? 5,
     pnlSource: over.pnlSource ?? "computed",
+    symbolResolved: over.symbolResolved ?? true,
   };
 }
 

@@ -17,7 +17,13 @@ import { config } from "dotenv";
 config({ path: resolve(process.cwd(), ".env.local") });
 
 import { prisma } from "../src/lib/db.ts";
-import { reconstructRoundTrips, getContractPointValue, type FillInput } from "../src/lib/trades/round-trips.ts";
+import {
+  reconstructRoundTrips,
+  buildContractIdMap,
+  resolveSymbol,
+  getContractPointValue,
+  type FillInput,
+} from "../src/lib/trades/round-trips.ts";
 
 // ── Official PDF figures ────────────────────────────────────────────────────
 const OFFICIAL: Record<string, {
@@ -25,9 +31,19 @@ const OFFICIAL: Record<string, {
   grossPnl: number;
   fees: number;
   totalPnl: number;
+  /** Set when the DB only holds a subset of the official report's period.
+   *  Reconciliation against the full report is then EXPECTED to differ — the
+   *  DB figure represents imported/partial history only, not all-time. */
+  partialHistoryNote?: string;
 }> = {
   DEMO7433035: { trades: 33, grossPnl: -145.50, fees: -320.12, totalPnl: -465.62 },
-  "1868411":   { trades: 15, grossPnl: -133.00, fees:  -43.70, totalPnl: -176.70 },
+  "1868411":   {
+    trades: 15, grossPnl: -133.00, fees: -43.70, totalPnl: -176.70,
+    partialHistoryNote:
+      "Official report covers Apr 30 + May 4. The DB only imported May 4 onward — " +
+      "April 30 fills were never ingested. The full report therefore will NOT reconcile; " +
+      "only the imported May 4 subset can. UI must label this as imported/partial history.",
+  },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,20 +56,6 @@ function fmt$(v: number | null): string {
 
 function fmtDate(d: Date): string {
   return d.toISOString().replace("T", " ").substring(0, 19) + " UTC";
-}
-
-/** Mirror of extractSymbol() in round-trips.ts so the script can show it. */
-function extractSymbolFromPayload(rawPayload: unknown): string | null {
-  const p = rawPayload as
-    | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
-    | null | undefined;
-  return (
-    p?.contract?.name ??
-    p?.contract?.symbol ??
-    p?.symbol ??
-    p?.contractName ??
-    null
-  );
 }
 
 /** Resolve by id | label | displayName | externalAccountId. */
@@ -117,37 +119,9 @@ async function analyzeAccount(searchKey: string) {
     (f) => f.side != null && f.quantity != null && f.price != null
   );
 
-  console.log(`\n${hr}`);
-  console.log(`RAW FILLS (total: ${fillCount}, valid: ${validFills.length})`);
-  console.log(`${hr}`);
-
-  if (fillCount === 0) {
-    console.log("No fills found in DB for this account.");
-  } else {
-    const earliest = allFills[0]!.occurredAt;
-    const latest = allFills[allFills.length - 1]!.occurredAt;
-    console.log(`Fill date range: ${fmtDate(earliest)}  →  ${fmtDate(latest)}`);
-    console.log(`  pnl=null: ${allFills.filter(f => f.pnl == null).length}  |  pnl non-null: ${allFills.filter(f => f.pnl != null).length}`);
-    console.log();
-    console.log(`  #  | Date/Time (UTC)     | Side | Qty | Price      | BkrPnl  | ExtractedSymbol | PointValue`);
-    console.log(`  ---+--------------------+------+-----+------------+---------+-----------------+-----------`);
-    for (let i = 0; i < allFills.length; i++) {
-      const f = allFills[i]!;
-      const rawSym = extractSymbolFromPayload(f.rawPayload);
-      const sym = rawSym ?? (f.contractId != null ? `#${f.contractId}` : "—");
-      const pv = getContractPointValue(sym);
-      const dt = f.occurredAt.toISOString().substring(0, 19).replace("T", " ");
-      const side = (f.side ?? "?").padEnd(4);
-      const qty = String(f.quantity ?? "?").padStart(3);
-      const price = String(f.price ?? "?").padStart(10);
-      const bpnl = f.pnl != null ? fmt$(Number(f.pnl)).padStart(7) : "  (null)";
-      const symPad = sym.padEnd(15);
-      console.log(`  ${String(i + 1).padStart(2)} | ${dt} | ${side} | ${qty} | ${price} | ${bpnl} | ${symPad} | $${pv}/pt`);
-    }
-  }
-
-  // Convert to FillInput and build contractId → symbol map
-  const fillInputs: FillInput[] = validFills.map((f) => ({
+  // Convert ALL fills to FillInput so resolveSymbol() (which inspects rawPayload
+  // for a recovered contractId) sees exactly what reconstruction sees.
+  const toFillInput = (f: (typeof allFills)[number]): FillInput => ({
     id: f.id,
     externalTradeId: f.externalTradeId,
     contractId: f.contractId,
@@ -157,35 +131,72 @@ async function analyzeAccount(searchKey: string) {
     pnl: f.pnl != null ? String(f.pnl) : null,
     occurredAt: f.occurredAt,
     rawPayload: f.rawPayload,
-  }));
+  });
+  const allFillInputs: FillInput[] = allFills.map(toFillInput);
+  const fillInputs: FillInput[] = validFills.map(toFillInput);
 
-  // Build contractId → symbol map from fills with VALID futures symbols in rawPayload
-  // (reject numeric-only values like "4327110")
-  const contractIdMap = new Map<number, string>();
-  function isValidFuturesSymbol(sym: string): boolean {
-    return /^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/.test(sym);
-  }
-  for (const f of fillInputs) {
-    const payload = f.rawPayload as
-      | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
-      | null
-      | undefined;
-    const symbol = payload?.contract?.name ?? payload?.contract?.symbol ?? payload?.symbol ?? payload?.contractName;
-    if (symbol && isValidFuturesSymbol(symbol) && f.contractId != null && !contractIdMap.has(f.contractId)) {
-      contractIdMap.set(f.contractId, symbol);
-    }
-  }
+  // Build contractId → symbol map (shared with the app loader). Valid futures
+  // symbols only — numeric-only values like "4327110" are rejected.
+  const contractIdMap = buildContractIdMap(allFillInputs);
 
   console.log(`\nContract ID → Symbol mapping discovered (valid futures symbols only):`);
   if (contractIdMap.size === 0) {
-    console.log(`  (no contractIds found with valid futures symbols in rawPayload)`);
+    console.log(`  (none discovered from rawPayload — resolution relies on the hardcoded known-contract map)`);
   } else {
     for (const [cid, sym] of contractIdMap) {
       console.log(`  ${cid} → ${sym}`);
     }
   }
 
+  console.log(`\n${hr}`);
+  console.log(`RAW FILLS (total: ${fillCount}, valid: ${validFills.length})`);
+  console.log(`${hr}`);
+
+  const unresolvedPayloadDumps: { idx: number; rawContractId: number | null; payload: unknown }[] = [];
+
+  if (fillCount === 0) {
+    console.log("No fills found in DB for this account.");
+  } else {
+    const earliest = allFills[0]!.occurredAt;
+    const latest = allFills[allFills.length - 1]!.occurredAt;
+    console.log(`Fill date range: ${fmtDate(earliest)}  →  ${fmtDate(latest)}`);
+    console.log(`  pnl=null: ${allFills.filter(f => f.pnl == null).length}  |  pnl non-null: ${allFills.filter(f => f.pnl != null).length}`);
+    console.log();
+    console.log(`  #  | Date/Time (UTC)     | Side | Qty | Price      | BkrPnl  | rawContractId | resolvedSymbol | PointValue | Source`);
+    console.log(`  ---+--------------------+------+-----+------------+---------+---------------+----------------+------------+--------`);
+    for (let i = 0; i < allFills.length; i++) {
+      const f = allFills[i]!;
+      const res = resolveSymbol(allFillInputs[i]!, contractIdMap);
+      const dt = f.occurredAt.toISOString().substring(0, 19).replace("T", " ");
+      const side = (f.side ?? "?").padEnd(4);
+      const qty = String(f.quantity ?? "?").padStart(3);
+      const price = String(f.price ?? "?").padStart(10);
+      const bpnl = f.pnl != null ? fmt$(Number(f.pnl)).padStart(7) : "  (null)";
+      const rcid = (res.rawContractId != null ? String(res.rawContractId) : "(null)").padStart(13);
+      const symPad = res.symbol.padEnd(14);
+      const pvStr = `$${res.pointValue}/pt`.padEnd(10);
+      const flag = res.resolved ? res.source : "UNRESOLVED";
+      console.log(`  ${String(i + 1).padStart(2)} | ${dt} | ${side} | ${qty} | ${price} | ${bpnl} | ${rcid} | ${symPad} | ${pvStr} | ${flag}`);
+      if (!res.resolved) {
+        unresolvedPayloadDumps.push({ idx: i + 1, rawContractId: res.rawContractId, payload: f.rawPayload });
+      }
+    }
+  }
+
+  // Dump the rawPayload for any fill we could NOT resolve, so the exact contract
+  // id / symbol fields present can be inspected and added to the known map.
+  if (unresolvedPayloadDumps.length > 0) {
+    console.log(`\n${hr}`);
+    console.log(`UNRESOLVED FILLS — rawPayload dump (${unresolvedPayloadDumps.length}) — $1/pt is LOW CONFIDENCE`);
+    console.log(`${hr}`);
+    for (const d of unresolvedPayloadDumps) {
+      console.log(`  fill #${d.idx}  rawContractId=${d.rawContractId ?? "(null)"}`);
+      console.log(`    rawPayload: ${JSON.stringify(d.payload)}`);
+    }
+  }
+
   const roundTrips = reconstructRoundTrips(fillInputs, contractIdMap);
+  const unresolvedTrips = roundTrips.filter((t) => !t.symbolResolved);
 
   // Summary stats
   const grossPnl = roundTrips.reduce((s, t) => s + t.pnl, 0);
@@ -202,6 +213,13 @@ async function analyzeAccount(searchKey: string) {
   console.log(`Gross P&L: ${fmt$(grossPnl)}  |  Win: ${wins.length}  Loss: ${losses.length}`);
   console.log(`Largest win: ${fmt$(largestWin)}  |  Largest loss: ${fmt$(largestLoss)}`);
   console.log(`pnlSource=broker: ${brokerSrc}  |  pnlSource=computed: ${computedSrc}`);
+  if (unresolvedTrips.length > 0) {
+    const unresolvedPnl = unresolvedTrips.reduce((s, t) => s + t.pnl, 0);
+    console.log(`⚠ LOW CONFIDENCE: ${unresolvedTrips.length}/${roundTrips.length} round-trips have an UNRESOLVED symbol`);
+    console.log(`  (defaulted to $1/pt — P&L for these is NOT trustworthy: ${fmt$(unresolvedPnl)})`);
+  } else {
+    console.log(`✓ All ${roundTrips.length} round-trips resolved to a real futures symbol (point-value trusted).`);
+  }
   console.log();
 
   // Per-symbol P&L subtotals
@@ -258,10 +276,21 @@ async function analyzeAccount(searchKey: string) {
     console.log(`Difference (DB gross − official gross): ${fmt$(diffGross)}`);
     if (Math.abs(diffGross) < 0.50) {
       console.log(`✓  RECONCILED (within $0.50)`);
+    } else if (official.partialHistoryNote) {
+      console.log(`◐  PARTIAL HISTORY — full-report reconciliation is NOT expected:`);
+      console.log(`   ${official.partialHistoryNote}`);
+      const fillRange = fillCount > 0
+        ? `${fmtDate(allFills[0]!.occurredAt)} → ${fmtDate(allFills[allFills.length - 1]!.occurredAt)}`
+        : "(no fills)";
+      console.log(`   DB fill range: ${fillRange}`);
+      console.log(`   Imported subset gross (this is the only figure that can reconcile): ${fmt$(grossPnl)}`);
+      if (unresolvedTrips.length > 0) {
+        console.log(`   ⚠ ${unresolvedTrips.length} round-trip(s) still unresolved → imported subset gross is LOW CONFIDENCE.`);
+      }
     } else {
       console.log(`△  GAP: ${fmt$(diffGross)}`);
       console.log(`   If gap ≠ 0 and trade count matches, investigate:`);
-      console.log(`   1. Are symbols extracted correctly (see per-fill table above)?`);
+      console.log(`   1. Are symbols resolved correctly (see rawContractId/resolvedSymbol columns)?`);
       console.log(`   2. Are any symbols falling back to pointValue=$1 instead of MNQ=$2 or NQ=$20?`);
       console.log(`   3. Does Tradovate's pairing differ from FIFO (e.g. partial lot splits)?`);
       console.log(`   4. Are there fills with externalTradeId=null that sort incorrectly?`);
