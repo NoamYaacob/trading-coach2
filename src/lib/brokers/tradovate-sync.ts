@@ -726,6 +726,28 @@ export async function syncTradovateAccount(
       flattenSuppressedReason = "no_open_positions";
     }
 
+    // ── Active internal lock protection ───────────────────────────────────────
+    // If an active InternalLockEvent exists (clearedAt=null, activeDedupKey!=null)
+    // and the CME session has not rolled over, the account is locked by a prior
+    // manual or rule-engine event. Prevent sync from downgrading riskState back
+    // to NORMAL or WARNING — the lock must only be cleared by the CME session-end
+    // cleanup below (isStale path). No GuardianIntervention is created because
+    // enforcementTrigger is null when we arrive here via this path.
+    if (!isStale && newRiskState !== "STOPPED") {
+      const activeLockCount = await prisma.internalLockEvent.count({
+        where: { accountId, clearedAt: null, activeDedupKey: { not: null } },
+      });
+      if (activeLockCount > 0) {
+        const ruleEvalState = newRiskState;
+        newRiskState = "STOPPED";
+        console.info("[tradovate/sync] active InternalLockEvent — riskState held at STOPPED", {
+          accountId,
+          overriddenFrom: ruleEvalState,
+          activeLockCount,
+        });
+      }
+    }
+
     // ── LiveSessionState: persist updated dailyPnl, tradesCount, riskState ──
 
     const nextPendingSessionEndLock =

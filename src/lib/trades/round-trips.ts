@@ -63,6 +63,15 @@ export type RoundTripTrade = {
   pnl: number;
   /** True if at least one closing fill had a non-null broker pnl. */
   pnlSource: "broker" | "computed";
+  /**
+   * Whether the pnl value is gross (before fees/commissions) or purely
+   * computed from entry/exit prices.  Fill-based round-trips are always
+   * "broker_gross" (Tradovate fill P&L does not deduct commissions); only
+   * manual-entry trades where net P&L was explicitly supplied would be "net".
+   * Callers that want to display a final net figure must use the broker
+   * session snapshot (LiveSessionState.dailyPnl) instead of summing round-trips.
+   */
+  pnlType: "broker_gross" | "computed";
   /** True when `symbol` resolved to a real futures contract (valid month code).
    *  False when the symbol could not be resolved (e.g. "#4327110" / "—") and the
    *  point-value multiplier defaulted to $1/pt — such P&L is LOW CONFIDENCE and
@@ -329,6 +338,7 @@ export function reconstructRoundTrips(
         holdMs: fill.occurredAt.getTime() - (earliestOpen?.getTime() ?? fill.occurredAt.getTime()),
         pnl: brokerPnl != null ? brokerPnl : computedPnl,
         pnlSource: brokerPnl != null ? "broker" : "computed",
+        pnlType: brokerPnl != null ? "broker_gross" : "computed",
         symbolResolved: isValidFuturesSymbol(open.symbol),
       });
 
@@ -364,6 +374,7 @@ export function reconstructRoundTrips(
         holdMs: fill.occurredAt.getTime() - (earliestOpen?.getTime() ?? fill.occurredAt.getTime()),
         pnl: brokerPnl != null ? brokerPnl : computedPnl,
         pnlSource: brokerPnl != null ? "broker" : "computed",
+        pnlType: brokerPnl != null ? "broker_gross" : "computed",
         symbolResolved: isValidFuturesSymbol(open.symbol),
       });
 

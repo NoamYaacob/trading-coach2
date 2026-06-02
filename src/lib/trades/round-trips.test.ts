@@ -484,3 +484,44 @@ describe("reconstructRoundTrips: DEMO/1868411 sample scenarios (pointValue regre
     assert.notEqual(gross, grossAt1);
   });
 });
+
+describe("reconstructRoundTrips: pnlType — gross vs computed labelling", () => {
+  it("round-trip with broker fill pnl gets pnlType='broker_gross'", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", pnl: null, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "105", pnl: "1.50", occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.pnlSource, "broker");
+    assert.equal(trades[0]!.pnlType, "broker_gross",
+      "broker fill P&L is gross (before fees) — pnlType must be 'broker_gross'");
+    assert.equal(trades[0]!.pnl, 1.50);
+  });
+
+  it("round-trip without broker fill pnl gets pnlType='computed'", () => {
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "100", pnl: null, occurredAt: new Date("2026-01-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "103", pnl: null, occurredAt: new Date("2026-01-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.pnlSource, "computed");
+    assert.equal(trades[0]!.pnlType, "computed",
+      "computed P&L (no broker fill pnl) gets pnlType='computed'");
+  });
+
+  it("gross +1.50 from fills is labelled broker_gross — not final net", () => {
+    // Simulates: broker fill P&L = +1.50, but actual net (after -1.90 fees) = -0.40.
+    // The round-trip pnl reflects only what the fill returned — it is gross.
+    // The broker session snapshot (LiveSessionState.dailyPnl) is the final net.
+    const trades = reconstructRoundTrips([
+      fill({ id: "1", side: "BUY", quantity: "1", price: "19000", pnl: null, occurredAt: new Date("2026-06-01T14:00:00Z") }),
+      fill({ id: "2", side: "SELL", quantity: "1", price: "19000.75", pnl: "1.50", occurredAt: new Date("2026-06-01T14:30:00Z") }),
+    ]);
+    assert.equal(trades.length, 1);
+    assert.equal(trades[0]!.pnl, 1.50, "gross P&L from fill is +1.50");
+    assert.equal(trades[0]!.pnlType, "broker_gross",
+      "pnlType must be broker_gross — not final net — fees (-1.90) are not deducted here");
+    // Net P&L would be grossPnl + fees = 1.50 - 1.90 = -0.40, but that comes
+    // from LiveSessionState.dailyPnl (broker snapshot), not from the round-trip.
+  });
+});

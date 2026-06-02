@@ -1,7 +1,8 @@
 import type { RoundTripTrade } from "./round-trips.ts";
 
 export type TradeStats = {
-  netPnl: number;
+  /** Sum of round-trip P&L from broker fills. This is gross (before fees/commissions). */
+  grossPnl: number;
   count: number;
   winners: number;
   losers: number;
@@ -14,14 +15,14 @@ export type TradeStats = {
 };
 
 export function computeTradeStats(trades: RoundTripTrade[]): TradeStats {
-  let netPnl = 0;
+  let grossPnl = 0;
   let winners = 0;
   let losers = 0;
   let largestWin: TradeStats["largestWin"] = null;
   let largestLoss: TradeStats["largestLoss"] = null;
 
   for (const t of trades) {
-    netPnl += t.pnl;
+    grossPnl += t.pnl;
     if (t.pnl > 0) {
       winners += 1;
       if (largestWin == null || t.pnl > largestWin.pnl) {
@@ -38,5 +39,5 @@ export function computeTradeStats(trades: RoundTripTrade[]): TradeStats {
   const count = trades.length;
   const winRate = count > 0 ? winners / count : null;
 
-  return { netPnl, count, winners, losers, winRate, largestWin, largestLoss };
+  return { grossPnl, count, winners, losers, winRate, largestWin, largestLoss };
 }

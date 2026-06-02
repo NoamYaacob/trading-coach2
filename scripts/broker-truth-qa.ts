@@ -284,7 +284,7 @@ async function main() {
     console.log(`  DB NormalizedTradeEvent (30d):`);
     console.log(`    fills=${dbFills.length}  round-trips=${roundTrips.length}`);
     console.log(
-      `    stats: netPnl=${fmt$(stats.netPnl)}  count=${stats.count}  winners=${stats.winners}  losers=${stats.losers}  winRate=${pct(stats.winRate)}`,
+      `    stats: netPnl=${fmt$(stats.grossPnl)}  count=${stats.count}  winners=${stats.winners}  losers=${stats.losers}  winRate=${pct(stats.winRate)}`,
     );
 
     // Equity curve: first 5 and last 5 points
@@ -434,9 +434,9 @@ async function main() {
 
     console.log(`  KPI strip (30d from DB round-trips):`);
     console.log(
-      `    netPnl=${fmt$(stats.netPnl)}  count=${stats.count}  winRate=${pct(winRate)}  profitFactor=${pf?.toFixed(2) ?? "null"}  maxDrawdown=${fmt$(dd)}`,
+      `    netPnl=${fmt$(stats.grossPnl)}  count=${stats.count}  winRate=${pct(winRate)}  profitFactor=${pf?.toFixed(2) ?? "null"}  maxDrawdown=${fmt$(dd)}`,
     );
-    console.log(`  Today's trades (${todayKey}): count=${todayRTs.length}  netPnl=${fmt$(todayStats.netPnl)}`);
+    console.log(`  Today's trades (${todayKey}): count=${todayRTs.length}  netPnl=${fmt$(todayStats.grossPnl)}`);
     if (todayStats.largestWin) {
       console.log(`    biggestWin=${fmt$(todayStats.largestWin.pnl)}`);
     }
@@ -565,7 +565,7 @@ async function main() {
     rows.push(
       row(label, "Trades 30D", "NTE fill count (30d)", String(dbFills.length), String(dbFills.length), "N/A", "Source = NormalizedTradeEvent"),
       row(label, "Trades 30D", "round-trip count (30d)", String(roundTrips.length), String(roundTrips.length), "N/A", "reconstructRoundTrips on NTE fills"),
-      row(label, "Trades 30D", "net P&L (30d)", fmt$(stats.netPnl), fmt$(stats.netPnl), "N/A", "computeTradeStats on round-trips"),
+      row(label, "Trades 30D", "net P&L (30d)", fmt$(stats.grossPnl), fmt$(stats.grossPnl), "N/A", "computeTradeStats on round-trips"),
       row(label, "Trades 30D", "win rate (30d)", pct(winRate), pct(winRate), "N/A", ""),
       row(
         label, "Trades 30D", "profit factor (30d)",
@@ -579,7 +579,7 @@ async function main() {
     if (curvePoints.length > 0) {
       const lastPoint = curvePoints[curvePoints.length - 1]!;
       const finalCumPnl = lastPoint.value;
-      const statsNetPnl = stats.netPnl;
+      const statsNetPnl = stats.grossPnl;
       const curveConsistent = close(finalCumPnl, statsNetPnl, 0.01);
       rows.push(
         row(
@@ -602,13 +602,13 @@ async function main() {
         (t) => isoDateKey(t.closedAt, displayTz) === dayEntry.key,
       );
       const dayStats = computeTradeStats(dayRTs);
-      const dayConsistent = close(dayEntry.pnl, dayStats.netPnl, 0.01);
+      const dayConsistent = close(dayEntry.pnl, dayStats.grossPnl, 0.01);
       if (!dayConsistent) {
         calendarMismatches++;
         rows.push(
           row(
             label, "Calendar", `${dayEntry.key} daily P&L`,
-            fmt$(dayEntry.pnl), fmt$(dayStats.netPnl),
+            fmt$(dayEntry.pnl), fmt$(dayStats.grossPnl),
             "FAIL",
             "Calendar day P&L != sum of filtered round-trips for that day",
           ),

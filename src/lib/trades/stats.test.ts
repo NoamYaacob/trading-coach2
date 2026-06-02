@@ -17,6 +17,7 @@ function trade(over: Partial<RoundTripTrade>): RoundTripTrade {
     holdMs: over.holdMs ?? 30 * 60 * 1000,
     pnl: over.pnl ?? 5,
     pnlSource: over.pnlSource ?? "computed",
+    pnlType: over.pnlType ?? "computed",
     symbolResolved: over.symbolResolved ?? true,
   };
 }
@@ -24,7 +25,7 @@ function trade(over: Partial<RoundTripTrade>): RoundTripTrade {
 describe("computeTradeStats", () => {
   it("returns zeros for empty input", () => {
     const s = computeTradeStats([]);
-    assert.equal(s.netPnl, 0);
+    assert.equal(s.grossPnl, 0);
     assert.equal(s.count, 0);
     assert.equal(s.winners, 0);
     assert.equal(s.losers, 0);
@@ -35,7 +36,7 @@ describe("computeTradeStats", () => {
 
   it("sums net P&L correctly", () => {
     const s = computeTradeStats([trade({ pnl: 10 }), trade({ pnl: -3 }), trade({ pnl: 7 })]);
-    assert.equal(s.netPnl, 14);
+    assert.equal(s.grossPnl, 14);
   });
 
   it("counts winners and losers, breaks-even excluded from both", () => {
