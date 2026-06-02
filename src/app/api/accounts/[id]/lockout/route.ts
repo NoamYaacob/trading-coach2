@@ -4,8 +4,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { buildInternalLockDedupKey } from "@/lib/guardian-engine/internal-lock-evaluator";
-import { deriveCmeTradingDayKey } from "@/lib/trading-day";
+import { buildManualLockoutPlan } from "./lockout-helpers";
 
 export async function POST(
   _request: NextRequest,
@@ -36,37 +35,26 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const tradingDay = deriveCmeTradingDayKey();
-  const activeDedupKey = buildInternalLockDedupKey(id, "manual_lock", tradingDay);
-  const now = new Date();
+  const plan = buildManualLockoutPlan({ accountId: id, userId: user.id });
 
   await prisma.$transaction([
     prisma.liveSessionState.upsert({
       where: { accountId: id },
-      create: { accountId: id, sessionDate: tradingDay, riskState: "STOPPED" },
-      update: { riskState: "STOPPED" },
+      create: plan.liveSessionState.create,
+      update: plan.liveSessionState.update,
     }),
     prisma.internalLockEvent.upsert({
-      where: { activeDedupKey },
-      create: {
-        accountId: id,
-        userId: user.id,
-        ruleType: "manual_lock",
-        tradingDay,
-        internalOnly: true,
-        brokerActionTaken: false,
-        activeDedupKey,
-        updatedAt: now,
-      },
-      update: { updatedAt: now },
+      where: { activeDedupKey: plan.activeDedupKey },
+      create: plan.internalLockEvent.create,
+      update: plan.internalLockEvent.update,
     }),
   ]);
 
   console.info("[account-lockout] manual lock applied", {
     accountId: id,
     userId: user.id,
-    tradingDay,
+    tradingDay: plan.tradingDay,
   });
 
-  return NextResponse.json({ ok: true, accountId: id, tradingDay, status: "locked" });
+  return NextResponse.json({ ok: true, accountId: id, tradingDay: plan.tradingDay, status: "locked" });
 }

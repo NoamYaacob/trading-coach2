@@ -1,8 +1,10 @@
 /**
  * Contract tests for POST /api/accounts/[id]/lockout
  *
- * Source-scan approach — verifies the route's security and behavioral
- * invariants without spinning up a server or requiring a live database.
+ * Source-scan approach for the route's security wiring and broker-isolation
+ * guarantees. The lock's value-producing logic (dedup key, CME day, STOPPED
+ * state, internal-only flags) lives in lockout-helpers.ts and is exercised
+ * functionally in lockout-helpers.test.ts.
  */
 
 import { describe, it } from "node:test";
@@ -13,6 +15,10 @@ import { resolve } from "node:path";
 const ROOT = resolve(process.cwd(), "src");
 const route = readFileSync(
   resolve(ROOT, "app/api/accounts/[id]/lockout/route.ts"),
+  "utf8",
+);
+const helper = readFileSync(
+  resolve(ROOT, "app/api/accounts/[id]/lockout/lockout-helpers.ts"),
   "utf8",
 );
 const evaluator = readFileSync(
@@ -59,8 +65,9 @@ describe("POST /api/accounts/[id]/lockout — security", () => {
   });
 
   it("does not call Tradovate broker write paths", () => {
-    for (const path of ["/api/tradovate", "tradovate", "cancelOrder", "flattenPosition"]) {
-      assert.ok(!route.includes(path), `route must not reference Tradovate API path: ${path}`);
+    for (const path of ["tradovate", "cancelOrder", "flattenPositions", "userAccountAutoLiq", "placeOrder"]) {
+      assert.ok(!route.includes(path), `route must not reference broker write path: ${path}`);
+      assert.ok(!helper.includes(path), `helper must not reference broker write path: ${path}`);
     }
   });
 
@@ -75,24 +82,59 @@ describe("POST /api/accounts/[id]/lockout — security", () => {
       assert.ok(!route.includes(table), `route must not touch historical table ${table}`);
     }
   });
+
+  it("only mutates LiveSessionState + InternalLockEvent, both via upsert (no delete)", () => {
+    assert.ok(!/\.delete\(|\.deleteMany\(/.test(route), "route must not delete anything");
+    assert.ok(route.includes("liveSessionState.upsert"), "must upsert LiveSessionState");
+    assert.ok(route.includes("internalLockEvent.upsert"), "must upsert InternalLockEvent");
+  });
 });
 
-describe("POST /api/accounts/[id]/lockout — lock mechanics", () => {
-  it("uses buildInternalLockDedupKey from the canonical helper", () => {
+describe("POST /api/accounts/[id]/lockout — lock mechanics (route wiring)", () => {
+  it("delegates payload construction to buildManualLockoutPlan", () => {
     assert.ok(
-      route.includes("buildInternalLockDedupKey"),
-      "must build the dedup key via the shared helper",
-    );
-    assert.ok(
-      evaluator.includes("buildInternalLockDedupKey"),
-      "helper must be exported from internal-lock-evaluator.ts",
+      route.includes("buildManualLockoutPlan"),
+      "route must build its payloads via the testable helper",
     );
   });
 
-  it("uses deriveCmeTradingDayKey for session-scoped lock", () => {
+  it("wraps liveSessionState + internalLockEvent in a single prisma.$transaction", () => {
     assert.ok(
-      route.includes("deriveCmeTradingDayKey"),
-      "must call deriveCmeTradingDayKey() to scope the lock to the CME session",
+      route.includes("prisma.$transaction"),
+      "lock must be atomic — both upserts in one transaction",
+    );
+  });
+
+  it("uses the plan's activeDedupKey as the upsert conflict target", () => {
+    assert.ok(
+      route.includes("activeDedupKey: plan.activeDedupKey"),
+      "internalLockEvent upsert must key on the plan's activeDedupKey for idempotency",
+    );
+  });
+
+  it("returns ok:true + status:locked + tradingDay on success", () => {
+    assert.ok(route.includes("ok: true"), "success response must include ok: true");
+    assert.ok(route.includes('"locked"'), "success response must include status: 'locked'");
+    assert.ok(route.includes("tradingDay: plan.tradingDay"), "must echo the CME trading day");
+  });
+});
+
+describe("lockout-helpers — sourced from canonical helpers", () => {
+  it("builds the dedup key via buildInternalLockDedupKey", () => {
+    assert.ok(
+      helper.includes("buildInternalLockDedupKey"),
+      "helper must build the dedup key via the shared internal-lock helper",
+    );
+    assert.ok(
+      evaluator.includes("buildInternalLockDedupKey"),
+      "buildInternalLockDedupKey must be exported from internal-lock-evaluator.ts",
+    );
+  });
+
+  it("scopes the day via deriveCmeTradingDayKey", () => {
+    assert.ok(
+      helper.includes("deriveCmeTradingDayKey"),
+      "helper must scope the lock to the CME session via deriveCmeTradingDayKey()",
     );
     assert.ok(
       tradingDay.includes("deriveCmeTradingDayKey"),
@@ -102,59 +144,14 @@ describe("POST /api/accounts/[id]/lockout — lock mechanics", () => {
 
   it("uses ruleType manual_lock (no schema migration needed)", () => {
     assert.ok(
-      route.includes('"manual_lock"'),
+      helper.includes('"manual_lock"'),
       "InternalLockEvent must use ruleType='manual_lock'",
     );
   });
 
-  it("wraps liveSessionState + internalLockEvent in a prisma.$transaction", () => {
-    assert.ok(
-      route.includes("prisma.$transaction"),
-      "lock must be atomic — liveSessionState and internalLockEvent must be in a transaction",
-    );
-    assert.ok(
-      route.includes("liveSessionState.upsert"),
-      "must upsert liveSessionState (account may not have a row yet)",
-    );
-    assert.ok(
-      route.includes("internalLockEvent.upsert"),
-      "must upsert internalLockEvent for idempotency",
-    );
-  });
-
-  it("sets riskState STOPPED on liveSessionState", () => {
-    assert.ok(
-      route.includes('riskState: "STOPPED"'),
-      "liveSessionState must be set to STOPPED to trigger the locked display",
-    );
-  });
-
-  it("internalLockEvent is marked internalOnly + no broker action", () => {
-    assert.ok(
-      route.includes("internalOnly: true"),
-      "InternalLockEvent.internalOnly must be true",
-    );
-    assert.ok(
-      route.includes("brokerActionTaken: false"),
-      "InternalLockEvent.brokerActionTaken must be false",
-    );
-  });
-
-  it("creates the lock with activeDedupKey set (prevents duplicate active locks)", () => {
-    assert.ok(
-      route.includes("activeDedupKey"),
-      "must set activeDedupKey on InternalLockEvent for the DB unique constraint",
-    );
-  });
-
-  it("returns ok:true + status:locked on success", () => {
-    assert.ok(
-      route.includes('"ok": true') || route.includes("ok: true"),
-      "success response must include ok: true",
-    );
-    assert.ok(
-      route.includes('"locked"'),
-      "success response must include status: 'locked'",
-    );
+  it("sets riskState STOPPED + internalOnly true + brokerActionTaken false", () => {
+    assert.ok(helper.includes('riskState: "STOPPED"'), "must set riskState STOPPED");
+    assert.ok(helper.includes("internalOnly: true"), "must set internalOnly true");
+    assert.ok(helper.includes("brokerActionTaken: false"), "must set brokerActionTaken false");
   });
 });
