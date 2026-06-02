@@ -16,15 +16,24 @@ import { useRouter } from "next/navigation";
  * touched — the route it calls only writes the internal lock.
  */
 
+/** User-facing broker-lock outcome surfaced after a successful internal lock. */
+export type BrokerLockOutcome = {
+  status: "active" | "failed" | "unavailable";
+  message: string;
+};
+
 /** Owns the lock request state. The only caller of the lockout API. */
 export function useLockout(accountId: string) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Set after a successful internal lock to report the broker-side outcome. */
+  const [brokerLock, setBrokerLock] = useState<BrokerLockOutcome | null>(null);
 
   const lock = useCallback(async (): Promise<boolean> => {
     setBusy(true);
     setError(null);
+    setBrokerLock(null);
     try {
       const res = await fetch(`/api/accounts/${accountId}/lockout`, {
         method: "POST",
@@ -35,6 +44,13 @@ export function useLockout(accountId: string) {
         setError(data.error ?? "Failed to lock account. Please try again.");
         return false;
       }
+      const data = (await res.json()) as { brokerLock?: BrokerLockOutcome };
+      // The internal Guardrail lock succeeded. Surface the broker-side result
+      // (the broker half may have failed/been unavailable without affecting
+      // the internal lock).
+      setBrokerLock(
+        data.brokerLock ?? { status: "unavailable", message: "Broker lock was not attempted." },
+      );
       router.refresh();
       return true;
     } catch {
@@ -45,7 +61,12 @@ export function useLockout(accountId: string) {
     }
   }, [accountId, router]);
 
-  return { busy, error, setError, lock };
+  const reset = useCallback(() => {
+    setError(null);
+    setBrokerLock(null);
+  }, []);
+
+  return { busy, error, setError, brokerLock, lock, reset };
 }
 
 /** The single danger confirmation modal for manual lockout. Portalled so no
@@ -54,25 +75,90 @@ export function LockoutConfirmModal({
   accountLabel,
   busy,
   error,
+  brokerLock,
   onConfirm,
   onCancel,
+  onDone,
 }: {
   accountLabel?: string;
   busy: boolean;
   error: string | null;
+  /** When set, the lock succeeded — the modal switches to the result view. */
+  brokerLock?: BrokerLockOutcome | null;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Closes the result view. Defaults to onCancel when omitted. */
+  onDone?: () => void;
 }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) onCancel();
+      if (e.key === "Escape" && !busy) (brokerLock ? (onDone ?? onCancel) : onCancel)();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [busy, onCancel]);
+  }, [busy, onCancel, onDone, brokerLock]);
 
   if (typeof document === "undefined") return null;
 
+  // ── Result view — shown after the internal lock has been applied ───────────
+  if (brokerLock) {
+    const close = onDone ?? onCancel;
+    const brokerActive = brokerLock.status === "active";
+    return createPortal(
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
+        data-lock-result
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lock-result-title"
+          className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+        >
+          <h2 id="lock-result-title" className="text-base font-semibold text-stone-900">
+            {accountLabel ?? "Account"} locked
+          </h2>
+          {/* The internal Guardrail lock is always active on success. */}
+          <p className="mt-3 flex items-start gap-2 text-sm text-emerald-700">
+            <span aria-hidden="true">✓</span>
+            <span>Locked in Guardrail for the rest of this CME session.</span>
+          </p>
+          {/* The broker half may or may not have succeeded. */}
+          {brokerActive ? (
+            <p className="mt-2 flex items-start gap-2 text-sm text-emerald-700">
+              <span aria-hidden="true">✓</span>
+              <span>Broker lock active at Tradovate.</span>
+            </p>
+          ) : (
+            <p className="mt-2 flex items-start gap-2 text-sm text-amber-700">
+              <span aria-hidden="true">⚠</span>
+              <span>
+                {brokerLock.status === "failed"
+                  ? "Broker lock failed — the Guardrail lock is still active."
+                  : "Broker lock unavailable — the Guardrail lock is still active."}
+              </span>
+            </p>
+          )}
+          <p className="mt-2 text-xs text-stone-500">{brokerLock.message}</p>
+          <div className="mt-5 flex justify-end">
+            <button
+              type="button"
+              onClick={close}
+              className="inline-flex h-9 items-center rounded-full bg-stone-900 px-4 text-sm font-medium text-white transition hover:bg-stone-950"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  // ── Confirm view ───────────────────────────────────────────────────────────
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
@@ -94,8 +180,9 @@ export function LockoutConfirmModal({
           Lock {accountLabel ?? "this account"} for the rest of this CME session?
         </h2>
         <p className="mt-2 text-sm text-stone-600">
-          This account is locked or has rule activity today. To prevent bypassing
-          Guardrail, removal will take effect at the next trading session reset.
+          This locks the account in Guardrail and attempts to lock it at your broker
+          (Tradovate) so no new opening orders can be placed for the rest of this CME
+          session. Existing positions are not closed.
         </p>
         <p className="mt-2 text-sm text-stone-500">
           The manual lock clears automatically when the CME session resets at 17:00&nbsp;CT.
@@ -142,7 +229,7 @@ export function AccountLockoutButton({
   className?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const { busy, error, setError, lock } = useLockout(accountId);
+  const { busy, error, setError, brokerLock, lock, reset } = useLockout(accountId);
 
   return (
     <>
@@ -150,7 +237,7 @@ export function AccountLockoutButton({
         type="button"
         aria-label={`Lock ${accountLabel ?? "account"} for this CME session`}
         onClick={() => {
-          setError(null);
+          reset();
           setConfirming(true);
         }}
         className={
@@ -178,15 +265,22 @@ export function AccountLockoutButton({
           accountLabel={accountLabel}
           busy={busy}
           error={error}
+          brokerLock={brokerLock}
           onCancel={() => {
             if (!busy) {
               setConfirming(false);
-              setError(null);
+              reset();
             }
           }}
-          onConfirm={async () => {
-            const ok = await lock();
-            if (ok) setConfirming(false);
+          onConfirm={() => {
+            // Keep the modal open on success so it can switch to the result
+            // view (brokerLock); only the internal-lock failure path closes via
+            // the error message.
+            void lock();
+          }}
+          onDone={() => {
+            setConfirming(false);
+            reset();
           }}
         />
       )}

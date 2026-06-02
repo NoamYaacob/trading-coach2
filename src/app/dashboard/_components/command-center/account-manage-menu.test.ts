@@ -249,10 +249,14 @@ describe("Lock for this CME session", () => {
     assert.ok(LOCKOUT.includes('busy ? "Locking…"'), "confirm button must show loading state");
   });
 
-  test("shared lock modal shows the session-reset caveat copy", () => {
+  test("shared lock modal shows the broker-lock + session-reset caveat copy", () => {
     assert.ok(
-      LOCKOUT.includes("This account is locked or has rule activity today"),
-      "dialog must include the session-lock caveat",
+      LOCKOUT.includes("attempts to lock it at your broker"),
+      "dialog must explain it attempts a broker-level lock",
+    );
+    assert.ok(
+      LOCKOUT.includes("Existing positions are not closed"),
+      "dialog must clarify existing positions are not closed",
     );
     assert.ok(LOCKOUT.includes("17:00"), "dialog must mention 17:00 CT session reset time");
   });
@@ -357,6 +361,27 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
     for (const banned of ["/api/broker", "tradovate", "cancelOrder", "flattenPositions", "userAccountAutoLiq", "placeOrder"]) {
       assert.ok(!src.includes(banned), `shared lockout must not reference '${banned}'`);
     }
+  });
+
+  test("useLockout reads the broker-lock outcome from the API response", () => {
+    assert.ok(LOCKOUT.includes("data.brokerLock"), "must read brokerLock from the response");
+    assert.ok(/brokerLock[\s\S]*useState/.test(LOCKOUT) || LOCKOUT.includes("setBrokerLock"), "must track the broker outcome in state");
+    assert.ok(LOCKOUT.includes("export type BrokerLockOutcome"), "must export the broker outcome type");
+  });
+
+  test("confirmation modal surfaces a broker-level lock result view", () => {
+    assert.ok(LOCKOUT.includes("data-lock-result"), "modal must render a result view after locking");
+    assert.ok(LOCKOUT.includes("Locked in Guardrail"), "result must confirm the internal Guardrail lock");
+    assert.ok(LOCKOUT.includes("Broker lock active"), "result must show broker lock active on success");
+    assert.ok(
+      LOCKOUT.includes("Broker lock failed") && LOCKOUT.includes("Broker lock unavailable"),
+      "result must distinguish broker failed vs unavailable — Guardrail lock still active",
+    );
+  });
+
+  test("both entry points pass the broker outcome to the shared modal", () => {
+    assert.ok(/brokerLock=\{brokerLock\}/.test(LOCKOUT), "direct button must pass brokerLock to the modal");
+    assert.ok(/brokerLock=\{brokerLock\}/.test(MENU), "⋯ menu must pass brokerLock to the modal");
   });
 });
 
