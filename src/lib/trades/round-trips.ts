@@ -14,7 +14,10 @@
 import { classifyFill, normalizeSide } from "../guardian-engine/fill-classifier.ts";
 import { FUTURES_SPECS } from "../instruments.ts";
 
-function getContractPointValue(symbol: string): number {
+/** Exported for diagnostics. Parses a month-coded futures symbol (e.g. "MNQM6")
+ *  and returns its dollar-per-point value from FUTURES_SPECS. Returns 1 for
+ *  unknown symbols so callers never crash. */
+export function getContractPointValue(symbol: string): number {
   const match = symbol.match(/^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/);
   const root = match?.[1];
   if (root && root in FUTURES_SPECS) return FUTURES_SPECS[root]!.pointValue;

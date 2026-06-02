@@ -2,10 +2,9 @@
 /**
  * P&L Reconciliation Verification Script — READ ONLY, zero writes.
  *
- * Resolves each account by id, label, displayName, or externalAccountId
- * (whichever matches first), then compares reconstructed round-trip P&L
- * from the FIXED reconstructRoundTrips() (with pointValue multiplier)
- * against official PDF report figures.
+ * Resolves each account by id | label | displayName | externalAccountId,
+ * then prints per-fill symbol extraction, per-round-trip P&L detail, and
+ * compares against official Tradovate Performance PDF figures.
  *
  * Usage:
  *   npx tsx scripts/verify-pnl-reconciliation.ts
@@ -18,29 +17,20 @@ import { config } from "dotenv";
 config({ path: resolve(process.cwd(), ".env.local") });
 
 import { prisma } from "../src/lib/db.ts";
-import { reconstructRoundTrips, type FillInput } from "../src/lib/trades/round-trips.ts";
+import { reconstructRoundTrips, getContractPointValue, type FillInput } from "../src/lib/trades/round-trips.ts";
 
-// Official PDF report figures — keyed by the human-readable search string
+// ── Official PDF figures ────────────────────────────────────────────────────
 const OFFICIAL: Record<string, {
   trades: number;
   grossPnl: number;
   fees: number;
   totalPnl: number;
 }> = {
-  DEMO7433035: {
-    trades: 33,
-    grossPnl: -145.50,
-    fees: -320.12,
-    totalPnl: -465.62,
-  },
-  "1868411": {
-    trades: 15,
-    grossPnl: -133.00,
-    fees: -43.70,
-    totalPnl: -176.70,
-  },
+  DEMO7433035: { trades: 33, grossPnl: -145.50, fees: -320.12, totalPnl: -465.62 },
+  "1868411":   { trades: 15, grossPnl: -133.00, fees:  -43.70, totalPnl: -176.70 },
 };
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function fmt$(v: number | null): string {
   if (v == null) return "(null)";
   const abs = Math.abs(v);
@@ -48,88 +38,116 @@ function fmt$(v: number | null): string {
   return `${sign}$${abs.toFixed(2)}`;
 }
 
-/** Resolve a ConnectedAccount by id, label, displayName, or externalAccountId. */
+function fmtDate(d: Date): string {
+  return d.toISOString().replace("T", " ").substring(0, 19) + " UTC";
+}
+
+/** Mirror of extractSymbol() in round-trips.ts so the script can show it. */
+function extractSymbolFromPayload(rawPayload: unknown): string | null {
+  const p = rawPayload as
+    | { contract?: { name?: string; symbol?: string }; symbol?: string; contractName?: string }
+    | null | undefined;
+  return (
+    p?.contract?.name ??
+    p?.contract?.symbol ??
+    p?.symbol ??
+    p?.contractName ??
+    null
+  );
+}
+
+/** Resolve by id | label | displayName | externalAccountId. */
 async function resolveAccount(searchKey: string) {
   return prisma.connectedAccount.findFirst({
-    where: {
-      OR: [
-        { id: searchKey },
-        { label: searchKey },
-        { displayName: searchKey },
-        { externalAccountId: searchKey },
-      ],
-    },
+    where: { OR: [
+      { id: searchKey },
+      { label: searchKey },
+      { displayName: searchKey },
+      { externalAccountId: searchKey },
+    ]},
     select: {
-      id: true,
-      label: true,
-      displayName: true,
-      externalAccountId: true,
-      accountType: true,
-      brokerConnection: {
-        select: {
-          env: true,
-          connectionStatus: true,
-          platform: true,
-        },
-      },
+      id: true, label: true, displayName: true,
+      externalAccountId: true, accountType: true,
+      createdAt: true,
+      brokerConnection: { select: { env: true, connectionStatus: true, platform: true, createdAt: true } },
     },
   });
 }
 
+// ── Per-account analysis ─────────────────────────────────────────────────────
 async function analyzeAccount(searchKey: string) {
   const account = await resolveAccount(searchKey);
 
   if (!account) {
-    console.log(`\nACCOUNT NOT FOUND for search key: "${searchKey}"`);
-    console.log("Tried: id, label, displayName, externalAccountId");
+    console.log(`\n${"!".repeat(72)}`);
+    console.log(`ACCOUNT NOT FOUND: "${searchKey}" — tried id, label, displayName, externalAccountId`);
     return;
   }
 
   const conn = account.brokerConnection;
+  const hr = "─".repeat(72);
 
   console.log(`\n${"=".repeat(72)}`);
   console.log(`SEARCH KEY: "${searchKey}"`);
   console.log(`${"=".repeat(72)}`);
-  console.log(`ConnectedAccount.id:   ${account.id}`);
-  console.log(`label:                 ${account.label}`);
-  console.log(`displayName:           ${account.displayName ?? "(none)"}`);
-  console.log(`externalAccountId:     ${account.externalAccountId ?? "(none)"}`);
-  console.log(`accountType:           ${account.accountType}`);
+  console.log(`ConnectedAccount.id:     ${account.id}`);
+  console.log(`label:                   ${account.label}`);
+  console.log(`displayName:             ${account.displayName ?? "(none)"}`);
+  console.log(`externalAccountId:       ${account.externalAccountId ?? "(none)"}`);
+  console.log(`accountType:             ${account.accountType}`);
+  console.log(`ConnectedAccount.createdAt: ${fmtDate(account.createdAt)}`);
   if (conn) {
-    console.log(`brokerConnection.env:    ${conn.env}`);
-    console.log(`brokerConnection.status: ${conn.connectionStatus}`);
-    console.log(`brokerConnection.platform: ${conn.platform}`);
+    console.log(`BrokerConnection.createdAt: ${fmtDate(conn.createdAt)}`);
+    console.log(`env: ${conn.env}  status: ${conn.connectionStatus}  platform: ${conn.platform}`);
   }
 
-  // Count all NormalizedTradeEvent fills for this account
-  const fillCount = await prisma.normalizedTradeEvent.count({
-    where: { accountId: account.id },
-  });
-
-  // Fetch ALL fills (full history) for round-trip reconstruction
+  // Fetch ALL fills
   const allFills = await prisma.normalizedTradeEvent.findMany({
-    where: {
-      accountId: account.id,
-      side: { not: null },
-      quantity: { not: null },
-      price: { not: null },
-    },
+    where: { accountId: account.id },
     select: {
-      id: true,
-      externalTradeId: true,
-      contractId: true,
-      side: true,
-      quantity: true,
-      price: true,
-      pnl: true,
-      occurredAt: true,
-      rawPayload: true,
+      id: true, externalTradeId: true, contractId: true,
+      side: true, quantity: true, price: true, pnl: true,
+      occurredAt: true, rawPayload: true,
     },
     orderBy: { occurredAt: "asc" },
   });
 
-  // Convert to FillInput
-  const fillInputs: FillInput[] = allFills.map((f) => ({
+  const fillCount = allFills.length;
+  const validFills = allFills.filter(
+    (f) => f.side != null && f.quantity != null && f.price != null
+  );
+
+  console.log(`\n${hr}`);
+  console.log(`RAW FILLS (total: ${fillCount}, valid: ${validFills.length})`);
+  console.log(`${hr}`);
+
+  if (fillCount === 0) {
+    console.log("No fills found in DB for this account.");
+  } else {
+    const earliest = allFills[0]!.occurredAt;
+    const latest = allFills[allFills.length - 1]!.occurredAt;
+    console.log(`Fill date range: ${fmtDate(earliest)}  →  ${fmtDate(latest)}`);
+    console.log(`  pnl=null: ${allFills.filter(f => f.pnl == null).length}  |  pnl non-null: ${allFills.filter(f => f.pnl != null).length}`);
+    console.log();
+    console.log(`  #  | Date/Time (UTC)     | Side | Qty | Price      | BkrPnl  | ExtractedSymbol | PointValue`);
+    console.log(`  ---+--------------------+------+-----+------------+---------+-----------------+-----------`);
+    for (let i = 0; i < allFills.length; i++) {
+      const f = allFills[i]!;
+      const rawSym = extractSymbolFromPayload(f.rawPayload);
+      const sym = rawSym ?? (f.contractId != null ? `#${f.contractId}` : "—");
+      const pv = getContractPointValue(sym);
+      const dt = f.occurredAt.toISOString().substring(0, 19).replace("T", " ");
+      const side = (f.side ?? "?").padEnd(4);
+      const qty = String(f.quantity ?? "?").padStart(3);
+      const price = String(f.price ?? "?").padStart(10);
+      const bpnl = f.pnl != null ? fmt$(Number(f.pnl)).padStart(7) : "  (null)";
+      const symPad = sym.padEnd(15);
+      console.log(`  ${String(i + 1).padStart(2)} | ${dt} | ${side} | ${qty} | ${price} | ${bpnl} | ${symPad} | $${pv}/pt`);
+    }
+  }
+
+  // Convert to FillInput and reconstruct
+  const fillInputs: FillInput[] = validFills.map((f) => ({
     id: f.id,
     externalTradeId: f.externalTradeId,
     contractId: f.contractId,
@@ -141,72 +159,102 @@ async function analyzeAccount(searchKey: string) {
     rawPayload: f.rawPayload,
   }));
 
-  // pnl null breakdown before reconstruction
-  const nullPnlFills = allFills.filter((f) => f.pnl == null).length;
-  const nonNullPnlFills = allFills.filter((f) => f.pnl != null).length;
-
-  // Run reconstructRoundTrips with the FIXED version (pointValue multiplier applied)
   const roundTrips = reconstructRoundTrips(fillInputs);
 
-  // Compute stats
+  // Summary stats
   const grossPnl = roundTrips.reduce((s, t) => s + t.pnl, 0);
-  const winCount = roundTrips.filter((t) => t.pnl > 0).length;
-  const lossCount = roundTrips.filter((t) => t.pnl < 0).length;
-  const zeroCount = roundTrips.filter((t) => t.pnl === 0).length;
-  const pnlValues = roundTrips.map((t) => t.pnl);
-  const largestWin = pnlValues.filter((p) => p > 0).length > 0
-    ? Math.max(...pnlValues.filter((p) => p > 0))
-    : null;
-  const largestLoss = pnlValues.filter((p) => p < 0).length > 0
-    ? Math.min(...pnlValues.filter((p) => p < 0))
-    : null;
+  const wins = roundTrips.filter((t) => t.pnl > 0);
+  const losses = roundTrips.filter((t) => t.pnl < 0);
+  const largestWin = wins.length > 0 ? Math.max(...wins.map((t) => t.pnl)) : null;
+  const largestLoss = losses.length > 0 ? Math.min(...losses.map((t) => t.pnl)) : null;
+  const brokerSrc = roundTrips.filter((t) => t.pnlSource === "broker").length;
+  const computedSrc = roundTrips.filter((t) => t.pnlSource === "computed").length;
 
-  const brokerPnlCount = roundTrips.filter((t) => t.pnlSource === "broker").length;
-  const computedPnlCount = roundTrips.filter((t) => t.pnlSource === "computed").length;
+  console.log(`\n${hr}`);
+  console.log(`RECONSTRUCTED ROUND-TRIPS (${roundTrips.length} total)`);
+  console.log(`${hr}`);
+  console.log(`Gross P&L: ${fmt$(grossPnl)}  |  Win: ${wins.length}  Loss: ${losses.length}`);
+  console.log(`Largest win: ${fmt$(largestWin)}  |  Largest loss: ${fmt$(largestLoss)}`);
+  console.log(`pnlSource=broker: ${brokerSrc}  |  pnlSource=computed: ${computedSrc}`);
+  console.log();
 
-  // Print DB reconstruction results
-  console.log(`\n── DB Reconstruction ──`);
-  console.log(`Fill count (all NormalizedTradeEvent):       ${fillCount}`);
-  console.log(`Fills with valid side/qty/price used:        ${allFills.length}`);
-  console.log(`  of which pnl=null (computed path):         ${nullPnlFills}`);
-  console.log(`  of which pnl non-null (broker path):       ${nonNullPnlFills}`);
-  console.log(`Reconstructed round-trips:                   ${roundTrips.length}`);
-  console.log(`Reconstructed gross P&L:                     ${fmt$(grossPnl)}`);
-  console.log(`Win: ${winCount}  |  Loss: ${lossCount}  |  Breakeven: ${zeroCount}`);
-  console.log(`Largest win:  ${fmt$(largestWin)}  |  Largest loss: ${fmt$(largestLoss)}`);
-  console.log(`pnlSource=broker:   ${brokerPnlCount} round-trips`);
-  console.log(`pnlSource=computed: ${computedPnlCount} round-trips`);
+  // Per-symbol P&L subtotals
+  const bySymbol = new Map<string, { pnl: number; count: number; pv: number }>();
+  for (const t of roundTrips) {
+    const sym = t.symbol.match(/^([A-Z]+)[FGHJKMNQUVXZ]\d{1,2}$/)?.[1] ?? t.symbol;
+    const entry = bySymbol.get(sym) ?? { pnl: 0, count: 0, pv: getContractPointValue(t.symbol) };
+    entry.pnl += t.pnl;
+    entry.count++;
+    bySymbol.set(sym, entry);
+  }
+  console.log(`Per-root-symbol subtotals:`);
+  for (const [sym, s] of bySymbol) {
+    console.log(`  ${sym.padEnd(6)} | ${s.count} trips | ${fmt$(s.pnl)} | pointValue=$${s.pv}/pt`);
+  }
+  console.log();
+
+  // Per-round-trip detail table
+  if (roundTrips.length > 0) {
+    console.log(` # | Symbol   | S | Qty | Entry      | Exit       | PointVal | Raw pts | P&L      | Src  | OpenedAt (UTC)      `);
+    console.log(`---+----------+---+-----+------------+------------+----------+---------+----------+------+---------------------`);
+    for (let i = 0; i < roundTrips.length; i++) {
+      const t = roundTrips[i]!;
+      const pv = getContractPointValue(t.symbol);
+      const rawPts = (t.exitPrice - t.entryPrice) * t.qty * (t.side === "LONG" ? 1 : -1);
+      const num = String(i + 1).padStart(2);
+      const sym = t.symbol.padEnd(8);
+      const sd = t.side === "LONG" ? "L" : "S";
+      const qty = String(t.qty).padStart(3);
+      const entry = String(t.entryPrice).padStart(10);
+      const exit = String(t.exitPrice).padStart(10);
+      const pvStr = `$${pv}`.padEnd(8);
+      const rawStr = rawPts.toFixed(2).padStart(7);
+      const pnlStr = fmt$(t.pnl).padStart(8);
+      const src = t.pnlSource === "broker" ? "brkr" : "comp";
+      const oa = t.openedAt.toISOString().substring(0, 19).replace("T", " ");
+      console.log(` ${num} | ${sym} | ${sd} | ${qty} | ${entry} | ${exit} | ${pvStr} | ${rawStr} | ${pnlStr} | ${src} | ${oa}`);
+    }
+  }
 
   // Official comparison
   const official = OFFICIAL[searchKey];
   if (official) {
     const diffGross = grossPnl - official.grossPnl;
-    console.log(`\n── Official Performance PDF ──`);
-    console.log(`# Trades:     ${official.trades}`);
-    console.log(`Gross P&L:    ${fmt$(official.grossPnl)}`);
-    console.log(`Fees & Comm:  ${fmt$(official.fees)}`);
-    console.log(`Total P&L:    ${fmt$(official.totalPnl)}`);
-    console.log(`\nDifference (reconstructed gross − official gross): ${fmt$(diffGross)}`);
-    if (Math.abs(diffGross) < 1) {
-      console.log(`✓ RECONCILED within $1`);
+    console.log(`\n${hr}`);
+    console.log(`OFFICIAL PDF vs DB RECONSTRUCTION`);
+    console.log(`${hr}`);
+    console.log(`                       Official PDF    DB Reconstructed`);
+    console.log(`# Trades / round-trips: ${String(official.trades).padStart(8)}       ${String(roundTrips.length).padStart(8)}`);
+    console.log(`Gross P&L:             ${fmt$(official.grossPnl).padStart(8)}       ${fmt$(grossPnl).padStart(8)}`);
+    console.log(`Fees & Comm:           ${fmt$(official.fees).padStart(8)}       (not tracked by Guardrail)`);
+    console.log(`Total P&L:             ${fmt$(official.totalPnl).padStart(8)}       (gross - fees = ${fmt$(grossPnl + official.fees)})`);
+    console.log();
+    console.log(`Difference (DB gross − official gross): ${fmt$(diffGross)}`);
+    if (Math.abs(diffGross) < 0.50) {
+      console.log(`✓  RECONCILED (within $0.50)`);
     } else {
-      console.log(`△ GAP of ${fmt$(diffGross)} — expected if fills use broker pnl path (commissions excluded)`);
-      console.log(`  or if DB fill range differs from PDF date range.`);
+      console.log(`△  GAP: ${fmt$(diffGross)}`);
+      console.log(`   If gap ≠ 0 and trade count matches, investigate:`);
+      console.log(`   1. Are symbols extracted correctly (see per-fill table above)?`);
+      console.log(`   2. Are any symbols falling back to pointValue=$1 instead of MNQ=$2 or NQ=$20?`);
+      console.log(`   3. Does Tradovate's pairing differ from FIFO (e.g. partial lot splits)?`);
+      console.log(`   4. Are there fills with externalTradeId=null that sort incorrectly?`);
     }
   }
 }
 
+// ── Main ─────────────────────────────────────────────────────────────────────
 async function run() {
   console.log(`\nP&L Reconciliation Verification — READ ONLY`);
   console.log(`Branch: claude/charming-johnson-mZlXy`);
-  console.log(`Using FIXED reconstructRoundTrips() with pointValue multiplier`);
-  console.log(`Resolving accounts by: id | label | displayName | externalAccountId`);
+  console.log(`reconstructRoundTrips() with pointValue multiplier`);
+  console.log(`Account lookup: id | label | displayName | externalAccountId`);
 
   await analyzeAccount("DEMO7433035");
   await analyzeAccount("1868411");
 
   console.log(`\n${"=".repeat(72)}`);
-  console.log(`Done. No DB mutations performed.`);
+  console.log(`Done. No DB writes performed.`);
   console.log(`${"=".repeat(72)}\n`);
 
   await prisma.$disconnect();
