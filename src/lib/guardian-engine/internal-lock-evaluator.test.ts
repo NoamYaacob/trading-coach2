@@ -13,7 +13,11 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { canApplyInternalLock, buildInternalLockDedupKey } from "./internal-lock-evaluator.ts";
+import {
+  canApplyInternalLock,
+  buildInternalLockDedupKey,
+  shouldHoldRiskStateStopped,
+} from "./internal-lock-evaluator.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 function readSrc(rel: string) {
@@ -71,6 +75,100 @@ describe("canApplyInternalLock", () => {
 
   it("flag=true + live + STOPPED → false", () => {
     assert.equal(canApplyInternalLock({ flagEnabled: true, env: "live", riskState: "STOPPED" }), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shouldHoldRiskStateStopped — Priority 1: manual lock persistence across sync
+//
+// Invariant: while an active InternalLockEvent exists (clearedAt=null,
+// activeDedupKey!=null), a sync that re-evaluates the rules and finds no live
+// breach must NOT downgrade riskState from STOPPED back to NORMAL/WARNING.
+// Only the CME session-end cleanup (isStale) may clear the lock.
+// ---------------------------------------------------------------------------
+
+describe("shouldHoldRiskStateStopped — manual lock survives sync", () => {
+  it("holds at STOPPED when an active lock exists and the evaluator downgraded to NORMAL", () => {
+    // The exact production scenario: manual_lock active, but dry-run sync's
+    // own evaluator computes NORMAL (no live breach). Must stay STOPPED.
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "NORMAL",
+        isStale: false,
+        hasActiveInternalLock: true,
+      }),
+      true,
+    );
+  });
+
+  it("holds at STOPPED when the evaluator downgraded to WARNING", () => {
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "WARNING",
+        isStale: false,
+        hasActiveInternalLock: true,
+      }),
+      true,
+    );
+  });
+
+  it("does NOT hold (no override needed) when no active lock exists", () => {
+    // Without an active InternalLockEvent the account is genuinely NORMAL —
+    // sync must be free to keep it NORMAL.
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "NORMAL",
+        isStale: false,
+        hasActiveInternalLock: false,
+      }),
+      false,
+    );
+  });
+
+  it("does NOT hold on CME session rollover (isStale) — lets session-end cleanup reset the account", () => {
+    // On rollover the session-end cleanup clears the lock; holding here would
+    // re-lock the account into the new session.
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "NORMAL",
+        isStale: true,
+        hasActiveInternalLock: true,
+      }),
+      false,
+    );
+  });
+
+  it("does NOT override when the evaluator already computed STOPPED (normal path keeps it stopped)", () => {
+    // A live breach this cycle already lands on STOPPED via the normal path;
+    // no hold is needed, so the override stays scoped to downgrade-prevention.
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "STOPPED",
+        isStale: false,
+        hasActiveInternalLock: true,
+      }),
+      false,
+    );
+  });
+
+  it("isStale takes precedence over an active lock even when evaluator says NORMAL", () => {
+    assert.equal(
+      shouldHoldRiskStateStopped({
+        evaluatedRiskState: "NORMAL",
+        isStale: true,
+        hasActiveInternalLock: false,
+      }),
+      false,
+    );
+  });
+
+  it("is a pure function of its three inputs (no I/O) — deterministic", () => {
+    const input = {
+      evaluatedRiskState: "NORMAL",
+      isStale: false,
+      hasActiveInternalLock: true,
+    } as const;
+    assert.equal(shouldHoldRiskStateStopped(input), shouldHoldRiskStateStopped(input));
   });
 });
 

@@ -68,21 +68,36 @@ describe("Priority 1 — sync cannot downgrade STOPPED while active InternalLock
     );
   });
 
-  it("sync overrides newRiskState to STOPPED when an active lock is found", () => {
+  it("sync overrides newRiskState to STOPPED via the pure shouldHoldRiskStateStopped helper", () => {
     assert.ok(
-      sync.includes('newRiskState = "STOPPED"') &&
-        sync.includes("activeLockCount > 0"),
-      "sync must force riskState=STOPPED when activeLockCount > 0",
+      sync.includes("shouldHoldRiskStateStopped"),
+      "sync must route the hold decision through the pure, tested shouldHoldRiskStateStopped helper",
+    );
+    assert.ok(
+      sync.includes('newRiskState = "STOPPED"'),
+      "sync must force riskState=STOPPED when the helper returns true",
     );
   });
 
-  it("sync skips the active-lock check when the session has rolled over (isStale)", () => {
+  it("sync imports shouldHoldRiskStateStopped from the internal-lock-evaluator", () => {
+    assert.ok(
+      sync.includes('shouldHoldRiskStateStopped } from "../guardian-engine/internal-lock-evaluator"') ||
+        /import\s*\{[^}]*shouldHoldRiskStateStopped[^}]*\}\s*from\s*["']\.\.\/guardian-engine\/internal-lock-evaluator["']/.test(sync),
+      "sync must import shouldHoldRiskStateStopped from the guardian-engine internal-lock-evaluator",
+    );
+  });
+
+  it("sync skips the active-lock DB query when the session has rolled over (isStale)", () => {
     // isStale means the session rolled over — old locks are cleared by the
-    // session-end cleanup block. Applying the lock guard when isStale would
-    // re-lock an account that should be reset.
+    // session-end cleanup block. Querying/holding when isStale would re-lock
+    // an account that should be reset for the new session.
     assert.ok(
       sync.includes("!isStale && newRiskState"),
-      "active-lock guard must be gated on !isStale to allow session-rollover resets",
+      "active-lock query must be gated on !isStale to allow session-rollover resets",
+    );
+    assert.ok(
+      sync.includes("isStale,") || sync.includes("isStale\n"),
+      "isStale must be passed into shouldHoldRiskStateStopped so the helper can skip the hold on rollover",
     );
   });
 
