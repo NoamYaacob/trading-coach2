@@ -48,7 +48,7 @@ function getToneStyles(tone: TodayActivityItem["tone"]) {
 
 export function TodayActivityTimeline({
   items,
-  title = "Today activity",
+  title = "Session activity",
   description = "A compact timeline of what happened across the session.",
   timeZone,
 }: TodayActivityTimelineProps) {

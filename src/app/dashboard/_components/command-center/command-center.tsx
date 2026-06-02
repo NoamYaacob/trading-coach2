@@ -5,7 +5,6 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { SyncButton } from "@/app/accounts/_components/sync-button";
 import { BrokerListenerStatus } from "@/app/dashboard/_components/broker-listener-status";
-import { formatPropFirmDescriptor } from "@/app/accounts/_components/account-rule-helpers";
 import { ArchiveAccountButton } from "./archive-account-button";
 import { AccountManageMenu } from "./account-manage-menu";
 import {
@@ -919,7 +918,11 @@ function chipSeverityClass(severity: string): string {
 
 function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
   if (account.status === "unavailable") return <UnavailableRow account={account} />;
-  const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  // Build from the resolved accountTypeLabel (not raw accountType) so DEMO
+  // accounts read "Firm · Demo account" instead of "Firm · Evaluation".
+  const propFirmDescriptor = account.propFirm?.trim()
+    ? `${account.propFirm.trim()} · ${account.accountTypeLabel}`
+    : null;
   const ruleSummaryChips = buildRuleSummaryChips(account);
   return (
     <tr className="border-b border-stone-100 last:border-b-0 hover:bg-white/60">
@@ -1062,7 +1065,11 @@ function AccountRow({ account, isMaintenanceWindow, isWeekendClose }: { account:
 // ─── Mobile card ───────────────────────────────────────────────────────────────
 
 function AccountCard({ account, isMaintenanceWindow, isWeekendClose }: { account: CommandCenterAccount; isMaintenanceWindow: boolean; isWeekendClose: boolean }) {
-  const propFirmDescriptor = formatPropFirmDescriptor(account.propFirm, account.accountType);
+  // Build from the resolved accountTypeLabel (not raw accountType) so DEMO
+  // accounts read "Firm · Demo account" instead of "Firm · Evaluation".
+  const propFirmDescriptor = account.propFirm?.trim()
+    ? `${account.propFirm.trim()} · ${account.accountTypeLabel}`
+    : null;
   const ruleSummaryChips = buildRuleSummaryChips(account);
   const stateLabel = derivePerAccountStateLabel({
     enforcementMode: account.enforcementMode,
@@ -1366,7 +1373,7 @@ function TradesCell({
       {account.tradesMayIncludePreConnection && (
         <p
           className={hintClass}
-          title="Trade count includes broker activity from today before Guardrail was connected to this account."
+          title="Trade count may include broker activity from this session before Guardrail was connected to this account."
         >
           Includes pre-connection activity
         </p>

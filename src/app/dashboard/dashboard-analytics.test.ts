@@ -141,12 +141,12 @@ describe("TraderInsights server panel", () => {
 
   it("renders biggest win / biggest loss labels", () => {
     assert.ok(
-      file.includes("Biggest win today"),
-      "must render a 'Biggest win today' card label",
+      file.includes("Biggest win this session"),
+      "must render a 'Biggest win this session' card label",
     );
     assert.ok(
-      file.includes("Biggest loss today"),
-      "must render a 'Biggest loss today' card label",
+      file.includes("Biggest loss this session"),
+      "must render a 'Biggest loss this session' card label",
     );
   });
 

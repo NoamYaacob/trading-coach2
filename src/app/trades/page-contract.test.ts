@@ -124,7 +124,7 @@ describe("dashboard: today's trades + equity curve use real data", () => {
 
   it("has honest empty-state copy for today's trades panel", () => {
     assert.ok(
-      page.includes("No closed round-trips yet today"),
+      page.includes("No closed round-trips this session"),
       "today's trades must show honest empty state",
     );
     assert.ok(

@@ -309,7 +309,7 @@ export function TodaySessionPanel({
           {mobileStats && (
             <div className="mt-4 grid grid-cols-2 gap-2 md:hidden">
               <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Today P&amp;L</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">Session P&amp;L</p>
                 <p className={`mt-1 text-base font-semibold tabular-nums ${mobileStats.todayPnL > 0 ? "text-emerald-700" : mobileStats.todayPnL < 0 ? "text-red-700" : "text-stone-950"}`}>
                   {fmtMoney(mobileStats.todayPnL)}
                 </p>
@@ -340,7 +340,7 @@ export function TodaySessionPanel({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div className="rounded-2xl border border-white/80 bg-white/85 px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                {sessionState.kind === "GUARDIAN_DISABLED" ? "Rule enforcement" : "Today status"}
+                {sessionState.kind === "GUARDIAN_DISABLED" ? "Rule enforcement" : "Session status"}
               </p>
               <p className={`mt-2 text-lg font-semibold ${styles.accent}`}>
                 {sessionState.kind === "ONBOARDING_REQUIRED"

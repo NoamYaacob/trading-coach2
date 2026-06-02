@@ -172,7 +172,7 @@ export function TraderInsights({
       return (
         <StatCard
           key="trades-left"
-          label="Trades left today"
+          label="Trades left this session"
           value={String(left)}
           sub={`${used} of ${selectedAccount.maxTradesPerDay} used`}
           tone={pct > 0.8 ? "warn" : "ok"}
@@ -189,7 +189,7 @@ export function TraderInsights({
       return (
         <StatCard
           key="biggest-win"
-          label="Biggest win today"
+          label="Biggest win this session"
           value={fmt$(winner.pnl)}
           sub={`${winner.symbol} · ${winner.side} · ${winner.qty}`}
           tone="ok"
@@ -199,9 +199,9 @@ export function TraderInsights({
     return (
       <StatCard
         key="biggest-win"
-        label="Biggest win today"
+        label="Biggest win this session"
         value="—"
-        sub={todayTrades.length === 0 ? "No round-trips today" : "No winners today"}
+        sub={todayTrades.length === 0 ? "No round-trips this session" : "No winners this session"}
       />
     );
   })();
@@ -213,7 +213,7 @@ export function TraderInsights({
       return (
         <StatCard
           key="biggest-loss"
-          label="Biggest loss today"
+          label="Biggest loss this session"
           value={fmt$(loser.pnl)}
           sub={`${loser.symbol} · ${loser.side} · ${loser.qty}`}
           tone="bad"
@@ -223,9 +223,9 @@ export function TraderInsights({
     return (
       <StatCard
         key="biggest-loss"
-        label="Biggest loss today"
+        label="Biggest loss this session"
         value="—"
-        sub={todayTrades.length === 0 ? "No round-trips today" : "No losers today"}
+        sub={todayTrades.length === 0 ? "No round-trips this session" : "No losers this session"}
       />
     );
   })();
