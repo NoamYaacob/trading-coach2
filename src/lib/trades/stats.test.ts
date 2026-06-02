@@ -80,3 +80,35 @@ describe("computeTradeStats", () => {
     assert.equal(s.largestLoss?.pnl, -2);
   });
 });
+
+describe("computeTradeStats — net vs before-fees (the 1868411 scenario)", () => {
+  it("fees missing: feesAvailable=false, fees=0, netPnl falls back to gross (+1.50)", () => {
+    // gross/fill P&L = +1.50, no broker fee data → the UI must NOT call this Net.
+    const s = computeTradeStats([
+      trade({ pnl: 1.5, netPnl: 1.5, fees: null, feesAvailable: false }),
+    ]);
+    assert.equal(s.grossPnl, 1.5, "gross (fill) P&L is +1.50");
+    assert.equal(s.feesAvailable, false, "feesAvailable must be false so UI shows 'before fees', not Net");
+    assert.equal(s.fees, 0, "no fees to total");
+    assert.equal(s.netPnl, 1.5, "netPnl numerically falls back to gross — but feesAvailable=false flags it as not truly net");
+  });
+
+  it("fees present (1.90): feesAvailable=true, netPnl=-0.40 — UI can label it Net", () => {
+    const s = computeTradeStats([
+      trade({ pnl: 1.5, fees: 1.9, feesAvailable: true, netPnl: 1.5 - 1.9 }),
+    ]);
+    assert.equal(s.grossPnl, 1.5);
+    assert.equal(s.fees, 1.9);
+    assert.equal(s.feesAvailable, true);
+    assert.ok(Math.abs(s.netPnl - -0.4) < 1e-9, "net = 1.50 - 1.90 = -0.40");
+  });
+
+  it("mixed: feesAvailable is true if ANY trade has fees; fees totals only fee-bearing trades", () => {
+    const s = computeTradeStats([
+      trade({ pnl: 1.5, fees: 1.9, feesAvailable: true, netPnl: -0.4 }),
+      trade({ pnl: 2.0, fees: null, feesAvailable: false, netPnl: 2.0 }),
+    ]);
+    assert.equal(s.feesAvailable, true);
+    assert.equal(s.fees, 1.9, "only the fee-bearing trade contributes to the fee total");
+  });
+});

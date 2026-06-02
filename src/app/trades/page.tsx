@@ -432,14 +432,23 @@ export default async function TradesPage({
             <section style={{ padding: "0 36px 18px" }}>
               <div className="trades-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
                 {[
-                  {
-                    label: "Net P&L",
-                    value: stats.count > 0 ? fmt$(stats.netPnl) : "—",
-                    sub: stats.feesAvailable
-                      ? `last ${rangeDays}d · after ${fmt$(stats.fees)} fees`
-                      : `last ${rangeDays}d · fees not reported by broker`,
-                    tone: stats.netPnl >= 0 ? "ok" : "bad",
-                  },
+                  // When the broker reports per-fill fees we can headline a true
+                  // Net P&L. When fees are NOT reported, we must NOT call the
+                  // fill P&L "Net" — it is gross. Label it "Trade P&L (before
+                  // fees)" and point to the Broker Session P&L for the net figure.
+                  stats.feesAvailable
+                    ? {
+                        label: "Net P&L",
+                        value: stats.count > 0 ? fmt$(stats.netPnl) : "—",
+                        sub: `last ${rangeDays}d · after ${fmt$(stats.fees)} fees`,
+                        tone: stats.netPnl >= 0 ? "ok" : "bad",
+                      }
+                    : {
+                        label: "Trade P&L (before fees)",
+                        value: stats.count > 0 ? fmt$(stats.grossPnl) : "—",
+                        sub: `last ${rangeDays}d · fees not reported · net on dashboard`,
+                        tone: stats.grossPnl >= 0 ? "ok" : "bad",
+                      },
                   {
                     label: "Trades",
                     value: String(stats.count),
@@ -551,11 +560,11 @@ export default async function TradesPage({
                   <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Hold", "Fees", "Net P&L"].map((h) => (
+                        {["Time", "Symbol", "Side", "Qty", "Entry", "Exit", "Hold", "Trade P&L", "Fees", "Net P&L"].map((h) => (
                           <th
                             key={h}
                             style={{
-                              textAlign: h === "Net P&L" || h === "Fees" ? "right" : "left",
+                              textAlign: h === "Net P&L" || h === "Fees" || h === "Trade P&L" ? "right" : "left",
                               padding: "12px 16px",
                               borderBottom: "1px solid var(--gr-border)",
                               background: "var(--gr-bg-elev)",
@@ -574,24 +583,30 @@ export default async function TradesPage({
                     <tbody>
                       {groupedDateKeys.map((dateKey) => {
                         const rows = groupedByDate.get(dateKey)!;
-                        const dayPnl = rows.reduce((s, t) => s + t.netPnl, 0);
+                        // Only call the day total "net" when every trade carried
+                        // broker fee data; otherwise show the before-fees sum and
+                        // label it so a fill-only value is never passed off as net.
+                        const dayFeesAvailable = rows.every((t) => t.feesAvailable);
+                        const dayPnl = rows.reduce((s, t) => s + (dayFeesAvailable ? t.netPnl : t.pnl), 0);
                         return (
                           <Fragment key={dateKey}>
                             <tr>
-                              <td colSpan={9} style={{ padding: "14px 16px 6px", background: "var(--gr-bg-elev)" }}>
+                              <td colSpan={10} style={{ padding: "14px 16px 6px", background: "var(--gr-bg-elev)" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                                   <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--gr-ink)" }}>
                                     {fmtDate(rows[0]!.closedAt, tz)}
                                   </span>
                                   <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mute)" }}>
-                                    {fmt$(dayPnl)} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
+                                    {fmt$(dayPnl)}{dayFeesAvailable ? "" : " before fees"} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
                                   </span>
                                 </div>
                               </td>
                             </tr>
                             {rows.map((t) => {
                               const sideOk = t.side === "LONG";
-                              const rowPnlColor = t.netPnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                              // Net is only meaningful when fees are known. When not,
+                              // colour by the gross/fill value and show net as "—".
+                              const rowPnlColor = (t.feesAvailable ? t.netPnl : t.pnl) >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
                               return (
                                 <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mid)" }}>
@@ -626,11 +641,18 @@ export default async function TradesPage({
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 11.5, color: "var(--gr-text-mute)" }}>
                                     {fmtHold(t.holdMs)}
                                   </td>
-                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
-                                    {t.feesAvailable && t.fees != null ? `−$${t.fees.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                                  {/* Trade P&L — the fill/gross value, always shown. */}
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
+                                    {fmt$(t.pnl)}
                                   </td>
-                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowPnlColor }}>
-                                    {fmt$(t.netPnl)}
+                                  {/* Fees — "Not reported" when the broker did not supply per-fill commission. */}
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
+                                    {t.feesAvailable && t.fees != null ? `−$${t.fees.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Not reported"}
+                                  </td>
+                                  {/* Net P&L — only a real net figure when fees are known; otherwise "—". */}
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.feesAvailable ? rowPnlColor : "var(--gr-text-faint)" }}
+                                    title={t.feesAvailable ? undefined : "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."}>
+                                    {t.feesAvailable ? fmt$(t.netPnl) : "—"}
                                   </td>
                                 </tr>
                               );
@@ -644,7 +666,7 @@ export default async function TradesPage({
               </div>
               {allTrades.length > 0 && (
                 <p style={{ marginTop: 10, fontSize: 11, color: "var(--gr-text-mute)" }}>
-                  Round-trip trades reconstructed from broker fills (FIFO matching per contract). Net P&L deducts broker-reported commissions per fill when available. When your broker does not report per-fill commissions, the Fees column shows “—” and Net P&L reflects fill P&L only — in that case the authoritative net figure for the session is the Broker Session P&L snapshot on the dashboard.
+                  Round-trip trades reconstructed from broker fills (FIFO matching per contract). <strong>Trade P&L</strong> is the broker fill P&L before fees. <strong>Net P&L</strong> deducts broker-reported commissions per fill — but when your broker does not report per-fill commissions, Fees shows “Not reported” and Net P&L shows “—” (a trade-level net cannot be computed). In that case the authoritative net figure is the <strong>Broker Session P&L snapshot</strong> on the dashboard, which is the broker’s own commission-adjusted session total.
                 </p>
               )}
             </section>
