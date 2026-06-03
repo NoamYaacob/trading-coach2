@@ -321,6 +321,11 @@ export default async function DashboardPage({
   const sessionTradesNet = todayTrades.length > 0 && todayTrades.every((t) => t.feesAvailable);
   const sessionTradesPnlLabel = sessionTradesNet ? "Net P&L" : "Trade P&L";
 
+  // True only when every recent trade carried broker per-fill fees — used to
+  // honestly label analytics as "Net" vs "before fees".
+  const recentTradesFeesAvailable =
+    recentTrades.length > 0 && recentTrades.every((t) => t.feesAvailable);
+
   // Win rate and profit factor for KPI strip (honest 30d stats)
   const wins30d = recentTrades.filter((t) => t.netPnl > 0).length;
   const winRate30d = recentTrades.length > 0 ? wins30d / recentTrades.length : null;
@@ -821,7 +826,9 @@ export default async function DashboardPage({
                       label: "Profit factor · 30D",
                       value: pf30d != null ? pf30d.toFixed(2) : "—",
                       sub: pf30d != null
-                        ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
+                        ? recentTradesFeesAvailable
+                          ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
+                          : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"
                         : recentTrades.length === 0 ? "No round-trips in window" : "No losing trades yet",
                       tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
@@ -1048,7 +1055,10 @@ export default async function DashboardPage({
               <EquityCurve
                 trades={recentTrades}
                 tradesHref={selectedAccount ? `/trades?accountId=${selectedAccount.id}` : "/trades"}
-                dataSourceLabel="From broker fills"
+                dataSourceLabel={recentTradesFeesAvailable ? "Net P&L · broker per-fill fees" : "Fill P&L · before fees"}
+                timezone={displayTimeZone}
+                feesAvailable={recentTradesFeesAvailable}
+                brokerDayNet={brokerDayNet}
               />
             </section>
 
@@ -1060,6 +1070,8 @@ export default async function DashboardPage({
                 riskRules={riskRules}
                 recentTrades={recentTrades}
                 timezone={displayTimeZone}
+                feesAvailable={recentTradesFeesAvailable}
+                brokerDayNet={brokerDayNet}
               />
             )}
 

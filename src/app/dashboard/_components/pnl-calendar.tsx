@@ -465,7 +465,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
                       lineHeight: 1,
                     }}
                   >
-                    {pnl > 0 ? "+" : "−"}${Math.abs(pnl).toFixed(0)}
+                    {fmt$(pnl)}
                   </div>
                   <div
                     style={{

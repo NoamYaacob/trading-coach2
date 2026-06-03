@@ -21,9 +21,9 @@ import type { RoundTripTrade } from "@/lib/trades/round-trips";
 import {
   biggestLoss,
   biggestWin,
-  maxDrawdown,
   profitFactor,
 } from "./insights.ts";
+import { buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
 
 type RiskRulesLike = {
   stopAfterLosses: number | null;
@@ -37,6 +37,17 @@ type Props = {
   recentTrades: RoundTripTrade[];
   /** IANA timezone used to determine "today" boundary. */
   timezone: string;
+  /**
+   * True only when every recent trade carried broker per-fill fees.
+   * When false, netPnl === pnl (fill P&L before fees) — analytics must not
+   * be labelled "Net".
+   */
+  feesAvailable?: boolean;
+  /**
+   * Broker-reported NET P&L per day key from cashBalanceLog. Days present here
+   * are authoritative after-fees net and drive the daily-level max drawdown.
+   */
+  brokerDayNet?: Record<string, number>;
 };
 
 function fmt$(v: number): string {
@@ -130,7 +141,15 @@ export function TraderInsights({
   riskRules: _riskRules,
   recentTrades,
   timezone,
+  feesAvailable = false,
+  brokerDayNet,
 }: Props) {
+  // Daily, broker-net-aware P&L series for account-level analytics (max
+  // drawdown). Days the broker reported a Cash History net for use that
+  // after-fees value; other days fall back to per-trade/fill sums.
+  const dailySeries = buildDailySeries(recentTrades, timezone, feesAvailable, brokerDayNet);
+  // True when the whole drawdown curve is a real after-fees net.
+  const ddIsNet = dailySeries.allDaysNet;
   // Today boundary expressed via en-CA key in the displayed timezone so it
   // matches the calendar's bucketing logic.
   const now = new Date();
@@ -252,7 +271,7 @@ export function TraderInsights({
         key="profit-factor"
         label="Profit factor (30d)"
         value={pf.toFixed(2)}
-        sub={`gross wins ÷ gross losses · ${recentTrades.length} trades`}
+        sub={`${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`}
         tone={pf >= 1 ? "ok" : "warn"}
       />
     );
@@ -270,7 +289,9 @@ export function TraderInsights({
         />
       );
     }
-    const dd = maxDrawdown(recentTrades);
+    // Daily, broker-net-aware drawdown — when the broker reported day nets the
+    // curve reflects after-fees net (e.g. -0.40 for 2026-06-02), not gross.
+    const dd = dailyMaxDrawdown(dailySeries);
     return (
       <StatCard
         key="max-drawdown"
@@ -278,7 +299,7 @@ export function TraderInsights({
         value={dd > 0 ? `−${fmtMoney(dd)}` : "$0.00"}
         sub={
           dd > 0
-            ? "Worst peak-to-trough across cum. P&L"
+            ? `Worst peak-to-trough · cum. daily ${ddIsNet ? "net" : "fill"} P&L${ddIsNet ? " · after fees" : " · before fees"}`
             : "Cum. P&L has not pulled back"
         }
         tone={dd > 0 ? "warn" : "neutral"}

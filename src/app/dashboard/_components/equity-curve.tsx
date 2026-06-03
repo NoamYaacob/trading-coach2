@@ -39,6 +39,8 @@ import {
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
+import { buildDailySeries, type DailySeries } from "./daily-pnl.ts";
+
 type Timeframe = "7d" | "14d" | "30d" | "all";
 
 type Props = {
@@ -48,6 +50,16 @@ type Props = {
   tradesHref: string;
   /** Honest provenance label, e.g. "From broker fills". */
   dataSourceLabel: string;
+  /** IANA timezone used for daily aggregation, e.g. "America/Chicago". */
+  timezone: string;
+  /** True when every trade in the window carried broker per-fill fees. */
+  feesAvailable: boolean;
+  /**
+   * Broker-reported NET P&L per day key ("YYYY-MM-DD" in `timezone`) from
+   * cashBalanceLog. When present for a day, that after-fees net is the
+   * source of truth for the curve — it overrides the fill-derived sum.
+   */
+  brokerDayNet?: Record<string, number>;
 };
 
 function fmt$(v: number): string {
@@ -124,11 +136,19 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
+export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, feesAvailable, brokerDayNet }: Props) {
   const [timeframe, setTimeframe] = React.useState<Timeframe>("30d");
   const windowTrades = React.useMemo(
     () => filterByTimeframe(trades, timeframe),
     [trades, timeframe],
+  );
+
+  // Account-level equity curve is a DAILY series. Days the broker reported a
+  // Cash History net for use that authoritative after-fees value (e.g.
+  // 2026-06-02 → -0.40), overriding the fill-derived gross sum (+1.50).
+  const series = React.useMemo(
+    () => buildDailySeries(windowTrades, timezone, feesAvailable, brokerDayNet),
+    [windowTrades, timezone, feesAvailable, brokerDayNet],
   );
 
   // Earliest fill date across all loaded trades — shown in the "All" subtitle
@@ -203,7 +223,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            Cumulative closed round-trip P&amp;L · {dataSourceLabel}
+            Cumulative daily P&amp;L · {series.allDaysNet ? "Net · after broker fees" : dataSourceLabel}
             {timeframe === "all" && earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -237,12 +257,19 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel }: Props) {
         </div>
       </div>
 
-      <EquityCurveBody trades={windowTrades} />
+      <EquityCurveBody series={series} tradeCount={windowTrades.length} />
     </div>
   );
 }
 
 type ChartPoint = { t: number; pnl: number };
+
+// Parse a "YYYY-MM-DD" day key to a stable timestamp (noon UTC) for the axis.
+// Noon avoids DST/midnight edges shifting the displayed calendar day.
+function dayKeyToTs(day: string): number {
+  const [y, m, d] = day.split("-").map((n) => parseInt(n, 10));
+  return Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1, 12, 0, 0);
+}
 
 function fmtTooltipDate(ts: number): string {
   return new Date(ts).toLocaleDateString("en-US", {
@@ -273,10 +300,10 @@ function buildAxisLabels(data: ChartPoint[]): string[] {
   return [first, mid, last];
 }
 
-function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
+function EquityCurveBody({ series, tradeCount }: { series: DailySeries; tradeCount: number }) {
   const { colors, mounted } = useTokenColors();
 
-  if (trades.length < 2) {
+  if (series.points.length < 2) {
     return (
       <div
         style={{
@@ -326,25 +353,21 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
             maxWidth: 240,
           }}
         >
-          {trades.length === 0
+          {tradeCount === 0
             ? "No closed round-trips in this window for this account yet."
-            : "Curve appears once at least 2 round-trips have closed in this window."}
+            : "Curve appears once at least 2 trading days have closed in this window."}
         </p>
       </div>
     );
   }
 
-  // Build the cumulative realized-P&L series from real trades only.  The
-  // source array is newest-first, so sort chronologically and accumulate.
-  // Every chart point is a real closed round-trip — no values are invented.
-  const chrono = [...trades].sort(
-    (a, b) => a.closedAt.getTime() - b.closedAt.getTime(),
-  );
-  let cum = 0;
-  const data: ChartPoint[] = chrono.map((t) => {
-    cum += t.netPnl;
-    return { t: t.closedAt.getTime(), pnl: Number(cum.toFixed(2)) };
-  });
+  // Daily cumulative series — broker-net-aware (a day the broker reported a
+  // Cash History net for uses that value, e.g. -0.40 for 2026-06-02, not the
+  // +1.50 gross fill sum). One chart point per trading day; no values invented.
+  const data: ChartPoint[] = series.points.map((p) => ({
+    t: dayKeyToTs(p.day),
+    pnl: p.cumulative,
+  }));
 
   const finalY = data[data.length - 1]!.pnl;
   const positive = finalY >= 0;
@@ -379,7 +402,7 @@ function EquityCurveBody({ trades }: { trades: RoundTripTrade[] }) {
           {fmt$(finalY)}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
-          {trades.length} closed round-trip{trades.length !== 1 ? "s" : ""}
+          {data.length} trading day{data.length !== 1 ? "s" : ""} · {tradeCount} trade{tradeCount !== 1 ? "s" : ""}
         </span>
       </div>
       <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />

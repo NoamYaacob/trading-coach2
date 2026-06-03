@@ -535,15 +535,15 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
     );
   });
 
-  it("has a minimal crosshair tooltip labelled cumulative closed round-trip P&L", () => {
+  it("has a minimal crosshair tooltip labelled cumulative daily P&L", () => {
     assert.ok(
       equity.includes("subscribeCrosshairMove"),
       "must wire a crosshair tooltip via subscribeCrosshairMove",
     );
     assert.ok(
-      equity.includes("Cumulative closed round-trip P&amp;L") ||
-        equity.includes("Cumulative closed round-trip P&L"),
-      "tooltip must label the value as cumulative closed round-trip P&L",
+      equity.includes("Cumulative daily P&amp;L") ||
+        equity.includes("Cumulative daily P&L"),
+      "subtitle must label the value as cumulative daily P&L",
     );
     assert.ok(
       equity.includes("fmtTooltipDate") || equity.includes("toLocaleDateString"),
@@ -585,8 +585,8 @@ describe("/dashboard: equity curve is a Lightweight Charts area chart", () => {
       "equity curve must accept real round-trip trades",
     );
     assert.ok(
-      equity.includes("cum += t.netPnl"),
-      "cumulative series must be accumulated from real trade net P&L",
+      equity.includes("buildDailySeries"),
+      "cumulative series must come from the broker-net-aware daily aggregation of real trades",
     );
     assert.ok(
       !equity.includes("Math.random") &&
@@ -674,19 +674,19 @@ describe("/dashboard: P&L calendar active-day cell quality", () => {
 describe("/dashboard: equity curve has a designed empty state", () => {
   const equity = read("app/dashboard/_components/equity-curve.tsx");
 
-  it("shows the honest empty-state sentence for < 2 round-trips", () => {
+  it("shows the honest empty-state sentence for < 2 trading days", () => {
     assert.ok(
       equity.includes(
-        "Curve appears once at least 2 round-trips have closed in this window",
+        "Curve appears once at least 2 trading days have closed in this window",
       ),
-      "empty state must use the honest 'appears once at least 2 round-trips' copy",
+      "empty state must use the honest 'appears once at least 2 trading days' copy",
     );
   });
 
-  it("triggers the empty state when fewer than 2 trades exist in the window", () => {
+  it("triggers the empty state when fewer than 2 trading days exist in the window", () => {
     assert.ok(
-      equity.includes("trades.length < 2"),
-      "empty state must render whenever the window has fewer than 2 round-trips",
+      equity.includes("series.points.length < 2"),
+      "empty state must render whenever the window has fewer than 2 trading days",
     );
   });
 

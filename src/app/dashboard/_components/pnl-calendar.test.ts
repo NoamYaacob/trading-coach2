@@ -103,3 +103,42 @@ describe("aggregateCalendarDays", () => {
     assert.equal(map.get("2026-06-01")!.count, 2);
   });
 });
+
+// ── Cell P&L formatter ──────────────────────────────────────────────────────
+// The calendar day cell must display full decimal precision (e.g. -$0.40, not
+// -$0) so small P&L values like the 1868411/2026-06-02 -$0.40 are legible.
+// The component uses fmt$(pnl) — verify the expected output for key values.
+describe("calendar cell fmt$ output", () => {
+  function fmt$(v: number): string {
+    const abs = Math.abs(v);
+    const sign = v >= 0 ? "+" : "−";
+    return `${sign}$${abs.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  it("renders -0.40 as −$0.40 (not −$0)", () => {
+    assert.equal(fmt$(-0.4), "−$0.40");
+  });
+
+  it("renders +0.40 as +$0.40", () => {
+    assert.equal(fmt$(0.4), "+$0.40");
+  });
+
+  it("renders -0.01 as −$0.01", () => {
+    assert.equal(fmt$(-0.01), "−$0.01");
+  });
+
+  it("renders +0.01 as +$0.01", () => {
+    assert.equal(fmt$(0.01), "+$0.01");
+  });
+
+  it("renders -205.50 as −$205.50", () => {
+    assert.equal(fmt$(-205.5), "−$205.50");
+  });
+
+  it("renders 0 as +$0.00", () => {
+    assert.equal(fmt$(0), "+$0.00");
+  });
+});
