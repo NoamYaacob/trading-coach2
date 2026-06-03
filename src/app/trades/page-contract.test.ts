@@ -443,10 +443,11 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
       page.includes('"—"'),
       "Net P&L cell must show '—' when net cannot be determined",
     );
-    // Row resolution uses resolveTradeRowNet — not the raw t.feesAvailable flag directly.
+    // Row resolution uses resolveDayRowNets (day-level allocation) — not the raw
+    // t.feesAvailable flag directly.
     assert.ok(
-      page.includes("resolveTradeRowNet"),
-      "row cells must use resolveTradeRowNet to support single-trade day inference",
+      page.includes("resolveDayRowNets"),
+      "row cells must use resolveDayRowNets to support multi-trade derived-fee allocation",
     );
     assert.ok(
       page.includes("rowRes.net"),
@@ -454,26 +455,27 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     );
   });
 
-  it("single-trade day: fees and net are inferred from broker day net via resolveTradeRowNet", () => {
-    // When a day has exactly one round-trip and brokerDayNet[date] exists,
-    // resolveTradeRowNet must back-infer fees = brokerDayNet - tradePnl and
-    // net = brokerDayNet. The page must import and call resolveTradeRowNet.
+  it("single-trade day: fees and net are inferred from broker day net via resolveDayRowNets", () => {
+    // When a day has exactly one round-trip and brokerDayNet[date] exists, the
+    // derived path back-infers fees = brokerDayNet - tradePnl and net = brokerDayNet
+    // (single-trade is the degenerate case of the multi-trade allocator). The page
+    // must call resolveDayRowNets per day.
     const dayNet = read("app/trades/day-net.ts");
     assert.ok(
-      dayNet.includes("resolveTradeRowNet"),
-      "day-net.ts must export resolveTradeRowNet",
+      dayNet.includes("resolveDayRowNets"),
+      "day-net.ts must export resolveDayRowNets",
     );
     assert.ok(
-      dayNet.includes("tradesInDay === 1") && dayNet.includes("brokerDayNet != null"),
-      "resolveTradeRowNet must special-case single-trade days with broker net",
+      dayNet.includes("derivedFeesTotal") && dayNet.includes("brokerDayNet"),
+      "resolveDayRowNets must derive day fees from the broker day net",
     );
     assert.ok(
-      dayNet.includes("brokerDayNet - trade.pnl"),
-      "inferred fees must be computed as brokerDayNet - tradePnl",
+      dayNet.includes("remainingNet - derivedGross"),
+      "derived day fees = ABH day net minus the day's gross P&L",
     );
     assert.ok(
-      page.includes("resolveTradeRowNet"),
-      "page must call resolveTradeRowNet for each row",
+      page.includes("resolveDayRowNets"),
+      "page must call resolveDayRowNets per day",
     );
   });
 
@@ -572,10 +574,10 @@ describe("/trades page: net-based Winning/Losing filter", () => {
   const page = read("app/trades/page.tsx");
   const dayNet = read("app/trades/day-net.ts");
 
-  it("filter uses resolveTradeClassification (net-aware), not raw t.pnl", () => {
+  it("filter classifies by resolved net (rowNetById), not raw t.pnl", () => {
     assert.ok(
-      page.includes("resolveTradeClassification"),
-      "page must call resolveTradeClassification for winning/losing filter",
+      page.includes("rowNetById.get(t.id)?.net ?? t.pnl"),
+      "classification must use the resolved per-trade net, falling back to gross",
     );
     assert.ok(
       !page.includes('filter === "winning") return t.pnl > 0'),
@@ -587,24 +589,119 @@ describe("/trades page: net-based Winning/Losing filter", () => {
     );
   });
 
-  it("page pre-computes dayTradeCountMap before filtering", () => {
+  it("page builds a per-trade rowNetById map before filtering", () => {
     assert.ok(
-      page.includes("dayTradeCountMap"),
-      "page must build dayTradeCountMap to pass per-day trade count to resolveTradeClassification",
+      page.includes("rowNetById") && page.includes("resolveDayRowNets"),
+      "page must build rowNetById from resolveDayRowNets (day-level fee allocation)",
     );
   });
 
-  it("day-net.ts exports resolveTradeClassification", () => {
+  it("day-net.ts exports resolveDayRowNets", () => {
     assert.ok(
-      dayNet.includes("export function resolveTradeClassification"),
-      "day-net.ts must export resolveTradeClassification",
+      dayNet.includes("export function resolveDayRowNets"),
+      "day-net.ts must export resolveDayRowNets",
     );
   });
 
-  it("filter passes brokerDayNet[key] to resolveTradeClassification", () => {
+  it("rowNetById is built per day with brokerDayNet[key]", () => {
     assert.ok(
       page.includes("brokerDayNet[key]"),
-      "filter must pass the per-day broker net to resolveTradeClassification",
+      "the per-day allocation must use the per-day broker net brokerDayNet[key]",
+    );
+  });
+});
+
+describe("/trades page: two-tier historical fee model", () => {
+  const page = read("app/trades/page.tsx");
+  const dayNet = read("app/trades/day-net.ts");
+  const client = read("lib/brokers/tradovate-client.ts");
+
+  it("uses resolveDayRowNets for per-day fee allocation (not per-row only)", () => {
+    assert.ok(
+      page.includes("resolveDayRowNets"),
+      "page must call resolveDayRowNets so multi-trade historical days get derived fees",
+    );
+    assert.ok(
+      dayNet.includes("export function resolveDayRowNets"),
+      "day-net.ts must export resolveDayRowNets",
+    );
+  });
+
+  it("Tier A: exact per-fill fees come from broker commission (feeSource 'exact')", () => {
+    assert.ok(
+      dayNet.includes('"exact"') && dayNet.includes("feeSource"),
+      "exact per-fill fees must be tagged feeSource 'exact'",
+    );
+  });
+
+  it("Tier B: historical fees derived from ABH day net, allocated by qty", () => {
+    assert.ok(
+      dayNet.includes('"account-balance-derived"'),
+      "derived fees must be tagged feeSource 'account-balance-derived'",
+    );
+    assert.ok(
+      dayNet.includes("remainingNet - derivedGross"),
+      "derived day fees = ABH day net minus the day's gross P&L",
+    );
+    // Allocation weighted by contract quantity, with last-row remainder so the
+    // day reconciles EXACTLY to the ABH net.
+    assert.ok(
+      dayNet.includes("totalQty") && dayNet.includes("derivedFeesTotal - allocated"),
+      "fees must be allocated by qty with the last row absorbing the remainder",
+    );
+  });
+
+  it("derived path does NOT depend on the Cash History report (which can hang)", () => {
+    assert.ok(
+      !page.includes("getHistoricalCashHistoryReport") && !page.includes('"Cash History"'),
+      "page must not fetch the Cash History report — derived fees use the already-loaded ABH day net",
+    );
+    // No new blocking report call was added for fees.
+    assert.ok(
+      !client.includes("getHistoricalCashHistoryReport"),
+      "no Cash History report client method should be wired into production",
+    );
+  });
+
+  it("UI no longer shows 'Not reported' when derived (or exact) fees exist", () => {
+    // The Fees cell renders the value when rowRes.fees != null; 'Not reported'
+    // is the else branch only.
+    assert.ok(
+      page.includes('rowRes.fees != null ? fmt$(rowRes.fees) : "Not reported"'),
+      "Fees cell must show the value when fees are determinable, 'Not reported' only otherwise",
+    );
+  });
+
+  it("fees are clearly labelled exact vs derived (est marker + tooltip)", () => {
+    assert.ok(
+      page.includes("isDerived"),
+      "page must distinguish derived fees from exact for labelling",
+    );
+    assert.ok(
+      page.includes(">est<"),
+      "derived fees must carry a visible 'est' marker",
+    );
+    assert.ok(
+      page.includes("Derived from Broker Account Balance History"),
+      "derived fees must have a tooltip explaining the Account-Balance-derived source",
+    );
+    assert.ok(
+      page.includes("anyDerivedFees"),
+      "page must surface a subtitle note when any derived fees are shown",
+    );
+  });
+
+  it("ABH remains the day-level source of truth (day header unchanged)", () => {
+    assert.ok(
+      page.includes("resolveDayNet(rows, brokerDayNet[dateKey])"),
+      "day header net must still come from resolveDayNet with the ABH brokerDayNet",
+    );
+  });
+
+  it("table rows still come only from reconstructed fills", () => {
+    assert.ok(
+      page.includes("reconstructMergedTrades(dbFillInputs, historicalFillInputs)"),
+      "rows are reconstructed from fills; the fee model never creates rows",
     );
   });
 });
@@ -727,10 +824,10 @@ describe("/trades page: historical Fills-report backfill", () => {
     );
   });
 
-  it("(e) Jun 2 net-losing single fill still classified by net via resolveTradeClassification", () => {
+  it("(e) Jun 2 net-losing single fill still classified by resolved net", () => {
     assert.ok(
-      page.includes("resolveTradeClassification"),
-      "winning/losing filter must still use net-aware classification",
+      page.includes("rowNetById.get(t.id)?.net ?? t.pnl"),
+      "winning/losing filter must still classify by the resolved net (net-aware)",
     );
   });
 

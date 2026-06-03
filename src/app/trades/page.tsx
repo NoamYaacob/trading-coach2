@@ -20,7 +20,7 @@ import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { formatDateMMDDYYYY } from "@/lib/brokers/tradovate-report-date";
 import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
-import { resolveDayNet, resolveTradeRowNet, resolveTradeClassification } from "./day-net";
+import { resolveDayNet, resolveDayRowNets } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
 import { prisma } from "@/lib/db";
@@ -291,21 +291,46 @@ export default async function TradesPage({
     ? allTrades.filter((t) => isoDateKey(t.closedAt, tz) === dateFilter)
     : allTrades;
 
-  // Pre-compute day trade counts so resolveTradeClassification can infer net
-  // for single-trade days from the broker day net (e.g. gross +1.50, net -0.40 → losing).
-  const dayTradeCountMap = new Map<string, number>();
-  for (const t of dateFilteredTrades) {
-    const key = isoDateKey(t.closedAt, tz);
-    dayTradeCountMap.set(key, (dayTradeCountMap.get(key) ?? 0) + 1);
+  // Two-tier fee model: resolve fees + net for every trade, per day, so that
+  // multi-trade historical days get Account-Balance-derived fees allocated
+  // across their trades (not just single-trade-day inference). Build one
+  // id → {fees, net, feeSource} map shared by the filter and the table.
+  const rowNetById = new Map<string, ReturnType<typeof resolveDayRowNets> extends Map<string, infer V> ? V : never>();
+  let anyDerivedFees = false;
+  {
+    const byDay = new Map<string, typeof dateFilteredTrades>();
+    for (const t of dateFilteredTrades) {
+      const key = isoDateKey(t.closedAt, tz);
+      const arr = byDay.get(key);
+      if (arr) arr.push(t);
+      else byDay.set(key, [t]);
+    }
+    for (const [key, dayTrades] of byDay) {
+      const resolved = resolveDayRowNets(
+        dayTrades.map((t) => ({
+          id: t.id, pnl: t.pnl, netPnl: t.netPnl, fees: t.fees,
+          feesAvailable: t.feesAvailable, qty: t.qty,
+        })),
+        brokerDayNet[key],
+      );
+      for (const [id, rn] of resolved) {
+        rowNetById.set(id, rn);
+        if (rn.feeSource === "account-balance-derived") anyDerivedFees = true;
+      }
+    }
   }
+
+  // Net-aware winning/losing classification using the resolved per-trade net
+  // (falls back to gross when net is undeterminable).
+  const classify = (t: (typeof dateFilteredTrades)[number]): "winning" | "losing" | "flat" => {
+    const effective = rowNetById.get(t.id)?.net ?? t.pnl;
+    if (effective > 0) return "winning";
+    if (effective < 0) return "losing";
+    return "flat";
+  };
   const filteredTrades = dateFilteredTrades.filter((t) => {
     if (filter === "all") return true;
-    const key = isoDateKey(t.closedAt, tz);
-    const cls = resolveTradeClassification(
-      t,
-      dayTradeCountMap.get(key) ?? 1,
-      brokerDayNet[key],
-    );
+    const cls = classify(t);
     if (filter === "winning") return cls === "winning";
     if (filter === "losing") return cls === "losing";
     return true;
@@ -466,6 +491,11 @@ export default async function TradesPage({
               {usedReportFills
                 ? `Day totals from ${brokerSourceLabel(brokerSource)} · table rows from broker fills report`
                 : `Day totals from ${brokerSourceLabel(brokerSource)} · table rows are imported fills`}
+            </div>
+          )}
+          {anyDerivedFees && (
+            <div style={{ fontSize: 11, color: "var(--gr-text-mute)", marginTop: 3 }}>
+              Fees marked <span style={{ textTransform: "uppercase", letterSpacing: "0.04em" }}>est</span> are derived from {brokerSourceLabel(brokerSource)} day net and allocated across the day&apos;s trades — each day reconciles to the broker day net.
             </div>
           )}
           {lowConfidence && (
@@ -834,7 +864,8 @@ export default async function TradesPage({
                             </tr>
                             {rows.map((t) => {
                               const sideOk = t.side === "LONG";
-                              const rowRes = resolveTradeRowNet(t, rows.length, brokerDayNet[dateKey]);
+                              const rowRes = rowNetById.get(t.id) ?? { fees: null, net: null, feeSource: null };
+                              const isDerived = rowRes.feeSource === "account-balance-derived";
                               const rowPnlColor = (rowRes.net ?? t.pnl) >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
                               return (
                                 <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
@@ -874,13 +905,30 @@ export default async function TradesPage({
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
                                     {fmt$(t.pnl)}
                                   </td>
-                                  {/* Fees — inferred when single-trade day with broker net; "Not reported" otherwise. */}
-                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
+                                  {/* Fees — exact (per-fill commission) or Account-Balance-derived
+                                      (allocated from the ABH day net); "Not reported" only when neither. */}
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}
+                                    title={
+                                      rowRes.fees == null
+                                        ? undefined
+                                        : isDerived
+                                        ? "Derived from Broker Account Balance History day net, allocated across the day's trades by contract quantity."
+                                        : "Exact broker per-fill commission."
+                                    }>
                                     {rowRes.fees != null ? fmt$(rowRes.fees) : "Not reported"}
+                                    {isDerived && (
+                                      <span style={{ marginLeft: 4, fontSize: 9.5, color: "var(--gr-text-faint)", textTransform: "uppercase", letterSpacing: "0.04em" }}>est</span>
+                                    )}
                                   </td>
-                                  {/* Net P&L — real or inferred when determinable; "—" otherwise. */}
+                                  {/* Net P&L — real, exact-derived, or ABH-derived; "—" only when undeterminable. */}
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowRes.net != null ? rowPnlColor : "var(--gr-text-faint)" }}
-                                    title={rowRes.net != null ? undefined : "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."}>
+                                    title={
+                                      rowRes.net == null
+                                        ? "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."
+                                        : isDerived
+                                        ? "After Account-Balance-derived fees. The day's net reconciles to Broker Account Balance History."
+                                        : undefined
+                                    }>
                                     {rowRes.net != null ? fmt$(rowRes.net) : "—"}
                                   </td>
                                 </tr>
