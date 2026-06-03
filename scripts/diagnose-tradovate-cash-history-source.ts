@@ -240,12 +240,10 @@ async function main(): Promise<void> {
   const client = new TradovateClient(account.id, account.userId);
 
   console.log(`\n  Initializing TradovateClient…`);
-  const initOk = await client.initialize().catch((e: unknown) => {
+  try {
+    await client.initialize();
+  } catch (e) {
     console.error(`  initialize() failed: ${e instanceof Error ? e.message : String(e)}`);
-    return false;
-  });
-  if (!initOk) {
-    console.error(`  Client did not initialize — check tokens in DB for account ${account.id}`);
     process.exit(1);
   }
   console.log(`  Client initialized.`);
