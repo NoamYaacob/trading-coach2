@@ -91,26 +91,39 @@ function narrow(dateISO: string): { startStr: string; endStr: string } {
 
 // ── Raw-report helper ─────────────────────────────────────────────────────────
 
+const REPORT_TIMEOUT_MS = 20_000;
+
 async function probeReport(
   client: TradovateClient,
   label: string,
   body: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number; body: string; ct: string | null }> {
+): Promise<{ ok: boolean; status: number; body: string; ct: string | null; timedOut: boolean }> {
+  // Print the exact request body before the call so a hang is fully diagnosable.
+  console.log(`  → REQUEST [${label}]: ${JSON.stringify(body)}`);
   try {
-    const r = await client.debugRawPost("reports/requestreport", body);
+    const r = await client.debugRawPost("reports/requestreport", body, {
+      timeoutMs: REPORT_TIMEOUT_MS,
+    });
     if (!r) {
       console.log(`  [!] ${label} → no reports URL or token`);
-      return { ok: false, status: 0, body: "", ct: null };
+      return { ok: false, status: 0, body: "", ct: null, timedOut: false };
     }
     const ok = r.status >= 200 && r.status < 300;
-    console.log(`  [${ok ? "✓" : "✗"}] ${label} → HTTP ${r.status}  ct=${r.contentType ?? "—"}`);
-    if (!ok) {
-      console.log(`      ${r.body.slice(0, 200).replace(/\s+/g, " ")}`);
-    }
-    return { ok, status: r.status, body: r.body, ct: r.contentType };
+    console.log(`  [${ok ? "✓" : "✗"}] ${label} → HTTP ${r.status}  ct=${r.contentType ?? "—"}  bytes=${r.body.length}`);
+    // Body preview / errorText on EVERY response (200 included).
+    const preview = r.body.slice(0, 300).replace(/\s+/g, " ").trim();
+    console.log(`      bodyPreview: ${preview}`);
+    const errMatch = r.body.match(/"errorText"\s*:\s*"([^"]+)"/i);
+    if (errMatch) console.log(`      *** errorText: ${errMatch[1]}`);
+    return { ok, status: r.status, body: r.body, ct: r.contentType, timedOut: false };
   } catch (err) {
-    console.log(`  [!] ${label} → error: ${err instanceof Error ? err.message : String(err)}`);
-    return { ok: false, status: 0, body: "", ct: null };
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("timeout")) {
+      console.log(`  [TIMEOUT] ${label} → aborted after ${REPORT_TIMEOUT_MS}ms — continuing`);
+      return { ok: false, status: 0, body: "", ct: null, timedOut: true };
+    }
+    console.log(`  [!] ${label} → error: ${msg}`);
+    return { ok: false, status: 0, body: "", ct: null, timedOut: false };
   }
 }
 
@@ -168,6 +181,47 @@ function dumpTable(t: TableData, label: string, maxRows = 5): void {
   if (t.rows.length > maxRows) console.log(`    … ${t.rows.length - maxRows} more rows`);
 }
 
+// ── Cash History report classification ────────────────────────────────────────
+
+// Trade-fee change types (negative delta). Everything else (Fund Transaction,
+// Entitlement Subscription, NewSession, deposits/withdrawals) is NOT a trade fee.
+const FEE_TYPES = new Set(["exchangefee", "clearingfee", "nfafee", "commission"]);
+
+function normType(s: string): string {
+  return s.replace(/\s+/g, "").toLowerCase();
+}
+
+function summarizeCashHistoryTables(tables: TableData[], date: string): void {
+  console.log(`\n  CLASSIFICATION for ${date}:`);
+  let feeTotal = 0;
+  let feeCount = 0;
+  const excluded = new Map<string, number>();
+  for (const t of tables) {
+    const typeCol = t.headers.find((h) => /cash.*change.*type|change.*type|type/i.test(h));
+    const deltaCol = t.headers.find((h) => /^delta$/i.test(h)) ?? t.headers.find((h) => /delta/i.test(h));
+    const contractCol = t.headers.find((h) => /contract|symbol/i.test(h));
+    const tsCol = t.headers.find((h) => /time|stamp|date/i.test(h));
+    if (!typeCol || !deltaCol) continue;
+    for (const row of t.rows) {
+      const type = row[typeCol] ?? "";
+      const deltaRaw = (row[deltaCol] ?? "").replace(/[$,\s]/g, "");
+      const delta = Number(deltaRaw);
+      if (!Number.isFinite(delta)) continue;
+      if (FEE_TYPES.has(normType(type))) {
+        feeTotal += delta;
+        feeCount++;
+        console.log(`    FEE  ${type.padEnd(16)} delta=${delta.toFixed(2)} contract=${row[contractCol ?? ""] ?? "—"} ts=${row[tsCol ?? ""] ?? "—"}`);
+      } else {
+        excluded.set(type, (excluded.get(type) ?? 0) + 1);
+      }
+    }
+  }
+  console.log(`\n    → Fee rows: ${feeCount}  fee total: ${fmt$(feeTotal)}`);
+  if (excluded.size > 0) {
+    console.log(`    → Excluded (non-trade) types: ${[...excluded.entries()].map(([k, v]) => `${k}×${v}`).join(", ")}`);
+  }
+}
+
 // ── cashBalanceLog raw extractor ──────────────────────────────────────────────
 
 interface CashLogRow {
@@ -221,9 +275,16 @@ function parseCashLogRow(raw: Record<string, unknown>): CashLogRow {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const arg = process.argv[2];
+  const argv = process.argv.slice(2);
+  const arg = argv.find((a) => !a.startsWith("--"));
+  // Flags:
+  //   --full          run all sections across all target dates (sweep)
+  //   --date=ISO      restrict the focused run to one date (default 2026-04-30)
+  const full = argv.includes("--full");
+  const dateFlag = argv.find((a) => a.startsWith("--date="))?.slice("--date=".length);
   if (!arg) {
-    console.error("Usage: npx tsx scripts/diagnose-tradovate-historical-fees.ts <accountLabelOrExternalId>");
+    console.error("Usage: npx tsx scripts/diagnose-tradovate-historical-fees.ts <accountLabelOrExternalId> [--full] [--date=YYYY-MM-DD]");
+    console.error("Default: focused single run — only Cash History Default.html for 2026-04-30 (20s timeout).");
     process.exit(1);
   }
 
@@ -251,8 +312,45 @@ async function main(): Promise<void> {
   console.log(`  tvAccountId: ${tvAccountId ?? "—"}`);
   console.log(`  accountName: ${accountName ?? "—"}`);
 
-  // Target dates (known trading days for account 1868411).
+  // Known trading days for account 1868411.
   const TARGET_DATES = ["2026-04-30", "2026-05-04", "2026-06-02"];
+  const focusDate = dateFlag ?? "2026-04-30";
+
+  // ── FOCUSED MODE (default): one date, only Cash History Default.html ─────────
+  // This is the safe minimal run that proved to hang before the timeout fix.
+  // Use --full to run the complete sweep across all sources and dates.
+  if (!full) {
+    section(`FOCUSED RUN — Cash History Default.html for ${focusDate} (20s timeout)`);
+    if (!accountName) {
+      console.log("  No accountName resolved — cannot probe report");
+    } else {
+      const { startStr, endStr } = narrow(focusDate);
+      sub(`Cash History | ${focusDate} | ${startStr}→${endStr} | Default.html`);
+      const result = await probeReport(client, `Cash History Default.html ${focusDate}`, {
+        name: "Cash History",
+        timezone: 0,
+        params: [
+          { name: "startDate", value: startStr },
+          { name: "endDate",   value: endStr },
+          { name: "account",   value: accountName },
+        ],
+        representationType: "html",
+        template: "Default.html",
+      });
+      if (result.timedOut) {
+        console.log("\n  → Cash History Default.html TIMED OUT. Try --date= another day, or --full to probe other sources.");
+      } else if (result.ok && result.body) {
+        const tables = extractHtmlTables(result.body);
+        console.log(`\n  Tables found: ${tables.length}`);
+        for (const [i, t] of tables.entries()) dumpTable(t, `table[${i}] | ${focusDate}`, 8);
+        // Classify fee vs non-fee rows from the known column layout.
+        summarizeCashHistoryTables(tables, focusDate);
+      }
+    }
+    console.log("\n  Focused run complete. Re-run with --full for the full sweep.\n");
+    await prisma.$disconnect();
+    return;
+  }
 
   // ── 1. cashBalanceLog/deps — does it cover historical dates? ────────────────
   section("1. cashBalanceLog/deps — live endpoint, has fillId");

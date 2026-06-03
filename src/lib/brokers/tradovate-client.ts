@@ -1272,7 +1272,7 @@ export class TradovateClient {
   async debugRawPost(
     endpoint: string,
     body: Record<string, unknown>,
-    opts: { escapeSlashes?: boolean } = {},
+    opts: { escapeSlashes?: boolean; timeoutMs?: number } = {},
   ): Promise<{ status: number; body: string; contentType: string | null; sentBody: string } | null> {
     if (!this.#accessToken || !this.#reportsBaseUrl) return null;
     const url = endpoint.startsWith("http")
@@ -1280,6 +1280,14 @@ export class TradovateClient {
       : `${this.#reportsBaseUrl}/${endpoint.replace(/^\//, "")}`;
     let serialized = JSON.stringify(body);
     if (opts.escapeSlashes) serialized = serialized.replace(/\//g, "\\/");
+
+    // Optional hard timeout via AbortController — diagnostic scripts use this so
+    // a hung reports endpoint aborts instead of blocking the whole run.
+    const controller = opts.timeoutMs ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), opts.timeoutMs)
+      : null;
+
     let res: Response;
     try {
       res = await fetch(url, {
@@ -1290,12 +1298,18 @@ export class TradovateClient {
           Accept: "text/html, application/json, text/csv, text/plain, */*;q=0.1",
         },
         body: serialized,
+        signal: controller?.signal,
       });
     } catch (err) {
+      if (timer) clearTimeout(timer);
+      const aborted = err instanceof Error && err.name === "AbortError";
       throw new Error(
-        `debugRawPost network error: ${err instanceof Error ? err.message : String(err)}`,
+        aborted
+          ? `debugRawPost timeout after ${opts.timeoutMs}ms`
+          : `debugRawPost network error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    if (timer) clearTimeout(timer);
     const contentType = res.headers.get("content-type");
     const text = await res.text().catch(() => "");
     return { status: res.status, body: text, contentType, sentBody: serialized };
