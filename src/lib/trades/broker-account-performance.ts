@@ -35,6 +35,28 @@ import {
 
 export type { PairedTradePnl };
 
+/**
+ * Where a BrokerAccountPerformance's day-level numbers came from:
+ *   - "account-balance-history": the reports/requestreport "Account Balance
+ *     History" report (account-level realized P&L; widest history).
+ *   - "cash-history": cashBalanceLog/deps (detailed recent ledger; may be a
+ *     partial window).
+ *   - "none": no broker history available.
+ */
+export type BrokerHistorySource = "account-balance-history" | "cash-history" | "none";
+
+/** Honest UI label for each broker history source. */
+export function brokerSourceLabel(source: BrokerHistorySource): string {
+  switch (source) {
+    case "account-balance-history":
+      return "Broker Account Balance History";
+    case "cash-history":
+      return "Broker Cash History";
+    case "none":
+      return "Broker history";
+  }
+}
+
 export type BrokerAccountPerformance = {
   /** "YYYY-MM-DD" → after-fees net. Only days with TradePaired + fee rows. */
   dayNet: Record<string, number>;
@@ -68,9 +90,13 @@ export type BrokerAccountPerformance = {
   /**
    * Earliest "YYYY-MM-DD" key in dayNet — i.e. the start of API-visible broker
    * history. null when no broker history is available. Use this (not "all-time")
-   * to label coverage: "Broker Cash History available from [date]".
+   * to label coverage: "Broker Account Balance History from [date]".
    */
   earliestBrokerDay: string | null;
+  /** Latest "YYYY-MM-DD" key in dayNet. null when no broker history. */
+  latestBrokerDay: string | null;
+  /** Which broker source produced these day-level numbers. */
+  source: BrokerHistorySource;
 };
 
 /**
@@ -149,6 +175,7 @@ export function computeBrokerAccountPerformance(
   const feesAvailable = Object.keys(dayNet).length > 0;
   const dayNetKeys = Object.keys(dayNet).sort();
   const earliestBrokerDay = dayNetKeys.length > 0 ? dayNetKeys[0]! : null;
+  const latestBrokerDay = dayNetKeys.length > 0 ? dayNetKeys[dayNetKeys.length - 1]! : null;
 
   return {
     dayNet,
@@ -163,6 +190,68 @@ export function computeBrokerAccountPerformance(
     feesAvailable,
     hasBrokerHistory: feesAvailable,
     earliestBrokerDay,
+    latestBrokerDay,
+    source: feesAvailable ? "cash-history" : "none",
+  };
+}
+
+/**
+ * Build a BrokerAccountPerformance from a day-level realized-P&L map. Used for
+ * the "Account Balance History" report, whose rows are day-level (not per-trade)
+ * — so tradePairs is empty and tradeCount is 0. All win/loss/profit-factor/
+ * largest-win-loss numbers are derived from the daily realized P&L values, which
+ * IS the account-level source of truth.
+ *
+ * `source` should normally be "account-balance-history". Days with realized P&L
+ * exactly 0 are kept in dayNet (they are real no-P&L trading days) but do not
+ * count as wins or losses.
+ */
+export function computeBrokerPerformanceFromDayNet(
+  dayNet: Record<string, number>,
+  source: BrokerHistorySource,
+): BrokerAccountPerformance {
+  const rounded: Record<string, number> = {};
+  for (const [k, v] of Object.entries(dayNet)) rounded[k] = round2(v);
+
+  let winCount = 0;
+  let lossCount = 0;
+  let winSum = 0;
+  let lossSum = 0;
+  let largestWin: number | null = null;
+  let largestLoss: number | null = null;
+
+  for (const net of Object.values(rounded)) {
+    if (net > 0) {
+      winCount++;
+      winSum += net;
+      if (largestWin === null || net > largestWin) largestWin = net;
+    } else if (net < 0) {
+      lossCount++;
+      lossSum += -net;
+      if (largestLoss === null || net < largestLoss) largestLoss = net;
+    }
+  }
+
+  const keys = Object.keys(rounded).sort();
+  const hasHistory = keys.length > 0;
+  const allTimeNet = round2(Object.values(rounded).reduce((s, v) => s + v, 0));
+  const profitFactor = !hasHistory ? null : lossSum > 0 ? round2(winSum / lossSum) : null;
+
+  return {
+    dayNet: rounded,
+    tradePairs: [], // day-level report — no per-trade detail
+    allTimeNet,
+    tradeCount: 0, // not available from a day-level report
+    winCount,
+    lossCount,
+    largestWin: largestWin != null ? round2(largestWin) : null,
+    largestLoss: largestLoss != null ? round2(largestLoss) : null,
+    profitFactor,
+    feesAvailable: hasHistory,
+    hasBrokerHistory: hasHistory,
+    earliestBrokerDay: hasHistory ? keys[0]! : null,
+    latestBrokerDay: hasHistory ? keys[keys.length - 1]! : null,
+    source: hasHistory ? source : "none",
   };
 }
 
@@ -232,4 +321,6 @@ export const EMPTY_BROKER_PERFORMANCE: BrokerAccountPerformance = {
   feesAvailable: false,
   hasBrokerHistory: false,
   earliestBrokerDay: null,
+  latestBrokerDay: null,
+  source: "none",
 };

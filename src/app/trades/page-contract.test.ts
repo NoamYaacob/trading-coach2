@@ -445,14 +445,15 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
 
   it("Trades footer is concise and explains the data sources", () => {
     assert.ok(page.includes("before fees"), "footer must mention before fees");
+    // Footer references the broker source via the source-aware label helper.
     assert.ok(
-      page.includes("broker Cash History") || page.includes("Cash History"),
-      "footer must reference the broker Cash History as the authoritative net source",
+      page.includes("brokerSourceLabel(brokerSource)"),
+      "footer must reference the broker source via brokerSourceLabel(brokerSource)",
     );
     // No longer a long multi-sentence paragraph — must be concise.
     assert.ok(
-      page.includes("Day totals use broker Cash History when available"),
-      "footer must open with the short 'Day totals use broker Cash History' sentence",
+      page.includes("Day totals use"),
+      "footer must open with the short 'Day totals use …' sentence",
     );
   });
 

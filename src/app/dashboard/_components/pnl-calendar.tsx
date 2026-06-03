@@ -24,6 +24,7 @@ import Link from "next/link";
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
 import { aggregateCalendarDays } from "./pnl-calendar-agg.ts";
+import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
 
 type Props = {
   /** Round-trip trades for the selected account (already <= 30d). */
@@ -44,6 +45,8 @@ type Props = {
    * fabricated. Sourced from the Performance Report (reports/requestreport).
    */
   brokerDayNet?: Record<string, number>;
+  /** Which broker source produced brokerDayNet — drives the honest label. */
+  brokerSource?: BrokerHistorySource;
 };
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -106,7 +109,8 @@ function buildMonthGrid(
   return cells;
 }
 
-export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accountId, brokerDayNet }: Props) {
+export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accountId, brokerDayNet, brokerSource }: Props) {
+  const sourceLabel = brokerSourceLabel(brokerSource ?? "cash-history");
   const [monthOffset, setMonthOffset] = React.useState(0);
 
   const now = new Date();
@@ -222,7 +226,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             {allCellsNet ? "Net P&L" : "Fill P&L (before fees)"} · calendar day · {accountLabel}
             {hasBrokerHistory ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                · Broker Cash History{earliestBrokerDayLabel != null ? ` from ${earliestBrokerDayLabel}` : ""}
+                · {sourceLabel}{earliestBrokerDayLabel != null ? ` from ${earliestBrokerDayLabel}` : ""}
               </span>
             ) : earliestTradeDate != null ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>

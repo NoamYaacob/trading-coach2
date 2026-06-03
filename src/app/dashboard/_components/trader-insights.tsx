@@ -25,7 +25,7 @@ import {
   profitFactor,
 } from "./insights.ts";
 import { buildBrokerNativeSeries, buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
-import { computeBrokerWindowStats } from "@/lib/trades/broker-account-performance";
+import { computeBrokerWindowStats, brokerSourceLabel } from "@/lib/trades/broker-account-performance";
 
 type RiskRulesLike = {
   stopAfterLosses: number | null;
@@ -292,7 +292,7 @@ export function TraderInsights({
         value={pf.toFixed(2)}
         sub={
           useBroker
-            ? `broker net wins ÷ losses · ${brokerPfDayCount} days · Cash History`
+            ? `broker net wins ÷ losses · ${brokerPfDayCount} days · ${brokerSourceLabel(brokerPerformance!.source)}`
             : `${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`
         }
         tone={pf >= 1 ? "ok" : "warn"}
@@ -366,9 +366,9 @@ export function TraderInsights({
         </span>
         <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
           {brokerPerformance?.hasBrokerHistory
-            ? "Broker Cash History · TradePaired net after fees"
+            ? `${brokerSourceLabel(brokerPerformance.source)} · day-level realized P&L`
             : hasBrokerHistory
-            ? "Broker Cash History where available · otherwise fill P&L"
+            ? "Broker history where available · otherwise fill P&L"
             : "Partial imported fills · fees not yet confirmed"}
         </span>
       </div>

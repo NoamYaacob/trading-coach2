@@ -40,6 +40,7 @@ import {
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
 import { buildBrokerNativeSeries, buildDailySeries, type DailySeries } from "./daily-pnl.ts";
+import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
 
 type Timeframe = "7d" | "14d" | "30d" | "all";
 
@@ -60,6 +61,8 @@ type Props = {
    * source of truth for the curve — it overrides the fill-derived sum.
    */
   brokerDayNet?: Record<string, number>;
+  /** Which broker source produced brokerDayNet — drives the honest label. */
+  brokerSource?: BrokerHistorySource;
 };
 
 function fmt$(v: number): string {
@@ -136,8 +139,9 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, feesAvailable, brokerDayNet }: Props) {
+export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, feesAvailable, brokerDayNet, brokerSource }: Props) {
   const [timeframe, setTimeframe] = React.useState<Timeframe>("30d");
+  const sourceLabel = brokerSourceLabel(brokerSource ?? "cash-history");
 
   // Broker Cash History (cashBalanceLog) is the primary source of truth when
   // available — it covers the FULL account history, not just the fill-import
@@ -187,7 +191,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
     timeframe === "7d" ? "last 7 days"
     : timeframe === "14d" ? "last 14 days"
     : timeframe === "30d" ? "last 30 days"
-    : hasBrokerHistory ? "API-visible broker history"
+    : hasBrokerHistory ? "report-visible history"
     : "all time";
 
   const toggleButton = (tf: Timeframe, label: string) => {
@@ -249,7 +253,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
             {timeframe === "all" && hasBrokerHistory && coverageStartLabel != null
-              ? `Net after fees · Broker Cash History from ${coverageStartLabel}`
+              ? `Net realized P&L · ${sourceLabel} from ${coverageStartLabel}`
               : <>
                   {"Cumulative daily P&L · "}
                   {series.allDaysNet

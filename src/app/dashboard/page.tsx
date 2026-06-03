@@ -296,16 +296,18 @@ export default async function DashboardPage({
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
 
-  // Structured broker account performance from Cash History (cashBalanceLog).
-  // Includes dayNet, tradePairs, win/loss counts, profit factor, all-time net.
-  // Uses cashBalanceLog/deps?masterid={tvAccountId} (account-scoped).
+  // Structured broker account performance, preferring the Account Balance
+  // History report (widest history) and falling back to cashBalanceLog/deps.
+  // Includes dayNet, win/loss counts, profit factor, all-time net, source.
   // Falls back to EMPTY_BROKER_PERFORMANCE on any error — never blocks render.
   let brokerPerformance: BrokerAccountPerformance = EMPTY_BROKER_PERFORMANCE;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
       await client.initialize();
-      brokerPerformance = await client.getCashHistoryPerformance();
+      // Prefer the Account Balance History report (widest history); falls back
+      // to cashBalanceLog/deps when the report is unavailable/empty.
+      brokerPerformance = await client.getHistoricalAccountPerformance();
     } catch {
       brokerPerformance = EMPTY_BROKER_PERFORMANCE;
     }
@@ -1083,6 +1085,7 @@ export default async function DashboardPage({
                 timezone={displayTimeZone}
                 feesAvailable={recentTradesFeesAvailable}
                 brokerDayNet={brokerDayNet}
+                brokerSource={brokerPerformance.source}
               />
             </section>
 
@@ -1278,6 +1281,7 @@ export default async function DashboardPage({
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
                   accountId={selectedAccount.id}
                   brokerDayNet={brokerDayNet}
+                  brokerSource={brokerPerformance.source}
                 />
               </section>
             )}

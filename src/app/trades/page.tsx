@@ -14,6 +14,7 @@ import {
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
 import { resolveDayNet, resolveTradeRowNet } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
@@ -157,18 +158,24 @@ export default async function TradesPage({
     ? await loadAccountTrades(selectedAccount.id, { since })
     : [];
 
-  // Broker-authoritative NET P&L per day from Cash History (cashBalanceLog) —
-  // the real after-fees net the trader sees in Tradovate, even when per-fill
-  // fee allocation is unavailable at the trade-row level. Read-only and
-  // best-effort: any failure yields {} and day totals fall back to fill values.
+  // Broker-authoritative day-level realized P&L. Prefers the Account Balance
+  // History report (widest history) and falls back to cashBalanceLog/deps. This
+  // is the real after-fees / realized result the trader sees in Tradovate, even
+  // when per-fill fee allocation is unavailable at the trade-row level.
+  // Read-only and best-effort: any failure yields {} and day totals fall back
+  // to fill values.
   let brokerDayNet: Record<string, number> = {};
+  let brokerSource: BrokerHistorySource = "none";
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
       await client.initialize();
-      brokerDayNet = await client.getCashHistoryDayNet();
+      const perf = await client.getHistoricalAccountPerformance();
+      brokerDayNet = perf.dayNet;
+      brokerSource = perf.source;
     } catch {
       brokerDayNet = {};
+      brokerSource = "none";
     }
   }
 
@@ -728,7 +735,7 @@ export default async function TradesPage({
               </div>
               {allTrades.length > 0 && (
                 <p style={{ marginTop: 10, fontSize: 11, color: ["var(--gr-text-mute)"].join("") }}>
-                  {"Day totals use broker Cash History when available. Individual trade rows show fill P&L before fees unless per-trade fees are available."}
+                  {`Day totals use ${brokerSource === "none" ? "broker history" : brokerSourceLabel(brokerSource)} when available. Individual trade rows show fill P&L before fees unless per-trade fees are available.`}
                 </p>
               )}
             </section>

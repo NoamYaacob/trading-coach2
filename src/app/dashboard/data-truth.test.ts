@@ -574,3 +574,60 @@ describe("data-truth: CME session vs calendar day — explicit labels and bounda
     );
   });
 });
+
+// ── 7. Source-of-truth: Account Balance History preferred for historical P&L ──
+
+describe("data-truth: Account Balance History is the historical source of truth", () => {
+  const dashboard = read("app/dashboard/page.tsx");
+  const trades    = read("app/trades/page.tsx");
+  const equity    = read("app/dashboard/_components/equity-curve.tsx");
+  const calendar  = read("app/dashboard/_components/pnl-calendar.tsx");
+  const insights  = read("app/dashboard/_components/trader-insights.tsx");
+
+  it("dashboard loads broker performance via getHistoricalAccountPerformance (report-preferred)", () => {
+    assert.ok(
+      dashboard.includes("getHistoricalAccountPerformance"),
+      "dashboard must prefer the report-backed historical performance loader",
+    );
+    assert.ok(
+      !dashboard.includes("getCashHistoryPerformance"),
+      "dashboard must not call getCashHistoryPerformance directly (it's the fallback inside the loader)",
+    );
+  });
+
+  it("trades page loads broker day-net via getHistoricalAccountPerformance", () => {
+    assert.ok(
+      trades.includes("getHistoricalAccountPerformance"),
+      "trades page must use the report-preferred loader",
+    );
+  });
+
+  it("fallback to cashBalanceLog/deps lives inside the loader, not the pages", () => {
+    const client = read("lib/brokers/tradovate-client.ts");
+    // The loader prefers the report and falls back to cash history.
+    assert.ok(
+      client.includes("getAccountBalanceHistoryReport") &&
+      client.includes("getCashHistoryPerformance"),
+      "getHistoricalAccountPerformance must combine report (primary) + cash history (fallback)",
+    );
+  });
+
+  it("DB imported fills are not the primary broker metric source when broker history exists", () => {
+    // KPIs branch on brokerPerformance/brokerWindow first; recentTrades (fills)
+    // is only the fallback when there is no broker history.
+    assert.ok(
+      dashboard.includes("brokerWindow30d != null"),
+      "dashboard win-rate/PF must prefer broker window stats over fill-derived recentTrades",
+    );
+  });
+
+  it("labels are source-aware (Broker Account Balance History / report-visible), not hardcoded Cash History", () => {
+    assert.ok(equity.includes("brokerSourceLabel"), "equity curve must use brokerSourceLabel");
+    assert.ok(calendar.includes("brokerSourceLabel"), "calendar must use brokerSourceLabel");
+    assert.ok(insights.includes("brokerSourceLabel"), "insights must use brokerSourceLabel");
+    assert.ok(
+      equity.includes("report-visible history"),
+      "equity 'All' range label must say 'report-visible history' (honest coverage)",
+    );
+  });
+});

@@ -73,6 +73,7 @@ import {
 } from "../trades/cash-history-fees";
 import {
   computeBrokerAccountPerformance,
+  computeBrokerPerformanceFromDayNet,
   EMPTY_BROKER_PERFORMANCE,
   type BrokerAccountPerformance,
 } from "../trades/broker-account-performance";
@@ -1393,6 +1394,55 @@ export class TradovateClient {
       });
       return EMPTY_BROKER_PERFORMANCE;
     }
+  }
+
+  /**
+   * Historical account-level performance, preferring the "Account Balance
+   * History" report (widest history) and falling back to cashBalanceLog/deps.
+   *
+   * The report exposes account-level daily realized P&L across the full
+   * report-visible window, which can be wider than cashBalanceLog/deps (which
+   * may be limited to a short recent window). When the report returns rows we
+   * build the day-level performance from it (source "account-balance-history").
+   * On any report failure / empty result we return the detailed Cash History
+   * performance unchanged (source "cash-history" or "none"). Never throws.
+   */
+  async getHistoricalAccountPerformance(): Promise<BrokerAccountPerformance> {
+    // Detailed ledger first — also our fallback.
+    const cashPerf = await this.getCashHistoryPerformance();
+    try {
+      const accountName = await this.getAccountName();
+      if (accountName) {
+        // Generous, account-agnostic window: 5 years back through tomorrow.
+        const today = new Date();
+        const start = new Date(today.getFullYear() - 5, today.getMonth(), today.getDate());
+        const end = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        const startStr = formatDateMMDDYYYY(start.toLocaleDateString("en-CA"));
+        const endStr = formatDateMMDDYYYY(end.toLocaleDateString("en-CA"));
+        const days = await this.getAccountBalanceHistoryReport(accountName, startStr, endStr);
+        if (days && days.length > 0) {
+          const dayNet: Record<string, number> = {};
+          for (const d of days) {
+            dayNet[d.tradeDate] = (dayNet[d.tradeDate] ?? 0) + d.realizedPnl;
+          }
+          const reportPerf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+          console.info("[tradovate/account-balance-history] preferred over cash history", {
+            accountId: this.#accountId,
+            reportDays: Object.keys(reportPerf.dayNet).length,
+            reportEarliest: reportPerf.earliestBrokerDay,
+            cashEarliest: cashPerf.earliestBrokerDay,
+            cashRows: Object.keys(cashPerf.dayNet).length,
+          });
+          return reportPerf;
+        }
+      }
+    } catch (err) {
+      console.info("[tradovate/account-balance-history] report unavailable — using cash history", {
+        accountId: this.#accountId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return cashPerf;
   }
 
 
