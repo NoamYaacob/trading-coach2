@@ -618,79 +618,260 @@ async function main(): Promise<void> {
     console.log(`  commandReport/list failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  // ── 14. reports/requestreport (POST) — Performance report ─────────────────
-  section("14. reports/requestreport (POST) — PERFORMANCE REPORT");
+  // ── 14. reports/requestreport (POST) — exhaustive body-format probe ─────────
+  section("14. reports/requestreport (POST) — EXHAUSTIVE FORMAT PROBE");
 
   const accountName = await client.getAccountName();
-  console.log(`\n  Resolved account name for reports: ${accountName ?? "(null — reports will be skipped)"}`);
+  const tvAccountIdStr = tvAccountId != null ? String(tvAccountId) : null;
 
-  if (accountName) {
-    // Probe a date range that would capture a large losing day if it exists.
-    // Try the last 365 days to cast a wide net.
-    const today = new Date();
-    const oneYearAgo = new Date(today);
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  console.log(`\n  Account name (from account/list nickname ?? name): ${accountName ?? "(null)"}`);
+  console.log(`  tvAccountId as string: ${tvAccountIdStr ?? "(null)"}`);
+  console.log(`  externalAccountId: ${externalId ?? "(null)"}`);
 
-    const formatMMDDYYYY = (d: Date): string => {
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const yyyy = String(d.getFullYear());
-      return `${mm}/${dd}/${yyyy}`;
-    };
-    const formatYYYYMMDD = (d: Date): string => d.toLocaleDateString("en-CA");
+  // Helper: print a report result clearly
+  function printReportResult(
+    label: string,
+    sentBody: string,
+    result: { status: number; body: string; contentType: string | null } | null,
+  ): void {
+    console.log(`\n  ── Variant: ${label}`);
+    // Log sent body WITHOUT any secrets (no Authorization header value)
+    console.log(`  Sent body: ${sentBody}`);
+    if (result == null) {
+      console.log(`  Result: null (reports URL not configured or no access token)`);
+      return;
+    }
+    console.log(`  HTTP ${result.status}  Content-Type: ${result.contentType ?? "(none)"}`);
+    const preview = result.body.slice(0, 600).replace(/[\r\n]+/g, " ").trim();
+    console.log(`  Body (first 600 chars): ${preview}`);
+    if (result.body.length > 600) console.log(`  (truncated — total ${result.body.length} chars)`);
 
-    // Probe a set of date ranges: last 365d, last 90d, last 30d
-    const probes: Array<{ label: string; start: Date; end: Date }> = [
-      { label: "last 365d", start: oneYearAgo, end: today },
-    ];
+    // Flag any large negative values
+    const matches = result.body.match(/[-][\d,]+\.[\d]{2}/g) ?? [];
+    const largeNeg = matches.filter((m) => Math.abs(parseFloat(m.replace(/,/g, ""))) >= 100);
+    if (largeNeg.length > 0) console.log(`  *** LARGE NEG VALUES: ${largeNeg.join(", ")} ***`);
 
-    for (const probe of probes) {
-      console.log(`\n  Probing reports/requestreport for "${accountName}" — ${probe.label} (${formatYYYYMMDD(probe.start)} → ${formatYYYYMMDD(probe.end)})`);
+    if (result.status >= 200 && result.status < 300) {
+      console.log(`  ✓ SUCCESS (2xx) — report returned`);
+    } else {
+      console.log(`  ✗ FAILED (${result.status})`);
+    }
+  }
 
-      const body = {
+  // Date formatting helpers
+  const today = new Date();
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  const fmtMMDD = (d: Date): string => {
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${mm}/${dd}/${d.getFullYear()}`;
+  };
+  const fmtISO = (d: Date): string => d.toLocaleDateString("en-CA");
+
+  const startMMDD = fmtMMDD(oneYearAgo);
+  const endMMDD   = fmtMMDD(today);
+  const startISO  = fmtISO(oneYearAgo);
+  const endISO    = fmtISO(today);
+
+  console.log(`\n  Date range probed: ${startISO} → ${endISO} (last 365 days)`);
+  console.log(`  MM/DD/YYYY format: ${startMMDD} → ${endMMDD}`);
+
+  // Build all candidate account identifiers to try
+  const accountIds = [...new Set([accountName, tvAccountIdStr, externalId].filter(Boolean) as string[])];
+  console.log(`  Account identifiers to try: ${accountIds.join(", ")}`);
+
+  // Variants matrix
+  type Variant = {
+    label: string;
+    body: Record<string, unknown>;
+    escapeSlashes?: boolean;
+  };
+
+  const variants: Variant[] = [];
+
+  // For each account identifier, generate multiple body formats
+  for (const accId of accountIds) {
+    // V1: Original format with America/Chicago timezone and MM/DD/YYYY dates
+    variants.push({
+      label: `acct="${accId}" tz=America/Chicago dates=MM/DD/YYYY startTime=17:00 (original)`,
+      body: {
         name: "Performance",
         timezone: "America/Chicago",
         params: [
-          { name: "startDate", value: formatMMDDYYYY(probe.start) },
-          { name: "endDate",   value: formatMMDDYYYY(probe.end) },
-          { name: "startTime", value: "00:00:00" },
-          { name: "endTime",   value: "23:59:59" },
-          { name: "account",   value: accountName },
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "startTime", value: "17:00:00" },
+          { name: "endTime",   value: "16:59:59" },
+          { name: "account",   value: accId },
         ],
         representationType: "html",
         template: "Flex.html",
-      };
+      },
+    });
 
-      console.log(`  Request body: ${JSON.stringify(body, null, 2)}`);
+    // V2: Escaped forward slashes in timezone (fixes "illegal number at /")
+    variants.push({
+      label: `acct="${accId}" tz=America\\/Chicago (escaped slash) dates=MM/DD/YYYY`,
+      body: {
+        name: "Performance",
+        timezone: "America/Chicago",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "startTime", value: "00:00:00" },
+          { name: "endTime",   value: "23:59:59" },
+          { name: "account",   value: accId },
+        ],
+        representationType: "html",
+        template: "Flex.html",
+      },
+      escapeSlashes: true,
+    });
 
-      try {
-        const result = await client.fetchPerformanceReport({
-          accountName,
-          tradingDayKey: formatYYYYMMDD(probe.start),
-        });
-        if (result == null) {
-          console.log(`  fetchPerformanceReport returned null (reports URL not configured or no token)`);
-        } else {
-          console.log(`  HTTP status: ${result.status}`);
-          console.log(`  Content-Type: ${result.contentType ?? "(none)"}`);
-          const bodyPreview = result.body.slice(0, 500).replace(/\s+/g, " ");
-          console.log(`  Body preview (first 500 chars): ${bodyPreview}`);
-          if (result.body.length > 500) {
-            console.log(`  (body truncated — total ${result.body.length} chars)`);
-          }
-          // Look for any large P&L numbers in the body
-          const matches = result.body.match(/[-+]?\$?[0-9,]+\.[0-9]{2}/g) ?? [];
-          const largeNeg = matches.filter((m) => parseFloat(m.replace(/[$,]/g, "")) <= -100);
-          if (largeNeg.length > 0) {
-            console.log(`  *** LARGE NEGATIVE VALUES IN REPORT BODY: ${largeNeg.join(", ")} ***`);
-          }
-        }
-      } catch (err) {
-        console.log(`  fetchPerformanceReport error: ${err instanceof Error ? err.message : err}`);
+    // V3: No timezone field
+    variants.push({
+      label: `acct="${accId}" no-timezone dates=MM/DD/YYYY`,
+      body: {
+        name: "Performance",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "startTime", value: "00:00:00" },
+          { name: "endTime",   value: "23:59:59" },
+          { name: "account",   value: accId },
+        ],
+        representationType: "html",
+        template: "Flex.html",
+      },
+    });
+
+    // V4: UTC timezone
+    variants.push({
+      label: `acct="${accId}" tz=UTC dates=MM/DD/YYYY`,
+      body: {
+        name: "Performance",
+        timezone: "UTC",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "startTime", value: "00:00:00" },
+          { name: "endTime",   value: "23:59:59" },
+          { name: "account",   value: accId },
+        ],
+        representationType: "html",
+        template: "Flex.html",
+      },
+    });
+
+    // V5: ISO dates (YYYY-MM-DD) instead of MM/DD/YYYY
+    variants.push({
+      label: `acct="${accId}" tz=UTC dates=YYYY-MM-DD`,
+      body: {
+        name: "Performance",
+        timezone: "UTC",
+        params: [
+          { name: "startDate", value: startISO },
+          { name: "endDate",   value: endISO },
+          { name: "startTime", value: "00:00:00" },
+          { name: "endTime",   value: "23:59:59" },
+          { name: "account",   value: accId },
+        ],
+        representationType: "html",
+        template: "Flex.html",
+      },
+    });
+
+    // V6: CSV representationType (avoids html template issues)
+    variants.push({
+      label: `acct="${accId}" tz=UTC representationType=csv`,
+      body: {
+        name: "Performance",
+        timezone: "UTC",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "startTime", value: "00:00:00" },
+          { name: "endTime",   value: "23:59:59" },
+          { name: "account",   value: accId },
+        ],
+        representationType: "csv",
+      },
+    });
+
+    // V7: JSON representationType
+    variants.push({
+      label: `acct="${accId}" tz=UTC representationType=json`,
+      body: {
+        name: "Performance",
+        timezone: "UTC",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "account",   value: accId },
+        ],
+        representationType: "json",
+      },
+    });
+
+    // V8: Minimal body — only required fields from Tradovate docs
+    variants.push({
+      label: `acct="${accId}" minimal (name+params only, no tz/template/repType)`,
+      body: {
+        name: "Performance",
+        params: [
+          { name: "startDate", value: startMMDD },
+          { name: "endDate",   value: endMMDD },
+          { name: "account",   value: accId },
+        ],
+      },
+    });
+  }
+
+  // Also try with no account param (server-side default)
+  variants.push({
+    label: `no account param, tz=UTC, csv`,
+    body: {
+      name: "Performance",
+      timezone: "UTC",
+      params: [
+        { name: "startDate", value: startMMDD },
+        { name: "endDate",   value: endMMDD },
+      ],
+      representationType: "csv",
+    },
+  });
+
+  console.log(`\n  Testing ${variants.length} request body variants against reports/requestreport...`);
+
+  let firstSuccess: { label: string; body: string; result: { status: number; body: string; contentType: string | null } } | null = null;
+
+  for (const v of variants) {
+    try {
+      const result = await client.debugRawPost("reports/requestreport", v.body, {
+        escapeSlashes: v.escapeSlashes,
+      });
+      const sentBody = result?.sentBody ?? JSON.stringify(v.body);
+      printReportResult(v.label, sentBody, result);
+      if (result && result.status >= 200 && result.status < 300 && firstSuccess == null) {
+        firstSuccess = { label: v.label, body: sentBody, result };
       }
+      // Stop on first success to avoid excessive API calls
+      if (firstSuccess) break;
+    } catch (err) {
+      console.log(`\n  ── Variant: ${v.label}`);
+      console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (firstSuccess) {
+    console.log(`\n  *** FIRST SUCCESSFUL VARIANT: "${firstSuccess.label}" ***`);
+    console.log(`  Full response body:`);
+    console.log(firstSuccess.result.body.slice(0, 3000));
   } else {
-    console.log(`  Skipped — account name could not be resolved from account/list`);
+    console.log(`\n  All ${variants.length} variants failed or returned non-2xx.`);
+    console.log(`  Conclusion: reports/requestreport is not available for this account/token.`);
   }
 
   // ── 15. SUMMARY: Was the large losing day found? ──────────────────────────
