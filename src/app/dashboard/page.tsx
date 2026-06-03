@@ -47,7 +47,7 @@ import {
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
-import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE } from "@/lib/trades/broker-account-performance";
+import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE, brokerSourceLabel } from "@/lib/trades/broker-account-performance";
 import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
 import {
   isAccountActive,
@@ -851,7 +851,7 @@ export default async function DashboardPage({
                       value: pf30d != null ? pf30d.toFixed(2) : "—",
                       sub: pf30d != null
                         ? brokerWindow30d != null
-                          ? pf30d >= 1 ? "Net wins exceed losses · broker Cash History" : "Net losses exceed wins · broker Cash History"
+                          ? pf30d >= 1 ? `Net wins exceed losses · ${brokerSourceLabel(brokerPerformance.source)}` : `Net losses exceed wins · ${brokerSourceLabel(brokerPerformance.source)}`
                           : recentTradesFeesAvailable
                             ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
                             : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"

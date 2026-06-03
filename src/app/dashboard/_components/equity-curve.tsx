@@ -398,8 +398,10 @@ function EquityCurveBody({ series, tradeCount, brokerNativeMode }: { series: Dai
         >
           {tradeCount === 0
             ? brokerNativeMode
-              ? "No broker cash history days in this window for this account yet."
+              ? "No broker days in this window for this account yet."
               : "No closed round-trips in this window for this account yet."
+            : brokerNativeMode
+            ? `Only ${tradeCount} broker day${tradeCount === 1 ? "" : "s"} in this window — try 30D or All to see the full curve.`
             : "Curve appears once at least 2 trading days have closed in this window."}
         </p>
       </div>

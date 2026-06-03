@@ -206,3 +206,61 @@ describe("/dashboard page wires the new analytics components", () => {
     );
   });
 });
+
+describe("Dashboard profit factor KPI — source-aware label", () => {
+  const page = read("app/dashboard/page.tsx");
+
+  it("imports brokerSourceLabel from broker-account-performance", () => {
+    assert.ok(
+      page.includes("brokerSourceLabel"),
+      "dashboard page must import brokerSourceLabel for source-aware profit factor sub-label",
+    );
+  });
+
+  it("profit factor sub does NOT hardcode 'broker Cash History'", () => {
+    assert.ok(
+      !page.includes("broker Cash History"),
+      "profit factor sub must not hardcode 'broker Cash History' — use brokerSourceLabel()",
+    );
+  });
+
+  it("profit factor sub uses brokerSourceLabel(brokerPerformance.source) for honest wording", () => {
+    assert.ok(
+      page.includes("brokerSourceLabel(brokerPerformance.source)"),
+      "profit factor sub must call brokerSourceLabel(brokerPerformance.source) to get source-aware label",
+    );
+  });
+});
+
+describe("Equity curve — single broker day empty state", () => {
+  const src = read("app/dashboard/_components/equity-curve.tsx");
+
+  it("broker-native single-day state guides user toward a wider window", () => {
+    assert.ok(
+      src.includes("Only") && (src.includes("30D") || src.includes("All")),
+      "single broker-day empty state must mention 30D or All to guide the user",
+    );
+    assert.ok(
+      src.includes("broker day"),
+      "single broker-day empty state must mention 'broker day' so it is clearly source-aware",
+    );
+  });
+
+  it("fill-based curve still shows the old 'at least 2 trading days' message", () => {
+    assert.ok(
+      src.includes("Curve appears once at least 2 trading days have closed in this window"),
+      "fill-based empty state must still show the 'at least 2 trading days' message",
+    );
+  });
+
+  it("broker-native zero-day state says 'No broker days' (not 'cash history days')", () => {
+    assert.ok(
+      src.includes("No broker days in this window for this account yet"),
+      "zero-day broker-native state must say 'No broker days' — not hardcode 'cash history'",
+    );
+    assert.ok(
+      !src.includes("No broker cash history days"),
+      "must not say 'No broker cash history days' — 'Cash History' is a specific source, not all broker sources",
+    );
+  });
+});

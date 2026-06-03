@@ -166,6 +166,7 @@ export default async function TradesPage({
   // to fill values.
   let brokerDayNet: Record<string, number> = {};
   let brokerSource: BrokerHistorySource = "none";
+  let earliestBrokerDay: string | null = null;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
@@ -173,9 +174,11 @@ export default async function TradesPage({
       const perf = await client.getHistoricalAccountPerformance();
       brokerDayNet = perf.dayNet;
       brokerSource = perf.source;
+      earliestBrokerDay = perf.earliestBrokerDay;
     } catch {
       brokerDayNet = {};
       brokerSource = "none";
+      earliestBrokerDay = null;
     }
   }
 
@@ -194,15 +197,28 @@ export default async function TradesPage({
   // so users see the true picture for that context.
   const stats = computeTradeStats(dateFilteredTrades);
 
-  // Broker-net totals for the KPI primary: sum the broker Cash History net for
-  // every traded day in the window that the broker reported. This is the real
-  // after-fees result the trader sees in Tradovate, even when per-fill fee
-  // allocation is unavailable at the trade-row level.
+  // Broker-net totals for the KPI primary: sum ALL broker days in the date
+  // window (not just fill-aligned days). For account-balance-history accounts,
+  // broker days like May 4 with no imported fill must still contribute to the
+  // window net, win/loss count, and win rate.
   const tradedDateKeys = [...new Set(dateFilteredTrades.map((t) => isoDateKey(t.closedAt, tz)))];
-  const brokerCoveredKeys = tradedDateKeys.filter((k) => brokerDayNet[k] != null);
-  const brokerWindowNet = brokerCoveredKeys.reduce((s, k) => s + brokerDayNet[k]!, 0);
-  const brokerCoversAll = brokerCoveredKeys.length > 0 && brokerCoveredKeys.length === tradedDateKeys.length;
-  const brokerCoversSome = brokerCoveredKeys.length > 0;
+  // Day-range cutoff for the selected window (matches effectiveRangeDays).
+  const brokerWindowSince = dateFilter
+    ? dateFilter
+    : new Date(Date.now() - effectiveRangeDays * 24 * 60 * 60 * 1000)
+        .toLocaleDateString("en-CA", { timeZone: tz });
+  const allBrokerWindowEntries = Object.entries(brokerDayNet)
+    .filter(([k]) => dateFilter ? k === dateFilter : k >= brokerWindowSince);
+  const brokerWindowNet = allBrokerWindowEntries.reduce((s, [, v]) => s + v, 0);
+  const brokerCoversSome = allBrokerWindowEntries.length > 0;
+  // brokerCoversAll: used only for partial-coverage labels — always true for ABH
+  // since the broker window is the source of truth (fill alignment not required).
+  const brokerCoversAll = brokerCoversSome;
+  // Day-level win/loss/winRate from broker (fill-independent).
+  const brokerWins = allBrokerWindowEntries.filter(([, v]) => v > 0).length;
+  const brokerLosses = allBrokerWindowEntries.filter(([, v]) => v < 0).length;
+  const brokerNetDaysCount = brokerWins + brokerLosses;
+  const brokerWinRate = brokerNetDaysCount > 0 ? brokerWins / brokerNetDaysCount : null;
 
   // Coverage window + data-trust signals. earliestTradeDate is the oldest
   // imported round-trip so the header can say "imported history only" rather
@@ -320,9 +336,11 @@ export default async function TradesPage({
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.2, color: "var(--gr-ink)", margin: "6px 0 0" }}>
             {dateFilter ? `Trades · ${fmtDateFromKey(dateFilter)}` : "Trades"}
           </h1>
-          {!dateFilter && earliestTradeDate != null && (
+          {!dateFilter && (brokerSource !== "none" ? earliestBrokerDay != null : earliestTradeDate != null) && (
             <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 6 }}>
-              Imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              {brokerSource !== "none" && earliestBrokerDay != null
+                ? `${brokerSourceLabel(brokerSource)} from ${new Date(`${earliestBrokerDay}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                : `Imported history only · data from ${earliestTradeDate!.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
             </div>
           )}
           {lowConfidence && (
@@ -474,10 +492,8 @@ export default async function TradesPage({
                   brokerCoversSome
                     ? {
                         label: "Net P&L",
-                        value: stats.count > 0 ? fmt$(brokerWindowNet) : "—",
-                        sub: brokerCoversAll
-                          ? `after broker fees`
-                          : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed`,
+                        value: fmt$(brokerWindowNet),
+                        sub: `${brokerSourceLabel(brokerSource)} · after broker fees`,
                         tone: brokerWindowNet >= 0 ? "ok" : "bad",
                       }
                     : stats.feesAvailable
@@ -496,15 +512,26 @@ export default async function TradesPage({
                   {
                     label: "Trades",
                     value: String(stats.count),
-                    sub: stats.count > 0 ? `${stats.winners}W · ${stats.losers}L` : "no trades yet",
+                    // Fill round-trip count — clearly labeled as fills, not broker days
+                    sub: stats.count > 0 ? `${stats.winners}W · ${stats.losers}L · imported fills` : "no fills yet",
                     tone: "mute",
                   },
-                  {
-                    label: "Win rate",
-                    value: stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—",
-                    sub: stats.count > 0 ? `${stats.winners} of ${stats.count}` : "no trades yet",
-                    tone: "mute",
-                  },
+                  // Win Rate: use broker day-level win rate when broker history is
+                  // available (day wins / non-zero days), not fill trade win rate.
+                  // This gives the account-level picture that matches the dashboard.
+                  brokerCoversSome && brokerWinRate != null
+                    ? {
+                        label: "Win rate",
+                        value: `${Math.round(brokerWinRate * 100)}%`,
+                        sub: `${brokerWins}W · ${brokerLosses}L · ${brokerNetDaysCount} broker net days`,
+                        tone: "mute" as const,
+                      }
+                    : {
+                        label: "Win rate",
+                        value: stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—",
+                        sub: stats.count > 0 ? `${stats.winners} of ${stats.count}` : "no trades yet",
+                        tone: "mute" as const,
+                      },
                   {
                     label: "Largest loss",
                     value: stats.largestLoss != null ? fmt$(stats.largestLoss.pnl) : "—",
