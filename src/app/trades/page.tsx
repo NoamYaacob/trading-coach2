@@ -14,7 +14,7 @@ import {
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
-import { resolveDayNet } from "./day-net";
+import { resolveDayNet, resolveTradeRowNet } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
 import { prisma } from "@/lib/db";
@@ -667,9 +667,8 @@ export default async function TradesPage({
                             </tr>
                             {rows.map((t) => {
                               const sideOk = t.side === "LONG";
-                              // Net is only meaningful when fees are known. When not,
-                              // colour by the gross/fill value and show net as "—".
-                              const rowPnlColor = (t.feesAvailable ? t.netPnl : t.pnl) >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                              const rowRes = resolveTradeRowNet(t, rows.length, brokerDayNet[dateKey]);
+                              const rowPnlColor = (rowRes.net ?? t.pnl) >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
                               return (
                                 <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)" }}>
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mid)" }}>
@@ -708,14 +707,14 @@ export default async function TradesPage({
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
                                     {fmt$(t.pnl)}
                                   </td>
-                                  {/* Fees — "Not reported" when the broker did not supply per-fill commission. */}
+                                  {/* Fees — inferred when single-trade day with broker net; "Not reported" otherwise. */}
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
-                                    {t.feesAvailable && t.fees != null ? `−$${t.fees.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Not reported"}
+                                    {rowRes.fees != null ? fmt$(rowRes.fees) : "Not reported"}
                                   </td>
-                                  {/* Net P&L — only a real net figure when fees are known; otherwise "—". */}
-                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.feesAvailable ? rowPnlColor : "var(--gr-text-faint)" }}
-                                    title={t.feesAvailable ? undefined : "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."}>
-                                    {t.feesAvailable ? fmt$(t.netPnl) : "—"}
+                                  {/* Net P&L — real or inferred when determinable; "—" otherwise. */}
+                                  <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowRes.net != null ? rowPnlColor : "var(--gr-text-faint)" }}
+                                    title={rowRes.net != null ? undefined : "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."}>
+                                    {rowRes.net != null ? fmt$(rowRes.net) : "—"}
                                   </td>
                                 </tr>
                               );
