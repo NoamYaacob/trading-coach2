@@ -139,10 +139,6 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
     [trades, timezone, feesAvailable, brokerDayNet],
   );
 
-  // A cell shows true net P&L when window fees are known OR the broker reported
-  // that specific day's net. When neither holds, values are fill P&L before fees.
-  const hasBrokerNet = !!brokerDayNet && Object.keys(brokerDayNet).length > 0;
-  const showsNet = feesAvailable || hasBrokerNet;
 
   const cells = React.useMemo(
     () => buildMonthGrid(viewYear, viewMonth, timezone),
@@ -174,6 +170,13 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
   const isViewingPast = monthOffset < 0;
   const isCurrentMonth = monthOffset === 0;
 
+  // Subtitle is only "Net P&L" when EVERY displayed traded day is truly net —
+  // either window-wide per-fill fees, or a broker-reported net for that day.
+  // Otherwise values are fill P&L before fees, and we never call them Net.
+  const allCellsNet =
+    tradedCells.length > 0 &&
+    (feesAvailable || tradedCells.every((c) => c.data!.brokerNet));
+
   return (
     <div
       style={{
@@ -200,7 +203,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            {showsNet ? "Net P&amp;L" : "Fill P&amp;L (before fees)"} · calendar day · {accountLabel}
+            {allCellsNet ? "Net P&amp;L" : "Fill P&amp;L (before fees)"} · calendar day · {accountLabel}
             {earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}

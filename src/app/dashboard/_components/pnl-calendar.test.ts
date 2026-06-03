@@ -78,6 +78,21 @@ describe("aggregateCalendarDays", () => {
     assert.equal(map.get("2026-06-02")!.brokerNet, false);
   });
 
+  it("UI honesty: a day NOT covered by broker net is never marked net (brokerNet=false)", () => {
+    // Two traded days; broker reports net only for day 1. The calendar's
+    // "all cells net" rule must be false, so the subtitle stays "before fees".
+    const trades = [
+      trade({ id: "a", closedAt: new Date("2026-06-01T15:00:00Z"), pnl: 1.5, netPnl: 1.5, feesAvailable: false }),
+      trade({ id: "b", closedAt: new Date("2026-06-02T15:00:00Z"), pnl: 2.0, netPnl: 2.0, feesAvailable: false }),
+    ];
+    const map = aggregateCalendarDays(trades, TZ, false, { "2026-06-01": -0.4 });
+    const cells = [map.get("2026-06-01")!, map.get("2026-06-02")!];
+    const allCellsNet = cells.every((c) => c.brokerNet); // mirrors component rule (feesAvailable=false)
+    assert.equal(map.get("2026-06-01")!.brokerNet, true);
+    assert.equal(map.get("2026-06-02")!.brokerNet, false, "uncovered day shows fill +2.00, not net");
+    assert.equal(allCellsNet, false, "subtitle must NOT claim Net P&L when any day lacks fees");
+  });
+
   it("aggregates multiple trades on the same day before any broker override", () => {
     const trades = [
       trade({ id: "a", closedAt: new Date("2026-06-01T15:00:00Z"), pnl: 1.0, netPnl: 1.0 }),

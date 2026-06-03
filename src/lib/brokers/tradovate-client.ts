@@ -61,6 +61,12 @@ import {
   type PerformanceReportPnl,
 } from "./tradovate-reports-parser";
 import {
+  normalizeCashBalanceLogRows,
+  aggregateCashHistory,
+  type ContractDayPnl,
+  type RawCashBalanceLogRow,
+} from "../trades/cash-history-fees";
+import {
   findGuardrailPositionLimit,
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
@@ -1206,6 +1212,59 @@ export class TradovateClient {
   async debugRawList(endpoint: string): Promise<unknown[]> {
     const raw = await this.#request<unknown>(endpoint, "GET");
     return parseSnapshotItems<Record<string, unknown>>(raw);
+  }
+
+  /**
+   * Read-only Cash History (cashBalanceLog) — the source of truth for fees and
+   * realized P&L, matching what the trader sees in Tradovate's Cash History.
+   *
+   * GET cashBalanceLog/list, normalised + scoped strictly to this account, then
+   * aggregated per (account, contract, day). Returns [] on any failure so the
+   * caller is never blocked. Never writes.
+   */
+  async getCashHistoryDayPnl(): Promise<ContractDayPnl[]> {
+    if (this.#tvAccountId == null) return [];
+    try {
+      const rows = await this.#request<unknown>("cashBalanceLog/list", "GET");
+      const raw = parseSnapshotItems<RawCashBalanceLogRow>(rows);
+      const normalized = normalizeCashBalanceLogRows(raw, this.#tvAccountId, this.#accountId);
+      const agg = aggregateCashHistory(normalized, this.#accountId);
+      console.info("[tradovate/cash-history] aggregated day P&L", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        rawRows: raw.length,
+        normalizedRows: normalized.length,
+        groups: agg.length,
+      });
+      return agg;
+    } catch (err) {
+      console.info("[tradovate/cash-history] fetch skipped — fees remain unavailable", {
+        accountId: this.#accountId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Cash-history NET P&L per trading day ("YYYY-MM-DD" → net), for the calendar
+   * and dashboard. Only days with fee data are included, so a fees-missing day
+   * is never presented as Net. Read-only. [] / {} on failure.
+   */
+  async getCashHistoryDayNet(): Promise<Record<string, number>> {
+    const groups = await this.getCashHistoryDayPnl();
+    const byDate = new Map<string, { net: number; feesAvailable: boolean }>();
+    for (const g of groups) {
+      const cur = byDate.get(g.date) ?? { net: 0, feesAvailable: false };
+      cur.net += g.netPnl;
+      cur.feesAvailable = cur.feesAvailable || g.feesAvailable;
+      byDate.set(g.date, cur);
+    }
+    const out: Record<string, number> = {};
+    for (const [date, v] of byDate) {
+      if (v.feesAvailable) out[date] = Math.round((v.net + Number.EPSILON) * 100) / 100;
+    }
+    return out;
   }
 
   // ── Per-account trade count sources ──────────────────────────────────────

@@ -106,11 +106,32 @@ async function main() {
 
   // ── 2. cashBalance / cashBalanceLog family ─────────────────────────────────
   await probe("cashBalance/list", () => client.debugRawList("cashBalance/list"));
-  await probe("cashBalanceLog/list", () => client.debugRawList("cashBalanceLog/list"));
+  await probe("cashBalanceLog/list (Cash History — source of truth)", () =>
+    client.debugRawList("cashBalanceLog/list"),
+  );
   if (tvAccountId != null) {
     await probe(`cashBalanceLog/deps?masterid=${tvAccountId}`, () =>
       client.debugRawList(`cashBalanceLog/deps?masterid=${tvAccountId}`),
     );
+  }
+
+  // ── 2b. Cash History aggregation (the real fees/net the trader sees) ───────
+  console.log("\n── Cash History → per-day NET P&L (cashBalanceLog) ──────────");
+  try {
+    const groups = await client.getCashHistoryDayPnl();
+    if (groups.length === 0) {
+      console.log("  (no cash-history groups — endpoint empty, failed, or no trades)");
+    } else {
+      for (const g of groups.slice(0, 20)) {
+        console.log(
+          `  ${g.date}  ${g.contract ?? "—"}  tradePnl=${g.tradePnl}  fees=${g.fees}  net=${g.netPnl}  feesAvailable=${g.feesAvailable}`,
+        );
+      }
+      const dayNet = await client.getCashHistoryDayNet();
+      console.log(`\n  day-net map (feeds calendar brokerDayNet): ${JSON.stringify(dayNet)}`);
+    }
+  } catch (err) {
+    console.log(`  (failed) ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // ── 3. Performance Report — raw body + parsed P&L ──────────────────────────
