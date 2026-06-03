@@ -53,3 +53,54 @@ export function resolveDayNet(
 function sum<T>(arr: T[], pick: (t: T) => number): number {
   return arr.reduce((s, t) => s + pick(t), 0);
 }
+
+// ---------------------------------------------------------------------------
+// Row-level resolution
+// ---------------------------------------------------------------------------
+
+export type TradeRowResolution = {
+  /**
+   * Signed fees for this trade (negative = cost to the trader).
+   * null when not determinable — show "Not reported".
+   */
+  fees: number | null;
+  /**
+   * After-fees net P&L for this trade.
+   * null when not determinable — show "—".
+   */
+  net: number | null;
+};
+
+/**
+ * Resolve the row-level fees and net P&L for a single trade.
+ *
+ * Priority:
+ *   1. Per-trade broker fees (feesAvailable) — always authoritative.
+ *   2. Single-trade day with broker day net — the whole day net is
+ *      attributable to this one trade, so we can back-infer fees:
+ *      inferredFees = brokerDayNet - tradePnl  (e.g. -0.40 - 1.50 = -1.90)
+ *   3. Multi-trade day without per-trade fees — cannot allocate; null/null.
+ *
+ * `fees` is returned as a signed number (negative = cost) matching the
+ * fmt$ convention. `trade.fees` on RoundTripTrade is a positive magnitude;
+ * this function normalises it to signed.
+ */
+export function resolveTradeRowNet(
+  trade: { pnl: number; netPnl: number; fees: number | null; feesAvailable: boolean },
+  tradesInDay: number,
+  brokerDayNet: number | undefined,
+): TradeRowResolution {
+  if (trade.feesAvailable) {
+    return {
+      fees: trade.fees != null ? -trade.fees : null,
+      net: trade.netPnl,
+    };
+  }
+  if (tradesInDay === 1 && brokerDayNet != null) {
+    return {
+      fees: brokerDayNet - trade.pnl,
+      net: brokerDayNet,
+    };
+  }
+  return { fees: null, net: null };
+}

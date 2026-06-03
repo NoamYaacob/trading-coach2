@@ -398,14 +398,46 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     assert.ok(page.includes('"Net P&L"'), "must have a 'Net P&L' column");
   });
 
-  it("Trades table shows 'Not reported' for fees and '—' for Net when feesAvailable is false", () => {
+  it("Trades table shows 'Not reported' for fees and '—' for Net when not determinable", () => {
     assert.ok(
       page.includes('"Not reported"'),
-      "Fees cell must show 'Not reported' when the broker did not supply commission",
+      "Fees cell must show 'Not reported' when fees cannot be determined",
     );
     assert.ok(
-      page.includes('t.feesAvailable ? fmt$(t.netPnl) : "—"'),
-      "Net P&L cell must show '—' (not the gross value) when fees are unavailable",
+      page.includes('"—"'),
+      "Net P&L cell must show '—' when net cannot be determined",
+    );
+    // Row resolution uses resolveTradeRowNet — not the raw t.feesAvailable flag directly.
+    assert.ok(
+      page.includes("resolveTradeRowNet"),
+      "row cells must use resolveTradeRowNet to support single-trade day inference",
+    );
+    assert.ok(
+      page.includes("rowRes.net"),
+      "Net P&L cell must branch on rowRes.net (not raw t.feesAvailable)",
+    );
+  });
+
+  it("single-trade day: fees and net are inferred from broker day net via resolveTradeRowNet", () => {
+    // When a day has exactly one round-trip and brokerDayNet[date] exists,
+    // resolveTradeRowNet must back-infer fees = brokerDayNet - tradePnl and
+    // net = brokerDayNet. The page must import and call resolveTradeRowNet.
+    const dayNet = read("app/trades/day-net.ts");
+    assert.ok(
+      dayNet.includes("resolveTradeRowNet"),
+      "day-net.ts must export resolveTradeRowNet",
+    );
+    assert.ok(
+      dayNet.includes("tradesInDay === 1") && dayNet.includes("brokerDayNet != null"),
+      "resolveTradeRowNet must special-case single-trade days with broker net",
+    );
+    assert.ok(
+      dayNet.includes("brokerDayNet - trade.pnl"),
+      "inferred fees must be computed as brokerDayNet - tradePnl",
+    );
+    assert.ok(
+      page.includes("resolveTradeRowNet"),
+      "page must call resolveTradeRowNet for each row",
     );
   });
 
