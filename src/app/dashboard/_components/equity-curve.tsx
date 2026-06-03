@@ -187,6 +187,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
     timeframe === "7d" ? "last 7 days"
     : timeframe === "14d" ? "last 14 days"
     : timeframe === "30d" ? "last 30 days"
+    : hasBrokerHistory ? "API-visible broker history"
     : "all time";
 
   const toggleButton = (tf: Timeframe, label: string) => {
@@ -247,19 +248,22 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            {"Cumulative daily P&L · "}
-            {series.allDaysNet
-              ? "Net · after broker fees"
-              : series.someBrokerNet
-              ? "Broker net where available · else fill before fees"
-              : `Partial imported fills · ${dataSourceLabel}`}
-            {timeframe === "all" && coverageStartLabel != null && (
-              <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                {hasBrokerHistory
-                  ? `· broker history from ${coverageStartLabel}`
-                  : `· partial imported fills only · data from ${coverageStartLabel}`}
-              </span>
-            )}
+            {timeframe === "all" && hasBrokerHistory && coverageStartLabel != null
+              ? `Net after fees · Broker Cash History from ${coverageStartLabel}`
+              : <>
+                  {"Cumulative daily P&L · "}
+                  {series.allDaysNet
+                    ? "Net · after broker fees"
+                    : series.someBrokerNet
+                    ? "Broker net where available · else fill before fees"
+                    : `Partial imported fills · ${dataSourceLabel}`}
+                  {timeframe === "all" && coverageStartLabel != null && (
+                    <span style={{ marginLeft: 4, opacity: 0.75 }}>
+                      {`· partial imported fills only · data from ${coverageStartLabel}`}
+                    </span>
+                  )}
+                </>
+            }
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>

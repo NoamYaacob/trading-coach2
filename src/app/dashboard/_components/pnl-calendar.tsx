@@ -147,6 +147,15 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
 
   const hasBrokerHistory = brokerDayNet != null && Object.keys(brokerDayNet).length > 0;
 
+  // Earliest broker ledger day — shown in the "Broker Cash History available from" label.
+  const earliestBrokerDayLabel = React.useMemo(() => {
+    if (!hasBrokerHistory || brokerDayNet == null) return null;
+    const keys = Object.keys(brokerDayNet).sort();
+    if (keys.length === 0) return null;
+    const d = new Date(`${keys[0]}T12:00:00Z`);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, [hasBrokerHistory, brokerDayNet]);
+
   // Earliest imported trade date — only shown when no broker history is present.
   const earliestTradeDate = React.useMemo(() => {
     if (hasBrokerHistory) return null; // broker history available — don't show fill import label
@@ -213,7 +222,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             {allCellsNet ? "Net P&L" : "Fill P&L (before fees)"} · calendar day · {accountLabel}
             {hasBrokerHistory ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                · Broker Cash History
+                · Broker Cash History{earliestBrokerDayLabel != null ? ` from ${earliestBrokerDayLabel}` : ""}
               </span>
             ) : earliestTradeDate != null ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>

@@ -416,7 +416,7 @@ async function main(): Promise<void> {
     summariseRaw(rows, "cashBalance/list", {
       tsField: "timestamp",
       deltaField: "cashChange",
-      amountField: "balance",
+      amountField: "amount",
       accountField: "accountId",
       typeField: "cashBalanceType",
       targetAccountId: tvAccountId,
@@ -456,7 +456,7 @@ async function main(): Promise<void> {
       summariseRaw(rows, `cashBalance/deps?masterid=${tvAccountId}`, {
         tsField: "timestamp",
         deltaField: "cashChange",
-        amountField: "balance",
+        amountField: "amount",
         accountField: "accountId",
         typeField: "cashBalanceType",
         targetAccountId: null,
