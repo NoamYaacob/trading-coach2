@@ -211,7 +211,13 @@ export function computeBrokerPerformanceFromDayNet(
   source: BrokerHistorySource,
 ): BrokerAccountPerformance {
   const rounded: Record<string, number> = {};
-  for (const [k, v] of Object.entries(dayNet)) rounded[k] = round2(v);
+  // Strip zero-P&L days: report rows with realizedPnl=0 are non-trading days
+  // (weekends, holidays, etc.) and must not appear as active calendar cells or
+  // count toward win/loss/day metrics.
+  for (const [k, v] of Object.entries(dayNet)) {
+    const r = round2(v);
+    if (r !== 0) rounded[k] = r;
+  }
 
   let winCount = 0;
   let lossCount = 0;
@@ -290,7 +296,7 @@ export function computeBrokerWindowStats(
     }
   }
 
-  const dayCount = Object.keys(windowDayNet).length;
+  const dayCount = winCount + lossCount; // only non-zero trading days
   const winRate = dayCount > 0 ? round2(winCount / dayCount) : null;
   const profitFactor =
     dayCount === 0 ? null : lossSum > 0 ? round2(winSum / lossSum) : null;
