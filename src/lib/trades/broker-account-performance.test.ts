@@ -23,7 +23,9 @@ import assert from "node:assert/strict";
 
 import {
   computeBrokerAccountPerformance,
+  computeBrokerPerformanceFromDayNet,
   computeBrokerWindowStats,
+  brokerSourceLabel,
   EMPTY_BROKER_PERFORMANCE,
 } from "./broker-account-performance.ts";
 import type { CashHistoryRow } from "./cash-history-fees.ts";
@@ -543,5 +545,80 @@ describe("10. Generic — no hardcoded account-specific values", () => {
       "spaced variant produces same result as unspaced");
     assert.equal(perfU.tradeCount, 1);
     assert.equal(perfS.tradeCount, 1);
+  });
+});
+
+// ── Test 11: Account Balance History (report) day-level performance ──────────
+
+describe("11. computeBrokerPerformanceFromDayNet — Account Balance History source", () => {
+  // Generic day-level realized P&L map (no live account values).
+  const dayNet = {
+    "2026-01-02": -212.10,
+    "2026-01-05": 35.40,
+    "2026-01-09": 0,
+    "2026-01-12": -0.40,
+  };
+
+  it("win/loss/profit-factor/largest use day-level realized P&L", () => {
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    assert.equal(perf.winCount, 1, "only 2026-01-05 is a winning day");
+    assert.equal(perf.lossCount, 2, "two losing days (-212.10, -0.40); zero day excluded");
+    assert.equal(perf.largestWin, 35.40);
+    assert.equal(perf.largestLoss, -212.10);
+    // PF = 35.40 / (212.10 + 0.40) = 35.40 / 212.50
+    assert.equal(perf.profitFactor, Math.round((35.40 / 212.50 + Number.EPSILON) * 100) / 100);
+    assert.equal(perf.allTimeNet, -177.10, "total realized = -212.10 + 35.40 + 0 - 0.40");
+  });
+
+  it("sets source, earliest/latest broker day, and no per-trade detail", () => {
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    assert.equal(perf.source, "account-balance-history");
+    assert.equal(perf.earliestBrokerDay, "2026-01-02");
+    assert.equal(perf.latestBrokerDay, "2026-01-12");
+    assert.equal(perf.tradeCount, 0, "report is day-level — no per-trade count");
+    assert.deepEqual(perf.tradePairs, []);
+    assert.ok(perf.hasBrokerHistory);
+  });
+
+  it("computeBrokerWindowStats works on a report-derived performance", () => {
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    const ws = computeBrokerWindowStats(perf, "2026-01-05");
+    assert.equal(ws.dayCount, 3, "2026-01-05, -09, -12 are >= sinceDayKey");
+    assert.equal(ws.winCount, 1);
+    assert.equal(ws.lossCount, 1);
+    assert.equal(ws.largestLoss, -0.40);
+    assert.equal(ws.largestWin, 35.40);
+  });
+
+  it("empty day map yields source 'none' and no history", () => {
+    const perf = computeBrokerPerformanceFromDayNet({}, "account-balance-history");
+    assert.equal(perf.source, "none");
+    assert.equal(perf.hasBrokerHistory, false);
+    assert.equal(perf.earliestBrokerDay, null);
+    assert.equal(perf.latestBrokerDay, null);
+  });
+});
+
+// ── Test 12: source labels ───────────────────────────────────────────────────
+
+describe("12. brokerSourceLabel — honest source wording", () => {
+  it("Account Balance History → 'Broker Account Balance History'", () => {
+    assert.equal(brokerSourceLabel("account-balance-history"), "Broker Account Balance History");
+  });
+  it("cash-history → 'Broker Cash History'", () => {
+    assert.equal(brokerSourceLabel("cash-history"), "Broker Cash History");
+  });
+  it("none → 'Broker history' (never claims a specific source)", () => {
+    assert.equal(brokerSourceLabel("none"), "Broker history");
+  });
+
+  it("cashBalanceLog-derived performance is tagged source 'cash-history'", () => {
+    const rows: CashHistoryRow[] = [
+      exchangeFee(-1.0, "2026-06-02", "acct-A"),
+      tradePaired(0.6, "2026-06-02", "acct-A"),
+    ];
+    const perf = computeBrokerAccountPerformance(rows, "acct-A");
+    assert.equal(perf.source, "cash-history");
+    assert.equal(perf.latestBrokerDay, "2026-06-02");
   });
 });

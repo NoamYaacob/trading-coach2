@@ -305,7 +305,9 @@ export default async function DashboardPage({
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
       await client.initialize();
-      brokerPerformance = await client.getCashHistoryPerformance();
+      // Prefer the Account Balance History report (widest history); falls back
+      // to cashBalanceLog/deps when the report is unavailable/empty.
+      brokerPerformance = await client.getHistoricalAccountPerformance();
     } catch {
       brokerPerformance = EMPTY_BROKER_PERFORMANCE;
     }
@@ -1083,6 +1085,7 @@ export default async function DashboardPage({
                 timezone={displayTimeZone}
                 feesAvailable={recentTradesFeesAvailable}
                 brokerDayNet={brokerDayNet}
+                brokerSource={brokerPerformance.source}
               />
             </section>
 
@@ -1278,6 +1281,7 @@ export default async function DashboardPage({
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
                   accountId={selectedAccount.id}
                   brokerDayNet={brokerDayNet}
+                  brokerSource={brokerPerformance.source}
                 />
               </section>
             )}
