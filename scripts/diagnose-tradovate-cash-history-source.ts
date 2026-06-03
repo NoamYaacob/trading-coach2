@@ -43,7 +43,7 @@ function section(title: string): void {
 function fmt$(v: number | null | undefined): string {
   if (v == null || isNaN(v as number)) return "—";
   const n = v as number;
-  return `${n >= 0 ? "+" : ""}$${Math.abs(n).toFixed(2)}`;
+  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
 }
 
 function pad(s: string, w: number): string {
@@ -158,10 +158,31 @@ function summariseRows(
   };
 }
 
+// ── Catalog types ─────────────────────────────────────────────────────────────
+
+interface CatalogParam {
+  name: string;
+  paramType?: string;
+  optional?: boolean;
+  defaultValue?: unknown;
+  [key: string]: unknown;
+}
+
+interface CatalogDefinition {
+  name: string;
+  description?: string;
+  params?: CatalogParam[];
+  templates?: string[];
+  representationTypes?: string[];
+  fields?: unknown[];
+  [key: string]: unknown;
+}
+
 // ── Report probe helpers ──────────────────────────────────────────────────────
 
 interface ReportResult {
   name: string;
+  label: string;
   status: number;
   contentType: string | null;
   bodyPreview: string;
@@ -169,7 +190,7 @@ interface ReportResult {
   success: boolean;
 }
 
-function previewBody(body: string, maxLen = 400): string {
+function previewBody(body: string, maxLen = 600): string {
   const trimmed = body.replace(/\s+/g, " ").trim();
   return trimmed.length <= maxLen ? trimmed : `${trimmed.slice(0, maxLen)}…`;
 }
@@ -177,6 +198,7 @@ function previewBody(body: string, maxLen = 400): string {
 /** Try a single reports/requestreport variant; log and return result. */
 async function tryReport(
   client: TradovateClient,
+  reportName: string,
   label: string,
   body: Record<string, unknown>,
   escapeSlashes: boolean,
@@ -185,15 +207,17 @@ async function tryReport(
   const res = await client.debugRawPost("reports/requestreport", body, { escapeSlashes });
   if (res == null) {
     console.log(`  → null (no access token or reports URL)`);
-    return { name: label, status: 0, contentType: null, bodyPreview: "null", sentBody: "", success: false };
+    return { name: reportName, label, status: 0, contentType: null, bodyPreview: "null", sentBody: "", success: false };
   }
   const preview = previewBody(res.body);
   console.log(`  sentBody: ${res.sentBody}`);
   console.log(`  HTTP ${res.status}  content-type: ${res.contentType ?? "—"}`);
-  console.log(`  body: ${preview}`);
+  console.log(`  body preview: ${preview}`);
   const success = res.status >= 200 && res.status < 300;
-  if (success) console.log(`  ✓ SUCCESS`);
-  return { name: label, status: res.status, contentType: res.contentType, bodyPreview: preview, sentBody: res.sentBody, success };
+  if (success) {
+    console.log(`  ✓ SUCCESS — full body (first 4000 chars):\n${res.body.slice(0, 4000)}`);
+  }
+  return { name: reportName, label, status: res.status, contentType: res.contentType, bodyPreview: preview, sentBody: res.sentBody, success };
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -202,6 +226,77 @@ function mmddyyyy(iso: string): string {
   // "YYYY-MM-DD" → "MM/DD/YYYY"
   const [y, m, d] = iso.split("-");
   return `${m}/${d}/${y}`;
+}
+
+// Keywords that indicate a Cash History / financial ledger report
+const CASH_KEYWORDS = ["cash", "balance", "history", "transaction", "ledger", "statement", "activity"];
+// Keywords that indicate an Orders/Fills report
+const FILL_KEYWORDS = ["fill", "order", "trade", "execution", "performance"];
+
+function isCashCandidate(def: CatalogDefinition): boolean {
+  const text = `${def.name} ${def.description ?? ""}`.toLowerCase();
+  return CASH_KEYWORDS.some((k) => text.includes(k));
+}
+
+function isFillCandidate(def: CatalogDefinition): boolean {
+  const text = `${def.name} ${def.description ?? ""}`.toLowerCase();
+  return FILL_KEYWORDS.some((k) => text.includes(k));
+}
+
+/** Build a request body from a catalog definition, filling required params. */
+function buildBodyFromCatalog(
+  def: CatalogDefinition,
+  acctName: string,
+  acctId: number,
+  startMD: string,
+  endMD: string,
+  startIso: string,
+  endIso: string,
+  accountValue: string,
+  dateFormat: "mmddyyyy" | "iso",
+  representationType: string,
+  escapeSlashes: boolean,
+): { body: Record<string, unknown>; label: string } {
+  const startDate = dateFormat === "mmddyyyy" ? startMD : startIso;
+  const endDate   = dateFormat === "mmddyyyy" ? endMD   : endIso;
+
+  const paramValues: Record<string, string> = {
+    startDate,
+    endDate,
+    account: accountValue,
+    accountId: String(acctId),
+    accountName: acctName,
+    startTime: "00:00:00",
+    endTime:   "23:59:59",
+  };
+
+  const params = (def.params ?? []).map((p) => ({
+    name: p.name,
+    value: p.name in paramValues ? paramValues[p.name] : (p.defaultValue ?? ""),
+  }));
+
+  const template = def.templates?.[0];
+  const repType  = def.representationTypes?.includes(representationType)
+    ? representationType
+    : (def.representationTypes?.[0] ?? representationType);
+
+  const body: Record<string, unknown> = {
+    name: def.name,
+    timezone: "America/Chicago",
+    params,
+    representationType: repType,
+  };
+  if (template) body["template"] = template;
+
+  const label = [
+    def.name,
+    `dates=${dateFormat}`,
+    `acct=${accountValue}`,
+    `repType=${repType}`,
+    escapeSlashes ? "esc-slash" : "raw-slash",
+  ].join(" | ");
+
+  return { body, label };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -294,32 +389,56 @@ async function main(): Promise<void> {
   // ── 1. GET reports/requestReportDefinitions ────────────────────────────────
   section("GET reports/requestReportDefinitions — FULL REPORT CATALOG");
 
-  const discoveredReportNames: string[] = [];
+  let catalogDefs: CatalogDefinition[] = [];
   try {
     const res = await client.debugRawGetReport("reports/requestReportDefinitions");
     if (res == null) {
       console.log(`  Result: null (no access token or reports URL)`);
     } else {
       console.log(`  HTTP ${res.status}  content-type: ${res.contentType ?? "—"}`);
-      console.log(`  Body (first 2000 chars):\n${res.body.slice(0, 2000)}`);
       if (res.status >= 200 && res.status < 300) {
         try {
           const parsed: unknown = JSON.parse(res.body);
           if (Array.isArray(parsed)) {
-            console.log(`\n  Parsed ${parsed.length} report definitions:`);
-            for (const def of parsed) {
-              const name = String((def as Record<string, unknown>)["name"] ?? "");
-              discoveredReportNames.push(name);
-              const params = (def as Record<string, unknown>)["params"];
-              console.log(`    name="${name}"  params=${JSON.stringify(params)}`);
+            catalogDefs = parsed as CatalogDefinition[];
+            console.log(`\n  ✓ ${catalogDefs.length} report definitions in catalog:\n`);
+            for (const def of catalogDefs) {
+              console.log(`  ┌─ name: "${def.name}"`);
+              if (def.description) console.log(`  │  description: ${def.description}`);
+              if (def.templates?.length) console.log(`  │  templates: ${def.templates.join(", ")}`);
+              if (def.representationTypes?.length) console.log(`  │  representationTypes: ${def.representationTypes.join(", ")}`);
+              if (def.params?.length) {
+                console.log(`  │  params (${def.params.length}):`);
+                for (const p of def.params) {
+                  const optStr   = p.optional ? " [optional]" : " [required]";
+                  const typeStr  = p.paramType ? `  type=${p.paramType}` : "";
+                  const defStr   = p.defaultValue !== undefined ? `  default=${JSON.stringify(p.defaultValue)}` : "";
+                  const extraKeys = Object.keys(p).filter((k) => !["name","paramType","optional","defaultValue"].includes(k));
+                  const extraStr = extraKeys.length ? `  ${extraKeys.map((k)=>`${k}=${JSON.stringify(p[k])}`).join(" ")}` : "";
+                  console.log(`  │    ${pad(p.name, 20)}${optStr}${typeStr}${defStr}${extraStr}`);
+                }
+              }
+              // Other top-level keys
+              const knownKeys = new Set(["name","description","templates","representationTypes","params","fields"]);
+              const extra = Object.keys(def).filter((k) => !knownKeys.has(k));
+              if (extra.length) {
+                for (const k of extra) console.log(`  │  ${k}: ${JSON.stringify(def[k])}`);
+              }
+              if (def.fields) console.log(`  │  fields: ${JSON.stringify(def.fields).slice(0, 200)}`);
+              const cashTag = isCashCandidate(def) ? " ← CASH/HISTORY CANDIDATE" : "";
+              const fillTag = isFillCandidate(def) ? " ← FILL/ORDER CANDIDATE" : "";
+              console.log(`  └${"─".repeat(60)}${cashTag}${fillTag}`);
+              console.log();
             }
+          } else {
+            console.log(`  Parsed JSON but not an array. Raw:\n${res.body}`);
           }
         } catch {
-          console.log(`  (could not parse as JSON array)`);
+          console.log(`  Could not parse as JSON. Raw body:\n${res.body}`);
         }
       } else {
-        console.log(`  Note: ${res.status} on requestReportDefinitions — reports host may require admin/partner scope.`);
-        console.log(`  This is a diagnostic signal: standard trader OAuth may not have reports access.`);
+        console.log(`  HTTP ${res.status} — reports host may require admin/partner scope.`);
+        console.log(`  Raw:\n${res.body}`);
       }
     }
   } catch (err) {
@@ -388,10 +507,10 @@ async function main(): Promise<void> {
     console.log(`  cashBalanceLog/list failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  // ── 5. reports/requestreport — Cash History report names ──────────────────
-  section("reports/requestreport — CASH HISTORY / ACCOUNT STATEMENT REPORT NAMES");
+  // ── 5. reports/requestreport — catalog-driven probe ─────────────────────
+  section("reports/requestreport — CATALOG-DRIVEN PROBE");
 
-  // Date range: last 2 years (generous window)
+  // Date range: last 2 years (generous window to cover all historical activity)
   const today = new Date();
   const twoYearsAgo = new Date(today.getFullYear() - 2, today.getMonth(), today.getDate());
   const startIso = twoYearsAgo.toISOString().slice(0, 10);
@@ -399,132 +518,147 @@ async function main(): Promise<void> {
   const startMD = mmddyyyy(startIso);
   const endMD = mmddyyyy(endIso);
 
-  console.log(`  Date range: ${startMD} → ${endMD}`);
+  console.log(`  Date range used: ${startMD} → ${endMD}  (ISO: ${startIso} → ${endIso})`);
   console.log(`  Account name: "${acctName}"  |  tvAccountId: ${acctId}`);
-  console.log(`\n  Trying report names in order. Stops on first 2xx. Escaped slashes unless noted.`);
 
-  // Report names to probe — add any discovered names at the front
-  const reportNamesToTry = [
-    ...discoveredReportNames, // from requestReportDefinitions (if succeeded)
-    "Cash History",
-    "CashHistory",
-    "Account Statement",
-    "AccountStatement",
-    "Account Activity",
-    "AccountActivity",
-    "Transactions",
-    "Ledger",
-    "CashBalanceLog",
-    "Cash Balance Log",
-    "Statement",
-    "Activity",
-    "Performance", // known to be attempted — useful as control
-  ];
-  // Deduplicate preserving order
-  const seenNames = new Set<string>();
-  const uniqueNames = reportNamesToTry.filter((n) => {
-    if (seenNames.has(n)) return false;
-    seenNames.add(n);
-    return true;
-  });
+  // ── 5a. Identify candidates from catalog ─────────────────────────────────
+  const cashCandidates = catalogDefs.filter(isCashCandidate);
+  const fillCandidates = catalogDefs.filter(isFillCandidate);
+  const allCandidates  = [...cashCandidates, ...fillCandidates.filter((d) => !cashCandidates.includes(d))];
+  // Always include all defs if catalog is small; otherwise limit to candidates
+  const defsToTry = catalogDefs.length > 0
+    ? (allCandidates.length > 0 ? allCandidates : catalogDefs)
+    : [];
+
+  console.log(`\n  Catalog: ${catalogDefs.length} total defs.`);
+  console.log(`  Cash/History candidates: ${cashCandidates.map((d) => `"${d.name}"`).join(", ") || "(none)"}`);
+  console.log(`  Fill/Order candidates:   ${fillCandidates.map((d) => `"${d.name}"`).join(", ") || "(none)"}`);
+  console.log(`  Will try: ${defsToTry.length} definitions.\n`);
 
   const successfulReports: ReportResult[] = [];
+  const triedReports: ReportResult[] = [];
 
-  for (const reportName of uniqueNames) {
-    // Variant A: escaped timezone, MM/DD/YYYY, html, with template
-    const bodyA: Record<string, unknown> = {
-      name: reportName,
-      timezone: "America/Chicago",
-      params: [
-        { name: "startDate", value: startMD },
-        { name: "endDate",   value: endMD },
-        { name: "startTime", value: "17:00:00" },
-        { name: "endTime",   value: "16:59:59" },
-        { name: "account",   value: acctName },
-      ],
-      representationType: "html",
-      template: "Flex.html",
-    };
-    const rA = await tryReport(client, `${reportName} | tz=America\\/Chicago | MM/DD/YYYY | html | account=name`, bodyA, true);
-    if (rA.success) { successfulReports.push(rA); break; }
+  // ── 5b. Catalog-driven requests ──────────────────────────────────────────
+  for (const def of defsToTry) {
+    console.log(`\n  ════ Trying catalog report: "${def.name}" ════`);
 
-    // Variant B: escaped timezone, account by id
-    const bodyB: Record<string, unknown> = {
-      name: reportName,
-      timezone: "America/Chicago",
-      params: [
-        { name: "startDate", value: startMD },
-        { name: "endDate",   value: endMD },
-        { name: "startTime", value: "17:00:00" },
-        { name: "endTime",   value: "16:59:59" },
-        { name: "account",   value: String(acctId) },
-      ],
-      representationType: "html",
-      template: "Flex.html",
-    };
-    const rB = await tryReport(client, `${reportName} | tz=America\\/Chicago | MM/DD/YYYY | html | account=tvId`, bodyB, true);
-    if (rB.success) { successfulReports.push(rB); break; }
+    // Build variants: 2 account forms × 2 date formats × 2 slash variants = up to 8
+    for (const accountValue of [acctName, String(acctId)]) {
+      for (const dateFormat of (["mmddyyyy", "iso"] as const)) {
+        for (const escapeSlashes of [true, false]) {
+          const { body, label } = buildBodyFromCatalog(
+            def, acctName, acctId, startMD, endMD, startIso, endIso,
+            accountValue, dateFormat, "html", escapeSlashes,
+          );
+          const r = await tryReport(client, def.name, label, body, escapeSlashes);
+          triedReports.push(r);
+          if (r.success) {
+            successfulReports.push(r);
+            break;
+          }
+        }
+        if (successfulReports.length > 0) break;
+      }
+      if (successfulReports.length > 0) break;
+    }
 
-    // Variant C: UTC timezone, csv, no template
-    const bodyC: Record<string, unknown> = {
-      name: reportName,
-      timezone: "UTC",
-      params: [
-        { name: "startDate", value: startMD },
-        { name: "endDate",   value: endMD },
-        { name: "account",   value: acctName },
-      ],
-      representationType: "csv",
-    };
-    const rC = await tryReport(client, `${reportName} | tz=UTC | MM/DD/YYYY | csv | no template`, bodyC, false);
-    if (rC.success) { successfulReports.push(rC); break; }
-
-    // Variant D: UTC, json, no account param (server default)
-    const bodyD: Record<string, unknown> = {
-      name: reportName,
-      timezone: "UTC",
-      params: [
-        { name: "startDate", value: startMD },
-        { name: "endDate",   value: endMD },
-      ],
-      representationType: "json",
-    };
-    const rD = await tryReport(client, `${reportName} | tz=UTC | no account param | json`, bodyD, false);
-    if (rD.success) { successfulReports.push(rD); break; }
-
-    // Variant E: no timezone, ISO dates, html
-    const bodyE: Record<string, unknown> = {
-      name: reportName,
-      params: [
-        { name: "startDate", value: startIso },
-        { name: "endDate",   value: endIso },
-        { name: "account",   value: acctName },
-      ],
-      representationType: "html",
-    };
-    const rE = await tryReport(client, `${reportName} | no tz | ISO dates | html`, bodyE, false);
-    if (rE.success) { successfulReports.push(rE); break; }
-
-    // Variant F: minimal — just name + params (no tz, no repType, no template)
-    const bodyF: Record<string, unknown> = {
-      name: reportName,
-      params: [
-        { name: "startDate", value: startMD },
-        { name: "endDate",   value: endMD },
-        { name: "account",   value: acctName },
-      ],
-    };
-    const rF = await tryReport(client, `${reportName} | minimal (no tz, no repType, no template)`, bodyF, true);
-    if (rF.success) { successfulReports.push(rF); break; }
+    // If still failing, try csv and json representationTypes
+    if (successfulReports.length === 0) {
+      for (const repType of ["csv", "json"] as const) {
+        const { body, label } = buildBodyFromCatalog(
+          def, acctName, acctId, startMD, endMD, startIso, endIso,
+          acctName, "mmddyyyy", repType, true,
+        );
+        const r = await tryReport(client, def.name, label, body, true);
+        triedReports.push(r);
+        if (r.success) { successfulReports.push(r); break; }
+      }
+    }
 
     if (successfulReports.length > 0) break;
   }
 
+  // ── 5c. If all catalog attempts failed, try body shape variants ──────────
+  // These probe whether the 400 is caused by the body structure itself.
+  if (successfulReports.length === 0 && catalogDefs.length > 0) {
+    // Use the first catalog def as the control name
+    const controlDef = catalogDefs[0]!;
+    const controlName = controlDef.name;
+
+    console.log(`\n  ════ Body shape investigation (using "${controlName}" as control) ════`);
+    console.log(`  Goal: isolate cause of HTTP 400 / "Invalid JSON: illegal number"`);
+
+    // Shape 1: completely minimal — name only, no other fields
+    const shape1: Record<string, unknown> = { name: controlName };
+    triedReports.push(await tryReport(client, controlName,
+      `SHAPE1: name only (no params/tz/repType)`, shape1, false));
+    if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
+
+    // Shape 2: name + UTC timezone only
+    if (successfulReports.length === 0) {
+      const shape2: Record<string, unknown> = { name: controlName, timezone: "UTC" };
+      triedReports.push(await tryReport(client, controlName,
+        `SHAPE2: name + timezone=UTC only`, shape2, false));
+      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
+    }
+
+    // Shape 3: params as flat object instead of array
+    if (successfulReports.length === 0) {
+      const shape3: Record<string, unknown> = {
+        name: controlName,
+        timezone: "UTC",
+        startDate: startMD,
+        endDate: endMD,
+        account: acctName,
+        representationType: "html",
+      };
+      triedReports.push(await tryReport(client, controlName,
+        `SHAPE3: params as flat top-level keys (not array)`, shape3, false));
+      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
+    }
+
+    // Shape 4: params as object map {startDate: "...", account: "..."}
+    if (successfulReports.length === 0) {
+      const shape4: Record<string, unknown> = {
+        name: controlName,
+        timezone: "UTC",
+        params: { startDate: startMD, endDate: endMD, account: acctName },
+        representationType: "html",
+      };
+      triedReports.push(await tryReport(client, controlName,
+        `SHAPE4: params as object map (not array of {name,value})`, shape4, false));
+      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
+    }
+
+    // Shape 5: exactly as `fetchPerformanceReport` builds it (known-working format)
+    if (successfulReports.length === 0) {
+      const shape5: Record<string, unknown> = {
+        name: controlName,
+        timezone: "America/Chicago",
+        params: [
+          { name: "startDate", value: startMD },
+          { name: "endDate",   value: endMD },
+          { name: "startTime", value: "17:00:00" },
+          { name: "endTime",   value: "16:59:59" },
+          { name: "account",   value: acctName },
+        ],
+        representationType: "html",
+        template: "Flex.html",
+      };
+      triedReports.push(await tryReport(client, controlName,
+        `SHAPE5: exact fetchPerformanceReport format | escaped slashes`, shape5, true));
+      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
+    }
+  }
+
   if (successfulReports.length > 0) {
-    console.log(`\n  ✓ REPORT SUCCESS: ${successfulReports[0]!.name}`);
-    console.log(`  Full response body:\n${successfulReports[0]!.bodyPreview}`);
+    console.log(`\n  ✓ REPORT SUCCESS: "${successfulReports[0]!.name}"`);
   } else {
-    console.log(`\n  ✗ All report variants failed. See Section 7 for browser capture instructions.`);
+    console.log(`\n  ✗ All report variants failed.`);
+    console.log(`  Status breakdown:`);
+    const byStatus = new Map<number, number>();
+    for (const r of triedReports) byStatus.set(r.status, (byStatus.get(r.status) ?? 0) + 1);
+    for (const [status, count] of byStatus) console.log(`    HTTP ${status}: ${count} attempts`);
   }
 
   // ── 6. Source comparison + recommendation ─────────────────────────────────
