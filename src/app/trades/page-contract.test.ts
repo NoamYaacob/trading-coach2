@@ -796,6 +796,70 @@ describe("/trades page: historical Fills-report backfill", () => {
     }
   });
 
+  it("(g) dateFilter uses a narrow ±1-day window, never a multi-year window", () => {
+    // Root-cause of the production bug: a 5-year window (2021–2026) returned 0
+    // rows from the Tradovate reports endpoint; a narrow Apr 29–May 01 window
+    // returned 20 fills. The page must compute reportStart/reportEnd from the
+    // dateFilter, not from a fixed 5-year lookback.
+    assert.ok(
+      page.includes("dateFilter}T00:00:00Z") || page.includes('`${dateFilter}T00:00:00Z`'),
+      "dateFilter branch must parse the filter date to compute a narrow window",
+    );
+    assert.ok(
+      page.includes("reportStart") && page.includes("reportEnd"),
+      "page must build explicit reportStart / reportEnd variables for the Fills request window",
+    );
+    // Must NOT use a fixed 5-year offset when dateFilter is present.
+    assert.ok(
+      !/getFullYear\(\)\s*-\s*5/.test(page),
+      "page must NOT use getFullYear() - 5 for the Fills report window — it returns 0 rows",
+    );
+  });
+
+  it("(g2) range view uses the visible `since` window, not a multi-year window", () => {
+    assert.ok(
+      page.includes("reportStart = since"),
+      "when no dateFilter, Fills report window start must be `since` (matches DB fill lookback)",
+    );
+    assert.ok(
+      page.includes("reportEnd = tomorrow"),
+      "Fills report window end must be tomorrow (1-day buffer)",
+    );
+  });
+
+  it("(g3) ABH calls and brokerDayNet are not affected by the narrow window change", () => {
+    // The narrow window applies ONLY to getHistoricalFillsReport.
+    // getHistoricalAccountPerformance must still be called unconditionally.
+    assert.ok(
+      page.includes("getHistoricalAccountPerformance"),
+      "ABH performance call must still be present and unconditional",
+    );
+    // brokerDayNet is still used for KPI math, not for table rows.
+    assert.ok(
+      page.includes("brokerWindowNet") && page.includes("brokerDayNet"),
+      "KPI day net still comes from brokerDayNet — unaffected by narrow-window fix",
+    );
+    assert.ok(
+      page.includes("reconstructMergedTrades(dbFillInputs, historicalFillInputs)"),
+      "table rows must still come from reconstructed fills, never from brokerDayNet",
+    );
+  });
+
+  it("(g4) client logs errorText if response is a JSON error envelope, and body preview on 0 rows", () => {
+    const method = client.slice(
+      client.indexOf("async getHistoricalFillsReport"),
+      client.indexOf("async getHistoricalFillsReport") + 4000,
+    );
+    assert.ok(
+      method.includes("errorText"),
+      "client must log errorText when the response body contains it",
+    );
+    assert.ok(
+      method.includes("0 rows parsed") && method.includes("bodyPreview"),
+      "client must log a body preview when 0 rows are parsed for diagnosis",
+    );
+  });
+
   it("Fills report fetch is read-only (no broker write verbs)", () => {
     // The getHistoricalFillsReport method must not introduce order/cancel/flatten.
     const method = client.slice(

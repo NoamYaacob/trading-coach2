@@ -204,12 +204,26 @@ export default async function TradesPage({
       // the report's `account` param (numeric tvAccountId returns 0 rows).
       // fillsReportFailed is set on timeout/error so the empty state can say
       // "could not be loaded" rather than the misleading "no fills available".
+      //
+      // IMPORTANT: The Fills report endpoint returns 0 rows for large windows
+      // (e.g. 5 years). Use a narrow window matched to what the page actually
+      // displays: ±1 day around dateFilter, or the visible range for range views.
       try {
         const accountName = await client.getAccountName();
         if (accountName) {
-          const today = new Date();
-          const reportStart = new Date(today.getFullYear() - 5, today.getMonth(), today.getDate());
-          const reportEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+          // Narrow window: dateFilter → ±1 day; range view → `since` to tomorrow.
+          // Never use a multi-year lookback for the Fills report.
+          let reportStart: Date;
+          let reportEnd: Date;
+          const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          if (dateFilter) {
+            const d = new Date(`${dateFilter}T00:00:00Z`);
+            reportStart = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+            reportEnd = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+          } else {
+            reportStart = since;
+            reportEnd = tomorrow;
+          }
           const startStr = formatDateMMDDYYYY(reportStart.toLocaleDateString("en-CA"));
           const endStr = formatDateMMDDYYYY(reportEnd.toLocaleDateString("en-CA"));
           const rows = await Promise.race([
@@ -223,6 +237,8 @@ export default async function TradesPage({
             console.info("[trades/page] fills-report timed-out or null", {
               accountId: selectedAccount.id,
               accountName,
+              dateFilter,
+              rangeDays,
               startStr,
               endStr,
             });
@@ -235,6 +251,8 @@ export default async function TradesPage({
             console.info("[trades/page] fills-report", {
               accountId: selectedAccount.id,
               accountName,
+              dateFilter,
+              rangeDays,
               startStr,
               endStr,
               reportRowsCount: rows.length,
@@ -260,6 +278,8 @@ export default async function TradesPage({
   if (selectedAccount) {
     console.info("[trades/page] reconstructed", {
       accountId: selectedAccount.id,
+      dateFilter,
+      rangeDays,
       dbFillInputsCount: dbFillInputs.length,
       historicalFillInputsCount: historicalFillInputs.length,
       reconstructedTradesCount: allTrades.length,
