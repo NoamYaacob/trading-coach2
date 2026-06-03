@@ -223,7 +223,11 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            Cumulative daily P&amp;L · {series.allDaysNet ? "Net · after broker fees" : dataSourceLabel}
+            Cumulative daily P&amp;L · {series.allDaysNet
+              ? "Net · after broker fees"
+              : series.someBrokerNet
+              ? "Broker net where available · else fill before fees"
+              : dataSourceLabel}
             {timeframe === "all" && earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}

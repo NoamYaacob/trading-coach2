@@ -43,6 +43,12 @@ export type DailySeries = {
   points: DailyPnlPoint[];
   /** True only when EVERY day in the series is a true after-fees net. */
   allDaysNet: boolean;
+  /**
+   * True when AT LEAST ONE day in the series is a broker-reported after-fees
+   * net. Lets a mixed range be labelled honestly ("broker net where available")
+   * instead of falsely implying the whole curve is gross fill before fees.
+   */
+  someBrokerNet: boolean;
 };
 
 /**
@@ -77,8 +83,11 @@ export function buildDailySeries(
   // broker-reported day net, or window-wide per-fill fees.
   const allDaysNet =
     points.length > 0 && (feesAvailable || points.every((p) => p.brokerNet));
+  // Per-fill fees make every day a true net; a single broker-net day also counts.
+  const someBrokerNet =
+    points.length > 0 && (feesAvailable || points.some((p) => p.brokerNet));
 
-  return { points, allDaysNet };
+  return { points, allDaysNet, someBrokerNet };
 }
 
 /**

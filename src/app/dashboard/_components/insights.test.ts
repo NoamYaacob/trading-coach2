@@ -237,3 +237,65 @@ describe("biggestLoss", () => {
     assert.equal(biggestLoss(trades)?.id, "b");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Source-scan contract: equity-curve & max-drawdown labels are honest about
+// the P&L basis actually used (broker net / mixed / fill before fees).
+// ---------------------------------------------------------------------------
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+function readComponent(rel: string): string {
+  return readFileSync(resolve(process.cwd(), "src/app/dashboard/_components", rel), "utf8");
+}
+
+describe("equity-curve label — honest about P&L basis", () => {
+  const src = readComponent("equity-curve.tsx");
+
+  it("uses allDaysNet for the fully-net label", () => {
+    assert.ok(src.includes("series.allDaysNet"), "must branch on series.allDaysNet");
+    assert.ok(
+      src.includes("Net · after broker fees"),
+      "fully-net curve must be labelled 'Net · after broker fees'",
+    );
+  });
+
+  it("mixed ranges use someBrokerNet — broker-net days are not relabelled as flat fill", () => {
+    assert.ok(src.includes("series.someBrokerNet"), "must branch on series.someBrokerNet for mixed ranges");
+    assert.ok(
+      src.includes("Broker net where available"),
+      "mixed range must say 'Broker net where available' instead of a flat 'before fees'",
+    );
+  });
+});
+
+describe("max-drawdown label — matches the source actually used", () => {
+  const src = readComponent("trader-insights.tsx");
+
+  it("drawdown is computed from the broker-net-aware daily series", () => {
+    assert.ok(src.includes("dailyMaxDrawdown(dailySeries)"), "drawdown must use the daily broker-net-aware series");
+  });
+
+  it("fully-net drawdown is labelled 'after broker fees'", () => {
+    assert.ok(
+      src.includes("cum. daily net P&L · after broker fees"),
+      "fully-net drawdown subtitle must say 'after broker fees'",
+    );
+  });
+
+  it("mixed-range drawdown is labelled 'broker net where available' — not 'before fees'", () => {
+    assert.ok(src.includes("dailySeries.someBrokerNet"), "drawdown label must branch on someBrokerNet");
+    assert.ok(
+      src.includes("broker net where available"),
+      "mixed-range drawdown must say 'broker net where available'",
+    );
+  });
+
+  it("only a truly fee-less range is labelled 'before fees'", () => {
+    assert.ok(
+      src.includes("cum. daily fill P&L · before fees"),
+      "fill-only drawdown keeps the honest 'before fees' label",
+    );
+  });
+});
