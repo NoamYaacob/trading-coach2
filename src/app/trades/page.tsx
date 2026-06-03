@@ -257,6 +257,14 @@ export default async function TradesPage({
   // Merge imported DB fills with broker historical Fills-report fills, deduping
   // by stable broker fill id, then reconstruct round trips over the union.
   const allTrades = reconstructMergedTrades(dbFillInputs, historicalFillInputs);
+  if (selectedAccount) {
+    console.info("[trades/page] reconstructed", {
+      accountId: selectedAccount.id,
+      dbFillInputsCount: dbFillInputs.length,
+      historicalFillInputsCount: historicalFillInputs.length,
+      reconstructedTradesCount: allTrades.length,
+    });
+  }
 
   // When a date filter is active, narrow to exactly that calendar day.
   const dateFilteredTrades = dateFilter
