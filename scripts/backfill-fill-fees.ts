@@ -28,11 +28,9 @@ import { resolve } from "path";
 import { config } from "dotenv";
 config({ path: resolve(process.cwd(), ".env.local") });
 
-import { PrismaClient } from "@prisma/client";
 import { TradovateClient } from "../src/lib/brokers/tradovate-client.ts";
 import { backfillFillFees } from "../src/lib/trades/fill-fee-backfill.ts";
-
-const prisma = new PrismaClient();
+import { prisma } from "../src/lib/db.ts";
 
 async function main() {
   const args = process.argv.slice(2);
