@@ -759,6 +759,43 @@ describe("/trades page: historical Fills-report backfill", () => {
     );
   });
 
+  it("(d) timeout/error on fills report → page tracks fillsReportFailed and shows honest empty state", () => {
+    assert.ok(
+      page.includes("fillsReportFailed"),
+      "page must track fillsReportFailed to distinguish timeout from 'no fills on this date'",
+    );
+    assert.ok(
+      page.includes("Promise.race"),
+      "fills report fetch must be wrapped in Promise.race for timeout protection",
+    );
+    assert.ok(
+      page.includes("could not be loaded"),
+      "empty state must say 'could not be loaded' when fillsReportFailed is true",
+    );
+    assert.ok(
+      page.includes("broker fill rows could not be loaded"),
+      "sub-text must use 'broker fill rows could not be loaded' wording for fillsReportFailed case",
+    );
+  });
+
+  it("(e) dashboard and sidebar pages do NOT call the fills report", () => {
+    const dashboard = read("app/dashboard/page.tsx");
+    const rules = read("app/rules/page.tsx");
+    const alerts = read("app/alerts/page.tsx");
+    const settings = read("app/settings/page.tsx");
+    for (const [name, content] of [
+      ["dashboard", dashboard],
+      ["rules", rules],
+      ["alerts", alerts],
+      ["settings", settings],
+    ] as const) {
+      assert.ok(
+        !content.includes("getHistoricalFillsReport"),
+        `${name} page must NOT call getHistoricalFillsReport — only the Trades page fetches fills`,
+      );
+    }
+  });
+
   it("Fills report fetch is read-only (no broker write verbs)", () => {
     // The getHistoricalFillsReport method must not introduce order/cancel/flatten.
     const method = client.slice(

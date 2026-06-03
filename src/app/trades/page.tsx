@@ -189,6 +189,7 @@ export default async function TradesPage({
   let earliestBrokerDay: string | null = null;
   let historicalFillInputs: typeof dbFillInputs = [];
   let usedReportFills = false;
+  let fillsReportFailed = false;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
@@ -198,8 +199,11 @@ export default async function TradesPage({
       brokerSource = perf.source;
       earliestBrokerDay = perf.earliestBrokerDay;
 
-      // Historical fills — best-effort, read-only. Account NAME is required as
+      // Historical fills — best-effort, read-only, with a 5-second timeout to
+      // avoid blocking the Server Component render. Account NAME is required as
       // the report's `account` param (numeric tvAccountId returns 0 rows).
+      // fillsReportFailed is set on timeout/error so the empty state can say
+      // "could not be loaded" rather than the misleading "no fills available".
       try {
         const accountName = await client.getAccountName();
         if (accountName) {
@@ -208,15 +212,38 @@ export default async function TradesPage({
           const reportEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
           const startStr = formatDateMMDDYYYY(reportStart.toLocaleDateString("en-CA"));
           const endStr = formatDateMMDDYYYY(reportEnd.toLocaleDateString("en-CA"));
-          const rows = await client.getHistoricalFillsReport(accountName, startStr, endStr);
-          if (rows && rows.length > 0) {
-            historicalFillInputs = historicalFillsToFillInputs(rows).filter(
+          const rows = await Promise.race([
+            client.getHistoricalFillsReport(accountName, startStr, endStr),
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 5000),
+            ),
+          ]);
+          if (rows === null) {
+            fillsReportFailed = true;
+            console.info("[trades/page] fills-report timed-out or null", {
+              accountId: selectedAccount.id,
+              accountName,
+              startStr,
+              endStr,
+            });
+          } else {
+            const inWindow = historicalFillsToFillInputs(rows).filter(
               (f) => f.occurredAt >= since,
             );
-            usedReportFills = historicalFillInputs.length > 0;
+            historicalFillInputs = inWindow;
+            usedReportFills = inWindow.length > 0;
+            console.info("[trades/page] fills-report", {
+              accountId: selectedAccount.id,
+              accountName,
+              startStr,
+              endStr,
+              reportRowsCount: rows.length,
+              mergedFillInputsCount: inWindow.length,
+            });
           }
         }
       } catch {
+        fillsReportFailed = true;
         historicalFillInputs = [];
         usedReportFills = false;
       }
@@ -692,7 +719,9 @@ export default async function TradesPage({
                     <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>—</div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>
                       {dateFilter && brokerDayNet[dateFilter] != null
-                        ? "No imported fills for this date."
+                        ? fillsReportFailed
+                          ? "Broker fill rows could not be loaded for this date."
+                          : "No imported fills for this date."
                         : dateFilter
                         ? `No closed round-trips on ${fmtDateFromKey(dateFilter)}.`
                         : allTrades.length === 0
@@ -701,7 +730,9 @@ export default async function TradesPage({
                     </p>
                     <p style={{ fontSize: 12, color: "var(--gr-text-mute)", marginTop: 6, lineHeight: 1.5 }}>
                       {dateFilter && brokerDayNet[dateFilter] != null
-                        ? `${brokerSourceLabel(brokerSource)} reports a net P&L for this day, but no imported fill rows are available for this date.`
+                        ? fillsReportFailed
+                          ? `${brokerSourceLabel(brokerSource)} reports a net P&L for this day, but broker fill rows could not be loaded.`
+                          : `${brokerSourceLabel(brokerSource)} reports a net P&L for this day, but no imported fill rows are available for this date.`
                         : allTrades.length === 0
                         ? "Fills are reconstructed into round-trip trades the moment your broker reports them — Guardrail does not invent activity."
                         : "Adjust the filter or extend the range to see more."}
