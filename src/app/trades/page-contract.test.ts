@@ -366,12 +366,14 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     assert.ok(page.includes("stats.grossPnl"), "fill-only branch uses stats.grossPnl");
   });
 
-  it("KPI broker-net branch shows fill P&L as secondary supporting text", () => {
-    // When broker Cash History net is the primary, the before-fees fill total
-    // must still appear in the sub-label so the trader can see the reconciliation.
+  it("KPI broker-net branch does NOT show fill P&L in the sub-label", () => {
+    // Source-of-truth rule: when broker Cash History is the primary, the confusing
+    // 'Fill P&L $X before fees' subtext is removed from the Net P&L KPI card.
+    // Mixing fill gross with broker net -$0.40 misleads the trader.
+    // The sub-label should only say 'after broker fees' (plus coverage ratio when partial).
     assert.ok(
-      page.includes("Fill P&L ${fmt$(stats.grossPnl)} before fees"),
-      "broker-net KPI sub must include the fill P&L as secondary context",
+      !page.includes("Fill P&L ${fmt$(stats.grossPnl)} before fees"),
+      "broker-net KPI sub must NOT include fill P&L — it conflicts with broker net -$0.40",
     );
   });
 

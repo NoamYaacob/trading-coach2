@@ -469,8 +469,8 @@ export default async function TradesPage({
                         label: "Net P&L",
                         value: stats.count > 0 ? fmt$(brokerWindowNet) : "—",
                         sub: brokerCoversAll
-                          ? `after broker fees · Fill P&L ${fmt$(stats.grossPnl)} before fees`
-                          : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed · Fill P&L ${fmt$(stats.grossPnl)} before fees`,
+                          ? `after broker fees`
+                          : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed`,
                         tone: brokerWindowNet >= 0 ? "ok" : "bad",
                       }
                     : stats.feesAvailable

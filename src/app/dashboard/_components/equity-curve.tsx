@@ -288,7 +288,11 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
         </div>
       </div>
 
-      <EquityCurveBody series={series} tradeCount={windowTrades.length} />
+      <EquityCurveBody
+        series={series}
+        tradeCount={hasBrokerHistory ? series.points.length : windowTrades.length}
+        brokerNativeMode={hasBrokerHistory}
+      />
     </div>
   );
 }
@@ -331,7 +335,7 @@ function buildAxisLabels(data: ChartPoint[]): string[] {
   return [first, mid, last];
 }
 
-function EquityCurveBody({ series, tradeCount }: { series: DailySeries; tradeCount: number }) {
+function EquityCurveBody({ series, tradeCount, brokerNativeMode }: { series: DailySeries; tradeCount: number; brokerNativeMode?: boolean }) {
   const { colors, mounted } = useTokenColors();
 
   if (series.points.length < 2) {
@@ -385,7 +389,9 @@ function EquityCurveBody({ series, tradeCount }: { series: DailySeries; tradeCou
           }}
         >
           {tradeCount === 0
-            ? "No closed round-trips in this window for this account yet."
+            ? brokerNativeMode
+              ? "No broker cash history days in this window for this account yet."
+              : "No closed round-trips in this window for this account yet."
             : "Curve appears once at least 2 trading days have closed in this window."}
         </p>
       </div>
@@ -433,7 +439,7 @@ function EquityCurveBody({ series, tradeCount }: { series: DailySeries; tradeCou
           {fmt$(finalY)}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
-          {data.length} trading day{data.length !== 1 ? "s" : ""} · {tradeCount} trade{tradeCount !== 1 ? "s" : ""}
+          {data.length} trading day{data.length !== 1 ? "s" : ""}{brokerNativeMode ? " · broker Cash History" : ` · ${tradeCount} trade${tradeCount !== 1 ? "s" : ""}`}
         </span>
       </div>
       <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />

@@ -145,13 +145,14 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
     [viewYear, viewMonth, timezone],
   );
 
-  // Earliest imported trade date + whether any trade has an unresolved contract
-  // symbol (point-value defaulted to $1/pt → P&L is low confidence). Surfaced in
-  // the subtitle so this is never mistaken for complete, trusted all-time history.
+  const hasBrokerHistory = brokerDayNet != null && Object.keys(brokerDayNet).length > 0;
+
+  // Earliest imported trade date — only shown when no broker history is present.
   const earliestTradeDate = React.useMemo(() => {
+    if (hasBrokerHistory) return null; // broker history available — don't show fill import label
     if (trades.length === 0) return null;
     return new Date(Math.min(...trades.map((t) => t.closedAt.getTime())));
-  }, [trades]);
+  }, [hasBrokerHistory, trades]);
   const hasLowConfidence = React.useMemo(
     () => trades.some((t) => t.symbolResolved === false),
     [trades],
@@ -159,9 +160,15 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
 
   // Month totals + win/loss counts for cells that are in-month and have data.
   const inMonthCells = cells.filter((c) => c.inMonth);
-  const tradedCells = inMonthCells
+  const allInMonthWithData = inMonthCells
     .map((c) => ({ ...c, data: dayMap.get(c.key) ?? null }))
-    .filter((c) => c.data && c.data.count > 0);
+    .filter((c) => c.data != null);
+  // When broker history is available, exclude fill-only days from the displayed totals.
+  const tradedCells = allInMonthWithData.filter(
+    (c) => hasBrokerHistory
+      ? c.data!.brokerNet  // broker-native: only confirmed broker days
+      : c.data!.count > 0, // fill fallback: any day with fills
+  );
   const winDays = tradedCells.filter((c) => c.data!.pnl > 0).length;
   const lossDays = tradedCells.filter((c) => c.data!.pnl < 0).length;
   const totalPnl = tradedCells.reduce((s, c) => s + c.data!.pnl, 0);
@@ -204,11 +211,15 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
             {allCellsNet ? "Net P&L" : "Fill P&L (before fees)"} · calendar day · {accountLabel}
-            {earliestTradeDate != null && (
+            {hasBrokerHistory ? (
+              <span style={{ marginLeft: 4, opacity: 0.75 }}>
+                · Broker Cash History
+              </span>
+            ) : earliestTradeDate != null ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
-            )}
+            ) : null}
           </div>
           {hasLowConfidence && (
             <div style={{ fontSize: 11, color: "var(--gr-warn, #b45309)", marginTop: 2 }}>
@@ -394,11 +405,16 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         ))}
         {cells.map((cell, i) => {
           const data = dayMap.get(cell.key) ?? null;
-          const hasTrades = data != null && data.count > 0;
+          const isFillOnly = hasBrokerHistory && data?.fillOnly === true;
+          // In broker-native mode, only show cells confirmed by Cash History.
+          // Fill-only days are hidden (treated as empty) so they don't mislead.
+          const hasTrades = data != null && (hasBrokerHistory ? data.brokerNet : data.count > 0);
           const pnl = data?.pnl ?? 0;
           const isToday = cell.key === todayKey;
           const title = hasTrades
-            ? `${cell.key} · ${fmt$(pnl)} · ${data!.count} trade${data!.count !== 1 ? "s" : ""}`
+            ? `${cell.key} · ${fmt$(pnl)} · ${data!.count} trade${data!.count !== 1 ? "s" : ""}${data?.brokerNet ? " · broker net" : ""}`
+            : isFillOnly
+            ? `${cell.key} · imported fill data (not in broker Cash History)`
             : cell.inMonth
             ? `${cell.key} · no trades`
             : undefined;

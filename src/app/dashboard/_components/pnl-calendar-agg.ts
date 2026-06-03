@@ -1,6 +1,6 @@
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
-export type CalendarDayAgg = { pnl: number; count: number; brokerNet: boolean };
+export type CalendarDayAgg = { pnl: number; count: number; brokerNet: boolean; fillOnly?: boolean };
 
 /**
  * Pure daily aggregation for the P&L calendar. For each displayed-timezone day:
@@ -21,6 +21,7 @@ export function aggregateCalendarDays(
   feesAvailable: boolean,
   brokerDayNet?: Record<string, number>,
 ): Map<string, CalendarDayAgg> {
+  const hasBrokerHistory = brokerDayNet != null && Object.keys(brokerDayNet).length > 0;
   const map = new Map<string, CalendarDayAgg>();
   for (const t of trades) {
     const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: timezone });
@@ -29,15 +30,21 @@ export function aggregateCalendarDays(
       pnl: cur.pnl + (feesAvailable ? t.netPnl : t.pnl),
       count: cur.count + 1,
       brokerNet: false,
+      // Days from imported fills that have no broker confirmation are flagged
+      // as fill-only so broker-native views can exclude or visually separate them.
+      fillOnly: hasBrokerHistory && brokerDayNet != null && !(key in brokerDayNet),
     });
   }
   // Override days the broker reported a net for — authoritative after-fees value.
   if (brokerDayNet) {
     for (const [key, net] of Object.entries(brokerDayNet)) {
       const cur = map.get(key);
-      // Only override days that actually have trades in the window.
       if (cur && cur.count > 0) {
-        map.set(key, { pnl: net, count: cur.count, brokerNet: true });
+        // Day exists in both imported fills and Cash History — use broker net.
+        map.set(key, { pnl: net, count: cur.count, brokerNet: true, fillOnly: false });
+      } else {
+        // Day is in Cash History but not in the fill window — broker data only.
+        map.set(key, { pnl: net, count: 0, brokerNet: true, fillOnly: false });
       }
     }
   }
