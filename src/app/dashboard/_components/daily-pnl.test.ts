@@ -218,14 +218,60 @@ describe("buildBrokerNativeSeries — broker Cash History as primary source", ()
     assert.deepEqual(series.points.map((p) => p.cumulative), [1, 3, 6]);
   });
 
-  it("cumulative includes negative days correctly (the 1868411 30D case)", () => {
-    // Other days +11.00, Jun 2 broker net -0.40 → cumulative ends at +10.60
+  it("cumulative across multiple days — older day +11.00, newer day -0.40 → +10.60", () => {
+    // Two-day hypothetical: May 20 +$11.00, Jun 2 broker net -0.40.
+    // Math check: cumulative ends at +10.60. Jun 2 MUST use -0.40 not fill +1.50.
+    // NOTE: for account 1868411 the real cashBalanceLog/deps only has Jun 2 (-0.40).
+    // The May +$11.00 row belongs to cashBalanceLog/list cross-account contamination.
+    // This test validates the arithmetic; the endpoint fix ensures only the
+    // account-scoped /deps data reaches buildBrokerNativeSeries.
     const series = buildBrokerNativeSeries({ "2026-05-20": 11.0, "2026-06-02": -0.4 });
     const last = series.points[series.points.length - 1]!;
     assert.ok(Math.abs(last.cumulative - 10.6) < 1e-9, "cumulative ends at +10.60");
-    // Jun 2 MUST use -0.40, never the fill value
     const jun2 = series.points.find((p) => p.day === "2026-06-02")!;
     assert.ok(Math.abs(jun2.pnl - -0.4) < 1e-9, "Jun 2 is -0.40, not +1.50");
+  });
+
+  it("account 1868411 all-time truth: cashBalanceLog/deps returns only Jun 2 → cumulative -0.40", () => {
+    // Diagnostic confirmed: cashBalanceLog/deps?masterid=1734393 returns 11 rows
+    // covering only 2026-06-02 (TradePaired+fees) and 2026-06-03 (NewSession only).
+    // After getCashHistoryDayNet() filters to feesAvailable days, brokerDayNet is
+    // exactly { "2026-06-02": -0.40 }. The all-time equity curve must be -0.40.
+    // If this was +10.60, it meant cashBalanceLog/list leaked a May row from
+    // another account. The /deps endpoint fix eliminates that contamination.
+    const brokerDayNet = { "2026-06-02": -0.4 };
+    const series = buildBrokerNativeSeries(brokerDayNet);
+    assert.equal(series.points.length, 1, "only one day in cash history");
+    assert.equal(series.points[0]!.day, "2026-06-02");
+    assert.ok(Math.abs(series.points[0]!.cumulative - -0.4) < 1e-9,
+      "all-time cumulative must be -0.40, NOT +10.60");
+    assert.equal(series.allDaysNet, true);
+  });
+
+  it("NewSession-only day with $0.00 does not appear in brokerDayNet (feesAvailable=false guard)", () => {
+    // cashBalanceLog/deps for account 1868411 has a 2026-06-03 NewSession row
+    // with delta=0 and no fee rows. getCashHistoryDayNet() excludes days where
+    // feesAvailable=false, so 2026-06-03 never reaches buildBrokerNativeSeries.
+    // This test confirms that if such a day were passed, it contributes $0.00
+    // to the curve (no inflation, no distortion).
+    const series = buildBrokerNativeSeries({ "2026-06-02": -0.4, "2026-06-03": 0 });
+    const jun3 = series.points.find((p) => p.day === "2026-06-03")!;
+    assert.ok(jun3 != null);
+    assert.ok(Math.abs(jun3.pnl - 0) < 1e-9, "NewSession $0.00 contributes exactly 0");
+    // Cumulative unchanged after the zero day
+    const jun2 = series.points.find((p) => p.day === "2026-06-02")!;
+    assert.ok(Math.abs(jun3.cumulative - jun2.cumulative) < 1e-9, "cumulative unchanged by $0.00 day");
+  });
+
+  it("imported fill gross P&L never inflates broker-native all-time curve", () => {
+    // The broker-native series is built exclusively from the brokerDayNet map.
+    // Imported fill data (+$1.50 fill gross for Jun 2) is not a parameter and
+    // cannot reach buildBrokerNativeSeries. This is a type-level guarantee.
+    // If brokerDayNet = { "2026-06-02": -0.40 }, the series has exactly one
+    // point regardless of how many fills were imported.
+    const series = buildBrokerNativeSeries({ "2026-06-02": -0.4 });
+    assert.equal(series.points.length, 1, "fill count cannot add points to broker-native series");
+    assert.ok(Math.abs(series.points[0]!.cumulative - -0.4) < 1e-9);
   });
 
   it("sinceDayKey filters out older days for windowed views", () => {

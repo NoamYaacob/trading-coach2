@@ -13,7 +13,10 @@ any other ID silently returns wrong data (usually an empty array).
 
 | Endpoint | `masterid` = | Correct usage |
 |---|---|---|
+| `cashBalanceLog/deps` | **Account** entity ID | `cashBalanceLog/deps?masterid={tvAccountId}` ✅ |
+| `cashBalance/deps` | **Account** entity ID | `cashBalance/deps?masterid={tvAccountId}` ✅ |
 | `order/deps` | **Account** entity ID | `order/deps?masterid={tvAccountId}` ✅ |
+| `position/deps` | **Account** entity ID | `position/deps?masterid={tvAccountId}` ✅ |
 | `userAccountAutoLiq/deps` | **Account** entity ID | `userAccountAutoLiq/deps?masterid={tvAccountId}` ✅ |
 | `fill/deps` | **Order** entity ID | `fill/deps?masterid={orderId}` — never pass `tvAccountId` here |
 | `fillPair/deps` | **Position** entity ID | `fillPair/deps?masterid={positionId}` — never pass `tvAccountId` here |
@@ -23,6 +26,22 @@ account-scoped.** Passing a Tradovate account ID to either returns fills
 or fill-pairs for a coincidental order/position that happens to share
 that numeric ID — not the account's fills. Do not use them to get
 account-level trade data.
+
+## `cashBalanceLog/list` vs `cashBalanceLog/deps` — use `/deps`
+
+`cashBalanceLog/list` returns ALL ledger rows for the OAuth token across
+every sub-account. The normalisation step (`normalizeCashBalanceLogRows`)
+drops rows where `accountId !== brokerAccountId`, but rows that arrive
+**without an `accountId` field** pass through (defensive null-tolerance)
+and can introduce phantom P&L from other accounts.
+
+`cashBalanceLog/deps?masterid={tvAccountId}` is server-side scoped to
+one account — it returns exactly the rows Tradovate associates with that
+account, matching the data in the Tradovate Cash History UI.
+
+**Always use `/deps?masterid={tvAccountId}` for per-account Cash History.**
+`/list` may only be used as a last-resort fallback when `tvAccountId` is
+unknown (token initialisation failure).
 
 ---
 
