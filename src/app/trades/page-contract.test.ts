@@ -564,6 +564,94 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
   });
 });
 
+describe("/trades page: net-based Winning/Losing filter", () => {
+  const page = read("app/trades/page.tsx");
+  const dayNet = read("app/trades/day-net.ts");
+
+  it("filter uses resolveTradeClassification (net-aware), not raw t.pnl", () => {
+    assert.ok(
+      page.includes("resolveTradeClassification"),
+      "page must call resolveTradeClassification for winning/losing filter",
+    );
+    assert.ok(
+      !page.includes('filter === "winning") return t.pnl > 0'),
+      "filter must not use raw t.pnl > 0 (gross) for winning classification",
+    );
+    assert.ok(
+      !page.includes('filter === "losing") return t.pnl < 0'),
+      "filter must not use raw t.pnl < 0 (gross) for losing classification",
+    );
+  });
+
+  it("page pre-computes dayTradeCountMap before filtering", () => {
+    assert.ok(
+      page.includes("dayTradeCountMap"),
+      "page must build dayTradeCountMap to pass per-day trade count to resolveTradeClassification",
+    );
+  });
+
+  it("day-net.ts exports resolveTradeClassification", () => {
+    assert.ok(
+      dayNet.includes("export function resolveTradeClassification"),
+      "day-net.ts must export resolveTradeClassification",
+    );
+  });
+
+  it("filter passes brokerDayNet[key] to resolveTradeClassification", () => {
+    assert.ok(
+      page.includes("brokerDayNet[key]"),
+      "filter must pass the per-day broker net to resolveTradeClassification",
+    );
+  });
+});
+
+describe("/trades page: ABH + zero fills empty state", () => {
+  const page = read("app/trades/page.tsx");
+
+  it("shows ABH-specific empty state when dateFilter and brokerDayNet exists but no fills", () => {
+    assert.ok(
+      page.includes("brokerDayNet[dateFilter] != null"),
+      "empty state must check brokerDayNet[dateFilter] != null to detect ABH-day-net-but-no-fills case",
+    );
+  });
+
+  it("ABH empty state message references the broker source label", () => {
+    assert.ok(
+      page.includes("reports a net P&L for this day, but no imported fill rows are available"),
+      "ABH empty state must explain that broker reports P&L but no fill rows are available",
+    );
+  });
+
+  it("table rows only come from loadAccountTrades fills — no fake ABH-only rows", () => {
+    assert.ok(
+      page.includes("loadAccountTrades"),
+      "table rows must come from loadAccountTrades (imported fills only)",
+    );
+    assert.ok(
+      !page.includes("Object.entries(brokerDayNet)") || page.includes("allBrokerWindowEntries"),
+      "brokerDayNet must only be used for KPI/stats, never iterated to produce table rows",
+    );
+  });
+});
+
+describe("/trades page: subtitle source clarity", () => {
+  const page = read("app/trades/page.tsx");
+
+  it("shows a clarifying line that day totals come from broker source and rows are imported fills", () => {
+    assert.ok(
+      page.includes("Day totals from") && page.includes("table rows are imported fills"),
+      "subtitle must clarify that day totals come from broker source while table rows are imported fills",
+    );
+  });
+
+  it("clarifying line only appears when broker source is available (not 'none')", () => {
+    assert.ok(
+      page.includes('brokerSource !== "none"'),
+      "clarifying subtitle line must be gated on brokerSource !== 'none'",
+    );
+  });
+});
+
 describe("Lockout button — soft danger styling (smaller, muted red)", () => {
   const lockout = read("app/dashboard/_components/command-center/account-lockout.tsx");
 

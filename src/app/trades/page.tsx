@@ -15,7 +15,7 @@ import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
-import { resolveDayNet, resolveTradeRowNet } from "./day-net";
+import { resolveDayNet, resolveTradeRowNet, resolveTradeClassification } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
 import { prisma } from "@/lib/db";
@@ -187,9 +187,23 @@ export default async function TradesPage({
     ? allTrades.filter((t) => isoDateKey(t.closedAt, tz) === dateFilter)
     : allTrades;
 
+  // Pre-compute day trade counts so resolveTradeClassification can infer net
+  // for single-trade days from the broker day net (e.g. gross +1.50, net -0.40 → losing).
+  const dayTradeCountMap = new Map<string, number>();
+  for (const t of dateFilteredTrades) {
+    const key = isoDateKey(t.closedAt, tz);
+    dayTradeCountMap.set(key, (dayTradeCountMap.get(key) ?? 0) + 1);
+  }
   const filteredTrades = dateFilteredTrades.filter((t) => {
-    if (filter === "winning") return t.pnl > 0;
-    if (filter === "losing") return t.pnl < 0;
+    if (filter === "all") return true;
+    const key = isoDateKey(t.closedAt, tz);
+    const cls = resolveTradeClassification(
+      t,
+      dayTradeCountMap.get(key) ?? 1,
+      brokerDayNet[key],
+    );
+    if (filter === "winning") return cls === "winning";
+    if (filter === "losing") return cls === "losing";
     return true;
   });
 
@@ -341,6 +355,11 @@ export default async function TradesPage({
               {brokerSource !== "none" && earliestBrokerDay != null
                 ? `${brokerSourceLabel(brokerSource)} from ${new Date(`${earliestBrokerDay}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
                 : `Imported history only · data from ${earliestTradeDate!.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+            </div>
+          )}
+          {!dateFilter && brokerSource !== "none" && (
+            <div style={{ fontSize: 11, color: "var(--gr-text-mute)", marginTop: 3 }}>
+              {`Day totals from ${brokerSourceLabel(brokerSource)} · table rows are imported fills`}
             </div>
           )}
           {lowConfidence && (
@@ -621,14 +640,18 @@ export default async function TradesPage({
                   <div style={{ padding: "48px 24px", textAlign: "center" }}>
                     <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>—</div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: "var(--gr-ink)", margin: 0 }}>
-                      {dateFilter
+                      {dateFilter && brokerDayNet[dateFilter] != null
+                        ? "No imported fills for this date."
+                        : dateFilter
                         ? `No closed round-trips on ${fmtDateFromKey(dateFilter)}.`
                         : allTrades.length === 0
                         ? "No closed round-trips for this account yet."
                         : `No ${filter} trades in the last ${rangeDays}d.`}
                     </p>
                     <p style={{ fontSize: 12, color: "var(--gr-text-mute)", marginTop: 6, lineHeight: 1.5 }}>
-                      {allTrades.length === 0
+                      {dateFilter && brokerDayNet[dateFilter] != null
+                        ? `${brokerSourceLabel(brokerSource)} reports a net P&L for this day, but no imported fill rows are available for this date.`
+                        : allTrades.length === 0
                         ? "Fills are reconstructed into round-trip trades the moment your broker reports them — Guardrail does not invent activity."
                         : "Adjust the filter or extend the range to see more."}
                     </p>
