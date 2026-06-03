@@ -550,7 +550,14 @@ async function main(): Promise<void> {
     },
   });
 
-  // Group DB fills by tradeDate (CME trading day, America/Chicago timezone)
+  // Group DB fills by calendar date in Chicago timezone.
+  // ⚠ CME DAY BOUNDARY: Tradovate's tradeDate for evening fills (after 17:00 CT)
+  // is the NEXT calendar day (the CME session that started at 17:00 CT). For
+  // example, a fill at 17:30 CT on Jun 1 has cashBalanceLog tradeDate=2026-06-02
+  // but occurredAt=2026-06-01T22:30Z → Chicago time = 2026-06-01. This causes
+  // DIFF to show apparent mismatches when all fills are evening trades. See
+  // syncTradovateAccount for the authoritative CME-day boundary calculation.
+  // The reconciliation table below remains valid for daytime fills (9:30–16:00 CT).
   const dbPnlByDay = new Map<string, { grossPnl: number; count: number }>();
   for (const f of dbFills) {
     const dayKey = f.occurredAt.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });

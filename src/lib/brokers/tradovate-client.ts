@@ -1225,13 +1225,22 @@ export class TradovateClient {
   async getCashHistoryDayPnl(): Promise<ContractDayPnl[]> {
     if (this.#tvAccountId == null) return [];
     try {
-      const rows = await this.#request<unknown>("cashBalanceLog/list", "GET");
+      // cashBalanceLog/deps?masterid={tvAccountId} is the account-scoped endpoint
+      // (masterid = Account entity ID, per docs/tradovate-openapi-notes.md).
+      // cashBalanceLog/list returns all rows for the OAuth token across ALL
+      // sub-accounts; rows that lack an accountId field pass through the
+      // normalization filter and can introduce phantom P&L from other accounts.
+      // Using /deps gives only this account's confirmed ledger rows — the same
+      // set the diagnostic script (cashBalanceLog/deps?masterid=1734393) returns.
+      const endpoint = `cashBalanceLog/deps?masterid=${this.#tvAccountId}`;
+      const rows = await this.#request<unknown>(endpoint, "GET");
       const raw = parseSnapshotItems<RawCashBalanceLogRow>(rows);
       const normalized = normalizeCashBalanceLogRows(raw, this.#tvAccountId, this.#accountId);
       const agg = aggregateCashHistory(normalized, this.#accountId);
       console.info("[tradovate/cash-history] aggregated day P&L", {
         accountId: this.#accountId,
         tvAccountId: this.#tvAccountId,
+        endpoint,
         rawRows: raw.length,
         normalizedRows: normalized.length,
         groups: agg.length,

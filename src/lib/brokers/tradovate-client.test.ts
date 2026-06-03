@@ -1689,3 +1689,39 @@ describe("TradovateClient.initialize — masterid validation (source-scan)", () 
     }
   });
 });
+
+// ── cashBalanceLog endpoint contract ─────────────────────────────────────────
+
+describe("getCashHistoryDayPnl — cashBalanceLog/deps source-scan contract", () => {
+  it("getCashHistoryDayPnl uses cashBalanceLog/deps, NOT cashBalanceLog/list", () => {
+    // cashBalanceLog/list returns cross-account rows; rows without accountId
+    // pass normalizeCashBalanceLogRows and can introduce phantom P&L from other
+    // accounts (e.g. a May +$11.00 row appearing in the All-time equity curve
+    // for an account whose true all-time net is -$0.40).
+    // cashBalanceLog/deps?masterid={tvAccountId} is account-scoped server-side.
+    const fnIdx = TRADOVATE_CLIENT_SRC.indexOf("async getCashHistoryDayPnl(");
+    assert.ok(fnIdx !== -1, "getCashHistoryDayPnl method must exist");
+    const fnBody = TRADOVATE_CLIENT_SRC.slice(fnIdx, fnIdx + 1500);
+    assert.ok(
+      fnBody.includes("cashBalanceLog/deps?masterid="),
+      "getCashHistoryDayPnl must use cashBalanceLog/deps?masterid=, not cashBalanceLog/list",
+    );
+    assert.ok(
+      !fnBody.includes('"cashBalanceLog/list"'),
+      "getCashHistoryDayPnl must NOT call cashBalanceLog/list (cross-account)",
+    );
+  });
+
+  it("cashBalanceLog/deps masterid is interpolated with this.#tvAccountId", () => {
+    const fnIdx = TRADOVATE_CLIENT_SRC.indexOf("async getCashHistoryDayPnl(");
+    const fnBody = TRADOVATE_CLIENT_SRC.slice(fnIdx, fnIdx + 1500);
+    const depsLine = fnBody.split("\n").find(
+      (l) => l.includes("cashBalanceLog/deps") && !l.trim().startsWith("//") && !l.trim().startsWith("*"),
+    );
+    assert.ok(depsLine != null, "must have a cashBalanceLog/deps code line (not a comment)");
+    assert.ok(
+      depsLine.includes("${this.#tvAccountId}"),
+      `masterid must interpolate this.#tvAccountId — found: ${depsLine}`,
+    );
+  });
+});
