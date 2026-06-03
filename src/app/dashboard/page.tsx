@@ -806,11 +806,18 @@ export default async function DashboardPage({
                     {
                       label: "Broker session P&L snapshot",
                       value: selectedAccount.dailyPnl != null ? fmt$(selectedAccount.dailyPnl) : "—",
-                      sub: selectedAccount.tradesCount != null
-                        ? `${selectedAccount.tradesCount} broker-session trade count`
-                        : (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected")
-                          ? "Account unavailable · no current data"
-                          : "CME session · since 17:00 CT",
+                      sub: (() => {
+                        if (selectedAccount.status === "unavailable" || selectedAccount.status === "not_connected") {
+                          return "Account unavailable · no current data";
+                        }
+                        const syncNote = selectedAccount.lastSyncAt != null
+                          ? `last sync ${selectedAccount.lastSyncAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`
+                          : "not yet synced";
+                        const tradeNote = selectedAccount.tradesCount != null
+                          ? ` · ${selectedAccount.tradesCount} trades`
+                          : "";
+                        return `Current CME session · resets 17:00 CT · ${syncNote}${tradeNote}`;
+                      })(),
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },
