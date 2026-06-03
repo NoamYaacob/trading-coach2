@@ -1056,6 +1056,9 @@ export default async function DashboardPage({
                 trades={recentTrades}
                 tradesHref={selectedAccount ? `/trades?accountId=${selectedAccount.id}` : "/trades"}
                 dataSourceLabel={recentTradesFeesAvailable ? "Net P&L · broker per-fill fees" : "Fill P&L · before fees"}
+                timezone={displayTimeZone}
+                feesAvailable={recentTradesFeesAvailable}
+                brokerDayNet={brokerDayNet}
               />
             </section>
 
@@ -1068,6 +1071,7 @@ export default async function DashboardPage({
                 recentTrades={recentTrades}
                 timezone={displayTimeZone}
                 feesAvailable={recentTradesFeesAvailable}
+                brokerDayNet={brokerDayNet}
               />
             )}
 

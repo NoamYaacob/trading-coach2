@@ -280,8 +280,16 @@ describe("data-truth: no fake or sample trade data in authenticated display path
     assert.ok(!equity.includes("fakeData"),    "must not reference fakeData");
     assert.ok(!equity.includes("demoData"),    "must not reference demoData");
     assert.ok(
-      equity.includes("cum += t.netPnl"),
-      "equity curve must build series from real round-trip net P&L only",
+      equity.includes("buildDailySeries"),
+      "equity curve must build its series from the broker-net-aware daily aggregation, not invented values",
+    );
+    // The daily aggregation itself must accumulate only real day P&L (broker
+    // net when reported, else real fill/per-trade sums) — never fabricated.
+    const dailyPnl = read("app/dashboard/_components/daily-pnl.ts");
+    assert.ok(!dailyPnl.includes("Math.random"), "daily-pnl must not use Math.random");
+    assert.ok(
+      dailyPnl.includes("cum += agg.pnl"),
+      "daily series must accumulate real day P&L only",
     );
   });
 

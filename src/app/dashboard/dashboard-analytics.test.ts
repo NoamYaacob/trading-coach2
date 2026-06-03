@@ -45,10 +45,10 @@ describe("EquityCurve client island", () => {
     );
   });
 
-  it("renders honest 'no data' fallback below 2 trades", () => {
+  it("renders honest 'no data' fallback below 2 trading days", () => {
     assert.ok(
-      file.includes("trades.length < 2"),
-      "must short-circuit to the empty-state placeholder when fewer than 2 trades are in the window",
+      file.includes("series.points.length < 2"),
+      "must short-circuit to the empty-state placeholder when fewer than 2 trading days are in the window",
     );
     assert.ok(
       file.includes("No closed round-trips"),
@@ -150,10 +150,10 @@ describe("TraderInsights server panel", () => {
     );
   });
 
-  it("uses the pure insights helpers", () => {
+  it("uses the pure insights + daily-pnl helpers", () => {
     assert.ok(
-      file.includes("profitFactor") && file.includes("maxDrawdown"),
-      "must call the profitFactor + maxDrawdown helpers from ./insights",
+      file.includes("profitFactor") && file.includes("dailyMaxDrawdown"),
+      "must call profitFactor (fill-based) + dailyMaxDrawdown (broker-net-aware) helpers",
     );
     assert.ok(
       file.includes("biggestWin") && file.includes("biggestLoss"),
