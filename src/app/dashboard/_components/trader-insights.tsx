@@ -263,12 +263,11 @@ export function TraderInsights({
 
   // 5. Profit factor (30d) — broker TradePaired rows when available, else fill-based
   const profitFactorCard = (() => {
-    const brokerPf = brokerPerformance?.hasBrokerHistory
-      ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey).profitFactor
+    const brokerStats = brokerPerformance?.hasBrokerHistory
+      ? computeBrokerWindowStats(brokerPerformance, since30dKey)
       : null;
-    const brokerPfCount = brokerPerformance?.hasBrokerHistory
-      ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey).tradeCount
-      : 0;
+    const brokerPf = brokerStats?.profitFactor ?? null;
+    const brokerPfDayCount = brokerStats?.dayCount ?? 0;
     const pf = brokerPf ?? profitFactor(recentTrades);
     const useBroker = brokerPf != null;
 
@@ -279,9 +278,9 @@ export function TraderInsights({
           label="Profit factor (30d)"
           value="—"
           sub={
-            (useBroker ? brokerPfCount : recentTrades.length) === 0
-              ? "No broker trades in window"
-              : "No losing trades yet — undefined"
+            (useBroker ? brokerPfDayCount : recentTrades.length) === 0
+              ? "No broker days in window"
+              : "No losing days yet — undefined"
           }
         />
       );
@@ -293,7 +292,7 @@ export function TraderInsights({
         value={pf.toFixed(2)}
         sub={
           useBroker
-            ? `broker net wins ÷ losses · ${brokerPfCount} closes · Cash History`
+            ? `broker net wins ÷ losses · ${brokerPfDayCount} days · Cash History`
             : `${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`
         }
         tone={pf >= 1 ? "ok" : "warn"}

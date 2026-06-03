@@ -46,19 +46,19 @@ export type BrokerAccountPerformance = {
   tradePairs: PairedTradePnl[];
   /** Sum of all dayNet values — the authoritative all-time net P&L. */
   allTimeNet: number;
-  /** Count of TradePaired closes — proxy for completed round-trips. */
+  /** Count of TradePaired closes — individual round-trips, not days. */
   tradeCount: number;
-  /** TradePaired closes where netPnl > 0 (after attributed fees). */
+  /** Days where dayNet > 0 (after-fees net). Computed from dayNet, not tradePairs. */
   winCount: number;
-  /** TradePaired closes where netPnl < 0 (after attributed fees). */
+  /** Days where dayNet < 0 (after-fees net). Computed from dayNet, not tradePairs. */
   lossCount: number;
-  /** Largest single TradePaired netPnl (null when no winning closes). */
+  /** Largest positive dayNet value (null when no winning days). */
   largestWin: number | null;
-  /** Most negative single TradePaired netPnl (null when no losing closes). */
+  /** Most negative dayNet value (null when no losing days). */
   largestLoss: number | null;
   /**
-   * Gross win sum / |gross loss sum| from TradePaired netPnl values.
-   * null when there are no losing closes (undefined by convention, not ∞).
+   * sum(positive dayNets) / |sum(negative dayNets)|.
+   * 0 when winSum=0 but lossSum>0. null when no trading days at all.
    */
   profitFactor: number | null;
   /** True when at least one trading day with fee data exists in Cash History. */
@@ -69,19 +69,28 @@ export type BrokerAccountPerformance = {
 
 /**
  * Aggregated stats for a date window (e.g. last 30 days).
- * Derived from TradePaired rows so profit factor reflects after-fees closes.
+ * Win/loss/PF are derived from dayNet values (authoritative after-fees net).
+ * tradeCount is TradePaired row count (individual closes, not days).
  */
 export type BrokerWindowStats = {
+  /** TradePaired row count in the window — individual closes, not days. */
   tradeCount: number;
+  /** Trading days in the window where dayNet > 0. */
+  dayCount: number;
+  /** Days where dayNet > 0 (after-fees net). */
   winCount: number;
+  /** Days where dayNet < 0 (after-fees net). */
   lossCount: number;
-  /** winCount / tradeCount. null when tradeCount === 0. */
+  /** winCount / dayCount. null when dayCount === 0. */
   winRate: number | null;
-  /** sum(winners) / |sum(losers)|. null when no losers. */
+  /**
+   * sum(positive dayNets) / |sum(negative dayNets)|.
+   * 0 when winSum=0 but lossSum>0. null when no trading days in window.
+   */
   profitFactor: number | null;
-  /** Largest single TradePaired netPnl in the window. null when no winners. */
+  /** Largest positive dayNet value in the window. null when no winning days. */
   largestWin: number | null;
-  /** Most negative single TradePaired netPnl in window. null when no losers. */
+  /** Most negative dayNet value in the window. null when no losing days. */
   largestLoss: number | null;
 };
 
@@ -115,8 +124,8 @@ export function computeBrokerAccountPerformance(
   let largestWin: number | null = null;
   let largestLoss: number | null = null;
 
-  for (const tp of tradePairs) {
-    const net = tp.netPnl;
+  // Win/loss/PF from dayNet (authoritative after-fees net), not per-trade attribution.
+  for (const net of Object.values(dayNet)) {
     if (net > 0) {
       winCount++;
       winSum += net;
@@ -128,7 +137,9 @@ export function computeBrokerAccountPerformance(
     }
   }
 
-  const profitFactor = lossSum > 0 ? round2(winSum / lossSum) : null;
+  // 0 when winSum=0 but lossSum>0 (all losses); null when no losses or no trading days.
+  const profitFactor =
+    Object.keys(dayNet).length === 0 ? null : lossSum > 0 ? round2(winSum / lossSum) : null;
   const feesAvailable = Object.keys(dayNet).length > 0;
 
   return {
@@ -147,15 +158,20 @@ export function computeBrokerAccountPerformance(
 }
 
 /**
- * Compute win/loss statistics for a date window from TradePaired rows.
- * `sinceDayKey` is a "YYYY-MM-DD" string; rows with date < sinceDayKey are excluded.
- * Generic — works for any window (7D, 30D, etc.).
+ * Compute win/loss statistics for a date window from a BrokerAccountPerformance.
+ * `sinceDayKey` is a "YYYY-MM-DD" string; entries before that date are excluded.
+ *
+ * Win/loss/PF/largestWin/largestLoss use dayNet values (authoritative after-fees
+ * day-level net). tradeCount uses TradePaired rows (individual closes).
  */
 export function computeBrokerWindowStats(
-  tradePairs: PairedTradePnl[],
+  perf: BrokerAccountPerformance,
   sinceDayKey: string,
 ): BrokerWindowStats {
-  const window = tradePairs.filter((tp) => tp.date >= sinceDayKey);
+  const windowDayNet = Object.fromEntries(
+    Object.entries(perf.dayNet).filter(([date]) => date >= sinceDayKey),
+  );
+  const windowTrades = perf.tradePairs.filter((tp) => tp.date >= sinceDayKey);
 
   let winCount = 0;
   let lossCount = 0;
@@ -164,8 +180,7 @@ export function computeBrokerWindowStats(
   let largestWin: number | null = null;
   let largestLoss: number | null = null;
 
-  for (const tp of window) {
-    const net = tp.netPnl;
+  for (const net of Object.values(windowDayNet)) {
     if (net > 0) {
       winCount++;
       winSum += net;
@@ -177,12 +192,14 @@ export function computeBrokerWindowStats(
     }
   }
 
-  const tradeCount = window.length;
-  const winRate = tradeCount > 0 ? round2(winCount / tradeCount) : null;
-  const profitFactor = lossSum > 0 ? round2(winSum / lossSum) : null;
+  const dayCount = Object.keys(windowDayNet).length;
+  const winRate = dayCount > 0 ? round2(winCount / dayCount) : null;
+  const profitFactor =
+    dayCount === 0 ? null : lossSum > 0 ? round2(winSum / lossSum) : null;
 
   return {
-    tradeCount,
+    tradeCount: windowTrades.length,
+    dayCount,
     winCount,
     lossCount,
     winRate,

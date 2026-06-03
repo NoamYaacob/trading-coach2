@@ -332,14 +332,14 @@ export default async function DashboardPage({
   // available; fall back to fill-based recentTrades otherwise.
   const since30dKey = thirtyDaysAgo.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
   const brokerWindow30d = brokerPerformance.hasBrokerHistory
-    ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey)
+    ? computeBrokerWindowStats(brokerPerformance, since30dKey)
     : null;
 
   const wins30d = brokerWindow30d != null
     ? brokerWindow30d.winCount
     : recentTrades.filter((t) => t.netPnl > 0).length;
   const total30d = brokerWindow30d != null
-    ? brokerWindow30d.tradeCount
+    ? brokerWindow30d.dayCount
     : recentTrades.length;
   const winRate30d = total30d > 0 ? wins30d / total30d : null;
   const pf30d = brokerWindow30d?.profitFactor ?? profitFactor(recentTrades);
@@ -839,7 +839,7 @@ export default async function DashboardPage({
                       value: winRate30d != null ? `${Math.round(winRate30d * 100)}%` : "—",
                       sub: winRate30d != null
                         ? brokerWindow30d != null
-                          ? `${wins30d}W · ${brokerWindow30d.lossCount}L · ${total30d} closes · broker Cash History`
+                          ? `${wins30d}W · ${brokerWindow30d.lossCount}L · ${total30d} days · broker net days`
                           : `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
                         : "No broker trades in last 30 days",
                       tone: winRate30d != null && winRate30d >= 0.5 ? "ok" : "warn",
@@ -853,7 +853,7 @@ export default async function DashboardPage({
                           : recentTradesFeesAvailable
                             ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
                             : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"
-                        : total30d === 0 ? "No broker trades in window" : "No losing trades yet",
+                        : total30d === 0 ? "No broker days in window" : "No losing days yet",
                       tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
                   ].map((k) => (

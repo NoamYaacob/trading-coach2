@@ -708,7 +708,7 @@ async function main(): Promise<void> {
     const perf = computeBrokerAccountPerformance(rawCblNorm, account.id);
     const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 10);
-    const w30d = computeBrokerWindowStats(perf.tradePairs, since30d);
+    const w30d = computeBrokerWindowStats(perf, since30d);
 
     console.log(`\n  All-time performance (Cash History only):`);
     console.log(`    hasBrokerHistory:    ${perf.hasBrokerHistory}`);
