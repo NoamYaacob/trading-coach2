@@ -352,17 +352,44 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
   });
 
   it("Trades KPI does NOT call fill-only P&L 'Net' when fees are missing", () => {
-    // The KPI must branch on stats.feesAvailable: only headline 'Net P&L' when
-    // fees are known; otherwise 'Trade P&L (before fees)'. It must never label
-    // the gross fill value as Net.
-    assert.ok(page.includes("stats.feesAvailable"), "KPI must branch on stats.feesAvailable");
-    assert.ok(page.includes('label: "Net P&L"'), "KPI headlines 'Net P&L' only in the fees-available branch");
+    // Priority: broker Cash History net → per-fill net → fill before fees.
+    // The fill gross must never be labelled "Net".
+    assert.ok(page.includes("brokerCoversSome"), "KPI must check broker Cash History coverage first");
+    assert.ok(page.includes("stats.feesAvailable"), "KPI must also branch on per-fill feesAvailable");
+    assert.ok(page.includes('label: "Net P&L"'), "KPI headlines 'Net P&L' for broker-net and per-fill-net branches");
     assert.ok(
       page.includes('label: "Trade P&L (before fees)"'),
-      "KPI must fall back to 'Trade P&L (before fees)' when fees are not available",
+      "KPI must fall back to 'Trade P&L (before fees)' when no net source is available",
     );
-    assert.ok(page.includes("stats.netPnl"), "net branch uses stats.netPnl");
-    assert.ok(page.includes("stats.grossPnl"), "before-fees branch uses stats.grossPnl");
+    assert.ok(page.includes("brokerWindowNet"), "broker-net branch uses the day-net window total");
+    assert.ok(page.includes("stats.netPnl"), "per-fill-net branch uses stats.netPnl");
+    assert.ok(page.includes("stats.grossPnl"), "fill-only branch uses stats.grossPnl");
+  });
+
+  it("KPI broker-net branch shows fill P&L as secondary supporting text", () => {
+    // When broker Cash History net is the primary, the before-fees fill total
+    // must still appear in the sub-label so the trader can see the reconciliation.
+    assert.ok(
+      page.includes("Fill P&L ${fmt$(stats.grossPnl)} before fees"),
+      "broker-net KPI sub must include the fill P&L as secondary context",
+    );
+  });
+
+  it("day header is a two-column layout: date left, net P&L label+value right", () => {
+    // The day header must NOT use the old concatenated raw-text form.
+    assert.ok(
+      !page.includes('" net · after broker fees"'),
+      "day header must NOT use the old raw concatenation '... net · after broker fees'",
+    );
+    // Must have separate label and value lines on the right.
+    assert.ok(
+      page.includes("Net P&L ${fmt$(day.pnl)}"),
+      "day header right side must render 'Net P&L <value>' as the primary line",
+    );
+    assert.ok(
+      page.includes("after broker fees · "),
+      "day header sub-line must say 'after broker fees' for broker-net days",
+    );
   });
 
   it("Trades table has Trade P&L, Fees, and Net P&L columns", () => {
@@ -382,12 +409,16 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     );
   });
 
-  it("Trades footer explains Trade P&L is before fees and Net needs fees", () => {
-    assert.ok(page.includes("before fees"), "footer must explain Trade P&L is before fees");
-    assert.ok(page.includes("Net P&L"), "footer must reference Net P&L");
+  it("Trades footer is concise and explains the data sources", () => {
+    assert.ok(page.includes("before fees"), "footer must mention before fees");
     assert.ok(
-      page.includes("Broker Session P&L snapshot"),
-      "footer must point to the Broker Session P&L snapshot for the authoritative net",
+      page.includes("broker Cash History") || page.includes("Cash History"),
+      "footer must reference the broker Cash History as the authoritative net source",
+    );
+    // No longer a long multi-sentence paragraph — must be concise.
+    assert.ok(
+      page.includes("Day totals use broker Cash History when available"),
+      "footer must open with the short 'Day totals use broker Cash History' sentence",
     );
   });
 

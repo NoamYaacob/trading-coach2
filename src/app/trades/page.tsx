@@ -187,6 +187,16 @@ export default async function TradesPage({
   // so users see the true picture for that context.
   const stats = computeTradeStats(dateFilteredTrades);
 
+  // Broker-net totals for the KPI primary: sum the broker Cash History net for
+  // every traded day in the window that the broker reported. This is the real
+  // after-fees result the trader sees in Tradovate, even when per-fill fee
+  // allocation is unavailable at the trade-row level.
+  const tradedDateKeys = [...new Set(dateFilteredTrades.map((t) => isoDateKey(t.closedAt, tz)))];
+  const brokerCoveredKeys = tradedDateKeys.filter((k) => brokerDayNet[k] != null);
+  const brokerWindowNet = brokerCoveredKeys.reduce((s, k) => s + brokerDayNet[k]!, 0);
+  const brokerCoversAll = brokerCoveredKeys.length > 0 && brokerCoveredKeys.length === tradedDateKeys.length;
+  const brokerCoversSome = brokerCoveredKeys.length > 0;
+
   // Coverage window + data-trust signals. earliestTradeDate is the oldest
   // imported round-trip so the header can say "imported history only" rather
   // than implying complete all-time performance. lowConfidence is true when any
@@ -449,21 +459,31 @@ export default async function TradesPage({
             <section style={{ padding: "0 36px 18px" }}>
               <div className="trades-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
                 {[
-                  // When the broker reports per-fill fees we can headline a true
-                  // Net P&L. When fees are NOT reported, we must NOT call the
-                  // fill P&L "Net" — it is gross. Label it "Trade P&L (before
-                  // fees)" and point to the Broker Session P&L for the net figure.
-                  stats.feesAvailable
+                  // Priority for the headline P&L:
+                  //   1. Broker Cash History day-net — authoritative after-fees
+                  //      total, even when per-fill fees are "Not reported".
+                  //   2. Per-fill net — only when every trade carried fee data.
+                  //   3. Fill P&L before fees — never labelled "Net".
+                  brokerCoversSome
+                    ? {
+                        label: "Net P&L",
+                        value: stats.count > 0 ? fmt$(brokerWindowNet) : "—",
+                        sub: brokerCoversAll
+                          ? `after broker fees · Fill P&L ${fmt$(stats.grossPnl)} before fees`
+                          : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed · Fill P&L ${fmt$(stats.grossPnl)} before fees`,
+                        tone: brokerWindowNet >= 0 ? "ok" : "bad",
+                      }
+                    : stats.feesAvailable
                     ? {
                         label: "Net P&L",
                         value: stats.count > 0 ? fmt$(stats.netPnl) : "—",
-                        sub: `last ${rangeDays}d · after ${fmt$(stats.fees)} fees`,
+                        sub: `after ${fmt$(stats.fees)} fees`,
                         tone: stats.netPnl >= 0 ? "ok" : "bad",
                       }
                     : {
                         label: "Trade P&L (before fees)",
                         value: stats.count > 0 ? fmt$(stats.grossPnl) : "—",
-                        sub: `last ${rangeDays}d · fees not reported · net on dashboard`,
+                        sub: `fees not reported · see dashboard for net`,
                         tone: stats.grossPnl >= 0 ? "ok" : "bad",
                       },
                   {
@@ -615,17 +635,33 @@ export default async function TradesPage({
                         return (
                           <Fragment key={dateKey}>
                             <tr>
-                              <td colSpan={10} style={{ padding: "14px 16px 6px", background: "var(--gr-bg-elev)" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--gr-ink)" }}>
+                              <td colSpan={10} style={{ padding: "10px 16px 8px", background: "var(--gr-bg-elev)" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--gr-ink)", lineHeight: 1.4 }}>
                                     {fmtDate(rows[0]!.closedAt, tz)}
                                   </span>
-                                  <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mute)" }}>
-                                    {fmt$(day.pnl)}
-                                    {day.source === "broker_net" ? " net · after broker fees"
-                                      : day.isNet ? " net"
-                                      : " before fees"} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
-                                  </span>
+                                  <div style={{ textAlign: "right" }}>
+                                    <div style={{
+                                      fontSize: 12.5,
+                                      fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                                      fontWeight: 700,
+                                      color: day.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)",
+                                      lineHeight: 1.3,
+                                    }}>
+                                      {day.source === "broker_net"
+                                        ? `Net P&L ${fmt$(day.pnl)}`
+                                        : day.isNet
+                                        ? `Net P&L ${fmt$(day.pnl)}`
+                                        : `Fill P&L ${fmt$(day.pnl)}`}
+                                    </div>
+                                    <div style={{ fontSize: 10.5, color: "var(--gr-text-mute)", marginTop: 2, lineHeight: 1.3 }}>
+                                      {day.source === "broker_net"
+                                        ? `after broker fees · ${rows.length} trade${rows.length !== 1 ? "s" : ""}`
+                                        : day.isNet
+                                        ? `net · ${rows.length} trade${rows.length !== 1 ? "s" : ""}`
+                                        : `before fees · ${rows.length} trade${rows.length !== 1 ? "s" : ""}`}
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -692,8 +728,8 @@ export default async function TradesPage({
                 )}
               </div>
               {allTrades.length > 0 && (
-                <p style={{ marginTop: 10, fontSize: 11, color: "var(--gr-text-mute)" }}>
-                  Round-trip trades reconstructed from broker fills (FIFO matching per contract). <strong>Trade P&L</strong> is the broker fill P&L before fees. <strong>Net P&L</strong> deducts broker-reported commissions per fill — but when your broker does not report per-fill commissions, Fees shows “Not reported” and Net P&L shows “—” (a trade-level net cannot be computed). In that case the authoritative net figure is the <strong>Broker Session P&L snapshot</strong> on the dashboard, which is the broker’s own commission-adjusted session total.
+                <p style={{ marginTop: 10, fontSize: 11, color: ["var(--gr-text-mute)"].join("") }}>
+                  {"Day totals use broker Cash History when available. Individual trade rows show fill P&L before fees unless per-trade fees are available."}
                 </p>
               )}
             </section>
