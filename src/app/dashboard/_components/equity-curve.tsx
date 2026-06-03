@@ -257,9 +257,9 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
               : <>
                   {"Cumulative daily P&L · "}
                   {series.allDaysNet
-                    ? "Net · after broker fees"
+                    ? `Net · ${sourceLabel}`
                     : series.someBrokerNet
-                    ? "Broker net where available · else fill before fees"
+                    ? `${sourceLabel} where available · else fill before fees`
                     : `Partial imported fills · ${dataSourceLabel}`}
                   {timeframe === "all" && coverageStartLabel != null && (
                     <span style={{ marginLeft: 4, opacity: 0.75 }}>
@@ -447,7 +447,7 @@ function EquityCurveBody({ series, tradeCount, brokerNativeMode }: { series: Dai
           {fmt$(finalY)}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
-          {data.length} trading day{data.length !== 1 ? "s" : ""}{brokerNativeMode ? " · broker Cash History" : ` · ${tradeCount} trade${tradeCount !== 1 ? "s" : ""}`}
+          {data.length} trading day{data.length !== 1 ? "s" : ""}{brokerNativeMode ? ` · broker net days` : ` · ${tradeCount} trade${tradeCount !== 1 ? "s" : ""}`}
         </span>
       </div>
       <LightweightEquityChart data={data} colors={colors} positive={positive} mounted={mounted} />

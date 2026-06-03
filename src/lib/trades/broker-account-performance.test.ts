@@ -582,8 +582,9 @@ describe("11. computeBrokerPerformanceFromDayNet — Account Balance History sou
 
   it("computeBrokerWindowStats works on a report-derived performance", () => {
     const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    // dayNet has zero days stripped, so only 2026-01-05 (+35.40) and 2026-01-12 (-0.40) remain.
     const ws = computeBrokerWindowStats(perf, "2026-01-05");
-    assert.equal(ws.dayCount, 3, "2026-01-05, -09, -12 are >= sinceDayKey");
+    assert.equal(ws.dayCount, 2, "2026-01-05 (win) and 2026-01-12 (loss) — zero day excluded");
     assert.equal(ws.winCount, 1);
     assert.equal(ws.lossCount, 1);
     assert.equal(ws.largestLoss, -0.40);
@@ -596,6 +597,67 @@ describe("11. computeBrokerPerformanceFromDayNet — Account Balance History sou
     assert.equal(perf.hasBrokerHistory, false);
     assert.equal(perf.earliestBrokerDay, null);
     assert.equal(perf.latestBrokerDay, null);
+  });
+});
+
+// ── Test 11b: Zero-P&L days excluded from day/win/loss counts ───────────────
+
+describe("11b. Zero-P&L report days are excluded from all day/win/loss counts", () => {
+  it("computeBrokerPerformanceFromDayNet strips zero-P&L days from dayNet", () => {
+    const dayNet = {
+      "2026-05-04": 35.40,
+      "2026-05-30": 0,
+      "2026-06-02": -0.40,
+      "2026-06-03": 0,
+    };
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    assert.ok(!("2026-05-30" in perf.dayNet), "zero-P&L day must not appear in dayNet");
+    assert.ok(!("2026-06-03" in perf.dayNet), "zero-P&L day must not appear in dayNet");
+    assert.ok("2026-05-04" in perf.dayNet, "winning day must appear");
+    assert.ok("2026-06-02" in perf.dayNet, "losing day must appear");
+    assert.equal(Object.keys(perf.dayNet).length, 2);
+  });
+
+  it("zero-P&L days do not count as wins, losses, or trading days", () => {
+    const dayNet = {
+      "2026-05-04": 35.40,
+      "2026-05-30": 0,
+      "2026-06-02": -0.40,
+      "2026-06-03": 0,
+    };
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    assert.equal(perf.winCount, 1, "only 2026-05-04 is a win");
+    assert.equal(perf.lossCount, 1, "only 2026-06-02 is a loss");
+  });
+
+  it("30D win rate for realistic production fixture = 50% not 14%", () => {
+    // Reproduces the reported bug: {2026-05-04: 35.40, 2026-05-30: 0, 2026-06-02: -0.40, 2026-06-03: 0}
+    // Without fix: dayCount=4 → winRate=1/4=25%
+    // With fix: dayCount=2 (only non-zero days) → winRate=1/2=50%
+    const dayNet = {
+      "2026-05-04": 35.40,
+      "2026-05-30": 0,
+      "2026-06-02": -0.40,
+      "2026-06-03": 0,
+    };
+    const perf = computeBrokerPerformanceFromDayNet(dayNet, "account-balance-history");
+    const ws = computeBrokerWindowStats(perf, "2026-05-04");
+    assert.equal(ws.dayCount, 2, "only non-zero days count as trading days");
+    assert.equal(ws.winCount, 1);
+    assert.equal(ws.lossCount, 1);
+    assert.ok(ws.winRate != null);
+    assert.ok(Math.abs(ws.winRate! - 0.5) < 1e-9, `win rate must be 0.50 (50%), got ${ws.winRate}`);
+  });
+
+  it("computeBrokerWindowStats dayCount = winCount + lossCount (excludes zeros)", () => {
+    // Even if zero-day leaked into dayNet somehow, windowStats must still exclude it
+    const perf = computeBrokerPerformanceFromDayNet({
+      "2026-06-01": 10,
+      "2026-06-02": -5,
+      "2026-06-03": 0, // stripped by computeBrokerPerformanceFromDayNet
+    }, "account-balance-history");
+    const ws = computeBrokerWindowStats(perf, "2026-06-01");
+    assert.equal(ws.dayCount, 2, "dayCount = winCount + lossCount, not Object.keys.length");
   });
 });
 

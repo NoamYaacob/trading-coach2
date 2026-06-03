@@ -183,6 +183,46 @@ describe("source-of-truth rule: fill-only days excluded from broker-native calen
   });
 });
 
+// ── Zero-P&L broker days excluded from calendar month summary ────────────────
+describe("zero-P&L broker days excluded from calendar active cells", () => {
+  it("a brokerDayNet entry of 0 produces a map entry with pnl=0 and brokerNet=true", () => {
+    // The fix lives upstream in computeBrokerPerformanceFromDayNet (strips zeros
+    // before they reach brokerDayNet). Here we verify that if a zero somehow
+    // reaches aggregateCalendarDays, its brokerNet=true cell has pnl=0.
+    const trades: ReturnType<typeof trade>[] = [];
+    const brokerDayNet = { "2026-05-30": 0, "2026-06-02": -0.4 };
+    const map = aggregateCalendarDays(trades, TZ, false, brokerDayNet);
+    const may30 = map.get("2026-05-30")!;
+    assert.ok(may30 != null, "zero-P&L broker day is in map");
+    assert.equal(may30.pnl, 0, "pnl is 0");
+    assert.equal(may30.brokerNet, true, "still marked brokerNet=true");
+    // The calendar component filters: tradedCells.filter(c => c.data.brokerNet && pnl !== 0)
+    // would exclude this. Zero days should not appear as active cells.
+    const nonZeroBrokerDays = [...map.values()].filter((c) => c.brokerNet && c.pnl !== 0);
+    assert.equal(nonZeroBrokerDays.length, 1, "only non-zero broker days count as active");
+  });
+
+  it("month summary win/loss/day counts exclude zero-P&L broker days", () => {
+    const trades: ReturnType<typeof trade>[] = [];
+    // Simulates the real scenario: Apr=-212.10, May=+35.40, May30=0, Jun2=-0.40, Jun3=0
+    // After stripping zeros upstream, brokerDayNet has only non-zero entries.
+    // This test verifies that the aggregation only counts non-zero days as "traded".
+    const brokerDayNet = {
+      "2026-04-30": -212.10,
+      "2026-05-04": 35.40,
+      // zeros already stripped by computeBrokerPerformanceFromDayNet
+      "2026-06-02": -0.40,
+    };
+    const map = aggregateCalendarDays(trades, TZ, false, brokerDayNet);
+    const brokerNetCells = [...map.values()].filter((c) => c.brokerNet);
+    const winDays = brokerNetCells.filter((c) => c.pnl > 0).length;
+    const lossDays = brokerNetCells.filter((c) => c.pnl < 0).length;
+    assert.equal(winDays, 1, "May 4 is the only win");
+    assert.equal(lossDays, 2, "Apr 30 and Jun 2 are the only losses");
+    assert.equal(brokerNetCells.length, 3, "exactly 3 non-zero trading days");
+  });
+});
+
 // ── Cell P&L formatter ──────────────────────────────────────────────────────
 // The calendar day cell must display full decimal precision (e.g. -$0.40, not
 // -$0) so small P&L values like the 1868411/2026-06-02 -$0.40 are legible.

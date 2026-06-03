@@ -271,12 +271,12 @@ describe("equity-curve — broker-native primary path", () => {
 
   it("uses allDaysNet for the fully-net label (broker-native is always allDaysNet)", () => {
     assert.ok(src.includes("series.allDaysNet"), "must branch on series.allDaysNet");
-    assert.ok(src.includes("Net · after broker fees"), "fully-net curve must be labelled 'Net · after broker fees'");
+    assert.ok(src.includes("Net · ${sourceLabel}"), "fully-net curve must be labelled 'Net · <sourceLabel>'");
   });
 
   it("mixed fill-fallback ranges use someBrokerNet — broker-net days not relabelled as flat fill", () => {
     assert.ok(src.includes("series.someBrokerNet"), "must branch on series.someBrokerNet for mixed ranges");
-    assert.ok(src.includes("Broker net where available"), "mixed range must say 'Broker net where available'");
+    assert.ok(src.includes("where available · else fill before fees"), "mixed range must say '<source> where available · else fill before fees'");
   });
 
   it("all-time view with broker history shows source label + coverage start, not 'imported history only'", () => {

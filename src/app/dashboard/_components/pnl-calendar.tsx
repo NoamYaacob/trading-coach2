@@ -343,9 +343,10 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         )}
       </div>
 
-      {/* Historical-data caveat — visible whenever the user navigates to a
-        * previous month, since the trade source only covers ~30 days. */}
-      {isViewingPast && (
+      {/* Historical-data caveat — shown when browsing past months. Copy is
+        * source-aware: account-balance-history has full report coverage; the
+        * fills-based path only covers the last 30 days. */}
+      {isViewingPast && brokerSource !== "account-balance-history" && (
         <div
           style={{
             marginBottom: 12,
