@@ -1221,6 +1221,44 @@ export class TradovateClient {
   }
 
   /**
+   * Read-only diagnostic helper: POST an arbitrary JSON body to a reports-host
+   * endpoint and return status + body text. Used ONLY by diagnostic scripts to
+   * probe request-format variants. Never writes broker state — the reports host
+   * is read-only. Returns null when the access token or reports URL is absent.
+   */
+  async debugRawPost(
+    endpoint: string,
+    body: Record<string, unknown>,
+    opts: { escapeSlashes?: boolean } = {},
+  ): Promise<{ status: number; body: string; contentType: string | null; sentBody: string } | null> {
+    if (!this.#accessToken || !this.#reportsBaseUrl) return null;
+    const url = endpoint.startsWith("http")
+      ? endpoint
+      : `${this.#reportsBaseUrl}/${endpoint.replace(/^\//, "")}`;
+    let serialized = JSON.stringify(body);
+    if (opts.escapeSlashes) serialized = serialized.replace(/\//g, "\\/");
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "text/html, application/json, text/csv, text/plain, */*;q=0.1",
+        },
+        body: serialized,
+      });
+    } catch (err) {
+      throw new Error(
+        `debugRawPost network error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const contentType = res.headers.get("content-type");
+    const text = await res.text().catch(() => "");
+    return { status: res.status, body: text, contentType, sentBody: serialized };
+  }
+
+  /**
    * Read-only Cash History (cashBalanceLog) — the source of truth for fees and
    * realized P&L, matching what the trader sees in Tradovate's Cash History.
    *
