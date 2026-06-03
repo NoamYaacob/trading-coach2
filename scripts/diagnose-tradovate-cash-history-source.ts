@@ -209,12 +209,19 @@ async function tryReport(
     console.log(`  → null (no access token or reports URL)`);
     return { name: reportName, label, status: 0, contentType: null, bodyPreview: "null", sentBody: "", success: false };
   }
-  const preview = previewBody(res.body);
+  const preview = previewBody(res.body, 1000);
   console.log(`  sentBody: ${res.sentBody}`);
   console.log(`  HTTP ${res.status}  content-type: ${res.contentType ?? "—"}`);
-  console.log(`  body preview: ${preview}`);
+  console.log(`  body preview (first 1000 chars): ${preview}`);
   const success = res.status >= 200 && res.status < 300;
   if (success) {
+    // Detect whether the response looks like it carries real ledger content.
+    const lower = res.body.toLowerCase();
+    const hasDates = /\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}/.test(res.body);
+    const hasCashFields = ["cashchangetype", "tradepaired", "delta", "realizedpnl", "balance", "amount"]
+      .filter((k) => lower.includes(k));
+    const hasRowsWord = /\brows?\b|\brecords?\b|<tr|<table|"data"/.test(lower);
+    console.log(`  CONTENT SIGNALS — dates: ${hasDates ? "yes" : "no"}  |  rows/table: ${hasRowsWord ? "yes" : "no"}  |  cash fields: ${hasCashFields.length ? hasCashFields.join(",") : "none"}`);
     console.log(`  ✓ SUCCESS — full body (first 4000 chars):\n${res.body.slice(0, 4000)}`);
   }
   return { name: reportName, label, status: res.status, contentType: res.contentType, bodyPreview: preview, sentBody: res.sentBody, success };
@@ -256,6 +263,7 @@ function buildBodyFromCatalog(
   dateFormat: "mmddyyyy" | "iso",
   representationType: string,
   escapeSlashes: boolean,
+  template: string | undefined,
 ): { body: Record<string, unknown>; label: string } {
   const startDate = dateFormat === "mmddyyyy" ? startMD : startIso;
   const endDate   = dateFormat === "mmddyyyy" ? endMD   : endIso;
@@ -275,7 +283,6 @@ function buildBodyFromCatalog(
     value: p.name in paramValues ? paramValues[p.name] : (p.defaultValue ?? ""),
   }));
 
-  const template = def.templates?.[0];
   const repType  = def.representationTypes?.includes(representationType)
     ? representationType
     : (def.representationTypes?.[0] ?? representationType);
@@ -293,6 +300,7 @@ function buildBodyFromCatalog(
     `dates=${dateFormat}`,
     `acct=${accountValue}`,
     `repType=${repType}`,
+    `template=${template ?? "none"}`,
     escapeSlashes ? "esc-slash" : "raw-slash",
   ].join(" | ");
 
@@ -399,8 +407,15 @@ async function main(): Promise<void> {
       if (res.status >= 200 && res.status < 300) {
         try {
           const parsed: unknown = JSON.parse(res.body);
-          if (Array.isArray(parsed)) {
-            catalogDefs = parsed as CatalogDefinition[];
+          // The reports host returns { "reports": [ ... ] }, not a bare array.
+          const parsedObj = parsed as { reports?: unknown } | null;
+          const defs = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsedObj?.reports)
+            ? parsedObj!.reports
+            : [];
+          if (defs.length > 0) {
+            catalogDefs = defs as CatalogDefinition[];
             console.log(`\n  ✓ ${catalogDefs.length} report definitions in catalog:\n`);
             for (const def of catalogDefs) {
               console.log(`  ┌─ name: "${def.name}"`);
@@ -431,7 +446,7 @@ async function main(): Promise<void> {
               console.log();
             }
           } else {
-            console.log(`  Parsed JSON but not an array. Raw:\n${res.body}`);
+            console.log(`  Parsed JSON but found no report definitions (neither a bare array nor {reports:[…]}). Raw:\n${res.body}`);
           }
         } catch {
           console.log(`  Could not parse as JSON. Raw body:\n${res.body}`);
@@ -539,43 +554,54 @@ async function main(): Promise<void> {
   const triedReports: ReportResult[] = [];
 
   // ── 5b. Catalog-driven requests ──────────────────────────────────────────
+  // Try EVERY candidate (Cash History, Orders, Fills, Account Balance History,
+  // Performance, etc.) — do not stop at the first success. We want a result for
+  // each report type so we can compare coverage.
   for (const def of defsToTry) {
     console.log(`\n  ════ Trying catalog report: "${def.name}" ════`);
+    console.log(`  Declared templates: ${def.templates?.join(", ") || "(none)"}`);
+    console.log(`  Declared representationTypes: ${def.representationTypes?.join(", ") || "(none)"}`);
 
-    // Build variants: 2 account forms × 2 date formats × 2 slash variants = up to 8
-    for (const accountValue of [acctName, String(acctId)]) {
-      for (const dateFormat of (["mmddyyyy", "iso"] as const)) {
-        for (const escapeSlashes of [true, false]) {
-          const { body, label } = buildBodyFromCatalog(
-            def, acctName, acctId, startMD, endMD, startIso, endIso,
-            accountValue, dateFormat, "html", escapeSlashes,
-          );
-          const r = await tryReport(client, def.name, label, body, escapeSlashes);
-          triedReports.push(r);
-          if (r.success) {
-            successfulReports.push(r);
-            break;
+    // Templates to try: each catalog-declared template, plus undefined (no template).
+    const templates: Array<string | undefined> = [...(def.templates ?? []), undefined];
+    let defSucceeded = false;
+
+    for (const template of templates) {
+      if (defSucceeded) break;
+      // Variants: 2 account forms × 2 date formats × 2 slash variants
+      for (const accountValue of [acctName, String(acctId)]) {
+        if (defSucceeded) break;
+        for (const dateFormat of (["mmddyyyy", "iso"] as const)) {
+          if (defSucceeded) break;
+          for (const escapeSlashes of [true, false]) {
+            const { body, label } = buildBodyFromCatalog(
+              def, acctName, acctId, startMD, endMD, startIso, endIso,
+              accountValue, dateFormat, "html", escapeSlashes, template,
+            );
+            const r = await tryReport(client, def.name, label, body, escapeSlashes);
+            triedReports.push(r);
+            if (r.success) {
+              successfulReports.push(r);
+              defSucceeded = true;
+              break;
+            }
           }
         }
-        if (successfulReports.length > 0) break;
       }
-      if (successfulReports.length > 0) break;
     }
 
-    // If still failing, try csv and json representationTypes
-    if (successfulReports.length === 0) {
+    // If html failed for this def, try csv and json (catalog template[0]).
+    if (!defSucceeded) {
       for (const repType of ["csv", "json"] as const) {
         const { body, label } = buildBodyFromCatalog(
           def, acctName, acctId, startMD, endMD, startIso, endIso,
-          acctName, "mmddyyyy", repType, true,
+          acctName, "mmddyyyy", repType, true, def.templates?.[0],
         );
         const r = await tryReport(client, def.name, label, body, true);
         triedReports.push(r);
         if (r.success) { successfulReports.push(r); break; }
       }
     }
-
-    if (successfulReports.length > 0) break;
   }
 
   // ── 5c. If all catalog attempts failed, try body shape variants ──────────
