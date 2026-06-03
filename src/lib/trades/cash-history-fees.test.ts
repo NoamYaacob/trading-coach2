@@ -180,71 +180,122 @@ describe("aggregateByPairedTrade — paired trade window", () => {
   });
 });
 
-describe("normalizeCashBalanceLogRows", () => {
-  it("normalizes raw cashBalanceLog rows and tags the DB account id", () => {
+describe("normalizeCashBalanceLogRows — LIVE API shape", () => {
+  // The live cashBalanceLog/list rows (account 1868411 / 2026-06-02) carry the
+  // signed per-row value in `delta`. `amount` is the running balance and
+  // `realizedPnL` is cumulative — BOTH must be ignored. cashChangeType is the
+  // UNSPACED form ("TradePaired", "Commission", "ExchangeFee", …).
+  it("uses delta, NOT amount or realizedPnL, for a TradePaired row", () => {
     const raw: RawCashBalanceLogRow[] = [
-      { accountId: 555, contractId: 99, amount: -0.35, cashChangeType: "Exchange Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: 1.5, cashChangeType: "Trade Paired", tradeDate: { year: 2026, month: 6, day: 2 } },
+      {
+        accountId: 1734393,
+        timestamp: "2026-06-02T12:43:58.216Z",
+        tradeDate: { year: 2026, month: 6, day: 2 },
+        cashChangeType: "TradePaired",
+        fillPairId: 15348818485,
+        delta: 1.5,
+        amount: 972.9,      // running balance — must NOT be used
+        realizedPnL: -0.4,  // cumulative — must NOT be used
+      },
     ];
-    const out = normalizeCashBalanceLogRows(raw, 555, "1868411");
-    assert.equal(out.length, 2);
-    assert.equal(out[0]!.accountId, "1868411", "tagged with our DB account id");
-    assert.equal(out[0]!.contract, "99", "contractId stringified for grouping");
+    const out = normalizeCashBalanceLogRows(raw, 1734393, "1868411");
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.delta, 1.5, "row value is delta (1.5), not amount (972.9) or realizedPnL (-0.4)");
+    assert.equal(out[0]!.changeType, "TradePaired");
     assert.equal(out[0]!.date, "2026-06-02");
-    assert.equal(out[0]!.delta, -0.35);
-    assert.equal(out[0]!.changeType, "Exchange Fee");
+  });
+
+  it("a Commission row with delta=-0.39 normalizes to a -0.39 fee delta (ignores amount/realizedPnL)", () => {
+    const raw: RawCashBalanceLogRow[] = [
+      {
+        accountId: 1734393,
+        timestamp: "2026-06-02T12:43:58.216Z",
+        tradeDate: { year: 2026, month: 6, day: 2 },
+        cashChangeType: "Commission",
+        fillId: 15348818480,
+        delta: -0.39,
+        amount: 971.4,
+        realizedPnL: -1.9,
+      },
+    ];
+    const out = normalizeCashBalanceLogRows(raw, 1734393, "1868411");
+    assert.equal(out[0]!.delta, -0.39);
+    assert.equal(classifyCashRow(out[0]!.changeType), "fee");
+  });
+
+  it("amount is never used as the P&L/fee value (would yield ~972, not 1.5)", () => {
+    const raw: RawCashBalanceLogRow[] = [
+      { accountId: 1734393, cashChangeType: "TradePaired", delta: 1.5, amount: 972.9, realizedPnL: -0.4, tradeDate: { year: 2026, month: 6, day: 2 } },
+    ];
+    const agg = aggregateCashHistory(normalizeCashBalanceLogRows(raw, 1734393, "1868411"), "1868411")[0]!;
+    assert.equal(agg.tradePnl, 1.5, "must be the delta, not the 972.9 running balance");
+    assert.notEqual(agg.tradePnl, 972.9);
+    assert.notEqual(agg.tradePnl, -0.4);
   });
 
   it("drops rows for other broker accounts (isolation at ingestion)", () => {
     const raw: RawCashBalanceLogRow[] = [
-      { accountId: 555, amount: -1.9, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 777, amount: -500, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
+      { accountId: 1734393, delta: -1.9, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
+      { accountId: 777, delta: -500, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
     ];
-    const out = normalizeCashBalanceLogRows(raw, 555, "1868411");
+    const out = normalizeCashBalanceLogRows(raw, 1734393, "1868411");
     assert.equal(out.length, 1);
     assert.equal(out[0]!.delta, -1.9);
   });
 
-  it("handles {name} cashChangeType, string/US tradeDate, realizedPnL fallback", () => {
-    const raw: RawCashBalanceLogRow[] = [
-      { accountId: 555, cashChangeType: { name: "Commission" }, amount: -0.39, timestamp: "06/02/2026 15:43:58" },
-      { accountId: 555, cashChangeType: "Trade Paired", realizedPnL: 1.5, tradeDate: "2026-06-02T00:00:00" },
-    ];
-    const out = normalizeCashBalanceLogRows(raw, 555, "1868411");
-    assert.equal(out.length, 2);
-    assert.equal(out[0]!.changeType, "Commission");
-    assert.equal(out[0]!.date, "2026-06-02", "US MM/DD/YYYY timestamp → ISO date key");
-    assert.equal(out[1]!.delta, 1.5, "realizedPnL used when amount absent");
-  });
-
   it("skips rows missing a usable delta, date, or change type — never throws", () => {
     const raw: RawCashBalanceLogRow[] = [
-      { accountId: 555, cashChangeType: "Commission" }, // no delta, no date
-      { accountId: 555, amount: -1, tradeDate: { year: 2026, month: 6, day: 2 } }, // no changeType
-      { accountId: 555, amount: -1, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } }, // ok
+      { accountId: 1734393, cashChangeType: "Commission" }, // no delta, no date
+      { accountId: 1734393, delta: -1, tradeDate: { year: 2026, month: 6, day: 2 } }, // no changeType
+      { accountId: 1734393, amount: -1, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } }, // delta missing → skipped
+      { accountId: 1734393, delta: -1, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } }, // ok
     ];
-    const out = normalizeCashBalanceLogRows(raw, 555, "1868411");
-    assert.equal(out.length, 1);
+    const out = normalizeCashBalanceLogRows(raw, 1734393, "1868411");
+    assert.equal(out.length, 1, "only the row with a usable delta + date + changeType survives");
   });
 
-  it("end-to-end: normalize then aggregate reproduces +1.50 / -1.90 / -0.40", () => {
+  it("end-to-end live shape: the 11 rows for 1868411/2026-06-02 → +1.50 / -1.90 / -0.40", () => {
+    const td = { year: 2026, month: 6, day: 2 };
     const raw: RawCashBalanceLogRow[] = [
-      { accountId: 555, contractId: 99, amount: -0.35, cashChangeType: "Exchange Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.19, cashChangeType: "Clearing Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.02, cashChangeType: "Nfa Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.39, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.35, cashChangeType: "Exchange Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.19, cashChangeType: "Clearing Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.02, cashChangeType: "Nfa Fee", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: -0.39, cashChangeType: "Commission", tradeDate: { year: 2026, month: 6, day: 2 } },
-      { accountId: 555, contractId: 99, amount: 1.5, cashChangeType: "Trade Paired", tradeDate: { year: 2026, month: 6, day: 2 } },
+      // first fill side (15:43:40) — unspaced API names, signed deltas
+      { accountId: 1734393, cashChangeType: "ExchangeFee", delta: -0.35, amount: 972.95, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "ClearingFee", delta: -0.19, amount: 972.76, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "NfaFee", delta: -0.02, amount: 972.74, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "Commission", delta: -0.39, amount: 972.35, realizedPnL: 0, tradeDate: td },
+      // second fill side (15:43:58)
+      { accountId: 1734393, cashChangeType: "ExchangeFee", delta: -0.35, amount: 972.0, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "ClearingFee", delta: -0.19, amount: 971.81, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "NfaFee", delta: -0.02, amount: 971.79, realizedPnL: 0, tradeDate: td },
+      { accountId: 1734393, cashChangeType: "Commission", delta: -0.39, amount: 971.4, realizedPnL: -1.9, tradeDate: td },
+      // paired P&L
+      { accountId: 1734393, cashChangeType: "TradePaired", delta: 1.5, amount: 972.9, realizedPnL: -0.4, tradeDate: td },
     ];
-    const norm = normalizeCashBalanceLogRows(raw, 555, "1868411");
+    const norm = normalizeCashBalanceLogRows(raw, 1734393, "1868411");
+    assert.equal(norm.length, 9, "all 9 fee/pnl rows normalized (running balances are 11 total incl. non-trade)");
     const agg = aggregateCashHistory(norm, "1868411")[0]!;
     assert.equal(agg.tradePnl, 1.5);
     assert.equal(agg.fees, -1.9);
     assert.equal(agg.netPnl, -0.4);
     assert.equal(agg.feesAvailable, true);
+
+    const dayNet = cashHistoryDayNet(norm, "1868411");
+    assert.ok(Math.abs(dayNet["2026-06-02"] - -0.4) < 1e-9, "day-net map = { '2026-06-02': -0.4 }");
+  });
+});
+
+describe("classifyCashRow — spaced and unspaced API/PDF variants", () => {
+  it("recognizes UNSPACED live API names", () => {
+    assert.equal(classifyCashRow("TradePaired"), "pnl");
+    assert.equal(classifyCashRow("ExchangeFee"), "fee");
+    assert.equal(classifyCashRow("ClearingFee"), "fee");
+    assert.equal(classifyCashRow("NfaFee"), "fee");
+    assert.equal(classifyCashRow("Commission"), "fee");
+  });
+  it("recognizes SPACED PDF names", () => {
+    assert.equal(classifyCashRow("Trade Paired"), "pnl");
+    assert.equal(classifyCashRow("Exchange Fee"), "fee");
+    assert.equal(classifyCashRow("Clearing Fee"), "fee");
+    assert.equal(classifyCashRow("Nfa Fee"), "fee");
   });
 });
 

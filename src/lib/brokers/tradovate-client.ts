@@ -1324,6 +1324,10 @@ export class TradovateClient {
     const url = `${this.#reportsBaseUrl}/reports/requestreport`;
     const body = {
       name: "Performance",
+      // The reports endpoint rejects the request with "missing required field
+      // 'timezone'" when absent. Use the CME session timezone the report window
+      // (17:00–16:59 CT) is already expressed in.
+      timezone: "America/Chicago",
       params: [
         { name: "startDate", value: startDateStr },
         { name: "endDate", value: endDateStr },
