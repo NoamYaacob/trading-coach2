@@ -13,6 +13,8 @@ import {
 } from "@/app/dashboard/_components/command-center/active-status";
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
+import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { resolveDayNet } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
 import { prisma } from "@/lib/db";
@@ -154,6 +156,21 @@ export default async function TradesPage({
   const allTrades = selectedAccount
     ? await loadAccountTrades(selectedAccount.id, { since })
     : [];
+
+  // Broker-authoritative NET P&L per day from Cash History (cashBalanceLog) —
+  // the real after-fees net the trader sees in Tradovate, even when per-fill
+  // fee allocation is unavailable at the trade-row level. Read-only and
+  // best-effort: any failure yields {} and day totals fall back to fill values.
+  let brokerDayNet: Record<string, number> = {};
+  if (selectedAccount) {
+    try {
+      const client = new TradovateClient(selectedAccount.id, currentUser.id);
+      await client.initialize();
+      brokerDayNet = await client.getCashHistoryDayNet();
+    } catch {
+      brokerDayNet = {};
+    }
+  }
 
   // When a date filter is active, narrow to exactly that calendar day.
   const dateFilteredTrades = dateFilter
@@ -514,6 +531,12 @@ export default async function TradesPage({
                   <span style={{ fontSize: 11.5, color: "var(--gr-text-mute)" }}>
                     · {filteredTrades.length} trade{filteredTrades.length !== 1 ? "s" : ""}
                   </span>
+                  {brokerDayNet[dateFilter] != null && (
+                    <span style={{ fontSize: 12, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 600, color: brokerDayNet[dateFilter]! >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
+                      · Day Net P&amp;L {fmt$(brokerDayNet[dateFilter]!)}
+                      <span style={{ fontWeight: 400, color: "var(--gr-text-mute)" }}> · after broker fees</span>
+                    </span>
+                  )}
                   <Link
                     href={buildHref({})}
                     style={{ marginLeft: "auto", fontSize: 12, color: "var(--gr-copper)", textDecoration: "none", flexShrink: 0 }}
@@ -583,11 +606,12 @@ export default async function TradesPage({
                     <tbody>
                       {groupedDateKeys.map((dateKey) => {
                         const rows = groupedByDate.get(dateKey)!;
-                        // Only call the day total "net" when every trade carried
-                        // broker fee data; otherwise show the before-fees sum and
-                        // label it so a fill-only value is never passed off as net.
-                        const dayFeesAvailable = rows.every((t) => t.feesAvailable);
-                        const dayPnl = rows.reduce((s, t) => s + (dayFeesAvailable ? t.netPnl : t.pnl), 0);
+                        // Day total truth order: broker Cash History net (after
+                        // fees) → per-trade net (only if every trade has fees) →
+                        // fill P&L before fees (labelled, never called net). This
+                        // surfaces the real after-fees day net (e.g. −$0.40) even
+                        // when row-level fees are "Not reported".
+                        const day = resolveDayNet(rows, brokerDayNet[dateKey]);
                         return (
                           <Fragment key={dateKey}>
                             <tr>
@@ -597,7 +621,10 @@ export default async function TradesPage({
                                     {fmtDate(rows[0]!.closedAt, tz)}
                                   </span>
                                   <span style={{ fontSize: 11, fontFamily: "var(--font-ibm-plex-mono, monospace)", color: "var(--gr-text-mute)" }}>
-                                    {fmt$(dayPnl)}{dayFeesAvailable ? "" : " before fees"} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
+                                    {fmt$(day.pnl)}
+                                    {day.source === "broker_net" ? " net · after broker fees"
+                                      : day.isNet ? " net"
+                                      : " before fees"} · {rows.length} trade{rows.length !== 1 ? "s" : ""}
                                   </span>
                                 </div>
                               </td>
