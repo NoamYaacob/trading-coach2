@@ -11,9 +11,14 @@ import {
   isAccountActive,
   partitionAccountsByActive,
 } from "@/app/dashboard/_components/command-center/active-status";
-import { loadAccountTrades } from "@/lib/trades/load";
+import {
+  loadAccountFillInputs,
+  historicalFillsToFillInputs,
+  reconstructMergedTrades,
+} from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { formatDateMMDDYYYY } from "@/lib/brokers/tradovate-report-date";
 import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
 import { resolveDayNet, resolveTradeRowNet, resolveTradeClassification } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
@@ -150,12 +155,23 @@ export default async function TradesPage({
   });
 
   // Load real trades for the selected account.
-  // When a date deep-link is active, load 31 days so any calendar date is covered;
-  // then filter to just that day client-side (tz-safe).
+  //
+  // The lookback window normally tracks the range toggle. But a date deep-link
+  // may point at a day OLDER than 31 days (e.g. a calendar click on a day only
+  // the broker Fills report knows about), so when a date filter is active we
+  // extend `since` to cover that exact date (minus a small buffer for entries
+  // that opened on a prior day). Then we narrow to the day client-side (tz-safe).
   const effectiveRangeDays = dateFilter ? 31 : rangeDays;
-  const since = new Date(Date.now() - effectiveRangeDays * 24 * 60 * 60 * 1000);
-  const allTrades = selectedAccount
-    ? await loadAccountTrades(selectedAccount.id, { since })
+  let since = new Date(Date.now() - effectiveRangeDays * 24 * 60 * 60 * 1000);
+  if (dateFilter) {
+    const dateFilterStart = new Date(`${dateFilter}T00:00:00Z`);
+    const buffered = new Date(dateFilterStart.getTime() - 3 * 24 * 60 * 60 * 1000);
+    if (buffered < since) since = buffered;
+  }
+
+  // Imported fills from the local DB (fills synced after Guardrail connected).
+  const dbFillInputs = selectedAccount
+    ? await loadAccountFillInputs(selectedAccount.id, { since })
     : [];
 
   // Broker-authoritative day-level realized P&L. Prefers the Account Balance
@@ -164,9 +180,15 @@ export default async function TradesPage({
   // when per-fill fee allocation is unavailable at the trade-row level.
   // Read-only and best-effort: any failure yields {} and day totals fall back
   // to fill values.
+  //
+  // Same client also fetches the historical FILLS report — individual fill rows
+  // for trades that closed BEFORE Guardrail connected. ABH stays the source of
+  // truth for day net; the Fills report is the source for table rows only.
   let brokerDayNet: Record<string, number> = {};
   let brokerSource: BrokerHistorySource = "none";
   let earliestBrokerDay: string | null = null;
+  let historicalFillInputs: typeof dbFillInputs = [];
+  let usedReportFills = false;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
@@ -175,12 +197,39 @@ export default async function TradesPage({
       brokerDayNet = perf.dayNet;
       brokerSource = perf.source;
       earliestBrokerDay = perf.earliestBrokerDay;
+
+      // Historical fills — best-effort, read-only. Account NAME is required as
+      // the report's `account` param (numeric tvAccountId returns 0 rows).
+      try {
+        const accountName = await client.getAccountName();
+        if (accountName) {
+          const today = new Date();
+          const reportStart = new Date(today.getFullYear() - 5, today.getMonth(), today.getDate());
+          const reportEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+          const startStr = formatDateMMDDYYYY(reportStart.toLocaleDateString("en-CA"));
+          const endStr = formatDateMMDDYYYY(reportEnd.toLocaleDateString("en-CA"));
+          const rows = await client.getHistoricalFillsReport(accountName, startStr, endStr);
+          if (rows && rows.length > 0) {
+            historicalFillInputs = historicalFillsToFillInputs(rows).filter(
+              (f) => f.occurredAt >= since,
+            );
+            usedReportFills = historicalFillInputs.length > 0;
+          }
+        }
+      } catch {
+        historicalFillInputs = [];
+        usedReportFills = false;
+      }
     } catch {
       brokerDayNet = {};
       brokerSource = "none";
       earliestBrokerDay = null;
     }
   }
+
+  // Merge imported DB fills with broker historical Fills-report fills, deduping
+  // by stable broker fill id, then reconstruct round trips over the union.
+  const allTrades = reconstructMergedTrades(dbFillInputs, historicalFillInputs);
 
   // When a date filter is active, narrow to exactly that calendar day.
   const dateFilteredTrades = dateFilter
@@ -359,7 +408,9 @@ export default async function TradesPage({
           )}
           {!dateFilter && brokerSource !== "none" && (
             <div style={{ fontSize: 11, color: "var(--gr-text-mute)", marginTop: 3 }}>
-              {`Day totals from ${brokerSourceLabel(brokerSource)} · table rows are imported fills`}
+              {usedReportFills
+                ? `Day totals from ${brokerSourceLabel(brokerSource)} · table rows from broker fills report`
+                : `Day totals from ${brokerSourceLabel(brokerSource)} · table rows are imported fills`}
             </div>
           )}
           {lowConfidence && (
