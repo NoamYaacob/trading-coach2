@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/db";
+import { timed } from "@/lib/perf";
 
 const SESSION_COOKIE_NAME = "trading-coach-session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
@@ -116,42 +117,47 @@ export async function validatePasswordResetToken(
 }
 
 export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  // Timed so we can prove the auth/session path is millisecond-fast (a single
+  // indexed session lookup) and never the cause of slow navigation. Emits:
+  //   [perf] route=session step=getCurrentUser ms=<duration> accountId=—
+  return timed("session", "getCurrentUser", null, async () => {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-  if (!token) {
-    return null;
-  }
-
-  const session = await prisma.session.findUnique({
-    where: { tokenHash: hashSessionToken(token) },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          subscriptionStatus: true,
-          trialStartedAt: true,
-          trialEndsAt: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      },
-    },
-  });
-
-  if (!session || session.expiresAt < new Date()) {
-    cookieStore.delete(SESSION_COOKIE_NAME);
-
-    if (session) {
-      await prisma.session.delete({
-        where: { id: session.id },
-      });
+    if (!token) {
+      return null;
     }
 
-    return null;
-  }
+    const session = await prisma.session.findUnique({
+      where: { tokenHash: hashSessionToken(token) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            subscriptionStatus: true,
+            trialStartedAt: true,
+            trialEndsAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
 
-  return session.user;
+    if (!session || session.expiresAt < new Date()) {
+      cookieStore.delete(SESSION_COOKIE_NAME);
+
+      if (session) {
+        await prisma.session.delete({
+          where: { id: session.id },
+        });
+      }
+
+      return null;
+    }
+
+    return session.user;
+  });
 }

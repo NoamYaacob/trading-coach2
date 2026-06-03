@@ -22,8 +22,18 @@ function read(rel: string): string {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
+// The /trades route is split into the shell page (app/trades/page.tsx) and the
+// streamed broker-data subtree (app/trades/_components/trades-content.tsx). The
+// broker loading + KPI/table markup now live in the content component, behind a
+// <Suspense> boundary, so the shell paints instantly. Source-scan assertions
+// about the route's behavior read the UNION of both files.
+const TRADES_FILES = ["app/trades/page.tsx", "app/trades/_components/trades-content.tsx"];
+function readTrades(): string {
+  return TRADES_FILES.map(read).join("\n");
+}
+
 describe("navigation performance: slow broker calls are capped, unrelated pages stay broker-free", () => {
-  const trades = read("app/trades/page.tsx");
+  const trades = readTrades();
   const dashboard = read("app/dashboard/page.tsx");
   const perf = read("lib/perf.ts");
 
@@ -91,24 +101,31 @@ describe("navigation performance: slow broker calls are capped, unrelated pages 
     );
   });
 
-  it("Dashboard calls getHistoricalAccountPerformance without a hard timeout (ABH is source of truth)", () => {
-    // ABH must run to completion on the dashboard too — a 4s cap caused the
-    // calendar to lose all historical day data (Apr 30, May 4, Jun 2).
+  it("Dashboard loads ABH OFF the blocking render path (Suspense streaming, no hard timeout)", () => {
+    // The dashboard page must NOT call ABH or instantiate a broker client in its
+    // own render path — that would block the shell. ABH now loads inside async
+    // Suspense section wrappers via the shared cached loader. The page renders
+    // <Suspense> + the section components instead.
+    const loader = read("lib/brokers/broker-performance-loader.ts");
     assert.ok(
-      dashboard.includes("getHistoricalAccountPerformance"),
-      "dashboard must call getHistoricalAccountPerformance",
+      !dashboard.includes("getHistoricalAccountPerformance") && !dashboard.includes("new TradovateClient"),
+      "dashboard page must NOT call ABH / TradovateClient in its render path — it blocks navigation",
     );
     assert.ok(
-      dashboard.includes("timed(") && dashboard.includes("broker-performance"),
-      "dashboard must observe broker-performance via timed() for logging",
+      dashboard.includes("<Suspense"),
+      "dashboard must wrap ABH widgets in <Suspense> so the shell paints first",
     );
     assert.ok(
-      !dashboard.includes("BROKER_PERF_TIMEOUT_MS"),
-      "dashboard must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
+      loader.includes("getHistoricalAccountPerformance") && loader.includes("cache("),
+      "the shared loader must call ABH and be per-request cached so siblings share one fetch",
     );
     assert.ok(
-      dashboard.includes("EMPTY_BROKER_PERFORMANCE"),
-      "a perf error must fall back to EMPTY_BROKER_PERFORMANCE, not throw the page",
+      !loader.includes("BROKER_PERF_TIMEOUT_MS") && !loader.includes("withTimeout"),
+      "the ABH loader must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
+    );
+    assert.ok(
+      loader.includes("step=broker-performance"),
+      "the loader must emit a [perf] step=broker-performance timing line",
     );
   });
 
@@ -147,7 +164,7 @@ describe("navigation performance: slow broker calls are capped, unrelated pages 
 });
 
 describe("/trades page: structural contract", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("uses GrShell (not AppShell)", () => {
     assert.ok(page.includes("<GrShell"), "must render <GrShell>");
@@ -263,7 +280,7 @@ describe("dashboard: today's trades + equity curve use real data", () => {
 });
 
 describe("/trades page: KPI strip is responsive", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("KPI grid uses the trades-kpi-grid class for responsive overrides", () => {
     assert.ok(
@@ -295,7 +312,7 @@ describe("/trades page: KPI strip is responsive", () => {
 });
 
 describe("/trades page: heading hierarchy", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("h1 is 'Trades' or 'Trades · <date>' in date-filter mode", () => {
     assert.ok(
@@ -327,7 +344,7 @@ describe("/trades page: heading hierarchy", () => {
 });
 
 describe("/trades page: date deep-link from calendar", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("accepts a date searchParam", () => {
     assert.ok(
@@ -373,7 +390,7 @@ describe("/trades page: date deep-link from calendar", () => {
 });
 
 describe("/trades page: timezone — calendar ↔ trades date consistency", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
 
   it("trades page must NOT hardcode 'America/Chicago' as its display timezone", () => {
@@ -437,7 +454,7 @@ describe("/trades page: account isolation", () => {
 });
 
 describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
   const dashboard = read("app/dashboard/page.tsx");
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
   const stats = read("lib/trades/stats.ts");
@@ -695,7 +712,7 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
 });
 
 describe("/trades page: net-based Winning/Losing filter", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
   const dayNet = read("app/trades/day-net.ts");
 
   it("filter classifies by resolved net (rowNetById), not raw t.pnl", () => {
@@ -736,7 +753,7 @@ describe("/trades page: net-based Winning/Losing filter", () => {
 });
 
 describe("/trades page: two-tier historical fee model", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
   const dayNet = read("app/trades/day-net.ts");
   const client = read("lib/brokers/tradovate-client.ts");
 
@@ -831,7 +848,7 @@ describe("/trades page: two-tier historical fee model", () => {
 });
 
 describe("/trades page: ABH + zero fills empty state", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("shows ABH-specific empty state when dateFilter and brokerDayNet exists but no fills", () => {
     assert.ok(
@@ -860,7 +877,7 @@ describe("/trades page: ABH + zero fills empty state", () => {
 });
 
 describe("/trades page: subtitle source clarity", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
 
   it("shows a clarifying line that day totals come from broker source and rows are imported fills", () => {
     assert.ok(
@@ -878,7 +895,7 @@ describe("/trades page: subtitle source clarity", () => {
 });
 
 describe("/trades page: historical Fills-report backfill", () => {
-  const page = read("app/trades/page.tsx");
+  const page = readTrades();
   const client = read("lib/brokers/tradovate-client.ts");
   const merge = read("lib/trades/merge.ts");
 

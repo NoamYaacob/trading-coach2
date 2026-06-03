@@ -26,6 +26,13 @@ function read(rel: string): string {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
+// The /trades route is split into the shell page + the streamed broker-data
+// subtree (trades-content). Source-scan assertions read the union of both.
+const TRADES_FILES = ["app/trades/page.tsx", "app/trades/_components/trades-content.tsx"];
+function readTrades(): string {
+  return TRADES_FILES.map(read).join("\n");
+}
+
 // ── Helpers shared across tests ───────────────────────────────────────────────
 
 function fill(
@@ -272,7 +279,7 @@ describe("data-truth: no fake or sample trade data in authenticated display path
   const equity   = read("app/dashboard/_components/equity-curve.tsx");
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
   const calendarAgg = read("app/dashboard/_components/pnl-calendar-agg.ts");
-  const trades   = read("app/trades/page.tsx");
+  const trades   = readTrades();
 
   it("equity curve never generates synthetic chart points", () => {
     assert.ok(!equity.includes("Math.random"), "must not use Math.random for any chart value");
@@ -384,7 +391,7 @@ describe("data-truth: metric source provenance (source-scan)", () => {
 
 describe("data-truth: UI labeling and classification defaults", () => {
   const dashboard = read("app/dashboard/page.tsx");
-  const trades    = read("app/trades/page.tsx");
+  const trades    = readTrades();
 
   it("dashboard hero does not say 'live accounts' — uses 'connected accounts' instead", () => {
     // "live accounts." is the old hero copy; "live account data" (in the demo banner) is
@@ -579,19 +586,26 @@ describe("data-truth: CME session vs calendar day — explicit labels and bounda
 
 describe("data-truth: Account Balance History is the historical source of truth", () => {
   const dashboard = read("app/dashboard/page.tsx");
-  const trades    = read("app/trades/page.tsx");
+  const trades    = readTrades();
   const equity    = read("app/dashboard/_components/equity-curve.tsx");
   const calendar  = read("app/dashboard/_components/pnl-calendar.tsx");
   const insights  = read("app/dashboard/_components/trader-insights.tsx");
 
   it("dashboard loads broker performance via getHistoricalAccountPerformance (report-preferred)", () => {
+    // ABH is loaded OFF the blocking render path via the shared cached loader,
+    // awaited inside async Suspense sections. The loader (not the page) calls ABH.
+    const loader = read("lib/brokers/broker-performance-loader.ts");
     assert.ok(
-      dashboard.includes("getHistoricalAccountPerformance"),
-      "dashboard must prefer the report-backed historical performance loader",
+      loader.includes("getHistoricalAccountPerformance"),
+      "the broker-performance loader must prefer the report-backed historical performance loader",
     );
     assert.ok(
-      !dashboard.includes("getCashHistoryPerformance"),
-      "dashboard must not call getCashHistoryPerformance directly (it's the fallback inside the loader)",
+      !loader.includes("getCashHistoryPerformance"),
+      "the loader must not call getCashHistoryPerformance directly (it's the fallback inside getHistoricalAccountPerformance)",
+    );
+    assert.ok(
+      dashboard.includes("<Suspense"),
+      "dashboard must stream ABH widgets behind <Suspense> instead of blocking render on them",
     );
   });
 
@@ -614,9 +628,11 @@ describe("data-truth: Account Balance History is the historical source of truth"
 
   it("DB imported fills are not the primary broker metric source when broker history exists", () => {
     // KPIs branch on brokerPerformance/brokerWindow first; recentTrades (fills)
-    // is only the fallback when there is no broker history.
+    // is only the fallback when there is no broker history. This now lives in the
+    // streamed ABH KPI section.
+    const sections = read("app/dashboard/_components/broker-sections.tsx");
     assert.ok(
-      dashboard.includes("brokerWindow30d != null"),
+      sections.includes("brokerWindow30d != null"),
       "dashboard win-rate/PF must prefer broker window stats over fill-derived recentTrades",
     );
   });

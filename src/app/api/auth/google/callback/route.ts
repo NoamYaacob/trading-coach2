@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getTrialDates } from "@/lib/trial";
 import { getAppBaseUrl } from "@/lib/app-url";
+import { timed } from "@/lib/perf";
 import { GOOGLE_OAUTH_STATE_COOKIE } from "../connect/route";
 
 type StatePayload = {
@@ -69,17 +70,19 @@ export async function GET(request: NextRequest) {
   const redirectUri = `${getAppBaseUrl(request)}/api/auth/google/callback`;
   let accessToken: string;
   try {
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        client_secret: clientSecret,
-      }).toString(),
-    });
+    const tokenRes = await timed("auth", "google-token-exchange", null, () =>
+      fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+          client_id: clientId,
+          client_secret: clientSecret,
+        }).toString(),
+      }),
+    );
     const tokenData = (await tokenRes.json()) as { access_token?: string; error?: string };
     if (!tokenRes.ok || !tokenData.access_token) {
       throw new Error(tokenData.error ?? "token_exchange_failed");
@@ -92,9 +95,11 @@ export async function GET(request: NextRequest) {
   // Fetch verified user profile from Google
   let googleUser: GoogleUserInfo;
   try {
-    const infoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const infoRes = await timed("auth", "google-userinfo", null, () =>
+      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+    );
     const data = (await infoRes.json()) as GoogleUserInfo;
     if (!data.sub || !data.email) throw new Error("missing_user_info");
     googleUser = data;

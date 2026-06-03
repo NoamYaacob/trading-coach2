@@ -175,58 +175,63 @@ describe("TraderInsights server panel", () => {
 
 describe("/dashboard page wires the new analytics components", () => {
   const page = read("app/dashboard/page.tsx");
+  // The ABH-dependent widgets now load OFF the blocking render path: the page
+  // renders async Suspense section wrappers, and the wrappers (broker-sections)
+  // render the underlying client components with the resolved ABH data.
+  const sections = read("app/dashboard/_components/broker-sections.tsx");
 
-  it("imports EquityCurve, PnlCalendar, and TraderInsights", () => {
+  it("renders the ABH-streaming sections (EquityCurve/PnlCalendar/TraderInsights wrappers)", () => {
+    assert.ok(page.includes("EquityCurveSection"), "dashboard must render <EquityCurveSection /> behind Suspense");
+    assert.ok(page.includes("PnlCalendarSection"), "dashboard must render <PnlCalendarSection /> behind Suspense");
+    assert.ok(page.includes("TraderInsightsSection"), "dashboard must render <TraderInsightsSection /> behind Suspense");
+    assert.ok(page.includes("<Suspense"), "dashboard must wrap ABH widgets in <Suspense> so the shell paints first");
     assert.ok(
-      page.includes("EquityCurve"),
-      "dashboard must import + render <EquityCurve />",
-    );
-    assert.ok(
-      page.includes("PnlCalendar"),
-      "dashboard must import + render <PnlCalendar />",
-    );
-    assert.ok(
-      page.includes("TraderInsights"),
-      "dashboard must import + render <TraderInsights />",
+      sections.includes("EquityCurve") && sections.includes("PnlCalendar") && sections.includes("TraderInsights"),
+      "broker-sections must render the underlying EquityCurve / PnlCalendar / TraderInsights",
     );
   });
 
-  it("passes the per-account recentTrades into all three components", () => {
+  it("passes the per-account recentTrades through the sections into all three components", () => {
     assert.ok(
-      /<EquityCurve[^>]*trades=\{recentTrades\}/s.test(page),
+      /recentTrades=\{recentTrades\}/.test(page),
+      "page must pass the per-account recentTrades into the ABH sections",
+    );
+    assert.ok(
+      /<EquityCurve[^>]*trades=\{recentTrades\}/s.test(sections),
       "EquityCurve must receive the per-account recentTrades array",
     );
     assert.ok(
-      /<PnlCalendar[^>]*trades=\{recentTrades\}/s.test(page),
+      /<PnlCalendar[^>]*trades=\{recentTrades\}/s.test(sections),
       "PnlCalendar must receive the per-account recentTrades array",
     );
     assert.ok(
-      /<TraderInsights[^>]*recentTrades=\{recentTrades\}/s.test(page),
+      /<TraderInsights[^>]*recentTrades=\{recentTrades\}/s.test(sections),
       "TraderInsights must receive the per-account recentTrades array",
     );
   });
 });
 
 describe("Dashboard profit factor KPI — source-aware label", () => {
-  const page = read("app/dashboard/page.tsx");
+  // Moved into the streamed ABH KPI cards section.
+  const sections = read("app/dashboard/_components/broker-sections.tsx");
 
   it("imports brokerSourceLabel from broker-account-performance", () => {
     assert.ok(
-      page.includes("brokerSourceLabel"),
-      "dashboard page must import brokerSourceLabel for source-aware profit factor sub-label",
+      sections.includes("brokerSourceLabel"),
+      "broker-sections must import brokerSourceLabel for source-aware profit factor sub-label",
     );
   });
 
   it("profit factor sub does NOT hardcode 'broker Cash History'", () => {
     assert.ok(
-      !page.includes("broker Cash History"),
+      !sections.includes("broker Cash History"),
       "profit factor sub must not hardcode 'broker Cash History' — use brokerSourceLabel()",
     );
   });
 
   it("profit factor sub uses brokerSourceLabel(brokerPerformance.source) for honest wording", () => {
     assert.ok(
-      page.includes("brokerSourceLabel(brokerPerformance.source)"),
+      sections.includes("brokerSourceLabel(brokerPerformance.source)"),
       "profit factor sub must call brokerSourceLabel(brokerPerformance.source) to get source-aware label",
     );
   });

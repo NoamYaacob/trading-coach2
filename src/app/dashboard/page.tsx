@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
@@ -46,20 +47,22 @@ import {
 } from "@/lib/timezone";
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
-import { TradovateClient } from "@/lib/brokers/tradovate-client";
-import { timed } from "@/lib/perf";
-import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE, brokerSourceLabel } from "@/lib/trades/broker-account-performance";
-import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
 import {
   isAccountActive,
   partitionAccountsByActive,
 } from "@/app/dashboard/_components/command-center/active-status";
 import { NewAccountsPanel } from "@/app/dashboard/_components/command-center/new-accounts-panel";
 import { ArchiveAccountButton } from "@/app/dashboard/_components/archive-account-button";
-import { EquityCurve } from "@/app/dashboard/_components/equity-curve";
-import { PnlCalendar } from "@/app/dashboard/_components/pnl-calendar";
-import { TraderInsights } from "@/app/dashboard/_components/trader-insights";
-import { profitFactor } from "@/app/dashboard/_components/insights";
+import {
+  BrokerKpiCards,
+  BrokerKpiCardsLoading,
+  EquityCurveSection,
+  EquityCurveLoading,
+  PnlCalendarSection,
+  PnlCalendarLoading,
+  TraderInsightsSection,
+  TraderInsightsLoading,
+} from "@/app/dashboard/_components/broker-sections";
 
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
@@ -297,23 +300,14 @@ export default async function DashboardPage({
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
 
-  // Structured broker account performance, preferring the Account Balance
-  // History report (widest history) and falling back to cashBalanceLog/deps.
-  // Includes dayNet, win/loss counts, profit factor, all-time net, source.
-  // Falls back to EMPTY_BROKER_PERFORMANCE on any error — never blocks render.
-  let brokerPerformance: BrokerAccountPerformance = EMPTY_BROKER_PERFORMANCE;
-  if (selectedAccount) {
-    try {
-      brokerPerformance = await timed("dashboard", "broker-performance", selectedAccount.id, async () => {
-        const client = new TradovateClient(selectedAccount.id, currentUser.id);
-        await client.initialize();
-        return client.getHistoricalAccountPerformance();
-      });
-    } catch {
-      brokerPerformance = EMPTY_BROKER_PERFORMANCE;
-    }
-  }
-  const brokerDayNet = brokerPerformance.dayNet;
+  // Broker Account-Balance-History (ABH) performance is loaded OFF this render
+  // path. It can take 3–8s and must NOT block the dashboard shell / account
+  // cards / rules / session trades from painting. Each ABH-dependent widget
+  // (win-rate & profit-factor KPI cards, equity curve, P&L calendar, trader
+  // insights) is an async server component awaiting the shared, per-request
+  // cached loader inside its own <Suspense> boundary further down. ABH remains
+  // the source of truth once it resolves.
+
   // Use the same timezone-aware day key as TraderInsights and the P&L calendar
   // so "Session trades" is always consistent with what the calendar shows.
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: displayTimeZone });
@@ -331,21 +325,8 @@ export default async function DashboardPage({
   const recentTradesFeesAvailable =
     recentTrades.length > 0 && recentTrades.every((t) => t.feesAvailable);
 
-  // 30D window stats — prefer broker TradePaired rows when Cash History is
-  // available; fall back to fill-based recentTrades otherwise.
+  // 30D window start key — passed to the ABH KPI section (no broker call here).
   const since30dKey = thirtyDaysAgo.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
-  const brokerWindow30d = brokerPerformance.hasBrokerHistory
-    ? computeBrokerWindowStats(brokerPerformance, since30dKey)
-    : null;
-
-  const wins30d = brokerWindow30d != null
-    ? brokerWindow30d.winCount
-    : recentTrades.filter((t) => t.netPnl > 0).length;
-  const total30d = brokerWindow30d != null
-    ? brokerWindow30d.dayCount
-    : recentTrades.length;
-  const winRate30d = total30d > 0 ? wins30d / total30d : null;
-  const pf30d = brokerWindow30d?.profitFactor ?? profitFactor(recentTrades);
 
   // Nav items — same as /rules, but home is active
   const DASHBOARD_NAV: GrNavItem[] = [
@@ -837,28 +818,6 @@ export default async function DashboardPage({
                       tone: (selectedAccount.dailyPnl ?? 0) < 0 ? "warn" : "ok",
                       highlight: true,
                     },
-                    {
-                      label: "Win rate · 30D",
-                      value: winRate30d != null ? `${Math.round(winRate30d * 100)}%` : "—",
-                      sub: winRate30d != null
-                        ? brokerWindow30d != null
-                          ? `${wins30d}W · ${brokerWindow30d.lossCount}L · ${total30d} days · broker net days`
-                          : `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
-                        : "No broker trades in last 30 days",
-                      tone: winRate30d != null && winRate30d >= 0.5 ? "ok" : "warn",
-                    },
-                    {
-                      label: "Profit factor · 30D",
-                      value: pf30d != null ? pf30d.toFixed(2) : "—",
-                      sub: pf30d != null
-                        ? brokerWindow30d != null
-                          ? pf30d >= 1 ? `Net wins exceed losses · ${brokerSourceLabel(brokerPerformance.source)}` : `Net losses exceed wins · ${brokerSourceLabel(brokerPerformance.source)}`
-                          : recentTradesFeesAvailable
-                            ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
-                            : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"
-                        : total30d === 0 ? "No broker days in window" : "No losing days yet",
-                      tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
-                    },
                   ].map((k) => (
                     <div
                       key={k.label}
@@ -888,6 +847,17 @@ export default async function DashboardPage({
                       </span>
                     </div>
                   ))}
+                  {/* Win rate / Profit factor — ABH-derived, streamed in so the
+                      Balance + Session cards above paint instantly. */}
+                  <Suspense fallback={<BrokerKpiCardsLoading />}>
+                    <BrokerKpiCards
+                      accountId={selectedAccount.id}
+                      userId={currentUser.id}
+                      recentTrades={recentTrades}
+                      since30dKey={since30dKey}
+                      recentTradesFeesAvailable={recentTradesFeesAvailable}
+                    />
+                  </Suspense>
                 </div>
               </section>
             )}
@@ -1078,30 +1048,36 @@ export default async function DashboardPage({
                 })()}
               </div>
 
-              {/* Equity curve — client island, cumulative realized P&L w/ timeframe toggles */}
-              <EquityCurve
-                trades={recentTrades}
-                tradesHref={selectedAccount ? `/trades?accountId=${selectedAccount.id}` : "/trades"}
-                dataSourceLabel={recentTradesFeesAvailable ? "Net P&L · broker per-fill fees" : "Fill P&L · before fees"}
-                timezone={displayTimeZone}
-                feesAvailable={recentTradesFeesAvailable}
-                brokerDayNet={brokerDayNet}
-                brokerSource={brokerPerformance.source}
-              />
+              {/* Equity curve — ABH-dependent, streamed behind Suspense so the
+                  shell paints instantly. */}
+              {selectedAccount && (
+                <Suspense fallback={<EquityCurveLoading />}>
+                  <EquityCurveSection
+                    accountId={selectedAccount.id}
+                    userId={currentUser.id}
+                    recentTrades={recentTrades}
+                    tradesHref={`/trades?accountId=${selectedAccount.id}`}
+                    timezone={displayTimeZone}
+                    recentTradesFeesAvailable={recentTradesFeesAvailable}
+                  />
+                </Suspense>
+              )}
             </section>
 
-            {/* ── Trader insights — 2×3 compact stat-card grid ──────────── */}
+            {/* ── Trader insights — 2×3 compact stat-card grid (ABH-dependent) ── */}
             {selectedAccount && (
-              <TraderInsights
-                selectedAccount={selectedAccount}
-                guardian={guardian}
-                riskRules={riskRules}
-                recentTrades={recentTrades}
-                timezone={displayTimeZone}
-                feesAvailable={recentTradesFeesAvailable}
-                brokerDayNet={brokerDayNet}
-                brokerPerformance={brokerPerformance}
-              />
+              <Suspense fallback={<TraderInsightsLoading />}>
+                <TraderInsightsSection
+                  accountId={selectedAccount.id}
+                  userId={currentUser.id}
+                  selectedAccount={selectedAccount}
+                  guardian={guardian}
+                  riskRules={riskRules}
+                  recentTrades={recentTrades}
+                  timezone={displayTimeZone}
+                  recentTradesFeesAvailable={recentTradesFeesAvailable}
+                />
+              </Suspense>
             )}
 
             {/* ── Row 2: Session trades + Recent alerts ─────────────────── */}
@@ -1275,15 +1251,16 @@ export default async function DashboardPage({
             {/* ── P&L Calendar — full month grid, client island ────────── */}
             {selectedAccount && (
               <section className="dash-section" style={{ padding: "0 36px 16px" }}>
-                <PnlCalendar
-                  trades={recentTrades}
-                  timezone={displayTimeZone}
-                  accountLabel={selectedAccount.primaryLabel}
-                  tradesHref={`/trades?accountId=${selectedAccount.id}`}
-                  accountId={selectedAccount.id}
-                  brokerDayNet={brokerDayNet}
-                  brokerSource={brokerPerformance.source}
-                />
+                <Suspense fallback={<PnlCalendarLoading />}>
+                  <PnlCalendarSection
+                    accountId={selectedAccount.id}
+                    userId={currentUser.id}
+                    recentTrades={recentTrades}
+                    timezone={displayTimeZone}
+                    accountLabel={selectedAccount.primaryLabel}
+                    tradesHref={`/trades?accountId=${selectedAccount.id}`}
+                  />
+                </Suspense>
               </section>
             )}
 
