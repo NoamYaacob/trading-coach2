@@ -61,6 +61,11 @@ import {
   type PerformanceReportPnl,
 } from "./tradovate-reports-parser";
 import {
+  parseAccountBalanceHistoryReport,
+  type AccountBalanceHistoryDay,
+} from "./account-balance-history-report";
+export type { AccountBalanceHistoryDay } from "./account-balance-history-report";
+import {
   normalizeCashBalanceLogRows,
   aggregateCashHistory,
   type ContractDayPnl,
@@ -1534,6 +1539,91 @@ export class TradovateClient {
       netPnl: pnl.netPnl,
     });
     return pnl;
+  }
+
+  /**
+   * Read-only account-level daily realized P&L from the "Account Balance
+   * History" report. This report spans wider history than cashBalanceLog/deps
+   * (which can be limited to a short recent window), so it is the candidate
+   * source of truth for historical account-level P&L.
+   *
+   * POSTs to /reports/requestreport with the confirmed working shape:
+   *   name="Account Balance History", template="Default.html",
+   *   representationType="html", timezone=0 (NUMERIC — the reports host rejects
+   *   a string timezone as "Invalid JSON: illegal number"), and only the
+   *   startDate / endDate / account params.
+   *
+   * `startDate` / `endDate` are "MM/DD/YYYY" strings. `accountNameOrId` is the
+   * account name (e.g. "1868411") or its numeric id as a string.
+   *
+   * Returns the parsed day rows (possibly empty), or null when the reports base
+   * URL / token is unavailable or the request fails. Never writes broker state.
+   */
+  async getAccountBalanceHistoryReport(
+    accountNameOrId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<AccountBalanceHistoryDay[] | null> {
+    if (!this.#reportsBaseUrl || !this.#accessToken) return null;
+    const url = `${this.#reportsBaseUrl}/reports/requestreport`;
+    const body = {
+      name: "Account Balance History",
+      // NUMERIC timezone — a string here triggers the reports host's strict
+      // JSON parser to reject it as "Invalid JSON: illegal number". 0 = UTC.
+      timezone: 0,
+      params: [
+        { name: "startDate", value: startDate },
+        { name: "endDate", value: endDate },
+        { name: "account", value: accountNameOrId },
+      ],
+      representationType: "html",
+      template: "Default.html",
+    };
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "text/html, application/json, text/csv, */*;q=0.5",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      console.warn("[tradovate/account-balance-history] reports fetch network error", {
+        accountId: this.#accountId,
+        url,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return null;
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      console.info("[tradovate/account-balance-history] non-2xx", {
+        accountId: this.#accountId,
+        status: res.status,
+      });
+      return null;
+    }
+
+    const contentType = res.headers.get("content-type");
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      return null;
+    }
+
+    const days = parseAccountBalanceHistoryReport({ body: text, contentType });
+    console.info("[tradovate/account-balance-history] parsed", {
+      accountId: this.#accountId,
+      rows: days.length,
+      earliest: days.length ? days.map((d) => d.tradeDate).sort()[0] : null,
+      latest: days.length ? days.map((d) => d.tradeDate).sort().at(-1) : null,
+    });
+    return days;
   }
 
   /**

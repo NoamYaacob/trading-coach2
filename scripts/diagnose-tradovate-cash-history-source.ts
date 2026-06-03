@@ -27,7 +27,14 @@
  */
 
 import { prisma } from "../src/lib/db.ts";
-import { TradovateClient } from "../src/lib/brokers/tradovate-client.ts";
+import {
+  TradovateClient,
+  type AccountBalanceHistoryDay,
+} from "../src/lib/brokers/tradovate-client.ts";
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -667,6 +674,80 @@ async function main(): Promise<void> {
     for (const e of distinctErrors) console.log(`    ${e}`);
   }
 
+  // ── 5d. Account Balance History — PARSED via production client method ─────
+  section("Account Balance History (PARSED) — PRODUCTION-CANDIDATE SOURCE");
+
+  // Use the real production client method + parser, not ad-hoc probing, so this
+  // section validates exactly what the app would use.
+  let abhDays: AccountBalanceHistoryDay[] | null = null;
+  let abhEarliest: string | null = null;
+  let abhLatest: string | null = null;
+  let abhTotalRealized = 0;
+  let abhMinDay: number | null = null;
+  let abhMaxDay: number | null = null;
+  const abhLargeLossDays: string[] = [];
+  try {
+    // account name first (the confirmed working identifier), then numeric id.
+    for (const acctVal of [acctName, String(acctId)]) {
+      abhDays = await client.getAccountBalanceHistoryReport(acctVal, startMD, endMD);
+      if (abhDays && abhDays.length > 0) {
+        console.log(`  account="${acctVal}" → ${abhDays.length} parsed day rows`);
+        break;
+      }
+      console.log(`  account="${acctVal}" → ${abhDays == null ? "null (request failed)" : "0 rows"}`);
+    }
+  } catch (err) {
+    console.log(`  getAccountBalanceHistoryReport error: ${err instanceof Error ? err.message : err}`);
+  }
+
+  const abhDayMap: Record<string, number> = {};
+  if (abhDays && abhDays.length > 0) {
+    const sortedDates = abhDays.map((d) => d.tradeDate).filter(Boolean).sort();
+    abhEarliest = sortedDates[0] ?? null;
+    abhLatest = sortedDates[sortedDates.length - 1] ?? null;
+    for (const d of abhDays) {
+      abhDayMap[d.tradeDate] = round2((abhDayMap[d.tradeDate] ?? 0) + d.realizedPnl);
+    }
+    const vals = Object.values(abhDayMap);
+    abhTotalRealized = round2(vals.reduce((s, v) => s + v, 0));
+    abhMinDay = vals.length ? Math.min(...vals) : null;
+    abhMaxDay = vals.length ? Math.max(...vals) : null;
+    for (const [k, v] of Object.entries(abhDayMap)) {
+      if (v <= -100) abhLargeLossDays.push(k);
+    }
+
+    console.log(`\n  Parsed Account Balance History day series:`);
+    console.log(`  Row count:     ${abhDays.length}`);
+    console.log(`  Day count:     ${Object.keys(abhDayMap).length}`);
+    console.log(`  Earliest date: ${abhEarliest}`);
+    console.log(`  Latest date:   ${abhLatest}`);
+    console.log(`  Total realized P&L: ${fmt$(abhTotalRealized)}`);
+    console.log(`  Min daily realized: ${fmt$(abhMinDay)}`);
+    console.log(`  Max daily realized: ${fmt$(abhMaxDay)}`);
+    if (abhLargeLossDays.length > 0) {
+      console.log(`  *** DAYS WITH REALIZED P&L <= -$100: ${abhLargeLossDays.join(", ")} ***`);
+    }
+    console.log(`\n  Daily realized P&L map (first 20):`);
+    for (const [k, v] of Object.entries(abhDayMap).sort().slice(0, 20)) {
+      console.log(`    ${k}  ${fmt$(v)}`);
+    }
+
+    // Coverage comparison vs cashBalanceLog/deps.
+    console.log(`\n  ── COVERAGE: Account Balance History vs cashBalanceLog/deps ──`);
+    const depsEarliestKey = depsSummary?.earliest?.slice(0, 10) ?? null;
+    console.log(`  cashBalanceLog/deps earliest: ${depsEarliestKey ?? "—"}  (${depsSummary?.rows ?? 0} rows)`);
+    console.log(`  Account Balance History earliest: ${abhEarliest ?? "—"}  (${Object.keys(abhDayMap).length} days)`);
+    if (abhEarliest && depsEarliestKey && abhEarliest < depsEarliestKey) {
+      console.log(`  ✓ Account Balance History is WIDER — exposes ${abhEarliest} which deps does not.`);
+    } else if (abhEarliest && depsEarliestKey && abhEarliest >= depsEarliestKey) {
+      console.log(`  Account Balance History earliest is not earlier than deps.`);
+    }
+  } else {
+    console.log(`\n  No parseable Account Balance History rows.`);
+    console.log(`  (If Section 5 PHASE 2 showed a 2xx for Account Balance History, the parser`);
+    console.log(`   may need a fixture from the live HTML — capture the body and compare.)`);
+  }
+
   // ── 6. Source comparison + recommendation ─────────────────────────────────
   section("SOURCE COMPARISON + RECOMMENDATION");
 
@@ -694,7 +775,22 @@ async function main(): Promise<void> {
       accountScoped: true,
       productionSafe: true,
       largeLossDays: depsSummary.largeLossDays,
-      notes: "Primary production source. Account-scoped. No date-range params — returns all rows Tradovate has for this account.",
+      notes: "Detailed ledger source (TradePaired + fee rows). Account-scoped. May be limited to a short recent window — NOT guaranteed complete all-time history.",
+    });
+  }
+
+  if (abhDays && abhDays.length > 0) {
+    sources.push({
+      name: 'reports "Account Balance History" (parsed)',
+      rows: abhDays.length,
+      earliest: abhEarliest,
+      latest: abhLatest,
+      totalNet: abhTotalRealized,
+      minDay: abhMinDay,
+      accountScoped: true,
+      productionSafe: true,
+      largeLossDays: abhLargeLossDays,
+      notes: "PRODUCTION-CANDIDATE for historical account-level realized P&L. Wider history than cashBalanceLog/deps. Parsed via getAccountBalanceHistoryReport (timezone=0, Default.html).",
     });
   }
 
@@ -835,15 +931,23 @@ async function main(): Promise<void> {
   console.log();
 
   console.log(`  RECOMMENDATION:`);
-  if (depsSummary && depsSummary.rows > 0) {
-    console.log(`    Production source: cashBalanceLog/deps?masterid={tvAccountId}`);
-    console.log(`    This is the only account-scoped, production-safe endpoint with Cash History data.`);
-    console.log(`    It returns all rows Tradovate exposes via the standard OAuth API.`);
-    if (depsSummary.rows < 20 && depsEarliest && depsEarliest > "2026-01-01") {
-      console.log(`    ⚠ Only ${depsSummary.rows} rows from ${depsEarliest} — this is a very short history.`);
-      console.log(`    ⚠ The Tradovate web export may be using a different data path (reports host)`);
-      console.log(`    ⚠ that is not accessible with a standard trader OAuth token.`);
-    }
+  const abhWider =
+    abhDays != null && abhDays.length > 0 && abhEarliest != null &&
+    (depsSummary?.earliest == null || abhEarliest < depsSummary.earliest.slice(0, 10));
+  if (abhWider) {
+    console.log(`    Account-level historical realized P&L → reports "Account Balance History"`);
+    console.log(`      (timezone=0, template=Default.html, params startDate/endDate/account).`);
+    console.log(`      Parsed via getAccountBalanceHistoryReport. Earliest ${abhEarliest}, ${Object.keys(abhDayMap).length} days.`);
+    console.log(`      This is WIDER than cashBalanceLog/deps and should be the historical source of truth.`);
+    console.log(`    Recent fee-level / TradePaired breakdown → cashBalanceLog/deps (detailed ledger).`);
+    console.log(`    NOTE: cashBalanceLog/deps is NOT complete all-time history for this account.`);
+  } else if (abhDays != null && abhDays.length > 0) {
+    console.log(`    Account Balance History parsed (${abhDays.length} rows) but not wider than deps for this account.`);
+    console.log(`    Keep cashBalanceLog/deps as the detailed ledger; use the report when it extends coverage.`);
+  } else if (depsSummary && depsSummary.rows > 0) {
+    console.log(`    cashBalanceLog/deps?masterid={tvAccountId} is account-scoped and production-safe`);
+    console.log(`    for detailed recent ledger rows, but may be a partial window. Validate against`);
+    console.log(`    the Account Balance History report (Section 5d) for wider history.`);
   } else {
     console.log(`    No usable Cash History source found via standard OAuth endpoints.`);
   }
