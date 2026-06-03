@@ -57,6 +57,10 @@ import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 import { parseTradovateMasterId } from "./tradovate-master-id";
 import { formatDateMMDDYYYY, nextCalendarDay } from "./tradovate-report-date";
 import {
+  parsePerformanceReportPnl,
+  type PerformanceReportPnl,
+} from "./tradovate-reports-parser";
+import {
   findGuardrailPositionLimit,
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
@@ -1188,6 +1192,22 @@ export class TradovateClient {
     return this.#externalAccountId;
   }
 
+  /** The numeric Tradovate account id resolved during initialize(). null when absent. */
+  getTvAccountId(): number | null {
+    return this.#tvAccountId;
+  }
+
+  /**
+   * Read-only diagnostic helper: GET a list-style endpoint and return the
+   * parsed items. The HTTP method is hardcoded to GET — this cannot place,
+   * cancel, or modify anything. Used ONLY by the fee-source inspection script
+   * to discover real response shapes. Throws are the caller's to catch.
+   */
+  async debugRawList(endpoint: string): Promise<unknown[]> {
+    const raw = await this.#request<unknown>(endpoint, "GET");
+    return parseSnapshotItems<Record<string, unknown>>(raw);
+  }
+
   // ── Per-account trade count sources ──────────────────────────────────────
   // Each method below is one fallback step in the trade-count resolver
   // (see tradovate-trade-count.ts). They are deliberately defensive: never
@@ -1294,6 +1314,39 @@ export class TradovateClient {
     });
 
     return { status: res.status, body: text, contentType };
+  }
+
+  /**
+   * Read-only day-level P&L from the Performance Report: Gross P/L, fees, and
+   * Net P/L for the given trading day. Reuses fetchPerformanceReport (same
+   * POST /reports/requestreport) and the pure parser.
+   *
+   * Returns null when the report is unavailable. Otherwise returns a struct
+   * whose fields are each independently nullable — a field is null unless the
+   * report actually carried it. Never fabricates or derives missing values.
+   */
+  async fetchPerformanceReportPnl(input: {
+    tradingDayKey: string;
+  }): Promise<PerformanceReportPnl | null> {
+    const accountName = await this.getAccountName();
+    if (!accountName) return null;
+    const report = await this.fetchPerformanceReport({
+      accountName,
+      tradingDayKey: input.tradingDayKey,
+    });
+    if (!report || report.status < 200 || report.status >= 300) return null;
+    const pnl = parsePerformanceReportPnl({
+      body: report.body,
+      contentType: report.contentType,
+    });
+    console.info("[tradovate/report-pnl] parsed day P&L", {
+      accountId: this.#accountId,
+      tradingDayKey: input.tradingDayKey,
+      grossPnl: pnl.grossPnl,
+      fees: pnl.fees,
+      netPnl: pnl.netPnl,
+    });
+    return pnl;
   }
 
   /**

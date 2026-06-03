@@ -23,6 +23,8 @@ import Link from "next/link";
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
+import { aggregateCalendarDays } from "./pnl-calendar-agg.ts";
+
 type Props = {
   /** Round-trip trades for the selected account (already <= 30d). */
   trades: RoundTripTrade[];
@@ -34,6 +36,14 @@ type Props = {
   tradesHref: string;
   /** Account ID used to build day-click deep links to /trades?accountId=…&date=… */
   accountId: string;
+  /**
+   * Optional broker-reported NET P&L per day key ("YYYY-MM-DD" in `timezone`).
+   * When a day is present here, its value is authoritative net-after-fees and
+   * overrides the per-trade sum for that day. Days absent fall back to the
+   * fill-level aggregation. Only broker-supplied values are used — never
+   * fabricated. Sourced from the Performance Report (reports/requestreport).
+   */
+  brokerDayNet?: Record<string, number>;
 };
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -96,7 +106,7 @@ function buildMonthGrid(
   return cells;
 }
 
-export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accountId }: Props) {
+export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accountId, brokerDayNet }: Props) {
   const [monthOffset, setMonthOffset] = React.useState(0);
 
   const now = new Date();
@@ -122,17 +132,17 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
   // as such (never called "Net"), since a trade-level net cannot be derived.
   const feesAvailable = trades.length > 0 && trades.every((t) => t.feesAvailable);
 
-  // Aggregate trades by displayed-timezone day (en-CA key).
-  const dayMap = React.useMemo(() => {
-    const map = new Map<string, { pnl: number; count: number }>();
-    for (const t of trades) {
-      const key = t.closedAt.toLocaleDateString("en-CA", { timeZone: timezone });
-      const cur = map.get(key) ?? { pnl: 0, count: 0 };
-      // Net when fees are known for the whole window, else fill P&L before fees.
-      map.set(key, { pnl: cur.pnl + (feesAvailable ? t.netPnl : t.pnl), count: cur.count + 1 });
-    }
-    return map;
-  }, [trades, timezone, feesAvailable]);
+  // Aggregate trades by displayed-timezone day (en-CA key). Days the broker
+  // reported a net for are shown as authoritative net-after-fees.
+  const dayMap = React.useMemo(
+    () => aggregateCalendarDays(trades, timezone, feesAvailable, brokerDayNet),
+    [trades, timezone, feesAvailable, brokerDayNet],
+  );
+
+  // A cell shows true net P&L when window fees are known OR the broker reported
+  // that specific day's net. When neither holds, values are fill P&L before fees.
+  const hasBrokerNet = !!brokerDayNet && Object.keys(brokerDayNet).length > 0;
+  const showsNet = feesAvailable || hasBrokerNet;
 
   const cells = React.useMemo(
     () => buildMonthGrid(viewYear, viewMonth, timezone),
@@ -190,7 +200,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
           <div
             style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}
           >
-            {feesAvailable ? "Net P&amp;L" : "Fill P&amp;L (before fees)"} · calendar day · {accountLabel}
+            {showsNet ? "Net P&amp;L" : "Fill P&amp;L (before fees)"} · calendar day · {accountLabel}
             {earliestTradeDate != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}

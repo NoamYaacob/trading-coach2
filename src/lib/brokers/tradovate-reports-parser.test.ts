@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parsePerformanceReportTradeCount } from "./tradovate-reports-parser.ts";
+import {
+  parsePerformanceReportTradeCount,
+  parsePerformanceReportPnl,
+  parseMoney,
+} from "./tradovate-reports-parser.ts";
 
 // ── HTML ──────────────────────────────────────────────────────────────────────
 
@@ -218,5 +222,113 @@ describe("parsePerformanceReportTradeCount — Tradovate fixture values", () => 
       parsePerformanceReportTradeCount({ body: csv, contentType: "text/csv" }),
       6,
     );
+  });
+});
+
+// ── parseMoney ──────────────────────────────────────────────────────────────
+
+describe("parseMoney", () => {
+  it("parses plain, signed, currency, comma, and accounting-negative forms", () => {
+    assert.equal(parseMoney("1.50"), 1.5);
+    assert.equal(parseMoney("+$1.50"), 1.5);
+    assert.equal(parseMoney("-$0.40"), -0.4);
+    assert.equal(parseMoney("(1.90)"), -1.9);
+    assert.equal(parseMoney("$1,234.50"), 1234.5);
+    assert.equal(parseMoney("  -1,022.50 "), -1022.5);
+  });
+  it("returns null for non-money strings", () => {
+    assert.equal(parseMoney("n/a"), null);
+    assert.equal(parseMoney(""), null);
+    assert.equal(parseMoney(null), null);
+    assert.equal(parseMoney(undefined), null);
+  });
+});
+
+// ── parsePerformanceReportPnl — the 1868411 scenario ────────────────────────
+// Account Report: Gross P/L +1.50, Fees -1.90, Net/Total P/L -0.40.
+// fillFee/list returns 0 records, so this report is the only fee source.
+
+describe("parsePerformanceReportPnl — HTML", () => {
+  it("extracts gross +1.50, fees 1.90 (magnitude), net -0.40 from a report table", () => {
+    const html = `<table>
+      <tr><th>Statistic</th><th>Value</th></tr>
+      <tr><td>Gross P/L</td><td>$1.50</td></tr>
+      <tr><td>Total Fees</td><td>-$1.90</td></tr>
+      <tr><td>Net P/L</td><td>-$0.40</td></tr>
+    </table>`;
+    const pnl = parsePerformanceReportPnl({ body: html, contentType: "text/html" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9, "fees normalised to positive magnitude");
+    assert.ok(Math.abs(pnl.netPnl! - -0.4) < 1e-9, "net is -0.40");
+  });
+
+  it("handles &nbsp; separators and 'Commission' label", () => {
+    const html = `<div>Gross&nbsp;P/L</div><div>1.50</div>
+      <div>Commission</div><div>(1.90)</div>
+      <div>Total&nbsp;P/L</div><div>-0.40</div>`;
+    const pnl = parsePerformanceReportPnl({ body: html, contentType: "text/html" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9);
+    assert.ok(Math.abs(pnl.netPnl! - -0.4) < 1e-9);
+  });
+});
+
+describe("parsePerformanceReportPnl — CSV", () => {
+  it("extracts gross/fees/net from label,value rows", () => {
+    const csv = `Statistic,Value
+Gross P/L,1.50
+Total Fees,-1.90
+Net P/L,-0.40`;
+    const pnl = parsePerformanceReportPnl({ body: csv, contentType: "text/csv" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9);
+    assert.ok(Math.abs(pnl.netPnl! - -0.4) < 1e-9);
+  });
+});
+
+describe("parsePerformanceReportPnl — JSON", () => {
+  it("extracts from direct keys", () => {
+    const json = JSON.stringify({ "Gross P/L": 1.5, "Total Fees": -1.9, "Net P/L": -0.4 });
+    const pnl = parsePerformanceReportPnl({ body: json, contentType: "application/json" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9);
+    assert.ok(Math.abs(pnl.netPnl! - -0.4) < 1e-9);
+  });
+
+  it("extracts from {name,value} statistic rows", () => {
+    const json = JSON.stringify({
+      statistics: [
+        { name: "Gross P/L", value: "1.50" },
+        { name: "Commissions", value: "-1.90" },
+        { name: "Net P/L", value: "-0.40" },
+      ],
+    });
+    const pnl = parsePerformanceReportPnl({ body: json, contentType: "application/json" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9);
+    assert.ok(Math.abs(pnl.netPnl! - -0.4) < 1e-9);
+  });
+});
+
+describe("parsePerformanceReportPnl — honesty (never fabricate)", () => {
+  it("returns null fields when labels are absent — no derivation", () => {
+    const html = `<table><tr><td># of Trades</td><td>1</td></tr></table>`;
+    const pnl = parsePerformanceReportPnl({ body: html, contentType: "text/html" });
+    assert.equal(pnl.grossPnl, null);
+    assert.equal(pnl.fees, null);
+    assert.equal(pnl.netPnl, null);
+  });
+
+  it("does not derive net from gross and fees when net is missing", () => {
+    const html = `<div>Gross P/L</div><div>1.50</div><div>Total Fees</div><div>-1.90</div>`;
+    const pnl = parsePerformanceReportPnl({ body: html, contentType: "text/html" });
+    assert.equal(pnl.grossPnl, 1.5);
+    assert.equal(pnl.fees, 1.9);
+    assert.equal(pnl.netPnl, null, "net stays null — never computed from gross-fees");
+  });
+
+  it("returns all null for an empty body", () => {
+    const pnl = parsePerformanceReportPnl({ body: "", contentType: null });
+    assert.deepEqual(pnl, { grossPnl: null, fees: null, netPnl: null });
   });
 });

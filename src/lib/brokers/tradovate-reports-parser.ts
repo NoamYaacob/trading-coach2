@@ -53,6 +53,197 @@ export function parsePerformanceReportTradeCount(input: ParseInput): number | nu
   return scanRawTextForTradeCount(input.body);
 }
 
+// ── P&L / fees extraction ──────────────────────────────────────────────────
+//
+// The same Performance Report body also carries the day's Gross P/L, fees /
+// commissions, and Net (Total) P/L. We extract these so the UI can show a
+// broker-authoritative net when per-fill fees (fillFee/list) are empty.
+//
+// Honesty rules baked in:
+//   - Every field is independently nullable. A field is null unless its label
+//     is found with a parseable money value — never derived or fabricated.
+//   - `fees` is normalised to a POSITIVE magnitude (matching TradeStats.fees).
+//   - `grossPnl` and `netPnl` keep their sign (e.g. +1.50, -0.40).
+//   - Returns null fields (not 0) when absent, so callers can branch on
+//     availability instead of mistaking a missing value for break-even.
+
+const GROSS_PNL_LABELS = [
+  "Gross P/L",
+  "Gross P&L",
+  "Gross PnL",
+  "Gross Realized P/L",
+  "Gross Realized P&L",
+] as const;
+
+const FEES_LABELS = [
+  "Total Fees",
+  "Total Commissions",
+  "Total Commission",
+  "Commissions",
+  "Commission",
+  "Fees",
+] as const;
+
+const NET_PNL_LABELS = [
+  "Net P/L",
+  "Net P&L",
+  "Net PnL",
+  "Total P/L",
+  "Total P&L",
+  "Net Realized P/L",
+  "Net Realized P&L",
+] as const;
+
+export type PerformanceReportPnl = {
+  /** Signed gross P/L before fees (e.g. +1.50). null when not in the report. */
+  grossPnl: number | null;
+  /** Positive fee magnitude (e.g. 1.90). null when not in the report. */
+  fees: number | null;
+  /** Signed net/total P/L after fees (e.g. -0.40). null when not in the report. */
+  netPnl: number | null;
+};
+
+/**
+ * Pure extractor for day-level Gross P/L, fees, and Net P/L from the
+ * Performance Report body. Handles HTML / CSV / JSON. Never throws, never
+ * fabricates — any field it can't confidently read stays null.
+ */
+export function parsePerformanceReportPnl(input: ParseInput): PerformanceReportPnl {
+  const ct = (input.contentType ?? "").toLowerCase();
+
+  if (ct.includes("json") || isLikelyJson(input.body)) {
+    try {
+      const data = JSON.parse(input.body) as unknown;
+      const fromJson: PerformanceReportPnl = {
+        grossPnl: findMoneyInJson(data, GROSS_PNL_LABELS),
+        fees: normaliseFee(findMoneyInJson(data, FEES_LABELS)),
+        netPnl: findMoneyInJson(data, NET_PNL_LABELS),
+      };
+      if (fromJson.grossPnl != null || fromJson.fees != null || fromJson.netPnl != null) {
+        return fromJson;
+      }
+    } catch {
+      // Fall through to text scanning.
+    }
+  }
+
+  // HTML / CSV / raw text: strip to a flat string and label-scan for money.
+  const text = stripToText(input.body);
+  return {
+    grossPnl: findLabelledMoney(text, GROSS_PNL_LABELS),
+    fees: normaliseFee(findLabelledMoney(text, FEES_LABELS)),
+    netPnl: findLabelledMoney(text, NET_PNL_LABELS),
+  };
+}
+
+function normaliseFee(v: number | null): number | null {
+  return v == null ? null : Math.abs(v);
+}
+
+function stripToText(body: string): string {
+  return body
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/[ ]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Parse a money token into a signed number. Handles $, thousands commas,
+ * leading +/-, and accounting parentheses for negatives: "(1.90)" → -1.90,
+ * "-$0.40" → -0.40, "$1,234.50" → 1234.5. Returns null when not numeric.
+ */
+export function parseMoney(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  let t = raw.trim();
+  if (t.length === 0) return null;
+  let negative = false;
+  if (/^\(.*\)$/.test(t)) {
+    negative = true;
+    t = t.slice(1, -1);
+  }
+  t = t.replace(/[$,\s]/g, "");
+  if (t.startsWith("-")) {
+    negative = true;
+    t = t.slice(1);
+  } else if (t.startsWith("+")) {
+    t = t.slice(1);
+  }
+  if (!/^\d*\.?\d+$/.test(t)) return null;
+  const n = Number.parseFloat(t);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
+}
+
+function findLabelledMoney(text: string, labels: readonly string[]): number | null {
+  for (const label of labels) {
+    // Match the label, an optional separator (: = or whitespace/tags already
+    // collapsed to spaces), then a money token. The token grammar permits a
+    // leading sign or $, optional parentheses, digits/commas, optional decimals.
+    // Separator may include whitespace, ':' '=' or a CSV ',' between the label
+    // and its value. The captured money token grammar permits a leading sign or
+    // $, optional parentheses, digits/thousands-commas, and optional decimals.
+    const re = new RegExp(
+      `${escapeRegex(label)}[\\s:=,]*(\\(?\\s*[-+]?\\$?\\s*[\\d,]+(?:\\.\\d+)?\\s*\\)?)`,
+      "i",
+    );
+    const m = text.match(re);
+    if (m) {
+      const v = parseMoney(m[1]);
+      if (v != null) return v;
+    }
+  }
+  return null;
+}
+
+function findMoneyInJson(data: unknown, labels: readonly string[]): number | null {
+  if (data == null) return null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const v = findMoneyInJson(item, labels);
+      if (v != null) return v;
+    }
+    return null;
+  }
+  if (typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+
+  const labelSet = labels.map((l) => l.toLowerCase());
+  const matches = (s: string | undefined | null): boolean =>
+    !!s && labelSet.includes(s.trim().toLowerCase());
+
+  // Direct key match.
+  for (const [key, value] of Object.entries(obj)) {
+    if (matches(key)) {
+      const v = coerceMoney(value);
+      if (v != null) return v;
+    }
+  }
+
+  // {name/label, value} row pattern.
+  const rowName = pickString(obj, ["name", "label", "key", "statistic", "stat"]);
+  if (rowName && matches(rowName)) {
+    const v = coerceMoney(obj.value ?? obj.amount ?? obj.total);
+    if (v != null) return v;
+  }
+
+  // Recurse.
+  for (const value of Object.values(obj)) {
+    const v = findMoneyInJson(value, labels);
+    if (v != null) return v;
+  }
+  return null;
+}
+
+function coerceMoney(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") return parseMoney(value);
+  return null;
+}
+
 function isLikelyJson(body: string): boolean {
   const t = body.trimStart();
   return t.startsWith("{") || t.startsWith("[");
