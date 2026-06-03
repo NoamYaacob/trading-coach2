@@ -1759,13 +1759,36 @@ export class TradovateClient {
       return null;
     }
 
+    // If the endpoint returned a JSON error envelope, log it before parsing.
+    if (text.trimStart().startsWith("{") || text.trimStart().startsWith("[")) {
+      try {
+        const j = JSON.parse(text) as unknown;
+        if (j != null && typeof j === "object" && "errorText" in j) {
+          console.warn("[tradovate/fills-report] errorText in response", {
+            accountId: this.#accountId,
+            errorText: (j as Record<string, unknown>)["errorText"],
+          });
+        }
+      } catch {
+        // not JSON — fall through to HTML parser
+      }
+    }
+
     const rows = parseFillsReport({ body: text, contentType });
-    console.info("[tradovate/fills-report] parsed", {
-      accountId: this.#accountId,
-      rows: rows.length,
-      earliest: rows.length ? rows.map((r) => r.timestamp).sort()[0] : null,
-      latest: rows.length ? rows.map((r) => r.timestamp).sort().at(-1) : null,
-    });
+    if (rows.length === 0) {
+      console.warn("[tradovate/fills-report] 0 rows parsed", {
+        accountId: this.#accountId,
+        bodyLength: text.length,
+        bodyPreview: text.slice(0, 200).replace(/\s+/g, " "),
+      });
+    } else {
+      console.info("[tradovate/fills-report] parsed", {
+        accountId: this.#accountId,
+        rows: rows.length,
+        earliest: rows.map((r) => r.timestamp).sort()[0],
+        latest: rows.map((r) => r.timestamp).sort().at(-1),
+      });
+    }
     return rows;
   }
 
