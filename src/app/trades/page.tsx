@@ -30,11 +30,8 @@ export const metadata: Metadata = {
   title: "Trades — Guardrail",
 };
 
-// Hard caps for slow broker/report calls during server render. Each is capped
-// independently so one slow call can never block navigation for ~10s — the page
-// renders DB rows + whatever broker data resolved in time.
-const CLIENT_INIT_TIMEOUT_MS = 4000;
-const BROKER_PERF_TIMEOUT_MS = 4000;
+// Hard caps for non-critical broker enrichment calls. ABH (getHistoricalAccountPerformance)
+// and client init are NOT capped — they are the source of truth and must complete.
 const ACCOUNT_NAME_TIMEOUT_MS = 3000;
 const FILLS_REPORT_TIMEOUT_MS = 5000;
 
@@ -201,27 +198,15 @@ export default async function TradesPage({
   let fillsReportFailed = false;
   if (selectedAccount) {
     const client = new TradovateClient(selectedAccount.id, currentUser.id);
-    // Client init is capped — a slow token refresh must not block navigation.
-    let initOk = false;
     try {
-      await timed("trades", "broker-init", selectedAccount.id, () =>
-        withTimeout(client.initialize(), CLIENT_INIT_TIMEOUT_MS, "trades:initialize"),
-      );
-      initOk = true;
-    } catch {
-      initOk = false;
-    }
+      await timed("trades", "broker-init", selectedAccount.id, () => client.initialize());
 
-    if (initOk) {
-      // Broker performance (ABH day net) — capped independently so a slow
-      // report host fails fast and the page still renders DB rows + day totals.
+      // Broker performance (ABH day net) — source of truth, not capped.
+      // ABH can take 3–8s; cutting it off returns empty brokerDayNet which
+      // cascades into missing fees and wrong KPIs.
       try {
         const perf = await timed("trades", "broker-performance", selectedAccount.id, () =>
-          withTimeout(
-            client.getHistoricalAccountPerformance(),
-            BROKER_PERF_TIMEOUT_MS,
-            "trades:getHistoricalAccountPerformance",
-          ),
+          client.getHistoricalAccountPerformance(),
         );
         brokerDayNet = perf.dayNet;
         brokerSource = perf.source;
@@ -299,6 +284,8 @@ export default async function TradesPage({
         historicalFillInputs = [];
         usedReportFills = false;
       }
+    } catch {
+      // init failed — broker data unavailable, page renders DB fills only
     }
   }
 

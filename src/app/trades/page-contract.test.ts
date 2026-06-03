@@ -41,19 +41,25 @@ describe("navigation performance: slow broker calls are capped, unrelated pages 
     );
   });
 
-  it("Trades wraps getHistoricalAccountPerformance in withTimeout with a fallback", () => {
+  it("Trades calls getHistoricalAccountPerformance without a hard timeout (ABH is source of truth)", () => {
+    // ABH must run to completion — cutting it off causes brokerDayNet={} which
+    // cascades into missing fees and wrong KPIs. It is observed via timed() only.
     assert.ok(
-      trades.includes('withTimeout(') && trades.includes("getHistoricalAccountPerformance"),
-      "trades must wrap broker performance in withTimeout",
+      trades.includes("getHistoricalAccountPerformance"),
+      "trades must call getHistoricalAccountPerformance",
     );
     assert.ok(
-      trades.includes("BROKER_PERF_TIMEOUT_MS"),
-      "trades must cap the performance fetch with a hard timeout constant",
+      trades.includes("timed(") && trades.includes("broker-performance"),
+      "trades must observe broker-performance via timed() for logging",
     );
-    // The perf call has its own try/catch fallback (brokerSource = none / {}).
+    assert.ok(
+      !trades.includes("BROKER_PERF_TIMEOUT_MS"),
+      "trades must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
+    );
+    // The perf call still has its own try/catch fallback.
     assert.ok(
       trades.includes('brokerSource = "none"'),
-      "a perf timeout must fall back to an empty broker state, not throw the page",
+      "a perf error must fall back to an empty broker state, not throw the page",
     );
   });
 
@@ -72,25 +78,37 @@ describe("navigation performance: slow broker calls are capped, unrelated pages 
     );
   });
 
-  it("Trades caps client.initialize() so a slow token refresh can't block nav", () => {
+  it("Trades calls client.initialize() without a hard timeout (init is required for any broker data)", () => {
+    // A hard cap on init means a slow token refresh silently skips ALL broker data
+    // (brokerDayNet={}, fills=[]). Let it fail naturally via try/catch instead.
     assert.ok(
-      trades.includes("CLIENT_INIT_TIMEOUT_MS") && trades.includes("withTimeout(client.initialize()"),
-      "client init must be timeout-capped",
+      !trades.includes("CLIENT_INIT_TIMEOUT_MS"),
+      "trades must NOT hard-cap client.initialize() — a timeout here silently drops all broker data",
+    );
+    assert.ok(
+      trades.includes("client.initialize()"),
+      "trades must call client.initialize()",
     );
   });
 
-  it("Dashboard wraps getHistoricalAccountPerformance in withTimeout with a fallback", () => {
+  it("Dashboard calls getHistoricalAccountPerformance without a hard timeout (ABH is source of truth)", () => {
+    // ABH must run to completion on the dashboard too — a 4s cap caused the
+    // calendar to lose all historical day data (Apr 30, May 4, Jun 2).
     assert.ok(
-      dashboard.includes("withTimeout(") && dashboard.includes("getHistoricalAccountPerformance"),
-      "dashboard must wrap broker performance in withTimeout",
+      dashboard.includes("getHistoricalAccountPerformance"),
+      "dashboard must call getHistoricalAccountPerformance",
     );
     assert.ok(
-      dashboard.includes("BROKER_PERF_TIMEOUT_MS"),
-      "dashboard must cap the performance fetch with a hard timeout constant",
+      dashboard.includes("timed(") && dashboard.includes("broker-performance"),
+      "dashboard must observe broker-performance via timed() for logging",
+    );
+    assert.ok(
+      !dashboard.includes("BROKER_PERF_TIMEOUT_MS"),
+      "dashboard must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
     );
     assert.ok(
       dashboard.includes("EMPTY_BROKER_PERFORMANCE"),
-      "a perf timeout must fall back to EMPTY_BROKER_PERFORMANCE, not throw the page",
+      "a perf error must fall back to EMPTY_BROKER_PERFORMANCE, not throw the page",
     );
   });
 
