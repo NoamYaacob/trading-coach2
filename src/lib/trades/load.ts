@@ -2,6 +2,10 @@ import { prisma } from "@/lib/db";
 
 import { reconstructRoundTrips, buildContractIdMap, type FillInput, type RoundTripTrade } from "./round-trips.ts";
 
+// Pure merge/convert helpers live in ./merge (prisma-free, unit-testable).
+// Re-exported here so existing callers can import them from "@/lib/trades/load".
+export { historicalFillsToFillInputs, reconstructMergedTrades } from "./merge.ts";
+
 type LoadOptions = {
   /** Inclusive lower bound on occurredAt — typically the start of the lookback window. */
   since?: Date;
@@ -10,19 +14,17 @@ type LoadOptions = {
 };
 
 /**
- * Load round-trip trades for an account from NormalizedTradeEvent.
+ * Load the raw fill inputs (NormalizedTradeEvent rows) for an account, mapped
+ * into the pure `FillInput` shape used by round-trip reconstruction.
  *
- * Filters to events with a non-null `side` and `quantity` (i.e. fill-like
- * events), reads them in chronological order, then runs the pure
- * reconstruction over them.  Returns trades newest-first for display.
- *
- * Returns an empty array when the account has no events yet — callers should
- * render the honest empty state.
+ * Exposed separately from `loadAccountTrades` so callers that also have broker
+ * historical fills (e.g. the Fills report) can merge both fill streams before
+ * reconstructing round trips.
  */
-export async function loadAccountTrades(
+export async function loadAccountFillInputs(
   accountId: string,
   opts: LoadOptions = {},
-): Promise<RoundTripTrade[]> {
+): Promise<FillInput[]> {
   const fills = await prisma.normalizedTradeEvent.findMany({
     where: {
       accountId,
@@ -46,7 +48,7 @@ export async function loadAccountTrades(
     ...(opts.limit ? { take: opts.limit } : {}),
   });
 
-  const input: FillInput[] = fills.map((f) => ({
+  return fills.map((f) => ({
     id: f.id,
     externalTradeId: f.externalTradeId,
     contractId: f.contractId,
@@ -57,6 +59,23 @@ export async function loadAccountTrades(
     occurredAt: f.occurredAt,
     rawPayload: f.rawPayload,
   }));
+}
+
+/**
+ * Load round-trip trades for an account from NormalizedTradeEvent.
+ *
+ * Filters to events with a non-null `side` and `quantity` (i.e. fill-like
+ * events), reads them in chronological order, then runs the pure
+ * reconstruction over them.  Returns trades newest-first for display.
+ *
+ * Returns an empty array when the account has no events yet — callers should
+ * render the honest empty state.
+ */
+export async function loadAccountTrades(
+  accountId: string,
+  opts: LoadOptions = {},
+): Promise<RoundTripTrade[]> {
+  const input = await loadAccountFillInputs(accountId, opts);
 
   // Build the contractId → symbol map (valid futures symbols only) so fills
   // whose own payload lacks a symbol still resolve via a sibling fill's symbol

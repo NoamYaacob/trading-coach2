@@ -66,6 +66,11 @@ import {
 } from "./account-balance-history-report";
 export type { AccountBalanceHistoryDay } from "./account-balance-history-report";
 import {
+  parseFillsReport,
+  type HistoricalFillRow,
+} from "./tradovate-fills-report";
+export type { HistoricalFillRow } from "./tradovate-fills-report";
+import {
   normalizeCashBalanceLogRows,
   aggregateCashHistory,
   type ContractDayPnl,
@@ -1674,6 +1679,94 @@ export class TradovateClient {
       latest: days.length ? days.map((d) => d.tradeDate).sort().at(-1) : null,
     });
     return days;
+  }
+
+  /**
+   * Read-only historical FILLS for an account via the Tradovate "Fills" report.
+   *
+   * Unlike Account Balance History (day-level only) or the live fill/list,
+   * fillPair/list, order/deps endpoints (which return 0 historical rows for
+   * already-traded accounts), the Fills report exposes individual historical
+   * fills — the rows the Trades page needs to show trades that closed before
+   * Guardrail connected.
+   *
+   * POSTs to /reports/requestreport with the confirmed working shape:
+   *   name="Fills", template="Default.md", representationType="html",
+   *   timezone=0 (NUMERIC — a string is rejected as "Invalid JSON: illegal
+   *   number"), params: startDate / endDate / account.
+   *
+   * The `account` param MUST be the account NAME (e.g. "1868411"), not the
+   * numeric tvAccountId — the reports host returns 0 rows for the numeric id.
+   *
+   * `startDate` / `endDate` are "MM/DD/YYYY" strings. Returns the parsed fill
+   * rows (possibly empty), or null when the reports base URL / token is
+   * unavailable or the request fails. Read-only — never writes broker state.
+   */
+  async getHistoricalFillsReport(
+    accountName: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<HistoricalFillRow[] | null> {
+    if (!this.#reportsBaseUrl || !this.#accessToken) return null;
+    const url = `${this.#reportsBaseUrl}/reports/requestreport`;
+    const body = {
+      name: "Fills",
+      // NUMERIC timezone — a string here triggers the reports host's strict
+      // JSON parser to reject it as "Invalid JSON: illegal number". 0 = UTC.
+      timezone: 0,
+      params: [
+        { name: "startDate", value: startDate },
+        { name: "endDate", value: endDate },
+        { name: "account", value: accountName },
+      ],
+      representationType: "html",
+      template: "Default.md",
+    };
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "text/html, application/json, text/csv, */*;q=0.5",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      console.warn("[tradovate/fills-report] reports fetch network error", {
+        accountId: this.#accountId,
+        url,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return null;
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      console.info("[tradovate/fills-report] non-2xx", {
+        accountId: this.#accountId,
+        status: res.status,
+      });
+      return null;
+    }
+
+    const contentType = res.headers.get("content-type");
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      return null;
+    }
+
+    const rows = parseFillsReport({ body: text, contentType });
+    console.info("[tradovate/fills-report] parsed", {
+      accountId: this.#accountId,
+      rows: rows.length,
+      earliest: rows.length ? rows.map((r) => r.timestamp).sort()[0] : null,
+      latest: rows.length ? rows.map((r) => r.timestamp).sort().at(-1) : null,
+    });
+    return rows;
   }
 
   /**

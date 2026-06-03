@@ -44,10 +44,14 @@ describe("/trades page: structural contract", () => {
     );
   });
 
-  it("loads real trades via loadAccountTrades", () => {
+  it("loads real fills via loadAccountFillInputs and reconstructs round trips", () => {
     assert.ok(
-      page.includes("loadAccountTrades"),
-      "must import and call loadAccountTrades",
+      page.includes("loadAccountFillInputs"),
+      "must import and call loadAccountFillInputs to read imported DB fills",
+    );
+    assert.ok(
+      page.includes("reconstructMergedTrades"),
+      "must reconstruct round trips from the merged fill streams",
     );
   });
 
@@ -622,10 +626,10 @@ describe("/trades page: ABH + zero fills empty state", () => {
     );
   });
 
-  it("table rows only come from loadAccountTrades fills — no fake ABH-only rows", () => {
+  it("table rows only come from reconstructed fills — no fake ABH-only rows", () => {
     assert.ok(
-      page.includes("loadAccountTrades"),
-      "table rows must come from loadAccountTrades (imported fills only)",
+      page.includes("loadAccountFillInputs") && page.includes("reconstructMergedTrades"),
+      "table rows must come from reconstructed fills (DB + Fills report), not ABH",
     );
     assert.ok(
       !page.includes("Object.entries(brokerDayNet)") || page.includes("allBrokerWindowEntries"),
@@ -648,6 +652,126 @@ describe("/trades page: subtitle source clarity", () => {
     assert.ok(
       page.includes('brokerSource !== "none"'),
       "clarifying subtitle line must be gated on brokerSource !== 'none'",
+    );
+  });
+});
+
+describe("/trades page: historical Fills-report backfill", () => {
+  const page = read("app/trades/page.tsx");
+  const client = read("lib/brokers/tradovate-client.ts");
+  const merge = read("lib/trades/merge.ts");
+
+  it("(a) uses the historical Fills report for table rows", () => {
+    assert.ok(
+      page.includes("getHistoricalFillsReport"),
+      "page must fetch the broker historical Fills report",
+    );
+    assert.ok(
+      page.includes("historicalFillsToFillInputs"),
+      "page must convert report rows into reconstruction inputs",
+    );
+    assert.ok(
+      client.includes("async getHistoricalFillsReport"),
+      "client must expose getHistoricalFillsReport",
+    );
+    assert.ok(
+      client.includes('name: "Fills"') &&
+        client.includes('template: "Default.md"') &&
+        client.includes("timezone: 0"),
+      "Fills report request must use name=Fills, template=Default.md, timezone:0 (numeric)",
+    );
+  });
+
+  it("(a2) Fills report account param uses the account NAME, not the numeric tvAccountId", () => {
+    assert.ok(
+      page.includes("getAccountName()") && page.includes("getHistoricalFillsReport(accountName"),
+      "page must pass the account NAME to getHistoricalFillsReport (numeric id returns 0 rows)",
+    );
+  });
+
+  it("(b) keeps ABH as the source of truth for day totals / KPI net", () => {
+    assert.ok(
+      page.includes("getHistoricalAccountPerformance"),
+      "ABH/cash-history performance still drives brokerDayNet",
+    );
+    assert.ok(
+      page.includes("brokerWindowNet") && page.includes("brokerDayNet"),
+      "KPI day net still comes from brokerDayNet (ABH), not the Fills report",
+    );
+  });
+
+  it("(c) does NOT generate table rows from ABH days alone", () => {
+    // Table rows come only from reconstructed fills (DB + Fills report), never
+    // from brokerDayNet entries. The merge reconstructs from FillInput streams.
+    assert.ok(
+      page.includes("reconstructMergedTrades(dbFillInputs, historicalFillInputs)"),
+      "allTrades must be reconstructed from fill streams, not from brokerDayNet",
+    );
+    assert.ok(
+      !/brokerDayNet[\s\S]{0,40}\.map\(/.test(page) || page.includes("Object.entries(brokerDayNet)"),
+      "brokerDayNet must only be summed for KPIs, never mapped into table rows",
+    );
+  });
+
+  it("(d) dedupes report fills against imported fills by stable broker fill id", () => {
+    assert.ok(
+      merge.includes("externalTradeId") && merge.includes("seen.has"),
+      "reconstructMergedTrades must dedupe historical fills by externalTradeId (fillId)",
+    );
+    assert.ok(
+      merge.includes("fillId carries the broker fillId") ||
+        merge.includes("externalTradeId` carries the broker fillId") ||
+        merge.includes("stable\n   * identifier used for dedupe") ||
+        merge.includes("used for dedupe against imported fills"),
+      "dedupe must key off the broker fillId carried in externalTradeId",
+    );
+  });
+
+  it("(e) Jun 2 net-losing single fill still classified by net via resolveTradeClassification", () => {
+    assert.ok(
+      page.includes("resolveTradeClassification"),
+      "winning/losing filter must still use net-aware classification",
+    );
+  });
+
+  it("(f) subtitle distinguishes Fills-report rows from imported fills", () => {
+    assert.ok(
+      page.includes("table rows from broker fills report"),
+      "subtitle must say rows come from the broker fills report when report fills are used",
+    );
+    assert.ok(
+      page.includes("usedReportFills"),
+      "page must track whether report fills were actually used for the subtitle",
+    );
+  });
+
+  it("(f2) date page widens the lookback so old report days (e.g. Apr 30) can load", () => {
+    assert.ok(
+      page.includes("dateFilterStart") || /dateFilter[\s\S]{0,120}since\s*=/.test(page),
+      "when a date filter is active the page must extend `since` to cover that date",
+    );
+  });
+
+  it("ABH-day-with-no-fill-rows empty state remains honest", () => {
+    assert.ok(
+      page.includes("reports a net P&L for this day, but no imported fill rows are available"),
+      "empty state for an ABH day without any fill rows must stay honest",
+    );
+  });
+
+  it("Fills report fetch is read-only (no broker write verbs)", () => {
+    // The getHistoricalFillsReport method must not introduce order/cancel/flatten.
+    const method = client.slice(
+      client.indexOf("async getHistoricalFillsReport"),
+      client.indexOf("async getHistoricalFillsReport") + 2500,
+    );
+    assert.ok(
+      !/placeOrder|cancelOrder|liquidate|flatten|order\/(place|cancel)/i.test(method),
+      "getHistoricalFillsReport must contain no broker write verbs",
+    );
+    assert.ok(
+      method.includes('method: "POST"') && method.includes("reports/requestreport"),
+      "it is a read-only reports POST",
     );
   });
 });
