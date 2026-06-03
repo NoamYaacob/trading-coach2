@@ -67,6 +67,12 @@ import {
   type RawCashBalanceLogRow,
 } from "../trades/cash-history-fees";
 import {
+  computeBrokerAccountPerformance,
+  EMPTY_BROKER_PERFORMANCE,
+  type BrokerAccountPerformance,
+} from "../trades/broker-account-performance";
+export type { BrokerAccountPerformance } from "../trades/broker-account-performance";
+import {
   findGuardrailPositionLimit,
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
@@ -1275,6 +1281,45 @@ export class TradovateClient {
     }
     return out;
   }
+
+  /**
+   * Full broker account performance model from Cash History. Returns a
+   * structured object with dayNet, tradePairs, win/loss counts, profit factor,
+   * largest win/loss, and all-time net — all derived purely from broker
+   * TradePaired and fee rows.
+   *
+   * Uses cashBalanceLog/deps?masterid={tvAccountId} (account-scoped). Never
+   * mixes other accounts. Returns EMPTY_BROKER_PERFORMANCE on any failure so
+   * callers are never blocked.
+   */
+  async getCashHistoryPerformance(): Promise<BrokerAccountPerformance> {
+    if (this.#tvAccountId == null) return EMPTY_BROKER_PERFORMANCE;
+    try {
+      const endpoint = `cashBalanceLog/deps?masterid=${this.#tvAccountId}`;
+      const rows = await this.#request<unknown>(endpoint, "GET");
+      const raw = parseSnapshotItems<RawCashBalanceLogRow>(rows);
+      const normalized = normalizeCashBalanceLogRows(raw, this.#tvAccountId, this.#accountId);
+      const perf = computeBrokerAccountPerformance(normalized, this.#accountId);
+      console.info("[tradovate/cash-history] computed account performance", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        endpoint,
+        rawRows: raw.length,
+        normalizedRows: normalized.length,
+        tradingDays: Object.keys(perf.dayNet).length,
+        tradeCount: perf.tradeCount,
+        allTimeNet: perf.allTimeNet,
+      });
+      return perf;
+    } catch (err) {
+      console.info("[tradovate/cash-history] performance fetch failed — returning empty", {
+        accountId: this.#accountId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return EMPTY_BROKER_PERFORMANCE;
+    }
+  }
+
 
   // ── Per-account trade count sources ──────────────────────────────────────
   // Each method below is one fallback step in the trade-count resolver

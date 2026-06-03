@@ -47,6 +47,8 @@ import {
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE } from "@/lib/trades/broker-account-performance";
+import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
 import {
   isAccountActive,
   partitionAccountsByActive,
@@ -294,21 +296,21 @@ export default async function DashboardPage({
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
 
-  // Broker-authoritative NET P&L per day from Cash History (cashBalanceLog) —
-  // the same fees/net the trader sees in Tradovate. Read-only and best-effort:
-  // any failure yields {} and the calendar falls back to fill-level values.
-  // Only days with real fee data are returned, so a fees-missing day is never
-  // mislabelled as Net.
-  let brokerDayNet: Record<string, number> = {};
+  // Structured broker account performance from Cash History (cashBalanceLog).
+  // Includes dayNet, tradePairs, win/loss counts, profit factor, all-time net.
+  // Uses cashBalanceLog/deps?masterid={tvAccountId} (account-scoped).
+  // Falls back to EMPTY_BROKER_PERFORMANCE on any error — never blocks render.
+  let brokerPerformance: BrokerAccountPerformance = EMPTY_BROKER_PERFORMANCE;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
       await client.initialize();
-      brokerDayNet = await client.getCashHistoryDayNet();
+      brokerPerformance = await client.getCashHistoryPerformance();
     } catch {
-      brokerDayNet = {};
+      brokerPerformance = EMPTY_BROKER_PERFORMANCE;
     }
   }
+  const brokerDayNet = brokerPerformance.dayNet;
   // Use the same timezone-aware day key as TraderInsights and the P&L calendar
   // so "Session trades" is always consistent with what the calendar shows.
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: displayTimeZone });
@@ -326,10 +328,21 @@ export default async function DashboardPage({
   const recentTradesFeesAvailable =
     recentTrades.length > 0 && recentTrades.every((t) => t.feesAvailable);
 
-  // Win rate and profit factor for KPI strip (honest 30d stats)
-  const wins30d = recentTrades.filter((t) => t.netPnl > 0).length;
-  const winRate30d = recentTrades.length > 0 ? wins30d / recentTrades.length : null;
-  const pf30d = profitFactor(recentTrades);
+  // 30D window stats — prefer broker TradePaired rows when Cash History is
+  // available; fall back to fill-based recentTrades otherwise.
+  const since30dKey = thirtyDaysAgo.toLocaleDateString("en-CA", { timeZone: displayTimeZone });
+  const brokerWindow30d = brokerPerformance.hasBrokerHistory
+    ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey)
+    : null;
+
+  const wins30d = brokerWindow30d != null
+    ? brokerWindow30d.winCount
+    : recentTrades.filter((t) => t.netPnl > 0).length;
+  const total30d = brokerWindow30d != null
+    ? brokerWindow30d.tradeCount
+    : recentTrades.length;
+  const winRate30d = total30d > 0 ? wins30d / total30d : null;
+  const pf30d = brokerWindow30d?.profitFactor ?? profitFactor(recentTrades);
 
   // Nav items — same as /rules, but home is active
   const DASHBOARD_NAV: GrNavItem[] = [
@@ -825,18 +838,22 @@ export default async function DashboardPage({
                       label: "Win rate · 30D",
                       value: winRate30d != null ? `${Math.round(winRate30d * 100)}%` : "—",
                       sub: winRate30d != null
-                        ? `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
-                        : "No round-trips in last 30 days",
+                        ? brokerWindow30d != null
+                          ? `${wins30d}W · ${brokerWindow30d.lossCount}L · ${total30d} closes · broker Cash History`
+                          : `${wins30d}W · ${recentTrades.length - wins30d}L · ${recentTrades.length} trades`
+                        : "No broker trades in last 30 days",
                       tone: winRate30d != null && winRate30d >= 0.5 ? "ok" : "warn",
                     },
                     {
                       label: "Profit factor · 30D",
                       value: pf30d != null ? pf30d.toFixed(2) : "—",
                       sub: pf30d != null
-                        ? recentTradesFeesAvailable
-                          ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
-                          : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"
-                        : recentTrades.length === 0 ? "No round-trips in window" : "No losing trades yet",
+                        ? brokerWindow30d != null
+                          ? pf30d >= 1 ? "Net wins exceed losses · broker Cash History" : "Net losses exceed wins · broker Cash History"
+                          : recentTradesFeesAvailable
+                            ? pf30d >= 1 ? "Net wins exceed losses" : "Net losses exceed wins"
+                            : pf30d >= 1 ? "Wins exceed losses · before fees" : "Losses exceed wins · before fees"
+                        : total30d === 0 ? "No broker trades in window" : "No losing trades yet",
                       tone: pf30d != null && pf30d >= 1 ? "ok" : pf30d != null ? "warn" : "ok",
                     },
                   ].map((k) => (
@@ -1079,6 +1096,7 @@ export default async function DashboardPage({
                 timezone={displayTimeZone}
                 feesAvailable={recentTradesFeesAvailable}
                 brokerDayNet={brokerDayNet}
+                brokerPerformance={brokerPerformance}
               />
             )}
 

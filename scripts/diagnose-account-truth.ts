@@ -35,6 +35,10 @@ import {
   classifyCashRow,
   type RawCashBalanceLogRow,
 } from "../src/lib/trades/cash-history-fees.ts";
+import {
+  computeBrokerAccountPerformance,
+  computeBrokerWindowStats,
+} from "../src/lib/trades/broker-account-performance.ts";
 import { parseSnapshotItems } from "../src/lib/brokers/tradovate-client-helpers.ts";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -696,9 +700,42 @@ async function main(): Promise<void> {
     console.log(`  (no data available for all-time summary)`);
   }
 
-  // ── 6. SOURCE-OF-TRUTH REPORT ─────────────────────────────────────────────
+  // ── 6. BROKER ACCOUNT PERFORMANCE MODEL ─────────────────────────────────────
 
-  section("6. SOURCE-OF-TRUTH REPORT");
+  section("6. BROKER ACCOUNT PERFORMANCE MODEL (computeBrokerAccountPerformance)");
+
+  if (rawCblNorm.length > 0) {
+    const perf = computeBrokerAccountPerformance(rawCblNorm, account.id);
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    const w30d = computeBrokerWindowStats(perf.tradePairs, since30d);
+
+    console.log(`\n  All-time performance (Cash History only):`);
+    console.log(`    hasBrokerHistory:    ${perf.hasBrokerHistory}`);
+    console.log(`    allTimeNet:          ${fmt$(perf.allTimeNet)}`);
+    console.log(`    dayNet days:         ${Object.keys(perf.dayNet).length}`);
+    console.log(`    tradeCount:          ${perf.tradeCount}  (TradePaired rows)`);
+    console.log(`    winCount:            ${perf.winCount}`);
+    console.log(`    lossCount:           ${perf.lossCount}`);
+    console.log(`    largestWin:          ${fmt$(perf.largestWin)}`);
+    console.log(`    largestLoss:         ${fmt$(perf.largestLoss)}`);
+    console.log(`    profitFactor:        ${perf.profitFactor != null ? perf.profitFactor.toFixed(2) : "n/a (no losers)"}`);
+
+    console.log(`\n  Last 30 days (window from ${since30d}):`);
+    console.log(`    tradeCount (30d):    ${w30d.tradeCount}`);
+    console.log(`    winCount (30d):      ${w30d.winCount}`);
+    console.log(`    lossCount (30d):     ${w30d.lossCount}`);
+    console.log(`    winRate (30d):       ${w30d.winRate != null ? `${Math.round(w30d.winRate * 100)}%` : "n/a"}`);
+    console.log(`    profitFactor (30d):  ${w30d.profitFactor != null ? w30d.profitFactor.toFixed(2) : "n/a"}`);
+    console.log(`    largestWin (30d):    ${fmt$(w30d.largestWin)}`);
+    console.log(`    largestLoss (30d):   ${fmt$(w30d.largestLoss)}`);
+  } else {
+    console.log(`\n  (no normalized Cash History rows — performance model not available)`);
+  }
+
+  // ── 7. SOURCE-OF-TRUTH REPORT ─────────────────────────────────────────────
+
+  section("7. SOURCE-OF-TRUTH REPORT");
 
   const sotRows: [string, string, string, string, string][] = [
     ["METRIC", "BEST ENDPOINT", "FIELD(S)", "AUTHORITY", "LIMITATION"],

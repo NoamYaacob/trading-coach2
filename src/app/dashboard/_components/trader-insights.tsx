@@ -17,6 +17,7 @@
 import type { CommandCenterAccount } from "@/app/dashboard/_components/command-center/types";
 import type { GuardianSnapshot } from "@/lib/guardian";
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
+import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
 
 import {
   biggestLoss,
@@ -24,6 +25,7 @@ import {
   profitFactor,
 } from "./insights.ts";
 import { buildBrokerNativeSeries, buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
+import { computeBrokerWindowStats } from "@/lib/trades/broker-account-performance";
 
 type RiskRulesLike = {
   stopAfterLosses: number | null;
@@ -48,6 +50,12 @@ type Props = {
    * are authoritative after-fees net and drive the daily-level max drawdown.
    */
   brokerDayNet?: Record<string, number>;
+  /**
+   * Full structured broker account performance (from getCashHistoryPerformance).
+   * When present, profit factor / win rate are derived from TradePaired rows,
+   * not from fill reconstruction.
+   */
+  brokerPerformance?: BrokerAccountPerformance;
 };
 
 function fmt$(v: number): string {
@@ -143,6 +151,7 @@ export function TraderInsights({
   timezone,
   feesAvailable = false,
   brokerDayNet,
+  brokerPerformance,
 }: Props) {
   // Max drawdown uses broker Cash History as primary when available (full
   // after-fees daily net, 30D window). Falls back to fill-based series.
@@ -252,9 +261,17 @@ export function TraderInsights({
     );
   })();
 
-  // 5. Profit factor (30d)
+  // 5. Profit factor (30d) — broker TradePaired rows when available, else fill-based
   const profitFactorCard = (() => {
-    const pf = profitFactor(recentTrades);
+    const brokerPf = brokerPerformance?.hasBrokerHistory
+      ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey).profitFactor
+      : null;
+    const brokerPfCount = brokerPerformance?.hasBrokerHistory
+      ? computeBrokerWindowStats(brokerPerformance.tradePairs, since30dKey).tradeCount
+      : 0;
+    const pf = brokerPf ?? profitFactor(recentTrades);
+    const useBroker = brokerPf != null;
+
     if (pf == null) {
       return (
         <StatCard
@@ -262,8 +279,8 @@ export function TraderInsights({
           label="Profit factor (30d)"
           value="—"
           sub={
-            recentTrades.length === 0
-              ? "No round-trips in window"
+            (useBroker ? brokerPfCount : recentTrades.length) === 0
+              ? "No broker trades in window"
               : "No losing trades yet — undefined"
           }
         />
@@ -274,7 +291,11 @@ export function TraderInsights({
         key="profit-factor"
         label="Profit factor (30d)"
         value={pf.toFixed(2)}
-        sub={`${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`}
+        sub={
+          useBroker
+            ? `broker net wins ÷ losses · ${brokerPfCount} closes · Cash History`
+            : `${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`
+        }
         tone={pf >= 1 ? "ok" : "warn"}
       />
     );
@@ -345,7 +366,9 @@ export function TraderInsights({
           Trader insights · {selectedAccount.label}
         </span>
         <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-          {hasBrokerHistory
+          {brokerPerformance?.hasBrokerHistory
+            ? "Broker Cash History · TradePaired net after fees"
+            : hasBrokerHistory
             ? "Broker Cash History where available · otherwise fill P&L"
             : "Partial imported fills · fees not yet confirmed"}
         </span>
