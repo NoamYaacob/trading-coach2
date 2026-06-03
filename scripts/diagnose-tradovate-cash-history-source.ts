@@ -26,10 +26,8 @@
  *     'npx tsx scripts/diagnose-tradovate-cash-history-source.ts 1868411'
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../src/lib/db.ts";
 import { TradovateClient } from "../src/lib/brokers/tradovate-client.ts";
-
-const prisma = new PrismaClient();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -741,7 +739,7 @@ async function main(): Promise<void> {
   console.log(`  Diagnostic complete.`);
   console.log(`${"═".repeat(82)}\n`);
 
-  await prisma.$disconnect();
+  await prisma.$disconnect().catch(() => {});
 }
 
 main().catch((err) => {
