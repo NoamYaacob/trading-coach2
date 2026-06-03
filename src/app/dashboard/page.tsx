@@ -296,9 +296,9 @@ export default async function DashboardPage({
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
 
-  // Structured broker account performance from Cash History (cashBalanceLog).
-  // Includes dayNet, tradePairs, win/loss counts, profit factor, all-time net.
-  // Uses cashBalanceLog/deps?masterid={tvAccountId} (account-scoped).
+  // Structured broker account performance, preferring the Account Balance
+  // History report (widest history) and falling back to cashBalanceLog/deps.
+  // Includes dayNet, win/loss counts, profit factor, all-time net, source.
   // Falls back to EMPTY_BROKER_PERFORMANCE on any error — never blocks render.
   let brokerPerformance: BrokerAccountPerformance = EMPTY_BROKER_PERFORMANCE;
   if (selectedAccount) {
