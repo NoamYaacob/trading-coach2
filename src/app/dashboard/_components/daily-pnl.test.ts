@@ -51,6 +51,7 @@ describe("buildDailySeries — broker day net overrides fill gross", () => {
     assert.ok(Math.abs(p.cumulative - -0.4) < 1e-9, "cumulative reflects broker net");
     assert.equal(p.brokerNet, true);
     assert.equal(series.allDaysNet, true, "series is true net when every day is broker net");
+    assert.equal(series.someBrokerNet, true, "broker net present → someBrokerNet true");
   });
 
   it("fill-only series (no broker net, fees missing) is NOT marked net", () => {
@@ -60,6 +61,7 @@ describe("buildDailySeries — broker day net overrides fill gross", () => {
     ];
     const series = buildDailySeries(trades, TZ, false, {});
     assert.equal(series.allDaysNet, false, "fill-only series must not claim net");
+    assert.equal(series.someBrokerNet, false, "no broker net anywhere → someBrokerNet false");
     assert.equal(series.points[0]!.pnl, 1.5, "day 1 shows fill before fees");
     assert.equal(series.points[1]!.pnl, 2.0, "day 2 shows fill before fees");
     assert.equal(series.points[0]!.brokerNet, false);
@@ -81,6 +83,25 @@ describe("buildDailySeries — broker day net overrides fill gross", () => {
     );
   });
 
+  it("mixed range: broker-net day keeps its net (not gross fill) AND someBrokerNet flags honest label", () => {
+    // The reported dashboard bug: a 30D window mixes fill-only days with the
+    // 2026-06-02 broker-net day. The broker-net day MUST keep -0.40 (never
+    // revert to its +1.50 fill gross), and someBrokerNet must be true so the
+    // label is "broker net where available" — not a flat "before fees".
+    const trades = [
+      trade({ id: "a", closedAt: new Date("2026-05-20T15:00:00Z"), pnl: 11.0, netPnl: 11.0, feesAvailable: false }),
+      trade({ id: "b", closedAt: new Date("2026-06-02T13:00:00Z"), pnl: 1.5, netPnl: 1.5, feesAvailable: false }),
+    ];
+    const series = buildDailySeries(trades, TZ, false, { "2026-06-02": -0.4 });
+    const jun2 = series.points.find((p) => p.day === "2026-06-02")!;
+    assert.ok(Math.abs(jun2.pnl - -0.4) < 1e-9, "2026-06-02 stays broker net -0.40, NOT fill +1.50");
+    assert.equal(jun2.brokerNet, true);
+    assert.equal(series.allDaysNet, false, "mixed range is not fully net");
+    assert.equal(series.someBrokerNet, true, "at least one broker-net day → honest mixed label");
+    // Cumulative: +11.00 then +11.00 + (-0.40) = +10.60 (matches the reported value).
+    assert.ok(Math.abs(series.points[1]!.cumulative - 10.6) < 1e-9, "cum reflects broker net, ends +10.60");
+  });
+
   it("per-trade net is used when window fees are available and no broker net", () => {
     const trades = [
       trade({ closedAt: new Date("2026-06-01T15:00:00Z"), pnl: 1.5, fees: 1.9, netPnl: -0.4, feesAvailable: true }),
@@ -88,6 +109,7 @@ describe("buildDailySeries — broker day net overrides fill gross", () => {
     const series = buildDailySeries(trades, TZ, true, {});
     assert.ok(Math.abs(series.points[0]!.pnl - -0.4) < 1e-9, "uses per-trade net");
     assert.equal(series.allDaysNet, true, "window-wide per-fill fees → net");
+    assert.equal(series.someBrokerNet, true, "per-fill fees count as net coverage");
   });
 
   it("phantom broker-only days never create points", () => {

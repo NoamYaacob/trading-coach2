@@ -299,7 +299,11 @@ export function TraderInsights({
         value={dd > 0 ? `−${fmtMoney(dd)}` : "$0.00"}
         sub={
           dd > 0
-            ? `Worst peak-to-trough · cum. daily ${ddIsNet ? "net" : "fill"} P&L${ddIsNet ? " · after fees" : " · before fees"}`
+            ? ddIsNet
+              ? "Worst peak-to-trough · cum. daily net P&L · after broker fees"
+              : dailySeries.someBrokerNet
+              ? "Worst peak-to-trough · cum. daily P&L · broker net where available"
+              : "Worst peak-to-trough · cum. daily fill P&L · before fees"
             : "Cum. P&L has not pulled back"
         }
         tone={dd > 0 ? "warn" : "neutral"}
