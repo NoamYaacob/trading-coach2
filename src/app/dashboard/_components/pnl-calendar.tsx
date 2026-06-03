@@ -222,7 +222,7 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             {allCellsNet ? "Net P&L" : "Fill P&L (before fees)"} · calendar day · {accountLabel}
             {hasBrokerHistory ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                · Broker Cash History{earliestBrokerDayLabel != null ? ` available from ${earliestBrokerDayLabel}` : ""}
+                · Broker Cash History{earliestBrokerDayLabel != null ? ` from ${earliestBrokerDayLabel}` : ""}
               </span>
             ) : earliestTradeDate != null ? (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>

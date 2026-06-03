@@ -279,10 +279,10 @@ describe("equity-curve — broker-native primary path", () => {
     assert.ok(src.includes("Broker net where available"), "mixed range must say 'Broker net where available'");
   });
 
-  it("all-time view with broker history says 'Broker Cash History available from' not 'imported history only'", () => {
+  it("all-time view with broker history says 'Broker Cash History from' not 'imported history only'", () => {
     assert.ok(
-      src.includes("Broker Cash History available from"),
-      "all-time broker-native view must say 'Broker Cash History available from' — not 'imported history only'",
+      src.includes("Broker Cash History from"),
+      "all-time broker-native view must say 'Broker Cash History from' — not 'imported history only'",
     );
   });
 

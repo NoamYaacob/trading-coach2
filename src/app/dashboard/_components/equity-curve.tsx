@@ -248,19 +248,22 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            {"Cumulative daily P&L · "}
-            {series.allDaysNet
-              ? "Net · after broker fees"
-              : series.someBrokerNet
-              ? "Broker net where available · else fill before fees"
-              : `Partial imported fills · ${dataSourceLabel}`}
-            {timeframe === "all" && coverageStartLabel != null && (
-              <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                {hasBrokerHistory
-                  ? `· Broker Cash History available from ${coverageStartLabel} · API-visible history only`
-                  : `· partial imported fills only · data from ${coverageStartLabel}`}
-              </span>
-            )}
+            {timeframe === "all" && hasBrokerHistory && coverageStartLabel != null
+              ? `Net after fees · Broker Cash History from ${coverageStartLabel}`
+              : <>
+                  {"Cumulative daily P&L · "}
+                  {series.allDaysNet
+                    ? "Net · after broker fees"
+                    : series.someBrokerNet
+                    ? "Broker net where available · else fill before fees"
+                    : `Partial imported fills · ${dataSourceLabel}`}
+                  {timeframe === "all" && coverageStartLabel != null && (
+                    <span style={{ marginLeft: 4, opacity: 0.75 }}>
+                      {`· partial imported fills only · data from ${coverageStartLabel}`}
+                    </span>
+                  )}
+                </>
+            }
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
