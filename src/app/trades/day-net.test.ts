@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveDayNet, resolveTradeRowNet, type DayTradeRow } from "./day-net.ts";
+import { resolveDayNet, resolveTradeRowNet, resolveTradeClassification, type DayTradeRow } from "./day-net.ts";
 
 function r(over: Partial<DayTradeRow>): DayTradeRow {
   return {
@@ -149,6 +149,71 @@ describe("resolveTradeRowNet — per-trade fees take priority", () => {
     );
     assert.equal(res.fees, null);
     assert.ok(Math.abs(res.net! - 1.5) < 1e-9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTradeClassification
+// ---------------------------------------------------------------------------
+
+describe("resolveTradeClassification — net-based winning/losing", () => {
+  it("the 1868411 case: gross +1.50, broker net -0.40 → losing (not winning)", () => {
+    const cls = resolveTradeClassification(
+      { pnl: 1.5, netPnl: 1.5, fees: null, feesAvailable: false },
+      1,
+      -0.4,
+    );
+    assert.equal(cls, "losing", "gross positive but net negative must be losing");
+  });
+
+  it("winning filter must exclude the gross-positive / net-negative trade", () => {
+    const trade = { pnl: 1.5, netPnl: 1.5, fees: null, feesAvailable: false };
+    const cls = resolveTradeClassification(trade, 1, -0.4);
+    assert.ok(cls !== "winning", "winning filter must not include this trade");
+  });
+
+  it("losing filter must include the gross-positive / net-negative trade", () => {
+    const trade = { pnl: 1.5, netPnl: 1.5, fees: null, feesAvailable: false };
+    const cls = resolveTradeClassification(trade, 1, -0.4);
+    assert.equal(cls, "losing", "losing filter must include net-negative trade");
+  });
+
+  it("positive gross and positive net → winning", () => {
+    const cls = resolveTradeClassification(
+      { pnl: 2.0, netPnl: 2.0, fees: null, feesAvailable: false },
+      1,
+      1.5,
+    );
+    assert.equal(cls, "winning");
+  });
+
+  it("negative gross, no broker net → losing (fallback to gross)", () => {
+    const cls = resolveTradeClassification(
+      { pnl: -1.0, netPnl: -1.0, fees: null, feesAvailable: false },
+      1,
+      undefined,
+    );
+    assert.equal(cls, "losing");
+  });
+
+  it("multi-trade day without broker net or per-trade fees → falls back to gross pnl", () => {
+    const cls = resolveTradeClassification(
+      { pnl: 1.5, netPnl: 1.5, fees: null, feesAvailable: false },
+      3,
+      -0.4,
+    );
+    // resolveTradeRowNet returns null net for multi-trade day without per-fill fees
+    // so classification falls back to gross +1.50 → winning
+    assert.equal(cls, "winning", "multi-trade day without per-fill fees falls back to gross");
+  });
+
+  it("zero effective net → flat", () => {
+    const cls = resolveTradeClassification(
+      { pnl: 1.0, netPnl: 1.0, fees: null, feesAvailable: false },
+      1,
+      0,
+    );
+    assert.equal(cls, "flat");
   });
 });
 

@@ -104,3 +104,22 @@ export function resolveTradeRowNet(
   }
   return { fees: null, net: null };
 }
+
+/**
+ * Classify a trade as winning, losing, or flat using effective net P&L when
+ * determinable, falling back to gross fill P&L.
+ *
+ * For single-trade days with broker day net, the inferred net is used so that
+ * a trade with gross +1.50 but net -0.40 is correctly classified as losing.
+ */
+export function resolveTradeClassification(
+  trade: { pnl: number; netPnl: number; fees: number | null; feesAvailable: boolean },
+  tradesInDay: number,
+  brokerDayNet: number | undefined,
+): "winning" | "losing" | "flat" {
+  const rowRes = resolveTradeRowNet(trade, tradesInDay, brokerDayNet);
+  const effective = rowRes.net ?? trade.pnl;
+  if (effective > 0) return "winning";
+  if (effective < 0) return "losing";
+  return "flat";
+}
