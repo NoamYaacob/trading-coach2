@@ -10,7 +10,7 @@
  *  5. cashBalanceLog/deps is used instead of list (structural test).
  *  6. Equity Curve All uses all broker Cash History days (allTimeNet covers all dayNet keys).
  *  7. Calendar totals match broker net (dayNet is the authoritative per-day value).
- *  8. Profit factor / win rate / largest win/loss use TradePaired rows.
+ *  8. Profit factor / win rate / largest win/loss use day-level broker net (dayNet).
  *  9. Multi-account leakage impossible — rows for other accounts produce no stats.
  * 10. No hardcoded account-specific values — generic fixtures only.
  *
