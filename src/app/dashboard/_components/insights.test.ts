@@ -250,52 +250,91 @@ function readComponent(rel: string): string {
   return readFileSync(resolve(process.cwd(), "src/app/dashboard/_components", rel), "utf8");
 }
 
-describe("equity-curve label — honest about P&L basis", () => {
+describe("equity-curve — broker-native primary path", () => {
   const src = readComponent("equity-curve.tsx");
 
-  it("uses allDaysNet for the fully-net label", () => {
-    assert.ok(src.includes("series.allDaysNet"), "must branch on series.allDaysNet");
+  it("uses buildBrokerNativeSeries as the primary path when broker history exists", () => {
+    assert.ok(src.includes("buildBrokerNativeSeries"), "must import and call buildBrokerNativeSeries");
+    assert.ok(src.includes("hasBrokerHistory"), "must gate the broker-native path on hasBrokerHistory");
+  });
+
+  it("broker history detected via non-empty brokerDayNet", () => {
     assert.ok(
-      src.includes("Net · after broker fees"),
-      "fully-net curve must be labelled 'Net · after broker fees'",
+      src.includes("Object.keys(brokerDayNet).length > 0"),
+      "hasBrokerHistory must check Object.keys(brokerDayNet).length > 0",
     );
   });
 
-  it("mixed ranges use someBrokerNet — broker-net days are not relabelled as flat fill", () => {
+  it("windowed views filter by sinceDayKey (day-key comparison, not by trade date)", () => {
+    assert.ok(src.includes("sinceDayKey"), "broker-native path must use a sinceDayKey cutoff for 7D/14D/30D");
+  });
+
+  it("uses allDaysNet for the fully-net label (broker-native is always allDaysNet)", () => {
+    assert.ok(src.includes("series.allDaysNet"), "must branch on series.allDaysNet");
+    assert.ok(src.includes("Net · after broker fees"), "fully-net curve must be labelled 'Net · after broker fees'");
+  });
+
+  it("mixed fill-fallback ranges use someBrokerNet — broker-net days not relabelled as flat fill", () => {
     assert.ok(src.includes("series.someBrokerNet"), "must branch on series.someBrokerNet for mixed ranges");
+    assert.ok(src.includes("Broker net where available"), "mixed range must say 'Broker net where available'");
+  });
+
+  it("all-time view with broker history says 'broker history from' not 'imported history only'", () => {
     assert.ok(
-      src.includes("Broker net where available"),
-      "mixed range must say 'Broker net where available' instead of a flat 'before fees'",
+      src.includes("broker history from"),
+      "all-time broker-native view must say 'broker history from' — not 'imported history only'",
+    );
+  });
+
+  it("all-time fill-fallback view says 'partial imported fills only'", () => {
+    assert.ok(
+      src.includes("partial imported fills only"),
+      "fill-fallback all-time view must say 'partial imported fills only' — not the old 'imported history only'",
     );
   });
 });
 
-describe("max-drawdown label — matches the source actually used", () => {
+describe("max-drawdown — broker-native primary path", () => {
   const src = readComponent("trader-insights.tsx");
 
-  it("drawdown is computed from the broker-net-aware daily series", () => {
-    assert.ok(src.includes("dailyMaxDrawdown(dailySeries)"), "drawdown must use the daily broker-net-aware series");
+  it("uses buildBrokerNativeSeries when broker history is available", () => {
+    assert.ok(src.includes("buildBrokerNativeSeries"), "must call buildBrokerNativeSeries");
+    assert.ok(src.includes("hasBrokerHistory"), "must gate on hasBrokerHistory");
   });
 
-  it("fully-net drawdown is labelled 'after broker fees'", () => {
-    assert.ok(
-      src.includes("cum. daily net P&L · after broker fees"),
-      "fully-net drawdown subtitle must say 'after broker fees'",
-    );
+  it("drawdown is computed from the daily series (broker-native or fill-based)", () => {
+    assert.ok(src.includes("dailyMaxDrawdown(dailySeries)"), "drawdown must use dailyMaxDrawdown");
   });
 
-  it("mixed-range drawdown is labelled 'broker net where available' — not 'before fees'", () => {
-    assert.ok(src.includes("dailySeries.someBrokerNet"), "drawdown label must branch on someBrokerNet");
-    assert.ok(
-      src.includes("broker net where available"),
-      "mixed-range drawdown must say 'broker net where available'",
-    );
+  it("fully-net drawdown (allDaysNet) is labelled 'after broker fees'", () => {
+    assert.ok(src.includes("cum. daily net P&L · after broker fees"), "fully-net label must say 'after broker fees'");
   });
 
-  it("only a truly fee-less range is labelled 'before fees'", () => {
+  it("mixed drawdown uses someBrokerNet — not a flat 'before fees'", () => {
+    assert.ok(src.includes("dailySeries.someBrokerNet"), "must branch on someBrokerNet");
+    assert.ok(src.includes("broker net where available"), "mixed drawdown must say 'broker net where available'");
+  });
+
+  it("fill-only drawdown is labelled 'before fees'", () => {
+    assert.ok(src.includes("cum. daily fill P&L · before fees"), "fill-only keeps the honest 'before fees' label");
+  });
+
+  it("stale copy removed — no longer says 'broker fills only'", () => {
     assert.ok(
-      src.includes("cum. daily fill P&L · before fees"),
-      "fill-only drawdown keeps the honest 'before fees' label",
+      !src.includes("broker fills only"),
+      "stale 'broker fills only' copy must be removed",
     );
+  });
+});
+
+describe("pnl-calendar — HTML entities in JS strings are literal", () => {
+  const src = readComponent("pnl-calendar.tsx");
+
+  it("subtitle uses plain & in JS string, not &amp; which renders literally", () => {
+    assert.ok(
+      !src.includes('"Net P&amp;L"') && !src.includes('"Fill P&amp;L'),
+      "subtitle JS strings must not use &amp; — use plain & so React renders Net P&L not Net P&amp;L",
+    );
+    assert.ok(src.includes('"Net P&L"') || src.includes("'Net P&L'"), "subtitle must contain plain Net P&L string");
   });
 });

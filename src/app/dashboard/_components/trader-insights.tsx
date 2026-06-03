@@ -23,7 +23,7 @@ import {
   biggestWin,
   profitFactor,
 } from "./insights.ts";
-import { buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
+import { buildBrokerNativeSeries, buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
 
 type RiskRulesLike = {
   stopAfterLosses: number | null;
@@ -144,11 +144,14 @@ export function TraderInsights({
   feesAvailable = false,
   brokerDayNet,
 }: Props) {
-  // Daily, broker-net-aware P&L series for account-level analytics (max
-  // drawdown). Days the broker reported a Cash History net for use that
-  // after-fees value; other days fall back to per-trade/fill sums.
-  const dailySeries = buildDailySeries(recentTrades, timezone, feesAvailable, brokerDayNet);
-  // True when the whole drawdown curve is a real after-fees net.
+  // Max drawdown uses broker Cash History as primary when available (full
+  // after-fees daily net, 30D window). Falls back to fill-based series.
+  const hasBrokerHistory = brokerDayNet != null && Object.keys(brokerDayNet).length > 0;
+  const since30dKey = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toLocaleDateString("en-CA", { timeZone: timezone });
+  const dailySeries = hasBrokerHistory
+    ? buildBrokerNativeSeries(brokerDayNet!, since30dKey)
+    : buildDailySeries(recentTrades, timezone, feesAvailable, brokerDayNet);
   const ddIsNet = dailySeries.allDaysNet;
   // Today boundary expressed via en-CA key in the displayed timezone so it
   // matches the calendar's bucketing logic.
@@ -342,7 +345,9 @@ export function TraderInsights({
           Trader insights · {selectedAccount.label}
         </span>
         <span style={{ fontSize: 11, color: "var(--gr-text-mute)" }}>
-          Computed from this account&apos;s broker fills only
+          {hasBrokerHistory
+            ? "Broker Cash History where available · otherwise fill P&L"
+            : "Partial imported fills · fees not yet confirmed"}
         </span>
       </div>
       <div
