@@ -585,13 +585,20 @@ describe("data-truth: Account Balance History is the historical source of truth"
   const insights  = read("app/dashboard/_components/trader-insights.tsx");
 
   it("dashboard loads broker performance via getHistoricalAccountPerformance (report-preferred)", () => {
+    // ABH is loaded OFF the blocking render path via the shared cached loader,
+    // awaited inside async Suspense sections. The loader (not the page) calls ABH.
+    const loader = read("lib/brokers/broker-performance-loader.ts");
     assert.ok(
-      dashboard.includes("getHistoricalAccountPerformance"),
-      "dashboard must prefer the report-backed historical performance loader",
+      loader.includes("getHistoricalAccountPerformance"),
+      "the broker-performance loader must prefer the report-backed historical performance loader",
     );
     assert.ok(
-      !dashboard.includes("getCashHistoryPerformance"),
-      "dashboard must not call getCashHistoryPerformance directly (it's the fallback inside the loader)",
+      !loader.includes("getCashHistoryPerformance"),
+      "the loader must not call getCashHistoryPerformance directly (it's the fallback inside getHistoricalAccountPerformance)",
+    );
+    assert.ok(
+      dashboard.includes("<Suspense"),
+      "dashboard must stream ABH widgets behind <Suspense> instead of blocking render on them",
     );
   });
 
@@ -614,9 +621,11 @@ describe("data-truth: Account Balance History is the historical source of truth"
 
   it("DB imported fills are not the primary broker metric source when broker history exists", () => {
     // KPIs branch on brokerPerformance/brokerWindow first; recentTrades (fills)
-    // is only the fallback when there is no broker history.
+    // is only the fallback when there is no broker history. This now lives in the
+    // streamed ABH KPI section.
+    const sections = read("app/dashboard/_components/broker-sections.tsx");
     assert.ok(
-      dashboard.includes("brokerWindow30d != null"),
+      sections.includes("brokerWindow30d != null"),
       "dashboard win-rate/PF must prefer broker window stats over fill-derived recentTrades",
     );
   });

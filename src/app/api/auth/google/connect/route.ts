@@ -11,11 +11,20 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
 
 export async function GET(request: NextRequest) {
+  // Prove the OAuth start is millisecond-fast: it sets a state cookie and
+  // redirects to Google with no broker/DB work in `auth` (login) mode. Any
+  // blank/stuck Google consent screen is rendered by Google AFTER this redirect.
+  //   [perf] route=auth step=google-connect ms=<duration>
+  const __perfStart = Date.now();
+  const __logPerf = () =>
+    console.info(`[perf] route=auth step=google-connect ms=${Date.now() - __perfStart} accountId=—`);
+
   const mode = request.nextUrl.searchParams.get("mode") === "connect" ? "connect" : "auth";
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
     const dest = mode === "connect" ? "/settings?oauth_error=google_not_configured" : "/login?oauth_error=google_not_configured";
+    __logPerf();
     return NextResponse.redirect(new URL(dest, request.url));
   }
 
@@ -24,6 +33,7 @@ export async function GET(request: NextRequest) {
   if (mode === "connect") {
     const currentUser = await getCurrentUser();
     if (!currentUser) {
+      __logPerf();
       return NextResponse.redirect(new URL("/login", request.url));
     }
     userId = currentUser.id;
@@ -52,5 +62,6 @@ export async function GET(request: NextRequest) {
     prompt: "select_account",
   });
 
+  __logPerf();
   return NextResponse.redirect(`${GOOGLE_AUTH_URL}?${params.toString()}`);
 }

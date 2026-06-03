@@ -91,24 +91,31 @@ describe("navigation performance: slow broker calls are capped, unrelated pages 
     );
   });
 
-  it("Dashboard calls getHistoricalAccountPerformance without a hard timeout (ABH is source of truth)", () => {
-    // ABH must run to completion on the dashboard too — a 4s cap caused the
-    // calendar to lose all historical day data (Apr 30, May 4, Jun 2).
+  it("Dashboard loads ABH OFF the blocking render path (Suspense streaming, no hard timeout)", () => {
+    // The dashboard page must NOT call ABH or instantiate a broker client in its
+    // own render path — that would block the shell. ABH now loads inside async
+    // Suspense section wrappers via the shared cached loader. The page renders
+    // <Suspense> + the section components instead.
+    const loader = read("lib/brokers/broker-performance-loader.ts");
     assert.ok(
-      dashboard.includes("getHistoricalAccountPerformance"),
-      "dashboard must call getHistoricalAccountPerformance",
+      !dashboard.includes("getHistoricalAccountPerformance") && !dashboard.includes("new TradovateClient"),
+      "dashboard page must NOT call ABH / TradovateClient in its render path — it blocks navigation",
     );
     assert.ok(
-      dashboard.includes("timed(") && dashboard.includes("broker-performance"),
-      "dashboard must observe broker-performance via timed() for logging",
+      dashboard.includes("<Suspense"),
+      "dashboard must wrap ABH widgets in <Suspense> so the shell paints first",
     );
     assert.ok(
-      !dashboard.includes("BROKER_PERF_TIMEOUT_MS"),
-      "dashboard must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
+      loader.includes("getHistoricalAccountPerformance") && loader.includes("cache("),
+      "the shared loader must call ABH and be per-request cached so siblings share one fetch",
     );
     assert.ok(
-      dashboard.includes("EMPTY_BROKER_PERFORMANCE"),
-      "a perf error must fall back to EMPTY_BROKER_PERFORMANCE, not throw the page",
+      !loader.includes("BROKER_PERF_TIMEOUT_MS") && !loader.includes("withTimeout"),
+      "the ABH loader must NOT hard-cap getHistoricalAccountPerformance — it is the source of truth",
+    );
+    assert.ok(
+      loader.includes("step=broker-performance"),
+      "the loader must emit a [perf] step=broker-performance timing line",
     );
   });
 
