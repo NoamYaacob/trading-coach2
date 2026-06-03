@@ -271,6 +271,7 @@ describe("data-truth: no fake or sample trade data in authenticated display path
   const dashboard = read("app/dashboard/page.tsx");
   const equity   = read("app/dashboard/_components/equity-curve.tsx");
   const calendar = read("app/dashboard/_components/pnl-calendar.tsx");
+  const calendarAgg = read("app/dashboard/_components/pnl-calendar-agg.ts");
   const trades   = read("app/trades/page.tsx");
 
   it("equity curve never generates synthetic chart points", () => {
@@ -286,8 +287,9 @@ describe("data-truth: no fake or sample trade data in authenticated display path
 
   it("P&L calendar aggregates from real round-trip trades only", () => {
     assert.ok(!calendar.includes("Math.random"), "calendar must not use Math.random");
+    assert.ok(!calendarAgg.includes("Math.random"), "calendar agg must not use Math.random");
     assert.ok(
-      calendar.includes("t.closedAt.toLocaleDateString"),
+      calendarAgg.includes("t.closedAt.toLocaleDateString"),
       "calendar must aggregate by closedAt from real trades",
     );
   });

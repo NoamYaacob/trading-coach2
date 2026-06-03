@@ -57,6 +57,16 @@ import type { FlattenStatus, BrokerFlattenResult } from "./enforcement-helpers";
 import { parseTradovateMasterId } from "./tradovate-master-id";
 import { formatDateMMDDYYYY, nextCalendarDay } from "./tradovate-report-date";
 import {
+  parsePerformanceReportPnl,
+  type PerformanceReportPnl,
+} from "./tradovate-reports-parser";
+import {
+  normalizeCashBalanceLogRows,
+  aggregateCashHistory,
+  type ContractDayPnl,
+  type RawCashBalanceLogRow,
+} from "../trades/cash-history-fees";
+import {
   findGuardrailPositionLimit,
   buildCreatePositionLimitPayload,
   buildUpdatePositionLimitPayload,
@@ -1188,6 +1198,75 @@ export class TradovateClient {
     return this.#externalAccountId;
   }
 
+  /** The numeric Tradovate account id resolved during initialize(). null when absent. */
+  getTvAccountId(): number | null {
+    return this.#tvAccountId;
+  }
+
+  /**
+   * Read-only diagnostic helper: GET a list-style endpoint and return the
+   * parsed items. The HTTP method is hardcoded to GET — this cannot place,
+   * cancel, or modify anything. Used ONLY by the fee-source inspection script
+   * to discover real response shapes. Throws are the caller's to catch.
+   */
+  async debugRawList(endpoint: string): Promise<unknown[]> {
+    const raw = await this.#request<unknown>(endpoint, "GET");
+    return parseSnapshotItems<Record<string, unknown>>(raw);
+  }
+
+  /**
+   * Read-only Cash History (cashBalanceLog) — the source of truth for fees and
+   * realized P&L, matching what the trader sees in Tradovate's Cash History.
+   *
+   * GET cashBalanceLog/list, normalised + scoped strictly to this account, then
+   * aggregated per (account, contract, day). Returns [] on any failure so the
+   * caller is never blocked. Never writes.
+   */
+  async getCashHistoryDayPnl(): Promise<ContractDayPnl[]> {
+    if (this.#tvAccountId == null) return [];
+    try {
+      const rows = await this.#request<unknown>("cashBalanceLog/list", "GET");
+      const raw = parseSnapshotItems<RawCashBalanceLogRow>(rows);
+      const normalized = normalizeCashBalanceLogRows(raw, this.#tvAccountId, this.#accountId);
+      const agg = aggregateCashHistory(normalized, this.#accountId);
+      console.info("[tradovate/cash-history] aggregated day P&L", {
+        accountId: this.#accountId,
+        tvAccountId: this.#tvAccountId,
+        rawRows: raw.length,
+        normalizedRows: normalized.length,
+        groups: agg.length,
+      });
+      return agg;
+    } catch (err) {
+      console.info("[tradovate/cash-history] fetch skipped — fees remain unavailable", {
+        accountId: this.#accountId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Cash-history NET P&L per trading day ("YYYY-MM-DD" → net), for the calendar
+   * and dashboard. Only days with fee data are included, so a fees-missing day
+   * is never presented as Net. Read-only. [] / {} on failure.
+   */
+  async getCashHistoryDayNet(): Promise<Record<string, number>> {
+    const groups = await this.getCashHistoryDayPnl();
+    const byDate = new Map<string, { net: number; feesAvailable: boolean }>();
+    for (const g of groups) {
+      const cur = byDate.get(g.date) ?? { net: 0, feesAvailable: false };
+      cur.net += g.netPnl;
+      cur.feesAvailable = cur.feesAvailable || g.feesAvailable;
+      byDate.set(g.date, cur);
+    }
+    const out: Record<string, number> = {};
+    for (const [date, v] of byDate) {
+      if (v.feesAvailable) out[date] = Math.round((v.net + Number.EPSILON) * 100) / 100;
+    }
+    return out;
+  }
+
   // ── Per-account trade count sources ──────────────────────────────────────
   // Each method below is one fallback step in the trade-count resolver
   // (see tradovate-trade-count.ts). They are deliberately defensive: never
@@ -1294,6 +1373,39 @@ export class TradovateClient {
     });
 
     return { status: res.status, body: text, contentType };
+  }
+
+  /**
+   * Read-only day-level P&L from the Performance Report: Gross P/L, fees, and
+   * Net P/L for the given trading day. Reuses fetchPerformanceReport (same
+   * POST /reports/requestreport) and the pure parser.
+   *
+   * Returns null when the report is unavailable. Otherwise returns a struct
+   * whose fields are each independently nullable — a field is null unless the
+   * report actually carried it. Never fabricates or derives missing values.
+   */
+  async fetchPerformanceReportPnl(input: {
+    tradingDayKey: string;
+  }): Promise<PerformanceReportPnl | null> {
+    const accountName = await this.getAccountName();
+    if (!accountName) return null;
+    const report = await this.fetchPerformanceReport({
+      accountName,
+      tradingDayKey: input.tradingDayKey,
+    });
+    if (!report || report.status < 200 || report.status >= 300) return null;
+    const pnl = parsePerformanceReportPnl({
+      body: report.body,
+      contentType: report.contentType,
+    });
+    console.info("[tradovate/report-pnl] parsed day P&L", {
+      accountId: this.#accountId,
+      tradingDayKey: input.tradingDayKey,
+      grossPnl: pnl.grossPnl,
+      fees: pnl.fees,
+      netPnl: pnl.netPnl,
+    });
+    return pnl;
   }
 
   /**

@@ -46,6 +46,7 @@ import {
 } from "@/lib/timezone";
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
+import { TradovateClient } from "@/lib/brokers/tradovate-client";
 import {
   isAccountActive,
   partitionAccountsByActive,
@@ -292,6 +293,22 @@ export default async function DashboardPage({
   const recentTrades = selectedAccount
     ? await loadAccountTrades(selectedAccount.id, { since: thirtyDaysAgo })
     : [];
+
+  // Broker-authoritative NET P&L per day from Cash History (cashBalanceLog) —
+  // the same fees/net the trader sees in Tradovate. Read-only and best-effort:
+  // any failure yields {} and the calendar falls back to fill-level values.
+  // Only days with real fee data are returned, so a fees-missing day is never
+  // mislabelled as Net.
+  let brokerDayNet: Record<string, number> = {};
+  if (selectedAccount) {
+    try {
+      const client = new TradovateClient(selectedAccount.id, currentUser.id);
+      await client.initialize();
+      brokerDayNet = await client.getCashHistoryDayNet();
+    } catch {
+      brokerDayNet = {};
+    }
+  }
   // Use the same timezone-aware day key as TraderInsights and the P&L calendar
   // so "Session trades" is always consistent with what the calendar shows.
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: displayTimeZone });
@@ -1223,6 +1240,7 @@ export default async function DashboardPage({
                   accountLabel={selectedAccount.primaryLabel}
                   tradesHref={`/trades?accountId=${selectedAccount.id}`}
                   accountId={selectedAccount.id}
+                  brokerDayNet={brokerDayNet}
                 />
               </section>
             )}
