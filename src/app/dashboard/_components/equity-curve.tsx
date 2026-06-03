@@ -39,7 +39,7 @@ import {
 
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
-import { buildDailySeries, type DailySeries } from "./daily-pnl.ts";
+import { buildBrokerNativeSeries, buildDailySeries, type DailySeries } from "./daily-pnl.ts";
 
 type Timeframe = "7d" | "14d" | "30d" | "all";
 
@@ -138,26 +138,50 @@ function rgba(hex: string, alpha: number): string {
 
 export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, feesAvailable, brokerDayNet }: Props) {
   const [timeframe, setTimeframe] = React.useState<Timeframe>("30d");
+
+  // Broker Cash History (cashBalanceLog) is the primary source of truth when
+  // available — it covers the FULL account history, not just the fill-import
+  // window. We build the curve directly from it. Falls back to fill-based when
+  // no broker data exists (e.g. no session yet).
+  const hasBrokerHistory = brokerDayNet != null && Object.keys(brokerDayNet).length > 0;
+
+  // "YYYY-MM-DD" cutoff for windowed views (7D/14D/30D). Day-key comparison is
+  // exact because keys are ISO-format and broker dates are already tz-bucketed.
+  const sinceDayKey = React.useMemo((): string | undefined => {
+    if (timeframe === "all") return undefined;
+    const days = timeframe === "7d" ? 7 : timeframe === "14d" ? 14 : 30;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return cutoff.toLocaleDateString("en-CA", { timeZone: timezone });
+  }, [timeframe, timezone]);
+
+  // For the fill-based fallback path only.
   const windowTrades = React.useMemo(
-    () => filterByTimeframe(trades, timeframe),
-    [trades, timeframe],
+    () => hasBrokerHistory ? [] : filterByTimeframe(trades, timeframe),
+    [hasBrokerHistory, trades, timeframe],
   );
 
-  // Account-level equity curve is a DAILY series. Days the broker reported a
-  // Cash History net for use that authoritative after-fees value (e.g.
-  // 2026-06-02 → -0.40), overriding the fill-derived gross sum (+1.50).
-  const series = React.useMemo(
-    () => buildDailySeries(windowTrades, timezone, feesAvailable, brokerDayNet),
-    [windowTrades, timezone, feesAvailable, brokerDayNet],
-  );
+  const series = React.useMemo(() => {
+    if (hasBrokerHistory) return buildBrokerNativeSeries(brokerDayNet!, sinceDayKey);
+    return buildDailySeries(windowTrades, timezone, feesAvailable, brokerDayNet);
+  }, [hasBrokerHistory, brokerDayNet, sinceDayKey, windowTrades, timezone, feesAvailable]);
 
-  // Earliest fill date across all loaded trades — shown in the "All" subtitle
-  // so users see the coverage window, not an implied "complete history" claim.
-  const earliestTradeDate = React.useMemo(() => {
+  // Coverage start — from broker history when available, else from imported fills.
+  const coverageStartDate = React.useMemo(() => {
+    if (hasBrokerHistory && brokerDayNet != null) {
+      const keys = Object.keys(brokerDayNet).sort();
+      if (keys.length > 0) return keys[0]!; // "YYYY-MM-DD"
+    }
     if (trades.length === 0) return null;
     const ms = Math.min(...trades.map((t) => t.openedAt.getTime()));
-    return new Date(ms);
-  }, [trades]);
+    return new Date(ms).toLocaleDateString("en-CA", { timeZone: timezone });
+  }, [hasBrokerHistory, brokerDayNet, trades, timezone]);
+
+  const coverageStartLabel = React.useMemo(() => {
+    if (!coverageStartDate) return null;
+    // Parse "YYYY-MM-DD" into a Date for formatting.
+    const d = new Date(`${coverageStartDate}T12:00:00Z`);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, [coverageStartDate]);
 
   const rangeLabel =
     timeframe === "7d" ? "last 7 days"
@@ -223,14 +247,17 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--gr-text-mute)", marginTop: 2 }}>
-            Cumulative daily P&amp;L · {series.allDaysNet
+            {"Cumulative daily P&L · "}
+            {series.allDaysNet
               ? "Net · after broker fees"
               : series.someBrokerNet
               ? "Broker net where available · else fill before fees"
-              : dataSourceLabel}
-            {timeframe === "all" && earliestTradeDate != null && (
+              : `Partial imported fills · ${dataSourceLabel}`}
+            {timeframe === "all" && coverageStartLabel != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
-                · imported history only · data from {earliestTradeDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                {hasBrokerHistory
+                  ? `· broker history from ${coverageStartLabel}`
+                  : `· partial imported fills only · data from ${coverageStartLabel}`}
               </span>
             )}
           </div>

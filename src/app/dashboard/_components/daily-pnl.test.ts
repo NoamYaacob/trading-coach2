@@ -11,7 +11,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
+import { buildBrokerNativeSeries, buildDailySeries, dailyMaxDrawdown } from "./daily-pnl.ts";
 import type { RoundTripTrade } from "@/lib/trades/round-trips";
 
 function trade(over: Partial<RoundTripTrade>): RoundTripTrade {
@@ -176,5 +176,95 @@ describe("account isolation", () => {
     const series = buildDailySeries(accountATrades, TZ, false, accountADayNet);
     assert.equal(series.points.length, 1);
     assert.ok(Math.abs(series.points[0]!.pnl - -0.4) < 1e-9, "only account-A net applied");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBrokerNativeSeries
+// ---------------------------------------------------------------------------
+
+describe("buildBrokerNativeSeries — broker Cash History as primary source", () => {
+  it("the 1868411 case: 2026-06-02 = -0.40, never +1.50 fill", () => {
+    // Even in a mixed 30D window, the broker-native series uses -0.40 for Jun 2.
+    const series = buildBrokerNativeSeries({ "2026-06-02": -0.4 });
+    assert.equal(series.points.length, 1);
+    const p = series.points[0]!;
+    assert.equal(p.day, "2026-06-02");
+    assert.ok(Math.abs(p.pnl - -0.4) < 1e-9, "uses -0.40, NOT the +1.50 fill gross");
+    assert.ok(Math.abs(p.cumulative - -0.4) < 1e-9);
+    assert.equal(p.brokerNet, true);
+  });
+
+  it("allDaysNet and someBrokerNet are both true — full broker history means fully net", () => {
+    const series = buildBrokerNativeSeries({ "2026-06-01": 10, "2026-06-02": -0.4 });
+    assert.equal(series.allDaysNet, true);
+    assert.equal(series.someBrokerNet, true);
+  });
+
+  it("empty input → empty series with false flags", () => {
+    const series = buildBrokerNativeSeries({});
+    assert.equal(series.points.length, 0);
+    assert.equal(series.allDaysNet, false);
+    assert.equal(series.someBrokerNet, false);
+  });
+
+  it("sorts days chronologically regardless of input key order", () => {
+    const series = buildBrokerNativeSeries({
+      "2026-06-03": 3,
+      "2026-06-01": 1,
+      "2026-06-02": 2,
+    });
+    assert.deepEqual(series.points.map((p) => p.day), ["2026-06-01", "2026-06-02", "2026-06-03"]);
+    assert.deepEqual(series.points.map((p) => p.cumulative), [1, 3, 6]);
+  });
+
+  it("cumulative includes negative days correctly (the 1868411 30D case)", () => {
+    // Other days +11.00, Jun 2 broker net -0.40 → cumulative ends at +10.60
+    const series = buildBrokerNativeSeries({ "2026-05-20": 11.0, "2026-06-02": -0.4 });
+    const last = series.points[series.points.length - 1]!;
+    assert.ok(Math.abs(last.cumulative - 10.6) < 1e-9, "cumulative ends at +10.60");
+    // Jun 2 MUST use -0.40, never the fill value
+    const jun2 = series.points.find((p) => p.day === "2026-06-02")!;
+    assert.ok(Math.abs(jun2.pnl - -0.4) < 1e-9, "Jun 2 is -0.40, not +1.50");
+  });
+
+  it("sinceDayKey filters out older days for windowed views", () => {
+    const series = buildBrokerNativeSeries(
+      { "2026-05-01": 5, "2026-06-01": 10, "2026-06-02": -0.4 },
+      "2026-06-01",
+    );
+    // May 1 is before the cutoff — excluded
+    assert.deepEqual(series.points.map((p) => p.day), ["2026-06-01", "2026-06-02"]);
+    // Cumulative resets to window start, not full history
+    assert.ok(Math.abs(series.points[0]!.cumulative - 10) < 1e-9);
+    assert.ok(Math.abs(series.points[1]!.cumulative - 9.6) < 1e-9);
+  });
+
+  it("sinceDayKey inclusive — day on the cutoff boundary is included", () => {
+    const series = buildBrokerNativeSeries({ "2026-06-01": 1, "2026-06-02": 2 }, "2026-06-01");
+    assert.equal(series.points.length, 2);
+    assert.equal(series.points[0]!.day, "2026-06-01");
+  });
+
+  it("no account mixing — only the keys passed in are plotted", () => {
+    // Simulate account A's brokerDayNet; account B's data is simply absent
+    const seriesA = buildBrokerNativeSeries({ "2026-06-02": -0.4 });
+    const seriesB = buildBrokerNativeSeries({ "2026-06-02": 99 });
+    assert.ok(Math.abs(seriesA.points[0]!.pnl - -0.4) < 1e-9);
+    assert.ok(Math.abs(seriesB.points[0]!.pnl - 99) < 1e-9);
+  });
+});
+
+describe("buildBrokerNativeSeries — max drawdown integration", () => {
+  it("drawdown uses broker day net, not fill gross", () => {
+    // Day 1: +10 (broker). Day 2: -8 (broker net, not fill +1.50).
+    // cumulative: +10, +2 → peak 10, trough 2 → DD 8.
+    const series = buildBrokerNativeSeries({ "2026-06-01": 10, "2026-06-02": -8 });
+    assert.equal(dailyMaxDrawdown(series), 8, "drawdown uses broker net -8, not fill +1.50");
+  });
+
+  it("rising broker curve has zero drawdown", () => {
+    const series = buildBrokerNativeSeries({ "2026-06-01": 5, "2026-06-02": 3 });
+    assert.equal(dailyMaxDrawdown(series), 0);
   });
 });
