@@ -37,6 +37,12 @@ type Props = {
   recentTrades: RoundTripTrade[];
   /** IANA timezone used to determine "today" boundary. */
   timezone: string;
+  /**
+   * True only when every recent trade carried broker per-fill fees.
+   * When false, netPnl === pnl (fill P&L before fees) — analytics must not
+   * be labelled "Net".
+   */
+  feesAvailable?: boolean;
 };
 
 function fmt$(v: number): string {
@@ -130,6 +136,7 @@ export function TraderInsights({
   riskRules: _riskRules,
   recentTrades,
   timezone,
+  feesAvailable = false,
 }: Props) {
   // Today boundary expressed via en-CA key in the displayed timezone so it
   // matches the calendar's bucketing logic.
@@ -252,7 +259,7 @@ export function TraderInsights({
         key="profit-factor"
         label="Profit factor (30d)"
         value={pf.toFixed(2)}
-        sub={`gross wins ÷ gross losses · ${recentTrades.length} trades`}
+        sub={`${feesAvailable ? "net" : "fill"} wins ÷ ${feesAvailable ? "net" : "fill"} losses · ${recentTrades.length} trades${feesAvailable ? "" : " · before fees"}`}
         tone={pf >= 1 ? "ok" : "warn"}
       />
     );
@@ -278,7 +285,7 @@ export function TraderInsights({
         value={dd > 0 ? `−${fmtMoney(dd)}` : "$0.00"}
         sub={
           dd > 0
-            ? "Worst peak-to-trough across cum. P&L"
+            ? `Worst peak-to-trough · cum. ${feesAvailable ? "net" : "fill"} P&L${feesAvailable ? "" : " · before fees"}`
             : "Cum. P&L has not pulled back"
         }
         tone={dd > 0 ? "warn" : "neutral"}
