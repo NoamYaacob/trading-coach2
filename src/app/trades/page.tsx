@@ -18,6 +18,7 @@ import {
 } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import { withTimeout, timed } from "@/lib/perf";
 import { formatDateMMDDYYYY } from "@/lib/brokers/tradovate-report-date";
 import { brokerSourceLabel, type BrokerHistorySource } from "@/lib/trades/broker-account-performance";
 import { resolveDayNet, resolveDayRowNets } from "./day-net";
@@ -28,6 +29,14 @@ import { prisma } from "@/lib/db";
 export const metadata: Metadata = {
   title: "Trades — Guardrail",
 };
+
+// Hard caps for slow broker/report calls during server render. Each is capped
+// independently so one slow call can never block navigation for ~10s — the page
+// renders DB rows + whatever broker data resolved in time.
+const CLIENT_INIT_TIMEOUT_MS = 4000;
+const BROKER_PERF_TIMEOUT_MS = 4000;
+const ACCOUNT_NAME_TIMEOUT_MS = 3000;
+const FILLS_REPORT_TIMEOUT_MS = 5000;
 
 const TRADES_NAV: GrNavItem[] = [
   { id: "home",     label: "Dashboard",    icon: "home",     href: "/dashboard" },
@@ -191,28 +200,51 @@ export default async function TradesPage({
   let usedReportFills = false;
   let fillsReportFailed = false;
   if (selectedAccount) {
+    const client = new TradovateClient(selectedAccount.id, currentUser.id);
+    // Client init is capped — a slow token refresh must not block navigation.
+    let initOk = false;
     try {
-      const client = new TradovateClient(selectedAccount.id, currentUser.id);
-      await client.initialize();
-      const perf = await client.getHistoricalAccountPerformance();
-      brokerDayNet = perf.dayNet;
-      brokerSource = perf.source;
-      earliestBrokerDay = perf.earliestBrokerDay;
+      await timed("trades", "broker-init", selectedAccount.id, () =>
+        withTimeout(client.initialize(), CLIENT_INIT_TIMEOUT_MS, "trades:initialize"),
+      );
+      initOk = true;
+    } catch {
+      initOk = false;
+    }
 
-      // Historical fills — best-effort, read-only, with a 5-second timeout to
-      // avoid blocking the Server Component render. Account NAME is required as
-      // the report's `account` param (numeric tvAccountId returns 0 rows).
-      // fillsReportFailed is set on timeout/error so the empty state can say
-      // "could not be loaded" rather than the misleading "no fills available".
-      //
-      // IMPORTANT: The Fills report endpoint returns 0 rows for large windows
-      // (e.g. 5 years). Use a narrow window matched to what the page actually
-      // displays: ±1 day around dateFilter, or the visible range for range views.
+    if (initOk) {
+      // Broker performance (ABH day net) — capped independently so a slow
+      // report host fails fast and the page still renders DB rows + day totals.
       try {
-        const accountName = await client.getAccountName();
+        const perf = await timed("trades", "broker-performance", selectedAccount.id, () =>
+          withTimeout(
+            client.getHistoricalAccountPerformance(),
+            BROKER_PERF_TIMEOUT_MS,
+            "trades:getHistoricalAccountPerformance",
+          ),
+        );
+        brokerDayNet = perf.dayNet;
+        brokerSource = perf.source;
+        earliestBrokerDay = perf.earliestBrokerDay;
+      } catch {
+        brokerDayNet = {};
+        brokerSource = "none";
+        earliestBrokerDay = null;
+      }
+
+      // Historical fills — best-effort, read-only, capped independently. Account
+      // NAME is required as the report's `account` param (numeric tvAccountId
+      // returns 0 rows). fillsReportFailed is set on timeout/error so the empty
+      // state can say "could not be loaded" rather than "no fills available".
+      //
+      // The Fills report endpoint returns 0 rows for large windows (e.g. 5
+      // years), so the window is narrowed to what the page actually displays:
+      // ±1 day around dateFilter, or the visible range for range views.
+      try {
+        const accountName = await timed("trades", "account-name", selectedAccount.id, () =>
+          withTimeout(client.getAccountName(), ACCOUNT_NAME_TIMEOUT_MS, "trades:getAccountName"),
+        );
         if (accountName) {
-          // Narrow window: dateFilter → ±1 day; range view → `since` to tomorrow.
-          // Never use a multi-year lookback for the Fills report.
           let reportStart: Date;
           let reportEnd: Date;
           const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -226,12 +258,14 @@ export default async function TradesPage({
           }
           const startStr = formatDateMMDDYYYY(reportStart.toLocaleDateString("en-CA"));
           const endStr = formatDateMMDDYYYY(reportEnd.toLocaleDateString("en-CA"));
-          const rows = await Promise.race([
-            client.getHistoricalFillsReport(accountName, startStr, endStr),
-            new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), 5000),
-            ),
-          ]);
+          // Hard timeout via the shared helper; null on timeout → honest empty state.
+          const rows = await timed("trades", "fills-report", selectedAccount.id, () =>
+            withTimeout(
+              client.getHistoricalFillsReport(accountName, startStr, endStr),
+              FILLS_REPORT_TIMEOUT_MS,
+              "trades:getHistoricalFillsReport",
+            ).catch(() => null),
+          );
           if (rows === null) {
             fillsReportFailed = true;
             console.info("[trades/page] fills-report timed-out or null", {
@@ -265,10 +299,6 @@ export default async function TradesPage({
         historicalFillInputs = [];
         usedReportFills = false;
       }
-    } catch {
-      brokerDayNet = {};
-      brokerSource = "none";
-      earliestBrokerDay = null;
     }
   }
 

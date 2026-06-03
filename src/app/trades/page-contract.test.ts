@@ -22,6 +22,112 @@ function read(rel: string): string {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
+describe("navigation performance: slow broker calls are capped, unrelated pages stay broker-free", () => {
+  const trades = read("app/trades/page.tsx");
+  const dashboard = read("app/dashboard/page.tsx");
+  const perf = read("lib/perf.ts");
+
+  it("shared withTimeout helper exists and rejects on a hard timeout", () => {
+    assert.ok(perf.includes("export async function withTimeout"), "lib/perf.ts must export withTimeout");
+    assert.ok(perf.includes("setTimeout") && perf.includes("clearTimeout"), "withTimeout must use a cleared timer");
+    assert.ok(perf.includes("[perf] timeout"), "withTimeout must log a structured timeout line");
+  });
+
+  it("timed() emits a [perf] route/step/ms/accountId line", () => {
+    assert.ok(perf.includes("export async function timed"), "lib/perf.ts must export timed");
+    assert.ok(
+      perf.includes("[perf] route=") && perf.includes("step=") && perf.includes("ms=") && perf.includes("accountId="),
+      "timed must log route/step/ms/accountId",
+    );
+  });
+
+  it("Trades wraps getHistoricalAccountPerformance in withTimeout with a fallback", () => {
+    assert.ok(
+      trades.includes('withTimeout(') && trades.includes("getHistoricalAccountPerformance"),
+      "trades must wrap broker performance in withTimeout",
+    );
+    assert.ok(
+      trades.includes("BROKER_PERF_TIMEOUT_MS"),
+      "trades must cap the performance fetch with a hard timeout constant",
+    );
+    // The perf call has its own try/catch fallback (brokerSource = none / {}).
+    assert.ok(
+      trades.includes('brokerSource = "none"'),
+      "a perf timeout must fall back to an empty broker state, not throw the page",
+    );
+  });
+
+  it("Trades wraps getHistoricalFillsReport in withTimeout → null fallback", () => {
+    assert.ok(
+      trades.includes("getHistoricalFillsReport") && trades.includes("FILLS_REPORT_TIMEOUT_MS"),
+      "fills report must be capped with a hard timeout constant",
+    );
+    assert.ok(
+      trades.includes(".catch(() => null)"),
+      "fills report timeout must resolve to null (honest empty state), never throw",
+    );
+    assert.ok(
+      !trades.includes("setTimeout(() => resolve(null), 5000)"),
+      "the ad-hoc Promise.race timeout should be replaced by the shared withTimeout helper",
+    );
+  });
+
+  it("Trades caps client.initialize() so a slow token refresh can't block nav", () => {
+    assert.ok(
+      trades.includes("CLIENT_INIT_TIMEOUT_MS") && trades.includes("withTimeout(client.initialize()"),
+      "client init must be timeout-capped",
+    );
+  });
+
+  it("Dashboard wraps getHistoricalAccountPerformance in withTimeout with a fallback", () => {
+    assert.ok(
+      dashboard.includes("withTimeout(") && dashboard.includes("getHistoricalAccountPerformance"),
+      "dashboard must wrap broker performance in withTimeout",
+    );
+    assert.ok(
+      dashboard.includes("BROKER_PERF_TIMEOUT_MS"),
+      "dashboard must cap the performance fetch with a hard timeout constant",
+    );
+    assert.ok(
+      dashboard.includes("EMPTY_BROKER_PERFORMANCE"),
+      "a perf timeout must fall back to EMPTY_BROKER_PERFORMANCE, not throw the page",
+    );
+  });
+
+  it("unrelated pages (alerts/rules/settings) make NO broker/report calls", () => {
+    const brokerCalls = [
+      "getHistoricalFillsReport",
+      "getHistoricalAccountPerformance",
+      "getCashHistoryPerformance",
+      "getAccountBalanceHistoryReport",
+      "getCashHistoryDayNet",
+      "reports/requestreport",
+      "new TradovateClient",
+    ];
+    for (const rel of ["app/alerts/page.tsx", "app/rules/page.tsx", "app/settings/page.tsx"]) {
+      const src = read(rel);
+      for (const call of brokerCalls) {
+        assert.ok(!src.includes(call), `${rel} must NOT call ${call} during render`);
+      }
+    }
+  });
+
+  it("the sidebar/shell component makes no broker/report calls", () => {
+    const shell = read("components/ui/gr-shell.tsx");
+    assert.ok(!shell.includes("TradovateClient"), "gr-shell must not instantiate TradovateClient");
+    assert.ok(!shell.includes("reports/requestreport"), "gr-shell must not call the reports endpoint");
+    assert.ok(!shell.includes("getHistoricalAccountPerformance"), "gr-shell must not fetch broker performance");
+  });
+
+  it("no production route depends on the Cash History report", () => {
+    for (const rel of ["app/trades/page.tsx", "app/dashboard/page.tsx"]) {
+      const src = read(rel);
+      assert.ok(!src.includes("getHistoricalCashHistoryReport"), `${rel} must not call a Cash History report method`);
+      assert.ok(!src.includes('"Cash History"'), `${rel} must not request the Cash History report`);
+    }
+  });
+});
+
 describe("/trades page: structural contract", () => {
   const page = read("app/trades/page.tsx");
 
@@ -862,8 +968,8 @@ describe("/trades page: historical Fills-report backfill", () => {
       "page must track fillsReportFailed to distinguish timeout from 'no fills on this date'",
     );
     assert.ok(
-      page.includes("Promise.race"),
-      "fills report fetch must be wrapped in Promise.race for timeout protection",
+      page.includes("withTimeout(") && page.includes("FILLS_REPORT_TIMEOUT_MS"),
+      "fills report fetch must be wrapped in the shared withTimeout helper for timeout protection",
     );
     assert.ok(
       page.includes("could not be loaded"),
