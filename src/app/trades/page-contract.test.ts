@@ -352,9 +352,9 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
   });
 
   it("Trades KPI does NOT call fill-only P&L 'Net' when fees are missing", () => {
-    // Priority: broker Cash History net → per-fill net → fill before fees.
+    // Priority: broker history net → per-fill net → fill before fees.
     // The fill gross must never be labelled "Net".
-    assert.ok(page.includes("brokerCoversSome"), "KPI must check broker Cash History coverage first");
+    assert.ok(page.includes("brokerCoversSome"), "KPI must check broker history coverage first");
     assert.ok(page.includes("stats.feesAvailable"), "KPI must also branch on per-fill feesAvailable");
     assert.ok(page.includes('label: "Net P&L"'), "KPI headlines 'Net P&L' for broker-net and per-fill-net branches");
     assert.ok(
@@ -364,6 +364,36 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
     assert.ok(page.includes("brokerWindowNet"), "broker-net branch uses the day-net window total");
     assert.ok(page.includes("stats.netPnl"), "per-fill-net branch uses stats.netPnl");
     assert.ok(page.includes("stats.grossPnl"), "fill-only branch uses stats.grossPnl");
+  });
+
+  it("Trades page subtitle uses broker source label when broker history is available", () => {
+    assert.ok(
+      page.includes("brokerSourceLabel(brokerSource)"),
+      "subtitle must call brokerSourceLabel(brokerSource) for honest source wording",
+    );
+    assert.ok(
+      page.includes("earliestBrokerDay"),
+      "subtitle must reference earliestBrokerDay from broker performance",
+    );
+    assert.ok(
+      page.includes("Imported history only"),
+      "subtitle must still have 'Imported history only' for the fallback (source=none) path",
+    );
+  });
+
+  it("Trades Win Rate KPI uses broker day-level win rate when broker history available", () => {
+    assert.ok(
+      page.includes("brokerWinRate"),
+      "Win Rate card must use brokerWinRate (broker day wins / non-zero days)",
+    );
+    assert.ok(
+      page.includes("broker net days"),
+      "Win Rate sub-label must say 'broker net days' to distinguish from fill-based win rate",
+    );
+    assert.ok(
+      page.includes("imported fills"),
+      "Trades card sub must say 'imported fills' so it is clearly fill-based, not broker days",
+    );
   });
 
   it("KPI broker-net branch does NOT show fill P&L in the sub-label", () => {
