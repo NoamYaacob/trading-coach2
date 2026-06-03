@@ -487,8 +487,29 @@ describe("10. Generic — no hardcoded account-specific values", () => {
     assert.equal(EMPTY_BROKER_PERFORMANCE.profitFactor, null);
     assert.equal(EMPTY_BROKER_PERFORMANCE.largestWin, null);
     assert.equal(EMPTY_BROKER_PERFORMANCE.largestLoss, null);
+    assert.equal(EMPTY_BROKER_PERFORMANCE.earliestBrokerDay, null);
     assert.deepEqual(EMPTY_BROKER_PERFORMANCE.dayNet, {});
     assert.deepEqual(EMPTY_BROKER_PERFORMANCE.tradePairs, []);
+  });
+
+  it("earliestBrokerDay is the min dayNet key — used for 'available from' labeling", () => {
+    const rows: CashHistoryRow[] = [
+      exchangeFee(-1.0, "2026-06-03", "acct-A"),
+      tradePaired(3.0, "2026-06-03", "acct-A"),
+      exchangeFee(-1.0, "2026-06-05", "acct-A"),
+      tradePaired(5.0, "2026-06-05", "acct-A"),
+      exchangeFee(-0.5, "2026-06-01", "acct-A"),
+      tradePaired(2.0, "2026-06-01", "acct-A"),
+    ];
+    const perf = computeBrokerAccountPerformance(rows, "acct-A");
+    assert.equal(perf.earliestBrokerDay, "2026-06-01",
+      "earliestBrokerDay is min dayNet key regardless of row order");
+  });
+
+  it("earliestBrokerDay is null when no broker history", () => {
+    const perf = computeBrokerAccountPerformance([], "acct-A");
+    assert.equal(perf.earliestBrokerDay, null);
+    assert.equal(perf.hasBrokerHistory, false);
   });
 
   it("performance model works for any accountId string — not tied to specific accounts", () => {

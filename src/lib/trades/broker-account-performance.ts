@@ -65,6 +65,12 @@ export type BrokerAccountPerformance = {
   feesAvailable: boolean;
   /** Alias for feesAvailable — gates broker-native display on all surfaces. */
   hasBrokerHistory: boolean;
+  /**
+   * Earliest "YYYY-MM-DD" key in dayNet — i.e. the start of API-visible broker
+   * history. null when no broker history is available. Use this (not "all-time")
+   * to label coverage: "Broker Cash History available from [date]".
+   */
+  earliestBrokerDay: string | null;
 };
 
 /**
@@ -141,6 +147,8 @@ export function computeBrokerAccountPerformance(
   const profitFactor =
     Object.keys(dayNet).length === 0 ? null : lossSum > 0 ? round2(winSum / lossSum) : null;
   const feesAvailable = Object.keys(dayNet).length > 0;
+  const dayNetKeys = Object.keys(dayNet).sort();
+  const earliestBrokerDay = dayNetKeys.length > 0 ? dayNetKeys[0]! : null;
 
   return {
     dayNet,
@@ -154,6 +162,7 @@ export function computeBrokerAccountPerformance(
     profitFactor,
     feesAvailable,
     hasBrokerHistory: feesAvailable,
+    earliestBrokerDay,
   };
 }
 
@@ -222,4 +231,5 @@ export const EMPTY_BROKER_PERFORMANCE: BrokerAccountPerformance = {
   profitFactor: null,
   feesAvailable: false,
   hasBrokerHistory: false,
+  earliestBrokerDay: null,
 };

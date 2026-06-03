@@ -187,6 +187,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
     timeframe === "7d" ? "last 7 days"
     : timeframe === "14d" ? "last 14 days"
     : timeframe === "30d" ? "last 30 days"
+    : hasBrokerHistory ? "API-visible broker history"
     : "all time";
 
   const toggleButton = (tf: Timeframe, label: string) => {
@@ -256,7 +257,7 @@ export function EquityCurve({ trades, tradesHref, dataSourceLabel, timezone, fee
             {timeframe === "all" && coverageStartLabel != null && (
               <span style={{ marginLeft: 4, opacity: 0.75 }}>
                 {hasBrokerHistory
-                  ? `· broker history from ${coverageStartLabel}`
+                  ? `· Broker Cash History available from ${coverageStartLabel} · API-visible history only`
                   : `· partial imported fills only · data from ${coverageStartLabel}`}
               </span>
             )}
