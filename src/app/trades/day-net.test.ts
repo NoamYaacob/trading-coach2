@@ -6,7 +6,25 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveDayNet, resolveTradeRowNet, resolveTradeClassification, type DayTradeRow } from "./day-net.ts";
+import {
+  resolveDayNet,
+  resolveTradeRowNet,
+  resolveTradeClassification,
+  resolveDayRowNets,
+  type DayTradeRow,
+  type DayRowInput,
+} from "./day-net.ts";
+
+function dr(over: Partial<DayRowInput> & { id: string }): DayRowInput {
+  return {
+    id: over.id,
+    pnl: over.pnl ?? 0,
+    netPnl: over.netPnl ?? over.pnl ?? 0,
+    fees: over.fees ?? null,
+    feesAvailable: over.feesAvailable ?? false,
+    qty: over.qty ?? 1,
+  };
+}
 
 function r(over: Partial<DayTradeRow>): DayTradeRow {
   return {
@@ -214,6 +232,109 @@ describe("resolveTradeClassification — net-based winning/losing", () => {
       0,
     );
     assert.equal(cls, "flat");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveDayRowNets — two-tier fee model
+// ---------------------------------------------------------------------------
+
+describe("resolveDayRowNets — Tier A exact (cashBalanceLog/deps fillId fees)", () => {
+  it("Jun 2: single trade with exact per-fill fees keeps exact fees/net", () => {
+    const out = resolveDayRowNets(
+      [dr({ id: "jun2", pnl: 1.5, netPnl: -0.4, fees: 1.9, feesAvailable: true, qty: 2 })],
+      -0.4,
+    );
+    const r = out.get("jun2")!;
+    assert.equal(r.feeSource, "exact");
+    assert.ok(Math.abs(r.fees! - -1.9) < 1e-9, `fees -1.90, got ${r.fees}`);
+    assert.ok(Math.abs(r.net! - -0.4) < 1e-9, `net -0.40, got ${r.net}`);
+  });
+
+  it("exact fees win even when an ABH day net is also present", () => {
+    const out = resolveDayRowNets(
+      [dr({ id: "a", pnl: 2.0, netPnl: 1.2, fees: 0.8, feesAvailable: true, qty: 1 })],
+      99, // ABH net deliberately wrong — exact must still win
+    );
+    assert.equal(out.get("a")!.net, 1.2);
+    assert.equal(out.get("a")!.feeSource, "exact");
+  });
+});
+
+describe("resolveDayRowNets — Tier B Account-Balance-derived (Apr 30 historical)", () => {
+  it("single historical trade: derives fees = ABHnet - gross, net = ABHnet", () => {
+    const out = resolveDayRowNets(
+      [dr({ id: "h1", pnl: -210.2, netPnl: -210.2, feesAvailable: false, qty: 4 })],
+      -212.1, // ABH day net for Apr 30
+    );
+    const r = out.get("h1")!;
+    assert.equal(r.feeSource, "account-balance-derived");
+    assert.ok(Math.abs(r.fees! - -1.9) < 1e-9, `derived fees -1.90, got ${r.fees}`);
+    assert.ok(Math.abs(r.net! - -212.1) < 1e-9, `net -212.10, got ${r.net}`);
+  });
+
+  it("multi-trade historical day: allocates day fees by qty and reconciles to ABH net", () => {
+    // Two historical trades, gross sums to -200; ABH day net -212.10 → total
+    // derived fees -12.10, split by qty (3:1).
+    const rows = [
+      dr({ id: "t1", pnl: -150, feesAvailable: false, qty: 3 }),
+      dr({ id: "t2", pnl: -50, feesAvailable: false, qty: 1 }),
+    ];
+    const out = resolveDayRowNets(rows, -212.1);
+    const r1 = out.get("t1")!;
+    const r2 = out.get("t2")!;
+    assert.equal(r1.feeSource, "account-balance-derived");
+    assert.equal(r2.feeSource, "account-balance-derived");
+    // qty weights: t1 = 3/4 of -12.10 = -9.075 → -9.07 (round-half-up); t2 = remainder.
+    assert.ok(Math.abs(r1.fees! - -9.07) < 1e-9, `t1 fee ~-9.07, got ${r1.fees}`);
+    // RECONCILIATION: sum of nets == ABH day net (exactly).
+    const sumNet = r1.net! + r2.net!;
+    assert.ok(Math.abs(sumNet - -212.1) < 1e-9, `sum of nets must equal ABH -212.10, got ${sumNet}`);
+    // Sum of derived fees == total derived fees (no rounding drift lost).
+    const sumFees = r1.fees! + r2.fees!;
+    assert.ok(Math.abs(sumFees - -12.1) < 1e-9, `sum of fees must equal -12.10, got ${sumFees}`);
+  });
+
+  it("reconciliation holds for a 3-trade day with uneven quantities", () => {
+    const rows = [
+      dr({ id: "a", pnl: 10, feesAvailable: false, qty: 1 }),
+      dr({ id: "b", pnl: 20, feesAvailable: false, qty: 5 }),
+      dr({ id: "c", pnl: -5, feesAvailable: false, qty: 2 }),
+    ];
+    const abh = 22.37; // gross 25 → total fees -2.63
+    const out = resolveDayRowNets(rows, abh);
+    const sumNet = out.get("a")!.net! + out.get("b")!.net! + out.get("c")!.net!;
+    assert.ok(Math.abs(sumNet - abh) < 1e-9, `sum of nets must equal ABH ${abh}, got ${sumNet}`);
+  });
+});
+
+describe("resolveDayRowNets — mixed exact + derived in one day", () => {
+  it("exact rows keep exact fees; remaining ABH net allocated to derived rows; day reconciles", () => {
+    const rows = [
+      dr({ id: "exact", pnl: 5, netPnl: 4.2, fees: 0.8, feesAvailable: true, qty: 1 }),
+      dr({ id: "deriv", pnl: 10, feesAvailable: false, qty: 2 }),
+    ];
+    // ABH day net = 12.0 → exact net 4.2, remaining net 7.8, derived gross 10 →
+    // derived fees -2.2.
+    const out = resolveDayRowNets(rows, 12.0);
+    assert.equal(out.get("exact")!.feeSource, "exact");
+    assert.equal(out.get("deriv")!.feeSource, "account-balance-derived");
+    assert.ok(Math.abs(out.get("deriv")!.fees! - -2.2) < 1e-9, `derived fee -2.20, got ${out.get("deriv")!.fees}`);
+    const sumNet = out.get("exact")!.net! + out.get("deriv")!.net!;
+    assert.ok(Math.abs(sumNet - 12.0) < 1e-9, `day must reconcile to ABH 12.00, got ${sumNet}`);
+  });
+});
+
+describe("resolveDayRowNets — undeterminable (no exact fees, no ABH net)", () => {
+  it("returns null fees/net and null feeSource — never fabricated", () => {
+    const out = resolveDayRowNets(
+      [dr({ id: "x", pnl: 1.5, feesAvailable: false, qty: 1 })],
+      undefined,
+    );
+    const r = out.get("x")!;
+    assert.equal(r.fees, null);
+    assert.equal(r.net, null);
+    assert.equal(r.feeSource, null);
   });
 });
 
