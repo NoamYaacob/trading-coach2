@@ -308,49 +308,86 @@ describe("7. Calendar totals match broker net (dayNet is authoritative)", () => 
   });
 });
 
-// ── Test 8: Profit factor / win rate / largest win/loss use TradePaired rows ──
+// ── Test 8: Profit factor / win rate / largest win/loss use day-level broker net ──
 
-describe("8. Profit factor / win rate / largest win/loss use TradePaired rows", () => {
-  it("profitFactor computed from TradePaired netPnl values", () => {
+describe("8. Profit factor / win rate / largest win/loss use day-level broker net", () => {
+  it("positive TradePaired + fees making net negative → loss, not win", () => {
+    // +$1.50 TradePaired, -$1.90 fees → dayNet = -$0.40 → lossCount=1, winCount=0
     const rows: CashHistoryRow[] = [
-      // Trade 1: winner, +4.00 gross, -1.00 fees = +3.00 net
+      exchangeFee(-0.50),
+      exchangeFee(-0.50),
+      exchangeFee(-0.90),
+      tradePaired(1.50),
+    ];
+    const perf = computeBrokerAccountPerformance(rows, "acct-A");
+    assert.equal(perf.winCount, 0, "positive TradePaired with larger fees is a losing day");
+    assert.equal(perf.lossCount, 1);
+    assert.ok(perf.largestWin === null, "no winning day");
+    assert.ok(perf.largestLoss != null);
+    assert.ok(Math.abs(perf.largestLoss! - (-0.40)) < 1e-9,
+      `largestLoss should be -0.40, got ${perf.largestLoss}`);
+    // profitFactor must be 0 (winSum=0, lossSum>0 → 0/lossSum = 0) not null
+    assert.ok(perf.profitFactor != null && perf.profitFactor === 0,
+      "profitFactor must be 0 when all days are losses, not null");
+  });
+
+  it("positive TradePaired + smaller fees → winning day", () => {
+    const rows: CashHistoryRow[] = [
+      exchangeFee(-0.50),
+      tradePaired(3.0),
+    ];
+    const perf = computeBrokerAccountPerformance(rows, "acct-A");
+    assert.equal(perf.winCount, 1);
+    assert.equal(perf.lossCount, 0);
+    assert.ok(perf.largestWin != null);
+    assert.ok(Math.abs(perf.largestWin! - 2.50) < 1e-9,
+      `largestWin should be 2.50, got ${perf.largestWin}`);
+    // profitFactor null when no losing days (PF undefined by convention, not 0)
+    assert.strictEqual(perf.profitFactor, null,
+      "profitFactor is null when no losing days (undefined, not infinity)");
+  });
+
+  it("profitFactor computed from dayNet values (day-level after-fees net)", () => {
+    const rows: CashHistoryRow[] = [
+      // Day 1: +4.00 gross, -1.00 fees = +3.00 day net
       exchangeFee(-1.0, "2026-06-10", "acct-A", "CTXM6"),
       tradePaired(4.0, "2026-06-10", "acct-A", "CTXM6"),
-      // Trade 2: loser, -2.00 gross, -0.50 fees = -2.50 net
+      // Day 2: -2.00 gross, -0.50 fees = -2.50 day net
       exchangeFee(-0.5, "2026-06-11", "acct-A", "CTXM6"),
       tradePaired(-2.0, "2026-06-11", "acct-A", "CTXM6"),
     ];
     const perf = computeBrokerAccountPerformance(rows, "acct-A");
     assert.equal(perf.winCount, 1);
     assert.equal(perf.lossCount, 1);
-    // PF = win netPnl / |loss netPnl| = 3.00 / 2.50 = 1.20
+    // PF = dayNet_win / |dayNet_loss| = 3.00 / 2.50 = 1.20
     assert.ok(perf.profitFactor != null, "profitFactor is not null");
     assert.ok(Math.abs(perf.profitFactor! - 1.2) < 1e-9,
       `profitFactor should be 1.20, got ${perf.profitFactor}`);
   });
 
-  it("winCount and lossCount from TradePaired rows only", () => {
+  it("winCount and lossCount counted by trading day (not by individual TradePaired rows)", () => {
     const rows: CashHistoryRow[] = [
-      // Two winners
+      // Day 1: winning day (+2.50 net)
       exchangeFee(-0.5, "2026-06-10"), tradePaired(3.0, "2026-06-10"),
+      // Day 2: winning day (+0.50 net)
       exchangeFee(-0.5, "2026-06-11"), tradePaired(1.0, "2026-06-11"),
-      // One loser
+      // Day 3: losing day (-2.50 net)
       exchangeFee(-0.5, "2026-06-12"), tradePaired(-2.0, "2026-06-12"),
     ];
     const perf = computeBrokerAccountPerformance(rows, "acct-A");
-    assert.equal(perf.tradeCount, 3);
-    assert.equal(perf.winCount, 2);
-    assert.equal(perf.lossCount, 1);
-    // Win rate = 2/3 ≈ 0.67 (from computeBrokerWindowStats)
+    assert.equal(perf.tradeCount, 3, "tradeCount = TradePaired rows");
+    assert.equal(perf.winCount, 2, "two winning days");
+    assert.equal(perf.lossCount, 1, "one losing day");
     const since = "2026-01-01";
-    const ws = computeBrokerWindowStats(perf.tradePairs, since);
+    const ws = computeBrokerWindowStats(perf, since);
     assert.equal(ws.winCount, 2);
     assert.equal(ws.lossCount, 1);
+    assert.equal(ws.dayCount, 3);
     assert.ok(ws.winRate != null);
-    assert.ok(Math.abs(ws.winRate! - 0.67) < 0.01);
+    assert.ok(Math.abs(ws.winRate! - 0.67) < 0.01, `winRate should be ~0.67, got ${ws.winRate}`);
   });
 
-  it("largestWin and largestLoss from TradePaired netPnl", () => {
+  it("largestWin and largestLoss from dayNet values (not per-trade attribution)", () => {
     const rows: CashHistoryRow[] = [
       exchangeFee(-1.0, "2026-06-10"), tradePaired(10.0, "2026-06-10"),
       exchangeFee(-1.0, "2026-06-11"), tradePaired(5.0, "2026-06-11"),
@@ -358,7 +395,7 @@ describe("8. Profit factor / win rate / largest win/loss use TradePaired rows", 
       exchangeFee(-1.0, "2026-06-13"), tradePaired(-7.0, "2026-06-13"),
     ];
     const perf = computeBrokerAccountPerformance(rows, "acct-A");
-    // After attributed fees: 9.00, 4.00, -4.00, -8.00
+    // dayNet values: +9.00, +4.00, -4.00, -8.00
     assert.ok(perf.largestWin != null);
     assert.ok(Math.abs(perf.largestWin! - 9.0) < 1e-9,
       `largestWin should be 9.00, got ${perf.largestWin}`);
@@ -367,19 +404,40 @@ describe("8. Profit factor / win rate / largest win/loss use TradePaired rows", 
       `largestLoss should be -8.00, got ${perf.largestLoss}`);
   });
 
-  it("computeBrokerWindowStats excludes trades before sinceDayKey", () => {
+  it("computeBrokerWindowStats excludes days before sinceDayKey", () => {
     const rows: CashHistoryRow[] = [
-      // Old trade (outside window)
+      // Old day (outside window)
       exchangeFee(-1.0, "2026-03-01"), tradePaired(20.0, "2026-03-01"),
-      // Recent trades (inside window)
+      // Recent days (inside window)
       exchangeFee(-1.0, "2026-06-01"), tradePaired(5.0, "2026-06-01"),
       exchangeFee(-1.0, "2026-06-02"), tradePaired(-2.0, "2026-06-02"),
     ];
     const perf = computeBrokerAccountPerformance(rows, "acct-A");
-    const ws = computeBrokerWindowStats(perf.tradePairs, "2026-06-01");
-    assert.equal(ws.tradeCount, 2, "old trade excluded from window");
+    const ws = computeBrokerWindowStats(perf, "2026-06-01");
+    assert.equal(ws.dayCount, 2, "old day excluded from window");
+    assert.equal(ws.tradeCount, 2, "old TradePaired excluded from window");
     assert.equal(ws.winCount, 1);
     assert.equal(ws.lossCount, 1);
+  });
+
+  it("profitFactor is null when no Cash History at all, not 0", () => {
+    const perf = computeBrokerAccountPerformance([], "acct-A");
+    assert.strictEqual(perf.profitFactor, null, "profitFactor null when no trading days");
+  });
+
+  it("NewSession-only day creates no dayNet entry; fee-only day appears as a loss", () => {
+    const rows: CashHistoryRow[] = [
+      newSession(0, "2026-06-10"),                    // NewSession only — excluded
+      exchangeFee(-0.50, "2026-06-11"),               // fee with no TradePaired — real cost
+    ];
+    const perf = computeBrokerAccountPerformance(rows, "acct-A");
+    assert.ok(!("2026-06-10" in perf.dayNet), "NewSession-only day never appears in dayNet");
+    // Fee-only day is real cost — appears in dayNet with negative value
+    assert.ok("2026-06-11" in perf.dayNet, "fee-only day appears in dayNet as a cost");
+    assert.equal(perf.tradeCount, 0, "no TradePaired rows");
+    assert.equal(perf.winCount, 0, "no winning days");
+    assert.equal(perf.lossCount, 1, "one losing day (fees only)");
+    assert.strictEqual(perf.profitFactor, 0, "profitFactor 0 when losses only");
   });
 });
 
