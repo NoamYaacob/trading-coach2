@@ -33,7 +33,8 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
+import { usePathname } from "next/navigation";
 import { GrAccountSelector } from "./gr/gr-account-selector";
 import { GrIcon } from "./gr/gr-icon";
 import type { GrIconName } from "./gr/gr-icon";
@@ -98,18 +99,53 @@ const MOCK_NAV_ITEMS: GrNavItem[] = [
   { id: "settings", label: "Settings",     icon: "settings" },
 ];
 
+/**
+ * Inline pending indicator for a nav <Link>. Must render as a descendant of
+ * <Link> — `useLinkStatus` reads the pending state of the nearest ancestor
+ * Link while its client-side navigation is in flight. Fixed-size and toggled
+ * by opacity so it never introduces layout shift. When not pending it falls
+ * back to the item's badge (if any).
+ */
+function NavItemTrailing({ badge }: { badge?: number }) {
+  const { pending } = useLinkStatus();
+
+  if (pending) {
+    return (
+      <span
+        aria-hidden
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: "currentColor",
+          opacity: 0.85,
+          flexShrink: 0,
+          animation: "gr-nav-pulse 0.8s ease-in-out infinite",
+        }}
+      />
+    );
+  }
+
+  if (badge != null) {
+    return (
+      <GrBadge variant="warn" className="ml-auto px-1.5 py-px text-[10px]">
+        {badge}
+      </GrBadge>
+    );
+  }
+
+  return null;
+}
+
 function NavItemEl({ item }: { item: GrNavItem }) {
-  const inner = (
-    <>
-      <GrIcon name={item.icon} />
-      <span style={{ flex: 1 }}>{item.label}</span>
-      {item.badge != null && (
-        <GrBadge variant="warn" className="ml-auto px-1.5 py-px text-[10px]">
-          {item.badge}
-        </GrBadge>
-      )}
-    </>
-  );
+  const pathname = usePathname();
+
+  // Derive active from current pathname so the highlight is always correct
+  // regardless of the static `active` flag passed by the server page, and so
+  // it updates instantly on client navigation (including back/forward).
+  const isActive = item.href
+    ? (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))
+    : (item.active ?? false);
 
   const sharedStyle: React.CSSProperties = {
     display: "flex",
@@ -118,25 +154,33 @@ function NavItemEl({ item }: { item: GrNavItem }) {
     padding: "8px 11px",
     borderRadius: 8,
     fontSize: "13.5px",
-    color: item.active ? "var(--gr-bg)" : "var(--gr-text-mid)",
+    color: isActive ? "var(--gr-bg)" : "var(--gr-text-mid)",
     cursor: "pointer",
-    background: item.active ? "var(--gr-ink)" : "transparent",
+    background: isActive ? "var(--gr-ink)" : "transparent",
     transition: "background .1s, color .1s",
-    fontWeight: item.active ? 500 : 400,
+    fontWeight: isActive ? 500 : 400,
     textDecoration: "none",
   };
 
   if (item.href) {
     return (
       <Link href={item.href} style={sharedStyle}>
-        {inner}
+        <GrIcon name={item.icon} />
+        <span style={{ flex: 1 }}>{item.label}</span>
+        <NavItemTrailing badge={item.badge} />
       </Link>
     );
   }
 
   return (
     <div role="menuitem" style={sharedStyle}>
-      {inner}
+      <GrIcon name={item.icon} />
+      <span style={{ flex: 1 }}>{item.label}</span>
+      {item.badge != null && (
+        <GrBadge variant="warn" className="ml-auto px-1.5 py-px text-[10px]">
+          {item.badge}
+        </GrBadge>
+      )}
     </div>
   );
 }
@@ -275,6 +319,8 @@ export function GrShell({
     : 0;
 
   return (
+    <>
+    <style>{`@keyframes gr-nav-pulse { 0%,100% { opacity: .35 } 50% { opacity: .9 } }`}</style>
     <div
       className="gr"
       style={{
@@ -729,5 +775,6 @@ export function GrShell({
         </div>
       </div>
     </div>
+    </>
   );
 }
