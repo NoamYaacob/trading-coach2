@@ -250,63 +250,6 @@ function isFillCandidate(def: CatalogDefinition): boolean {
   return FILL_KEYWORDS.some((k) => text.includes(k));
 }
 
-/** Build a request body from a catalog definition, filling required params. */
-function buildBodyFromCatalog(
-  def: CatalogDefinition,
-  acctName: string,
-  acctId: number,
-  startMD: string,
-  endMD: string,
-  startIso: string,
-  endIso: string,
-  accountValue: string,
-  dateFormat: "mmddyyyy" | "iso",
-  representationType: string,
-  escapeSlashes: boolean,
-  template: string | undefined,
-): { body: Record<string, unknown>; label: string } {
-  const startDate = dateFormat === "mmddyyyy" ? startMD : startIso;
-  const endDate   = dateFormat === "mmddyyyy" ? endMD   : endIso;
-
-  const paramValues: Record<string, string> = {
-    startDate,
-    endDate,
-    account: accountValue,
-    accountId: String(acctId),
-    accountName: acctName,
-    startTime: "00:00:00",
-    endTime:   "23:59:59",
-  };
-
-  const params = (def.params ?? []).map((p) => ({
-    name: p.name,
-    value: p.name in paramValues ? paramValues[p.name] : (p.defaultValue ?? ""),
-  }));
-
-  const repType  = def.representationTypes?.includes(representationType)
-    ? representationType
-    : (def.representationTypes?.[0] ?? representationType);
-
-  const body: Record<string, unknown> = {
-    name: def.name,
-    timezone: "America/Chicago",
-    params,
-    representationType: repType,
-  };
-  if (template) body["template"] = template;
-
-  const label = [
-    def.name,
-    `dates=${dateFormat}`,
-    `acct=${accountValue}`,
-    `repType=${repType}`,
-    `template=${template ?? "none"}`,
-    escapeSlashes ? "esc-slash" : "raw-slash",
-  ].join(" | ");
-
-  return { body, label };
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -553,138 +496,175 @@ async function main(): Promise<void> {
   const successfulReports: ReportResult[] = [];
   const triedReports: ReportResult[] = [];
 
-  // ── 5b. Catalog-driven requests ──────────────────────────────────────────
-  // Try EVERY candidate (Cash History, Orders, Fills, Account Balance History,
-  // Performance, etc.) — do not stop at the first success. We want a result for
-  // each report type so we can compare coverage.
-  for (const def of defsToTry) {
-    console.log(`\n  ════ Trying catalog report: "${def.name}" ════`);
-    console.log(`  Declared templates: ${def.templates?.join(", ") || "(none)"}`);
-    console.log(`  Declared representationTypes: ${def.representationTypes?.join(", ") || "(none)"}`);
+  // Build a clean body — only required params plus account. Never sends empty
+  // optional params (no cashChangeType:"", contract:"", product:"", etc.).
+  // `timezone` is included with whatever JS type is passed (number / string) so
+  // we can test whether the reports host expects a numeric UTC offset.
+  function buildCleanBody(
+    def: CatalogDefinition,
+    accountValue: string,
+    dateFormat: "mmddyyyy" | "iso",
+    template: string | undefined,
+    timezone: number | string | undefined,
+    representationType: string,
+  ): Record<string, unknown> {
+    const startDate = dateFormat === "mmddyyyy" ? startMD : startIso;
+    const endDate   = dateFormat === "mmddyyyy" ? endMD   : endIso;
+    // Only send required params; add `account` (useful, account-scopes the report).
+    const requiredNames = new Set(
+      (def.params ?? []).filter((p) => p.optional === false).map((p) => p.name),
+    );
+    const params: Array<{ name: string; value: string }> = [];
+    const pushIf = (name: string, value: string) => {
+      if (requiredNames.has(name) || name === "account" || name === "startDate" || name === "endDate") {
+        params.push({ name, value });
+      }
+    };
+    pushIf("startDate", startDate);
+    pushIf("endDate", endDate);
+    pushIf("account", accountValue);
+    const repType = def.representationTypes?.includes(representationType)
+      ? representationType
+      : (def.representationTypes?.[0] ?? representationType);
+    const body: Record<string, unknown> = { name: def.name, params, representationType: repType };
+    if (timezone !== undefined) body["timezone"] = timezone; // numeric or string
+    if (template) body["template"] = template;
+    return body;
+  }
 
-    // Templates to try: each catalog-declared template, plus undefined (no template).
-    const templates: Array<string | undefined> = [...(def.templates ?? []), undefined];
-    let defSucceeded = false;
+  // Richer content analysis for any 2xx report body (req #7).
+  function analyzeReportBody(body: string): void {
+    const checks: Array<[string, RegExp]> = [
+      ["dates",          /\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}/],
+      ["Account",        /account/i],
+      ["Trade Paired",   /trade ?paired/i],
+      ["Cash Change Type", /cash ?change ?type/i],
+      ["Amount",         /amount/i],
+      ["Realized P&L",   /realized ?p&?l|realizedpnl/i],
+      ["Fill ID",        /fill ?id/i],
+      ["Order ID",       /order ?id/i],
+    ];
+    const found = checks.filter(([, re]) => re.test(body)).map(([k]) => k);
+    console.log(`  FIELD SIGNALS: ${found.length ? found.join(", ") : "(none)"}`);
+    // Negative amount <= -100 (diagnostic signal only)
+    const negs = [...body.matchAll(/-?\$?\s?(\d[\d,]*\.\d{2})/g)]
+      .map((m) => Number(m[1]!.replace(/,/g, "")) * (m[0]!.includes("-") ? -1 : 1))
+      .filter((n) => n <= -100);
+    if (negs.length > 0) console.log(`  *** NEGATIVE AMOUNT(S) <= -$100 IN RESPONSE: ${negs.slice(0, 10).map((n) => n.toFixed(2)).join(", ")} ***`);
+  }
 
+  // The 5 catalog-confirmed reports we care about, with their exact templates.
+  const focusReports: Array<{ name: string; templates: string[] }> = [
+    { name: "Cash History",            templates: ["Default.html"] },
+    { name: "Account Balance History", templates: ["Default.html"] },
+    { name: "Orders",                  templates: ["Default.md", "pdf.html"] },
+    { name: "Fills",                   templates: ["Default.md", "pdf.html"] },
+    { name: "Performance",             templates: ["Flex.html", "Default.html", "pdf.html"] },
+  ];
+  const byName = new Map(catalogDefs.map((d) => [d.name, d]));
+
+  // Timezone variants — the prime suspect for "Invalid JSON: illegal number".
+  // The string forms are controls; numeric UTC offsets are the hypothesis.
+  const tzVariants: Array<{ tz: number | string | undefined; desc: string }> = [
+    { tz: 0,    desc: "numeric 0 (UTC)" },
+    { tz: -300, desc: "numeric -300 (UTC-5 / EST mins)" },
+    { tz: -360, desc: "numeric -360 (UTC-6 / CST mins)" },
+    { tz: 300,  desc: "numeric 300" },
+    { tz: 360,  desc: "numeric 360" },
+    { tz: "0",  desc: 'string "0" (control)' },
+    { tz: "America/Chicago", desc: 'string "America/Chicago" (control, expected to 400)' },
+    { tz: undefined, desc: "omitted (control — expect missing-field error)" },
+  ];
+
+  // ── 5b. PHASE 1 — timezone-shape probe on Cash History ────────────────────
+  // Hold report=Cash History, account=name, dates=MM/DD/YYYY, template=Default.html,
+  // repType=html; vary ONLY the timezone shape. This isolates the tz hypothesis.
+  console.log(`\n  ── PHASE 1: timezone-shape probe (Cash History / Default.html) ──`);
+  let workingTz: number | string | undefined = undefined;
+  let phase1Found = false;
+  const cashDef = byName.get("Cash History");
+  if (!cashDef) {
+    console.log(`  "Cash History" not in catalog — skipping phase 1.`);
+  } else {
+    for (const { tz, desc } of tzVariants) {
+      const body = buildCleanBody(cashDef, acctName, "mmddyyyy", "Default.html", tz, "html");
+      const label = `Cash History | tz=${desc} | type=${typeof tz} | acct=${acctName} | Default.html`;
+      const r = await tryReport(client, "Cash History", label, body, false);
+      triedReports.push(r);
+      // A non-400 status (even a different error) means the tz shape changed behaviour.
+      if (r.status !== 400 && r.status !== 0) {
+        console.log(`  → timezone variant "${desc}" produced HTTP ${r.status} (not 400) — shape matters!`);
+      }
+      if (r.success) {
+        analyzeReportBody(await Promise.resolve(r.bodyPreview));
+        successfulReports.push(r);
+        workingTz = tz;
+        phase1Found = true;
+        break;
+      }
+    }
+    if (!phase1Found) {
+      // Record which tz gave the best (non-400) status for the report.
+      const nonBad = triedReports.filter((r) => r.status !== 400 && r.status !== 0);
+      if (nonBad.length > 0) {
+        console.log(`\n  Phase 1: no 2xx, but these tz shapes avoided HTTP 400:`);
+        for (const r of nonBad) console.log(`    ${r.label} → HTTP ${r.status}`);
+        // Adopt the first non-400 tz for phase 2.
+        const firstGood = tzVariants.find((v) => {
+          const match = triedReports.find((r) => r.label.includes(`tz=${v.desc}`));
+          return match && match.status !== 400 && match.status !== 0;
+        });
+        if (firstGood) workingTz = firstGood.tz;
+      } else {
+        console.log(`\n  Phase 1: every timezone variant returned HTTP 400.`);
+        console.log(`  → timezone shape alone does not fix it; phase 2 will still try numeric 0.`);
+        workingTz = 0; // best hypothesis for phase 2
+      }
+    }
+  }
+
+  // ── 5c. PHASE 2 — full report sweep using the working timezone ────────────
+  console.log(`\n  ── PHASE 2: report sweep (timezone=${JSON.stringify(workingTz)} type=${typeof workingTz}) ──`);
+  for (const fr of focusReports) {
+    const def = byName.get(fr.name);
+    if (!def) { console.log(`\n  "${fr.name}" not in catalog — skipping.`); continue; }
+    console.log(`\n  ════ ${fr.name} ════  (catalog templates: ${def.templates?.join(", ") || "none"})`);
+
+    let frDone = false;
+    // Prefer the report's catalog-declared templates; fall back to the requested list.
+    const templates = (def.templates?.length ? def.templates : fr.templates) as string[];
     for (const template of templates) {
-      if (defSucceeded) break;
-      // Variants: 2 account forms × 2 date formats × 2 slash variants
+      if (frDone) break;
       for (const accountValue of [acctName, String(acctId)]) {
-        if (defSucceeded) break;
+        if (frDone) break;
         for (const dateFormat of (["mmddyyyy", "iso"] as const)) {
-          if (defSucceeded) break;
-          for (const escapeSlashes of [true, false]) {
-            const { body, label } = buildBodyFromCatalog(
-              def, acctName, acctId, startMD, endMD, startIso, endIso,
-              accountValue, dateFormat, "html", escapeSlashes, template,
-            );
-            const r = await tryReport(client, def.name, label, body, escapeSlashes);
-            triedReports.push(r);
-            if (r.success) {
-              successfulReports.push(r);
-              defSucceeded = true;
-              break;
-            }
+          const body = buildCleanBody(def, accountValue, dateFormat, template, workingTz, "html");
+          const label = `${fr.name} | tz=${JSON.stringify(workingTz)} | ${template} | acct=${accountValue} | dates=${dateFormat}`;
+          const r = await tryReport(client, fr.name, label, body, false);
+          triedReports.push(r);
+          if (r.success) {
+            analyzeReportBody(r.bodyPreview);
+            successfulReports.push(r);
+            frDone = true;
+            break;
           }
         }
       }
     }
-
-    // If html failed for this def, try csv and json (catalog template[0]).
-    if (!defSucceeded) {
-      for (const repType of ["csv", "json"] as const) {
-        const { body, label } = buildBodyFromCatalog(
-          def, acctName, acctId, startMD, endMD, startIso, endIso,
-          acctName, "mmddyyyy", repType, true, def.templates?.[0],
-        );
-        const r = await tryReport(client, def.name, label, body, true);
-        triedReports.push(r);
-        if (r.success) { successfulReports.push(r); break; }
-      }
-    }
-  }
-
-  // ── 5c. If all catalog attempts failed, try body shape variants ──────────
-  // These probe whether the 400 is caused by the body structure itself.
-  if (successfulReports.length === 0 && catalogDefs.length > 0) {
-    // Use the first catalog def as the control name
-    const controlDef = catalogDefs[0]!;
-    const controlName = controlDef.name;
-
-    console.log(`\n  ════ Body shape investigation (using "${controlName}" as control) ════`);
-    console.log(`  Goal: isolate cause of HTTP 400 / "Invalid JSON: illegal number"`);
-
-    // Shape 1: completely minimal — name only, no other fields
-    const shape1: Record<string, unknown> = { name: controlName };
-    triedReports.push(await tryReport(client, controlName,
-      `SHAPE1: name only (no params/tz/repType)`, shape1, false));
-    if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
-
-    // Shape 2: name + UTC timezone only
-    if (successfulReports.length === 0) {
-      const shape2: Record<string, unknown> = { name: controlName, timezone: "UTC" };
-      triedReports.push(await tryReport(client, controlName,
-        `SHAPE2: name + timezone=UTC only`, shape2, false));
-      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
-    }
-
-    // Shape 3: params as flat object instead of array
-    if (successfulReports.length === 0) {
-      const shape3: Record<string, unknown> = {
-        name: controlName,
-        timezone: "UTC",
-        startDate: startMD,
-        endDate: endMD,
-        account: acctName,
-        representationType: "html",
-      };
-      triedReports.push(await tryReport(client, controlName,
-        `SHAPE3: params as flat top-level keys (not array)`, shape3, false));
-      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
-    }
-
-    // Shape 4: params as object map {startDate: "...", account: "..."}
-    if (successfulReports.length === 0) {
-      const shape4: Record<string, unknown> = {
-        name: controlName,
-        timezone: "UTC",
-        params: { startDate: startMD, endDate: endMD, account: acctName },
-        representationType: "html",
-      };
-      triedReports.push(await tryReport(client, controlName,
-        `SHAPE4: params as object map (not array of {name,value})`, shape4, false));
-      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
-    }
-
-    // Shape 5: exactly as `fetchPerformanceReport` builds it (known-working format)
-    if (successfulReports.length === 0) {
-      const shape5: Record<string, unknown> = {
-        name: controlName,
-        timezone: "America/Chicago",
-        params: [
-          { name: "startDate", value: startMD },
-          { name: "endDate",   value: endMD },
-          { name: "startTime", value: "17:00:00" },
-          { name: "endTime",   value: "16:59:59" },
-          { name: "account",   value: acctName },
-        ],
-        representationType: "html",
-        template: "Flex.html",
-      };
-      triedReports.push(await tryReport(client, controlName,
-        `SHAPE5: exact fetchPerformanceReport format | escaped slashes`, shape5, true));
-      if (triedReports.at(-1)!.success) successfulReports.push(triedReports.at(-1)!);
-    }
   }
 
   if (successfulReports.length > 0) {
-    console.log(`\n  ✓ REPORT SUCCESS: "${successfulReports[0]!.name}"`);
+    console.log(`\n  ✓ REPORT SUCCESS: ${successfulReports.map((r) => `"${r.name}"`).join(", ")}`);
   } else {
-    console.log(`\n  ✗ All report variants failed.`);
+    console.log(`\n  ✗ All focused report variants failed.`);
     console.log(`  Status breakdown:`);
     const byStatus = new Map<number, number>();
     for (const r of triedReports) byStatus.set(r.status, (byStatus.get(r.status) ?? 0) + 1);
     for (const [status, count] of byStatus) console.log(`    HTTP ${status}: ${count} attempts`);
+    // Show distinct error messages to spot whether the "illegal number" changed.
+    const distinctErrors = new Set(triedReports.map((r) => r.bodyPreview.slice(0, 120)));
+    console.log(`  Distinct response previews (${distinctErrors.size}):`);
+    for (const e of distinctErrors) console.log(`    ${e}`);
   }
 
   // ── 6. Source comparison + recommendation ─────────────────────────────────
@@ -830,19 +810,27 @@ async function main(): Promise<void> {
     console.log(`  No day with net <= -$100 found in any tested API endpoint.`);
     console.log(`  If the Tradovate web Cash History export shows a large loss:`);
     console.log(`    - The data may only be accessible via the reports host (not REST endpoints)`);
-    console.log(`    - The reports host may require admin/partner OAuth scope`);
     console.log(`    - The data may be on a sub-account not returned by account/list`);
     console.log(`    - The data may pre-date this account's API retention window`);
   }
   console.log();
 
+  // requestReportDefinitions returning 200 means the reports host IS reachable.
+  // Only attribute failure to scope if that catalog call itself failed.
+  const reportsHostReachable = catalogDefs.length > 0;
   if (successfulReports.length === 0) {
     console.log(`  reports/requestreport: ALL VARIANTS FAILED`);
-    console.log(`    The reports host (rpt-live.tradovateapi.com) did not return 2xx for any`);
-    console.log(`    combination of report name, timezone format, date format, or account identifier.`);
-    console.log(`    This is consistent with the reports host requiring admin/partner OAuth scope`);
-    console.log(`    that a standard trader token does not have.`);
-    console.log(`    → See Section 7 for how to identify the exact endpoint via browser capture.`);
+    if (reportsHostReachable) {
+      console.log(`    NOTE: requestReportDefinitions returned 200 and a non-empty catalog,`);
+      console.log(`    so the reports host IS reachable with this token. The failure is a`);
+      console.log(`    request-body-shape problem (most likely the timezone field type or a`);
+      console.log(`    param shape), NOT an auth/scope problem.`);
+      console.log(`    → Review the Phase 1 timezone-shape results above to see which tz type`);
+      console.log(`      (numeric offset vs string) changed the HTTP status away from 400.`);
+    } else {
+      console.log(`    requestReportDefinitions did NOT return a catalog — reports host access`);
+      console.log(`    may genuinely be unavailable for this token. → See Section 7.`);
+    }
   }
   console.log();
 
