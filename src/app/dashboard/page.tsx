@@ -47,7 +47,7 @@ import {
 import { needsSync } from "@/lib/sync-freshness";
 import { loadAccountTrades } from "@/lib/trades/load";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
-import { withTimeout, timed } from "@/lib/perf";
+import { timed } from "@/lib/perf";
 import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE, brokerSourceLabel } from "@/lib/trades/broker-account-performance";
 import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
 import {
@@ -64,11 +64,6 @@ import { profitFactor } from "@/app/dashboard/_components/insights";
 export const metadata: Metadata = {
   title: "Dashboard — Guardrail",
 };
-
-// Hard cap for the broker performance fetch during server render. A slow
-// broker/report host must never block navigation — on timeout we render the
-// dashboard cards with the empty/unavailable broker state.
-const BROKER_PERF_TIMEOUT_MS = 4000;
 
 // ── Rule label map ─────────────────────────────────────────────────────────────
 
@@ -312,15 +307,7 @@ export default async function DashboardPage({
       brokerPerformance = await timed("dashboard", "broker-performance", selectedAccount.id, async () => {
         const client = new TradovateClient(selectedAccount.id, currentUser.id);
         await client.initialize();
-        // Prefer the Account Balance History report (widest history); falls back
-        // to cashBalanceLog/deps when the report is unavailable/empty. Hard
-        // timeout so a slow broker/report host can never block navigation —
-        // the dashboard renders its cards with the empty/unavailable state.
-        return withTimeout(
-          client.getHistoricalAccountPerformance(),
-          BROKER_PERF_TIMEOUT_MS,
-          "dashboard:getHistoricalAccountPerformance",
-        );
+        return client.getHistoricalAccountPerformance();
       });
     } catch {
       brokerPerformance = EMPTY_BROKER_PERFORMANCE;
