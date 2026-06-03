@@ -33,15 +33,25 @@
  *     requested accountId so another account's fees can never leak in.
  */
 
-const FEE_TYPES = new Set(["exchange fee", "clearing fee", "nfa fee", "commission"]);
-const PNL_TYPES = new Set(["trade paired"]);
+// Canonical, space-stripped, lowercased keys. The live API returns UNSPACED
+// names ("Commission", "TradePaired", "ExchangeFee", "ClearingFee", "NfaFee"),
+// while the Cash History PDF renders SPACED names ("Exchange Fee", "Trade
+// Paired"). We normalise by removing all whitespace + lowercasing so both map
+// to the same key.
+const FEE_TYPES = new Set(["exchangefee", "clearingfee", "nfafee", "commission"]);
+const PNL_TYPES = new Set(["tradepaired"]);
 
 export type CashRowKind = "fee" | "pnl" | "other";
 
-/** Classify a Cash Change Type. Case/whitespace-insensitive. */
+function normalizeChangeType(changeType: string): string {
+  return changeType.replace(/\s+/g, "").toLowerCase();
+}
+
+/** Classify a Cash Change Type. Case/whitespace-insensitive; handles both the
+ *  unspaced API form ("TradePaired") and the spaced PDF form ("Trade Paired"). */
 export function classifyCashRow(changeType: string | null | undefined): CashRowKind {
   if (!changeType) return "other";
-  const norm = changeType.trim().toLowerCase();
+  const norm = normalizeChangeType(changeType);
   if (FEE_TYPES.has(norm)) return "fee";
   if (PNL_TYPES.has(norm)) return "pnl";
   return "other";
@@ -244,11 +254,20 @@ export type RawCashBalanceLogRow = {
   accountId?: number | null;
   contractId?: number | null;
   contract?: string | null;
+  fillId?: number | null;
+  fillPairId?: number | null;
   timestamp?: string | null;
   tradeDate?: { year?: number; month?: number; day?: number } | string | null;
+  /**
+   * The SIGNED per-row cash change — this is the value we use. Fees are
+   * negative, TradePaired is the closed P&L (signed).
+   */
+  delta?: number | null;
+  /** Running account balance AFTER this row — NOT a P&L/fee value. Ignored. */
   amount?: number | null;
+  /** Cumulative realized P&L as of this row — NOT a per-row value. Ignored. */
   realizedPnL?: number | null;
-  /** May be a plain string ("Exchange Fee") or a {name} object. */
+  /** May be a plain string ("TradePaired"/"Trade Paired") or a {name} object. */
   cashChangeType?: string | { name?: string } | null;
 };
 
@@ -275,7 +294,9 @@ export function normalizeCashBalanceLogRows(
       : (r.cashChangeType?.name ?? "");
     if (!changeType) continue;
 
-    const delta = r.amount ?? r.realizedPnL;
+    // Use the SIGNED per-row delta only. Never amount (running balance) or
+    // realizedPnL (cumulative) — those are not per-row P&L/fee values.
+    const delta = r.delta;
     if (delta == null || !Number.isFinite(delta)) continue;
 
     const date = deriveDateKey(r);
