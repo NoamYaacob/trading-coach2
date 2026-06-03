@@ -601,20 +601,30 @@ async function main(): Promise<void> {
 
     let status = "";
     let diff: number | null = null;
+    const chFeesAvailable = ch?.feesAvailable ?? false;
     if (chNet != null && dbGross != null) {
       // diff between CH net and DB gross — expected to differ by fees
       diff = Math.round((chNet - dbGross + Number.EPSILON) * 100) / 100;
-      // diff should roughly equal CH fees (both negative)
       const feesDiff = ch?.fees ?? 0;
       if (Math.abs(diff - feesDiff) < 0.02) {
         status = "✓ diff = fees (expected)";
       } else if (Math.abs(diff) < 0.005) {
         status = "✓ exact match (no fees?)";
+      } else if (chFeesAvailable) {
+        // CH has fee data → it is authoritative. DB fill bucket uses occurredAt
+        // (calendar day) while CH uses Tradovate tradeDate (CME session day).
+        // Evening fills (after 17:00 CT) appear on the NEXT tradeDate in CH but
+        // the CURRENT calendar day in DB. This is expected and not an error.
+        status = "CH authoritative · DB bucket mismatch (diagnostic only)";
       } else {
         status = "✗ unexplained diff";
       }
     } else if (chNet != null && dbGross == null) {
-      status = "CH only (no DB fills)";
+      if (chFeesAvailable) {
+        status = "CH only · no DB fills this calendar day (CME boundary expected)";
+      } else {
+        status = "CH only (no DB fills)";
+      }
     } else if (chNet == null && dbGross != null) {
       status = "DB only (no CH)";
     }
@@ -623,10 +633,23 @@ async function main(): Promise<void> {
   }
 
   console.log(`\n  Legend:`);
-  console.log(`    CH = Cash History (cashBalanceLog) — authoritative after-fees broker ledger`);
-  console.log(`    DB = Guardrail DB (NormalizedTradeEvent) — imported fills, gross P&L only`);
+  console.log(`    CH  = Cash History (cashBalanceLog) — authoritative after-fees broker ledger`);
+  console.log(`    DB  = Guardrail DB (NormalizedTradeEvent) — imported fills, gross P&L only`);
   console.log(`    DIFF = CH_NET - DB_GROSS — expected to equal CH_FEES (fees are negative)`);
-  console.log(`    e.g. Jun 2: CH_NET=-0.40, DB_GROSS=+1.50 → DIFF=-1.90 = CH_FEES (correct)`);
+  console.log(`    e.g. CH_NET=-0.40, DB_GROSS=+1.50 → DIFF=-1.90 = CH_FEES (correct)`);
+  console.log(`\n  Status meanings:`);
+  console.log(`    ✓ diff = fees (expected)       — DIFF matches CH_FEES; reconciled`);
+  console.log(`    ✓ exact match (no fees?)        — CH_NET = DB_GROSS; no fee rows`);
+  console.log(`    CH authoritative · DB bucket    — CH has fee data (authoritative). DB fills`);
+  console.log(`      mismatch (diagnostic only)      use occurredAt (calendar day); CH uses`);
+  console.log(`                                      Tradovate tradeDate (CME session day).`);
+  console.log(`                                      Evening fills (after 17:00 CT) land on`);
+  console.log(`                                      NEXT tradeDate in CH but SAME calendar`);
+  console.log(`                                      day in DB. Not an error.`);
+  console.log(`    CH only · no DB fills this      — CH authoritative; fills bucketed to a`);
+  console.log(`      calendar day (CME boundary)     different calendar day in DB.`);
+  console.log(`    DB only (no CH)                 — Only imported fills; no broker net yet.`);
+  console.log(`    ✗ unexplained diff              — CH present but no fee data; mismatch.`);
 
   // ── 5. ALL-TIME SUMMARY ───────────────────────────────────────────────────
 
@@ -714,21 +737,25 @@ async function main(): Promise<void> {
     console.log(`    hasBrokerHistory:    ${perf.hasBrokerHistory}`);
     console.log(`    allTimeNet:          ${fmt$(perf.allTimeNet)}`);
     console.log(`    dayNet days:         ${Object.keys(perf.dayNet).length}`);
-    console.log(`    tradeCount:          ${perf.tradeCount}  (TradePaired rows)`);
-    console.log(`    winCount:            ${perf.winCount}`);
-    console.log(`    lossCount:           ${perf.lossCount}`);
-    console.log(`    largestWin:          ${fmt$(perf.largestWin)}`);
-    console.log(`    largestLoss:         ${fmt$(perf.largestLoss)}`);
-    console.log(`    profitFactor:        ${perf.profitFactor != null ? perf.profitFactor.toFixed(2) : "n/a (no losers)"}`);
+    console.log(`    tradeCount:          ${perf.tradeCount}  (TradePaired rows / individual closes)`);
+    console.log(`    winCount:            ${perf.winCount}  (days where dayNet > 0)`);
+    console.log(`    lossCount:           ${perf.lossCount}  (days where dayNet < 0)`);
+    console.log(`    largestWin:          ${fmt$(perf.largestWin)}  (max positive dayNet)`);
+    console.log(`    largestLoss:         ${fmt$(perf.largestLoss)}  (min negative dayNet)`);
+    console.log(`    profitFactor:        ${perf.profitFactor != null ? perf.profitFactor.toFixed(2) : "n/a (no trading days or no losing days)"}`);
+    console.log(`  Note: winCount/lossCount/largestWin/largestLoss/profitFactor use broker net`);
+    console.log(`        day P&L (dayNet), not gross TradePaired.delta. A positive TradePaired`);
+    console.log(`        with larger fees counts as a losing day, not a win.`);
 
     console.log(`\n  Last 30 days (window from ${since30d}):`);
-    console.log(`    tradeCount (30d):    ${w30d.tradeCount}`);
-    console.log(`    winCount (30d):      ${w30d.winCount}`);
-    console.log(`    lossCount (30d):     ${w30d.lossCount}`);
-    console.log(`    winRate (30d):       ${w30d.winRate != null ? `${Math.round(w30d.winRate * 100)}%` : "n/a"}`);
-    console.log(`    profitFactor (30d):  ${w30d.profitFactor != null ? w30d.profitFactor.toFixed(2) : "n/a"}`);
-    console.log(`    largestWin (30d):    ${fmt$(w30d.largestWin)}`);
-    console.log(`    largestLoss (30d):   ${fmt$(w30d.largestLoss)}`);
+    console.log(`    dayCount (30d):      ${w30d.dayCount}  (broker net trading days in window)`);
+    console.log(`    tradeCount (30d):    ${w30d.tradeCount}  (TradePaired rows / individual closes)`);
+    console.log(`    winCount (30d):      ${w30d.winCount}  (days where dayNet > 0)`);
+    console.log(`    lossCount (30d):     ${w30d.lossCount}  (days where dayNet < 0)`);
+    console.log(`    winRate (30d):       ${w30d.winRate != null ? `${Math.round(w30d.winRate * 100)}%` : "n/a"}  (winCount / dayCount)`);
+    console.log(`    profitFactor (30d):  ${w30d.profitFactor != null ? w30d.profitFactor.toFixed(2) : "n/a"}  (sum pos dayNets / |sum neg dayNets|)`);
+    console.log(`    largestWin (30d):    ${fmt$(w30d.largestWin)}  (max positive dayNet in window)`);
+    console.log(`    largestLoss (30d):   ${fmt$(w30d.largestLoss)}  (min negative dayNet in window)`);
   } else {
     console.log(`\n  (no normalized Cash History rows — performance model not available)`);
   }
@@ -840,24 +867,24 @@ async function main(): Promise<void> {
     ],
     [
       "Profit factor",
-      "cashBalanceLog TradePaired rows",
-      "sum(pos deltas) / abs(sum(neg deltas))",
+      "cashBalanceLog dayNet",
+      "sum(pos dayNets) / abs(sum(neg dayNets))",
       "authoritative",
-      "Currently uses FIFO fills; not yet migrated",
+      "Day-level net after fees; 0 when all days are losses",
     ],
     [
       "Win rate",
-      "cashBalanceLog TradePaired rows",
-      "count(positive TradePaired) / total",
+      "cashBalanceLog dayNet",
+      "count(pos broker net days) / count(non-zero days)",
       "authoritative",
-      "Currently uses FIFO fills; not yet migrated",
+      "Day-level net after fees; not per-trade TradePaired",
     ],
     [
       "Largest win/loss",
-      "cashBalanceLog TradePaired rows",
-      "max/min TradePaired.delta per day",
+      "cashBalanceLog dayNet",
+      "max/min broker net day (dayNet value)",
       "authoritative",
-      "Currently uses FIFO fills; not yet migrated",
+      "Day-level net after fees; not gross TradePaired.delta",
     ],
     [
       "Margin / liq levels",
@@ -879,6 +906,9 @@ async function main(): Promise<void> {
   console.log(`    2. cashBalanceLog.delta is the ONLY correct per-row value.`);
   console.log(`       .amount is the running account balance — NOT a per-row P&L/fee value.`);
   console.log(`       .realizedPnL is cumulative — NOT a per-row P&L value.`);
+  console.log(`    6. Win/loss/profit-factor/largest-win/loss use dayNet (sum TradePaired.delta`);
+  console.log(`       + sum fee.delta per tradeDate), not gross TradePaired.delta alone.`);
+  console.log(`       A positive TradePaired with larger fees is a LOSING day, not a win.`);
   console.log(`    3. fill/list has NO accountId field in the OpenAPI schema.`);
   console.log(`       Account attribution is inferred; order/deps?masterid= is authoritative.`);
   console.log(`    4. fillPair rows are position-scoped and disappear after the position closes.`);
