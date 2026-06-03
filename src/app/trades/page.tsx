@@ -14,6 +14,8 @@ import {
 import { loadAccountTrades } from "@/lib/trades/load";
 import { computeTradeStats } from "@/lib/trades/stats";
 import { TradovateClient } from "@/lib/brokers/tradovate-client";
+import type { BrokerAccountPerformance } from "@/lib/brokers/tradovate-client";
+import { computeBrokerWindowStats, EMPTY_BROKER_PERFORMANCE } from "@/lib/trades/broker-account-performance";
 import { resolveDayNet, resolveTradeRowNet } from "./day-net";
 import { TradeFilters } from "./_components/trade-filters";
 import { resolveDisplayTimeZone, DISPLAY_TIME_ZONE_COOKIE } from "@/lib/timezone";
@@ -157,20 +159,37 @@ export default async function TradesPage({
     ? await loadAccountTrades(selectedAccount.id, { since })
     : [];
 
-  // Broker-authoritative NET P&L per day from Cash History (cashBalanceLog) —
-  // the real after-fees net the trader sees in Tradovate, even when per-fill
-  // fee allocation is unavailable at the trade-row level. Read-only and
-  // best-effort: any failure yields {} and day totals fall back to fill values.
-  let brokerDayNet: Record<string, number> = {};
+  // Broker-authoritative performance from Cash History (cashBalanceLog) —
+  // the real after-fees net the trader sees in Tradovate. Read-only and
+  // best-effort: any failure yields EMPTY_BROKER_PERFORMANCE.
+  let brokerPerformance: BrokerAccountPerformance = EMPTY_BROKER_PERFORMANCE;
   if (selectedAccount) {
     try {
       const client = new TradovateClient(selectedAccount.id, currentUser.id);
       await client.initialize();
-      brokerDayNet = await client.getCashHistoryDayNet();
+      brokerPerformance = await client.getCashHistoryPerformance();
     } catch {
-      brokerDayNet = {};
+      brokerPerformance = EMPTY_BROKER_PERFORMANCE;
     }
   }
+  const brokerDayNet = brokerPerformance.dayNet;
+  const hasBrokerHistory = brokerPerformance.hasBrokerHistory;
+
+  // KPI window key — always based on rangeDays (not effectiveRangeDays).
+  const kpiSinceDayKey = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000)
+    .toLocaleDateString("en-CA", { timeZone: tz });
+  const brokerWindowStats = hasBrokerHistory
+    ? computeBrokerWindowStats(brokerPerformance, kpiSinceDayKey)
+    : null;
+  const brokerNativeWindowNet = hasBrokerHistory
+    ? Math.round(
+        (Object.entries(brokerDayNet)
+          .filter(([k]) => k >= kpiSinceDayKey)
+          .reduce((s, [, v]) => s + v, 0) +
+          Number.EPSILON) *
+          100,
+      ) / 100
+    : 0;
 
   // When a date filter is active, narrow to exactly that calendar day.
   const dateFilteredTrades = dateFilter
@@ -187,10 +206,7 @@ export default async function TradesPage({
   // so users see the true picture for that context.
   const stats = computeTradeStats(dateFilteredTrades);
 
-  // Broker-net totals for the KPI primary: sum the broker Cash History net for
-  // every traded day in the window that the broker reported. This is the real
-  // after-fees result the trader sees in Tradovate, even when per-fill fee
-  // allocation is unavailable at the trade-row level.
+  // Legacy coverage signals — kept for the fallback path (hasBrokerHistory=false).
   const tradedDateKeys = [...new Set(dateFilteredTrades.map((t) => isoDateKey(t.closedAt, tz)))];
   const brokerCoveredKeys = tradedDateKeys.filter((k) => brokerDayNet[k] != null);
   const brokerWindowNet = brokerCoveredKeys.reduce((s, k) => s + brokerDayNet[k]!, 0);
@@ -217,6 +233,15 @@ export default async function TradesPage({
   }
   // Sort descending by date key
   const groupedDateKeys = [...groupedByDate.keys()].sort().reverse();
+
+  // When broker Cash History exists, split table days into confirmed vs fill-only.
+  const brokerDayKeys = new Set(Object.keys(brokerDayNet));
+  const brokerConfirmedDateKeys = hasBrokerHistory
+    ? groupedDateKeys.filter((k) => brokerDayKeys.has(k))
+    : groupedDateKeys;
+  const fillOnlyDateKeys = hasBrokerHistory
+    ? groupedDateKeys.filter((k) => !brokerDayKeys.has(k))
+    : [];
 
   const buildHref = (overrides: Partial<{ accountId: string; filter: string; range: string }>) => {
     const sp = new URLSearchParams();
@@ -458,59 +483,96 @@ export default async function TradesPage({
             {/* ── KPI strip ────────────────────────────────────────────── */}
             <section style={{ padding: "0 36px 18px" }}>
               <div className="trades-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-                {[
-                  // Priority for the headline P&L:
-                  //   1. Broker Cash History day-net — authoritative after-fees
-                  //      total, even when per-fill fees are "Not reported".
-                  //   2. Per-fill net — only when every trade carried fee data.
-                  //   3. Fill P&L before fees — never labelled "Net".
-                  brokerCoversSome
-                    ? {
+                {(hasBrokerHistory && brokerWindowStats != null
+                  ? // ── Broker source-of-truth KPI cards ─────────────────────
+                    [
+                      {
                         label: "Net P&L",
-                        value: stats.count > 0 ? fmt$(brokerWindowNet) : "—",
-                        sub: brokerCoversAll
-                          ? `after broker fees`
-                          : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed`,
-                        tone: brokerWindowNet >= 0 ? "ok" : "bad",
-                      }
-                    : stats.feesAvailable
-                    ? {
-                        label: "Net P&L",
-                        value: stats.count > 0 ? fmt$(stats.netPnl) : "—",
-                        sub: `after ${fmt$(stats.fees)} fees`,
-                        tone: stats.netPnl >= 0 ? "ok" : "bad",
-                      }
-                    : {
-                        label: "Trade P&L (before fees)",
-                        value: stats.count > 0 ? fmt$(stats.grossPnl) : "—",
-                        sub: `fees not reported · see dashboard for net`,
-                        tone: stats.grossPnl >= 0 ? "ok" : "bad",
+                        value: brokerWindowStats.dayCount > 0 ? fmt$(brokerNativeWindowNet) : "—",
+                        sub: `after broker fees · ${rangeDays}d`,
+                        tone: brokerNativeWindowNet >= 0 ? "ok" : "bad",
                       },
-                  {
-                    label: "Trades",
-                    value: String(stats.count),
-                    sub: stats.count > 0 ? `${stats.winners}W · ${stats.losers}L` : "no trades yet",
-                    tone: "mute",
-                  },
-                  {
-                    label: "Win rate",
-                    value: stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—",
-                    sub: stats.count > 0 ? `${stats.winners} of ${stats.count}` : "no trades yet",
-                    tone: "mute",
-                  },
-                  {
-                    label: "Largest loss",
-                    value: stats.largestLoss != null ? fmt$(stats.largestLoss.pnl) : "—",
-                    sub: stats.largestLoss != null ? fmtDate(stats.largestLoss.closedAt, tz) : "—",
-                    tone: "bad",
-                  },
-                  {
-                    label: "Largest win",
-                    value: stats.largestWin != null ? fmt$(stats.largestWin.pnl) : "—",
-                    sub: stats.largestWin != null ? fmtDate(stats.largestWin.closedAt, tz) : "—",
-                    tone: "ok",
-                  },
-                ].map((k) => (
+                      {
+                        label: "Trades",
+                        value: String(brokerWindowStats.tradeCount),
+                        sub: brokerWindowStats.dayCount > 0
+                          ? `${brokerWindowStats.winCount}W days · ${brokerWindowStats.lossCount}L days`
+                          : "no broker days",
+                        tone: "mute",
+                      },
+                      {
+                        label: "Win rate",
+                        value: brokerWindowStats.winRate != null
+                          ? `${Math.round(brokerWindowStats.winRate * 100)}%`
+                          : "—",
+                        sub: brokerWindowStats.dayCount > 0
+                          ? `${brokerWindowStats.winCount} of ${brokerWindowStats.dayCount} days`
+                          : "no broker days",
+                        tone: "mute",
+                      },
+                      {
+                        label: "Largest loss",
+                        value: brokerWindowStats.largestLoss != null ? fmt$(brokerWindowStats.largestLoss) : "—",
+                        sub: "broker net · day-level",
+                        tone: "bad",
+                      },
+                      {
+                        label: "Largest win",
+                        value: brokerWindowStats.largestWin != null ? fmt$(brokerWindowStats.largestWin) : "—",
+                        sub: "broker net · day-level",
+                        tone: "ok",
+                      },
+                    ]
+                  : // ── Fallback: no broker history yet ──────────────────────
+                    [
+                      brokerCoversSome
+                        ? {
+                            label: "Net P&L",
+                            value: stats.count > 0 ? fmt$(brokerWindowNet) : "—",
+                            sub: brokerCoversAll
+                              ? `after broker fees`
+                              : `after broker fees · ${brokerCoveredKeys.length}/${tradedDateKeys.length} days confirmed`,
+                            tone: brokerWindowNet >= 0 ? "ok" : "bad",
+                          }
+                        : stats.feesAvailable
+                        ? {
+                            label: "Net P&L",
+                            value: stats.count > 0 ? fmt$(stats.netPnl) : "—",
+                            sub: `after ${fmt$(stats.fees)} fees`,
+                            tone: stats.netPnl >= 0 ? "ok" : "bad",
+                          }
+                        : {
+                            label: "Trade P&L (before fees)",
+                            value: stats.count > 0 ? fmt$(stats.grossPnl) : "—",
+                            sub: `fees not reported · see dashboard for net`,
+                            tone: stats.grossPnl >= 0 ? "ok" : "bad",
+                          },
+                      {
+                        label: "Trades",
+                        value: String(stats.count),
+                        sub: stats.count > 0 ? `${stats.winners}W · ${stats.losers}L` : "no trades yet",
+                        tone: "mute",
+                      },
+                      {
+                        label: "Win rate",
+                        value: stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—",
+                        sub: stats.count > 0 ? `${stats.winners} of ${stats.count}` : "no trades yet",
+                        tone: "mute",
+                      },
+                      {
+                        label: "Largest loss",
+                        value: stats.largestLoss != null ? fmt$(stats.largestLoss.pnl) : "—",
+                        sub: stats.largestLoss != null ? fmtDate(stats.largestLoss.closedAt, tz) : "—",
+                        tone: "bad",
+                      },
+                      {
+                        label: "Largest win",
+                        value: stats.largestWin != null ? fmt$(stats.largestWin.pnl) : "—",
+                        sub: stats.largestWin != null ? fmtDate(stats.largestWin.closedAt, tz) : "—",
+                        tone: "ok",
+                      },
+                    ]
+                ).map((k) => (
                   <div
                     key={k.label}
                     style={{
@@ -624,13 +686,8 @@ export default async function TradesPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {groupedDateKeys.map((dateKey) => {
+                      {brokerConfirmedDateKeys.map((dateKey) => {
                         const rows = groupedByDate.get(dateKey)!;
-                        // Day total truth order: broker Cash History net (after
-                        // fees) → per-trade net (only if every trade has fees) →
-                        // fill P&L before fees (labelled, never called net). This
-                        // surfaces the real after-fees day net (e.g. −$0.40) even
-                        // when row-level fees are "Not reported".
                         const day = resolveDayNet(rows, brokerDayNet[dateKey]);
                         return (
                           <Fragment key={dateKey}>
@@ -703,15 +760,12 @@ export default async function TradesPage({
                                   <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 11.5, color: "var(--gr-text-mute)" }}>
                                     {fmtHold(t.holdMs)}
                                   </td>
-                                  {/* Trade P&L — the fill/gross value, always shown. */}
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>
                                     {fmt$(t.pnl)}
                                   </td>
-                                  {/* Fees — inferred when single-trade day with broker net; "Not reported" otherwise. */}
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
                                     {rowRes.fees != null ? fmt$(rowRes.fees) : "Not reported"}
                                   </td>
-                                  {/* Net P&L — real or inferred when determinable; "—" otherwise. */}
                                   <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowRes.net != null ? rowPnlColor : "var(--gr-text-faint)" }}
                                     title={rowRes.net != null ? undefined : "Net unavailable at trade level — fees not reported by broker. See Broker Session P&L on the dashboard."}>
                                     {rowRes.net != null ? fmt$(rowRes.net) : "—"}
@@ -722,6 +776,74 @@ export default async function TradesPage({
                           </Fragment>
                         );
                       })}
+                      {fillOnlyDateKeys.length > 0 && (
+                        <>
+                          <tr>
+                            <td colSpan={10} style={{ padding: "10px 16px 8px", background: "var(--gr-bg-elev)", borderTop: "2px solid var(--gr-border)" }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--gr-text-mute)" }}>
+                                Imported fills · not confirmed by broker Cash History
+                              </span>
+                            </td>
+                          </tr>
+                          {fillOnlyDateKeys.map((dateKey) => {
+                            const rows = groupedByDate.get(dateKey)!;
+                            const day = resolveDayNet(rows, undefined);
+                            return (
+                              <Fragment key={dateKey}>
+                                <tr>
+                                  <td colSpan={10} style={{ padding: "10px 16px 8px", background: "var(--gr-bg-elev)" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--gr-text-mid)", lineHeight: 1.4 }}>
+                                        {fmtDate(rows[0]!.closedAt, tz)}
+                                      </span>
+                                      <div style={{ textAlign: "right" }}>
+                                        <div style={{ fontSize: 12.5, fontFamily: "var(--font-ibm-plex-mono, monospace)", fontWeight: 700, color: "var(--gr-text-mute)", lineHeight: 1.3 }}>
+                                          {`Fill P&L ${fmt$(day.pnl)}`}
+                                        </div>
+                                        <div style={{ fontSize: 10.5, color: "var(--gr-text-mute)", marginTop: 2, lineHeight: 1.3 }}>
+                                          {`before fees · ${rows.length} trade${rows.length !== 1 ? "s" : ""}`}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {rows.map((t) => {
+                                  const sideOk = t.side === "LONG";
+                                  const rowRes = resolveTradeRowNet(t, rows.length, undefined);
+                                  const rowPnlColor = (rowRes.net ?? t.pnl) >= 0 ? "var(--gr-ok)" : "var(--gr-bad)";
+                                  return (
+                                    <tr key={t.id} style={{ borderBottom: "1px solid var(--gr-border-sub)", opacity: 0.6 }}>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mid)" }}>
+                                        {fmtTime(t.closedAt, tz)}
+                                      </td>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 500, color: "var(--gr-ink)" }}>
+                                        {t.symbol}
+                                      </td>
+                                      <td style={{ padding: "14px 16px" }}>
+                                        <span style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 999, background: sideOk ? "var(--gr-ok-bg)" : "var(--gr-bad-bg)", color: sideOk ? "var(--gr-ok)" : "var(--gr-bad)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                                          {t.side}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12.5, color: "var(--gr-ink)" }}>{t.qty}</td>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12.5, color: "var(--gr-text-mid)" }}>{fmtPrice(t.entryPrice)}</td>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12.5, color: "var(--gr-text-mid)" }}>{fmtPrice(t.exitPrice)}</td>
+                                      <td style={{ padding: "14px 16px", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 11.5, color: "var(--gr-text-mute)" }}>{fmtHold(t.holdMs)}</td>
+                                      <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: t.pnl >= 0 ? "var(--gr-ok)" : "var(--gr-bad)" }}>{fmt$(t.pnl)}</td>
+                                      <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 12, color: "var(--gr-text-mute)" }}>
+                                        {rowRes.fees != null ? fmt$(rowRes.fees) : "Not reported"}
+                                      </td>
+                                      <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "var(--font-ibm-plex-mono, monospace)", fontSize: 13, fontWeight: 600, color: rowRes.net != null ? rowPnlColor : "var(--gr-text-faint)" }}
+                                        title={rowRes.net != null ? undefined : "Net unavailable at trade level — fees not reported by broker."}>
+                                        {rowRes.net != null ? fmt$(rowRes.net) : "—"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </Fragment>
+                            );
+                          })}
+                        </>
+                      )}
                     </tbody>
                   </table>
                 )}

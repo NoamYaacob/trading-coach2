@@ -531,6 +531,78 @@ describe("Net P&L (after fees) — user-facing P&L surfaces", () => {
       "sync must persist commission into rawPayload (no schema column)",
     );
   });
+
+  it("Broker source-of-truth: page fetches full BrokerAccountPerformance, not just dayNet", () => {
+    assert.ok(
+      page.includes("getCashHistoryPerformance"),
+      "page must call getCashHistoryPerformance() — not the deprecated getCashHistoryDayNet()",
+    );
+    assert.ok(
+      !page.includes("getCashHistoryDayNet"),
+      "page must not call getCashHistoryDayNet() — superseded by getCashHistoryPerformance()",
+    );
+    assert.ok(
+      page.includes("EMPTY_BROKER_PERFORMANCE"),
+      "page must use EMPTY_BROKER_PERFORMANCE as the error-path fallback",
+    );
+    assert.ok(
+      page.includes("hasBrokerHistory"),
+      "page must derive hasBrokerHistory from brokerPerformance",
+    );
+  });
+
+  it("Broker source-of-truth: when hasBrokerHistory, KPIs use broker window stats", () => {
+    assert.ok(
+      page.includes("computeBrokerWindowStats"),
+      "page must call computeBrokerWindowStats for the KPI window",
+    );
+    assert.ok(
+      page.includes("brokerWindowStats"),
+      "page must derive brokerWindowStats variable",
+    );
+    assert.ok(
+      page.includes("brokerNativeWindowNet"),
+      "page must derive brokerNativeWindowNet for the Net P&L KPI",
+    );
+    assert.ok(
+      page.includes("brokerWindowStats.tradeCount"),
+      "Trades KPI must use brokerWindowStats.tradeCount when hasBrokerHistory",
+    );
+    assert.ok(
+      page.includes("brokerWindowStats.winRate"),
+      "Win Rate KPI must use brokerWindowStats.winRate when hasBrokerHistory",
+    );
+    assert.ok(
+      page.includes("brokerWindowStats.largestLoss"),
+      "Largest Loss KPI must use brokerWindowStats.largestLoss when hasBrokerHistory",
+    );
+    assert.ok(
+      page.includes("brokerWindowStats.largestWin"),
+      "Largest Win KPI must use brokerWindowStats.largestWin when hasBrokerHistory",
+    );
+  });
+
+  it("Broker source-of-truth: table splits into broker-confirmed and fill-only sections", () => {
+    assert.ok(
+      page.includes("brokerConfirmedDateKeys"),
+      "table must render broker-confirmed days from brokerConfirmedDateKeys",
+    );
+    assert.ok(
+      page.includes("fillOnlyDateKeys"),
+      "table must track fill-only days in fillOnlyDateKeys",
+    );
+    assert.ok(
+      page.includes("Imported fills · not confirmed by broker Cash History"),
+      "fill-only section must be labeled 'Imported fills · not confirmed by broker Cash History'",
+    );
+  });
+
+  it("P&L calendar subtitle says Net P&L when hasBrokerHistory — not Fill P&L", () => {
+    assert.ok(
+      calendar.includes("hasBrokerHistory || allCellsNet"),
+      "calendar subtitle must show 'Net P&L' when hasBrokerHistory is true, not just when allCellsNet",
+    );
+  });
 });
 
 describe("Lockout button — soft danger styling (smaller, muted red)", () => {
