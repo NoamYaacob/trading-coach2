@@ -1221,6 +1221,38 @@ export class TradovateClient {
   }
 
   /**
+   * Read-only diagnostic helper: GET an arbitrary endpoint on the reports host
+   * and return status + body text. Used ONLY by diagnostic scripts to probe
+   * the reports catalog (e.g. requestReportDefinitions). Never writes broker
+   * state. Returns null when the access token or reports URL is absent.
+   */
+  async debugRawGetReport(
+    endpoint: string,
+  ): Promise<{ status: number; body: string; contentType: string | null } | null> {
+    if (!this.#accessToken || !this.#reportsBaseUrl) return null;
+    const url = endpoint.startsWith("http")
+      ? endpoint
+      : `${this.#reportsBaseUrl}/${endpoint.replace(/^\//, "")}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.#accessToken}`,
+          Accept: "application/json, text/plain, */*;q=0.1",
+        },
+      });
+    } catch (err) {
+      throw new Error(
+        `debugRawGetReport network error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const contentType = res.headers.get("content-type");
+    const text = await res.text().catch(() => "");
+    return { status: res.status, body: text, contentType };
+  }
+
+  /**
    * Read-only diagnostic helper: POST an arbitrary JSON body to a reports-host
    * endpoint and return status + body text. Used ONLY by diagnostic scripts to
    * probe request-format variants. Never writes broker state — the reports host
