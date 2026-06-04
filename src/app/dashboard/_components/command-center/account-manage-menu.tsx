@@ -73,7 +73,7 @@ export function AccountManageMenu({
     busy: lockBusy,
     error: lockError,
     setError: setLockError,
-    brokerLock,
+    result: lockResult,
     lock,
     reset: resetLock,
   } = useLockout(accountId);
@@ -299,7 +299,7 @@ export function AccountManageMenu({
           accountLabel={accountLabel}
           busy={lockBusy}
           error={lockError}
-          brokerLock={brokerLock}
+          result={lockResult}
           onCancel={() => {
             if (!lockBusy) {
               setShowLockConfirm(false);

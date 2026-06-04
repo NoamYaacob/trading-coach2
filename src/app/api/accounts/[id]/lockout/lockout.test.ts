@@ -64,17 +64,23 @@ describe("POST /api/accounts/[id]/lockout — security", () => {
     assert.ok(route.includes('"not_found"'), "must return 404 for missing/unauthorized account");
   });
 
-  it("never references order placement / cancellation / flatten paths", () => {
-    // The manual lock attempts a broker-side RISK-SETTING lock only. It must
-    // never place, cancel, or flatten orders — in the route or its helper.
-    for (const path of [
-      "cancelOrder",
-      "flattenPositions",
-      "flattenOpenPositions",
-      "placeOrder",
-      "liquidatepositions",
-    ]) {
-      assert.ok(!route.includes(path), `route must not reference order path: ${path}`);
+  it("emergency lockout: cancels orders + flattens via the account-scoped helpers, never raw order placement", () => {
+    // The emergency lockout DOES cancel orders and flatten positions, but only
+    // through the safe, account-scoped wrappers — never raw order placement and
+    // never a direct liquidate call from the route.
+    assert.ok(
+      route.includes("cancelOpenOrdersForAccount"),
+      "route must cancel working orders via the account-scoped helper",
+    );
+    assert.ok(
+      route.includes("flattenPositionsForAccount"),
+      "route must flatten positions via the account-scoped helper",
+    );
+    for (const path of ["placeOrder", "liquidatepositions", "order/cancelorder"]) {
+      assert.ok(!route.includes(path), `route must not call raw broker order path: ${path}`);
+    }
+    // The internal-lock payload helper must stay free of any order paths.
+    for (const path of ["cancelOrder", "flattenPositions", "placeOrder", "liquidatepositions"]) {
       assert.ok(!helper.includes(path), `helper must not reference order path: ${path}`);
     }
   });
@@ -176,6 +182,108 @@ describe("POST /api/accounts/[id]/lockout — broker-level lock attempt", () => 
       route.includes("mapManualBrokerLockStatus"),
       "route must map the broker status to the UI state via the pure helper",
     );
+  });
+});
+
+describe("POST /api/accounts/[id]/lockout — emergency lockout ordering & wiring", () => {
+  it("executes the four steps in the approved order: cancel → flatten → internal lock → broker lock", () => {
+    const cancelIdx = route.indexOf("cancelOpenOrdersForAccount(account.id");
+    const flattenIdx = route.indexOf("flattenPositionsForAccount(account.id");
+    const txnIdx = route.indexOf("prisma.$transaction");
+    const brokerIdx = route.indexOf("maybeAttemptBrokerLockForManualLock(lockEvent.id)");
+    assert.ok(
+      cancelIdx > -1 && flattenIdx > -1 && txnIdx > -1 && brokerIdx > -1,
+      "all four steps must be present",
+    );
+    assert.ok(cancelIdx < flattenIdx, "cancel orders must run before flatten");
+    assert.ok(flattenIdx < txnIdx, "flatten must run before the internal lock transaction");
+    assert.ok(txnIdx < brokerIdx, "internal lock must run before the broker lock");
+  });
+
+  it("scopes every broker step to the SELECTED account id (account.id) only", () => {
+    assert.ok(
+      route.includes("cancelOpenOrdersForAccount(account.id"),
+      "cancel must be scoped to the selected account id",
+    );
+    assert.ok(
+      route.includes("flattenPositionsForAccount(account.id"),
+      "flatten must be scoped to the selected account id",
+    );
+  });
+
+  it("tags broker order/flatten audit rows with the emergency_lockout trigger reason", () => {
+    assert.ok(
+      route.includes('"emergency_lockout"'),
+      "cancel/flatten must pass triggerReason: emergency_lockout for the audit trail",
+    );
+  });
+
+  it("cancel failure does not block flatten (each best-effort in its own try/catch)", () => {
+    // Both broker-action steps are wrapped so a throw is recorded and execution
+    // continues to the next step and ultimately to the internal lock.
+    assert.ok(
+      /try\s*\{[\s\S]*cancelOpenOrdersForAccount[\s\S]*\}\s*catch/.test(route),
+      "cancel must be in a try/catch so a failure does not abort the request",
+    );
+    assert.ok(
+      /try\s*\{[\s\S]*flattenPositionsForAccount[\s\S]*\}\s*catch/.test(route),
+      "flatten must be in a try/catch so a failure does not abort the request",
+    );
+  });
+
+  it("internal lock is committed unconditionally — outside any cancel/flatten catch", () => {
+    // The $transaction must NOT be nested inside the cancel/flatten try blocks;
+    // it runs after them regardless of their outcome.
+    const flattenCatchIdx = route.indexOf("flatten positions failed");
+    const txnIdx = route.indexOf("prisma.$transaction");
+    assert.ok(
+      flattenCatchIdx > -1 && txnIdx > flattenCatchIdx,
+      "the internal lock transaction must come after the flatten try/catch block",
+    );
+  });
+
+  it("logs the required emergency-lockout lifecycle lines with the target identity", () => {
+    for (const line of [
+      "[account-lockout] emergency lockout requested",
+      "[account-lockout] cancelled working orders",
+      "[account-lockout] flattened positions",
+      "[account-lockout] manual internal lock applied",
+      "[account-lockout] broker lock result",
+    ]) {
+      assert.ok(route.includes(line), `route must log: ${line}`);
+    }
+  });
+
+  it("pre-write log includes accountId, label, externalAccountId, brokerConnectionId, env, permissionLevel", () => {
+    const reqIdx = route.indexOf("[account-lockout] emergency lockout requested");
+    const slice = route.slice(reqIdx, reqIdx + 600);
+    for (const field of [
+      "label:",
+      "externalAccountId:",
+      "brokerConnectionId:",
+      "env:",
+      "permissionLevel:",
+    ]) {
+      assert.ok(slice.includes(field), `pre-write log must include ${field}`);
+    }
+  });
+
+  it("surfaces order-actions-enabled state so dry-run is never reported as success", () => {
+    assert.ok(
+      route.includes("isTradovateOrderActionsEnabled"),
+      "route must read the order-actions flag to report dry-run honestly",
+    );
+    assert.ok(
+      route.includes("orderActionsEnabled"),
+      "response must expose orderActionsEnabled for the UI",
+    );
+  });
+
+  it("returns per-step results for the UI (cancelOrders, flattenPositions, internalLock, brokerLock)", () => {
+    assert.ok(route.includes("cancelOrders"), "response must include cancelOrders result");
+    assert.ok(route.includes("flattenPositions"), "response must include flattenPositions result");
+    assert.ok(route.includes("internalLock"), "response must include internalLock result");
+    assert.ok(route.includes("brokerLock"), "response must include brokerLock result");
   });
 });
 
