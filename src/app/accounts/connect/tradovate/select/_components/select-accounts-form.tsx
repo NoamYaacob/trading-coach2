@@ -4,6 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  guessAccountType,
+  buildDefaultAccountLabel,
+} from "./select-accounts-logic";
+
 type DiscoveredAccount = {
   externalAccountId: string;
   name: string;
@@ -27,20 +32,6 @@ const ACCOUNT_TYPE_OPTIONS: { value: AccountRow["accountType"]; label: string }[
   { value: "personal", label: "Personal" },
   { value: "demo", label: "Demo / Sim" },
 ];
-
-function guessAccountType(
-  brokerType: string,
-  env: string,
-  accountSource: string,
-): AccountRow["accountType"] {
-  if (env === "demo" && accountSource === "demo") return "demo";
-  if (env === "demo") return "evaluation";
-  const t = brokerType.toLowerCase();
-  if (t.includes("fund")) return "funded";
-  if (t.includes("eval") || t.includes("challenge")) return "evaluation";
-  if (accountSource === "personal") return "personal";
-  return "evaluation";
-}
 
 type Props = {
   setupId: string;
@@ -67,9 +58,7 @@ export function SelectAccountsForm({
       name: a.name,
       active: a.active,
       selected: a.active,
-      label: displayName
-        ? `${displayName} — ${a.name}`
-        : a.name,
+      label: buildDefaultAccountLabel(a.name, displayName, env),
       accountType: guessAccountType(a.accountType, env, accountSource),
       propFirm: propFirmName ?? "",
     })),
