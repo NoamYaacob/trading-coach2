@@ -125,6 +125,17 @@ export async function POST(request: NextRequest) {
       connectedAt: new Date(),
       errorMessage: null,
       brokerConnectionId: brokerConnection.id,
+      // Finalize IS the explicit user opt-in. A row may already exist as
+      // `pending_decision` — created by background discovery/reconciliation
+      // (cron or retry-account-sync) before the user picked it here. Without
+      // resetting this, the update path below preserves `pending_decision`,
+      // and the dashboard main list (which filters protectionStatus IN
+      // ["protected","monitor_only"]) hides the freshly-added account so it
+      // appears "missing." Selecting an account here means "protect it"; also
+      // clear any stale missing-from-broker marker since we just confirmed it
+      // is present in the broker list.
+      protectionStatus: "protected",
+      missingFromBrokerSince: null,
     };
 
     const account = existing
