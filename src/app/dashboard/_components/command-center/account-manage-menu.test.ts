@@ -241,22 +241,29 @@ describe("Lock for this CME session", () => {
     assert.ok(MENU.includes("LockoutConfirmModal"), "menu must render the shared LockoutConfirmModal");
   });
 
-  test("shared confirmation dialog has danger badge + confirm/loading", () => {
+  test("shared confirmation dialog has emergency badge + typed-confirm + loading", () => {
     assert.ok(MENU.includes("showLockConfirm"), "menu must gate the modal on showLockConfirm state");
     assert.ok(LOCKOUT.includes("data-lock-confirm"), "dialog must have data-lock-confirm attribute for testing");
-    assert.ok(LOCKOUT.includes("Danger"), "dialog must show a Danger badge");
-    assert.ok(LOCKOUT.includes("Yes, lock this account"), "confirm button must say 'Yes, lock this account'");
+    assert.ok(LOCKOUT.includes("Emergency lockout"), "dialog must show an Emergency lockout badge/button");
+    assert.ok(
+      /disabled=\{busy \|\| !confirmed\}/.test(LOCKOUT),
+      "confirm button must stay disabled until the user types LOCKOUT",
+    );
     assert.ok(LOCKOUT.includes('busy ? "Locking…"'), "confirm button must show loading state");
   });
 
-  test("shared lock modal shows the broker-lock + session-reset caveat copy", () => {
+  test("shared lock modal states the full emergency behavior + session-reset copy", () => {
     assert.ok(
-      LOCKOUT.includes("attempts to lock it at your broker"),
-      "dialog must explain it attempts a broker-level lock",
+      LOCKOUT.includes(
+        "This will cancel working orders, close open positions, and lock this account.",
+      ),
+      "dialog must state the full emergency behavior verbatim",
     );
     assert.ok(
-      LOCKOUT.includes("Existing positions are not closed"),
-      "dialog must clarify existing positions are not closed",
+      LOCKOUT.includes("no\n          new opening orders") ||
+        LOCKOUT.includes("no new opening orders") ||
+        LOCKOUT.includes("new opening orders"),
+      "dialog must explain it blocks new opening orders at the broker",
     );
     assert.ok(LOCKOUT.includes("17:00"), "dialog must mention 17:00 CT session reset time");
   });
@@ -366,10 +373,21 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
     assert.ok(MENU.includes("useLockout") && MENU.includes("LockoutConfirmModal"), "menu uses the shared action");
   });
 
-  test("shared lockout introduces no broker / Tradovate write endpoints", () => {
+  test("shared lockout client never calls broker write endpoints directly (server route does)", () => {
+    // The client island only POSTs to /api/accounts/[id]/lockout and renders the
+    // result. The actual cancel/flatten/risk-write happen server-side in the
+    // route. The client may NAME the result fields (cancelOrders/flattenPositions)
+    // but must not reference raw broker write endpoints or the Tradovate client.
     const src = stripComments(LOCKOUT);
-    for (const banned of ["/api/broker", "tradovate", "cancelOrder", "flattenPositions", "userAccountAutoLiq", "placeOrder"]) {
-      assert.ok(!src.includes(banned), `shared lockout must not reference '${banned}'`);
+    for (const banned of [
+      "/api/broker",
+      "tradovate",
+      "userAccountAutoLiq",
+      "placeOrder",
+      "liquidatepositions",
+      "new TradovateClient",
+    ]) {
+      assert.ok(!src.includes(banned), `shared lockout client must not reference '${banned}'`);
     }
   });
 
@@ -389,9 +407,9 @@ describe("Dashboard direct Lockout button (page.tsx + AccountLockoutButton)", ()
     );
   });
 
-  test("both entry points pass the broker outcome to the shared modal", () => {
-    assert.ok(/brokerLock=\{brokerLock\}/.test(LOCKOUT), "direct button must pass brokerLock to the modal");
-    assert.ok(/brokerLock=\{brokerLock\}/.test(MENU), "⋯ menu must pass brokerLock to the modal");
+  test("both entry points pass the full lockout result to the shared modal", () => {
+    assert.ok(/result=\{result\}/.test(LOCKOUT), "direct button must pass the lockout result to the modal");
+    assert.ok(/result=\{lockResult\}/.test(MENU), "⋯ menu must pass the lockout result to the modal");
   });
 });
 

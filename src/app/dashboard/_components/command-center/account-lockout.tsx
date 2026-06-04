@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+
+import { isLockoutConfirmed, LOCKOUT_CONFIRM_WORD } from "./account-lockout-logic";
+
+export { isLockoutConfirmed, LOCKOUT_CONFIRM_WORD } from "./account-lockout-logic";
 
 /**
  * Shared manual-lockout action — the single implementation of the
@@ -22,18 +26,36 @@ export type BrokerLockOutcome = {
   message: string;
 };
 
+/** Cancel-orders step outcome from the emergency lockout. */
+export type CancelOrdersOutcome =
+  | { ran: true; dryRun: boolean; attempted: number; succeeded: number; failed: number }
+  | { ran: false; reason: string };
+
+/** Flatten-positions step outcome from the emergency lockout. */
+export type FlattenOutcome =
+  | { ran: true; dryRun: boolean; status: string; message: string }
+  | { ran: false; reason: string };
+
+/** Full emergency-lockout result surfaced after the internal lock applies. */
+export type EmergencyLockoutResult = {
+  orderActionsEnabled: boolean;
+  cancelOrders: CancelOrdersOutcome;
+  flattenPositions: FlattenOutcome;
+  brokerLock: BrokerLockOutcome;
+};
+
 /** Owns the lock request state. The only caller of the lockout API. */
 export function useLockout(accountId: string) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Set after a successful internal lock to report the broker-side outcome. */
-  const [brokerLock, setBrokerLock] = useState<BrokerLockOutcome | null>(null);
+  /** Set after a successful internal lock to report the full lockout outcome. */
+  const [result, setResult] = useState<EmergencyLockoutResult | null>(null);
 
   const lock = useCallback(async (): Promise<boolean> => {
     setBusy(true);
     setError(null);
-    setBrokerLock(null);
+    setResult(null);
     try {
       const res = await fetch(`/api/accounts/${accountId}/lockout`, {
         method: "POST",
@@ -44,13 +66,18 @@ export function useLockout(accountId: string) {
         setError(data.error ?? "Failed to lock account. Please try again.");
         return false;
       }
-      const data = (await res.json()) as { brokerLock?: BrokerLockOutcome };
-      // The internal Guardrail lock succeeded. Surface the broker-side result
-      // (the broker half may have failed/been unavailable without affecting
-      // the internal lock).
-      setBrokerLock(
-        data.brokerLock ?? { status: "unavailable", message: "Broker lock was not attempted." },
-      );
+      const data = (await res.json()) as Partial<EmergencyLockoutResult>;
+      // The internal Guardrail lock succeeded. Surface every step's result —
+      // the broker/order halves may have failed or been skipped without
+      // affecting the (already-committed) internal lock.
+      setResult({
+        orderActionsEnabled: data.orderActionsEnabled ?? false,
+        cancelOrders: data.cancelOrders ?? { ran: false, reason: "No cancel result returned." },
+        flattenPositions:
+          data.flattenPositions ?? { ran: false, reason: "No flatten result returned." },
+        brokerLock:
+          data.brokerLock ?? { status: "unavailable", message: "Broker lock was not attempted." },
+      });
       router.refresh();
       return true;
     } catch {
@@ -63,19 +90,39 @@ export function useLockout(accountId: string) {
 
   const reset = useCallback(() => {
     setError(null);
-    setBrokerLock(null);
+    setResult(null);
   }, []);
 
-  return { busy, error, setError, brokerLock, lock, reset };
+  return { busy, error, setError, result, lock, reset };
 }
 
-/** The single danger confirmation modal for manual lockout. Portalled so no
+/** One status line in the result view. */
+function ResultLine({
+  ok,
+  warn,
+  children,
+}: {
+  ok?: boolean;
+  warn?: boolean;
+  children: ReactNode;
+}) {
+  const tone = ok ? "text-emerald-700" : warn ? "text-amber-700" : "text-stone-600";
+  const glyph = ok ? "✓" : warn ? "⚠" : "•";
+  return (
+    <p className={`mt-2 flex items-start gap-2 text-sm ${tone}`}>
+      <span aria-hidden="true">{glyph}</span>
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** The single danger confirmation modal for emergency lockout. Portalled so no
  *  overflow/stacking context can clip it. */
 export function LockoutConfirmModal({
   accountLabel,
   busy,
   error,
-  brokerLock,
+  result,
   onConfirm,
   onCancel,
   onDone,
@@ -84,26 +131,84 @@ export function LockoutConfirmModal({
   busy: boolean;
   error: string | null;
   /** When set, the lock succeeded — the modal switches to the result view. */
-  brokerLock?: BrokerLockOutcome | null;
+  result?: EmergencyLockoutResult | null;
   onConfirm: () => void;
   onCancel: () => void;
   /** Closes the result view. Defaults to onCancel when omitted. */
   onDone?: () => void;
 }) {
+  const [typed, setTyped] = useState("");
+  const confirmed = isLockoutConfirmed(typed);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) (brokerLock ? (onDone ?? onCancel) : onCancel)();
+      if (e.key === "Escape" && !busy) (result ? (onDone ?? onCancel) : onCancel)();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [busy, onCancel, onDone, brokerLock]);
+  }, [busy, onCancel, onDone, result]);
 
   if (typeof document === "undefined") return null;
 
   // ── Result view — shown after the internal lock has been applied ───────────
-  if (brokerLock) {
+  if (result) {
     const close = onDone ?? onCancel;
+    const { cancelOrders, flattenPositions, brokerLock, orderActionsEnabled } = result;
     const brokerActive = brokerLock.status === "active";
+
+    // Cancel-orders line.
+    let cancelLine: ReactNode;
+    if (!cancelOrders.ran) {
+      cancelLine = (
+        <ResultLine warn>Cancel orders skipped — {cancelOrders.reason}</ResultLine>
+      );
+    } else if (cancelOrders.dryRun) {
+      cancelLine = (
+        <ResultLine warn>
+          Cancel orders NOT sent (dry-run
+          {orderActionsEnabled ? "" : " — order actions disabled on server"}):{" "}
+          {cancelOrders.attempted} working order
+          {cancelOrders.attempted === 1 ? "" : "s"} would have been cancelled.
+        </ResultLine>
+      );
+    } else {
+      const allOk = cancelOrders.failed === 0;
+      cancelLine = (
+        <ResultLine ok={allOk} warn={!allOk}>
+          Cancelled {cancelOrders.succeeded}/{cancelOrders.attempted} working order
+          {cancelOrders.attempted === 1 ? "" : "s"}
+          {cancelOrders.failed > 0 ? ` (${cancelOrders.failed} failed)` : ""}.
+        </ResultLine>
+      );
+    }
+
+    // Flatten line.
+    let flattenLine: ReactNode;
+    if (!flattenPositions.ran) {
+      flattenLine = (
+        <ResultLine warn>Flatten skipped — {flattenPositions.reason}</ResultLine>
+      );
+    } else if (flattenPositions.dryRun || flattenPositions.status === "dry_run") {
+      flattenLine = (
+        <ResultLine warn>
+          Positions NOT closed (dry-run
+          {orderActionsEnabled ? "" : " — order actions disabled on server"}).
+        </ResultLine>
+      );
+    } else {
+      const flat =
+        flattenPositions.status === "flattened" || flattenPositions.status === "not_needed";
+      flattenLine = (
+        <ResultLine ok={flat} warn={!flat}>
+          {flattenPositions.status === "not_needed"
+            ? "No open positions to close."
+            : flattenPositions.status === "flattened"
+              ? "Open positions closed (confirmed flat)."
+              : `Flatten ${flattenPositions.status}: ${flattenPositions.message}`}
+        </ResultLine>
+      );
+    }
+
     return createPortal(
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
@@ -121,26 +226,19 @@ export function LockoutConfirmModal({
           <h2 id="lock-result-title" className="text-base font-semibold text-stone-900">
             {accountLabel ?? "Account"} locked
           </h2>
+          {cancelLine}
+          {flattenLine}
           {/* The internal Guardrail lock is always active on success. */}
-          <p className="mt-3 flex items-start gap-2 text-sm text-emerald-700">
-            <span aria-hidden="true">✓</span>
-            <span>Locked in Guardrail for the rest of this CME session.</span>
-          </p>
+          <ResultLine ok>Locked in Guardrail for the rest of this CME session.</ResultLine>
           {/* The broker half may or may not have succeeded. */}
           {brokerActive ? (
-            <p className="mt-2 flex items-start gap-2 text-sm text-emerald-700">
-              <span aria-hidden="true">✓</span>
-              <span>Broker lock active at Tradovate.</span>
-            </p>
+            <ResultLine ok>Broker lock active at Tradovate.</ResultLine>
           ) : (
-            <p className="mt-2 flex items-start gap-2 text-sm text-amber-700">
-              <span aria-hidden="true">⚠</span>
-              <span>
-                {brokerLock.status === "failed"
-                  ? "Broker lock failed — the Guardrail lock is still active."
-                  : "Broker lock unavailable — the Guardrail lock is still active."}
-              </span>
-            </p>
+            <ResultLine warn>
+              {brokerLock.status === "failed"
+                ? "Broker lock failed — the Guardrail lock is still active."
+                : "Broker lock unavailable — the Guardrail lock is still active."}
+            </ResultLine>
           )}
           <p className="mt-2 text-xs text-stone-500">{brokerLock.message}</p>
           <div className="mt-5 flex justify-end">
@@ -174,19 +272,37 @@ export function LockoutConfirmModal({
         className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
       >
         <div className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-700">
-          Danger
+          Emergency lockout
         </div>
         <h2 id="lock-dialog-title" className="mt-3 text-base font-semibold text-stone-900">
-          Lock {accountLabel ?? "this account"} for the rest of this CME session?
+          Emergency lockout for {accountLabel ?? "this account"}?
         </h2>
+        <p className="mt-2 text-sm font-medium text-stone-800">
+          This will cancel working orders, close open positions, and lock this account.
+        </p>
         <p className="mt-2 text-sm text-stone-600">
-          This locks the account in Guardrail and attempts to lock it at your broker
-          (Tradovate) so no new opening orders can be placed for the rest of this CME
-          session. Existing positions are not closed.
+          Working orders are cancelled and open positions are closed at your broker
+          (Tradovate), then the account is locked in Guardrail and at the broker so no
+          new opening orders can be placed for the rest of this CME session. This affects{" "}
+          <span className="font-medium">only this account</span>.
         </p>
         <p className="mt-2 text-sm text-stone-500">
-          The manual lock clears automatically when the CME session resets at 17:00&nbsp;CT.
+          The Guardrail lock clears automatically when the CME session resets at
+          17:00&nbsp;CT.
         </p>
+        <label className="mt-4 block text-sm font-medium text-stone-700">
+          Type <span className="font-semibold text-red-700">LOCKOUT</span> to confirm
+          <input
+            type="text"
+            autoFocus
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            disabled={busy}
+            aria-label="Type LOCKOUT to confirm"
+            className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-400 disabled:opacity-50"
+            placeholder="LOCKOUT"
+          />
+        </label>
         {error && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
@@ -202,10 +318,10 @@ export function LockoutConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={busy}
-            className="inline-flex h-9 items-center rounded-full bg-red-700 px-4 text-sm font-medium text-white transition hover:bg-red-800 disabled:opacity-70"
+            disabled={busy || !confirmed}
+            className="inline-flex h-9 items-center rounded-full bg-red-700 px-4 text-sm font-medium text-white transition hover:bg-red-800 disabled:opacity-50"
           >
-            {busy ? "Locking…" : "Yes, lock this account"}
+            {busy ? "Locking…" : "Emergency lockout"}
           </button>
         </div>
       </div>
@@ -229,7 +345,7 @@ export function AccountLockoutButton({
   className?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const { busy, error, setError, brokerLock, lock, reset } = useLockout(accountId);
+  const { busy, error, result, lock, reset } = useLockout(accountId);
 
   return (
     <>
@@ -265,7 +381,7 @@ export function AccountLockoutButton({
           accountLabel={accountLabel}
           busy={busy}
           error={error}
-          brokerLock={brokerLock}
+          result={result}
           onCancel={() => {
             if (!busy) {
               setConfirming(false);
