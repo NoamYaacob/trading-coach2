@@ -100,12 +100,16 @@ describe("PnlCalendar client island", () => {
 
   it("shows the historical-data caveat when viewing a past month", () => {
     assert.ok(
-      file.includes("Showing only the last 30 days of synced fills"),
-      "calendar must show the honest 30-day-window caveat when viewing past months",
+      file.includes("Broker Account Balance History is temporarily unavailable"),
+      "calendar must show the honest ABH-unavailable caveat when viewing past months in a degraded state",
     );
     assert.ok(
       file.includes("isViewingPast"),
       "calendar must compute an isViewingPast flag to gate the caveat",
+    );
+    assert.ok(
+      /brokerSource !== "account-balance-history"/.test(file),
+      "caveat must be suppressed when ABH is the source (full broker-net coverage)",
     );
   });
 

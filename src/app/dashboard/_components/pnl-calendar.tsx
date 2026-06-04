@@ -343,9 +343,12 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
         )}
       </div>
 
-      {/* Historical-data caveat — shown when browsing past months. Copy is
-        * source-aware: account-balance-history has full report coverage; the
-        * fills-based path only covers the last 30 days. */}
+      {/* Historical-data caveat — shown when browsing past months while broker
+        * Account Balance History is unavailable/degraded (cash-history or no
+        * broker source). When ABH is present this block is suppressed entirely,
+        * because ABH carries full broker-net month coverage. Copy is honest
+        * about the degraded source rather than implying fills are still
+        * backfilling. */}
       {isViewingPast && brokerSource !== "account-balance-history" && (
         <div
           style={{
@@ -359,8 +362,9 @@ export function PnlCalendar({ trades, timezone, accountLabel, tradesHref, accoun
             lineHeight: 1.5,
           }}
         >
-          Showing only the last 30 days of synced fills. Older months will
-          populate as fills are backfilled.
+          Broker Account Balance History is temporarily unavailable. Older
+          broker-net months may be incomplete until the broker report loads
+          again.
         </div>
       )}
 
