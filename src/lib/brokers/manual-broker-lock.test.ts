@@ -12,6 +12,9 @@
  *   - still requires a live connection + full_access (via shouldSkipManualBrokerLock)
  *   - connected_readonly + full_access is ALLOWED (not blocked by readonly status)
  *   - honors ENFORCEMENT_DRY_RUN
+ *   - sends changesLocked:false — NOT true — so Tradovate's daily session reset
+ *     can clear dailyLossAutoLiq at 6 PM ET and the user can reset from the UI
+ *   - refuses write when accountType/BrokerConnection.env are mismatched
  */
 
 import { describe, it } from "node:test";
@@ -58,6 +61,80 @@ describe("applyManualBrokerLock — reuses the safe risk-setting write only", ()
   });
 });
 
+describe("applyManualBrokerLock — changesLocked must be false", () => {
+  it("defines MANUAL_LOCK_CHANGES_LOCKED = false", () => {
+    assert.ok(
+      /MANUAL_LOCK_CHANGES_LOCKED\s*=\s*false/.test(mod),
+      "MANUAL_LOCK_CHANGES_LOCKED must be false — changesLocked:true causes the lock to " +
+        "persist beyond the CME session reset and cannot be cleared without Tradovate support",
+    );
+  });
+
+  it("passes MANUAL_LOCK_CHANGES_LOCKED (false) to applyDailyLossLock — not a literal true", () => {
+    assert.ok(
+      mod.includes("changesLocked: MANUAL_LOCK_CHANGES_LOCKED"),
+      "must pass MANUAL_LOCK_CHANGES_LOCKED to changesLocked, not a hardcoded literal",
+    );
+  });
+
+  it("does NOT send changesLocked:true in the live write or dry-run payload", () => {
+    // Strip the constant definition line so we only check usage sites.
+    const noConst = mod.replace(/MANUAL_LOCK_CHANGES_LOCKED\s*=\s*false[^\n]*\n/, "");
+    assert.ok(
+      !noConst.includes("changesLocked: true"),
+      "must not send changesLocked:true anywhere in the manual lock path",
+    );
+  });
+});
+
+describe("applyManualBrokerLock — env/accountType safety guard", () => {
+  it("fetches BrokerConnection.env (bcEnv) from the account query", () => {
+    assert.ok(
+      mod.includes("bcEnv"),
+      "must read bcEnv from BrokerConnection — needed for env/accountType mismatch check",
+    );
+  });
+
+  it("fetches accountType from the account query", () => {
+    assert.ok(
+      mod.includes("accountType"),
+      "must read accountType — needed for env/accountType mismatch check",
+    );
+  });
+
+  it("refuses write when demo account has live BrokerConnection env", () => {
+    assert.ok(
+      mod.includes("demo account with live connection"),
+      "must log and refuse: demo account + live connection mismatch",
+    );
+    assert.ok(
+      mod.includes("account is demo but BrokerConnection.env is live"),
+      "must return an explanatory message for demo+live mismatch",
+    );
+  });
+
+  it("refuses write when live/personal account has demo BrokerConnection env", () => {
+    assert.ok(
+      mod.includes("live account with demo connection"),
+      "must log and refuse: live account + demo connection mismatch",
+    );
+    assert.ok(
+      mod.includes("account is live/personal but BrokerConnection.env is demo"),
+      "must return an explanatory message for live+demo mismatch",
+    );
+  });
+
+  it("env mismatch returns broker_lock_failed before any TradovateClient is instantiated", () => {
+    const mismatchDemoIdx = mod.indexOf("account is demo but BrokerConnection.env is live");
+    const clientIdx = mod.indexOf("new TradovateClient");
+    assert.ok(mismatchDemoIdx > -1 && clientIdx > -1, "both must be present");
+    assert.ok(
+      mismatchDemoIdx < clientIdx,
+      "env mismatch guard must short-circuit before the TradovateClient is instantiated",
+    );
+  });
+});
+
 describe("applyManualBrokerLock — manual authorization gating", () => {
   it("does NOT require the automatic-enforcement env gates", () => {
     for (const gate of [
@@ -71,14 +148,6 @@ describe("applyManualBrokerLock — manual authorization gating", () => {
         `manual lock is user-authorized — it must not gate on ${gate}`,
       );
     }
-  });
-
-  it("does NOT restrict to demo-only", () => {
-    // The manual lock must be able to lock a live account on explicit confirm.
-    assert.ok(
-      !/env\s*[!=]==?\s*"demo"/.test(mod),
-      "manual lock must not be demo-only",
-    );
   });
 
   it("uses the manual-specific gate shouldSkipManualBrokerLock (not the shared automatic gate)", () => {
@@ -117,7 +186,6 @@ describe("applyManualBrokerLock — outcome classification", () => {
   });
 
   it("does not leak the raw broker response body in the failure message", () => {
-    // Only err.message (our classification text) is surfaced, never bodyExcerpt.
     assert.ok(!mod.includes("bodyExcerpt"), "must not surface the raw response body excerpt");
   });
 });

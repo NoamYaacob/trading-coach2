@@ -21,6 +21,17 @@
  *     explicit confirmation modal is the consent for a user-initiated action).
  *
  * No listener-worker code is touched.
+ *
+ * Safety invariants:
+ *   - changesLocked is always sent as FALSE for the manual/emergency path.
+ *     Sending changesLocked:true caused the broker-side lock to persist beyond
+ *     the CME daily session reset (Tradovate's "Will release by 6:00 PM ET"
+ *     hint is suppressed when changesLocked=true). With changesLocked:false the
+ *     daily session reset at 6 PM ET will naturally clear dailyLossAutoLiq,
+ *     and the user can also manually reset it from the Tradovate UI.
+ *   - accountType/env mismatch is refused before any broker write. A demo
+ *     account must use a demo BrokerConnection; a live account must use a live
+ *     BrokerConnection. Any mismatch returns broker_lock_failed immediately.
  */
 
 import { prisma } from "../db";
@@ -51,6 +62,20 @@ export type ManualBrokerLockResult = {
 const MANUAL_LOCK_LOSS_THRESHOLD = 0;
 
 /**
+ * changesLocked=false is intentional for the manual/emergency path.
+ *
+ * changesLocked=true would prevent Tradovate's daily session reset (6 PM ET)
+ * from clearing dailyLossAutoLiq, causing the lock to persist indefinitely
+ * and requiring Tradovate support intervention to clear. With false, the
+ * session reset clears the risk setting naturally, and the user can also
+ * reset it from the Tradovate UI if needed intraday.
+ *
+ * The automatic enforcement path (not this module) may still send true —
+ * this constant affects only the manual/emergency user-initiated lockout.
+ */
+const MANUAL_LOCK_CHANGES_LOCKED = false;
+
+/**
  * Attempt a broker-side lock for a user-initiated manual lockout.
  *
  * Returns a structured result describing the outcome and the exact endpoint /
@@ -68,12 +93,14 @@ export async function applyManualBrokerLock(ctx: {
   const account = await prisma.connectedAccount.findUnique({
     where: { id: accountId },
     select: {
+      label: true,
       platform: true,
+      accountType: true,
       externalAccountId: true,
       isActive: true,
       missingFromBrokerSince: true,
       brokerConnection: {
-        select: { connectionStatus: true, permissionLevel: true },
+        select: { id: true, env: true, connectionStatus: true, permissionLevel: true },
       },
     },
   });
@@ -93,6 +120,52 @@ export async function applyManualBrokerLock(ctx: {
       brokerPayload: null,
       brokerResponse: null,
     };
+  }
+
+  // Env/accountType safety guard: demo accounts must use demo connections and
+  // live accounts must use live connections. A mismatch means a write would go
+  // to the wrong Tradovate environment and potentially affect the wrong account.
+  const bcEnv = account.brokerConnection?.env ?? null;
+  const accountType = account.accountType ?? null;
+  if (bcEnv != null && accountType != null) {
+    const accountIsDemo = accountType === "demo";
+    const connectionIsDemo = bcEnv === "demo";
+    if (accountIsDemo && !connectionIsDemo) {
+      console.error("[manual-broker-lock] env/accountType mismatch: demo account with live connection — refusing write", {
+        accountId,
+        label: account.label,
+        accountType,
+        bcEnv,
+        brokerConnectionId: account.brokerConnection?.id,
+      });
+      return {
+        status: "broker_lock_failed",
+        message:
+          "Broker lock refused: account is demo but BrokerConnection.env is live. " +
+          "This mismatch would write to the wrong Tradovate environment. No broker write attempted.",
+        brokerEndpoint: null,
+        brokerPayload: null,
+        brokerResponse: null,
+      };
+    }
+    if (!accountIsDemo && connectionIsDemo) {
+      console.error("[manual-broker-lock] env/accountType mismatch: live account with demo connection — refusing write", {
+        accountId,
+        label: account.label,
+        accountType,
+        bcEnv,
+        brokerConnectionId: account.brokerConnection?.id,
+      });
+      return {
+        status: "broker_lock_failed",
+        message:
+          "Broker lock refused: account is live/personal but BrokerConnection.env is demo. " +
+          "This mismatch would write to the wrong Tradovate environment. No broker write attempted.",
+        brokerEndpoint: null,
+        brokerPayload: null,
+        brokerResponse: null,
+      };
+    }
   }
 
   const platform = account.platform ?? "unknown";
@@ -126,7 +199,7 @@ export async function applyManualBrokerLock(ctx: {
     const intendedPayload = {
       accountId: tvAccountId,
       dailyLossAutoLiq: MANUAL_LOCK_LOSS_THRESHOLD,
-      changesLocked: true,
+      changesLocked: MANUAL_LOCK_CHANGES_LOCKED,
     };
     return {
       status: "dry_run",
@@ -146,7 +219,7 @@ export async function applyManualBrokerLock(ctx: {
     await client.initialize();
     const result = await client.applyDailyLossLock({
       lossAmountToSet: MANUAL_LOCK_LOSS_THRESHOLD,
-      changesLocked: true,
+      changesLocked: MANUAL_LOCK_CHANGES_LOCKED,
     });
 
     if (result.confirmed) {

@@ -300,6 +300,8 @@ export class TradovateClient {
   #externalAccountId: string | null = null;
   /** Set when this account's tokens live on a BrokerConnection row. */
   #brokerConnectionId: string | null = null;
+  /** Resolved Tradovate environment — "demo" or "live". */
+  #env: "demo" | "live" | null = null;
   #baseUrl: string | null = null;
   /** Reporting API base URL — different host (rpt-{env}.tradovateapi.com). */
   #reportsBaseUrl: string | null = null;
@@ -359,6 +361,7 @@ export class TradovateClient {
     } else {
       env = account.accountType === "demo" ? "demo" : "live";
     }
+    this.#env = env;
     this.#baseUrl = config.apiBaseUrl[env];
     this.#reportsBaseUrl = config.reportsBaseUrl[env];
     this.#tokenUrl = config.tokenUrl[env];
@@ -1986,12 +1989,27 @@ export class TradovateClient {
       };
     }
 
-    console.info("[tradovate/autoLiq] applying daily loss lock", {
-      accountId: this.#accountId,
-      tvAccountId: this.#tvAccountId,
+    // Tradovate's UserAccountAutoLiq schema does not include an accountId field.
+    // The only ownership guarantee is that the /deps?masterid= query was scoped
+    // to this.#tvAccountId (derived from the selected ConnectedAccount's
+    // externalAccountId). We log the full raw record so any mismatch in record.id
+    // vs the expected account is detectable post-hoc in logs.
+    const autoLiqRecordAccountIdField =
+      record != null && "accountId" in record ? (record as Record<string, unknown>).accountId : "NOT_IN_SCHEMA";
+    console.info("[tradovate/autoLiq] pre-write: applying daily loss lock", {
+      guardrailAccountId: this.#accountId,
+      externalAccountId: this.#externalAccountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      env: this.#env,
+      baseUrlHostname: this.#baseUrl ? (() => { try { return new URL(this.#baseUrl!).hostname; } catch { return this.#baseUrl; } })() : null,
+      tvMasterid: this.#tvAccountId,
       endpoint,
+      changesLocked: params.changesLocked ?? true,
       lossAmountToSet: params.lossAmountToSet,
-      existingRecordId: record?.id ?? null,
+      autoLiqRecordId: record?.id ?? null,
+      autoLiqRecordAccountIdField,
+      rawAutoLiqRecord: record ?? null,
+      payloadAboutToBeSent: payload,
     });
 
     // skipMarkExpired=true: a 403 here means "Account Risk Settings: Full Access"
@@ -2099,12 +2117,22 @@ export class TradovateClient {
       };
     }
 
-    console.info("[tradovate/autoLiq] applying profit target lock", {
-      accountId: this.#accountId,
-      tvAccountId: this.#tvAccountId,
+    const profitAutoLiqRecordAccountIdField =
+      record != null && "accountId" in record ? (record as Record<string, unknown>).accountId : "NOT_IN_SCHEMA";
+    console.info("[tradovate/autoLiq] pre-write: applying profit target lock", {
+      guardrailAccountId: this.#accountId,
+      externalAccountId: this.#externalAccountId,
+      brokerConnectionId: this.#brokerConnectionId,
+      env: this.#env,
+      baseUrlHostname: this.#baseUrl ? (() => { try { return new URL(this.#baseUrl!).hostname; } catch { return this.#baseUrl; } })() : null,
+      tvMasterid: this.#tvAccountId,
       endpoint,
+      changesLocked: params.changesLocked ?? true,
       profitAmountToSet: params.profitAmountToSet,
-      existingRecordId: record?.id ?? null,
+      autoLiqRecordId: record?.id ?? null,
+      autoLiqRecordAccountIdField: profitAutoLiqRecordAccountIdField,
+      rawAutoLiqRecord: record ?? null,
+      payloadAboutToBeSent: payload,
     });
 
     // skipMarkExpired=true: see applyDailyLossLock for rationale.
