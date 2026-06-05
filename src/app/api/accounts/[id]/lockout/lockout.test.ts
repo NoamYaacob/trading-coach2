@@ -13,10 +13,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(process.cwd(), "src");
-const route = readFileSync(
+const routeRaw = readFileSync(
   resolve(ROOT, "app/api/accounts/[id]/lockout/route.ts"),
   "utf8",
 );
+/** Executable code only — block comments and line comments stripped so
+ *  negative assertions don't fire on explanatory JSDoc text. */
+const route = routeRaw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const helper = readFileSync(
   resolve(ROOT, "app/api/accounts/[id]/lockout/lockout-helpers.ts"),
   "utf8",
