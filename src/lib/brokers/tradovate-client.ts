@@ -2025,9 +2025,9 @@ export class TradovateClient {
     );
 
     console.info("[tradovate/autoLiq] daily loss lock response", {
-      accountId: this.#accountId,
+      guardrailAccountId: this.#accountId,
       endpoint,
-      responseKeys: response != null && typeof response === "object" ? Object.keys(response as object) : [],
+      rawResponse: response,
     });
 
     // Verify that Tradovate stored the value we sent by checking the response
@@ -2145,9 +2145,9 @@ export class TradovateClient {
     );
 
     console.info("[tradovate/autoLiq] profit target lock response", {
-      accountId: this.#accountId,
+      guardrailAccountId: this.#accountId,
       endpoint,
-      responseKeys: response != null && typeof response === "object" ? Object.keys(response as object) : [],
+      rawResponse: response,
     });
 
     const responseValue = response?.dailyProfitAutoLiq ?? null;
